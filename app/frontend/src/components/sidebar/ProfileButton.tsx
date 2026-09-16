@@ -85,7 +85,9 @@ const TransitionAvatar = React.forwardRef<
         {...props}
         ref={forwardRef}
         className={cn(
-          "group relative inline-flex items-center justify-center rounded-md size-8 outline-none focus-visible:ring-0 select-none",
+          // 键盘 Tab 时给出可见焦点环（与其它按钮一致），只有鼠标操作时不打扰
+          "group relative inline-flex items-center justify-center rounded-md size-8 select-none outline-none",
+          "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
           className,
         )}
         onPointerDown={React.useCallback(
