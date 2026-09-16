@@ -184,8 +184,8 @@ export function SettingsSidebar({
     <div className="flex min-w-[180px] max-w-[200px] flex-col border-r border-border bg-sidebar px-2 py-6">
       {/* Logo */}
       <div className="mb-4 flex h-8 items-center gap-2 px-2 font-bold text-foreground">
-        <img src="/logo.svg" alt="Gist" className="size-6 rounded" />
-        <span className="text-lg">Gist</span>
+        <img src="/logo.svg" alt="krss" className="size-6 rounded" />
+        <span className="text-lg">krss</span>
       </div>
 
       {/* Navigation */}

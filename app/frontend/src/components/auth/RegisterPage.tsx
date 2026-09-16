@@ -60,11 +60,11 @@ export function RegisterPage({
         <div className="text-center">
           <img
             src="/logo.svg"
-            alt="Gist"
+            alt="krss"
             className="mx-auto mb-4 h-16 w-16 rounded-2xl"
           />
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            Gist
+            krss
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
             {t("auth.register_description")}

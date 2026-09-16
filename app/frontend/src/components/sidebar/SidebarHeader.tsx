@@ -14,20 +14,20 @@ interface SidebarHeaderProps {
   onAddClick?: () => void;
 }
 
-function GistLogo({ className }: { className?: string }) {
+function KrssLogo({ className }: { className?: string }) {
   return (
-    <img src="/logo.svg" alt="Gist" className={cn(className, "rounded")} />
+    <img src="/logo.svg" alt="krss" className={cn(className, "rounded")} />
   );
 }
 
-export function SidebarHeader({ title = "Gist", onAddClick }: SidebarHeaderProps) {
+export function SidebarHeader({ title = "krss", onAddClick }: SidebarHeaderProps) {
   const { t } = useTranslation();
 
   return (
     <div className="flex items-center justify-between px-3 pt-2.5 pb-2">
       {/* Logo and title */}
       <div className="flex items-center gap-2 text-[1.0625rem] font-bold tracking-tight">
-        <GistLogo className="size-7 rounded-lg" />
+        <KrssLogo className="size-7 rounded-lg" />
         <span className="tracking-tight">{title}</span>
       </div>
 

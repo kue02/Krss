@@ -1,8 +1,25 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#F6F6E9"/>
-  <g transform="translate(256, 256) rotate(-45)">
-    <g transform="translate(-128, -142.84)">
-      <path d="M256,0 L0,0 L128,142.84094750499287 L0,285.68189500998574 L256,285.68189500998574 L128,142.84094750499287 L256,0 Z" fill="#ED5B2D"/>
-    </g>
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="krss">
+  <defs>
+    <linearGradient id="krssBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#E8765F"/>
+      <stop offset="55%" stop-color="#DF604D"/>
+      <stop offset="100%" stop-color="#C24A38"/>
+    </linearGradient>
+    <linearGradient id="krssShine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.26"/>
+      <stop offset="62%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="512" height="512" rx="116" fill="url(#krssBg)"/>
+  <rect x="0" y="0" width="512" height="256" rx="116" fill="url(#krssShine)"/>
+  <g stroke="#FFFFFF" stroke-width="48" stroke-linecap="round" fill="none">
+    <path d="M158 132 V380"/>
+    <path d="M158 268 L286 160"/>
+    <path d="M158 268 L296 380"/>
   </g>
+  <g fill="none" stroke="#FFFFFF" stroke-linecap="round" opacity="0.92">
+    <path d="M340 200 A126 126 0 0 1 466 326" stroke-width="46"/>
+    <path d="M340 288 A42 42 0 0 1 382 330" stroke-width="46"/>
+  </g>
+  <circle cx="358" cy="356" r="26" fill="#FFFFFF" opacity="0.92"/>
 </svg>

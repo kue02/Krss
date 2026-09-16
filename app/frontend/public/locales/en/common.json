@@ -1,6 +1,6 @@
 {
   "app": {
-    "name": "Gist"
+    "name": "krss"
   },
   "sidebar": {
     "feeds": "Feeds",
@@ -332,8 +332,8 @@
     "register": "Register",
     "logging_in": "Logging in...",
     "registering": "Registering...",
-    "login_description": "Login to continue using Gist",
-    "register_description": "Create an account to start using Gist",
+    "login_description": "Login to continue using krss",
+    "register_description": "Create an account to start using krss",
     "username": "Username",
     "username_placeholder": "Enter your username",
     "username_hint": "Only lowercase letters and numbers allowed",

@@ -24,25 +24,25 @@ export function buildTitle({
 }: BuildTitleParams): string {
   // Entry title has highest priority
   if (entryTitle) {
-    return `${entryTitle} | Gist`;
+    return `${entryTitle} | krss`;
   }
 
   // Selection-based titles
   switch (selection.type) {
     case "all":
-      return `${t(`content_type.${contentType}`)} | Gist`;
+      return `${t(`content_type.${contentType}`)} | krss`;
     case "feed": {
       const feed = feedsMap.get(selection.feedId);
-      return feed ? `${feed.title} | Gist` : "Gist";
+      return feed ? `${feed.title} | krss` : "krss";
     }
     case "folder": {
       const folder = foldersMap.get(selection.folderId);
-      return folder ? `${folder.name} | Gist` : "Gist";
+      return folder ? `${folder.name} | krss` : "krss";
     }
     case "starred":
-      return `${t("entry_list.starred")} | Gist`;
+      return `${t("entry_list.starred")} | krss`;
     default:
-      return "Gist";
+      return "krss";
   }
 }
 
