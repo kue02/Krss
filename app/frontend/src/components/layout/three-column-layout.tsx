@@ -293,7 +293,15 @@ export function ThreeColumnLayout({
       )}
 
       {/* Content - right column (Entry content) —— Nextflux 风格：浮层圆角面板 */}
-      <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-background safe-area-top p-0 sm:pt-2 sm:pr-2 sm:pb-2 sm:pl-0">
+      <main
+        className={cn(
+          "flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-background safe-area-top p-0 sm:pt-2 sm:pr-2 sm:pb-2",
+          // 三栏时左边紧邻列表列（与页面同色，贴边看不出来）；
+          // 两栏（社交媒体 / 图片 / 添加订阅）时左边直接是深色侧栏，不留间距的话
+          // 圆角 + 边框会硬贴在侧栏上，所以这里补上和其余三边一致的 8px
+          hideList ? "sm:pl-2" : "sm:pl-0",
+        )}
+      >
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 bg-card sm:rounded-[13px] sm:border sm:border-border/60">
           {content}
         </div>
