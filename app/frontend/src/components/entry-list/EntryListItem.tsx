@@ -5,6 +5,7 @@ import {
   ChevronDown,
   Clock,
   ExternalLink,
+  Globe,
   Star,
   Undo2,
 } from "lucide-react";
@@ -249,8 +250,24 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
               onError={() => setIconError(true)}
             />
           ) : (
-            <div className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-muted">
-              <FeedIcon className="size-4 text-muted-foreground/60" />
+            <div className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground/70">
+              {/* 源没给图标时，社交条目按平台给字形（Folo 这里显示作者头像） */}
+              {socialSource?.platform === "x" ? (
+                <svg
+                  className="size-3.5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2.5}
+                  strokeLinecap="round"
+                >
+                  <path d="M5 5l14 14M19 5L5 19" />
+                </svg>
+              ) : socialSource ? (
+                <Globe className="size-4" />
+              ) : (
+                <FeedIcon className="size-4" />
+              )}
             </div>
           )}
 
