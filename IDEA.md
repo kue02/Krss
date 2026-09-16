@@ -129,7 +129,15 @@ Gist 的内容类型是后端枚举（`article/picture/notification`），要加
 - [x] 2026-09-16 动效细节：卡片涟漪（m3-ripple，Nextflux 同款参数）、已读卡片降透明度、
       主按钮内高光 + 描边、tooltip 胶囊、折叠缓动 ease-out
 - [x] 2026-09-16 列表骨架屏按卡片真实结构重写；缩略图加载前脉动、加载后淡入
-- [ ] 本机 Docker 打包部署（用户指定的最后一步；当前用 go run + vite dev 本地开发）
+- [x] 2026-09-16 细节收尾（第 3 批）：
+      - 阅读区进场动效（200ms 淡入 + 4px 上浮）；「减少动态效果」同时管住 CSS 与 framer-motion（MotionConfig）
+      - 列表滚动后右上角「序号 + 回到顶部」浮标（对齐 Nextflux 的 Indicator）
+      - 侧栏订阅行/分组行/内容类型切换器补涟漪；分段控件滑块改用 --segment 令牌 + shadow-nf-sm
+      - 已读条目不再双重压暗（标题恒为前景色，只用字重 + 0.78 不透明度）
+      - PWA theme-color 跟随配色主题（light/stone #E3E1DE、leaf #DFE7E1、dark/nord-dark #242933）
+      - 空状态/阅读区占位统一为「图标 size-16 + 文案 + opacity-60」（对齐 Nextflux 的 EmptyPlaceholder）
+      - 侧栏账户按钮补键盘焦点环；侧栏过渡统一 200ms
+- [ ] 本机 Docker 打包部署（用户已明确：暂不管，先磨细节）
 
 - [x] 2026-09-16 **细节对齐 Nextflux**：m3-ripple 涟漪、已读卡片降透明度、主按钮内高光、
       tooltip 胶囊、折叠缓动 ease-out

@@ -10,6 +10,7 @@ import { Router, useLocation, Redirect } from "wouter";
 import { useTranslation } from "react-i18next";
 import { ThreeColumnLayout } from "@/components/layout/three-column-layout";
 import { Sheet } from "@/components/ui/sheet";
+import { MotionConfig } from "motion/react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Sidebar } from "@/components/sidebar";
 import { AddFeedPage } from "@/components/add-feed";
@@ -76,9 +77,9 @@ function EntryContentPlaceholder({ message }: { message: string }) {
     <div className="flex h-full flex-col">
       <div className="flex h-12 items-center px-6" />
       <div className="flex flex-1 items-center justify-center">
-        <div className="text-center text-muted-foreground">
+        <div className="flex flex-col items-center gap-2 text-center text-muted-foreground opacity-60">
           <svg
-            className="mx-auto size-12 opacity-50"
+            className="size-16"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -90,7 +91,7 @@ function EntryContentPlaceholder({ message }: { message: string }) {
               d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
             />
           </svg>
-          <p className="mt-2 text-sm">{message}</p>
+          <p className="text-sm">{message}</p>
         </div>
       </div>
     </div>
@@ -652,14 +653,19 @@ function AppContent() {
 }
 
 function App() {
+  // 「减少动态效果」也要管住 framer-motion 的 JS 动画（CSS 覆盖只影响 CSS 动画）
+  const reduceMotion = useUISettingKey("reduceMotion");
+
   return (
     <div className="app-shell">
-      <TooltipProvider delayDuration={300}>
-        <Router>
-          <AppContent />
-          <UpdateNotice />
-        </Router>
-      </TooltipProvider>
+      <MotionConfig reducedMotion={reduceMotion ? "always" : "user"}>
+        <TooltipProvider delayDuration={300}>
+          <Router>
+            <AppContent />
+            <UpdateNotice />
+          </Router>
+        </TooltipProvider>
+      </MotionConfig>
     </div>
   );
 }

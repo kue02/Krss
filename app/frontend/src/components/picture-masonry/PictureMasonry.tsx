@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { ImageOff } from "lucide-react";
 import { VirtuosoMasonry } from "@virtuoso.dev/masonry";
 import { useEntriesInfinite, useUnreadCounts } from "@/hooks/useEntries";
 import { useFeeds } from "@/hooks/useFeeds";
@@ -403,8 +404,9 @@ function MasonrySkeleton() {
 function EmptyState() {
   const { t } = useTranslation();
   return (
-    <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
-      {t("entry_list.no_articles")}
+    <div className="flex h-64 w-full flex-col items-center justify-center gap-2 text-muted-foreground opacity-60">
+      <ImageOff className="size-16" strokeWidth={1.5} />
+      <p className="text-sm">{t("entry_list.no_articles")}</p>
     </div>
   );
 }
