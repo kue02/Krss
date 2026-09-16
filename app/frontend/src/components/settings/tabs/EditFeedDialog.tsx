@@ -161,26 +161,27 @@ export function EditFeedDialog({
               {error}
             </div>
           )}
+          {/* 订阅级 AI 覆盖：单独成一块，不要和底部按钮挤在一行 */}
+          <div className="space-y-1 border-t border-border pt-4">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm text-foreground">
+                {t("feeds.auto_translate")}
+              </span>
+              <TriStateControl
+                value={autoTranslate}
+                onChange={setAutoTranslate}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm text-foreground">
+                {t("feeds.auto_summary")}
+              </span>
+              <TriStateControl value={autoSummary} onChange={setAutoSummary} />
+            </div>
+          </div>
+
           {/* 底部按钮区：对齐 Nextflux 的 Modal.Footer（border-t + p-4） */}
           <div className="flex justify-end gap-2 border-t border-border pt-4">
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-sm font-medium">
-                  {t("feeds.auto_translate")}
-                </span>
-                <TriStateControl
-                  value={autoTranslate}
-                  onChange={setAutoTranslate}
-                />
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-sm font-medium">
-                  {t("feeds.auto_summary")}
-                </span>
-                <TriStateControl value={autoSummary} onChange={setAutoSummary} />
-              </div>
-            </div>
-
             <button
               type="button"
               onClick={handleClose}

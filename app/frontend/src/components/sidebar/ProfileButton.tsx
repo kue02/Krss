@@ -32,6 +32,10 @@ interface ProfileButtonProps {
   onProfileClick?: () => void;
   onSettingsClick?: () => void;
   onLogoutClick?: () => void;
+  /** 触发器的额外类名（侧栏账户栏把整行做成触发器时用） */
+  triggerClassName?: string;
+  /** 触发器里头像后面的内容（一般放用户名） */
+  children?: React.ReactNode;
 }
 
 const UserAvatar = React.forwardRef<
@@ -39,11 +43,12 @@ const UserAvatar = React.forwardRef<
   {
     className?: string;
     avatarUrl?: string;
+    name?: string;
     style?: React.CSSProperties;
     onTransitionEnd?: () => void;
     hideName?: boolean;
   }
->(({ className, avatarUrl, style, onTransitionEnd }, ref) => (
+>(({ className, avatarUrl, name, style, onTransitionEnd }, ref) => (
   <span
     ref={ref}
     style={style}
@@ -54,28 +59,63 @@ const UserAvatar = React.forwardRef<
     )}
   >
     {avatarUrl ? (
-      <img className="size-full object-cover" src={avatarUrl} alt="" />
+      <AvatarFace avatarUrl={avatarUrl} name={name} />
     ) : (
-      <svg
-        className="size-full p-1 text-muted-foreground"
-        fill="currentColor"
-        viewBox="0 0 24 24"
-      >
-        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4 1.79-4 4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-      </svg>
+      <AvatarFace name={name} />
     )}
   </span>
 ));
 
 UserAvatar.displayName = "UserAvatar";
 
+/**
+ * 头像本体：有图就用图，图挂了 / 没有就退成「首字母」头像。
+ * Gravatar 在没设头像时会给一张默认的灰色小人，所以后端改用 d=404，
+ * 加载失败落到这里 —— 首字母头像比灰色小人像回事（也和 logo 的 K 呼应）。
+ */
+function AvatarFace({
+  avatarUrl,
+  name,
+  letterClassName = "text-[11px]",
+}: {
+  avatarUrl?: string;
+  name?: string;
+  letterClassName?: string;
+}) {
+  const [failed, setFailed] = React.useState(false);
+  const letter = (name?.trim()?.[0] ?? "?").toUpperCase();
+
+  if (avatarUrl && !failed) {
+    return (
+      <img
+        className="size-full object-cover"
+        src={avatarUrl}
+        alt=""
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+
+  return (
+    <span
+      className={cn(
+        "flex size-full items-center justify-center rounded-full bg-accent/15 font-semibold leading-none text-accent",
+        letterClassName,
+      )}
+    >
+      {letter}
+    </span>
+  );
+}
+
 const TransitionAvatar = React.forwardRef<
   HTMLButtonElement,
   {
     stage: "zoom-in" | "";
     avatarUrl?: string;
+    name?: string;
   } & React.HTMLAttributes<HTMLButtonElement>
->(({ stage, avatarUrl, className, ...props }, forwardRef) => {
+>(({ stage, avatarUrl, name, className, children, ...props }, forwardRef) => {
   const [measureRef, { x, y }, forceRefresh] = useMeasure();
   const zoomIn = stage === "zoom-in";
 
@@ -111,7 +151,9 @@ const TransitionAvatar = React.forwardRef<
           ref={measureRef}
           className="size-6 border-0"
           avatarUrl={avatarUrl}
+          name={name}
         />
+        {children}
       </button>
 
       <RootPortal>
@@ -145,21 +187,11 @@ const TransitionAvatar = React.forwardRef<
               }}
               className="fixed p-0 border-0 pointer-events-none rounded-full overflow-hidden bg-muted z-[100] transform-gpu shadow-xl select-none"
             >
-              {avatarUrl ? (
-                <img
-                  className="size-full object-cover"
-                  src={avatarUrl}
-                  alt=""
-                />
-              ) : (
-                <svg
-                  className="size-full p-1 text-muted-foreground"
-                  fill="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4 1.79-4 4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-                </svg>
-              )}
+              <AvatarFace
+                avatarUrl={avatarUrl}
+                name={name}
+                letterClassName="text-[22px]"
+              />
             </motion.div>
           )}
         </AnimatePresence>
@@ -178,6 +210,8 @@ export function ProfileButton({
   onProfileClick,
   onSettingsClick,
   onLogoutClick,
+  triggerClassName,
+  children,
 }: ProfileButtonProps) {
   const { t } = useTranslation();
   const displayName = userName || t("user.guest");
@@ -191,7 +225,11 @@ export function ProfileButton({
         <TransitionAvatar
           stage={isOpen ? "zoom-in" : ""}
           avatarUrl={avatarUrl}
-        />
+          name={userName}
+          className={triggerClassName}
+        >
+          {children}
+        </TransitionAvatar>
       </DropdownMenuTrigger>
 
       <DropdownMenuContent

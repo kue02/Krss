@@ -455,5 +455,5 @@ func (s *authService) getString(ctx context.Context, key string) (string, error)
 func gravatarURL(email string) string {
 	email = strings.ToLower(strings.TrimSpace(email))
 	hash := md5.Sum([]byte(email))
-	return fmt.Sprintf("https://www.gravatar.com/avatar/%s?d=mp&s=80", hex.EncodeToString(hash[:]))
+	return fmt.Sprintf("https://www.gravatar.com/avatar/%s?d=404&s=80", hex.EncodeToString(hash[:]))
 }
