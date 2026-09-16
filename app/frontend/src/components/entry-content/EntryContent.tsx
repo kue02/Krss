@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from "react";
+import { useEffect, useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   useEntry,
@@ -15,6 +15,7 @@ import { useAISummary } from "@/hooks/useAISummary";
 import { useAITranslation } from "@/hooks/useAITranslation";
 import { EntryContentHeader } from "./EntryContentHeader";
 import { EntryContentBody } from "./EntryContentBody";
+import { OriginalSiteView } from "./OriginalSiteView";
 import { isPlainKey, isTypingTarget } from "@/lib/keyboard";
 
 interface EntryContentProps {
@@ -32,6 +33,8 @@ export function EntryContent({ entryId, isMobile, onBack }: EntryContentProps) {
   const { mutate: markAsStarred } = useMarkAsStarred();
   const removeFromUnreadList = useRemoveFromUnreadList();
   const { scrollRef, isAtTop, scrollNode } = useEntryContentScroll(entryId);
+  // #13 在阅读栏里直接加载原站
+  const [showOriginalSite, setShowOriginalSite] = useState(false);
 
   useScrollToTop(scrollNode, "entrycontent");
 
@@ -161,7 +164,12 @@ export function EntryContent({ entryId, isMobile, onBack }: EntryContentProps) {
         onToggleTranslation={handleToggleTranslation}
         isMobile={isMobile}
         onBack={onBack}
+        isOriginalSiteActive={showOriginalSite}
+        onToggleOriginalSite={() => setShowOriginalSite((value) => !value)}
       />
+      {showOriginalSite && entry.url ? (
+        <OriginalSiteView url={entry.url} />
+      ) : (
       <EntryContentBody
         entry={entry}
         displayTitle={displayTitle}
@@ -174,6 +182,7 @@ export function EntryContent({ entryId, isMobile, onBack }: EntryContentProps) {
         isLoadingSummary={isLoadingSummary}
         summaryError={summaryError}
       />
+      )}
     </div>
   );
 }

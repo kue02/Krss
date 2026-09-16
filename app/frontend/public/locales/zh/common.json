@@ -211,7 +211,10 @@
     "min_read": "{{mins}} 分钟阅读",
     "ai_summary": "AI 摘要",
     "select_article": "选择一篇文章开始阅读",
-    "refresh_done": "刷新完成"
+    "refresh_done": "刷新完成",
+    "original_site": "查看原文网站",
+    "original_site_hint": "正在加载原站；若下方空白，说明该站点禁止被内嵌，请点右侧新窗口打开。",
+    "open_in_new_tab": "新窗口打开"
   },
   "ai_settings": {
     "provider": "AI 提供商",

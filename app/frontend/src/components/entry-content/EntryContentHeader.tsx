@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { isSafeUrl } from "@/lib/url";
 import { cn } from "@/lib/utils";
-import { BackIcon } from "@/components/ui/icons";
+import { BackIcon, GlobeIcon } from "@/components/ui/icons";
 import { dispatchScrollToTop } from "@/hooks/useScrollToTop";
 import type { Entry } from "@/types/api";
 
@@ -23,6 +23,9 @@ interface EntryContentHeaderProps {
   onToggleTranslation?: () => void;
   isMobile?: boolean;
   onBack?: () => void;
+  /** 是否正在阅读栏里加载原站（#13） */
+  isOriginalSiteActive?: boolean;
+  onToggleOriginalSite?: () => void;
 }
 
 interface TranslationButtonState {
@@ -74,6 +77,8 @@ export function EntryContentHeader({
   translationDisabled,
   onToggleTranslation,
   onBack,
+  isOriginalSiteActive = false,
+  onToggleOriginalSite,
 }: EntryContentHeaderProps) {
   const { t } = useTranslation();
   const safeUrl = entry.url && isSafeUrl(entry.url) ? entry.url : null;
@@ -224,6 +229,26 @@ export function EntryContentHeader({
                   />
                 </svg>
               </span>
+            </button>
+          )}
+
+          {entry.url && onToggleOriginalSite && (
+            <button
+              type="button"
+              onClick={onToggleOriginalSite}
+              title={
+                isOriginalSiteActive
+                  ? t("entry.show_readable")
+                  : t("entry.original_site")
+              }
+              className={cn(
+                "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95",
+                isOriginalSiteActive
+                  ? "bg-item-active text-foreground"
+                  : "text-muted-foreground hover:bg-item-hover hover:text-foreground",
+              )}
+            >
+              <GlobeIcon className="size-5" />
             </button>
           )}
 

@@ -214,7 +214,10 @@
     "min_read": "{{mins}} min read",
     "ai_summary": "AI Summary",
     "select_article": "Select an article to read",
-    "refresh_done": "Refresh finished"
+    "refresh_done": "Refresh finished",
+    "original_site": "View original site",
+    "original_site_hint": "Loading the original site. If the frame is blank, the site blocks embedding — use the button on the right.",
+    "open_in_new_tab": "Open in new tab"
   },
   "ai_settings": {
     "provider": "AI Provider",

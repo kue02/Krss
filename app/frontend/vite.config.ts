@@ -132,6 +132,9 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": "http://localhost:8080",
+      // 订阅图标由后端提供；不代理的话 dev 下会落到 SPA 兜底（返回 HTML），
+      // <img> 加载失败就退回默认图标（表现为「明明有图标却不显示」）
+      "/icons": "http://localhost:8080",
     },
   },
   resolve: {
