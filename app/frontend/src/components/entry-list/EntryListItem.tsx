@@ -1,4 +1,4 @@
-import { forwardRef, useState, useMemo } from "react";
+import { forwardRef, useEffect, useRef, useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Clock } from "lucide-react";
 import { Ripple } from "m3-ripple";
@@ -104,6 +104,27 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
     const titleContainsUrl = URL_PATTERN.test(displayTitle ?? "");
     const summaryContainsUrl = URL_PATTERN.test(displaySummary ?? "");
     const { ref: inViewRef, inView } = useInView<HTMLDivElement>("600px");
+    const expandedBodyRef = useRef<HTMLDivElement | null>(null);
+    const [isContentClipped, setIsContentClipped] = useState(false);
+
+    // 展开的正文超过上限高度时，给出渐隐 + 提示（卡片整体可点，点开进阅读区）
+    useEffect(() => {
+      const node = expandedBodyRef.current;
+      if (!node) return;
+
+      const measure = () => {
+        setIsContentClipped(node.scrollHeight > node.clientHeight + 8);
+      };
+
+      measure();
+      // 正文里的图片是异步加载的：加载完高度才定，必须复测
+      const retry = setTimeout(measure, 400);
+      node.addEventListener("load", measure, true);
+      return () => {
+        clearTimeout(retry);
+        node.removeEventListener("load", measure, true);
+      };
+    }, [inView, entry.id, cardImageSize]);
     const readingFontStack = resolveReadingFontStack(entryFontFamily);
     const expandedContent = entry.content ?? null;
     const isExpanded = autoExpand && Boolean(expandedContent);
@@ -126,7 +147,7 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
             ? "border-border/60 bg-card shadow-nf"
             : "border-transparent hover:bg-item-hover",
           // 对齐 Nextflux：已读且未加星标的卡片整体降透明度
-          !isUnread && !entry.starred && !isSelected && "opacity-75",
+          !isUnread && !entry.starred && !isSelected && "opacity-70",
         )}
         style={style}
         data-index={dataIndex}
@@ -229,10 +250,11 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
 
         {/* 自动展开的正文（Folo 式信息流）：只在卡片接近视口时才渲染全文 */}
         {isExpanded && (
-          <div className="mt-0.5 w-full border-t border-border/40 pt-3">
+          <div className="relative mt-0.5 w-full border-t border-border/40 pt-3">
             {inView ? (
               <div
-                className="entry-content prose prose-sm dark:prose-invert max-w-none break-words prose-img:my-3 prose-img:rounded-lg prose-a:break-words"
+                ref={expandedBodyRef}
+                className="entry-content prose prose-sm dark:prose-invert max-h-[26rem] max-w-none overflow-hidden break-words prose-img:my-3 prose-img:rounded-lg prose-a:break-words"
                 style={{
                   fontSize: `${Math.max(14, entryFontSize - 2)}px`,
                   lineHeight: entryLineHeight,
@@ -248,6 +270,15 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
               </div>
             ) : (
               <div className="h-16 animate-pulse rounded-lg bg-muted/40" />
+            )}
+
+            {/* 长文截断提示：卡片整块可点，点开在右侧阅读区看全文 */}
+            {isContentClipped && inView && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 flex h-16 items-end justify-center bg-gradient-to-t from-card via-card/70 to-transparent pb-0.5">
+                <span className="rounded-full bg-overlay/85 px-2.5 py-0.5 text-[11px] font-medium text-foreground/80 shadow-sm backdrop-blur-sm">
+                  {t("entry.expand_hint")}
+                </span>
+              </div>
             )}
           </div>
         )}

@@ -159,6 +159,7 @@
   },
   "entry": {
     "read": "Read",
+    "expand_hint": "Open in the reader for the full article",
     "unread": "Unread",
     "star": "Star",
     "unstar": "Unstar",
