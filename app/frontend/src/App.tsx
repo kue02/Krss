@@ -386,6 +386,7 @@ function AuthenticatedApp() {
               unreadOnly={unreadOnly}
               onToggleUnreadOnly={toggleUnreadOnly}
               onFilterChange={handleFilterChange}
+              onCloseEntry={() => selectEntry(null)}
               contentType={contentType}
               isMobile
               isActive={mobileView === "list"}
@@ -483,6 +484,7 @@ function AuthenticatedApp() {
             unreadOnly={unreadOnly}
             onToggleUnreadOnly={toggleUnreadOnly}
             onFilterChange={handleFilterChange}
+            onCloseEntry={() => selectEntry(null)}
             contentType={contentType}
             isTablet={isTablet}
             onToggleSidebar={toggleSidebarVisible}

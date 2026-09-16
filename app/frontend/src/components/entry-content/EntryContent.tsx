@@ -36,6 +36,8 @@ export function EntryContent({ entryId, isMobile, onBack }: EntryContentProps) {
 
   // Track entries marked as read to trigger list removal on switch
   const markedAsReadRef = useRef<Set<string>>(new Set());
+  // 自动「打开即已读」每篇文章只做一次：否则手动切回未读（快捷键 m）会被立刻改回已读
+  const autoMarkedEntryRef = useRef<string | null>(null);
 
   const autoTranslate = aiSettings?.autoTranslate ?? false;
   const targetLanguage = aiSettings?.summaryLanguage ?? "zh-CN";
@@ -81,7 +83,9 @@ export function EntryContent({ entryId, isMobile, onBack }: EntryContentProps) {
   // Mark as read when entry is loaded
   // Use skipInvalidate to prevent list item from disappearing immediately
   useEffect(() => {
-    if (entry && !entry.read) {
+    if (!entry || autoMarkedEntryRef.current === entry.id) return;
+    autoMarkedEntryRef.current = entry.id;
+    if (!entry.read) {
       markedAsReadRef.current.add(entry.id);
       markAsRead({ id: entry.id, read: true, skipInvalidate: true });
     }

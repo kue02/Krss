@@ -36,6 +36,9 @@ vi.mock("@/hooks/useEntries", () => ({
   useUnreadCounts: vi.fn(() => ({ data: undefined })),
   useMarkManyAsRead: vi.fn(() => ({ mutate: mockMarkManyAsRead })),
   useRemoveFromUnreadList: vi.fn(() => mockRemoveFromUnreadList),
+  // 键盘快捷键（useEntryHotkeys）会用到这两个；补上以免 mock 缺导出
+  useMarkAsRead: vi.fn(() => ({ mutate: vi.fn() })),
+  useMarkAsStarred: vi.fn(() => ({ mutate: vi.fn() })),
 }));
 
 vi.mock("@/hooks/useFeeds", () => ({

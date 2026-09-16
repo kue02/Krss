@@ -33,12 +33,15 @@ import { MobileDocumentHeader } from "@/components/layout/MobileDocumentHeader";
 import { cn } from "@/lib/utils";
 import { useScrollMarkRead } from "./useScrollMarkRead";
 import { useEntryListScrollSurface } from "./scroll-surface";
+import { useEntryHotkeys } from "@/hooks/useEntryHotkeys";
 import type { Entry, Feed, Folder, ContentType } from "@/types/api";
 
 interface EntryListProps {
   selection: SelectionType;
   selectedEntryId: string | null;
   onSelectEntry: (entryId: string) => void;
+  /** Esc 关闭详情（交回列表） */
+  onCloseEntry?: () => void;
   onMarkAllRead: () => void;
   unreadOnly: boolean;
   onToggleUnreadOnly: () => void;
@@ -57,6 +60,7 @@ export function EntryList({
   selection,
   selectedEntryId,
   onSelectEntry,
+  onCloseEntry,
   onMarkAllRead,
   unreadOnly,
   onToggleUnreadOnly,
@@ -212,6 +216,15 @@ export function EntryList({
   }, [folders]);
 
   const entries = useMemo(() => flattenUniqueEntries(data?.pages), [data]);
+
+  // 键盘快捷键：j/k 上下篇（选中即已读）、m 已读、s 星标、v 打开原文、Esc 关闭
+  useEntryHotkeys({
+    entries,
+    selectedEntryId,
+    onSelect: handleSelectEntry,
+    onEscape: onCloseEntry,
+    enabled: isActive,
+  });
   const { endPaddingHeight: scrollReadEndPaddingHeight } = useScrollMarkRead({
     surface: scrollSurface,
     contentRootRef: containerRef,
