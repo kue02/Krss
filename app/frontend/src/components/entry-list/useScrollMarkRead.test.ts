@@ -137,18 +137,19 @@ describe("useScrollMarkRead 的已读判定时机", () => {
     const { contentRoot, card, surface } = makeHarness(container);
     renderScrollMarkRead({ contentRoot, surface });
 
-    const observer = FakeObserver.instances.at(-1);
+    const observer = FakeObserver.instances.at(-1) as FakeObserver;
     expect(observer).toBeTruthy();
 
-    observer!.emit([{ target: card, isIntersecting: true, bottom: 200 }]);
+    observer.emit([{ target: card, isIntersecting: true, bottom: 200 }]);
     vi.advanceTimersByTime(3000);
     expect(markManyAsRead).not.toHaveBeenCalled();
 
     // 滚出顶部（bottom 在根顶部之上）
-    observer!.emit([{ target: card, isIntersecting: false, bottom: -20 }]);
+    observer.emit([{ target: card, isIntersecting: false, bottom: -20 }]);
     vi.advanceTimersByTime(3000);
     expect(markManyAsRead).toHaveBeenCalledTimes(1);
-    expect(markManyAsRead.mock.calls[0][0]).toMatchObject({ ids: ["e1"], read: true });
+    const [firstCall] = markManyAsRead.mock.calls;
+    expect(firstCall?.[0]).toMatchObject({ ids: ["e1"], read: true });
   });
 
   it("onVisible（Folo 语义）：进入视口并停留后即标记已读", () => {
@@ -156,8 +157,8 @@ describe("useScrollMarkRead 的已读判定时机", () => {
     const { contentRoot, card, surface } = makeHarness(container);
     renderScrollMarkRead({ contentRoot, surface, timing: "onVisible" });
 
-    const observer = FakeObserver.instances.at(-1)!;
-    observer!.emit([{ target: card, isIntersecting: true, bottom: 200 }]);
+    const observer = FakeObserver.instances.at(-1) as FakeObserver;
+    observer.emit([{ target: card, isIntersecting: true, bottom: 200 }]);
 
     // 停留时间未到：不标记
     vi.advanceTimersByTime(300);
@@ -165,7 +166,8 @@ describe("useScrollMarkRead 的已读判定时机", () => {
 
     vi.advanceTimersByTime(2000);
     expect(markManyAsRead).toHaveBeenCalledTimes(1);
-    expect(markManyAsRead.mock.calls[0][0].ids).toEqual(["e1"]);
+    const [visibleCall] = markManyAsRead.mock.calls;
+    expect(visibleCall?.[0]?.ids).toEqual(["e1"]);
   });
 
   it("onVisible：还没到停留时间就划走，不标记", () => {
@@ -173,10 +175,10 @@ describe("useScrollMarkRead 的已读判定时机", () => {
     const { contentRoot, card, surface } = makeHarness(container);
     renderScrollMarkRead({ contentRoot, surface, timing: "onVisible" });
 
-    const observer = FakeObserver.instances.at(-1)!;
-    observer!.emit([{ target: card, isIntersecting: true, bottom: 200 }]);
+    const observer = FakeObserver.instances.at(-1) as FakeObserver;
+    observer.emit([{ target: card, isIntersecting: true, bottom: 200 }]);
     vi.advanceTimersByTime(200);
-    observer!.emit([{ target: card, isIntersecting: false, bottom: 900 }]);
+    observer.emit([{ target: card, isIntersecting: false, bottom: 900 }]);
     vi.advanceTimersByTime(3000);
 
     expect(markManyAsRead).not.toHaveBeenCalled();
@@ -184,7 +186,7 @@ describe("useScrollMarkRead 的已读判定时机", () => {
 
   it("enabled=false 时不观察也不标记", () => {
     const container = document.createElement("div");
-    const { contentRoot, card, surface } = makeHarness(container);
+    const { contentRoot, surface } = makeHarness(container);
     const contentRootRef = { current: contentRoot };
     renderHook(() =>
       useScrollMarkRead({
