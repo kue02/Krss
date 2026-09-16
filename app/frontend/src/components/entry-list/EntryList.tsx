@@ -36,7 +36,7 @@ import { useScrollMarkRead } from "./useScrollMarkRead";
 import { useEntryListScrollSurface } from "./scroll-surface";
 import { useEntryHotkeys } from "@/hooks/useEntryHotkeys";
 import { useUISettingKey } from "@/hooks/useUISettings";
-import { ArrowUp } from "lucide-react";
+import { ArrowUp, Inbox } from "lucide-react";
 import type { Entry, Feed, Folder, ContentType } from "@/types/api";
 
 interface EntryListProps {
@@ -651,9 +651,11 @@ function EntryListSkeleton() {
 
 function EntryListEmpty() {
   const { t } = useTranslation();
+  // 对齐 Nextflux 的 EmptyPlaceholder：图标 + 文案，整体压暗到 60%
   return (
-    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-      {t("entry_list.no_articles")}
+    <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-muted-foreground opacity-60">
+      <Inbox className="size-16" strokeWidth={1.5} />
+      <p className="text-sm">{t("entry_list.no_articles")}</p>
     </div>
   );
 }
