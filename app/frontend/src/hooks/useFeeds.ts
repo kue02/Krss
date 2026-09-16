@@ -51,6 +51,33 @@ export function useUpdateFeedType() {
   });
 }
 
+/** 分类批量设置：把一个分类下所有订阅的覆盖项一次写完（逐条走同一个接口，并发） */
+export function useUpdateFeedsOverrides() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: {
+      feedIds: string[];
+      autoTranslate?: boolean | null;
+      autoSummary?: boolean | null;
+      readerMode?: boolean | null;
+    }) => {
+      await Promise.all(
+        payload.feedIds.map((id) =>
+          updateFeedAI(id, {
+            autoTranslate: payload.autoTranslate,
+            autoSummary: payload.autoSummary,
+            readerMode: payload.readerMode,
+          }),
+        ),
+      );
+      return payload.feedIds.length;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["feeds"] });
+    },
+  });
+}
+
 export function useUpdateFeedAI() {
   const queryClient = useQueryClient();
   return useMutation({

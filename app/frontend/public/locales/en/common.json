@@ -377,6 +377,10 @@
     "password_changed": "Password changed"
   },
   "feeds": {
+    "folder_overrides_menu": "Bulk settings",
+    "folder_overrides_title": "Bulk settings for {{name}}",
+    "folder_overrides_hint": "Applies to all {{count}} feeds, overwriting their individual overrides. Follow global clears them.",
+    "bulk_update_failed": "Bulk update failed",
     "reader_mode": "Article view",
     "reader_mode_on": "Reader",
     "reader_mode_off": "Original",

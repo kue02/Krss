@@ -25,6 +25,7 @@ import { SettingsModal, ProfileModal } from "@/components/settings";
 import { EditFeedDialog } from "@/components/settings/tabs/EditFeedDialog";
 import { RenameFolderDialog } from "./RenameFolderDialog";
 import { CreateFolderDialog } from "./CreateFolderDialog";
+import { FolderOverridesDialog } from "./FolderOverridesDialog";
 import {
   useFolders,
   useDeleteFolder,
@@ -105,6 +106,10 @@ export function Sidebar({
   const [editingFeed, setEditingFeed] = useState<Feed | null>(null);
   const [renamingFolder, setRenamingFolder] = useState<Folder | null>(null);
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
+  /** 分类批量设置：非 null 表示正在给这个分类批量设置订阅 */
+  const [bulkOverridesFolderId, setBulkOverridesFolderId] = useState<
+    string | null
+  >(null);
   const [sortBy, setSortBy] = useState<SortBy>("name");
 
   const visibleContentTypes = useMemo(() => {
@@ -350,6 +355,10 @@ export function Sidebar({
   );
 
   // 文件夹重命名（右键菜单）
+  const handleBulkOverrides = useCallback((folderId: string) => {
+    setBulkOverridesFolderId(folderId);
+  }, []);
+
   const handleRenameFolder = useCallback(
     (folderId: string) => {
       setRenamingFolder(folders.find((item) => item.id === folderId) ?? null);
@@ -447,6 +456,7 @@ export function Sidebar({
                         onRename={handleRenameFolder}
                         onDelete={handleDeleteFolder}
                         onChangeType={handleChangeFolderType}
+                        onBulkOverrides={handleBulkOverrides}
                       >
                         {folderFeeds.map((feed) => (
                           <FeedItem
@@ -523,6 +533,19 @@ export function Sidebar({
         open={isCreateFolderOpen}
         onOpenChange={setIsCreateFolderOpen}
         contentType={contentType}
+      />
+
+      <FolderOverridesDialog
+        open={bulkOverridesFolderId !== null}
+        onOpenChange={(open) => {
+          if (!open) setBulkOverridesFolderId(null);
+        }}
+        folderName={
+          folders.find((item) => item.id === bulkOverridesFolderId)?.name
+        }
+        feedIds={feeds
+          .filter((feed) => feed.folderId === bulkOverridesFolderId)
+          .map((feed) => feed.id)}
       />
 
       <EditFeedDialog
