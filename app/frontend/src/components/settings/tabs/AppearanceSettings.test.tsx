@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const setFetchReadableForView = vi.fn();
+const setExpandLongForView = vi.fn();
 const setScrollReadForView = vi.fn();
 
 vi.mock("react-i18next", () => ({
@@ -53,6 +54,12 @@ vi.mock("@/hooks/useUISettings", async () => {
       picture: false,
       notification: false,
     },
+    expandLongByView: {
+      article: false,
+      picture: false,
+      notification: false,
+      social: false,
+    },
     scrollReadByView: {
       article: "inherit",
       picture: "inherit",
@@ -72,6 +79,7 @@ vi.mock("@/hooks/useUISettings", async () => {
       setCardPreviewLines: vi.fn(),
       setEntryFont: vi.fn(),
       setFetchReadableForView,
+      setExpandLongForView,
       setScrollReadForView,
     }),
   };
@@ -113,6 +121,7 @@ function rowOf(labelKey: string, index = 0): HTMLElement {
 describe("AppearanceSettings 按视图设置", () => {
   beforeEach(() => {
     setFetchReadableForView.mockClear();
+    setExpandLongForView.mockClear();
     setScrollReadForView.mockClear();
   });
 

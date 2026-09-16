@@ -124,9 +124,11 @@ export function AppearanceSettings() {
   const entryFontSize = useUISettingKey("entryFontSize");
   const entryLineHeight = useUISettingKey("entryLineHeight");
   const fetchReadableByView = useUISettingKey("fetchReadableByView");
+  const expandLongByView = useUISettingKey("expandLongByView");
   const scrollReadByView = useUISettingKey("scrollReadByView");
   const {
     setFetchReadableForView,
+    setExpandLongForView,
     setScrollReadForView,
     setCardImageSize,
     setCardPreviewLines,
@@ -472,6 +474,21 @@ export function AppearanceSettings() {
                 <div className="text-xs font-semibold text-foreground">
                   {t(`content_type.${view}`)}
                 </div>
+                {view === "social" && (
+                  <SettingRow label={t("appearance_view.expand_long")}>
+                    <SegmentedControl
+                      className="shrink-0"
+                      value={expandLongByView[view] ? "on" : "off"}
+                      onValueChange={(value) =>
+                        setExpandLongForView(view, value === "on")
+                      }
+                      options={[
+                        { value: "off", label: t("appearance_view.off") },
+                        { value: "on", label: t("appearance_view.on") },
+                      ]}
+                    />
+                  </SettingRow>
+                )}
                 {view === "social" && (
                   <SettingRow label={t("appearance_view.fetch_readable")}>
                     <SegmentedControl

@@ -43,10 +43,35 @@ export function stripDuplicatedTitle(
     const first = doc.body.firstElementChild;
     if (!first) return html;
 
+    // 去空白后与标题相同（正文里的 <br> 被 strip 掉、标题里是空格）
+    const squash = (value: string) => value.replace(/\s+/g, "");
+    if (squash(first.textContent ?? "") === squash(title)) {
+      first.remove();
+      return doc.body.innerHTML;
+    }
+
     const isHeading = /^H[1-6]$/.test(first.tagName);
     const text = normalize(first.textContent ?? "");
     if (text === target || (isHeading && text.includes(target))) {
       first.remove();
+      return doc.body.innerHTML;
+    }
+
+    // 首段是「标题 + 一点尾巴」：只摘掉标题那截，保留句子其余部分
+    // （标题常是正文压掉换行后的版本，所以比对前统一空白）
+    const collapse = (value: string) => value.replace(/\s+/g, " ").trim();
+    const rawFirst = collapse(first.textContent ?? "");
+    const rawTitle = collapse(title);
+    if (rawFirst.startsWith(rawTitle) && rawFirst.length > rawTitle.length) {
+      const rest = rawFirst
+        .slice(rawTitle.length)
+        .replace(/^[\s·|—–\-:：,，.。!！?？"'“”]+/, "")
+        .trim();
+      if (rest) {
+        first.textContent = rest;
+      } else {
+        first.remove();
+      }
       return doc.body.innerHTML;
     }
 

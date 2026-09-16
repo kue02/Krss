@@ -161,6 +161,7 @@
   "entry": {
     "read": "Read",
     "expand_hint": "Open in the reader for the full article",
+    "show_more": "Show more",
     "unread": "Unread",
     "star": "Star",
     "unstar": "Unstar",
@@ -414,7 +415,7 @@
   "appearance_view": {
     "title": "Per-view settings",
     "description": "Article / image / notification / social are four separate views",
-    "fetch_readable": "Fetch full text when missing",
+    "fetch_readable": "Fetch full text when missing", "expand_long": "Auto-expand long posts",
     "scroll_read": "Mark read on scroll",
     "inherit": "Follow general",
     "on": "On",

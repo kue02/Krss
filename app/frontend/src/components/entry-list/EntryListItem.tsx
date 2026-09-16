@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useRef, useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Clock, Star } from "lucide-react";
+import { ChevronDown, Clock, Star } from "lucide-react";
 import { Ripple } from "m3-ripple";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/date-utils";
@@ -11,6 +11,7 @@ import { FeedIcon } from "@/components/ui/feed-icon";
 import { useUISettingKey } from "@/hooks/useUISettings";
 import { useAutoReadable } from "@/hooks/useAutoReadable";
 import { stripDuplicatedTitle } from "@/lib/strip-duplicated-title";
+import { stripContentImages } from "@/lib/strip-content-images";
 import { useInView } from "@/hooks/useInView";
 import { ArticleContent } from "@/components/ui/article-content";
 import { resolveReadingFontStack } from "@/lib/reading-fonts";
@@ -29,6 +30,8 @@ interface EntryListItemProps {
   social?: boolean;
   /** 社交媒体视图下：正文过短时自动抓正文（按视图设置） */
   fetchReadable?: boolean;
+  /** 社交媒体视图下：长贴默认展开（按视图设置） */
+  autoExpandLong?: boolean;
   style?: React.CSSProperties;
   "data-index"?: number;
   "data-entry-id"?: string;
@@ -43,6 +46,9 @@ interface EntryListItemProps {
  *   - 未读 = 深色粗体标题，已读 = 整体降透明度
  *   - 顶部来源行（favicon + 源名 + 相对时间）、底部阅读时长
  */
+/** 社交媒体视图里长贴折叠高度（对齐 Folo 的 collapsedHeight = 300） */
+const SOCIAL_COLLAPSED_HEIGHT = "300px";
+
 export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
   function EntryListItem(
     {
@@ -54,6 +60,7 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
       targetLanguage,
       social = false,
       fetchReadable = false,
+      autoExpandLong = false,
       style,
       "data-index": dataIndex,
       "data-entry-id": dataEntryId,
@@ -67,6 +74,8 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
     const [iconError, setIconError] = useState(false);
     const [imageError, setImageError] = useState(false);
     const [isThumbLoaded, setIsThumbLoaded] = useState(false);
+    // 社交媒体视图：长贴是否已手动展开（Folo 的「显示更多」）
+    const [bodyExpanded, setBodyExpanded] = useState(false);
     const showIcon = feed?.iconPath && !iconError;
     const fallbackTitle = t("entry.untitled");
     const fallbackFeedName = t("entry.unknown_feed");
@@ -122,8 +131,9 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
       const node = expandedBodyRef.current;
       if (!node) return;
 
+      // 社交媒体视图用固定折叠高度判定（Folo: collapsedHeight = 300）
       const measure = () => {
-        setIsContentClipped(node.scrollHeight > node.clientHeight + 8);
+        setIsContentClipped(node.scrollHeight > 300 + 8);
       };
 
       measure();
@@ -138,17 +148,43 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
     const readingFontStack = resolveReadingFontStack(entryFontFamily);
     const expandedContent = autoReadable ?? entry.content ?? null;
     const isExpanded = isSocialView && Boolean(expandedContent);
-    // 源常在正文开头重复标题，时间线里标题已单独渲染，去掉重复的首段
+    // 源常在正文开头重复标题，时间线里标题已单独渲染，去掉重复的首段；
+    // 图片也从正文摘掉，交给下面的缩略图行（对齐 Folo 的 noMedia + MediaGallery）
     const socialBody = useMemo(
-      () => stripDuplicatedTitle(expandedContent, displayTitle),
+      () =>
+        stripContentImages(
+          stripDuplicatedTitle(expandedContent, displayTitle),
+        ),
       [expandedContent, displayTitle],
     );
+    // 社交帖常把正文开头当成标题：这时不单独渲染标题，避免同一句话出现两次
+    const titleIsBodyPrefix = useMemo(() => {
+      // 源的标题往往是「正文掐掉换行后的版本」：两边都去掉全部空白再比前缀，
+      // 免得 stripHtml 不给 <br> 补空格导致比对失败
+      const squash = (value: string) => value.replace(/\s+/g, "");
+      // 源的标题常在结尾用省略号截断，比对前去掉
+      const title = squash((displayTitle ?? "").replace(/(?:\.{2,}|…)\s*$/, ""));
+      const raw = squash(stripHtml(entry.content ?? ""));
+      if (title.length < 6 || !raw) return false;
+      return raw.startsWith(title);
+    }, [displayTitle, entry.content]);
+
+    // 社交媒体视图的图片行（加载失败的直接不显示，避免破图）
+    const [failedThumbs, setFailedThumbs] = useState<Set<string>>(() => new Set());
+    const socialImages = useMemo(
+      () => getEntryImages(entry.thumbnailUrl, entry.content, entry.url),
+      [entry.thumbnailUrl, entry.content, entry.url],
+    );
+    // 「长贴自动展开」开启后不做折叠（按视图设置，由 EntryList 传进来）
+    const bodyClamped = isContentClipped && !bodyExpanded && !autoExpandLong;
     const isUnread = !entry.read;
     const isLargeImage = cardImageSize === "large";
     const showThumbnail =
       cardImageSize !== "none" && Boolean(thumbnail) && !imageError;
 
-    // ── 社交媒体视图（Folo 式时间线）：不在卡片上加展开，而是另一种呈现 ──
+    // ── 社交媒体视图（对齐 Folo 的 SocialMediaItem）──────────────────────
+    // 头像在左、作者行在右；正文纯文字（图片抽到下面的缩略图行）；
+    // 正文超过 300px 折叠 + 遮罩淡出 + 「显示更多」；未读点在最左侧。
     if (isSocialView) {
       return (
         <div
@@ -158,10 +194,8 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
             inViewRef.current = node;
           }}
           className={cn(
-            "group relative mx-2 mb-1 cursor-pointer overflow-hidden rounded-xl border px-3 py-3 transition-colors duration-200",
-            isSelected
-              ? "border-border/60 bg-card shadow-nf"
-              : "border-transparent hover:bg-item-hover",
+            "group relative mx-2 mb-1 flex cursor-pointer rounded-xl border border-transparent px-3 py-4 transition-colors duration-200",
+            isSelected ? "border-border/60 bg-card shadow-nf" : "hover:bg-item-hover",
             !isUnread && !entry.starred && !isSelected && "opacity-70",
           )}
           style={style}
@@ -171,94 +205,132 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
         >
           <Ripple hoverOpacity={0} pressedOpacity={0.05} duration={100} />
 
-          {/* 来源行：头像式 favicon + 源名 + 时间（Folo 把订阅源当作者） */}
-          <div className="flex min-w-0 items-center gap-2">
-            {showIcon ? (
-              <img
-                src={`/icons/${feed.iconPath}`}
-                alt=""
-                className="size-6 shrink-0 rounded-full object-cover"
-                onError={() => setIconError(true)}
-              />
-            ) : (
-              <FeedIcon className="size-6 shrink-0 text-muted-foreground/50" />
-            )}
-            <div className="min-w-0">
-              <div
-                className={cn(
-                  "truncate text-[13px] leading-tight",
-                  isUnread
-                    ? "font-semibold text-foreground"
-                    : "font-medium text-muted-foreground",
-                )}
-              >
-                {displayFeedName}
-              </div>
-              {publishedAt && (
-                <div className="text-[11px] leading-tight text-muted-foreground/80">
-                  {publishedAt}
-                </div>
-              )}
-            </div>
-            {isUnread && (
-              <span className="ml-auto size-2 shrink-0 rounded-full bg-primary" />
-            )}
-          </div>
+          {/* 未读点：Folo 放在条目最左侧 */}
+          {isUnread && (
+            <span
+              aria-hidden="true"
+              className="absolute -left-0.5 top-8 size-2 rounded-full bg-primary"
+            />
+          )}
 
-          {/* 标题：社交帖常常没有标题，有才渲染 */}
-          {displayTitle && (
-            <div
-              className={cn(
-                "mt-2 font-semibold text-foreground wrap-anywhere",
-                "text-[15px] leading-snug",
-                titleContainsUrl ? "line-clamp-3" : "line-clamp-2",
-              )}
-            >
-              {displayTitle}
+          {/* 头像式 favicon（Folo 用 32px 的源图标当作者头像） */}
+          {showIcon ? (
+            <img
+              src={`/icons/${feed.iconPath}`}
+              alt=""
+              className="mt-1 size-8 shrink-0 rounded-full object-cover"
+              onError={() => setIconError(true)}
+            />
+          ) : (
+            <div className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-muted">
+              <FeedIcon className="size-4 text-muted-foreground/60" />
             </div>
           )}
 
-          {/* 正文：直接铺开（长文限高 + 渐隐提示） */}
-          <div className="relative mt-2">
-            {inView ? (
-              <div
-                ref={expandedBodyRef}
-                className="entry-content prose prose-sm dark:prose-invert max-h-[26rem] max-w-none overflow-hidden break-words prose-img:my-3 prose-img:rounded-lg prose-a:break-words"
-                style={{
-                  fontSize: `${Math.max(14, entryFontSize - 2)}px`,
-                  lineHeight: entryLineHeight,
-                  ...(readingFontStack ? { fontFamily: readingFontStack } : {}),
-                  contentVisibility: "auto",
-                  containIntrinsicSize: "400px",
-                }}
-              >
-                <ArticleContent content={socialBody} articleUrl={entry.url} />
-              </div>
-            ) : (
-              <div className="h-20 animate-pulse rounded-lg bg-muted/40" />
-            )}
-
-            {isContentClipped && inView && (
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 flex h-16 items-end justify-center bg-gradient-to-t from-card via-card/70 to-transparent pb-0.5">
-                <span className="rounded-full bg-overlay/85 px-2.5 py-0.5 text-[11px] font-medium text-foreground/80 shadow-sm backdrop-blur-sm">
-                  {t("entry.expand_hint")}
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* 底部元信息 */}
-          <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground">
-            {readingTime && (
-              <span className="flex items-center gap-1">
-                <Clock className="size-3 shrink-0" />
-                {readingTime}
+          <div className="ml-2 min-w-0 flex-1">
+            {/* 作者行：源名 · 时间 */}
+            <div className="flex flex-wrap items-center gap-x-1 leading-6">
+              <span className="truncate text-base font-semibold text-foreground">
+                {displayFeedName}
               </span>
+              {publishedAt && (
+                <>
+                  <span className="text-muted-foreground">·</span>
+                  <span className="text-muted-foreground">{publishedAt}</span>
+                </>
+              )}
+              {entry.starred && (
+                <Star className="ml-1 size-3.5 shrink-0 text-amber-500" />
+              )}
+            </div>
+
+            {/* 标题：只有不是「正文开头」时才单独显示（对齐 Folo：社交条目以正文为主） */}
+            {displayTitle && !titleIsBodyPrefix && (
+              <div className="mt-1 line-clamp-2 text-[15px] font-semibold leading-snug text-foreground wrap-anywhere">
+                {displayTitle}
+              </div>
             )}
-            {entry.starred && <Star className="size-3.5 text-amber-500" />}
-            {entry.url && (
-              <span className="ml-auto">{t("entry.open_original")}</span>
+
+            {/* 正文：纯文字 + 300px 折叠（Folo 的 CollapsedSocialMediaItem） */}
+            <div className="relative mt-1">
+              {inView ? (
+                <>
+                  <div
+                    ref={expandedBodyRef}
+                    className={cn(
+                      "entry-content prose prose-sm dark:prose-invert max-w-none break-words",
+                      bodyClamped && "overflow-hidden",
+                    )}
+                    style={{
+                      fontSize: `${Math.max(14, entryFontSize - 2)}px`,
+                      lineHeight: entryLineHeight,
+                      ...(readingFontStack
+                        ? { fontFamily: readingFontStack }
+                        : {}),
+                      ...(bodyClamped
+                        ? {
+                            maxHeight: SOCIAL_COLLAPSED_HEIGHT,
+                            maskImage:
+                              "linear-gradient(to bottom, #000 62%, transparent)",
+                            WebkitMaskImage:
+                              "linear-gradient(to bottom, #000 62%, transparent)",
+                          }
+                        : {}),
+                    }}
+                  >
+                    <ArticleContent content={socialBody} articleUrl={entry.url} />
+                  </div>
+
+                  {bodyClamped && (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setBodyExpanded(true);
+                      }}
+                      className="mx-auto mt-1 flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
+                    >
+                      {t("entry.show_more")}
+                      <ChevronDown className="size-3.5" />
+                    </button>
+                  )}
+                </>
+              ) : (
+                <div className="h-20 animate-pulse rounded-lg bg-muted/40" />
+              )}
+            </div>
+
+            {/* 图片：正文里已摘掉，这里排成一行缩略图（Folo 的 MediaGallery） */}
+            {socialImages.length > 0 && (
+              <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+                {socialImages
+                  .slice(0, 3)
+                  .filter((url) => !failedThumbs.has(url))
+                  .map((url) => (
+                    <img
+                      key={url}
+                      src={url}
+                      alt=""
+                      loading="lazy"
+                      className="size-28 shrink-0 rounded-lg bg-muted object-cover"
+                      onError={() =>
+                        setFailedThumbs((prev) => new Set(prev).add(url))
+                      }
+                    />
+                  ))}
+              </div>
             )}
+
+            {/* 底部元信息 */}
+            <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground">
+              {readingTime && (
+                <span className="flex items-center gap-1">
+                  <Clock className="size-3 shrink-0" />
+                  {readingTime}
+                </span>
+              )}
+              {entry.url && <span className="ml-auto">{t("entry.open_original")}</span>}
+            </div>
           </div>
         </div>
       );

@@ -20,6 +20,8 @@ interface UISettings {
   entryLineHeight: number;
   /** 社交媒体视图里，条目正文过短（只给摘要）时是否自动抓正文 */
   fetchReadableByView: ViewFlags;
+  /** 社交媒体视图里，长贴是否默认展开（不折叠） */
+  expandLongByView: ViewFlags;
   /** 按视图覆盖「滚动标已读」；inherit = 跟随通用设置 */
   scrollReadByView: ViewScrollRead;
 }
@@ -36,6 +38,12 @@ export const defaultUISettings: UISettings = {
   entryFontSize: 17,
   entryLineHeight: 1.8,
   fetchReadableByView: {
+    article: false,
+    picture: false,
+    notification: false,
+    social: false,
+  },
+  expandLongByView: {
     article: false,
     picture: false,
     notification: false,
@@ -155,6 +163,16 @@ export function useUISettingActions() {
     setUISetting("entryLineHeight", height);
   }, []);
 
+  const setExpandLongForView = useCallback(
+    (view: ContentType, enabled: boolean) => {
+      setUISetting("expandLongByView", {
+        ...getUISettings().expandLongByView,
+        [view]: enabled,
+      });
+    },
+    [],
+  );
+
   const setFetchReadableForView = useCallback(
     (view: ContentType, enabled: boolean) => {
       setUISetting("fetchReadableByView", {
@@ -197,6 +215,7 @@ export function useUISettingActions() {
     setEntryFontSize,
     setEntryLineHeight,
     setFetchReadableForView,
+    setExpandLongForView,
     setScrollReadForView,
     resetToDefaults,
   };

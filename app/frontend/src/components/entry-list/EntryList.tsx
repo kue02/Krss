@@ -135,6 +135,7 @@ export function EntryList({
   // 社交媒体是第四类内容（与文章 / 图片 / 通知并列），不是文章视图的另一种排布
   const isSocialView = contentType === "social";
   const fetchReadableByView = useUISettingKey("fetchReadableByView");
+  const expandLongByView = useUISettingKey("expandLongByView");
   const fetchReadableEnabled =
     isSocialView && (fetchReadableByView?.[contentType] ?? false);
   const scrollReadOverride = scrollReadByView?.[contentType] ?? "inherit";
@@ -519,6 +520,7 @@ export function EntryList({
                   targetLanguage={targetLanguage}
                   social={isSocialView}
                   fetchReadable={fetchReadableEnabled}
+                  autoExpandLong={expandLongByView?.[contentType] ?? false}
                 />
               ))}
               {scrollReadEndPaddingHeight > 0 && (

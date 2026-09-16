@@ -161,6 +161,7 @@
   "entry": {
     "read": "已读",
     "expand_hint": "点开在阅读区查看全文",
+    "show_more": "显示更多",
     "unread": "未读",
     "star": "加星标",
     "unstar": "取消星标",
@@ -408,7 +409,7 @@
   "appearance_view": {
     "title": "按视图设置",
     "description": "文章 / 图片 / 通知 / 社交媒体四个视图各自独立",
-    "fetch_readable": "缺全文时自动抓取",
+    "fetch_readable": "缺全文时自动抓取", "expand_long": "长贴自动展开",
     "scroll_read": "滚动标已读",
     "inherit": "跟随通用",
     "on": "开",
