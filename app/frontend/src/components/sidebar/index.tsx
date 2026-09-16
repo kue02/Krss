@@ -4,3 +4,4 @@ export { FeedCategory } from "./FeedCategory";
 export { FeedItem } from "./FeedItem";
 export { StarredItem } from "./StarredItem";
 export { ProfileButton } from "./ProfileButton";
+export { SidebarAccountBar } from "./SidebarAccountBar";

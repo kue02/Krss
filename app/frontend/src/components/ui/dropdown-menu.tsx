@@ -19,14 +19,14 @@ const DropdownMenuContent = React.forwardRef<
       sideOffset={sideOffset}
       className={cn(
         "dropdown-content dropdown-surface",
-        "relative z-50 min-w-32 overflow-hidden rounded-md p-1",
+        "relative z-50 min-w-32 overflow-hidden rounded-xl p-1",
         "border border-border/60 bg-popover/95 text-popover-foreground",
         "backdrop-blur-xl",
         className,
       )}
       {...props}
     >
-      <div className="dropdown-surface-glow pointer-events-none absolute inset-0 rounded-md" />
+      <div className="dropdown-surface-glow pointer-events-none absolute inset-0 rounded-xl" />
       <div className="relative">{children}</div>
     </DropdownMenuPrimitive.Content>
   </DropdownMenuPrimitive.Portal>
@@ -42,7 +42,7 @@ const DropdownMenuItem = React.forwardRef<
   <DropdownMenuPrimitive.Item
     ref={ref}
     className={cn(
-      "group relative flex cursor-pointer select-none items-center rounded-[5px]",
+      "group relative flex cursor-pointer select-none items-center rounded-lg",
       "px-2.5 py-1 h-[28px] text-sm outline-none",
       "transition-colors duration-100",
       "focus:bg-accent/30 data-[highlighted]:bg-accent/20",
@@ -110,7 +110,7 @@ const DropdownMenuSubTrigger = React.forwardRef<
   <DropdownMenuPrimitive.SubTrigger
     ref={ref}
     className={cn(
-      "group relative flex cursor-pointer select-none items-center rounded-[5px]",
+      "group relative flex cursor-pointer select-none items-center rounded-lg",
       "px-2.5 py-1 h-[28px] text-sm outline-none",
       "transition-colors duration-100",
       "focus:bg-accent/30 data-[highlighted]:bg-accent/20",
@@ -146,7 +146,7 @@ const DropdownMenuSubContent = React.forwardRef<
       ref={ref}
       className={cn(
         "dropdown-content dropdown-surface",
-        "relative z-50 min-w-32 overflow-hidden rounded-md p-1",
+        "relative z-50 min-w-32 overflow-hidden rounded-xl p-1",
         "border border-border/60 bg-popover/95 text-popover-foreground",
         "backdrop-blur-xl",
         className,

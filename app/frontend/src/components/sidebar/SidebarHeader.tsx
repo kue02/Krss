@@ -1,7 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { AddIcon } from "@/components/ui/icons";
-import { ProfileButton } from "./ProfileButton";
 
 const actionButtonStyles = cn(
   "inline-flex items-center justify-center",
@@ -12,15 +11,7 @@ const actionButtonStyles = cn(
 
 interface SidebarHeaderProps {
   title?: string;
-  avatarUrl?: string;
-  userName?: string;
-  starredCount?: number;
-  isStarredSelected?: boolean;
   onAddClick?: () => void;
-  onStarredClick?: () => void;
-  onProfileClick?: () => void;
-  onSettingsClick?: () => void;
-  onLogoutClick?: () => void;
 }
 
 function GistLogo({ className }: { className?: string }) {
@@ -29,20 +20,8 @@ function GistLogo({ className }: { className?: string }) {
   );
 }
 
-export function SidebarHeader({
-  title = "Gist",
-  avatarUrl,
-  userName,
-  starredCount,
-  isStarredSelected,
-  onAddClick,
-  onStarredClick,
-  onProfileClick,
-  onSettingsClick,
-  onLogoutClick,
-}: SidebarHeaderProps) {
+export function SidebarHeader({ title = "Gist", onAddClick }: SidebarHeaderProps) {
   const { t } = useTranslation();
-  const displayName = userName || t("user.guest");
 
   return (
     <div className="flex items-center justify-between px-3 pt-2.5 pb-2">
@@ -63,18 +42,6 @@ export function SidebarHeader({
         >
           <AddIcon className="size-5 text-muted-foreground" />
         </button>
-
-        {/* User avatar dropdown */}
-        <ProfileButton
-          avatarUrl={avatarUrl}
-          userName={displayName}
-          starredCount={starredCount}
-          isStarredSelected={isStarredSelected}
-          onStarredClick={onStarredClick}
-          onProfileClick={onProfileClick}
-          onSettingsClick={onSettingsClick}
-          onLogoutClick={onLogoutClick}
-        />
       </div>
     </div>
   );

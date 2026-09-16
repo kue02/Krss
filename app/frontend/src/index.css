@@ -287,10 +287,10 @@ body.mobile-document-scroll-locked {
 .ai-shimmer {
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, --accent 6%, transparent) 0%,
-    color-mix(in srgb, --accent 15%, transparent) 20%,
-    color-mix(in srgb, --accent 6%, transparent) 40%,
-    color-mix(in srgb, --accent 6%, transparent) 100%
+    color-mix(in srgb, var(--accent) 6%, transparent) 0%,
+    color-mix(in srgb, var(--accent) 15%, transparent) 20%,
+    color-mix(in srgb, var(--accent) 6%, transparent) 40%,
+    color-mix(in srgb, var(--accent) 6%, transparent) 100%
   );
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
@@ -335,20 +335,19 @@ body.mobile-document-scroll-locked {
 .dropdown-surface {
   background-image: linear-gradient(
     to bottom right,
-    color-mix(in srgb, --overlay 98%, transparent),
-    color-mix(in srgb, --overlay 90%, transparent)
+    color-mix(in srgb, var(--overlay) 98%, transparent),
+    color-mix(in srgb, var(--overlay) 90%, transparent)
   );
-  box-shadow:
-    0 10px 24px rgba(0, 0, 0, 0.12),
-    0 4px 12px rgba(0, 0, 0, 0.08);
+  /* Nextflux 的柔影（随主题切换明暗版本） */
+  box-shadow: var(--shadow-custom-md);
 }
 
 .dropdown-surface-glow {
   background: linear-gradient(
     to bottom right,
-    color-mix(in srgb, --accent 8%, transparent),
+    color-mix(in srgb, var(--accent) 8%, transparent),
     transparent 45%,
-    color-mix(in srgb, --accent 5%, transparent)
+    color-mix(in srgb, var(--accent) 5%, transparent)
   );
 }
 
@@ -356,18 +355,18 @@ body.mobile-document-scroll-locked {
   --entry-border: --border;
   --entry-muted: --muted;
   --entry-link: --accent;
-  --entry-code-bg: color-mix(in srgb, --surface-secondary 60%, transparent);
+  --entry-code-bg: color-mix(in srgb, var(--surface-secondary) 60%, transparent);
   --entry-code-border: --border;
-  --entry-quote-bg: color-mix(in srgb, --surface-secondary 45%, transparent);
-  --entry-table-head: color-mix(in srgb, --surface-secondary 60%, transparent);
+  --entry-quote-bg: color-mix(in srgb, var(--surface-secondary) 45%, transparent);
+  --entry-table-head: color-mix(in srgb, var(--surface-secondary) 60%, transparent);
   --shiki-foreground: #1f2328;
   --shiki-background: #f6f8fa;
 }
 
 .dark .entry-content {
-  --entry-code-bg: color-mix(in srgb, --surface-secondary 55%, transparent);
-  --entry-quote-bg: color-mix(in srgb, --surface-secondary 50%, transparent);
-  --entry-table-head: color-mix(in srgb, --surface-secondary 65%, transparent);
+  --entry-code-bg: color-mix(in srgb, var(--surface-secondary) 55%, transparent);
+  --entry-quote-bg: color-mix(in srgb, var(--surface-secondary) 50%, transparent);
+  --entry-table-head: color-mix(in srgb, var(--surface-secondary) 65%, transparent);
   --shiki-foreground: #e6edf3;
   --shiki-background: #0d1117;
 }
@@ -382,11 +381,11 @@ body.mobile-document-scroll-locked {
   --tw-prose-counters: --muted;
   --tw-prose-bullets: --muted;
   --tw-prose-hr: --border;
-  --tw-prose-quotes: color-mix(in srgb, --foreground 80%, transparent);
+  --tw-prose-quotes: color-mix(in srgb, var(--foreground) 80%, transparent);
   --tw-prose-quote-borders: --border;
   --tw-prose-captions: --muted;
   --tw-prose-kbd: --foreground;
-  --tw-prose-kbd-shadows: color-mix(in srgb, --foreground 10%, transparent);
+  --tw-prose-kbd-shadows: color-mix(in srgb, var(--foreground) 10%, transparent);
   --tw-prose-code: --foreground;
   --tw-prose-pre-code: var(--shiki-foreground);
   --tw-prose-pre-bg: var(--shiki-background);
@@ -401,11 +400,11 @@ body.mobile-document-scroll-locked {
   --tw-prose-invert-counters: --muted;
   --tw-prose-invert-bullets: --muted;
   --tw-prose-invert-hr: --border;
-  --tw-prose-invert-quotes: color-mix(in srgb, --foreground 80%, transparent);
+  --tw-prose-invert-quotes: color-mix(in srgb, var(--foreground) 80%, transparent);
   --tw-prose-invert-quote-borders: --border;
   --tw-prose-invert-captions: --muted;
   --tw-prose-invert-kbd: --foreground;
-  --tw-prose-invert-kbd-shadows: color-mix(in srgb, --foreground 10%, transparent);
+  --tw-prose-invert-kbd-shadows: color-mix(in srgb, var(--foreground) 10%, transparent);
   --tw-prose-invert-code: --foreground;
   --tw-prose-invert-pre-code: var(--shiki-foreground);
   --tw-prose-invert-pre-bg: var(--shiki-background);
@@ -437,7 +436,7 @@ body.mobile-document-scroll-locked {
 
 /* Line hover effect */
 .entry-content .prose pre code > .line:hover {
-  background: color-mix(in srgb, --foreground 4%, transparent);
+  background: color-mix(in srgb, var(--foreground) 4%, transparent);
 }
 
 /* Diff and highlight base styles */
@@ -476,7 +475,7 @@ body.mobile-document-scroll-locked {
 
 /* Line highlight */
 .entry-content .prose pre code > .line.highlighted {
-  background: color-mix(in srgb, --accent 10%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .entry-content .prose pre code > .line.highlighted::before {

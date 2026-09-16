@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ArrowDownAZIcon, CalendarIcon } from "@/components/ui/icons";
 import { SidebarHeader } from "./SidebarHeader";
+import { SidebarAccountBar } from "./SidebarAccountBar";
 import { FeedCategory } from "./FeedCategory";
 import { FeedItem } from "./FeedItem";
 import { ContentTypeSwitcher } from "./ContentTypeSwitcher";
@@ -296,16 +297,7 @@ export function Sidebar({
 
   return (
     <div className="flex h-full flex-col bg-sidebar">
-      <SidebarHeader
-        avatarUrl={user?.avatarUrl}
-        userName={user?.nickname || user?.username}
-        onAddClick={() => onAddClick?.(contentType)}
-        isStarredSelected={isStarredSelected}
-        onStarredClick={onSelectStarred}
-        onProfileClick={() => setIsProfileOpen(true)}
-        onSettingsClick={() => setIsSettingsOpen(true)}
-        onLogoutClick={logout}
-      />
+      <SidebarHeader onAddClick={() => onAddClick?.(contentType)} />
 
       <ContentTypeSwitcher
         contentType={contentType}
@@ -426,6 +418,16 @@ export function Sidebar({
           </motion.div>
         </AnimatePresence>
       </div>
+
+      <SidebarAccountBar
+        avatarUrl={user?.avatarUrl}
+        userName={user?.nickname || user?.username}
+        isStarredSelected={isStarredSelected}
+        onStarredClick={onSelectStarred}
+        onProfileClick={() => setIsProfileOpen(true)}
+        onSettingsClick={() => setIsSettingsOpen(true)}
+        onLogoutClick={logout}
+      />
 
       <SettingsModal open={isSettingsOpen} onOpenChange={setIsSettingsOpen} />
       <ProfileModal open={isProfileOpen} onOpenChange={setIsProfileOpen} />
