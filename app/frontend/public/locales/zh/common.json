@@ -398,7 +398,8 @@
     "none": "不显示",
     "font_family": "正文字体",
     "font_size": "正文字号",
-    "line_height": "行高"
+    "line_height": "行高",
+    "reduce_motion": "减少动态效果"
   },
   "reading_font": {
     "theme_default": "跟随主题",

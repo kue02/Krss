@@ -404,7 +404,8 @@
     "none": "Hidden",
     "font_family": "Article font",
     "font_size": "Font size",
-    "line_height": "Line height"
+    "line_height": "Line height",
+    "reduce_motion": "Reduce motion"
   },
   "reading_font": {
     "theme_default": "Theme default",

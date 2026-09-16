@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const setFetchReadableForView = vi.fn();
 const setExpandLongForView = vi.fn();
+const setReduceMotion = vi.fn();
 const setScrollReadForView = vi.fn();
 
 vi.mock("react-i18next", () => ({
@@ -70,6 +71,7 @@ vi.mock("@/hooks/useUISettings", async () => {
     entryFontFamily: "system",
     entryFontSize: 16,
     entryLineHeight: 1.7,
+    reduceMotion: false,
   };
   return {
     ...actual,
@@ -80,6 +82,7 @@ vi.mock("@/hooks/useUISettings", async () => {
       setEntryFont: vi.fn(),
       setFetchReadableForView,
       setExpandLongForView,
+      setReduceMotion,
       setScrollReadForView,
     }),
   };
@@ -122,6 +125,7 @@ describe("AppearanceSettings 按视图设置", () => {
   beforeEach(() => {
     setFetchReadableForView.mockClear();
     setExpandLongForView.mockClear();
+    setReduceMotion.mockClear();
     setScrollReadForView.mockClear();
   });
 
@@ -143,6 +147,16 @@ describe("AppearanceSettings 按视图设置", () => {
     fireEvent.click(within(row).getByText("on"));
 
     expect(setFetchReadableForView).toHaveBeenCalledWith("social", true);
+  });
+
+  it("「减少动态效果」默认关，可打开", () => {
+    render(<AppearanceSettings />);
+
+    const row = rowOf("appearance_reading.reduce_motion");
+    expect(within(row).queryByText("off")).not.toBeNull();
+    fireEvent.click(within(row).getByText("on"));
+
+    expect(setReduceMotion).toHaveBeenCalledWith(true);
   });
 
   it("滚动标已读默认跟随通用", () => {

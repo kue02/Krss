@@ -508,3 +508,29 @@ body.mobile-document-scroll-locked {
   color: var(--shiki-dark);
   background-color: transparent;
 }
+
+@layer base {
+  /* 减少动态效果：设置里打开，或系统偏好 reduced motion 时，压掉动画与过渡 */
+  [data-reduce-motion="true"] *,
+  [data-reduce-motion="true"] *::before,
+  [data-reduce-motion="true"] *::after,
+  .reduce-motion * ,
+  .reduce-motion *::before,
+  .reduce-motion *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 1ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 1ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

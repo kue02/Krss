@@ -22,6 +22,8 @@ interface UISettings {
   fetchReadableByView: ViewFlags;
   /** 社交媒体视图里，长贴是否默认展开（不折叠） */
   expandLongByView: ViewFlags;
+  /** 减少动态效果：涟漪、过渡、折叠动画一律压到最短（系统 prefers-reduced-motion 也会自动生效） */
+  reduceMotion: boolean;
   /** 按视图覆盖「滚动标已读」；inherit = 跟随通用设置 */
   scrollReadByView: ViewScrollRead;
 }
@@ -49,6 +51,7 @@ export const defaultUISettings: UISettings = {
     notification: false,
     social: false,
   },
+  reduceMotion: false,
   scrollReadByView: {
     article: "inherit",
     picture: "inherit",
@@ -163,6 +166,10 @@ export function useUISettingActions() {
     setUISetting("entryLineHeight", height);
   }, []);
 
+  const setReduceMotion = useCallback((enabled: boolean) => {
+    setUISetting("reduceMotion", enabled);
+  }, []);
+
   const setExpandLongForView = useCallback(
     (view: ContentType, enabled: boolean) => {
       setUISetting("expandLongByView", {
@@ -216,7 +223,17 @@ export function useUISettingActions() {
     setEntryLineHeight,
     setFetchReadableForView,
     setExpandLongForView,
+    setReduceMotion,
     setScrollReadForView,
     resetToDefaults,
   };
+}
+
+/** 把「减少动态效果」开关落到 <html data-reduce-motion> 上，供 CSS 统一处理 */
+export function applyReduceMotionToDocument(enabled: boolean): void {
+  if (typeof document === "undefined") return;
+  document.documentElement.setAttribute(
+    "data-reduce-motion",
+    enabled ? "true" : "false",
+  );
 }

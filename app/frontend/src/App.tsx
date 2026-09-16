@@ -41,6 +41,7 @@ import {
   useUISettingActions,
   hasSidebarVisibilitySetting,
   setUISetting,
+  applyReduceMotionToDocument,
 } from "@/hooks/useUISettings";
 import { useRefreshStatus } from "@/hooks/useRefreshStatus";
 import { isAddFeedPath } from "@/lib/router";
@@ -292,6 +293,12 @@ function AuthenticatedApp() {
     },
     [selectFilter, closeSidebar],
   );
+
+  // 「减少动态效果」落到 <html data-reduce-motion>，由 CSS 统一压掉动画
+  const reduceMotion = useUISettingKey("reduceMotion");
+  useEffect(() => {
+    applyReduceMotionToDocument(Boolean(reduceMotion));
+  }, [reduceMotion]);
 
   const visibleContentTypes = useMemo(() => {
     const current = appearanceSettings?.contentTypes;

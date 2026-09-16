@@ -125,10 +125,12 @@ export function AppearanceSettings() {
   const entryLineHeight = useUISettingKey("entryLineHeight");
   const fetchReadableByView = useUISettingKey("fetchReadableByView");
   const expandLongByView = useUISettingKey("expandLongByView");
+  const reduceMotion = useUISettingKey("reduceMotion");
   const scrollReadByView = useUISettingKey("scrollReadByView");
   const {
     setFetchReadableForView,
     setExpandLongForView,
+    setReduceMotion,
     setScrollReadForView,
     setCardImageSize,
     setCardPreviewLines,
@@ -445,6 +447,17 @@ export function AppearanceSettings() {
                 { value: "1.6", label: "1.6" },
                 { value: "1.8", label: "1.8" },
                 { value: "2", label: "2.0" },
+              ]}
+            />
+          </SettingRow>
+          <SettingRow label={t("appearance_reading.reduce_motion")}>
+            <SegmentedControl
+              className="shrink-0"
+              value={reduceMotion ? "on" : "off"}
+              onValueChange={(value) => setReduceMotion(value === "on")}
+              options={[
+                { value: "off", label: t("appearance_view.off") },
+                { value: "on", label: t("appearance_view.on") },
               ]}
             />
           </SettingRow>
