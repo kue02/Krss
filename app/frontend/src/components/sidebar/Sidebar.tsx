@@ -425,42 +425,46 @@ export function Sidebar({
                 </DropdownMenu>
               </div>
 
-              {/* Feed categories */}
+              {/* Feed categories —— 分组之间留一点间距，让「一组订阅」读起来是一块 */}
               <div className="space-y-px">
                 {sortedFoldersWithFeeds.map(
-                  ({ folder, feeds: folderFeeds }) => (
-                    <FeedCategory
+                  ({ folder, feeds: folderFeeds }, folderIndex) => (
+                    <div
                       key={folder.id}
-                      folderId={folder.id}
-                      name={folder.name}
-                      unreadCount={folderUnreadCounts.get(folder.id) || 0}
-                      isSelected={isFolderSelected(folder.id)}
-                      onSelect={() => onSelectFolder(folder.id)}
-                      onRename={handleRenameFolder}
-                      onDelete={handleDeleteFolder}
-                      onChangeType={handleChangeFolderType}
+                      className={folderIndex > 0 ? "mt-1.5" : undefined}
                     >
-                      {folderFeeds.map((feed) => (
-                        <FeedItem
-                          key={feed.id}
-                          feedId={feed.id}
-                          name={feed.title}
-                          feedUrl={feed.url}
-                          onRefresh={handleRefreshFeed}
-                          iconPath={feed.iconPath}
-                          unreadCount={unreadCounts.get(feed.id) || 0}
-                          isActive={isFeedSelected(feed.id)}
-                          errorMessage={feed.errorMessage}
-                          onClick={() => onSelectFeed(feed.id)}
-                          className="pl-6"
-                          folders={folders}
-                          onEdit={handleEditFeed}
-                          onDelete={handleDeleteFeed}
-                          onMoveToFolder={handleMoveToFolder}
-                          onChangeType={handleChangeFeedType}
-                        />
-                      ))}
-                    </FeedCategory>
+                      <FeedCategory
+                        folderId={folder.id}
+                        name={folder.name}
+                        unreadCount={folderUnreadCounts.get(folder.id) || 0}
+                        isSelected={isFolderSelected(folder.id)}
+                        onSelect={() => onSelectFolder(folder.id)}
+                        onRename={handleRenameFolder}
+                        onDelete={handleDeleteFolder}
+                        onChangeType={handleChangeFolderType}
+                      >
+                        {folderFeeds.map((feed) => (
+                          <FeedItem
+                            key={feed.id}
+                            feedId={feed.id}
+                            name={feed.title}
+                            feedUrl={feed.url}
+                            onRefresh={handleRefreshFeed}
+                            iconPath={feed.iconPath}
+                            unreadCount={unreadCounts.get(feed.id) || 0}
+                            isActive={isFeedSelected(feed.id)}
+                            errorMessage={feed.errorMessage}
+                            onClick={() => onSelectFeed(feed.id)}
+                            className="pl-6"
+                            folders={folders}
+                            onEdit={handleEditFeed}
+                            onDelete={handleDeleteFeed}
+                            onMoveToFolder={handleMoveToFolder}
+                            onChangeType={handleChangeFeedType}
+                          />
+                        ))}
+                      </FeedCategory>
+                    </div>
                   ),
                 )}
 

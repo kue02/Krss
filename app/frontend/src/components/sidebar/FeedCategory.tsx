@@ -170,7 +170,7 @@ export function FeedCategory({
             transition={{ duration: 0.2, ease: "easeOut" }}
             className="overflow-hidden"
           >
-            <div className="space-y-px">{children}</div>
+            <div className="space-y-px pt-0.5">{children}</div>
           </motion.div>
         )}
       </AnimatePresence>
