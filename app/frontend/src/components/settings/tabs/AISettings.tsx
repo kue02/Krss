@@ -4,15 +4,18 @@ import {
   getAISettings,
   updateAISettings,
   testAIConnection,
+  listAIModels,
   ApiError,
 } from "@/api";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import type {
   AIProvider,
+  AIProviderConfig,
   AISettings as AISettingsType,
   RequestOptions,
 } from "@/types/settings";
+import { showToast } from "@/stores/toast-store";
 
 function formatRequestOptions(
   value: RequestOptions | null | undefined,
@@ -80,6 +83,11 @@ export function AISettings() {
   );
 
   const [settings, setSettings] = useState<AISettingsType | null>(null);
+  const [providers, setProviders] = useState<AIProviderConfig[]>([]);
+  const [activeProviderId, setActiveProviderId] = useState("default");
+  const [selectedProviderId, setSelectedProviderId] = useState("default");
+  const [isProbing, setIsProbing] = useState(false);
+  const [modelChoices, setModelChoices] = useState<string[] | null>(null);
   const [requestOptionsText, setRequestOptionsText] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -115,6 +123,25 @@ export function AISettings() {
       const data = await getAISettings();
       setSettings(data);
       setRequestOptionsText(formatRequestOptions(data.requestOptions));
+
+      const list =
+        data.providers && data.providers.length > 0
+          ? data.providers
+          : [
+              {
+                id: "default",
+                name: data.provider,
+                provider: data.provider,
+                baseUrl: data.baseUrl,
+                model: data.model,
+                apiKey: data.apiKey,
+                requestOptions: data.requestOptions,
+              },
+            ];
+      const active = data.activeProviderId || list[0]?.id || "default";
+      setProviders(list);
+      setActiveProviderId(active);
+      setSelectedProviderId(active);
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
@@ -136,9 +163,138 @@ export function AISettings() {
     setTestResult(null);
   };
 
+  /** 把某个提供商配置灌进表单 */
+  const applyProviderToForm = (
+    base: AISettingsType,
+    entry: AIProviderConfig,
+  ): AISettingsType => ({
+    ...base,
+    provider: entry.provider,
+    baseUrl: entry.baseUrl,
+    model: entry.model,
+    apiKey: entry.apiKey,
+    requestOptions: entry.requestOptions ?? {},
+  });
+
+  const handleSelectProvider = (id: string) => {
+    if (!settings) return;
+    const entry = providers.find((item) => item.id === id);
+    if (!entry) return;
+
+    setSelectedProviderId(id);
+    setSettings(applyProviderToForm(settings, entry));
+    setRequestOptionsText(formatRequestOptions(entry.requestOptions));
+    setModelChoices(null);
+    setSuccessMessage(null);
+    setTestResult(null);
+  };
+
+  const handleAddProvider = () => {
+    if (!settings) return;
+    const id = `provider-${Date.now()}`;
+    const entry: AIProviderConfig = {
+      id,
+      name: t("ai_settings.new_provider"),
+      provider: "compatible",
+      baseUrl: "",
+      model: "",
+      apiKey: "",
+      requestOptions: {},
+    };
+    setProviders([...providers, entry]);
+    setSelectedProviderId(id);
+    setSettings(applyProviderToForm(settings, entry));
+    setRequestOptionsText("");
+    setModelChoices(null);
+    setSuccessMessage(null);
+    setTestResult(null);
+  };
+
+  const handleDeleteProvider = (id: string) => {
+    if (!settings || providers.length <= 1) return;
+    const remaining = providers.filter((item) => item.id !== id);
+    const nextActive =
+      activeProviderId === id ? (remaining[0]?.id ?? activeProviderId) : activeProviderId;
+    const nextSelected = selectedProviderId === id ? nextActive : selectedProviderId;
+
+    setProviders(remaining);
+    setActiveProviderId(nextActive);
+    setSelectedProviderId(nextSelected);
+
+    const target = remaining.find((item) => item.id === nextSelected);
+    if (target) {
+      setSettings(applyProviderToForm(settings, target));
+      setRequestOptionsText(formatRequestOptions(target.requestOptions));
+    }
+    setSuccessMessage(null);
+  };
+
+  const handleSetActiveProvider = (id: string) => {
+    setActiveProviderId(id);
+    setSuccessMessage(null);
+    showToast(t("ai_settings.active_provider_changed"));
+  };
+
+  /** 表单里的编辑合并回列表后再提交（当前编辑的那份用表单值，其余保持原样） */
+  const collectProviders = (): AIProviderConfig[] => {
+    if (!settings) return providers;
+    return providers.map((item) =>
+      item.id === selectedProviderId
+        ? {
+            ...item,
+            provider: settings.provider,
+            baseUrl: settings.baseUrl,
+            model: settings.model,
+            apiKey: settings.apiKey,
+            requestOptions: requestOptionsResult.ok
+              ? requestOptionsResult.value
+              : item.requestOptions,
+          }
+        : item,
+    );
+  };
+
+  const handleProbeModels = async () => {
+    if (!settings) return;
+    setIsProbing(true);
+    setModelChoices(null);
+    try {
+      const result = await listAIModels({
+        provider: settings.provider,
+        apiKey: settings.apiKey,
+        baseUrl: settings.baseUrl,
+      });
+      setModelChoices(result.models);
+    } catch (err) {
+      setTestResult({
+        success: false,
+        error: err instanceof Error ? err.message : t("ai_settings.probe_failed"),
+      });
+    } finally {
+      setIsProbing(false);
+    }
+  };
+
   const buildSettingsPayload = (): AISettingsType | null => {
     if (!settings || !requestOptionsResult.ok) return null;
-    return { ...settings, requestOptions: requestOptionsResult.value };
+
+    const list = collectProviders();
+    const active =
+      list.find((item) => item.id === activeProviderId) ?? list[0] ?? null;
+
+    return {
+      ...settings,
+      // 后端把平铺字段当作「当前使用」的那份配置
+      provider: active ? active.provider : settings.provider,
+      apiKey: active ? active.apiKey : settings.apiKey,
+      baseUrl: active ? active.baseUrl : settings.baseUrl,
+      model: active ? active.model : settings.model,
+      requestOptions: active
+        ? (active.requestOptions ?? {})
+        : requestOptionsResult.value,
+      providers: list,
+      activeProviderId,
+    };
   };
 
   const handleTest = async () => {
@@ -175,6 +331,15 @@ export function AISettings() {
       const saved = await updateAISettings(payload);
       setSettings(saved);
       setRequestOptionsText(formatRequestOptions(saved.requestOptions));
+      if (saved.providers && saved.providers.length > 0) {
+        setProviders(saved.providers);
+        const active =
+          saved.activeProviderId || saved.providers[0]?.id || "default";
+        setActiveProviderId(active);
+        if (!saved.providers.some((item) => item.id === selectedProviderId)) {
+          setSelectedProviderId(active);
+        }
+      }
       setSuccessMessage(t("ai_settings.settings_saved"));
     } catch (err) {
       if (err instanceof ApiError) {
@@ -216,6 +381,75 @@ export function AISettings() {
 
   return (
     <div className="space-y-1">
+      {/* 已保存的提供商 */}
+      <div className="space-y-2 pb-2 pt-1">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm font-medium">
+            {t("ai_settings.providers")}
+          </span>
+          <div className="flex items-center gap-2">
+            {selectedProviderId !== activeProviderId && (
+              <button
+                type="button"
+                onClick={() => handleSetActiveProvider(selectedProviderId)}
+                className="rounded-md border border-border px-2.5 py-1 text-xs text-foreground transition-colors duration-200 hover:bg-item-hover"
+              >
+                {t("ai_settings.set_active")}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleAddProvider}
+              className="rounded-md border border-border px-2.5 py-1 text-xs text-foreground transition-colors duration-200 hover:bg-item-hover"
+            >
+              + {t("ai_settings.add_provider")}
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {providers.map((item) => {
+            const isSelected = item.id === selectedProviderId;
+            const isActive = item.id === activeProviderId;
+            return (
+              <span
+                key={item.id}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors duration-200",
+                  isSelected
+                    ? "border-primary text-foreground"
+                    : "border-border text-muted-foreground hover:bg-item-hover",
+                )}
+              >
+                <button
+                  type="button"
+                  onClick={() => handleSelectProvider(item.id)}
+                  className="max-w-40 truncate"
+                  title={item.baseUrl || item.name}
+                >
+                  {item.name || item.provider}
+                </button>
+                {isActive && (
+                  <span className="text-[10px] text-primary">
+                    {t("ai_settings.active_badge")}
+                  </span>
+                )}
+                {providers.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteProvider(item.id)}
+                    title={t("actions.delete")}
+                    className="text-muted-foreground transition-colors duration-200 hover:text-destructive"
+                  >
+                    ×
+                  </button>
+                )}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Provider */}
       <div className="flex flex-wrap items-center justify-between gap-2 py-2">
         <span className="text-sm font-medium">{t("ai_settings.provider")}</span>
@@ -246,6 +480,28 @@ export function AISettings() {
                 ? "sk-ant-..."
                 : t("ai_settings.enter_api_key")
           }
+          className={cn(inputClass, "shrink-0")}
+        />
+      </div>
+
+      {/* 名称 */}
+      <div className="flex flex-wrap items-center justify-between gap-2 py-2">
+        <span className="text-sm font-medium">
+          {t("ai_settings.provider_name")}
+        </span>
+        <input
+          type="text"
+          value={providers.find((item) => item.id === selectedProviderId)?.name ?? ""}
+          onChange={(event) => {
+            const value = event.target.value;
+            setProviders((prev) =>
+              prev.map((item) =>
+                item.id === selectedProviderId ? { ...item, name: value } : item,
+              ),
+            );
+            setSuccessMessage(null);
+          }}
+          placeholder={t("ai_settings.provider_name_placeholder")}
           className={cn(inputClass, "shrink-0")}
         />
       </div>
@@ -304,7 +560,36 @@ export function AISettings() {
           }
           className={cn(inputClass, "shrink-0")}
         />
+        <button
+          type="button"
+          onClick={handleProbeModels}
+          disabled={isProbing || !settings.baseUrl.trim()}
+          className="rounded-md border border-border px-2.5 py-1 text-xs text-foreground transition-colors duration-200 hover:bg-item-hover disabled:opacity-50"
+        >
+          {isProbing ? t("ai_settings.probing") : t("ai_settings.probe_models")}
+        </button>
       </div>
+
+      {modelChoices && modelChoices.length > 0 && (
+        <div className="max-h-40 overflow-y-auto rounded-md border border-border p-1">
+          {modelChoices.map((model) => (
+            <button
+              key={model}
+              type="button"
+              onClick={() => {
+                handleChange("model", model);
+                setModelChoices(null);
+              }}
+              className={cn(
+                "block w-full truncate rounded px-2 py-1 text-left text-xs transition-colors duration-200 hover:bg-item-hover",
+                model === settings.model ? "text-primary" : "text-muted-foreground",
+              )}
+            >
+              {model}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="space-y-2 py-2">
         <div className="min-w-0">

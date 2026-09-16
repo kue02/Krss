@@ -5,13 +5,28 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
+	"sort"
 	"strings"
+	"time"
 
 	"gist/backend/internal/repository"
 	"gist/backend/internal/service/ai"
 	"gist/backend/pkg/logger"
 )
+
+// AIProviderConfig 一个保存好的 AI 提供商配置（可存多个，随时切换当前使用）。
+type AIProviderConfig struct {
+	ID             string         `json:"id"`
+	Name           string         `json:"name"`
+	Provider       string         `json:"provider"`
+	BaseURL        string         `json:"baseUrl"`
+	Model          string         `json:"model"`
+	APIKey         string         `json:"apiKey"`
+	RequestOptions map[string]any `json:"requestOptions,omitempty"`
+}
 
 // AISettings holds the AI configuration.
 type AISettings struct {
@@ -24,6 +39,9 @@ type AISettings struct {
 	AutoTranslate   bool           `json:"autoTranslate"`
 	AutoSummary     bool           `json:"autoSummary"`
 	RateLimit       int            `json:"rateLimit"`
+	// 保存的提供商列表 + 当前使用哪一个（上面的 Provider/APIKey/... 始终等于当前使用的那份）
+	Providers        []AIProviderConfig `json:"providers"`
+	ActiveProviderID string             `json:"activeProviderId"`
 }
 
 // GeneralSettings holds general application settings.
@@ -64,6 +82,8 @@ const (
 	keyAIAutoTranslate   = "ai.auto_translate"
 	keyAIAutoSummary     = "ai.auto_summary"
 	keyAIRateLimit       = "ai.rate_limit"
+	keyAIProviders       = "ai.providers"
+	keyAIActiveProvider  = "ai.active_provider_id"
 
 	keyFallbackUserAgent = "general.fallback_user_agent"
 	keyAutoReadability   = "general.auto_readability"
@@ -90,6 +110,8 @@ type SettingsService interface {
 	SetAISettings(ctx context.Context, settings *AISettings) error
 	// TestAI tests the AI connection with the given configuration.
 	TestAI(ctx context.Context, provider, apiKey, baseURL, model string, requestOptions map[string]any) (string, error)
+	// ListAIModels 查询提供商可用模型列表
+	ListAIModels(ctx context.Context, provider, apiKey, baseURL string) ([]string, error)
 	// GetGeneralSettings returns the general settings.
 	GetGeneralSettings(ctx context.Context) (*GeneralSettings, error)
 	// SetGeneralSettings updates the general settings.
@@ -158,7 +180,42 @@ func (s *settingsService) GetAISettings(ctx context.Context) (*AISettings, error
 		settings.RateLimit = ai.DefaultRateLimit
 	}
 
+	settings.Providers = s.getAIProviders(ctx, settings)
+	settings.ActiveProviderID = "default"
+	if val, err := s.getString(ctx, keyAIActiveProvider); err == nil && val != "" {
+		settings.ActiveProviderID = val
+	}
+
 	return settings, nil
+}
+
+// getAIProviders 读取已保存的提供商列表（密钥打码）。
+// 老实例没有这个列表时，用当前配置合成一条，保证前端至少有一份可编辑的配置。
+func (s *settingsService) getAIProviders(ctx context.Context, settings *AISettings) []AIProviderConfig {
+	raw, err := s.getString(ctx, keyAIProviders)
+	if err == nil && raw != "" {
+		var saved []AIProviderConfig
+		if jsonErr := json.Unmarshal([]byte(raw), &saved); jsonErr == nil && len(saved) > 0 {
+			for i := range saved {
+				saved[i].APIKey = maskAPIKey(saved[i].APIKey)
+			}
+			return saved
+		}
+	}
+
+	defaultProvider := settings.Provider
+	if defaultProvider == "" {
+		defaultProvider = ai.ProviderOpenAI
+	}
+	return []AIProviderConfig{{
+		ID:             "default",
+		Name:           defaultProvider,
+		Provider:       defaultProvider,
+		BaseURL:        settings.BaseURL,
+		Model:          settings.Model,
+		APIKey:         settings.APIKey,
+		RequestOptions: settings.RequestOptions,
+	}}
 }
 
 // SetAISettings updates the AI configuration.
@@ -224,8 +281,171 @@ func (s *settingsService) SetAISettings(ctx context.Context, settings *AISetting
 	if s.rateLimiter != nil {
 		s.rateLimiter.SetLimit(rateLimit)
 	}
+	if err := s.setAIProviders(ctx, settings); err != nil {
+		logger.Warn("ai settings update providers failed", "module", "service", "action", "update", "resource", "settings", "result", "failed", "error", err)
+		return err
+	}
 	logger.Info("ai settings updated", "module", "service", "action", "update", "resource", "settings", "result", "ok", "provider", settings.Provider, "model", settings.Model, "rate_limit", rateLimit)
 	return nil
+}
+
+// setAIProviders 保存提供商列表：打码的密钥沿用库里已存的值，当前使用的那个始终同步到 ai.api_key。
+func (s *settingsService) setAIProviders(ctx context.Context, settings *AISettings) error {
+	if settings.Providers == nil {
+		return nil
+	}
+
+	storedKeys := map[string]string{}
+	if raw, err := s.getString(ctx, keyAIProviders); err == nil && raw != "" {
+		var saved []AIProviderConfig
+		if jsonErr := json.Unmarshal([]byte(raw), &saved); jsonErr == nil {
+			for _, item := range saved {
+				storedKeys[item.ID] = item.APIKey
+			}
+		}
+	}
+	// 当前使用的配置的密钥一定在 ai.api_key 里
+	if currentKey, err := s.getString(ctx, keyAIAPIKey); err == nil && currentKey != "" {
+		storedKeys[settings.ActiveProviderID] = currentKey
+	}
+
+	activeID := settings.ActiveProviderID
+	if activeID == "" {
+		activeID = "default"
+	}
+
+	list := make([]AIProviderConfig, 0, len(settings.Providers))
+	for _, item := range settings.Providers {
+		entry := item
+		if entry.ID == "" {
+			continue
+		}
+		if entry.APIKey == "" || isMaskedKey(entry.APIKey) {
+			entry.APIKey = storedKeys[entry.ID]
+		}
+		list = append(list, entry)
+	}
+
+	encoded, err := json.Marshal(list)
+	if err != nil {
+		return fmt.Errorf("marshal providers: %w", err)
+	}
+	if err := s.repo.Set(ctx, keyAIProviders, string(encoded)); err != nil {
+		return fmt.Errorf("set providers: %w", err)
+	}
+	if err := s.repo.Set(ctx, keyAIActiveProvider, activeID); err != nil {
+		return fmt.Errorf("set active provider: %w", err)
+	}
+	return nil
+}
+
+// resolveAPIKeyForProbe 探测模型时用的密钥：传了真密钥就用它，打码/为空则回落到
+// 提供商列表里同 provider+baseUrl 那份，再回落当前使用的 ai.api_key。
+func (s *settingsService) resolveAPIKeyForProbe(ctx context.Context, provider, baseURL, apiKey string) string {
+	if apiKey != "" && !isMaskedKey(apiKey) {
+		return apiKey
+	}
+
+	if raw, err := s.getString(ctx, keyAIProviders); err == nil && raw != "" {
+		var saved []AIProviderConfig
+		if jsonErr := json.Unmarshal([]byte(raw), &saved); jsonErr == nil {
+			for _, item := range saved {
+				if item.Provider == provider && strings.TrimRight(item.BaseURL, "/") == strings.TrimRight(baseURL, "/") && item.APIKey != "" {
+					return item.APIKey
+				}
+			}
+		}
+	}
+
+	if stored, err := s.getString(ctx, keyAIAPIKey); err == nil {
+		return stored
+	}
+	return ""
+}
+
+// ListAIModels 向提供商查询可用模型列表（OpenAI/兼容端点 GET /models，Anthropic GET /v1/models）。
+func (s *settingsService) ListAIModels(ctx context.Context, provider, apiKey, baseURL string) ([]string, error) {
+	key := s.resolveAPIKeyForProbe(ctx, provider, baseURL, apiKey)
+	if key == "" {
+		return nil, ErrInvalid
+	}
+
+	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	endpoint := ""
+	reqHeaders := map[string]string{}
+
+	switch provider {
+	case ai.ProviderAnthropic:
+		if base == "" {
+			base = "https://api.anthropic.com"
+		}
+		if strings.HasSuffix(base, "/v1") {
+			endpoint = base + "/models"
+		} else {
+			endpoint = base + "/v1/models"
+		}
+		reqHeaders["x-api-key"] = key
+		reqHeaders["anthropic-version"] = "2023-06-01"
+	case ai.ProviderOpenAI, ai.ProviderCompatible:
+		if base == "" {
+			return nil, ErrInvalid
+		}
+		endpoint = base + "/models"
+		reqHeaders["Authorization"] = "Bearer " + key
+	default:
+		return nil, ErrInvalid
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build models request: %w", err)
+	}
+	for name, value := range reqHeaders {
+		req.Header.Set(name, value)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch models: %w", err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("fetch models: unexpected status %d", resp.StatusCode)
+	}
+
+	var payload struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&payload); err != nil {
+		return nil, fmt.Errorf("decode models: %w", err)
+	}
+
+	models := make([]string, 0, len(payload.Data))
+	seen := map[string]struct{}{}
+	for _, item := range payload.Data {
+		if item.ID == "" {
+			continue
+		}
+		if _, ok := seen[item.ID]; ok {
+			continue
+		}
+		seen[item.ID] = struct{}{}
+		models = append(models, item.ID)
+	}
+	sort.Strings(models)
+
+	if len(models) == 0 {
+		return nil, fmt.Errorf("no models returned")
+	}
+	return models, nil
 }
 
 // maskAPIKey returns a masked version of the API key for display.
@@ -622,14 +842,6 @@ func normalizeContentTypes(values []string) []string {
 		}
 		seen[value] = struct{}{}
 		ordered = append(ordered, value)
-	}
-	// 补齐默认列表里新增的类别（老实例的库里只存了旧的三类）
-	for _, fallback := range defaultAppearanceContentTypes {
-		if _, ok := seen[fallback]; ok {
-			continue
-		}
-		seen[fallback] = struct{}{}
-		ordered = append(ordered, fallback)
 	}
 	return ordered
 }

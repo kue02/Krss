@@ -4,6 +4,17 @@ export type AIProvider = "openai" | "anthropic" | "compatible";
 
 export type RequestOptions = Record<string, unknown>;
 
+/** 一份保存好的 AI 提供商配置 */
+export interface AIProviderConfig {
+  id: string;
+  name: string;
+  provider: AIProvider;
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+  requestOptions?: RequestOptions | null;
+}
+
 export interface AISettings {
   provider: AIProvider;
   apiKey: string;
@@ -14,6 +25,9 @@ export interface AISettings {
   autoTranslate: boolean;
   autoSummary: boolean;
   rateLimit: number;
+  /** 已保存的提供商列表；上面的 provider/apiKey/... 始终等于当前使用的那一份 */
+  providers?: AIProviderConfig[];
+  activeProviderId?: string;
 }
 
 export interface AITestRequest {

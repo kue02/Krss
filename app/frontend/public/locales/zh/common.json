@@ -259,7 +259,18 @@
     "lang_es": "西班牙语",
     "lang_fr": "法语",
     "lang_de": "德语",
-    "loopback_hint": "本机地址：Docker 部署时容器内的 127.0.0.1 不是宿主机，后端会自动改用 host.docker.internal（非容器环境不受影响）"
+    "loopback_hint": "本机地址：Docker 部署时容器内的 127.0.0.1 不是宿主机，后端会自动改用 host.docker.internal（非容器环境不受影响）",
+    "providers": "已保存的提供商",
+    "add_provider": "添加",
+    "set_active": "设为当前使用",
+    "active_badge": "当前",
+    "active_provider_changed": "已设为当前使用（记得保存）",
+    "provider_name": "名称",
+    "provider_name_placeholder": "给这份配置起个名字",
+    "new_provider": "新提供商",
+    "probe_models": "探测模型",
+    "probing": "探测中…",
+    "probe_failed": "探测模型失败"
   },
   "data_control": {
     "import_opml": "导入 OPML",

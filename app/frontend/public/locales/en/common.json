@@ -262,7 +262,18 @@
     "lang_es": "Spanish",
     "lang_fr": "French",
     "lang_de": "German",
-    "loopback_hint": "Local address: inside Docker, 127.0.0.1 refers to the container itself — the backend switches to host.docker.internal automatically (no effect outside containers)"
+    "loopback_hint": "Local address: inside Docker, 127.0.0.1 refers to the container itself — the backend switches to host.docker.internal automatically (no effect outside containers)",
+    "providers": "Saved providers",
+    "add_provider": "Add",
+    "set_active": "Use this one",
+    "active_badge": "active",
+    "active_provider_changed": "Set as active (remember to save)",
+    "provider_name": "Name",
+    "provider_name_placeholder": "Name this configuration",
+    "new_provider": "New provider",
+    "probe_models": "Detect models",
+    "probing": "Detecting…",
+    "probe_failed": "Failed to detect models"
   },
   "data_control": {
     "import_opml": "Import OPML",

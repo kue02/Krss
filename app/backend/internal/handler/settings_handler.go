@@ -14,27 +14,31 @@ import (
 // Request/Response types
 
 type aiSettingsResponse struct {
-	Provider        string         `json:"provider"`
-	APIKey          string         `json:"apiKey"`
-	BaseURL         string         `json:"baseUrl"`
-	Model           string         `json:"model"`
-	RequestOptions  map[string]any `json:"requestOptions"`
-	SummaryLanguage string         `json:"summaryLanguage"`
-	AutoTranslate   bool           `json:"autoTranslate"`
-	AutoSummary     bool           `json:"autoSummary"`
-	RateLimit       int            `json:"rateLimit"`
+	Provider         string                     `json:"provider"`
+	APIKey           string                     `json:"apiKey"`
+	BaseURL          string                     `json:"baseUrl"`
+	Model            string                     `json:"model"`
+	RequestOptions   map[string]any             `json:"requestOptions"`
+	SummaryLanguage  string                     `json:"summaryLanguage"`
+	AutoTranslate    bool                       `json:"autoTranslate"`
+	AutoSummary      bool                       `json:"autoSummary"`
+	RateLimit        int                        `json:"rateLimit"`
+	Providers        []service.AIProviderConfig `json:"providers"`
+	ActiveProviderID string                     `json:"activeProviderId"`
 }
 
 type aiSettingsRequest struct {
-	Provider        string         `json:"provider"`
-	APIKey          string         `json:"apiKey"`
-	BaseURL         string         `json:"baseUrl"`
-	Model           string         `json:"model"`
-	RequestOptions  map[string]any `json:"requestOptions"`
-	SummaryLanguage string         `json:"summaryLanguage"`
-	AutoTranslate   bool           `json:"autoTranslate"`
-	AutoSummary     bool           `json:"autoSummary"`
-	RateLimit       int            `json:"rateLimit"`
+	Provider         string                     `json:"provider"`
+	APIKey           string                     `json:"apiKey"`
+	BaseURL          string                     `json:"baseUrl"`
+	Model            string                     `json:"model"`
+	RequestOptions   map[string]any             `json:"requestOptions"`
+	SummaryLanguage  string                     `json:"summaryLanguage"`
+	AutoTranslate    bool                       `json:"autoTranslate"`
+	AutoSummary      bool                       `json:"autoSummary"`
+	RateLimit        int                        `json:"rateLimit"`
+	Providers        []service.AIProviderConfig `json:"providers"`
+	ActiveProviderID string                     `json:"activeProviderId"`
 }
 
 type aiTestRequest struct {
@@ -127,6 +131,7 @@ func (h *SettingsHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/settings/ai", h.GetAISettings)
 	g.PUT("/settings/ai", h.UpdateAISettings)
 	g.POST("/settings/ai/test", h.TestAI)
+	g.POST("/settings/ai/models", h.ListAIModels)
 	g.GET("/settings/general", h.GetGeneralSettings)
 	g.PUT("/settings/general", h.UpdateGeneralSettings)
 	g.GET("/settings/network", h.GetNetworkSettings)
@@ -162,6 +167,9 @@ func (h *SettingsHandler) GetAISettings(c echo.Context) error {
 		AutoTranslate:   settings.AutoTranslate,
 		AutoSummary:     settings.AutoSummary,
 		RateLimit:       settings.RateLimit,
+
+		Providers:        settings.Providers,
+		ActiveProviderID: settings.ActiveProviderID,
 	})
 }
 
@@ -201,6 +209,9 @@ func (h *SettingsHandler) UpdateAISettings(c echo.Context) error {
 		AutoTranslate:   req.AutoTranslate,
 		AutoSummary:     req.AutoSummary,
 		RateLimit:       req.RateLimit,
+
+		Providers:        req.Providers,
+		ActiveProviderID: req.ActiveProviderID,
 	}
 
 	if err := h.service.SetAISettings(c.Request().Context(), settings); err != nil {
@@ -252,6 +263,46 @@ func (h *SettingsHandler) TestAI(c echo.Context) error {
 		Success: true,
 		Message: response,
 	})
+}
+
+type aiModelsRequest struct {
+	Provider string `json:"provider"`
+	APIKey   string `json:"apiKey"`
+	BaseURL  string `json:"baseUrl"`
+}
+
+type aiModelsResponse struct {
+	Models []string `json:"models"`
+}
+
+// ListAIModels 查询提供商可用模型（用于设置页的「探测模型」）。
+//
+// @Summary List provider models
+// @Description Fetch the model list from an OpenAI-compatible / Anthropic endpoint
+// @Tags settings
+// @Accept json
+// @Produce json
+// @Param config body aiModelsRequest true "Provider credentials"
+// @Success 200 {object} aiModelsResponse
+// @Failure 400 {object} errorResponse
+// @Router /settings/ai/models [post]
+func (h *SettingsHandler) ListAIModels(c echo.Context) error {
+	var req aiModelsRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
+	}
+	if req.Provider == "" {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "provider is required"})
+	}
+
+	models, err := h.service.ListAIModels(c.Request().Context(), req.Provider, req.APIKey, req.BaseURL)
+	if err != nil {
+		logger.Warn("ai models probe failed", "module", "handler", "action", "list", "resource", "settings", "result", "failed", "provider", req.Provider, "error", err)
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
+	}
+
+	logger.Info("ai models probed", "module", "handler", "action", "list", "resource", "settings", "result", "ok", "provider", req.Provider, "count", len(models))
+	return c.JSON(http.StatusOK, aiModelsResponse{Models: models})
 }
 
 // GetGeneralSettings returns the general settings.

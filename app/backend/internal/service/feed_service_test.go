@@ -660,6 +660,10 @@ func (s *settingsServiceStub) TestAI(ctx context.Context, provider, apiKey, base
 	return "", nil
 }
 
+func (s *settingsServiceStub) ListAIModels(ctx context.Context, provider, apiKey, baseURL string) ([]string, error) {
+	return nil, nil
+}
+
 func (s *settingsServiceStub) GetGeneralSettings(ctx context.Context) (*service.GeneralSettings, error) {
 	return nil, nil
 }

@@ -228,3 +228,18 @@ func (mr *MockSettingsServiceMockRecorder) TestAI(ctx, provider, apiKey, baseURL
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TestAI", reflect.TypeOf((*MockSettingsService)(nil).TestAI), ctx, provider, apiKey, baseURL, model, requestOptions)
 }
+
+// ListAIModels mocks base method.
+func (m *MockSettingsService) ListAIModels(ctx context.Context, provider, apiKey, baseURL string) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListAIModels", ctx, provider, apiKey, baseURL)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListAIModels indicates an expected call of ListAIModels.
+func (mr *MockSettingsServiceMockRecorder) ListAIModels(ctx, provider, apiKey, baseURL any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAIModels", reflect.TypeOf((*MockSettingsService)(nil).ListAIModels), ctx, provider, apiKey, baseURL)
+}

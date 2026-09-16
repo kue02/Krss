@@ -686,6 +686,18 @@ export async function testAIConnection(
   });
 }
 
+/** 探测提供商可用模型（设置页的「探测模型」） */
+export async function listAIModels(config: {
+  provider: string;
+  apiKey: string;
+  baseUrl: string;
+}): Promise<{ models: string[] }> {
+  return request<{ models: string[] }>("/api/settings/ai/models", {
+    method: "POST",
+    body: JSON.stringify(config),
+  });
+}
+
 export async function getGeneralSettings(): Promise<GeneralSettings> {
   return request<GeneralSettings>("/api/settings/general");
 }
