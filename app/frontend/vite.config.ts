@@ -18,8 +18,8 @@ export default defineConfig({
         "apple-touch-icon-180x180.png",
       ],
       manifest: {
-        name: "krss - RSS Reader",
-        short_name: "krss",
+        name: "Krss - RSS Reader",
+        short_name: "Krss",
         description: "A modern RSS reader",
         theme_color: "#E3E1DE",
         background_color: "#E3E1DE",

@@ -1,6 +1,6 @@
 {
   "app": {
-    "name": "krss"
+    "name": "Krss"
   },
   "sidebar": {
     "feeds": "订阅",
@@ -330,8 +330,8 @@
     "register": "注册",
     "logging_in": "登录中...",
     "registering": "注册中...",
-    "login_description": "登录以继续使用 krss",
-    "register_description": "创建账户以开始使用 krss",
+    "login_description": "登录以继续使用 Krss",
+    "register_description": "创建账户以开始使用 Krss",
     "username": "用户名",
     "username_placeholder": "请输入用户名",
     "username_hint": "只能使用小写英文字母和数字",

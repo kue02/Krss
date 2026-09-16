@@ -160,9 +160,13 @@ export function EntryToc({ scrollNode, entryId }: EntryTocProps) {
 
   return (
     <div className="group/toc absolute inset-y-0 right-0 z-20 w-6">
-      {/* 悬浮触发的窄带：平时只有它在那儿，看不见 */}
-      <div className="pointer-events-none absolute inset-y-0 right-0 flex w-6 items-center justify-center opacity-0 transition-opacity duration-200 group-hover/toc:opacity-40">
-        <div className="h-24 w-px rounded-full bg-foreground" />
+      {/* 常驻提示：右缘一小段竖条 + 三个刻度点，让人知道这里藏着东西；悬浮时变亮变长 */}
+      <div className="pointer-events-none absolute inset-y-0 right-0 flex w-6 items-center justify-center">
+        <div className="flex h-28 w-1.5 flex-col items-center justify-center gap-1 rounded-full bg-foreground/[0.06] opacity-90 transition-all duration-200 group-hover/toc:h-36 group-hover/toc:bg-foreground/10">
+          <span className="size-0.5 rounded-full bg-foreground/30 transition-colors duration-200 group-hover/toc:bg-foreground/60" />
+          <span className="size-0.5 rounded-full bg-foreground/30 transition-colors duration-200 group-hover/toc:bg-foreground/60" />
+          <span className="size-0.5 rounded-full bg-foreground/30 transition-colors duration-200 group-hover/toc:bg-foreground/60" />
+        </div>
       </div>
 
       <nav

@@ -16,11 +16,11 @@ interface SidebarHeaderProps {
 
 function KrssLogo({ className }: { className?: string }) {
   return (
-    <img src="/logo.svg" alt="krss" className={cn(className, "rounded")} />
+    <img src="/logo.svg" alt="Krss" className={cn(className, "rounded")} />
   );
 }
 
-export function SidebarHeader({ title = "krss", onAddClick }: SidebarHeaderProps) {
+export function SidebarHeader({ title = "Krss", onAddClick }: SidebarHeaderProps) {
   const { t } = useTranslation();
 
   return (

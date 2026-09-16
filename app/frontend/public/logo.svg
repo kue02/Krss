@@ -1,17 +1,17 @@
-<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="krss">
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Krss">
   <defs>
-    <linearGradient id="krssBg" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="KrssBg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#E8765F"/>
       <stop offset="55%" stop-color="#DF604D"/>
       <stop offset="100%" stop-color="#C24A38"/>
     </linearGradient>
-    <linearGradient id="krssShine" x1="0" y1="0" x2="0" y2="1">
+    <linearGradient id="KrssShine" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.26"/>
       <stop offset="62%" stop-color="#FFFFFF" stop-opacity="0"/>
     </linearGradient>
   </defs>
-  <rect x="0" y="0" width="512" height="512" rx="116" fill="url(#krssBg)"/>
-  <rect x="0" y="0" width="512" height="256" rx="116" fill="url(#krssShine)"/>
+  <rect x="0" y="0" width="512" height="512" rx="116" fill="url(#KrssBg)"/>
+  <rect x="0" y="0" width="512" height="256" rx="116" fill="url(#KrssShine)"/>
   <g stroke="#FFFFFF" stroke-width="48" stroke-linecap="round" fill="none">
     <path d="M158 132 V380"/>
     <path d="M158 268 L286 160"/>

@@ -14,11 +14,11 @@ export function NetworkErrorPage({ onRetry }: NetworkErrorPageProps) {
         <div className="text-center">
           <img
             src="/logo.svg"
-            alt="krss"
+            alt="Krss"
             className="mx-auto mb-4 h-16 w-16 rounded-2xl"
           />
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            krss
+            Krss
           </h1>
           <p className="mt-2 text-base font-medium text-foreground">
             {t("auth.network_error_title")}

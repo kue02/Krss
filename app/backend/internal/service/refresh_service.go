@@ -29,7 +29,9 @@ const (
 	// the network and remote servers.
 	maxConcurrentRefresh = 8
 	// maxConcurrentPerHost limits parallel requests to the same host to be polite.
-	maxConcurrentPerHost = 1
+	// 原来是 1（同一主机完全串行）：自己的 RSSHub 上挂了几十个源时，全量刷新会一个一个抓，
+	// 慢到分钟级。改成 3 —— 仍有限流，但同一个主机上的订阅能并行起来。
+	maxConcurrentPerHost = 3
 )
 
 // hostRateLimiter manages per-host concurrency and rate limits.

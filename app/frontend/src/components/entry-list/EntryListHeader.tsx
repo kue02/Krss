@@ -91,18 +91,6 @@ export function EntryListHeader({
       </div>
 
       <div className="flex shrink-0 items-center gap-0.5">
-        <button
-          type="button"
-          onClick={onToggleUnreadOnly}
-          title={unreadOnly ? t("entry.show_all") : t("entry.show_unread_only")}
-          className="flex size-8 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95"
-        >
-          {unreadOnly ? (
-            <CircleFilledIcon className="size-5" />
-          ) : (
-            <CircleOutlineIcon className="size-5" />
-          )}
-        </button>
         {onRefresh && (
           <button
             type="button"
@@ -120,6 +108,18 @@ export function EntryListHeader({
             )}
           </button>
         )}
+        <button
+          type="button"
+          onClick={onToggleUnreadOnly}
+          title={unreadOnly ? t("entry.show_all") : t("entry.show_unread_only")}
+          className="flex size-8 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95"
+        >
+          {unreadOnly ? (
+            <CircleFilledIcon className="size-5" />
+          ) : (
+            <CircleOutlineIcon className="size-5" />
+          )}
+        </button>
         <button
           type="button"
           onClick={onMarkAllRead}
