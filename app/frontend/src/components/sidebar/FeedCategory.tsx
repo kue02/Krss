@@ -14,6 +14,7 @@ import {
 import { ChevronIcon } from "@/components/ui/icons";
 import { useContextMenu } from "@/hooks/useContextMenu";
 import { useCategoryState } from "@/hooks/useCategoryState";
+import { Ripple } from "m3-ripple";
 import { feedItemStyles, sidebarItemIconStyles } from "./styles";
 import type { ContentType } from "@/types/api";
 
@@ -75,6 +76,7 @@ export function FeedCategory({
             onClick={onSelect}
             {...contextMenuProps}
           >
+          <Ripple hoverOpacity={0} pressedOpacity={0.05} duration={100} />
             {/* Arrow button - only this toggles expand/collapse */}
             <button
               type="button"

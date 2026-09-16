@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from "react";
+import { Ripple } from "m3-ripple";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import {
@@ -91,6 +92,7 @@ export function FeedItem({
           onClick={onClick}
           {...contextMenuProps}
         >
+          <Ripple hoverOpacity={0} pressedOpacity={0.05} duration={100} />
           <div
             className={cn(
               "flex min-w-0 items-center",

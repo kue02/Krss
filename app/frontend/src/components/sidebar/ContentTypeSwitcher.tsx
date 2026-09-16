@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { Ripple } from "m3-ripple";
 import { cn } from "@/lib/utils";
 import {
   FileTextIcon,
@@ -50,13 +51,14 @@ export function ContentTypeSwitcher({
               key={type}
               onClick={() => onSelect(type)}
               className={cn(
-                "flex h-full shrink-0 grow flex-col items-center justify-center gap-0.5 rounded-lg transition-all duration-200",
+                "relative flex h-full shrink-0 grow flex-col items-center justify-center gap-0.5 overflow-hidden rounded-lg transition-all duration-200",
                 isActive
                   ? "bg-card text-foreground shadow-nf"
                   : "text-muted-foreground hover:text-foreground",
               )}
               title={t(labelKey)}
             >
+              <Ripple hoverOpacity={0} pressedOpacity={0.05} duration={100} />
               <Icon
                 className={cn("size-[1.125rem]", isActive && "text-primary")}
               />
