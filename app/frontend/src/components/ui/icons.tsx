@@ -43,6 +43,16 @@ export function CalendarIcon({ className }: IconProps) {
   );
 }
 
+// ============================================================================
+// 四个内容类型的图标（文章 / 图片 / 通知 / 社交媒体）
+//
+// 设计约定（这套是自定义的，不用通用图标库那几张脸）：
+//   · 同一个 24 网格、描边 1.7、圆头圆角，视觉重量一致
+//   · 文章/图片用「圆角卡片 + 实心细节」——和界面本身的卡片列表呼应
+//   · 通知/社交媒体是同类语汇的轮廓 + 实心点，四个摆在一起是一家人
+// 尺寸小到 16px 也要能认出来，所以只留最少的笔划。
+// ============================================================================
+
 export function FileTextIcon({ className }: IconProps) {
   return (
     <svg
@@ -50,15 +60,16 @@ export function FileTextIcon({ className }: IconProps) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth={2}
+      strokeWidth={1.7}
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-      <polyline points="14 2 14 8 20 8" />
-      <line x1="16" x2="8" y1="13" y2="13" />
-      <line x1="16" x2="8" y1="17" y2="17" />
-      <line x1="10" x2="8" y1="9" y2="9" />
+      {/* 卡片轮廓，和列表卡片同形 */}
+      <rect x="3" y="3" width="18" height="18" rx="4.5" />
+      {/* 三行文字，由长到短 */}
+      <path d="M7.6 8.9h8.8" strokeWidth={2} />
+      <path d="M7.6 12.6h6.4" strokeWidth={2} />
+      <path d="M7.6 16.3h4" strokeWidth={2} />
     </svg>
   );
 }
@@ -70,13 +81,15 @@ export function ImageIcon({ className }: IconProps) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth={2}
+      strokeWidth={1.7}
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
-      <circle cx="9" cy="9" r="2" />
-      <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+      <rect x="3" y="3" width="18" height="18" rx="4.5" />
+      {/* 太阳（实心点）+ 山峰 */}
+      <circle cx="9" cy="9.4" r="1.5" fill="currentColor" stroke="none" />
+      <path d="M4.6 17.4l4.1-4.3a1.7 1.7 0 0 1 2.5 0l4.2 4.3" />
+      <path d="M14.1 15.5l1.4-1.4a1.7 1.7 0 0 1 2.4 0l1.5 1.5" />
     </svg>
   );
 }
@@ -88,12 +101,14 @@ export function BellIcon({ className }: IconProps) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth={2}
+      strokeWidth={1.7}
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-      <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+      {/* 钟身：底边收平，顶上是圆头 */}
+      <path d="M12 3.4a5.6 5.6 0 0 1 5.6 5.6v3.5l1.2 2.4H5.2l1.2-2.4V9A5.6 5.6 0 0 1 12 3.4z" />
+      {/* 铃舌（实心点） */}
+      <circle cx="12" cy="18.6" r="1.5" fill="currentColor" stroke="none" />
     </svg>
   );
 }
@@ -105,11 +120,16 @@ export function SocialIcon({ className }: IconProps) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth={2}
+      strokeWidth={1.7}
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z" />
+      {/* 对话气泡（左下带小尾巴） */}
+      <path d="M20.4 11.4c0 4-3.7 7.2-8.3 7.2-1 0-2-.2-2.9-.5l-4.1 1.8 1.4-3.6a6.9 6.9 0 0 1-1.9-4.9C4.6 7.4 8.3 4.2 12.9 4.2s7.5 3.2 7.5 7.2z" />
+      {/* 正在说话的三点 */}
+      <circle cx="9.3" cy="11.4" r="1" fill="currentColor" stroke="none" />
+      <circle cx="12.7" cy="11.4" r="1" fill="currentColor" stroke="none" />
+      <circle cx="16.1" cy="11.4" r="1" fill="currentColor" stroke="none" />
     </svg>
   );
 }
