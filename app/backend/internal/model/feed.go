@@ -10,6 +10,9 @@ type Feed struct {
 	SiteURL               *string
 	Description           *string
 	SummaryPromptReminder *string
+	// 订阅级覆盖：nil = 跟随全局设置
+	AutoTranslate *bool
+	AutoSummary   *bool
 	IconPath              *string
 	Type                  string // article, picture, notification, social
 	ETag                  *string

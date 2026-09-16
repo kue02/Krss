@@ -38,6 +38,8 @@ type FeedService interface {
 	UpdateType(ctx context.Context, id int64, feedType string) error
 	// UpdateURL 改订阅地址（RSSHub 实例换域名等场景）
 	UpdateURL(ctx context.Context, id int64, feedURL string) (model.Feed, error)
+	// UpdateAIOverrides 单独设置某个订阅的自动翻译/自动摘要（nil = 跟随全局）
+	UpdateAIOverrides(ctx context.Context, id int64, autoTranslate, autoSummary *bool) (model.Feed, error)
 	Delete(ctx context.Context, id int64) error
 	DeleteBatch(ctx context.Context, ids []int64) error
 }
@@ -312,6 +314,28 @@ func (s *feedService) Update(ctx context.Context, id int64, title string, folder
 		return model.Feed{}, err
 	}
 	logger.Info("feed updated", "module", "service", "action", "update", "resource", "feed", "result", "ok", "feed_id", updated.ID, "feed_title", updated.Title)
+	return updated, nil
+}
+
+// UpdateAIOverrides 覆盖单个订阅的自动翻译/自动摘要；传 nil 表示恢复「跟随全局」。
+func (s *feedService) UpdateAIOverrides(ctx context.Context, id int64, autoTranslate, autoSummary *bool) (model.Feed, error) {
+	feed, err := s.feeds.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return model.Feed{}, ErrNotFound
+		}
+		return model.Feed{}, fmt.Errorf("get feed: %w", err)
+	}
+
+	feed.AutoTranslate = autoTranslate
+	feed.AutoSummary = autoSummary
+
+	updated, err := s.feeds.Update(ctx, feed)
+	if err != nil {
+		logger.Error("feed ai overrides update failed", "module", "service", "action", "update", "resource", "feed", "result", "failed", "feed_id", id, "error", err)
+		return model.Feed{}, err
+	}
+	logger.Info("feed ai overrides updated", "module", "service", "action", "update", "resource", "feed", "result", "ok", "feed_id", updated.ID)
 	return updated, nil
 }
 

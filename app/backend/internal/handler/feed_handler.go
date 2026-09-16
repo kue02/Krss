@@ -46,6 +46,11 @@ type updateFeedURLRequest struct {
 	URL string `json:"url"`
 }
 
+type updateFeedAIRequest struct {
+	AutoTranslate *bool `json:"autoTranslate"`
+	AutoSummary   *bool `json:"autoSummary"`
+}
+
 type deleteFeedsRequest struct {
 	IDs []string `json:"ids"`
 }
@@ -65,6 +70,8 @@ type feedResponse struct {
 	ErrorMessage          *string `json:"errorMessage,omitempty"`
 	CreatedAt             string  `json:"createdAt"`
 	UpdatedAt             string  `json:"updatedAt"`
+	AutoTranslate         *bool   `json:"autoTranslate,omitempty"`
+	AutoSummary           *bool   `json:"autoSummary,omitempty"`
 }
 
 type refreshStatusResponse struct {
@@ -95,6 +102,7 @@ func (h *FeedHandler) RegisterRoutes(g *echo.Group) {
 	g.PUT("/feeds/:id", h.Update)
 	g.PATCH("/feeds/:id/type", h.UpdateType)
 	g.PATCH("/feeds/:id/url", h.UpdateURL)
+	g.PATCH("/feeds/:id/ai", h.UpdateAIOverrides)
 	g.DELETE("/feeds/:id", h.Delete)
 	g.DELETE("/feeds", h.DeleteBatch)
 }
@@ -266,6 +274,34 @@ func (h *FeedHandler) UpdateURL(c echo.Context) error {
 		return writeServiceError(c, err)
 	}
 	logger.Info("feed url updated", "module", "handler", "action", "update", "resource", "feed", "result", "ok", "feed_id", feed.ID)
+	return c.JSON(http.StatusOK, toFeedResponse(feed))
+}
+
+// UpdateAIOverrides 单独设置某个订阅的自动翻译/自动摘要（字段为 null 表示跟随全局）。
+//
+// @Summary Update feed AI overrides
+// @Description Per-feed override for auto translate / auto summary (null = follow global)
+// @Tags feeds
+// @Accept json
+// @Param id path int true "Feed ID"
+// @Param request body updateFeedAIRequest true "AI overrides"
+// @Success 200 {object} feedResponse
+// @Router /api/feeds/{id}/ai [patch]
+func (h *FeedHandler) UpdateAIOverrides(c echo.Context) error {
+	id, err := parseIDParam(c, "id")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
+	}
+	var req updateFeedAIRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
+	}
+	feed, err := h.service.UpdateAIOverrides(c.Request().Context(), id, req.AutoTranslate, req.AutoSummary)
+	if err != nil {
+		logger.Error("feed ai overrides update failed", "module", "handler", "action", "update", "resource", "feed", "result", "failed", "feed_id", id, "error", err)
+		return writeServiceError(c, err)
+	}
+	logger.Info("feed ai overrides updated", "module", "handler", "action", "update", "resource", "feed", "result", "ok", "feed_id", feed.ID)
 	return c.JSON(http.StatusOK, toFeedResponse(feed))
 }
 
@@ -442,6 +478,8 @@ func toFeedResponse(feed model.Feed) feedResponse {
 		ErrorMessage:          feed.ErrorMessage,
 		CreatedAt:             feed.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:             feed.UpdatedAt.UTC().Format(time.RFC3339),
+		AutoTranslate:         feed.AutoTranslate,
+		AutoSummary:           feed.AutoSummary,
 	}
 }
 

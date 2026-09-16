@@ -6,7 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useUpdateFeed } from "@/hooks/useFeeds";
+import { useUpdateFeed, useUpdateFeedAI } from "@/hooks/useFeeds";
 import { cn } from "@/lib/utils";
 import type { Feed } from "@/types/api";
 
@@ -27,7 +27,10 @@ export function EditFeedDialog({
   const [title, setTitle] = useState("");
   const [summaryPromptReminder, setSummaryPromptReminder] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [autoTranslate, setAutoTranslate] = useState<boolean | null>(null);
+  const [autoSummary, setAutoSummary] = useState<boolean | null>(null);
   const updateFeed = useUpdateFeed();
+  const updateFeedAI = useUpdateFeedAI();
   const reminderLength = Array.from(summaryPromptReminder).length;
   const reminderTooLong = reminderLength > SUMMARY_PROMPT_REMINDER_MAX_LENGTH;
 
@@ -36,6 +39,8 @@ export function EditFeedDialog({
       /* eslint-disable react-hooks/set-state-in-effect */
       setTitle(feed.title);
       setSummaryPromptReminder(feed.summaryPromptReminder ?? "");
+      setAutoTranslate(feed.autoTranslate ?? null);
+      setAutoSummary(feed.autoSummary ?? null);
       setError(null);
       /* eslint-enable react-hooks/set-state-in-effect */
     }
@@ -52,6 +57,11 @@ export function EditFeedDialog({
         title: title.trim(),
         folderId: feed.folderId,
         summaryPromptReminder,
+      });
+      await updateFeedAI.mutateAsync({
+        id: feed.id,
+        autoTranslate,
+        autoSummary,
       });
       onOpenChange(false);
     } catch {
@@ -152,6 +162,24 @@ export function EditFeedDialog({
             </div>
           )}
           <div className="flex justify-end gap-2 pt-2">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-medium">
+                  {t("feeds.auto_translate")}
+                </span>
+                <TriStateControl
+                  value={autoTranslate}
+                  onChange={setAutoTranslate}
+                />
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-medium">
+                  {t("feeds.auto_summary")}
+                </span>
+                <TriStateControl value={autoSummary} onChange={setAutoSummary} />
+              </div>
+            </div>
+
             <button
               type="button"
               onClick={handleClose}
@@ -179,5 +207,44 @@ export function EditFeedDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** 三态：跟随全局 / 开 / 关 */
+function TriStateControl({
+  value,
+  onChange,
+}: {
+  value: boolean | null;
+  onChange: (value: boolean | null) => void;
+}) {
+  const { t } = useTranslation();
+  const options: { value: boolean | null; label: string }[] = [
+    { value: null, label: t("feeds.follow_global") },
+    { value: true, label: t("feeds.on") },
+    { value: false, label: t("feeds.off") },
+  ];
+
+  return (
+    <div className="flex shrink-0 gap-1 rounded-full border border-border p-0.5">
+      {options.map((option) => {
+        const isActive = option.value === value;
+        return (
+          <button
+            key={String(option.value)}
+            type="button"
+            onClick={() => onChange(option.value)}
+            className={cn(
+              "rounded-full px-2.5 py-0.5 text-xs transition-colors duration-200",
+              isActive
+                ? "bg-item-active text-foreground"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }

@@ -26,6 +26,16 @@ func nullableString(value *string) interface{} {
 	return *value
 }
 
+func nullableBool(value *bool) interface{} {
+	if value == nil {
+		return nil
+	}
+	if *value {
+		return 1
+	}
+	return 0
+}
+
 func formatTime(value time.Time) string {
 	return value.UTC().Format(time.RFC3339Nano)
 }

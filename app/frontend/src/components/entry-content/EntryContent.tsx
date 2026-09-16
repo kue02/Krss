@@ -7,6 +7,7 @@ import {
   useRemoveFromUnreadList,
 } from "@/hooks/useEntries";
 import { useAISettings } from "@/hooks/useAISettings";
+import { useFeeds } from "@/hooks/useFeeds";
 import { useGeneralSettings } from "@/hooks/useGeneralSettings";
 import { useEntryContentScroll } from "@/hooks/useEntryContentScroll";
 import { useScrollToTop } from "@/hooks/useScrollToTop";
@@ -46,7 +47,12 @@ export function EntryContent({ entryId, isMobile, onBack }: EntryContentProps) {
   const autoTranslate = aiSettings?.autoTranslate ?? false;
   const targetLanguage = aiSettings?.summaryLanguage ?? "zh-CN";
   const autoReadability = generalSettings?.autoReadability ?? false;
-  const autoSummary = aiSettings?.autoSummary ?? false;
+  const { data: feeds = [] } = useFeeds();
+  // 订阅级覆盖优先（#5）
+  const feedAutoSummary = entry
+    ? feeds.find((feed) => feed.id === entry.feedId)?.autoSummary
+    : undefined;
+  const autoSummary = feedAutoSummary ?? aiSettings?.autoSummary ?? false;
 
   // Readability hook
   const {

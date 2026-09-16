@@ -17,6 +17,9 @@ export interface Feed {
   siteUrl?: string;
   description?: string;
   summaryPromptReminder?: string;
+  /** 订阅级覆盖：null/undefined = 跟随全局设置 */
+  autoTranslate?: boolean | null;
+  autoSummary?: boolean | null;
   iconPath?: string;
   type: ContentType;
   etag?: string;

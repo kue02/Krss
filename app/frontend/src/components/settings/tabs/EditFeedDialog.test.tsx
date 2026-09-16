@@ -32,6 +32,7 @@ vi.mock("react-i18next", () => ({
 
 vi.mock("@/hooks/useFeeds", () => ({
   useUpdateFeed: mockUseUpdateFeed,
+  useUpdateFeedAI: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
 vi.mock("@/components/ui/dialog", () => ({

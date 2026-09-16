@@ -335,6 +335,21 @@ func runMigrations(db *sql.DB) error {
 		}
 	}
 
+	// Migration 19: 每个订阅可单独覆盖「自动翻译 / 自动摘要」（NULL = 跟随全局设置）
+	for _, column := range []string{"auto_translate", "auto_summary"} {
+		err = db.QueryRow(`
+			SELECT COUNT(*) FROM pragma_table_info('feeds') WHERE name = ?
+		`, column).Scan(&count)
+		if err != nil {
+			return fmt.Errorf("check feeds %s column: %w", column, err)
+		}
+		if count == 0 {
+			if _, err := db.Exec(`ALTER TABLE feeds ADD COLUMN ` + column + ` INTEGER`); err != nil {
+				return fmt.Errorf("add feeds %s column: %w", column, err)
+			}
+		}
+	}
+
 	return nil
 }
 

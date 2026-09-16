@@ -77,7 +77,8 @@ func TestOPMLService_Import_CreatesFoldersAndFeeds(t *testing.T) {
 
 	select {
 	case <-iconSvc.done:
-	default:
+	case <-time.After(500 * time.Millisecond):
+		// 图标回填在后台 goroutine 里跑，用 default 分支会偶发误报（既有 flake）
 		t.Fatal("expected icon backfill to run")
 	}
 }
@@ -293,3 +294,7 @@ func strPtr(value string) *string {
 }
 
 // Ensure we satisfy the io.Reader interface import when not used in build tags.
+
+func (s *feedServiceStub) UpdateAIOverrides(ctx context.Context, id int64, autoTranslate, autoSummary *bool) (model.Feed, error) {
+	return model.Feed{}, nil
+}

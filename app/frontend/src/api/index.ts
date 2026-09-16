@@ -403,6 +403,17 @@ export async function deleteFeed(id: string): Promise<void> {
   });
 }
 
+/** 订阅级覆盖自动翻译/自动摘要（传 null 表示跟随全局） */
+export async function updateFeedAI(
+  id: string,
+  payload: { autoTranslate?: boolean | null; autoSummary?: boolean | null },
+): Promise<Feed> {
+  return request<Feed>(`/api/feeds/${id}/ai`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
 /** 改订阅地址（RSSHub 换实例域名等；只改地址，不动标题/文件夹） */
 export async function updateFeedUrl(id: string, url: string): Promise<Feed> {
   return request<Feed>(`/api/feeds/${id}/url`, {

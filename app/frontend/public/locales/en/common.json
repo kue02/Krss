@@ -397,7 +397,12 @@
     "summary_prompt_reminder_count": "{{count}} / {{max}}",
     "summary_prompt_reminder_too_long": "The custom prompt cannot exceed {{max}} characters",
     "url_readonly": "Read-only",
-    "update_failed": "Update failed"
+    "update_failed": "Update failed",
+    "auto_translate": "Auto translate",
+    "auto_summary": "Auto summary",
+    "follow_global": "Global",
+    "on": "On",
+    "off": "Off"
   },
   "entry_list": {
     "all_articles": "All Articles",

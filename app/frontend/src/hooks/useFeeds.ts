@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { listFeeds, deleteFeed, updateFeed, updateFeedType } from "@/api";
+import { listFeeds, deleteFeed, updateFeed, updateFeedType , updateFeedAI } from "@/api";
 import type { ContentType } from "@/types/api";
 
 export function useFeeds() {
@@ -45,6 +45,24 @@ export function useUpdateFeedType() {
   return useMutation({
     mutationFn: (payload: { id: string; type: ContentType }) =>
       updateFeedType(payload.id, payload.type),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["feeds"] });
+    },
+  });
+}
+
+export function useUpdateFeedAI() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: {
+      id: string;
+      autoTranslate?: boolean | null;
+      autoSummary?: boolean | null;
+    }) =>
+      updateFeedAI(payload.id, {
+        autoTranslate: payload.autoTranslate,
+        autoSummary: payload.autoSummary,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["feeds"] });
     },

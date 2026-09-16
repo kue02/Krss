@@ -132,6 +132,21 @@ export function EntryList({
   const translationSession = useRef(0);
 
   const autoTranslate = aiSettings?.autoTranslate ?? false;
+
+  // 订阅级覆盖：feed.autoTranslate 有值就盖过全局（#5）
+  const feedsById = useMemo(
+    () => new Map(feeds.map((feed) => [feed.id, feed])),
+    [feeds],
+  );
+  const hasAutoTranslateOverride = useMemo(
+    () => feeds.some((feed) => feed.autoTranslate === true),
+    [feeds],
+  );
+  const isAutoTranslateEnabled = useCallback(
+    (entry: Entry) =>
+      feedsById.get(entry.feedId)?.autoTranslate ?? autoTranslate,
+    [autoTranslate, feedsById],
+  );
   const targetLanguage = aiSettings?.summaryLanguage ?? "zh-CN";
   const markReadOnScroll = generalSettings?.markReadOnScroll ?? false;
   // 按视图（文章 / 图片 / 通知）的独立开关：自动展开正文、覆盖滚动标已读
@@ -392,7 +407,7 @@ export function EntryList({
   // Schedule entry for translation when visible
   const scheduleTranslation = useCallback(
     (entry: Entry) => {
-      if (!autoTranslate) return;
+      if (!isAutoTranslateEnabled(entry)) return;
       if (translatedEntries.current.has(entry.id)) {
         // Verify against store: if marked but no actual translation, allow retry
         const cached = translationActions.get(entry.id, targetLanguage);
@@ -436,12 +451,12 @@ export function EntryList({
           }
         });
     },
-    [autoTranslate, targetLanguage, queueEntryForTranslation],
+    [isAutoTranslateEnabled, targetLanguage, queueEntryForTranslation],
   );
 
   // Trigger translation for real visible items and selected entry
   useEffect(() => {
-    if (!autoTranslate || !isActive) return;
+    if ((!autoTranslate && !hasAutoTranslateOverride) || !isActive) return;
 
     const node = containerRef.current;
     if (!node || typeof IntersectionObserver === "undefined") {
@@ -486,6 +501,7 @@ export function EntryList({
   }, [
     entries,
     autoTranslate,
+    hasAutoTranslateOverride,
     isActive,
     scheduleTranslation,
     scrollSurface,
