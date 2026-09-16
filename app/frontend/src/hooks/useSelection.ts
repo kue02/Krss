@@ -19,6 +19,11 @@ interface UseSelectionReturn {
   selectFeed: (feedId: string, options?: NavigateOptions) => void;
   selectFolder: (folderId: string, options?: NavigateOptions) => void;
   selectStarred: (options?: NavigateOptions) => void;
+  /** 中栏底部筛选胶囊：一次导航切换 全部 / 未读 / 星标 */
+  selectFilter: (
+    filter: "all" | "unread" | "starred",
+    options?: NavigateOptions,
+  ) => void;
   selectedEntryId: string | null;
   selectEntry: (entryId: string | null, options?: NavigateOptions) => void;
   unreadOnly: boolean;
@@ -96,6 +101,24 @@ export function useSelection(): UseSelectionReturn {
     [navigate, routeState.unreadOnly, routeState.contentType],
   );
 
+  /**
+   * 中栏底部筛选胶囊用：在 全部 / 未读 / 星标 三者间一次导航切换。
+   * 不要在调用方叠加 selectAll + toggleUnreadOnly —— 两次导航都基于旧 routeState，
+   * 后者会覆盖前者（表现为「点了全部却还在星标页」）。
+   */
+  const selectFilter = useCallback(
+    (filter: "all" | "unread" | "starred", options?: NavigateOptions) => {
+      const unreadOnly = filter === "unread";
+      const nextSelection: SelectionType =
+        filter === "starred" ? { type: "starred" } : { type: "all" };
+      navigate(
+        buildPath(nextSelection, null, unreadOnly, routeState.contentType),
+        options,
+      );
+    },
+    [navigate, routeState.contentType],
+  );
+
   const selectEntry = useCallback(
     (entryId: string | null, options?: NavigateOptions) => {
       navigate(
@@ -149,6 +172,7 @@ export function useSelection(): UseSelectionReturn {
   );
 
   return {
+    selectFilter,
     selection: routeState.selection,
     selectAll,
     selectFeed,

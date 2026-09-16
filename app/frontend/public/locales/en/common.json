@@ -363,5 +363,10 @@
   "update": {
     "available": "Update Available",
     "description": "Click to refresh and apply the update"
+  },
+  "entry_filter": {
+    "all": "All",
+    "unread": "Unread",
+    "starred": "Starred"
   }
 }

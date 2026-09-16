@@ -16,6 +16,10 @@ import { selectionToParams, type SelectionType } from "@/hooks/useSelection";
 import { flattenUniqueEntries } from "@/lib/entry-pagination";
 import { stripHtml } from "@/lib/html-utils";
 import { EntryListItem } from "./EntryListItem";
+import {
+  EntryListFilterPill,
+  type EntryFilter,
+} from "./EntryListFilterPill";
 import { EntryListHeader } from "./EntryListHeader";
 import { needsTranslation as needsTranslationAsync } from "@/lib/language-detect-async";
 import {
@@ -38,6 +42,8 @@ interface EntryListProps {
   onMarkAllRead: () => void;
   unreadOnly: boolean;
   onToggleUnreadOnly: () => void;
+  /** 底部筛选胶囊：全部 / 未读 / 星标 的切换（一次导航，见 useSelection.selectFilter） */
+  onFilterChange?: (filter: EntryFilter) => void;
   contentType: ContentType;
   isMobile?: boolean;
   onMenuClick?: () => void;
@@ -54,6 +60,7 @@ export function EntryList({
   onMarkAllRead,
   unreadOnly,
   onToggleUnreadOnly,
+  onFilterChange,
   contentType,
   isMobile,
   onMenuClick,
@@ -414,6 +421,10 @@ export function EntryList({
     }
   }, [unreadCounts, selection, feeds, contentType]);
 
+  // 底部筛选胶囊的当前态与切换
+  const filterValue: EntryFilter =
+    selection.type === "starred" ? "starred" : unreadOnly ? "unread" : "all";
+
   return (
     <div
       ref={listWrapperRef}
@@ -490,6 +501,13 @@ export function EntryList({
 
           {isFetchingNextPage && <LoadingMore />}
         </div>
+
+        {!usesDocumentScroll && (
+          <EntryListFilterPill
+            value={filterValue}
+            onChange={(next) => onFilterChange?.(next)}
+          />
+        )}
       </div>
     </div>
   );
@@ -497,9 +515,12 @@ export function EntryList({
 
 function EntryListSkeleton() {
   return (
-    <div className="space-y-px">
+    <div className="space-y-1.5 py-2">
       {Array.from({ length: 5 }, (_, i) => (
-        <div key={i} className="px-4 py-3 animate-pulse">
+        <div
+          key={i}
+          className="mx-2 animate-pulse rounded-xl border border-transparent p-3"
+        >
           {/* Line 1: icon + feed name + time */}
           <div className="flex items-center gap-1.5">
             <div className="size-4 rounded bg-muted" />

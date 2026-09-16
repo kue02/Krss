@@ -135,6 +135,7 @@ function AuthenticatedApp() {
     selectFeed,
     selectFolder,
     selectStarred,
+    selectFilter,
     selectedEntryId,
     selectEntry,
     unreadOnly,
@@ -252,6 +253,14 @@ function AuthenticatedApp() {
       selectAll(type, { replace: true });
     },
     [selectAll, closeSidebar],
+  );
+
+  const handleFilterChange = useCallback(
+    (filter: "all" | "unread" | "starred") => {
+      closeSidebar();
+      selectFilter(filter, { replace: true });
+    },
+    [selectFilter, closeSidebar],
   );
 
   const visibleContentTypes = useMemo(() => {
@@ -376,6 +385,7 @@ function AuthenticatedApp() {
               onMarkAllRead={handleMarkAllRead}
               unreadOnly={unreadOnly}
               onToggleUnreadOnly={toggleUnreadOnly}
+              onFilterChange={handleFilterChange}
               contentType={contentType}
               isMobile
               isActive={mobileView === "list"}
@@ -472,6 +482,7 @@ function AuthenticatedApp() {
             onMarkAllRead={handleMarkAllRead}
             unreadOnly={unreadOnly}
             onToggleUnreadOnly={toggleUnreadOnly}
+            onFilterChange={handleFilterChange}
             contentType={contentType}
             isTablet={isTablet}
             onToggleSidebar={toggleSidebarVisible}

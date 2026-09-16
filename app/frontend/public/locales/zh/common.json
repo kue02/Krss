@@ -278,7 +278,6 @@
     "logout": "退出登录",
     "guest": "访客"
   },
-
   "auth": {
     "login": "登录",
     "register": "注册",
@@ -363,5 +362,10 @@
   "update": {
     "available": "发现新版本",
     "description": "点击刷新以应用更新"
+  },
+  "entry_filter": {
+    "all": "全部",
+    "unread": "未读",
+    "starred": "星标"
   }
 }
