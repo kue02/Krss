@@ -1,5 +1,23 @@
 basePath: /api
 definitions:
+  gist_backend_internal_service.AIProviderConfig:
+    properties:
+      apiKey:
+        type: string
+      baseUrl:
+        type: string
+      id:
+        type: string
+      model:
+        type: string
+      name:
+        type: string
+      provider:
+        type: string
+      requestOptions:
+        additionalProperties: {}
+        type: object
+    type: object
   gist_backend_internal_service.BatchTranslateResult:
     properties:
       cached:
@@ -42,8 +60,26 @@ definitions:
       total:
         type: integer
     type: object
+  internal_handler.aiModelsRequest:
+    properties:
+      apiKey:
+        type: string
+      baseUrl:
+        type: string
+      provider:
+        type: string
+    type: object
+  internal_handler.aiModelsResponse:
+    properties:
+      models:
+        items:
+          type: string
+        type: array
+    type: object
   internal_handler.aiSettingsRequest:
     properties:
+      activeProviderId:
+        type: string
       apiKey:
         type: string
       autoSummary:
@@ -56,6 +92,10 @@ definitions:
         type: string
       provider:
         type: string
+      providers:
+        items:
+          $ref: '#/definitions/gist_backend_internal_service.AIProviderConfig'
+        type: array
       rateLimit:
         type: integer
       requestOptions:
@@ -66,6 +106,8 @@ definitions:
     type: object
   internal_handler.aiSettingsResponse:
     properties:
+      activeProviderId:
+        type: string
       apiKey:
         type: string
       autoSummary:
@@ -78,6 +120,10 @@ definitions:
         type: string
       provider:
         type: string
+      providers:
+        items:
+          $ref: '#/definitions/gist_backend_internal_service.AIProviderConfig'
+        type: array
       rateLimit:
         type: integer
       requestOptions:
@@ -267,10 +313,30 @@ definitions:
       existingFeed:
         $ref: '#/definitions/internal_handler.feedResponse'
     type: object
+  internal_handler.feedPreviewEntryResponse:
+    properties:
+      author:
+        type: string
+      content:
+        type: string
+      publishedAt:
+        type: string
+      thumbnailUrl:
+        type: string
+      title:
+        type: string
+      url:
+        type: string
+    type: object
   internal_handler.feedPreviewResponse:
     properties:
       description:
         type: string
+      entries:
+        description: Entries 订阅前试看的前几条条目（不落库），供「添加订阅」按视图预览真实效果
+        items:
+          $ref: '#/definitions/internal_handler.feedPreviewEntryResponse'
+        type: array
       imageUrl:
         type: string
       itemCount:
@@ -286,6 +352,10 @@ definitions:
     type: object
   internal_handler.feedResponse:
     properties:
+      autoSummary:
+        type: boolean
+      autoTranslate:
+        type: boolean
       createdAt:
         type: string
       description:
@@ -347,6 +417,10 @@ definitions:
         type: string
       markReadOnScroll:
         type: boolean
+      rsshubAccessKey:
+        type: string
+      rsshubBaseUrl:
+        type: string
     type: object
   internal_handler.generalSettingsResponse:
     properties:
@@ -356,6 +430,11 @@ definitions:
         type: string
       markReadOnScroll:
         type: boolean
+      rsshubAccessKey:
+        type: string
+      rsshubBaseUrl:
+        description: RSSHub 自有实例（添加订阅时自动换域名用）——不回这两个字段的话界面每次打开都是空的
+        type: string
     type: object
   internal_handler.iconClearResponse:
     properties:
@@ -453,10 +532,15 @@ definitions:
     type: object
   internal_handler.refreshStatusResponse:
     properties:
+      completed:
+        type: integer
       isRefreshing:
         type: boolean
       lastRefreshedAt:
         type: string
+      total:
+        description: 本次刷新进度：Total 待刷新源数、Completed 已完成数（仅刷新中有效）
+        type: integer
     type: object
   internal_handler.registerRequest:
     properties:
@@ -517,6 +601,13 @@ definitions:
           type: integer
         type: object
     type: object
+  internal_handler.updateFeedAIRequest:
+    properties:
+      autoSummary:
+        type: boolean
+      autoTranslate:
+        type: boolean
+    type: object
   internal_handler.updateFeedRequest:
     properties:
       folderId:
@@ -527,6 +618,11 @@ definitions:
         type: string
     required:
     - title
+    type: object
+  internal_handler.updateFeedURLRequest:
+    properties:
+      url:
+        type: string
     type: object
   internal_handler.updateFolderTypeRequest:
     properties:
@@ -775,6 +871,57 @@ paths:
       summary: Update a domain rate limit
       tags:
       - domain-rate-limits
+  /api/feeds/{id}/ai:
+    patch:
+      consumes:
+      - application/json
+      description: Per-feed override for auto translate / auto summary (null = follow
+        global)
+      parameters:
+      - description: Feed ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: AI overrides
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.updateFeedAIRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.feedResponse'
+      summary: Update feed AI overrides
+      tags:
+      - feeds
+  /api/feeds/{id}/url:
+    patch:
+      consumes:
+      - application/json
+      description: Change the source URL of a subscription (e.g. switch RSSHub instance)
+      parameters:
+      - description: Feed ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: URL update request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.updateFeedURLRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.feedResponse'
+      summary: Update feed URL
+      tags:
+      - feeds
   /api/proxy/image/{encoded}:
     get:
       description: Proxies external images to avoid triggering anti-crawling mechanisms
@@ -987,7 +1134,7 @@ paths:
         in: query
         name: folderId
         type: integer
-      - description: Filter by content type (article, picture, notification)
+      - description: Filter by content type (article, picture, notification, social)
         in: query
         name: contentType
         type: string
@@ -1357,7 +1504,7 @@ paths:
     patch:
       consumes:
       - application/json
-      description: Change the content type of a feed (article/picture/notification)
+      description: Change the content type of a feed (article/picture/notification/social)
       parameters:
       - description: Feed ID
         in: path
@@ -1419,18 +1566,6 @@ paths:
           schema:
             $ref: '#/definitions/internal_handler.refreshStatusResponse'
       summary: Get refresh status
-      tags:
-      - feeds
-    post:
-      description: Trigger an immediate refresh of all subscribed feeds
-      responses:
-        "204":
-          description: No Content
-        "409":
-          description: Refresh already in progress
-          schema:
-            $ref: '#/definitions/internal_handler.errorResponse'
-      summary: Refresh all feeds
       tags:
       - feeds
   /folders:
@@ -1555,7 +1690,7 @@ paths:
     patch:
       consumes:
       - application/json
-      description: Change the content type of a folder (article/picture/notification)
+      description: Change the content type of a folder (article/picture/notification/social)
       parameters:
       - description: Folder ID
         in: path
@@ -1711,6 +1846,32 @@ paths:
           schema:
             $ref: '#/definitions/internal_handler.errorResponse'
       summary: Update AI settings
+      tags:
+      - settings
+  /settings/ai/models:
+    post:
+      consumes:
+      - application/json
+      description: Fetch the model list from an OpenAI-compatible / Anthropic endpoint
+      parameters:
+      - description: Provider credentials
+        in: body
+        name: config
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.aiModelsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.aiModelsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: List provider models
       tags:
       - settings
   /settings/ai/test:

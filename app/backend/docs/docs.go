@@ -291,6 +291,82 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/feeds/{id}/ai": {
+            "patch": {
+                "description": "Per-feed override for auto translate / auto summary (null = follow global)",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feeds"
+                ],
+                "summary": "Update feed AI overrides",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Feed ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "AI overrides",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.updateFeedAIRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.feedResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/feeds/{id}/url": {
+            "patch": {
+                "description": "Change the source URL of a subscription (e.g. switch RSSHub instance)",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feeds"
+                ],
+                "summary": "Update feed URL",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Feed ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "URL update request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.updateFeedURLRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.feedResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/proxy/image/{encoded}": {
             "get": {
                 "description": "Proxies external images to avoid triggering anti-crawling mechanisms",
@@ -622,7 +698,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Filter by content type (article, picture, notification)",
+                        "description": "Filter by content type (article, picture, notification, social)",
                         "name": "contentType",
                         "in": "query"
                     },
@@ -1135,24 +1211,6 @@ const docTemplate = `{
                         }
                     }
                 }
-            },
-            "post": {
-                "description": "Trigger an immediate refresh of all subscribed feeds",
-                "tags": [
-                    "feeds"
-                ],
-                "summary": "Refresh all feeds",
-                "responses": {
-                    "204": {
-                        "description": "No Content"
-                    },
-                    "409": {
-                        "description": "Refresh already in progress",
-                        "schema": {
-                            "$ref": "#/definitions/internal_handler.errorResponse"
-                        }
-                    }
-                }
             }
         },
         "/feeds/{id}": {
@@ -1243,7 +1301,7 @@ const docTemplate = `{
         },
         "/feeds/{id}/type": {
             "patch": {
-                "description": "Change the content type of a feed (article/picture/notification)",
+                "description": "Change the content type of a feed (article/picture/notification/social)",
                 "consumes": [
                     "application/json"
                 ],
@@ -1469,7 +1527,7 @@ const docTemplate = `{
         },
         "/folders/{id}/type": {
             "patch": {
-                "description": "Change the content type of a folder (article/picture/notification)",
+                "description": "Change the content type of a folder (article/picture/notification/social)",
                 "consumes": [
                     "application/json"
                 ],
@@ -1705,6 +1763,46 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/settings/ai/models": {
+            "post": {
+                "description": "Fetch the model list from an OpenAI-compatible / Anthropic endpoint",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "settings"
+                ],
+                "summary": "List provider models",
+                "parameters": [
+                    {
+                        "description": "Provider credentials",
+                        "name": "config",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.aiModelsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.aiModelsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/internal_handler.errorResponse"
                         }
@@ -2070,6 +2168,33 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "gist_backend_internal_service.AIProviderConfig": {
+            "type": "object",
+            "properties": {
+                "apiKey": {
+                    "type": "string"
+                },
+                "baseUrl": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "requestOptions": {
+                    "type": "object",
+                    "additionalProperties": {}
+                }
+            }
+        },
         "gist_backend_internal_service.BatchTranslateResult": {
             "type": "object",
             "properties": {
@@ -2134,9 +2259,37 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handler.aiModelsRequest": {
+            "type": "object",
+            "properties": {
+                "apiKey": {
+                    "type": "string"
+                },
+                "baseUrl": {
+                    "type": "string"
+                },
+                "provider": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.aiModelsResponse": {
+            "type": "object",
+            "properties": {
+                "models": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "internal_handler.aiSettingsRequest": {
             "type": "object",
             "properties": {
+                "activeProviderId": {
+                    "type": "string"
+                },
                 "apiKey": {
                     "type": "string"
                 },
@@ -2154,6 +2307,12 @@ const docTemplate = `{
                 },
                 "provider": {
                     "type": "string"
+                },
+                "providers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/gist_backend_internal_service.AIProviderConfig"
+                    }
                 },
                 "rateLimit": {
                     "type": "integer"
@@ -2170,6 +2329,9 @@ const docTemplate = `{
         "internal_handler.aiSettingsResponse": {
             "type": "object",
             "properties": {
+                "activeProviderId": {
+                    "type": "string"
+                },
                 "apiKey": {
                     "type": "string"
                 },
@@ -2187,6 +2349,12 @@ const docTemplate = `{
                 },
                 "provider": {
                     "type": "string"
+                },
+                "providers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/gist_backend_internal_service.AIProviderConfig"
+                    }
                 },
                 "rateLimit": {
                     "type": "integer"
@@ -2481,11 +2649,41 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handler.feedPreviewEntryResponse": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "string"
+                },
+                "publishedAt": {
+                    "type": "string"
+                },
+                "thumbnailUrl": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_handler.feedPreviewResponse": {
             "type": "object",
             "properties": {
                 "description": {
                     "type": "string"
+                },
+                "entries": {
+                    "description": "Entries 订阅前试看的前几条条目（不落库），供「添加订阅」按视图预览真实效果",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_handler.feedPreviewEntryResponse"
+                    }
                 },
                 "imageUrl": {
                     "type": "string"
@@ -2510,6 +2708,12 @@ const docTemplate = `{
         "internal_handler.feedResponse": {
             "type": "object",
             "properties": {
+                "autoSummary": {
+                    "type": "boolean"
+                },
+                "autoTranslate": {
+                    "type": "boolean"
+                },
                 "createdAt": {
                     "type": "string"
                 },
@@ -2602,6 +2806,12 @@ const docTemplate = `{
                 },
                 "markReadOnScroll": {
                     "type": "boolean"
+                },
+                "rsshubAccessKey": {
+                    "type": "string"
+                },
+                "rsshubBaseUrl": {
+                    "type": "string"
                 }
             }
         },
@@ -2616,6 +2826,13 @@ const docTemplate = `{
                 },
                 "markReadOnScroll": {
                     "type": "boolean"
+                },
+                "rsshubAccessKey": {
+                    "type": "string"
+                },
+                "rsshubBaseUrl": {
+                    "description": "RSSHub 自有实例（添加订阅时自动换域名用）——不回这两个字段的话界面每次打开都是空的",
+                    "type": "string"
                 }
             }
         },
@@ -2768,11 +2985,18 @@ const docTemplate = `{
         "internal_handler.refreshStatusResponse": {
             "type": "object",
             "properties": {
+                "completed": {
+                    "type": "integer"
+                },
                 "isRefreshing": {
                     "type": "boolean"
                 },
                 "lastRefreshedAt": {
                     "type": "string"
+                },
+                "total": {
+                    "description": "本次刷新进度：Total 待刷新源数、Completed 已完成数（仅刷新中有效）",
+                    "type": "integer"
                 }
             }
         },
@@ -2868,6 +3092,17 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handler.updateFeedAIRequest": {
+            "type": "object",
+            "properties": {
+                "autoSummary": {
+                    "type": "boolean"
+                },
+                "autoTranslate": {
+                    "type": "boolean"
+                }
+            }
+        },
         "internal_handler.updateFeedRequest": {
             "type": "object",
             "required": [
@@ -2881,6 +3116,14 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.updateFeedURLRequest": {
+            "type": "object",
+            "properties": {
+                "url": {
                     "type": "string"
                 }
             }
