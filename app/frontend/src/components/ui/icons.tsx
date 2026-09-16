@@ -219,6 +219,23 @@ export function AddIcon({ className }: IconProps) {
   );
 }
 
+/** 分类（文件夹）—— 与四视图图标同一套语汇：24 网格 / 描边 1.7 / 圆头圆角 */
+export function FolderIcon({ className }: IconProps) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.7}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3.5 7.4a2 2 0 0 1 2-2h3.1a1.6 1.6 0 0 1 1.24.59l1.02 1.22a1.6 1.6 0 0 0 1.24.59h6.4a2 2 0 0 1 2 2v7.6a2 2 0 0 1-2 2h-15a2 2 0 0 1-2-2z" />
+    </svg>
+  );
+}
+
 export function RssIcon({ className }: IconProps) {
   return (
     <svg

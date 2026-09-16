@@ -24,6 +24,7 @@ import { ContentTypeSwitcher } from "./ContentTypeSwitcher";
 import { SettingsModal, ProfileModal } from "@/components/settings";
 import { EditFeedDialog } from "@/components/settings/tabs/EditFeedDialog";
 import { RenameFolderDialog } from "./RenameFolderDialog";
+import { CreateFolderDialog } from "./CreateFolderDialog";
 import {
   useFolders,
   useDeleteFolder,
@@ -103,6 +104,7 @@ export function Sidebar({
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [editingFeed, setEditingFeed] = useState<Feed | null>(null);
   const [renamingFolder, setRenamingFolder] = useState<Folder | null>(null);
+  const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
   const [sortBy, setSortBy] = useState<SortBy>("name");
 
   const visibleContentTypes = useMemo(() => {
@@ -363,7 +365,10 @@ export function Sidebar({
 
   return (
     <div className="flex h-full flex-col bg-sidebar">
-      <SidebarHeader onAddClick={() => onAddClick?.(contentType)} />
+      <SidebarHeader
+        onAddClick={() => onAddClick?.(contentType)}
+        onCreateFolder={() => setIsCreateFolderOpen(true)}
+      />
 
       <ContentTypeSwitcher
         contentType={contentType}
@@ -512,6 +517,12 @@ export function Sidebar({
         onOpenChange={(open) => {
           if (!open) setRenamingFolder(null);
         }}
+      />
+
+      <CreateFolderDialog
+        open={isCreateFolderOpen}
+        onOpenChange={setIsCreateFolderOpen}
+        contentType={contentType}
       />
 
       <EditFeedDialog

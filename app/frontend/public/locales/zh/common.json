@@ -484,6 +484,8 @@
     "timing_on_visible": "看到即已读"
   },
   "folder": {
+    "create": "新增分类",
+    "create_failed": "新建分类失败",
     "rename": "重命名文件夹",
     "name_placeholder": "文件夹名称",
     "rename_failed": "重命名失败"

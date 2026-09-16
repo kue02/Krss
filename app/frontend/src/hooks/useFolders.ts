@@ -1,11 +1,30 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { listFolders, deleteFolder, updateFolder, updateFolderType } from "@/api";
+import {
+  listFolders,
+  createFolder,
+  deleteFolder,
+  updateFolder,
+  updateFolderType,
+} from "@/api";
 import type { ContentType } from "@/types/api";
 
 export function useFolders() {
   return useQuery({
     queryKey: ["folders"],
     queryFn: listFolders,
+  });
+}
+
+/** 新建分类（侧栏「+」里的「新增分类」） */
+export function useCreateFolder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { name: string; type?: ContentType }) =>
+      createFolder(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["folders"] });
+      queryClient.invalidateQueries({ queryKey: ["feeds"] });
+    },
   });
 }
 
