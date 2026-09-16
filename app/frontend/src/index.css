@@ -553,3 +553,20 @@ body.mobile-document-scroll-locked {
     animation: nf-enter 200ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
   }
 }
+
+@layer components {
+  /* 社交媒体正文里的引用推文（RSSHub 的 .rsshub-quote 默认没有样式，
+     不处理的话会跟正文糊在一起，看起来就是「格式乱」） */
+  .entry-content .rsshub-quote {
+    margin-top: 10px;
+    padding-left: 10px;
+    border-left: 2px solid var(--border);
+    color: color-mix(in srgb, var(--foreground) 82%, transparent);
+  }
+
+  /* RSSHub 有时用 hr 做分隔，去掉后靠引用块的间距区分；万一还有 hr 也压一压默认外边距 */
+  .entry-content hr {
+    margin: 1em 0;
+    border-color: var(--border);
+  }
+}

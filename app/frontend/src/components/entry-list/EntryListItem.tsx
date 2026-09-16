@@ -1,6 +1,13 @@
 import { forwardRef, useEffect, useRef, useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, Clock, Star } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  Clock,
+  ExternalLink,
+  Star,
+  Undo2,
+} from "lucide-react";
 import { Ripple } from "m3-ripple";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/date-utils";
@@ -9,9 +16,12 @@ import { getEntryImages } from "@/lib/extract-images";
 import { useTranslationStore } from "@/stores/translation-store";
 import { FeedIcon } from "@/components/ui/feed-icon";
 import { useUISettingKey } from "@/hooks/useUISettings";
+import { useMarkAsRead, useMarkAsStarred } from "@/hooks/useEntries";
 import { useAutoReadable } from "@/hooks/useAutoReadable";
 import { stripDuplicatedTitle } from "@/lib/strip-duplicated-title";
 import { stripContentImages } from "@/lib/strip-content-images";
+import { parseSocialSource } from "@/lib/social-source";
+import { removeContentSeparators } from "@/lib/social-content";
 import { useInView } from "@/hooks/useInView";
 import { ArticleContent } from "@/components/ui/article-content";
 import { resolveReadingFontStack } from "@/lib/reading-fonts";
@@ -47,7 +57,11 @@ interface EntryListItemProps {
  *   - 顶部来源行（favicon + 源名 + 相对时间）、底部阅读时长
  */
 /** 社交媒体视图里长贴折叠高度（对齐 Folo 的 collapsedHeight = 300） */
-const SOCIAL_COLLAPSED_HEIGHT = "300px";
+const SOCIAL_COLLAPSED_PX = 300;
+const SOCIAL_COLLAPSED_HEIGHT = `${SOCIAL_COLLAPSED_PX}px`;
+/** Folo 的 mask-b-2xl：只在最后 90px 做淡出 */
+const SOCIAL_COLLAPSE_MASK =
+  "linear-gradient(to bottom, #000 calc(100% - 90px), transparent)";
 
 export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
   function EntryListItem(
@@ -76,6 +90,10 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
     const [isThumbLoaded, setIsThumbLoaded] = useState(false);
     // 社交媒体视图：长贴是否已手动展开（Folo 的「显示更多」）
     const [bodyExpanded, setBodyExpanded] = useState(false);
+    // 展开时先动画到实测高度，动画结束后再交回 auto（对齐 Folo 的 AutoResizeHeight）
+    const [expandTarget, setExpandTarget] = useState<number | null>(null);
+    const { mutate: markAsRead } = useMarkAsRead();
+    const { mutate: markAsStarred } = useMarkAsStarred();
     const showIcon = feed?.iconPath && !iconError;
     const fallbackTitle = t("entry.untitled");
     const fallbackFeedName = t("entry.unknown_feed");
@@ -152,8 +170,10 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
     // 图片也从正文摘掉，交给下面的缩略图行（对齐 Folo 的 noMedia + MediaGallery）
     const socialBody = useMemo(
       () =>
-        stripContentImages(
-          stripDuplicatedTitle(expandedContent, displayTitle),
+        removeContentSeparators(
+          stripContentImages(
+            stripDuplicatedTitle(expandedContent, displayTitle),
+          ),
         ),
       [expandedContent, displayTitle],
     );
@@ -168,6 +188,12 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
       if (title.length < 6 || !raw) return false;
       return raw.startsWith(title);
     }, [displayTitle, entry.content]);
+
+    // 社交平台与作者（从条目链接解析，用于显示 @handle）
+    const socialSource = useMemo(
+      () => (isSocialView ? parseSocialSource(entry.url) : null),
+      [isSocialView, entry.url],
+    );
 
     // 社交媒体视图的图片行（加载失败的直接不显示，避免破图）
     const [failedThumbs, setFailedThumbs] = useState<Set<string>>(() => new Set());
@@ -194,7 +220,8 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
             inViewRef.current = node;
           }}
           className={cn(
-            "group relative mx-2 mb-1 flex cursor-pointer rounded-xl border border-transparent px-3 py-4 transition-colors duration-200",
+            // Folo 的社交时间线是「居中可读宽度」而不是通栏
+            "group relative mx-auto mb-1 flex w-full max-w-[clamp(45ch,60vw,65ch)] cursor-pointer rounded-xl border border-transparent px-3 py-4 transition-colors duration-200",
             isSelected ? "border-border/60 bg-card shadow-nf" : "hover:bg-item-hover",
             !isUnread && !entry.starred && !isSelected && "opacity-[0.78]",
           )}
@@ -228,11 +255,27 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
           )}
 
           <div className="ml-2 min-w-0 flex-1">
-            {/* 作者行：源名 · 时间 */}
-            <div className="flex flex-wrap items-center gap-x-1 leading-6">
+            {/* 作者行：源名 · @handle · 时间（Folo 这里 select-none，拖选只作用于正文） */}
+            <div className="flex select-none flex-wrap items-center gap-x-1 leading-6">
               <span className="truncate text-base font-semibold text-foreground">
                 {displayFeedName}
               </span>
+              {/* Folo 会在源名后面挂 @handle（可点进作者主页）；
+                  源名里已经带同一 handle 时不重复显示 */}
+              {socialSource &&
+                !displayFeedName.toLowerCase().includes(
+                  socialSource.handle.toLowerCase(),
+                ) && (
+                  <a
+                    href={socialSource.profileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="truncate text-muted-foreground transition-colors duration-200 hover:text-foreground"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    @{socialSource.handle}
+                  </a>
+                )}
               {publishedAt && (
                 <>
                   <span className="text-muted-foreground">·</span>
@@ -270,29 +313,42 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
                       ...(bodyClamped
                         ? {
                             maxHeight: SOCIAL_COLLAPSED_HEIGHT,
-                            maskImage:
-                              "linear-gradient(to bottom, #000 62%, transparent)",
-                            WebkitMaskImage:
-                              "linear-gradient(to bottom, #000 62%, transparent)",
+                            overflow: "hidden",
+                            maskImage: SOCIAL_COLLAPSE_MASK,
+                            WebkitMaskImage: SOCIAL_COLLAPSE_MASK,
+                          }
+                        : {}),
+                      ...(expandTarget !== null
+                        ? {
+                            maxHeight: `${expandTarget}px`,
+                            overflow: "hidden",
+                            transition:
+                              "max-height 220ms cubic-bezier(0.22, 0.61, 0.36, 1)",
                           }
                         : {}),
                     }}
+                    onTransitionEnd={() => setExpandTarget(null)}
                   >
                     <ArticleContent content={socialBody} articleUrl={entry.url} />
                   </div>
 
+                  {/* 显示更多：Folo 是「纯文字 + 下箭头」压在正文底部，不是一颗胶囊按钮 */}
                   {bodyClamped && (
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setBodyExpanded(true);
-                      }}
-                      className="mx-auto mt-1 flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
-                    >
-                      {t("entry.show_more")}
-                      <ChevronDown className="size-3.5" />
-                    </button>
+                    <div className="absolute inset-x-0 -bottom-2 flex select-none justify-center py-2">
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          const node = expandedBodyRef.current;
+                          setExpandTarget(node ? node.scrollHeight : null);
+                          setBodyExpanded(true);
+                        }}
+                        className="flex items-center justify-center text-xs text-muted-foreground transition-colors duration-200 hover:text-foreground"
+                      >
+                        <ChevronDown className="size-3.5" />
+                        <span className="ml-2">{t("entry.show_more")}</span>
+                      </button>
+                    </div>
                   )}
                 </>
               ) : (
@@ -320,6 +376,45 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
                   ))}
               </div>
             )}
+
+            {/* 悬停操作条（对齐 Folo 的 ActionBar）：默认透明，悬停/选中时浮出 */}
+            <div
+              className={cn(
+                "absolute right-2 top-2 z-10 flex items-center gap-0.5 rounded-lg border border-border/60 bg-overlay/90 p-1 shadow-nf backdrop-blur-sm transition-opacity duration-200",
+                isSelected
+                  ? "opacity-100"
+                  : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100",
+              )}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                title={entry.starred ? t("entry.remove_from_starred") : t("entry.add_to_starred")}
+                onClick={() => markAsStarred({ id: entry.id, starred: !entry.starred })}
+                className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
+              >
+                <Star className={cn("size-4", entry.starred && "fill-amber-500 text-amber-500")} />
+              </button>
+              <button
+                type="button"
+                title={isUnread ? t("entry.mark_read") : t("entry.mark_unread")}
+                onClick={() => markAsRead({ id: entry.id, read: isUnread })}
+                className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
+              >
+                {isUnread ? <Check className="size-4" /> : <Undo2 className="size-4" />}
+              </button>
+              {entry.url && (
+                <a
+                  href={entry.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={t("entry.open_original")}
+                  className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
+                >
+                  <ExternalLink className="size-4" />
+                </a>
+              )}
+            </div>
 
             {/* 底部元信息 */}
             <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground">

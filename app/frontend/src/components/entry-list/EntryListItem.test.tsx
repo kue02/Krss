@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EntryListItem } from "./EntryListItem";
 import type { Entry, Feed } from "@/types/api";
@@ -12,6 +12,16 @@ vi.mock("react-i18next", () => ({
       return key;
     },
   }),
+}));
+
+const { markAsRead, markAsStarred } = vi.hoisted(() => ({
+  markAsRead: vi.fn(),
+  markAsStarred: vi.fn(),
+}));
+
+vi.mock("@/hooks/useEntries", () => ({
+  useMarkAsRead: () => ({ mutate: markAsRead }),
+  useMarkAsStarred: () => ({ mutate: markAsStarred }),
 }));
 
 vi.mock("@/stores/translation-store", () => ({
@@ -131,5 +141,80 @@ describe("EntryListItem", () => {
     expect(image?.parentElement?.className).toContain("w-full");
 
     setUISetting("cardImageSize", "small");
+  });
+
+  describe("社交媒体视图", () => {
+    const socialEntry: Entry = {
+      ...entry,
+      url: "https://x.com/op7418/status/2100033975758856654",
+    };
+
+    it("条目用居中可读宽度（对齐 Folo），不是通栏", () => {
+      const { container } = render(
+        <EntryListItem
+          entry={socialEntry}
+          feed={feed}
+          isSelected={false}
+          onClick={() => {}}
+          data-entry-id="entry-1"
+          social
+        />,
+      );
+      const row = container.querySelector("[data-entry-id]");
+      expect(row?.className).toContain("max-w-[clamp(45ch,60vw,65ch)]");
+      expect(row?.className).toContain("mx-auto");
+    });
+
+    it("从链接解析出 @handle 并链到作者主页", () => {
+      render(
+        <EntryListItem
+          entry={socialEntry}
+          feed={feed}
+          isSelected={false}
+          onClick={() => {}}
+          social
+        />,
+      );
+      const handle = screen.getByText("@op7418");
+      expect(handle.getAttribute("href")).toBe("https://x.com/op7418");
+      expect(handle.getAttribute("target")).toBe("_blank");
+    });
+
+    it("悬停操作条：切换星标/已读，且不触发打开文章", () => {
+      const onClick = vi.fn();
+      render(
+        <EntryListItem
+          entry={socialEntry}
+          feed={feed}
+          isSelected={false}
+          onClick={onClick}
+          social
+        />,
+      );
+
+      fireEvent.click(screen.getByTitle("entry.add_to_starred"));
+      expect(markAsStarred).toHaveBeenCalledWith({
+        id: "entry-1",
+        starred: true,
+      });
+
+      fireEvent.click(screen.getByTitle("entry.mark_read"));
+      expect(markAsRead).toHaveBeenCalledWith({ id: "entry-1", read: true });
+
+      expect(onClick).not.toHaveBeenCalled();
+    });
+
+    it("源名里已带同一 handle 时不重复显示", () => {
+      render(
+        <EntryListItem
+          entry={socialEntry}
+          feed={{ ...feed, title: "op7418" }}
+          isSelected={false}
+          onClick={() => {}}
+          social
+        />,
+      );
+      expect(screen.queryByText("@op7418")).toBeNull();
+    });
   });
 });

@@ -559,7 +559,8 @@ export function EntryList({
           ) : entries.length === 0 ? (
             <EntryListEmpty />
           ) : (
-            <div className="w-full">
+            <div className="w-full pb-16">
+              {/* pb-16：底部悬浮的「星标 / 未读 / 全部」胶囊会盖住内容，留白让最后一条能滚上来 */}
               {entries.map((entry, index) => (
                 <EntryListItem
                   key={entry.id}
