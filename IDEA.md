@@ -181,7 +181,13 @@ Gist 的内容类型是后端枚举（`article/picture/notification`），要加
       实测 iframe 加载 sspai 文章页 810×824
 - [x] **14 AI 多提供商**：`ai.providers` / `ai.active_provider_id` 存储，列表可增删、改名、切换「当前使用」，
       平铺字段始终等于当前那份（AI 服务读取路径零改动）
-- [ ] **15 用 ego 打开 Nextflux 逐项校对样式与动效**（按用户要求放最后）
+- [x] **15 用 ego 打开 Nextflux 逐项校对样式与动效**（参照物是用户 NAS 上的实例 `http://192.0.2.1:3100/`，
+      Ego 已登录）。做法：在两边量**同一批元素的 computed style** 再对齐，不靠肉眼。已对齐：卡片内边距 8px、
+      圆角 10px(≈9.6)、标题 16px/600/24px、源名 12px/700、元信息 12px、摘要 14px、源图标 20px、阅读正文默认 16px/1.8；
+      一致项：侧栏 256px、列表头按钮 32×32 圆形、卡片 hover `all .2s` + 涟漪参数、四档阴影令牌。
+      刻意保留：已读态（Nextflux muted+opacity-50 对比度仅 ≈2.4）、社交正文（对齐 Folo 的 14px/1.625）。
+      未实现（中等宽度才触发）：`.article-list-shifted/.sidebar-shifted` 0.5s 位移+变暗、设置面板 300ms 滑入 + blur(3px)。
+      对照表与取舍写在 `docs/移植笔记.md`
 
 ### 待拍板（等用户）
 
