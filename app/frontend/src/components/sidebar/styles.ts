@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 export const feedItemStyles = cn(
   "flex w-full cursor-pointer items-center rounded-lg pr-2.5 h-8 gap-2",
   "text-[0.8125rem] font-medium leading-loose",
-  "hover:bg-item-hover transition-colors duration-150",
+  "hover:bg-item-hover transition-colors duration-200",
   "data-[active=true]:bg-item-active",
 );
 

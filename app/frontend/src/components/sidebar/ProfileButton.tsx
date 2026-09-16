@@ -17,7 +17,7 @@ import useMeasure from "react-use-measure";
 const menuItemStyles = cn(
   "group relative flex cursor-pointer select-none items-center gap-2",
   "rounded-[5px] px-2.5 py-1 text-sm font-medium",
-  "text-foreground/90 outline-none transition-colors duration-150",
+  "text-foreground/90 outline-none transition-colors duration-200",
   "focus:bg-accent/30 data-[highlighted]:bg-accent/20",
   "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
   "h-[28px]",

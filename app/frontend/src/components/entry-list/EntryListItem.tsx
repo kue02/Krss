@@ -196,7 +196,7 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
           className={cn(
             "group relative mx-2 mb-1 flex cursor-pointer rounded-xl border border-transparent px-3 py-4 transition-colors duration-200",
             isSelected ? "border-border/60 bg-card shadow-nf" : "hover:bg-item-hover",
-            !isUnread && !entry.starred && !isSelected && "opacity-70",
+            !isUnread && !entry.starred && !isSelected && "opacity-[0.78]",
           )}
           style={style}
           data-index={dataIndex}
@@ -350,7 +350,7 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
             ? "border-border/60 bg-card shadow-nf"
             : "border-transparent hover:bg-item-hover",
           // 对齐 Nextflux：已读且未加星标的卡片整体降透明度
-          !isUnread && !entry.starred && !isSelected && "opacity-70",
+          !isUnread && !entry.starred && !isSelected && "opacity-[0.78]",
         )}
         style={style}
         data-index={dataIndex}
@@ -397,9 +397,9 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
             className={cn(
               "mt-1.5 text-[15px] leading-snug wrap-anywhere",
               titleContainsUrl ? "line-clamp-3" : "line-clamp-2",
-              isUnread
-                ? "font-semibold text-foreground"
-                : "font-medium text-muted-foreground",
+              // Nextflux 只用 opacity 表示已读；这里标题始终是前景色，
+              // 已读/未读只差字重，避免再叠一层灰导致正文难以辨认
+              isUnread ? "font-semibold text-foreground" : "font-medium text-foreground",
             )}
           >
             {displayTitle || fallbackTitle}
