@@ -4,6 +4,7 @@ import {
   useRef,
   useMemo,
   useCallback,
+  useState,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useEntriesInfinite, useUnreadCounts } from "@/hooks/useEntries";
@@ -35,6 +36,7 @@ import { useScrollMarkRead } from "./useScrollMarkRead";
 import { useEntryListScrollSurface } from "./scroll-surface";
 import { useEntryHotkeys } from "@/hooks/useEntryHotkeys";
 import { useUISettingKey } from "@/hooks/useUISettings";
+import { ArrowUp } from "lucide-react";
 import type { Entry, Feed, Folder, ContentType } from "@/types/api";
 
 interface EntryListProps {
@@ -240,6 +242,44 @@ export function EntryList({
     onEscape: onCloseEntry,
     enabled: isActive,
   });
+  // 列表滚上去以后，右上角浮出「当前序号 + 回到顶部」（对齐 Nextflux 的 Indicator）
+  const [firstVisibleIndex, setFirstVisibleIndex] = useState(0);
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      const items = node.querySelectorAll<HTMLElement>("[data-entry-id]");
+      if (items.length === 0) return;
+      const containerTop = node.getBoundingClientRect().top;
+      let index = items.length - 1;
+      for (let i = 0; i < items.length; i += 1) {
+        const el = items[i];
+        if (!el) continue;
+        const bottom = el.getBoundingClientRect().bottom - containerTop + 8;
+        if (bottom > 0) {
+          index = i;
+          break;
+        }
+      }
+      setFirstVisibleIndex((prev) => (prev === index ? prev : index));
+    };
+
+    const handleScroll = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(measure);
+    };
+
+    node.addEventListener("scroll", handleScroll, { passive: true });
+    measure();
+    return () => {
+      node.removeEventListener("scroll", handleScroll);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [entries.length]);
+
   const { endPaddingHeight: scrollReadEndPaddingHeight } = useScrollMarkRead({
     surface: scrollSurface,
     contentRootRef: containerRef,
@@ -460,8 +500,8 @@ export function EntryList({
       ref={listWrapperRef}
       className={cn(
         usesDocumentScroll
-          ? "entry-list-document min-h-[var(--app-dvh)]"
-          : "flex h-full flex-col",
+          ? "entry-list-document relative min-h-[var(--app-dvh)]"
+          : "relative flex h-full flex-col",
       )}
     >
       <MobileDocumentHeader
@@ -483,6 +523,19 @@ export function EntryList({
           sidebarVisible={sidebarVisible}
         />
       </MobileDocumentHeader>
+
+      {/* 「当前序号 + 回到顶部」浮标（对齐 Nextflux 的 Indicator） */}
+      {firstVisibleIndex > 0 && (
+        <button
+          type="button"
+          onClick={scrollToTop}
+          title={t("entry_list.back_to_top")}
+          className="nf-enter absolute right-3 top-14 z-20 flex cursor-pointer select-none items-center gap-0.5 rounded-full bg-overlay/70 px-2 py-1 font-mono text-xs font-medium text-muted-foreground shadow-nf backdrop-blur-2xl transition-colors duration-200 hover:text-foreground"
+        >
+          {firstVisibleIndex}
+          <ArrowUp className="size-3 opacity-60" strokeWidth={3} />
+        </button>
+      )}
 
       <div
         className={cn(

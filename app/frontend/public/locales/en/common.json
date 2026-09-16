@@ -362,7 +362,8 @@
     "starred": "Starred",
     "feed": "Feed",
     "folder": "Folder",
-    "no_articles": "No articles"
+    "no_articles": "No articles",
+    "back_to_top": "Back to top"
   },
   "update": {
     "available": "Update Available",
