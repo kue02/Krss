@@ -6,6 +6,7 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuSub,
   ContextMenuSubContent,
   ContextMenuSubTrigger,
@@ -142,15 +143,6 @@ export function FeedItem({
             {t("actions.refresh")}
           </ContextMenuItem>
         )}
-        {feedUrl && (
-          <ContextMenuItem
-            onClick={() => {
-              void copyToClipboard(feedUrl, t("actions.copied_feed_url"));
-            }}
-          >
-            {t("actions.copy_feed_url")}
-          </ContextMenuItem>
-        )}
         {onEdit && (
           <ContextMenuItem onClick={() => onEdit(feedId)}>
             {t("actions.edit")}
@@ -199,13 +191,26 @@ export function FeedItem({
             </ContextMenuSubContent>
           </ContextMenuSub>
         )}
-        {onDelete && (
+        {feedUrl && (
           <ContextMenuItem
-            className="text-destructive focus:text-destructive"
-            onClick={() => onDelete(feedId)}
+            onClick={() => {
+              void copyToClipboard(feedUrl, t("actions.copied_feed_url"));
+            }}
           >
-            {t("actions.delete")}
+            {t("actions.copy_feed_url")}
           </ContextMenuItem>
+        )}
+        {onDelete && (
+          <>
+            {/* 删除是破坏性操作：单独一组，避免误点 */}
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={() => onDelete(feedId)}
+            >
+              {t("actions.delete")}
+            </ContextMenuItem>
+          </>
         )}
       </ContextMenuContent>
     </ContextMenu>

@@ -6,6 +6,7 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuSub,
   ContextMenuSubContent,
   ContextMenuSubTrigger,
@@ -145,12 +146,16 @@ export function FeedCategory({
             </ContextMenuSub>
           )}
           {onDelete && (
-            <ContextMenuItem
-              className="text-destructive focus:text-destructive"
-              onClick={() => onDelete(folderId)}
-            >
-              {t("actions.delete")}
-            </ContextMenuItem>
+            <>
+              {/* 删除是破坏性操作：单独一组，避免误点 */}
+              <ContextMenuSeparator />
+              <ContextMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={() => onDelete(folderId)}
+              >
+                {t("actions.delete")}
+              </ContextMenuItem>
+            </>
           )}
         </ContextMenuContent>
       </ContextMenu>

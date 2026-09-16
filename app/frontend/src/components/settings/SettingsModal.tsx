@@ -22,6 +22,35 @@ export type SettingsTab =
   | "folders"
   | "advanced";
 
+/**
+ * 设置标签的显示顺序 —— 按「用得多少」排，不是按模块新旧：
+ *   外观（主题/字体/卡片，天天调）→ 订阅/文件夹（增删订阅）→ 通用（语言、阅读行为、RSSHub 实例）
+ *   → AI（模型与自动摘要翻译）→ 网络（代理）→ 高级（域名限流）→ 数据控制（导入导出/清缓存，低频且有破坏性）
+ * 侧栏与移动端下拉共用这一份顺序。
+ */
+export const SETTINGS_TAB_ORDER: SettingsTab[] = [
+  "appearance",
+  "feeds",
+  "folders",
+  "general",
+  "ai",
+  "network",
+  "advanced",
+  "data",
+];
+
+/** 每个标签对应的文案键（侧栏与下拉共用） */
+export const SETTINGS_TAB_LABEL_KEYS: Record<SettingsTab, string> = {
+  general: "settings.general",
+  network: "settings.network",
+  appearance: "settings.appearance",
+  ai: "settings.ai",
+  data: "settings.data",
+  feeds: "settings.subscriptions",
+  folders: "settings.folders",
+  advanced: "settings.advanced",
+};
+
 interface SettingsModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -105,16 +134,9 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
     }
   };
 
-  const tabs: { id: SettingsTab; label: string }[] = [
-    { id: "general", label: t("settings.general") },
-    { id: "network", label: t("settings.network") },
-    { id: "appearance", label: t("settings.appearance") },
-    { id: "ai", label: t("settings.ai") },
-    { id: "data", label: t("settings.data") },
-    { id: "feeds", label: t("settings.subscriptions") },
-    { id: "folders", label: t("settings.folders") },
-    { id: "advanced", label: t("settings.advanced") },
-  ];
+  const tabs: { id: SettingsTab; label: string }[] = SETTINGS_TAB_ORDER.map(
+    (id) => ({ id, label: t(SETTINGS_TAB_LABEL_KEYS[id]) }),
+  );
 
   // Mobile layout
   if (isMobile) {

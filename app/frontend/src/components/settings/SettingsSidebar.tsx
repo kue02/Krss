@@ -1,6 +1,7 @@
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
-import type { SettingsTab } from "./SettingsModal";
+import { SETTINGS_TAB_ORDER, type SettingsTab } from "./SettingsModal";
 
 interface SettingsSidebarProps {
   activeTab: SettingsTab;
@@ -180,6 +181,16 @@ export function SettingsSidebar({
     },
   ];
 
+  // 显示顺序统一由 SETTINGS_TAB_ORDER 决定（按使用频次排），这里只管图标和文案
+  const orderedNavItems = useMemo(
+    () =>
+      [...navItems].sort(
+        (a, b) =>
+          SETTINGS_TAB_ORDER.indexOf(a.id) - SETTINGS_TAB_ORDER.indexOf(b.id),
+      ),
+    [navItems],
+  );
+
   return (
     <div className="flex min-w-[180px] max-w-[200px] flex-col border-r border-border bg-sidebar px-2 py-6">
       {/* Logo */}
@@ -190,7 +201,7 @@ export function SettingsSidebar({
 
       {/* Navigation */}
       <nav className="flex flex-col gap-0.5">
-        {navItems.map((item) => (
+        {orderedNavItems.map((item) => (
           <button
             key={item.id}
             type="button"
