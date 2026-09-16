@@ -99,7 +99,8 @@ export function FeedItem({
           <Ripple hoverOpacity={0} pressedOpacity={0.05} duration={100} />
           <div
             className={cn(
-              "flex min-w-0 items-center",
+              // gap-2：与分组行/内容类型行一致，图标和名称之间留 8px（原来贴在一起）
+              "flex min-w-0 items-center gap-2",
               hasError && "text-red-500 dark:text-red-400",
             )}
           >
@@ -112,7 +113,8 @@ export function FeedItem({
                   onError={() => setIconError(true)}
                 />
               ) : (
-                <RssIcon className="size-[18px] text-muted-foreground" />
+                // 无图标时占位图标要与 favicon 同尺寸（16px），否则这一行的名称会比其他行偏一点
+                <RssIcon className="size-4 text-muted-foreground" />
               )}
             </span>
             <span className="min-w-0 truncate">{name}</span>
