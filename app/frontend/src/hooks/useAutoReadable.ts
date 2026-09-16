@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchReadableContent } from "@/api";
 import { stripHtml } from "@/lib/html-utils";
+import { looksLikeJunkContent } from "@/lib/readable-quality";
 import type { Entry } from "@/types/api";
 
 /** 正文短于这个长度就认为「源只给了摘要」，必要时去抓正文 */
@@ -27,9 +28,12 @@ export function useAutoReadable(
   useEffect(() => {
     if (!enabled) return;
 
-    // 后端已经抓过就直接用
+    // 后端已经抓过就直接用——但要先过质量校验：
+    // 实测对 X 这类社交链接抓回的是未登录落地页，宁可不用
     if (entry.readableContent) {
-      setContent(entry.readableContent);
+      if (!looksLikeJunkContent(entry.readableContent)) {
+        setContent(entry.readableContent);
+      }
       return;
     }
 
@@ -40,7 +44,10 @@ export function useAutoReadable(
     let cancelled = false;
     fetchReadableContent(entry.id)
       .then((html) => {
-        if (!cancelled && html) setContent(html);
+        if (cancelled || !html) return;
+        // 抓回登录墙/付费墙/验证页就丢掉，保留源内容
+        if (looksLikeJunkContent(html)) return;
+        setContent(html);
       })
       .catch(() => {
         // 抓取失败就退回 feed 原始内容，不打扰用户；同时放开标记允许下次重试

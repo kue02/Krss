@@ -136,7 +136,7 @@ describe("AppearanceSettings 按视图设置", () => {
     expect(scrollRows).toHaveLength(4);
   });
 
-  it("「缺全文时自动抓取」只在社交媒体视图出现，默认关", () => {
+  it("「缺全文时自动抓取」只在文章视图出现（社交链接抓回的是登录墙），默认关", () => {
     render(<AppearanceSettings />);
 
     const rows = screen.getAllByText("appearance_view.fetch_readable");
@@ -146,7 +146,7 @@ describe("AppearanceSettings 按视图设置", () => {
     expect(within(row).queryByText("off")).not.toBeNull();
     fireEvent.click(within(row).getByText("on"));
 
-    expect(setFetchReadableForView).toHaveBeenCalledWith("social", true);
+    expect(setFetchReadableForView).toHaveBeenCalledWith("article", true);
   });
 
   it("「减少动态效果」默认关，可打开", () => {

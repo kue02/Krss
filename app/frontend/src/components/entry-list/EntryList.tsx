@@ -138,8 +138,11 @@ export function EntryList({
   const isSocialView = contentType === "social";
   const fetchReadableByView = useUISettingKey("fetchReadableByView");
   const expandLongByView = useUISettingKey("expandLongByView");
+  // 「缺全文时自动抓取」只在文章类开放（设置里也只为文章渲染这一行）：
+  // 实测对社交链接抓回的是 X 未登录落地页，比源内容还差。
+  // 这里同时挡住存量设置里可能残留的 social=true。
   const fetchReadableEnabled =
-    isSocialView && (fetchReadableByView?.[contentType] ?? false);
+    contentType === "article" && (fetchReadableByView?.[contentType] ?? false);
   const scrollReadOverride = scrollReadByView?.[contentType] ?? "inherit";
   const scrollReadEnabled =
     scrollReadOverride === "inherit"

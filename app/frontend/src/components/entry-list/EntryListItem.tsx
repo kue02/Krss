@@ -137,11 +137,8 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
     const summaryContainsUrl = URL_PATTERN.test(displaySummary ?? "");
     const { ref: inViewRef, inView } = useInView<HTMLDivElement>("600px");
     const isSocialView = social;
-    // 只在社交媒体视图 + 进入视口时按需抓正文，避免一次并发抓取整屏
-    const autoReadable = useAutoReadable(
-      entry,
-      isSocialView && fetchReadable && inView,
-    );
+    // 只在进入视口时按需抓正文，避免一次并发抓取整屏
+    const autoReadable = useAutoReadable(entry, fetchReadable && inView);
     const expandedBodyRef = useRef<HTMLDivElement | null>(null);
     const [isContentClipped, setIsContentClipped] = useState(false);
 

@@ -502,7 +502,8 @@ export function AppearanceSettings() {
                     />
                   </SettingRow>
                 )}
-                {view === "social" && (
+                {/* 「缺全文时自动抓取」只对文章类开放：社交链接抓回的是登录墙 */}
+                {view === "article" && (
                   <SettingRow label={t("appearance_view.fetch_readable")}>
                     <SegmentedControl
                       className="shrink-0"
