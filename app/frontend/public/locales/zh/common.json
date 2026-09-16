@@ -178,6 +178,7 @@
     "view_preview_no_image": "前几条里没有图片，放进图片视图可能没有内容"
   },
   "entry": {
+    "toc": "目录",
     "read": "已读",
     "expand_hint": "点开在阅读区查看全文",
     "show_more": "显示更多",

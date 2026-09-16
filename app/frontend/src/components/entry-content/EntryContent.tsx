@@ -16,6 +16,7 @@ import { useAISummary } from "@/hooks/useAISummary";
 import { useAITranslation } from "@/hooks/useAITranslation";
 import { EntryContentHeader } from "./EntryContentHeader";
 import { EntryContentBody } from "./EntryContentBody";
+import { EntryToc } from "./EntryToc";
 import { OriginalSiteView } from "./OriginalSiteView";
 import { isPlainKey, isTypingTarget } from "@/lib/keyboard";
 
@@ -189,6 +190,7 @@ export function EntryContent({ entryId, isMobile, onBack }: EntryContentProps) {
         summaryError={summaryError}
       />
       )}
+      <EntryToc scrollNode={scrollNode} entryId={entryId} />
     </div>
   );
 }

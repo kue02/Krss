@@ -178,6 +178,7 @@
     "view_preview_no_image": "No images in the first few entries — this feed may be empty in the pictures view"
   },
   "entry": {
+    "toc": "Contents",
     "read": "Read",
     "expand_hint": "Open in the reader for the full article",
     "show_more": "Show more",
