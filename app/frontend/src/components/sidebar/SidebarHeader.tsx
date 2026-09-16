@@ -1,29 +1,33 @@
+import { useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
-import { AddIcon, FolderIcon } from "@/components/ui/icons";
+import {
+  AddIcon,
+  FolderIcon,
+  RssIcon,
+  UploadIcon,
+} from "@/components/ui/icons";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { startImportOPML } from "@/api";
+import { showToast } from "@/stores/toast-store";
 
+// HeroUI v3 的 Button size="sm" variant="ghost" isIconOnly：36px 圆形按钮，按压 0.97
 const actionButtonStyles = cn(
-  "inline-flex items-center justify-center",
-  "rounded-full size-8",
-  "hover:bg-item-hover transition-colors duration-200",
-  "data-[state=open]:bg-item-hover",
+  "dropdown-trigger inline-flex items-center justify-center",
+  "rounded-full size-9",
+  "transition-colors duration-150",
+  "hover:bg-item-hover data-[state=open]:bg-item-hover",
   "disabled:cursor-not-allowed disabled:opacity-50",
 );
 
-/** 菜单行样式与账户菜单保持一致（对齐 Nextflux 的菜单行：28px 高 / 圆角 5px / 14px 字） */
-const menuItemStyles = cn(
-  "group relative flex cursor-pointer select-none items-center gap-2",
-  "rounded-[5px] px-2.5 py-1 text-sm font-medium",
-  "text-foreground/90 outline-none transition-colors duration-200",
-  "focus:bg-accent/30 data-[highlighted]:bg-accent/20",
-  "h-[28px]",
-);
+/** 菜单行度量统一由 DropdownMenuItem（HeroUI .menu-item）提供，这里只压前景色 */
+const menuItemStyles = cn("text-foreground/90");
 
 interface SidebarHeaderProps {
   title?: string;
@@ -44,6 +48,32 @@ export function SidebarHeader({
   onCreateFolder,
 }: SidebarHeaderProps) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 与 NextFlux 的 AddFeedButton 一致：加号菜单里直接导入 OPML
+  const handleFileChange = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      await startImportOPML(file);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["feeds"] }),
+        queryClient.invalidateQueries({ queryKey: ["folders"] }),
+      ]);
+      showToast(t("sidebar.import_success"));
+    } catch (error) {
+      showToast(
+        error instanceof Error
+          ? `${t("sidebar.import_failed")}: ${error.message}`
+          : t("sidebar.import_failed"),
+      );
+    } finally {
+      event.target.value = "";
+    }
+  };
 
   return (
     <div className="flex items-center justify-between gap-2 p-2">
@@ -55,7 +85,15 @@ export function SidebarHeader({
 
       {/* Action buttons */}
       <div className="relative flex items-center gap-1">
-        {/* 加号：下拉里放「添加订阅源 / 新增分类」（对齐 Nextflux 的加号菜单） */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".opml,.xml"
+          onChange={handleFileChange}
+          className="hidden"
+        />
+
+        {/* 加号：下拉里放「添加订阅源 / 导入 OPML / 新增分类」，与 NextFlux 的加号菜单同构 */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -63,24 +101,27 @@ export function SidebarHeader({
               className={actionButtonStyles}
               aria-label={t("actions.add_feed")}
             >
-              <AddIcon className="size-5 text-muted-foreground transition-transform duration-200 data-[state=open]:rotate-45" />
+              <AddIcon className="size-4 text-muted-foreground" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="end"
-            sideOffset={6}
-            className="min-w-[180px] p-1 backdrop-blur-2xl"
-          >
+          <DropdownMenuContent align="end" sideOffset={4}>
             <DropdownMenuItem className={menuItemStyles} onSelect={onAddClick}>
-              <AddIcon className="size-4 text-muted-foreground" />
+              <RssIcon className="size-4 shrink-0 text-muted-foreground" />
               <span>{t("actions.add_feed")}</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className={menuItemStyles}
+              onSelect={() => fileInputRef.current?.click()}
+            >
+              <UploadIcon className="size-4 shrink-0 text-muted-foreground" />
+              <span>{t("sidebar.import_opml")}</span>
             </DropdownMenuItem>
             {onCreateFolder && (
               <DropdownMenuItem
                 className={menuItemStyles}
                 onSelect={onCreateFolder}
               >
-                <FolderIcon className="size-4 text-muted-foreground" />
+                <FolderIcon className="size-4 shrink-0 text-muted-foreground" />
                 <span>{t("folder.create")}</span>
               </DropdownMenuItem>
             )}

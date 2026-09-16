@@ -7,7 +7,10 @@
     "sort_name": "按名称排序",
     "sort_date": "按日期排序",
     "starred": "已加星标",
-    "uncategorized": "未分类"
+    "uncategorized": "未分类",
+    "import_opml": "导入 OPML",
+    "import_success": "OPML 导入完成",
+    "import_failed": "OPML 导入失败"
   },
   "content_type": {
     "article": "文章",

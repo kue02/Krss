@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { ChevronsUpDownIcon } from "@/components/ui/icons";
 import { ProfileButton } from "./ProfileButton";
 
 interface SidebarAccountBarProps {
@@ -43,11 +44,13 @@ export function SidebarAccountBar({
         onSettingsClick={onSettingsClick}
         onLogoutClick={onLogoutClick}
         // 整行可点（头像 + 名字），和 Nextflux 一致；不是只有那个 32px 的头像能点
-        triggerClassName="flex h-10 w-full items-center gap-2 rounded-[19px] px-3 py-2 text-left transition-colors duration-200 hover:bg-item-hover data-[state=open]:bg-item-hover"
+        triggerClassName="dropdown-trigger flex w-full items-center gap-2 rounded-[19px] px-3 py-2 text-left hover:bg-item-hover data-[state=open]:bg-item-hover"
       >
-        <span className="min-w-0 flex-1 select-none truncate text-sm font-medium leading-tight text-foreground/90">
+        {/* 与 NextFlux 的 ProfileButton 同构：图标 + 名字（font-semibold, truncate）+ 右侧上下箭头 */}
+        <span className="min-w-0 flex-1 select-none truncate text-sm font-semibold leading-tight text-foreground/90">
           {displayName}
         </span>
+        <ChevronsUpDownIcon className="size-4 shrink-0 text-muted-foreground" />
       </ProfileButton>
     </div>
   );

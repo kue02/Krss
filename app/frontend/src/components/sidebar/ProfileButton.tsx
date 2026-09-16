@@ -14,14 +14,8 @@ import { RootPortal } from "@/components/ui/portal";
 import { shortcutsHelp } from "@/stores/shortcuts-store";
 import useMeasure from "react-use-measure";
 
-const menuItemStyles = cn(
-  "group relative flex cursor-pointer select-none items-center gap-2",
-  "rounded-[5px] px-2.5 py-1 text-sm font-medium",
-  "text-foreground/90 outline-none transition-colors duration-200",
-  "focus:bg-accent/30 data-[highlighted]:bg-accent/20",
-  "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
-  "h-[28px]",
-);
+// 菜单行的度量统一由 DropdownMenuItem 提供（HeroUI v3 的 .menu-item），这里只压一点前景色
+const menuItemStyles = cn("text-foreground/90");
 
 interface ProfileButtonProps {
   avatarUrl?: string;
@@ -232,21 +226,8 @@ export function ProfileButton({
         </TransitionAvatar>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent
-        className={cn(
-          "min-w-[240px] p-1 overflow-visible !animate-none",
-          "backdrop-blur-2xl",
-          "motion-scale-in-75 motion-duration-150 motion-ease-out",
-          "data-[state=closed]:motion-scale-out-95 data-[state=closed]:motion-opacity-out-0",
-          "border-border/40",
-          "bg-overlay/95",
-          "shadow-nf-md",
-        )}
-        side="bottom"
-        align="center"
-        sideOffset={10}
-      >
-        <div className="pointer-events-none absolute inset-0 rounded-xl bg-primary/[0.03]" />
+      {/* 外观完全交给 .dropdown-content/.dropdown-surface（HeroUI v3 的度量 + NextFlux 的浮层参数） */}
+      <DropdownMenuContent side="top" align="start" sideOffset={4}>
 
         {/* User info */}
         <DropdownMenuLabel className="px-2 pb-3 pt-6 relative z-10 text-center">
@@ -370,7 +351,10 @@ export function ProfileButton({
         <DropdownMenuSeparator className="bg-border/50" />
 
         {/* Logout */}
-        <DropdownMenuItem className={menuItemStyles} onSelect={onLogoutClick}>
+        <DropdownMenuItem
+          className={cn(menuItemStyles, "text-danger")}
+          onSelect={onLogoutClick}
+        >
           <span className="inline-flex size-4 items-center justify-center">
             <svg
               className={iconStyles}

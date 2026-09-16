@@ -7,7 +7,10 @@
     "sort_name": "Sort by Name",
     "sort_date": "Sort by Date",
     "starred": "Starred",
-    "uncategorized": "Uncategorized"
+    "uncategorized": "Uncategorized",
+    "import_opml": "Import OPML",
+    "import_success": "OPML imported",
+    "import_failed": "OPML import failed"
   },
   "content_type": {
     "article": "Articles",

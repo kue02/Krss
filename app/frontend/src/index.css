@@ -27,6 +27,7 @@
   --color-ring: var(--focus);
   --color-sidebar: var(--surface-secondary);
   --color-sidebar-foreground: var(--foreground);
+  --color-default: var(--default);
   --color-item-active: var(--item-active);
   --color-item-hover: var(--item-hover);
 
@@ -190,33 +191,33 @@ body.mobile-document-scroll-locked {
 }
 
 .dropdown-content[data-side="bottom"] {
-  --dropdown-y: -8px;
+  --dropdown-y: -4px;
 }
 
 .dropdown-content[data-side="top"] {
-  --dropdown-y: 8px;
+  --dropdown-y: 4px;
 }
 
 .dropdown-content[data-side="right"] {
-  --dropdown-x: -8px;
+  --dropdown-x: -4px;
 }
 
 .dropdown-content[data-side="left"] {
-  --dropdown-x: 8px;
+  --dropdown-x: 4px;
 }
 
 .dropdown-content[data-state="open"] {
-  animation: dropdown-in 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: dropdown-in 150ms ease;
 }
 
 .dropdown-content[data-state="closed"] {
-  animation: dropdown-out 120ms ease;
+  animation: dropdown-out 100ms ease;
 }
 
 @keyframes dropdown-in {
   from {
     opacity: 0;
-    transform: translate3d(var(--dropdown-x), var(--dropdown-y), 0) scale(0.96);
+    transform: translate3d(var(--dropdown-x), var(--dropdown-y), 0) scale(0.9);
   }
 
   to {
@@ -233,7 +234,7 @@ body.mobile-document-scroll-locked {
 
   to {
     opacity: 0;
-    transform: translate3d(var(--dropdown-x), var(--dropdown-y), 0) scale(0.96);
+    transform: translate3d(var(--dropdown-x), var(--dropdown-y), 0) scale(0.95);
   }
 }
 
@@ -333,23 +334,31 @@ body.mobile-document-scroll-locked {
 }
 
 .dropdown-surface {
-  background-image: linear-gradient(
-    to bottom right,
-    color-mix(in srgb, var(--overlay) 98%, transparent),
-    color-mix(in srgb, var(--overlay) 90%, transparent)
-  );
+  /* 照抄 NextFlux 的 .dropdown__popover：bg-overlay/90 + backdrop-blur-sm + shadow-custom-md */
+  background-color: color-mix(in srgb, var(--overlay) 90%, transparent);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   /* Nextflux 的柔影（随主题切换明暗版本） */
   box-shadow: var(--shadow-custom-md);
 }
 
-.dropdown-surface-glow {
-  background: linear-gradient(
-    to bottom right,
-    color-mix(in srgb, var(--accent) 8%, transparent),
-    transparent 45%,
-    color-mix(in srgb, var(--accent) 5%, transparent)
-  );
+/* HeroUI v3 菜单行的过渡与按压反馈（数值取自 NextFlux 编译产物里的 .menu-item） */
+.dropdown-item {
+  transition:
+    transform 0.25s cubic-bezier(0.165, 0.84, 0.44, 1),
+    background-color 0.15s ease,
+    box-shadow 0.15s cubic-bezier(0, 0, 0.2, 1);
 }
+
+.dropdown-item:active {
+  transform: scale(0.98);
+}
+
+/* HeroUI 的 .dropdown__trigger：按压 0.97 */
+.dropdown-trigger:active {
+  transform: scale(0.97);
+}
+
 
 .entry-content {
   --entry-border: --border;
