@@ -171,7 +171,11 @@
     "just_now": "刚刚",
     "minutes_ago": "{{count}} 分钟前",
     "hours_ago": "{{count}} 小时前",
-    "days_ago": "{{count}} 天前"
+    "days_ago": "{{count}} 天前",
+    "choose_view": "放进哪个视图",
+    "view_preview_hint": "效果示意",
+    "sample_notification": "新内容提醒",
+    "sample_author": "示例作者"
   },
   "entry": {
     "read": "已读",

@@ -171,7 +171,11 @@
     "just_now": "just now",
     "minutes_ago": "{{count}}m ago",
     "hours_ago": "{{count}}h ago",
-    "days_ago": "{{count}}d ago"
+    "days_ago": "{{count}}d ago",
+    "choose_view": "Which view",
+    "view_preview_hint": "Preview",
+    "sample_notification": "New content",
+    "sample_author": "Sample author"
   },
   "entry": {
     "read": "Read",
