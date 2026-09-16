@@ -10,6 +10,7 @@ var ExtractPublishedAt = extractPublishedAt
 var ExtractThumbnail = extractThumbnail
 var ComputeEntryHash = computeEntryHash
 var OptionalString = optionalString
+var BuildPreviewEntries = buildPreviewEntries
 var WalkTree = walkTree
 var BuildReferer = buildReferer
 var IsValidHost = isValidHost

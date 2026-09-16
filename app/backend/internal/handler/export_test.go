@@ -42,3 +42,5 @@ var NewProxyHandlerHelper = NewProxyHandler
 var WriteServiceError = writeServiceError
 var IDPtrToString = idPtrToString
 var Itoa = itoa
+var TruncatePreviewContent = truncatePreviewContent
+var ToFeedPreviewResponse = toFeedPreviewResponse

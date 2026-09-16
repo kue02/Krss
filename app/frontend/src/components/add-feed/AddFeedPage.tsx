@@ -1,15 +1,8 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { useAddFeed, type SubscribeOptions } from "@/hooks/useAddFeed";
 import { useFolders } from "@/hooks/useFolders";
-import { ViewPreviewMock } from "./ViewPreviewMock";
-import {
-  FileTextIcon,
-  ImageIcon,
-  BellIcon,
-  SocialIcon,
-} from "@/components/ui/icons";
 import { BackIcon } from "@/components/ui/icons";
 import { FeedUrlForm } from "./FeedUrlForm";
 import { FeedPreviewCard } from "./FeedPreviewCard";
@@ -34,15 +27,6 @@ export function AddFeedPage({
   const { feedPreview, isLoading, error, rewrittenFrom, discoverFeed, subscribeFeed } =
     useAddFeed(selectedType);
 
-  const typeOptions = useMemo(
-    () => [
-      { value: "article" as ContentType, icon: FileTextIcon },
-      { value: "picture" as ContentType, icon: ImageIcon },
-      { value: "notification" as ContentType, icon: BellIcon },
-      { value: "social" as ContentType, icon: SocialIcon },
-    ],
-    [],
-  );
   const { data: folders = [] } = useFolders();
 
   const handleSubscribe = useCallback(
@@ -120,51 +104,14 @@ export function AddFeedPage({
             </div>
           )}
 
-          {/* 选择视图 + 效果小样（#8） */}
-          {feedPreview && (
-            <div className="mt-6 space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-medium">
-                  {t("add_feed.choose_view")}
-                </span>
-                <div className="flex flex-wrap gap-1.5">
-                  {typeOptions.map((option) => {
-                    const Icon = option.icon;
-                    const isActive = option.value === selectedType;
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => setSelectedType(option.value)}
-                        className={cn(
-                          "flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors duration-200",
-                          isActive
-                            ? "border-primary bg-item-active text-foreground"
-                            : "border-border text-muted-foreground hover:bg-item-hover hover:text-foreground",
-                        )}
-                      >
-                        <Icon className="size-3.5" />
-                        {t(`content_type.${option.value}`)}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <ViewPreviewMock
-                type={selectedType}
-                sampleTitle={feedPreview.title}
-              />
-            </div>
-          )}
-
-          {/* Feed Preview */}
+          {/* Feed Preview（视图选择与真实效果试看都在卡片底部，紧挨订阅按钮） */}
           {feedPreview && (
             <div className="mt-6">
               <FeedPreviewCard
                 feed={feedPreview}
                 folders={folders}
                 contentType={selectedType}
+                onContentTypeChange={setSelectedType}
                 onSubscribe={handleSubscribe}
                 isLoading={isLoading}
               />

@@ -90,6 +90,17 @@ type feedPreviewResponse struct {
 	ImageURL    *string `json:"imageUrl,omitempty"`
 	ItemCount   *int    `json:"itemCount,omitempty"`
 	LastUpdated *string `json:"lastUpdated,omitempty"`
+	// Entries 订阅前试看的前几条条目（不落库），供「添加订阅」按视图预览真实效果
+	Entries []feedPreviewEntryResponse `json:"entries,omitempty"`
+}
+
+type feedPreviewEntryResponse struct {
+	Title        *string `json:"title,omitempty"`
+	URL          *string `json:"url,omitempty"`
+	Content      *string `json:"content,omitempty"`
+	ThumbnailURL *string `json:"thumbnailUrl,omitempty"`
+	Author       *string `json:"author,omitempty"`
+	PublishedAt  *string `json:"publishedAt,omitempty"`
 }
 
 func NewFeedHandler(service service.FeedService, refreshService service.RefreshService) *FeedHandler {
@@ -489,7 +500,7 @@ func toFeedResponse(feed model.Feed) feedResponse {
 }
 
 func toFeedPreviewResponse(preview service.FeedPreview) feedPreviewResponse {
-	return feedPreviewResponse{
+	resp := feedPreviewResponse{
 		URL:         preview.URL,
 		Title:       preview.Title,
 		Description: preview.Description,
@@ -498,4 +509,36 @@ func toFeedPreviewResponse(preview service.FeedPreview) feedPreviewResponse {
 		ItemCount:   preview.ItemCount,
 		LastUpdated: preview.LastUpdated,
 	}
+
+	for _, entry := range preview.Entries {
+		item := feedPreviewEntryResponse{
+			Title:        entry.Title,
+			URL:          entry.URL,
+			Content:      truncatePreviewContent(entry.Content),
+			ThumbnailURL: entry.ThumbnailURL,
+			Author:       entry.Author,
+		}
+		if entry.PublishedAt != nil {
+			published := entry.PublishedAt.UTC().Format(time.RFC3339)
+			item.PublishedAt = &published
+		}
+		resp.Entries = append(resp.Entries, item)
+	}
+
+	return resp
+}
+
+// previewContentLimit 试看正文的字符上限：预览只需要看排版，不需要全文。
+const previewContentLimit = 2000
+
+func truncatePreviewContent(content *string) *string {
+	if content == nil {
+		return nil
+	}
+	runes := []rune(*content)
+	if len(runes) <= previewContentLimit {
+		return content
+	}
+	trimmed := string(runes[:previewContentLimit])
+	return &trimmed
 }

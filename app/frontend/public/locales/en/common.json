@@ -173,9 +173,9 @@
     "hours_ago": "{{count}}h ago",
     "days_ago": "{{count}}d ago",
     "choose_view": "Which view",
-    "view_preview_hint": "Preview",
-    "sample_notification": "New content",
-    "sample_author": "Sample author"
+    "view_preview_hint": "Real entries",
+    "view_preview_empty": "No entries to preview yet",
+    "view_preview_no_image": "No images in the first few entries — this feed may be empty in the pictures view"
   },
   "entry": {
     "read": "Read",

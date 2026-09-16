@@ -4,6 +4,13 @@ import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/date-utils";
 import { isSafeUrl, getSafeHostname } from "@/lib/url";
 import { getProxiedImageUrl } from "@/lib/image-proxy";
+import {
+  FileTextIcon,
+  ImageIcon,
+  BellIcon,
+  SocialIcon,
+} from "@/components/ui/icons";
+import { ViewPreviewEntries } from "./ViewPreviewEntries";
 import type { FeedPreview, Folder, ContentType } from "@/types/api";
 import type { SubscribeOptions } from "@/hooks/useAddFeed";
 
@@ -11,8 +18,54 @@ interface FeedPreviewCardProps {
   feed: FeedPreview;
   folders: Folder[];
   contentType: ContentType;
+  /** 切换视图：卡片内部的选择器改的就是它 */
+  onContentTypeChange: (type: ContentType) => void;
   onSubscribe: (url: string, options: SubscribeOptions) => void;
   isLoading?: boolean;
+}
+
+const VIEW_OPTIONS = [
+  { value: "article" as ContentType, icon: FileTextIcon },
+  { value: "picture" as ContentType, icon: ImageIcon },
+  { value: "notification" as ContentType, icon: BellIcon },
+  { value: "social" as ContentType, icon: SocialIcon },
+];
+
+/** 视图选择：四个胶囊（对齐 Folo 的视图单选） */
+function ViewTypeSelector({
+  value,
+  onChange,
+}: {
+  value: ContentType;
+  onChange: (type: ContentType) => void;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {VIEW_OPTIONS.map((option) => {
+        const Icon = option.icon;
+        const isActive = option.value === value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            aria-pressed={isActive}
+            onClick={() => onChange(option.value)}
+            className={cn(
+              "flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors duration-200",
+              isActive
+                ? "border-primary bg-item-active text-foreground"
+                : "border-border text-muted-foreground hover:bg-item-hover hover:text-foreground",
+            )}
+          >
+            <Icon className="size-3.5" />
+            {t(`content_type.${option.value}`)}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 const getTypeIcon = (type: ContentType) => {
@@ -88,6 +141,7 @@ export function FeedPreviewCard({
   feed,
   folders,
   contentType,
+  onContentTypeChange,
   onSubscribe,
   isLoading = false,
 }: FeedPreviewCardProps) {
@@ -355,6 +409,20 @@ export function FeedPreviewCard({
           </div>
         </div>
       )}
+
+      {/* 视图选择 + 真实内容试看（对齐 Folo：选择器在上、效果在下） */}
+      <div className="space-y-3 border-t border-border px-4 py-4">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-xs font-medium text-muted-foreground">
+            {t("add_feed.choose_view")}
+          </span>
+          <span className="text-[11px] text-muted-foreground/70">
+            {t("add_feed.view_preview_hint")}
+          </span>
+        </div>
+        <ViewTypeSelector value={contentType} onChange={onContentTypeChange} />
+        <ViewPreviewEntries type={contentType} feed={feed} />
+      </div>
 
       {/* Actions */}
       <div className="flex items-center justify-between border-t border-border px-4 py-3">

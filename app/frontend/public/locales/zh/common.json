@@ -173,9 +173,9 @@
     "hours_ago": "{{count}} 小时前",
     "days_ago": "{{count}} 天前",
     "choose_view": "放进哪个视图",
-    "view_preview_hint": "效果示意",
-    "sample_notification": "新内容提醒",
-    "sample_author": "示例作者"
+    "view_preview_hint": "真实内容试看",
+    "view_preview_empty": "这个源暂时没有可试看的条目",
+    "view_preview_no_image": "前几条里没有图片，放进图片视图可能没有内容"
   },
   "entry": {
     "read": "已读",

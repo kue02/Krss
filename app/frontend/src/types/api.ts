@@ -29,6 +29,15 @@ export interface Feed {
   updatedAt: string;
 }
 
+export interface FeedPreviewEntry {
+  title?: string;
+  url?: string;
+  content?: string;
+  thumbnailUrl?: string;
+  author?: string;
+  publishedAt?: string;
+}
+
 export interface FeedPreview {
   url: string;
   title: string;
@@ -37,6 +46,8 @@ export interface FeedPreview {
   imageUrl?: string;
   itemCount?: number;
   lastUpdated?: string;
+  /** 订阅前试看的前几条条目（不落库），用于按所选视图渲染真实效果 */
+  entries?: FeedPreviewEntry[];
 }
 
 export interface Entry {

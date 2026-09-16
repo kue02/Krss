@@ -52,6 +52,9 @@ type FeedPreview struct {
 	ImageURL    *string
 	ItemCount   *int
 	LastUpdated *string
+	// Entries 是订阅前「试看」用的前几条条目（不落库），
+	// 用于添加订阅时按所选视图渲染真实效果。
+	Entries []model.Entry
 }
 
 type feedService struct {
@@ -242,9 +245,32 @@ func (s *feedService) Preview(ctx context.Context, feedURL string) (FeedPreview,
 		ImageURL:    optionalString(fetched.imageURL),
 		ItemCount:   fetched.itemCount,
 		LastUpdated: optionalString(fetched.lastUpdated),
+		Entries:     buildPreviewEntries(fetched.items),
 	}
 
 	return preview, nil
+}
+
+// previewEntryLimit 试看条目数：够看清该视图长什么样即可，不追求完整。
+const previewEntryLimit = 4
+
+// buildPreviewEntries 把刚抓到的 feed 条目转成预览用条目（不写库）。
+func buildPreviewEntries(items []*gofeed.Item) []model.Entry {
+	if len(items) == 0 {
+		return nil
+	}
+
+	dynamicTime := hasDynamicTime(items)
+	limit := len(items)
+	if limit > previewEntryLimit {
+		limit = previewEntryLimit
+	}
+
+	entries := make([]model.Entry, 0, limit)
+	for _, item := range items[:limit] {
+		entries = append(entries, itemToEntry(0, item, dynamicTime))
+	}
+	return entries
 }
 
 func (s *feedService) List(ctx context.Context, folderID *int64) ([]model.Feed, error) {
