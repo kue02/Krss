@@ -141,9 +141,51 @@ Gist 的内容类型是后端枚举（`article/picture/notification`），要加
 
 - [x] 2026-09-16 **细节对齐 Nextflux**：m3-ripple 涟漪、已读卡片降透明度、主按钮内高光、
       tooltip 胶囊、折叠缓动 ease-out
-- [ ] 细节补齐：侧栏 hover/选中过渡、骨架屏 shimmer 对齐、图片画廊手势
+- [x] 2026-09-16 细节补齐：侧栏 hover/选中过渡、骨架屏 shimmer 对齐、图片画廊手势（含缩放层）
 - [ ] 侧栏分组层级微调（文件夹分组与未分组订阅的节奏）
-- [ ] 快捷键再补：p/n 上下订阅源、x 展开分类、Shift+N 加订阅
-- [ ] 外观设置补：动效开关（减少动态效果）、界面字号
+- [x] 2026-09-16 快捷键再补：p/n 上下订阅源、x 展开分类、Shift+N 加订阅
+- [x] 2026-09-16 外观设置补「减少动态效果」；界面字号仍是待定项（见文末待拍板）
 - [ ] 移动端与 PWA 回归
-- [ ] 本机 Docker 部署验收（NAS 待定）
+- [ ] 本机 Docker 部署验收（NAS 待定；容器镜像是旧的，收尾要重新 build）
+
+### 2026-09-16 清单批次（用户给的 15 项，1–14 完成，15 单列）
+
+- [x] **1 缺全文时自动抓取**：实测文章源（少数派）摘要 104 字 → 抓回 3357 字全文，有用；
+      社交源（X）抓回的是未登录落地页（`See what's happening…` / `Log in / Sign up`），比摘要更差。
+      → 改为**只在文章类生效**，并新增 `lib/readable-quality` 做垃圾识别（登录墙/付费墙/过短一律丢弃）。
+      另清掉测试期间写进库的 9 条污染 `readableContent`（备份 `data/gist.db.bak-readable`）
+- [x] **2 复制 Feed 地址**：侧栏订阅右键菜单（FeedItem 新增 feedUrl）
+- [x] **3 RSSHub 实例适配**：设置→通用新增「RSSHub 实例」（地址 + ACCESS_KEY）；
+      `lib/rsshub`（9 例单测）负责改写（保留路径/查询、写入或清掉 key、支持实例带路径前缀）；
+      可预览将被改写的现有订阅（逐条 before→after）并一键迁移；添加订阅时自动换到该实例。
+      后端补 `PATCH /api/feeds/:id/url`（实测改地址 200 且可复原）。正好对上自建 `rsshub.wxhdj.xyz`
+- [x] **4 AI 自动探测模型**：`POST /api/settings/ai/models`（OpenAI/兼容 `GET {base}/models`、Anthropic `/v1/models`）；
+      设置页「探测模型」点选即填。实测返回真实模型列表
+- [x] **5 订阅级自动翻译/摘要**：迁移 19 加 `auto_translate`/`auto_summary`（NULL=跟随全局）+
+      `PATCH /api/feeds/:id/ai`；编辑订阅源里两组「跟随全局/开/关」，列表与阅读区取值改为 `feed 覆盖 ?? 全局`。
+      实测 PATCH 200、读回一致
+- [x] **6 列表头刷新按钮**：按当前范围刷新（单源/文件夹内所有源/该内容类型的所有源/星标=全部）；
+      后端 `POST /api/feeds/refresh` 支持 `{feedIds:[...]}`。实测单源刷新 691ms 返回 204（对比全部刷新的分钟级）；
+      同步接口没即时反馈的问题也修了（点击即提示「正在刷新 N 个订阅」）
+- [x] **7 文件夹右键重命名**：`RenameFolderDialog` + `useUpdateFolder`
+- [x] **8 添加订阅选视图 + 预览**：四个视图胶囊 + `ViewPreviewMock` 静态小样（随选择切换）
+- [x] **9 订阅真图标**：根因是 dev server 只代理了 `/api`，`/icons/*` 落到 SPA 兜底返回 HTML，
+      `<img>` 必然失败退回默认图标 → vite 增加 `/icons` 代理。实测侧栏 9/9 图标加载成功
+- [x] **10 条目复制链接**：卡片底部 / 社交条目底部 / 悬停操作条三处；配合新增的全局提示条
+- [x] **11 改名 krss + 新图标**：自绘图标（圆角渐变底 + k 字形 + RSS 弧线），几何与像素双重自检后
+      生成 512/192/180/64/32 + maskable + ico + logo.svg；标题/manifest/界面文案全部 Gist→krss
+- [x] **12 omlx「链接重置」**：实证容器内 `127.0.0.1:8000` 连不上（容器自己的 loopback）、
+      `host.docker.internal:8000` 可达 → provider 层加 `normalizeBaseURL`（仅容器内替换 loopback），
+      AI 设置页给提示。8 例单测
+- [x] **13 阅读栏加载原站**：`OriginalSiteView`（iframe + 常驻「新窗口打开」出口），头部地球按钮切换。
+      实测 iframe 加载 sspai 文章页 810×824
+- [x] **14 AI 多提供商**：`ai.providers` / `ai.active_provider_id` 存储，列表可增删、改名、切换「当前使用」，
+      平铺字段始终等于当前那份（AI 服务读取路径零改动）
+- [ ] **15 用 ego 打开 Nextflux 逐项校对样式与动效**（按用户要求放最后）
+
+### 待拍板（等用户）
+
+- Folo 滚动已读的语义差异：Folo 是「可视区间一变就批量标已读」，我这边是「条目滚出顶部才标」。
+  是否切到 Folo 语义，或折中「停留 N 秒」？
+- 外观设置是否补「界面字号」？（动效开关已补）
+
