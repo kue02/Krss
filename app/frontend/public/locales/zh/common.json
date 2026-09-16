@@ -374,6 +374,9 @@
     "password_changed": "密码已修改"
   },
   "feeds": {
+    "filter_all": "全部",
+    "filter_custom": "有自定义 {{count}}",
+    "filter_plain": "未自定义",
     "subscribed_feeds": "已订阅的订阅源 ({{count}})",
     "refresh_all": "全部更新",
     "refreshing": "刷新中...",

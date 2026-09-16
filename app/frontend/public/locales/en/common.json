@@ -377,6 +377,9 @@
     "password_changed": "Password changed"
   },
   "feeds": {
+    "filter_all": "All",
+    "filter_custom": "Customized {{count}}",
+    "filter_plain": "Plain",
     "subscribed_feeds": "Subscribed Feeds ({{count}})",
     "refresh_all": "Refresh All",
     "refreshing": "Refreshing...",

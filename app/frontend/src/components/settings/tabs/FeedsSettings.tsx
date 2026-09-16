@@ -26,6 +26,10 @@ export function FeedsSettings() {
   const [error, setError] = useState<string | null>(null);
   const [sortField, setSortField] = useState<SortField>("title");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  /** 筛选：全部 / 只显示有自定义设置的 / 只显示没自定义设置的 */
+  const [overrideFilter, setOverrideFilter] = useState<
+    "all" | "custom" | "plain"
+  >("all");
   const [editingFeed, setEditingFeed] = useState<Feed | null>(null);
 
   const sortedFeeds = useMemo(() => {
@@ -117,6 +121,29 @@ export function FeedsSettings() {
   const isPartialSelected =
     selectedIds.size > 0 && selectedIds.size < feeds.length;
 
+  // 只看「有/没有自定义设置」的订阅：自动翻译、自动摘要、摘要提示词任一被单独设过就算有
+  const visibleFeeds = useMemo(() => {
+    if (overrideFilter === "all") return sortedFeeds;
+    return sortedFeeds.filter((feed) => {
+      const custom =
+        feed.autoTranslate != null ||
+        feed.autoSummary != null ||
+        !!feed.summaryPromptReminder;
+      return overrideFilter === "custom" ? custom : !custom;
+    });
+  }, [overrideFilter, sortedFeeds]);
+
+  const customCount = useMemo(
+    () =>
+      feeds.filter(
+        (feed) =>
+          feed.autoTranslate != null ||
+          feed.autoSummary != null ||
+          !!feed.summaryPromptReminder,
+      ).length,
+    [feeds],
+  );
+
   if (isLoading) {
     return (
       <div className="flex h-40 items-center justify-center">
@@ -128,10 +155,42 @@ export function FeedsSettings() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-muted-foreground">
-          {t("feeds.subscribed_feeds", { count: feeds.length })}
-        </h3>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-sm font-semibold text-muted-foreground">
+            {t("feeds.subscribed_feeds", { count: feeds.length })}
+          </h3>
+          {/* 筛选：有没有自定义设置（自动翻译 / 自动摘要 / 摘要提示词） */}
+          <div className="flex shrink-0 gap-1 rounded-full border border-border p-0.5">
+            {(
+              [
+                { value: "all" as const, label: t("feeds.filter_all") },
+                {
+                  value: "custom" as const,
+                  label: t("feeds.filter_custom", { count: customCount }),
+                },
+                {
+                  value: "plain" as const,
+                  label: t("feeds.filter_plain"),
+                },
+              ]
+            ).map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setOverrideFilter(option.value)}
+                className={cn(
+                  "rounded-full px-2.5 py-0.5 text-xs transition-colors duration-200",
+                  overrideFilter === option.value
+                    ? "bg-item-active text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -275,7 +334,7 @@ export function FeedsSettings() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {sortedFeeds.map((feed: Feed) => {
+              {visibleFeeds.map((feed: Feed) => {
                 const isSelected = selectedIds.has(feed.id);
                 return (
                   <tr
