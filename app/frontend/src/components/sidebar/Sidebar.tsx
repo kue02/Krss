@@ -23,6 +23,7 @@ import { FeedItem } from "./FeedItem";
 import { ContentTypeSwitcher } from "./ContentTypeSwitcher";
 import { SettingsModal, ProfileModal } from "@/components/settings";
 import { EditFeedDialog } from "@/components/settings/tabs/EditFeedDialog";
+import { RenameFolderDialog } from "./RenameFolderDialog";
 import {
   useFolders,
   useDeleteFolder,
@@ -101,6 +102,7 @@ export function Sidebar({
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [editingFeed, setEditingFeed] = useState<Feed | null>(null);
+  const [renamingFolder, setRenamingFolder] = useState<Folder | null>(null);
   const [sortBy, setSortBy] = useState<SortBy>("name");
 
   const visibleContentTypes = useMemo(() => {
@@ -345,6 +347,14 @@ export function Sidebar({
     [queryClient, t],
   );
 
+  // 文件夹重命名（右键菜单）
+  const handleRenameFolder = useCallback(
+    (folderId: string) => {
+      setRenamingFolder(folders.find((item) => item.id === folderId) ?? null);
+    },
+    [folders],
+  );
+
   const isStarredSelected = selection.type === "starred";
   const isFeedSelected = (feedId: string) =>
     selection.type === "feed" && selection.feedId === feedId;
@@ -426,6 +436,7 @@ export function Sidebar({
                       unreadCount={folderUnreadCounts.get(folder.id) || 0}
                       isSelected={isFolderSelected(folder.id)}
                       onSelect={() => onSelectFolder(folder.id)}
+                      onRename={handleRenameFolder}
                       onDelete={handleDeleteFolder}
                       onChangeType={handleChangeFolderType}
                     >
@@ -491,6 +502,14 @@ export function Sidebar({
 
       <SettingsModal open={isSettingsOpen} onOpenChange={setIsSettingsOpen} />
       <ProfileModal open={isProfileOpen} onOpenChange={setIsProfileOpen} />
+      <RenameFolderDialog
+        folder={renamingFolder}
+        open={renamingFolder !== null}
+        onOpenChange={(open) => {
+          if (!open) setRenamingFolder(null);
+        }}
+      />
+
       <EditFeedDialog
         feed={editingFeed}
         open={editingFeed !== null}

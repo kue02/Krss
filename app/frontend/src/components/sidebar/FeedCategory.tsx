@@ -26,6 +26,7 @@ interface FeedCategoryProps {
   defaultOpen?: boolean;
   isSelected?: boolean;
   onSelect?: () => void;
+  onRename?: (folderId: string) => void;
   onDelete?: (folderId: string) => void;
   onChangeType?: (folderId: string, type: ContentType) => void;
 }
@@ -38,6 +39,7 @@ export function FeedCategory({
   defaultOpen = false,
   isSelected = false,
   onSelect,
+  onRename,
   onDelete,
   onChangeType,
 }: FeedCategoryProps) {
@@ -108,6 +110,11 @@ export function FeedCategory({
           </div>
         </ContextMenuTrigger>
         <ContextMenuContent>
+          {onRename && (
+            <ContextMenuItem onClick={() => onRename(folderId)}>
+              {t("actions.rename")}
+            </ContextMenuItem>
+          )}
           {onChangeType && (
             <ContextMenuSub>
               <ContextMenuSubTrigger>

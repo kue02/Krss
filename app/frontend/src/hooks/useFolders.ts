@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { listFolders, deleteFolder, updateFolderType } from "@/api";
+import { listFolders, deleteFolder, updateFolder, updateFolderType } from "@/api";
 import type { ContentType } from "@/types/api";
 
 export function useFolders() {
@@ -26,6 +26,18 @@ export function useUpdateFolderType() {
   return useMutation({
     mutationFn: (payload: { id: string; type: ContentType }) =>
       updateFolderType(payload.id, payload.type),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["folders"] });
+      queryClient.invalidateQueries({ queryKey: ["feeds"] });
+    },
+  });
+}
+
+export function useUpdateFolder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { id: string; name: string }) =>
+      updateFolder(payload.id, { name: payload.name }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["folders"] });
       queryClient.invalidateQueries({ queryKey: ["feeds"] });

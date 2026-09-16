@@ -396,7 +396,12 @@
     "openOriginal": "在浏览器打开原文",
     "close": "关闭文章",
     "refresh": "刷新订阅",
-    "help": "显示 / 隐藏本页", "sidebar": "侧栏", "nextFeed": "下一个订阅 / 分组", "prevFeed": "上一个订阅 / 分组", "toggleFolder": "展开 / 折叠所在分组", "addFeed": "添加订阅"
+    "help": "显示 / 隐藏本页",
+    "sidebar": "侧栏",
+    "nextFeed": "下一个订阅 / 分组",
+    "prevFeed": "上一个订阅 / 分组",
+    "toggleFolder": "展开 / 折叠所在分组",
+    "addFeed": "添加订阅"
   },
   "appearance_reading": {
     "title": "阅读与列表",
@@ -421,10 +426,16 @@
   "appearance_view": {
     "title": "按视图设置",
     "description": "文章 / 图片 / 通知 / 社交媒体四个视图各自独立",
-    "fetch_readable": "缺全文时自动抓取", "expand_long": "长贴自动展开",
+    "fetch_readable": "缺全文时自动抓取",
+    "expand_long": "长贴自动展开",
     "scroll_read": "滚动标已读",
     "inherit": "跟随通用",
     "on": "开",
     "off": "关"
+  },
+  "folder": {
+    "rename": "重命名文件夹",
+    "name_placeholder": "文件夹名称",
+    "rename_failed": "重命名失败"
   }
 }
