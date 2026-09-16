@@ -32,7 +32,7 @@ export function SidebarAccountBar({
   const displayName = userName || t("user.guest");
 
   return (
-    <div className="mt-1 flex shrink-0 items-center gap-2 border-t border-border/50 px-3 py-2.5">
+    <div className="mt-1 flex shrink-0 items-center gap-2 rounded-[19px] px-3 py-2 mx-2 h-10 transition-colors duration-200 hover:bg-item-hover">
       <ProfileButton
         avatarUrl={avatarUrl}
         userName={displayName}
@@ -44,7 +44,7 @@ export function SidebarAccountBar({
         onLogoutClick={onLogoutClick}
       />
       <div className="min-w-0 flex-1 select-none">
-        <div className="truncate text-[0.8125rem] font-semibold leading-tight text-foreground">
+        <div className="truncate text-sm font-medium leading-tight text-foreground">
           {displayName}
         </div>
       </div>

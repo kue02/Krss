@@ -76,10 +76,10 @@ export function EditFeedDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg p-0">
-        <DialogHeader className="border-b border-border px-4 py-3">
+        <DialogHeader className="p-4">
           <DialogTitle>{t("feeds.edit_feed")}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 p-4">
+        <form onSubmit={handleSubmit} className="space-y-4 px-4 pb-4">
           <div className="space-y-2">
             <label
               htmlFor="feed-title-input"
@@ -161,7 +161,8 @@ export function EditFeedDialog({
               {error}
             </div>
           )}
-          <div className="flex justify-end gap-2 pt-2">
+          {/* 底部按钮区：对齐 Nextflux 的 Modal.Footer（border-t + p-4） */}
+          <div className="flex justify-end gap-2 border-t border-border pt-4">
             <div className="space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-sm font-medium">

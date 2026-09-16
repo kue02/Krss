@@ -89,7 +89,7 @@ export function EntryContentHeader({
       {/* Background and Border Layer */}
       <div
         className={cn(
-          "absolute inset-0 transition-opacity duration-300 ease-in-out pointer-events-none border-b border-border bg-background/95 backdrop-blur",
+          "absolute inset-0 transition-opacity duration-300 ease-in-out pointer-events-none border-b border-border bg-background/95 backdrop-blur-[8px]",
           isAtTop ? "opacity-0" : "opacity-100",
         )}
       />

@@ -69,7 +69,7 @@ export function ProfileModal({ open, onOpenChange }: ProfileModalProps) {
             </div>
 
             {/* Content */}
-            <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
+            <div className="min-h-0 flex-1 overflow-auto px-4 pb-4">
               <ProfileSettings />
             </div>
           </div>
@@ -81,11 +81,11 @@ export function ProfileModal({ open, onOpenChange }: ProfileModalProps) {
   // Desktop layout
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[950px] h-[800px] max-w-[95vw] max-h-[90vh] p-0 overflow-hidden gap-0">
+      <DialogContent className="w-[520px] max-w-[95vw] max-h-[85vh] p-0 overflow-hidden gap-0">
         <div className="flex h-full flex-col">
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-            <DialogTitle className="text-xl font-bold">
+          <div className="flex items-center justify-between gap-2 p-4">
+            <DialogTitle className="text-base font-semibold">
               {t("profile.title")}
             </DialogTitle>
             <button

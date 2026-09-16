@@ -52,10 +52,10 @@ export function RenameFolderDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm">
-        <DialogHeader>
+        <DialogHeader className="p-4">
           <DialogTitle>{t("folder.rename")}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3 px-4 pb-4">
           <input
             value={name}
             onChange={(event) => setName(event.target.value)}
@@ -64,7 +64,7 @@ export function RenameFolderDialog({
             placeholder={t("folder.name_placeholder")}
           />
           {error && <p className="text-xs text-destructive">{error}</p>}
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 border-t border-border pt-4">
             <button
               type="button"
               onClick={() => onOpenChange(false)}

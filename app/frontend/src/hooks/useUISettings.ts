@@ -32,7 +32,7 @@ const STORAGE_KEY = "gist-ui-settings";
 
 export const defaultUISettings: UISettings = {
   feedColWidth: 256,
-  entryColWidth: 356,
+  entryColWidth: 336,
   sidebarVisible: true,
   cardImageSize: "small",
   cardPreviewLines: 2,

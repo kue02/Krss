@@ -59,9 +59,9 @@ export function EntryContentBody({
       ref={scrollRef}
       className="entry-content-viewport flex-1 overflow-y-auto [overflow-anchor:none]"
     >
-      <article className="entry-content nf-enter mx-auto w-full max-w-[clamp(45ch,60vw,65ch)] min-w-0 overflow-x-hidden px-4 sm:px-6 pb-20 pt-16">
+      <article className="entry-content nf-enter mx-auto w-full max-w-[clamp(45ch,60vw,65ch)] min-w-0 overflow-x-hidden px-4 pb-20 pt-16 sm:px-5 sm:pt-20">
         <header className="mb-4 space-y-5">
-          <h1 className="text-3xl font-bold leading-tight tracking-tight text-foreground wrap-anywhere sm:text-4xl sm:leading-[1.15]">
+          <h1 className="text-2xl font-semibold leading-tight tracking-tight text-foreground wrap-anywhere sm:text-[25.6px] sm:font-semibold sm:leading-8">
             {entry.url && isSafeUrl(entry.url) ? (
               <a
                 href={entry.url}

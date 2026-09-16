@@ -293,8 +293,8 @@ export function ThreeColumnLayout({
       )}
 
       {/* Content - right column (Entry content) —— Nextflux 风格：浮层圆角面板 */}
-      <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-background safe-area-top p-0 sm:pt-[17px] sm:pr-4 sm:pb-[14px] sm:pl-0">
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 bg-card sm:rounded-3xl sm:border sm:border-border/60 sm:shadow-nf">
+      <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-background safe-area-top p-0 sm:pt-2 sm:pr-2 sm:pb-2 sm:pl-0">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 bg-card sm:rounded-[13px] sm:border sm:border-border/60">
           {content}
         </div>
       </main>
