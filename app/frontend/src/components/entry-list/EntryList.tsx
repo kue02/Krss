@@ -306,6 +306,12 @@ export function EntryList({
     // 星标视图或算不出范围时刷新全部（ids 为空即刷新全部）
 
     setIsRefreshing(true);
+    // 后端刷新是同步的（要等所有源抓完才返回），所以先给即时反馈，完成后再报结果
+    showToast(
+      ids.length > 0
+        ? t("entry.refreshing_n_feeds", { count: ids.length })
+        : t("entry.refreshing_all"),
+    );
     try {
       if (ids.length > 0) {
         await refreshFeeds(ids);
@@ -315,11 +321,7 @@ export function EntryList({
       queryClient.invalidateQueries({ queryKey: ["entries"] });
       queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
       queryClient.invalidateQueries({ queryKey: ["feeds"] });
-      showToast(
-        ids.length > 0
-          ? t("entry.refreshing_n_feeds", { count: ids.length })
-          : t("entry.refreshing_all"),
-      );
+      showToast(t("entry.refresh_done"));
     } catch {
       showToast(t("entry.refresh_failed"));
     } finally {

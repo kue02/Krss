@@ -42,6 +42,17 @@ function parseRequestOptions(
   }
 }
 
+/** 本机地址：容器化部署时后端的 127.0.0.1 指的是容器自己（后端会自动改用 host.docker.internal） */
+function isLoopbackBaseUrl(raw: string): boolean {
+  const value = raw.trim().toLowerCase();
+  return (
+    value.includes("//localhost") ||
+    value.includes("//127.0.0.1") ||
+    value.includes("//[::1]") ||
+    value.includes("//::1")
+  );
+}
+
 export function AISettings() {
   const { t } = useTranslation();
 
@@ -268,6 +279,11 @@ export function AISettings() {
           }
           className={cn(inputClass, "shrink-0")}
         />
+        {isLoopbackBaseUrl(settings.baseUrl) && (
+          <p className="text-xs text-muted-foreground">
+            {t("ai_settings.loopback_hint")}
+          </p>
+        )}
       </div>
 
       {/* Model */}

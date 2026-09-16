@@ -210,7 +210,8 @@
     "close": "关闭",
     "min_read": "{{mins}} 分钟阅读",
     "ai_summary": "AI 摘要",
-    "select_article": "选择一篇文章开始阅读"
+    "select_article": "选择一篇文章开始阅读",
+    "refresh_done": "刷新完成"
   },
   "ai_settings": {
     "provider": "AI 提供商",
@@ -257,7 +258,8 @@
     "lang_ko": "韩语",
     "lang_es": "西班牙语",
     "lang_fr": "法语",
-    "lang_de": "德语"
+    "lang_de": "德语",
+    "loopback_hint": "本机地址：Docker 部署时容器内的 127.0.0.1 不是宿主机，后端会自动改用 host.docker.internal（非容器环境不受影响）"
   },
   "data_control": {
     "import_opml": "导入 OPML",

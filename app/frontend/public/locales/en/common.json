@@ -213,7 +213,8 @@
     "close": "Close",
     "min_read": "{{mins}} min read",
     "ai_summary": "AI Summary",
-    "select_article": "Select an article to read"
+    "select_article": "Select an article to read",
+    "refresh_done": "Refresh finished"
   },
   "ai_settings": {
     "provider": "AI Provider",
@@ -260,7 +261,8 @@
     "lang_ko": "Korean",
     "lang_es": "Spanish",
     "lang_fr": "French",
-    "lang_de": "German"
+    "lang_de": "German",
+    "loopback_hint": "Local address: inside Docker, 127.0.0.1 refers to the container itself — the backend switches to host.docker.internal automatically (no effect outside containers)"
   },
   "data_control": {
     "import_opml": "Import OPML",
