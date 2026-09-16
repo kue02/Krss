@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useRef, useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Clock } from "lucide-react";
+import { Clock, Star } from "lucide-react";
 import { Ripple } from "m3-ripple";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/date-utils";
@@ -8,9 +8,9 @@ import { stripHtml } from "@/lib/html-utils";
 import { getEntryImages } from "@/lib/extract-images";
 import { useTranslationStore } from "@/stores/translation-store";
 import { FeedIcon } from "@/components/ui/feed-icon";
-import {
-  useUISettingKey,
-} from "@/hooks/useUISettings";
+import { useUISettingKey } from "@/hooks/useUISettings";
+import { useAutoReadable } from "@/hooks/useAutoReadable";
+import { stripDuplicatedTitle } from "@/lib/strip-duplicated-title";
 import { useInView } from "@/hooks/useInView";
 import { ArticleContent } from "@/components/ui/article-content";
 import { resolveReadingFontStack } from "@/lib/reading-fonts";
@@ -25,8 +25,10 @@ interface EntryListItemProps {
   onClick: () => void;
   autoTranslate?: boolean;
   targetLanguage?: string;
-  /** 该视图开启了「自动展开正文」：直接在卡片里渲染全文（Folo 式信息流） */
-  autoExpand?: boolean;
+  /** 社交媒体视图（第四类内容）：时间线式铺开正文，而不是卡片列表 */
+  social?: boolean;
+  /** 社交媒体视图下：正文过短时自动抓正文（按视图设置） */
+  fetchReadable?: boolean;
   style?: React.CSSProperties;
   "data-index"?: number;
   "data-entry-id"?: string;
@@ -50,7 +52,8 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
       onClick,
       autoTranslate,
       targetLanguage,
-      autoExpand = false,
+      social = false,
+      fetchReadable = false,
       style,
       "data-index": dataIndex,
       "data-entry-id": dataEntryId,
@@ -104,6 +107,12 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
     const titleContainsUrl = URL_PATTERN.test(displayTitle ?? "");
     const summaryContainsUrl = URL_PATTERN.test(displaySummary ?? "");
     const { ref: inViewRef, inView } = useInView<HTMLDivElement>("600px");
+    const isSocialView = social;
+    // 只在社交媒体视图 + 进入视口时按需抓正文，避免一次并发抓取整屏
+    const autoReadable = useAutoReadable(
+      entry,
+      isSocialView && fetchReadable && inView,
+    );
     const expandedBodyRef = useRef<HTMLDivElement | null>(null);
     const [isContentClipped, setIsContentClipped] = useState(false);
 
@@ -126,12 +135,133 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
       };
     }, [inView, entry.id, cardImageSize]);
     const readingFontStack = resolveReadingFontStack(entryFontFamily);
-    const expandedContent = entry.content ?? null;
-    const isExpanded = autoExpand && Boolean(expandedContent);
+    const expandedContent = autoReadable ?? entry.content ?? null;
+    const isExpanded = isSocialView && Boolean(expandedContent);
+    // 源常在正文开头重复标题，时间线里标题已单独渲染，去掉重复的首段
+    const socialBody = useMemo(
+      () => stripDuplicatedTitle(expandedContent, displayTitle),
+      [expandedContent, displayTitle],
+    );
     const isUnread = !entry.read;
     const isLargeImage = cardImageSize === "large";
     const showThumbnail =
       cardImageSize !== "none" && Boolean(thumbnail) && !imageError;
+
+    // ── 社交媒体视图（Folo 式时间线）：不在卡片上加展开，而是另一种呈现 ──
+    if (isSocialView) {
+      return (
+        <div
+          ref={(node) => {
+            if (typeof ref === "function") ref(node);
+            else if (ref) ref.current = node;
+            inViewRef.current = node;
+          }}
+          className={cn(
+            "group relative mx-2 mb-1 cursor-pointer overflow-hidden rounded-xl border px-3 py-3 transition-colors duration-200",
+            isSelected
+              ? "border-border/60 bg-card shadow-nf"
+              : "border-transparent hover:bg-item-hover",
+            !isUnread && !entry.starred && !isSelected && "opacity-70",
+          )}
+          style={style}
+          data-index={dataIndex}
+          data-entry-id={dataEntryId}
+          onClick={onClick}
+        >
+          <Ripple hoverOpacity={0} pressedOpacity={0.05} duration={100} />
+
+          {/* 来源行：头像式 favicon + 源名 + 时间（Folo 把订阅源当作者） */}
+          <div className="flex min-w-0 items-center gap-2">
+            {showIcon ? (
+              <img
+                src={`/icons/${feed.iconPath}`}
+                alt=""
+                className="size-6 shrink-0 rounded-full object-cover"
+                onError={() => setIconError(true)}
+              />
+            ) : (
+              <FeedIcon className="size-6 shrink-0 text-muted-foreground/50" />
+            )}
+            <div className="min-w-0">
+              <div
+                className={cn(
+                  "truncate text-[13px] leading-tight",
+                  isUnread
+                    ? "font-semibold text-foreground"
+                    : "font-medium text-muted-foreground",
+                )}
+              >
+                {displayFeedName}
+              </div>
+              {publishedAt && (
+                <div className="text-[11px] leading-tight text-muted-foreground/80">
+                  {publishedAt}
+                </div>
+              )}
+            </div>
+            {isUnread && (
+              <span className="ml-auto size-2 shrink-0 rounded-full bg-primary" />
+            )}
+          </div>
+
+          {/* 标题：社交帖常常没有标题，有才渲染 */}
+          {displayTitle && (
+            <div
+              className={cn(
+                "mt-2 font-semibold text-foreground wrap-anywhere",
+                "text-[15px] leading-snug",
+                titleContainsUrl ? "line-clamp-3" : "line-clamp-2",
+              )}
+            >
+              {displayTitle}
+            </div>
+          )}
+
+          {/* 正文：直接铺开（长文限高 + 渐隐提示） */}
+          <div className="relative mt-2">
+            {inView ? (
+              <div
+                ref={expandedBodyRef}
+                className="entry-content prose prose-sm dark:prose-invert max-h-[26rem] max-w-none overflow-hidden break-words prose-img:my-3 prose-img:rounded-lg prose-a:break-words"
+                style={{
+                  fontSize: `${Math.max(14, entryFontSize - 2)}px`,
+                  lineHeight: entryLineHeight,
+                  ...(readingFontStack ? { fontFamily: readingFontStack } : {}),
+                  contentVisibility: "auto",
+                  containIntrinsicSize: "400px",
+                }}
+              >
+                <ArticleContent content={socialBody} articleUrl={entry.url} />
+              </div>
+            ) : (
+              <div className="h-20 animate-pulse rounded-lg bg-muted/40" />
+            )}
+
+            {isContentClipped && inView && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 flex h-16 items-end justify-center bg-gradient-to-t from-card via-card/70 to-transparent pb-0.5">
+                <span className="rounded-full bg-overlay/85 px-2.5 py-0.5 text-[11px] font-medium text-foreground/80 shadow-sm backdrop-blur-sm">
+                  {t("entry.expand_hint")}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* 底部元信息 */}
+          <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground">
+            {readingTime && (
+              <span className="flex items-center gap-1">
+                <Clock className="size-3 shrink-0" />
+                {readingTime}
+              </span>
+            )}
+            {entry.starred && <Star className="size-3.5 text-amber-500" />}
+            {entry.url && (
+              <span className="ml-auto">{t("entry.open_original")}</span>
+            )}
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div
@@ -248,40 +378,6 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
           </div>
         )}
 
-        {/* 自动展开的正文（Folo 式信息流）：只在卡片接近视口时才渲染全文 */}
-        {isExpanded && (
-          <div className="relative mt-0.5 w-full border-t border-border/40 pt-3">
-            {inView ? (
-              <div
-                ref={expandedBodyRef}
-                className="entry-content prose prose-sm dark:prose-invert max-h-[26rem] max-w-none overflow-hidden break-words prose-img:my-3 prose-img:rounded-lg prose-a:break-words"
-                style={{
-                  fontSize: `${Math.max(14, entryFontSize - 2)}px`,
-                  lineHeight: entryLineHeight,
-                  ...(readingFontStack ? { fontFamily: readingFontStack } : {}),
-                  contentVisibility: "auto",
-                  containIntrinsicSize: "400px",
-                }}
-              >
-                <ArticleContent
-                  content={expandedContent ?? ""}
-                  articleUrl={entry.url}
-                />
-              </div>
-            ) : (
-              <div className="h-16 animate-pulse rounded-lg bg-muted/40" />
-            )}
-
-            {/* 长文截断提示：卡片整块可点，点开在右侧阅读区看全文 */}
-            {isContentClipped && inView && (
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 flex h-16 items-end justify-center bg-gradient-to-t from-card via-card/70 to-transparent pb-0.5">
-                <span className="rounded-full bg-overlay/85 px-2.5 py-0.5 text-[11px] font-medium text-foreground/80 shadow-sm backdrop-blur-sm">
-                  {t("entry.expand_hint")}
-                </span>
-              </div>
-            )}
-          </div>
-        )}
       </div>
     );
   },

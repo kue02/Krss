@@ -33,6 +33,7 @@ import {
   ImageIcon,
   BellIcon,
   EyeOffIcon,
+  SocialIcon,
 } from "@/components/ui/icons";
 import type { ContentType } from "@/types/api";
 
@@ -40,6 +41,7 @@ const defaultContentTypes: ContentType[] = [
   "article",
   "picture",
   "notification",
+  "social",
 ];
 
 /** Nextflux 皮肤：亮/暗各一套配色的色卡选择行 */
@@ -121,10 +123,10 @@ export function AppearanceSettings() {
   const entryFontFamily = useUISettingKey("entryFontFamily");
   const entryFontSize = useUISettingKey("entryFontSize");
   const entryLineHeight = useUISettingKey("entryLineHeight");
-  const autoExpandByView = useUISettingKey("autoExpandByView");
+  const fetchReadableByView = useUISettingKey("fetchReadableByView");
   const scrollReadByView = useUISettingKey("scrollReadByView");
   const {
-    setAutoExpandForView,
+    setFetchReadableForView,
     setScrollReadForView,
     setCardImageSize,
     setCardPreviewLines,
@@ -208,7 +210,10 @@ export function AppearanceSettings() {
     if (!current || current.length === 0) return defaultContentTypes;
     return current.filter(
       (item) =>
-        item === "article" || item === "picture" || item === "notification",
+        item === "article" ||
+        item === "picture" ||
+        item === "notification" ||
+        item === "social",
     );
   }, [appearanceSettings]);
 
@@ -296,6 +301,10 @@ export function AppearanceSettings() {
       notification: {
         label: t("content_type.notification"),
         icon: <BellIcon className="size-4" />,
+      },
+      social: {
+        label: t("content_type.social"),
+        icon: <SocialIcon className="size-4" />,
       },
     }),
     [t],
@@ -452,7 +461,9 @@ export function AppearanceSettings() {
         </div>
 
         <div className="space-y-3">
-          {(["article", "picture", "notification"] as ContentType[]).map(
+          {(
+            ["article", "picture", "notification", "social"] as ContentType[]
+          ).map(
             (view) => (
               <div
                 key={view}
@@ -461,19 +472,21 @@ export function AppearanceSettings() {
                 <div className="text-xs font-semibold text-foreground">
                   {t(`content_type.${view}`)}
                 </div>
-                <SettingRow label={t("appearance_view.auto_expand")}>
-                  <SegmentedControl
-                    className="shrink-0"
-                    value={autoExpandByView[view] ? "on" : "off"}
-                    onValueChange={(value) =>
-                      setAutoExpandForView(view, value === "on")
-                    }
-                    options={[
-                      { value: "off", label: t("appearance_view.off") },
-                      { value: "on", label: t("appearance_view.on") },
-                    ]}
-                  />
-                </SettingRow>
+                {view === "social" && (
+                  <SettingRow label={t("appearance_view.fetch_readable")}>
+                    <SegmentedControl
+                      className="shrink-0"
+                      value={fetchReadableByView[view] ? "on" : "off"}
+                      onValueChange={(value) =>
+                        setFetchReadableForView(view, value === "on")
+                      }
+                      options={[
+                        { value: "off", label: t("appearance_view.off") },
+                        { value: "on", label: t("appearance_view.on") },
+                      ]}
+                    />
+                  </SettingRow>
+                )}
                 <SettingRow label={t("appearance_view.scroll_read")}>
                   <SegmentedControl
                     className="shrink-0"

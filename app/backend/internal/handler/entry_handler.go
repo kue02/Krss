@@ -126,7 +126,7 @@ func parseEntryIDList(rawIDs []string) ([]int64, string) {
 // @Produce json
 // @Param feedId query int false "Filter by feed ID"
 // @Param folderId query int false "Filter by folder ID"
-// @Param contentType query string false "Filter by content type (article, picture, notification)"
+// @Param contentType query string false "Filter by content type (article, picture, notification, social)"
 // @Param unreadOnly query bool false "Only return unread entries"
 // @Param starredOnly query bool false "Only return starred entries"
 // @Param limit query int false "Limit the number of entries (default 50)"
@@ -157,7 +157,7 @@ func (h *EntryHandler) List(c echo.Context) error {
 	}
 
 	if raw := c.QueryParam("contentType"); raw != "" {
-		if raw != "article" && raw != "picture" && raw != "notification" {
+		if raw != "article" && raw != "picture" && raw != "notification" && raw != "social" {
 			return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid contentType"})
 		}
 		params.ContentType = &raw
@@ -374,7 +374,7 @@ func (h *EntryHandler) MarkAllAsRead(c echo.Context) error {
 	var contentType *string
 	if req.ContentType != nil {
 		ct := *req.ContentType
-		if ct != "article" && ct != "picture" && ct != "notification" {
+		if ct != "article" && ct != "picture" && ct != "notification" && ct != "social" {
 			return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid contentType"})
 		}
 		contentType = &ct

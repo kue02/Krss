@@ -21,6 +21,13 @@ const ARTICLE_SHORTCUTS: ShortcutRow[] = [
   { keys: ["Esc"], labelKey: "shortcuts.close" },
 ];
 
+const SIDEBAR_SHORTCUTS: ShortcutRow[] = [
+  { keys: ["N"], labelKey: "shortcuts.nextFeed" },
+  { keys: ["P"], labelKey: "shortcuts.prevFeed" },
+  { keys: ["X"], labelKey: "shortcuts.toggleFolder" },
+  { keys: ["Shift", "N"], labelKey: "shortcuts.addFeed" },
+];
+
 const GLOBAL_SHORTCUTS: ShortcutRow[] = [
   { keys: ["R"], labelKey: "shortcuts.refresh" },
   { keys: ["?"], labelKey: "shortcuts.help" },
@@ -82,6 +89,11 @@ export function ShortcutsHelpDialog({
             {t("shortcuts.article")}
           </p>
           <ShortcutList rows={ARTICLE_SHORTCUTS} />
+
+          <p className="px-2 pb-2 pt-4 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
+            {t("shortcuts.sidebar")}
+          </p>
+          <ShortcutList rows={SIDEBAR_SHORTCUTS} />
 
           <p className="px-2 pb-2 pt-4 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
             {t("shortcuts.global")}

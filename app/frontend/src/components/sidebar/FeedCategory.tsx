@@ -127,6 +127,11 @@ export function FeedCategory({
                 >
                   {t("content_type.notification")}
                 </ContextMenuItem>
+                <ContextMenuItem
+                  onClick={() => onChangeType(folderId, "social")}
+                >
+                  {t("content_type.social")}
+                </ContextMenuItem>
               </ContextMenuSubContent>
             </ContextMenuSub>
           )}

@@ -12,7 +12,8 @@
   "content_type": {
     "article": "Articles",
     "picture": "Pictures",
-    "notification": "Notifications"
+    "notification": "Notifications",
+    "social": "Social"
   },
   "actions": {
     "refresh": "Refresh",
@@ -356,6 +357,7 @@
     "all_articles": "All Articles",
     "all_pictures": "All Pictures",
     "all_notifications": "All Notifications",
+    "all_social": "All Social",
     "starred": "Starred",
     "feed": "Feed",
     "folder": "Folder",
@@ -383,7 +385,12 @@
     "openOriginal": "Open original in browser",
     "close": "Close article",
     "refresh": "Refresh feeds",
-    "help": "Show / hide this list"
+    "help": "Show / hide this list",
+    "sidebar": "Sidebar",
+    "nextFeed": "Next feed / folder",
+    "prevFeed": "Previous feed / folder",
+    "toggleFolder": "Expand / collapse current folder",
+    "addFeed": "Add feed"
   },
   "appearance_reading": {
     "title": "Reading & list",
@@ -406,8 +413,8 @@
   },
   "appearance_view": {
     "title": "Per-view settings",
-    "description": "Article / image / notification each on its own; auto-expand renders the full post inline (Folo-style feed)",
-    "auto_expand": "Auto-expand content",
+    "description": "Article / image / notification / social are four separate views",
+    "fetch_readable": "Fetch full text when missing",
     "scroll_read": "Mark read on scroll",
     "inherit": "Follow general",
     "on": "On",

@@ -130,9 +130,13 @@ export function EntryList({
   const targetLanguage = aiSettings?.summaryLanguage ?? "zh-CN";
   const markReadOnScroll = generalSettings?.markReadOnScroll ?? false;
   // 按视图（文章 / 图片 / 通知）的独立开关：自动展开正文、覆盖滚动标已读
-  const autoExpandByView = useUISettingKey("autoExpandByView");
+
   const scrollReadByView = useUISettingKey("scrollReadByView");
-  const autoExpand = autoExpandByView?.[contentType] ?? false;
+  // 社交媒体是第四类内容（与文章 / 图片 / 通知并列），不是文章视图的另一种排布
+  const isSocialView = contentType === "social";
+  const fetchReadableByView = useUISettingKey("fetchReadableByView");
+  const fetchReadableEnabled =
+    isSocialView && (fetchReadableByView?.[contentType] ?? false);
   const scrollReadOverride = scrollReadByView?.[contentType] ?? "inherit";
   const scrollReadEnabled =
     scrollReadOverride === "inherit"
@@ -406,6 +410,8 @@ export function EntryList({
             return t("entry_list.all_pictures");
           case "notification":
             return t("entry_list.all_notifications");
+          case "social":
+            return t("entry_list.all_social");
           default:
             return t("entry_list.all_articles");
         }
@@ -511,7 +517,8 @@ export function EntryList({
                   onClick={() => handleSelectEntry(entry.id)}
                   autoTranslate={autoTranslate}
                   targetLanguage={targetLanguage}
-                  autoExpand={autoExpand}
+                  social={isSocialView}
+                  fetchReadable={fetchReadableEnabled}
                 />
               ))}
               {scrollReadEndPaddingHeight > 0 && (

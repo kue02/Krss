@@ -11,7 +11,7 @@ type Feed struct {
 	Description           *string
 	SummaryPromptReminder *string
 	IconPath              *string
-	Type                  string // article, picture, notification
+	Type                  string // article, picture, notification, social
 	ETag                  *string
 	LastModified          *string
 	ErrorMessage          *string

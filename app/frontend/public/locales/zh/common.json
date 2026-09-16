@@ -12,7 +12,8 @@
   "content_type": {
     "article": "文章",
     "picture": "图片",
-    "notification": "通知"
+    "notification": "通知",
+    "social": "社交媒体"
   },
   "actions": {
     "refresh": "刷新",
@@ -355,6 +356,7 @@
     "all_articles": "全部文章",
     "all_pictures": "全部图片",
     "all_notifications": "全部通知",
+    "all_social": "全部社交媒体",
     "starred": "已加星标",
     "feed": "订阅源",
     "folder": "文件夹",
@@ -382,7 +384,7 @@
     "openOriginal": "在浏览器打开原文",
     "close": "关闭文章",
     "refresh": "刷新订阅",
-    "help": "显示 / 隐藏本页"
+    "help": "显示 / 隐藏本页", "sidebar": "侧栏", "nextFeed": "下一个订阅 / 分组", "prevFeed": "上一个订阅 / 分组", "toggleFolder": "展开 / 折叠所在分组", "addFeed": "添加订阅"
   },
   "appearance_reading": {
     "title": "阅读与列表",
@@ -405,8 +407,8 @@
   },
   "appearance_view": {
     "title": "按视图设置",
-    "description": "文章 / 图片 / 通知各自独立；自动展开＝在列表里直接铺开正文（Folo 式信息流）",
-    "auto_expand": "自动展开正文",
+    "description": "文章 / 图片 / 通知 / 社交媒体四个视图各自独立",
+    "fetch_readable": "缺全文时自动抓取",
     "scroll_read": "滚动标已读",
     "inherit": "跟随通用",
     "on": "开",

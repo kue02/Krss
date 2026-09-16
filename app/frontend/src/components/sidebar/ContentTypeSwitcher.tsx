@@ -1,11 +1,21 @@
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
-import { FileTextIcon, ImageIcon, BellIcon } from "@/components/ui/icons";
+import {
+  FileTextIcon,
+  ImageIcon,
+  BellIcon,
+  SocialIcon,
+} from "@/components/ui/icons";
 import type { ContentType } from "@/types/api";
 
 interface ContentTypeSwitcherProps {
   contentType: ContentType;
-  counts: { article: number; picture: number; notification: number };
+  counts: {
+    article: number;
+    picture: number;
+    notification: number;
+    social: number;
+  };
   onSelect: (type: ContentType) => void;
   visibleContentTypes: ContentType[];
 }
@@ -17,6 +27,7 @@ const contentTypeMeta: Record<
   article: { icon: FileTextIcon, labelKey: "content_type.article" },
   picture: { icon: ImageIcon, labelKey: "content_type.picture" },
   notification: { icon: BellIcon, labelKey: "content_type.notification" },
+  social: { icon: SocialIcon, labelKey: "content_type.social" },
 };
 
 /** 内容类型切换 —— Nextflux 风格的分段胶囊：整条浅底容器，选中项浮起成卡片 */

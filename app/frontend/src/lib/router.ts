@@ -9,7 +9,7 @@ export interface RouteState {
 }
 
 function parseContentType(value: string | null): ContentType {
-  if (value === "picture" || value === "notification") {
+  if (value === "picture" || value === "notification" || value === "social") {
     return value;
   }
   return "article";

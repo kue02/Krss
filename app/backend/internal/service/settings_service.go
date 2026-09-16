@@ -600,14 +600,22 @@ func normalizeContentTypes(values []string) []string {
 		seen[value] = struct{}{}
 		ordered = append(ordered, value)
 	}
+	// 补齐默认列表里新增的类别（老实例的库里只存了旧的三类）
+	for _, fallback := range defaultAppearanceContentTypes {
+		if _, ok := seen[fallback]; ok {
+			continue
+		}
+		seen[fallback] = struct{}{}
+		ordered = append(ordered, fallback)
+	}
 	return ordered
 }
 
-var defaultAppearanceContentTypes = []string{"article", "picture", "notification"}
+var defaultAppearanceContentTypes = []string{"article", "picture", "notification", "social"}
 
 func isValidAppearanceContentType(value string) bool {
 	switch value {
-	case "article", "picture", "notification":
+	case "article", "picture", "notification", "social":
 		return true
 	default:
 		return false

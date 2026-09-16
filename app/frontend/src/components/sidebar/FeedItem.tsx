@@ -176,6 +176,9 @@ export function FeedItem({
               >
                 {t("content_type.notification")}
               </ContextMenuItem>
+              <ContextMenuItem onClick={() => onChangeType(feedId, "social")}>
+                {t("content_type.social")}
+              </ContextMenuItem>
             </ContextMenuSubContent>
           </ContextMenuSub>
         )}

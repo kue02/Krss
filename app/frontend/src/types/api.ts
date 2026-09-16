@@ -1,4 +1,4 @@
-export type ContentType = "article" | "picture" | "notification";
+export type ContentType = "article" | "picture" | "notification" | "social";
 
 export interface Folder {
   id: string;

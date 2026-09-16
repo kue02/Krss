@@ -38,12 +38,17 @@ import { useUnreadCounts } from "@/hooks/useEntries";
 import { useAuth } from "@/hooks/useAuth";
 import type { SelectionType } from "@/hooks/useSelection";
 import type { Folder, Feed, ContentType } from "@/types/api";
+import {
+  useSidebarHotkeys,
+  type SidebarTarget,
+} from "@/hooks/useSidebarHotkeys";
 import type { AppearanceSettings } from "@/types/settings";
 
 const defaultContentTypes: ContentType[] = [
   "article",
   "picture",
   "notification",
+  "social",
 ];
 
 // Per-contentType scroll position cache (module-level to survive unmount/remount)
@@ -100,7 +105,10 @@ export function Sidebar({
     if (!current || current.length === 0) return defaultContentTypes;
     return current.filter(
       (type) =>
-        type === "article" || type === "picture" || type === "notification",
+        type === "article" ||
+        type === "picture" ||
+        type === "notification" ||
+        type === "social",
     );
   }, [appearanceSettings]);
 
@@ -218,7 +226,7 @@ export function Sidebar({
 
   // Calculate unread count for each content type
   const contentTypeCounts = useMemo(() => {
-    const counts = { article: 0, picture: 0, notification: 0 };
+    const counts = { article: 0, picture: 0, notification: 0, social: 0 };
     for (const feed of allFeeds) {
       counts[feed.type] += unreadCounts.get(feed.id) || 0;
     }
@@ -288,6 +296,35 @@ export function Sidebar({
     () => sortFeeds(uncategorizedFeeds),
     [uncategorizedFeeds, sortFeeds],
   );
+
+  // 侧栏键盘导航目标（视觉顺序：分组 → 组内订阅 → 未分组订阅）
+  const navTargets = useMemo(() => {
+    const targets: SidebarTarget[] = [];
+    for (const { folder, feeds } of sortedFoldersWithFeeds) {
+      targets.push({ kind: "folder", id: folder.id, name: folder.name });
+      for (const feed of feeds) {
+        targets.push({
+          kind: "feed",
+          id: feed.id,
+          name: feed.title,
+          folderId: folder.id,
+        });
+      }
+    }
+    for (const feed of sortedUncategorizedFeeds) {
+      targets.push({ kind: "feed", id: feed.id, name: feed.title });
+    }
+    return targets;
+  }, [sortedFoldersWithFeeds, sortedUncategorizedFeeds]);
+
+  // n / p 上下切换订阅，x 折叠所在分组，Shift+N 添加订阅（对齐 Nextflux）
+  useSidebarHotkeys({
+    targets: navTargets,
+    selection,
+    onSelectFeed,
+    onSelectFolder,
+    onAddFeed: onAddClick ? () => onAddClick(contentType) : undefined,
+  });
 
   const isStarredSelected = selection.type === "starred";
   const isFeedSelected = (feedId: string) =>

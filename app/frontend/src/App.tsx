@@ -51,6 +51,7 @@ const defaultContentTypes: ContentType[] = [
   "article",
   "picture",
   "notification",
+  "social",
 ];
 const LazyEntryContent = lazy(async () => {
   const module = await import("@/components/entry-content");
@@ -297,7 +298,10 @@ function AuthenticatedApp() {
     if (!current || current.length === 0) return defaultContentTypes;
     return current.filter(
       (item) =>
-        item === "article" || item === "picture" || item === "notification",
+        item === "article" ||
+        item === "picture" ||
+        item === "notification" ||
+        item === "social",
     );
   }, [appearanceSettings]);
 

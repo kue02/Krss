@@ -18,8 +18,8 @@ interface UISettings {
   entryFontFamily: string;
   entryFontSize: number;
   entryLineHeight: number;
-  /** 按视图（文章 / 图片 / 通知）自动展开正文 —— Folo 式信息流 */
-  autoExpandByView: ViewFlags;
+  /** 社交媒体视图里，条目正文过短（只给摘要）时是否自动抓正文 */
+  fetchReadableByView: ViewFlags;
   /** 按视图覆盖「滚动标已读」；inherit = 跟随通用设置 */
   scrollReadByView: ViewScrollRead;
 }
@@ -35,15 +35,17 @@ export const defaultUISettings: UISettings = {
   entryFontFamily: "",
   entryFontSize: 17,
   entryLineHeight: 1.8,
-  autoExpandByView: {
+  fetchReadableByView: {
     article: false,
     picture: false,
     notification: false,
+    social: false,
   },
   scrollReadByView: {
     article: "inherit",
     picture: "inherit",
     notification: "inherit",
+    social: "inherit",
   },
 };
 
@@ -153,10 +155,10 @@ export function useUISettingActions() {
     setUISetting("entryLineHeight", height);
   }, []);
 
-  const setAutoExpandForView = useCallback(
+  const setFetchReadableForView = useCallback(
     (view: ContentType, enabled: boolean) => {
-      setUISetting("autoExpandByView", {
-        ...getUISettings().autoExpandByView,
+      setUISetting("fetchReadableByView", {
+        ...getUISettings().fetchReadableByView,
         [view]: enabled,
       });
     },
@@ -194,7 +196,7 @@ export function useUISettingActions() {
     setEntryFontFamily,
     setEntryFontSize,
     setEntryLineHeight,
-    setAutoExpandForView,
+    setFetchReadableForView,
     setScrollReadForView,
     resetToDefaults,
   };

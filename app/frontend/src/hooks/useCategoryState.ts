@@ -73,6 +73,16 @@ export function useCategoryState(
   return [isOpen, setOpen, toggle];
 }
 
+/** 按分类名读取展开态（默认折叠） */
+export function isCategoryOpen(category: string): boolean {
+  return cachedState[category] ?? false;
+}
+
+/** 按分类名切换展开态（快捷键 x 用；分类状态以「名字」为键） */
+export function toggleCategory(category: string): void {
+  toggleCategoryState(category);
+}
+
 export function useCategoryActions() {
   const setAllCategories = useCallback(
     (categories: string[], isOpen: boolean) => {

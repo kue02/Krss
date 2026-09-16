@@ -11,5 +11,5 @@ func parseIDParam(c echo.Context, name string) (int64, error) {
 }
 
 func isValidContentType(t string) bool {
-	return t == "article" || t == "picture" || t == "notification"
+	return t == "article" || t == "picture" || t == "notification" || t == "social"
 }
