@@ -52,9 +52,9 @@ function getTranslationButtonClassName(state: TranslationButtonState): string {
     return "text-muted-foreground/50 cursor-not-allowed";
   }
   if (state.hasTranslation && !state.isTranslating) {
-    return "bg-muted text-foreground";
+    return "bg-item-active text-foreground";
   }
-  return "text-muted-foreground hover:bg-accent hover:text-foreground";
+  return "text-muted-foreground hover:bg-item-hover hover:text-foreground";
 }
 
 export function EntryContentHeader({
@@ -97,14 +97,14 @@ export function EntryContentHeader({
             <button
               type="button"
               onClick={onBack}
-              className="no-drag-region flex size-11 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-item-hover -ml-1.5"
+              className="no-drag-region flex size-11 shrink-0 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95 -ml-1.5"
             >
               <BackIcon className="size-5" />
             </button>
           )}
           <div
             className={cn(
-              "truncate text-lg font-bold text-foreground transition-all duration-300 ease-in-out",
+              "truncate text-base font-bold text-foreground transition-all duration-300 ease-in-out",
               isAtTop
                 ? "translate-y-4 opacity-0 pointer-events-none"
                 : "translate-y-0 opacity-100 cursor-pointer active:opacity-70",
@@ -127,10 +127,10 @@ export function EntryContentHeader({
                 : t("entry.add_to_starred")
             }
             className={cn(
-              "no-drag-region flex size-9 items-center justify-center rounded-lg transition-colors",
+              "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95",
               entry.starred
                 ? "text-amber-500 hover:bg-amber-500/10"
-                : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                : "text-muted-foreground hover:bg-item-hover hover:text-foreground",
             )}
           >
             <svg
@@ -160,10 +160,10 @@ export function EntryContentHeader({
                     : t("entry.generate_summary")
               }
               className={cn(
-                "no-drag-region flex size-9 items-center justify-center rounded-lg transition-colors",
+                "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95",
                 hasSummary
-                  ? "bg-muted text-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                  ? "bg-item-active text-foreground"
+                  : "text-muted-foreground hover:bg-item-hover hover:text-foreground",
               )}
             >
               <span
@@ -202,7 +202,7 @@ export function EntryContentHeader({
                 t,
               )}
               className={cn(
-                "no-drag-region flex size-9 items-center justify-center rounded-lg transition-colors",
+                "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95",
                 getTranslationButtonClassName({
                   isDisabled: !!translationDisabled,
                   isTranslating: !!isTranslating,
@@ -240,12 +240,12 @@ export function EntryContentHeader({
                   : t("entry.show_readable"))
               }
               className={cn(
-                "no-drag-region flex size-9 items-center justify-center rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50",
                 error
                   ? "text-destructive hover:bg-destructive/10"
                   : isReadableActive
-                    ? "bg-muted text-foreground"
-                    : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                    ? "bg-item-active text-foreground"
+                    : "text-muted-foreground hover:bg-item-hover hover:text-foreground",
               )}
             >
               <svg
@@ -277,7 +277,7 @@ export function EntryContentHeader({
               href={safeUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="no-drag-region flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="no-drag-region flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-item-hover hover:text-foreground"
               aria-label={t("entry.open_original")}
             >
               <svg

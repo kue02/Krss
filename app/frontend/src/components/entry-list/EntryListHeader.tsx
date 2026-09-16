@@ -62,25 +62,27 @@ export function EntryListHeader({
             <MenuIcon className="size-5" />
           </button>
         )}
-        <h2
-          className="truncate text-lg font-bold cursor-pointer active:opacity-70 transition-opacity"
-          onClick={() => dispatchScrollToTop(scrollToTopScope)}
-        >
-          {title}
-        </h2>
-        {unreadCount > 0 && (
-          <span className="shrink-0 text-xs text-muted-foreground">
-            {t("entry.unread_count", { count: unreadCount })}
-          </span>
-        )}
+        <div className="min-w-0">
+          <h2
+            className="truncate text-[0.9375rem] font-bold leading-tight cursor-pointer active:opacity-70 transition-opacity"
+            onClick={() => dispatchScrollToTop(scrollToTopScope)}
+          >
+            {title}
+          </h2>
+          {unreadCount > 0 && (
+            <span className="block truncate text-xs text-muted-foreground">
+              {t("entry.unread_count", { count: unreadCount })}
+            </span>
+          )}
+        </div>
       </div>
 
-      <div className="flex items-center">
+      <div className="flex shrink-0 items-center gap-0.5">
         <button
           type="button"
           onClick={onToggleUnreadOnly}
           title={unreadOnly ? t("entry.show_all") : t("entry.show_unread_only")}
-          className="flex size-8 items-center justify-center rounded-md transition-colors hover:bg-item-hover"
+          className="flex size-8 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95"
         >
           {unreadOnly ? (
             <CircleFilledIcon className="size-5" />
@@ -92,7 +94,7 @@ export function EntryListHeader({
           type="button"
           onClick={onMarkAllRead}
           title={t("entry.mark_all_read")}
-          className="flex size-8 items-center justify-center rounded-md transition-colors hover:bg-item-hover"
+          className="flex size-8 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95"
         >
           <CheckCircleIcon className="size-4" />
         </button>
