@@ -7,6 +7,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -58,7 +59,77 @@ func (s *proxyService) Close() {
 }
 
 func (s *proxyService) FetchImage(ctx context.Context, imageURL, refererURL string) (*ProxyResult, error) {
+	// 先用标准 HTTP 客户端：它能正确走「设置 → 网络」里配置的代理，也会自动跟随图床跳转
+	// （azuretls 会话在本机的 HTTP 代理下会超时，见 docs/移植笔记.md）
+	result, stdErr := s.fetchWithStandardClient(ctx, imageURL, refererURL)
+	if stdErr == nil {
+		return result, nil
+	}
+
+	logger.Debug("proxy standard client failed, falling back", "module", "service", "action", "fetch", "resource", "proxy", "result", "failed", "error", stdErr)
+
+	// 再退到 azuretls 会话（浏览器 TLS 指纹）：反爬 / Anubis 挑战的站点靠它
 	return s.fetchImageWithRetry(ctx, imageURL, refererURL, "", 0)
+}
+
+// fetchWithStandardClient 用 net/http 抓图：代理、跳转、cookie 都由标准栈处理。
+// 拿到的不是图片（例如 Anubis 挑战页）就返回错误，交给上层退到 azuretls。
+func (s *proxyService) fetchWithStandardClient(ctx context.Context, imageURL, refererURL string) (*ProxyResult, error) {
+	parsedURL, err := url.Parse(imageURL)
+	if err != nil {
+		return nil, ErrInvalidURL
+	}
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return nil, ErrInvalidProtocol
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, imageURL, nil)
+	if err != nil {
+		return nil, ErrInvalidURL
+	}
+	setProxyImageHeaders(req.Header, refererURL, parsedURL)
+
+	if cachedCookie := getCachedAnubisCookie(ctx, s.anubis, parsedURL.Host, req.Header); cachedCookie != "" {
+		req.Header.Set("Cookie", cachedCookie)
+	}
+
+	client := s.clientFactory.NewHTTPClient(ctx, proxyTimeout)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrFetchFailed, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%w: %d", ErrFetchFailed, resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrFetchFailed, err)
+	}
+
+	contentType, err := detectProxyImageContentType(data)
+	if err != nil {
+		logger.Debug("proxy standard client got non-image", "module", "service", "action", "fetch", "resource", "proxy", "result", "failed", "host", parsedURL.Host, "error", err)
+		return nil, err
+	}
+
+	return &ProxyResult{Data: data, ContentType: contentType}, nil
+}
+
+// setProxyImageHeaders 给标准客户端设置与 azuretls 那条路一致的取图请求头
+func setProxyImageHeaders(header http.Header, refererURL string, parsedURL *url.URL) {
+	header.Set("accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
+	header.Set("accept-language", "zh-CN,zh;q=0.9")
+	header.Set("referer", buildReferer(refererURL, parsedURL))
+	header.Set("sec-ch-ua", config.ChromeSecChUa)
+	header.Set("sec-ch-ua-mobile", "?0")
+	header.Set("sec-ch-ua-platform", `"Windows"`)
+	header.Set("sec-fetch-dest", "image")
+	header.Set("sec-fetch-mode", "no-cors")
+	header.Set("sec-fetch-site", "cross-site")
+	header.Set("user-agent", config.ChromeUserAgent)
 }
 
 func (s *proxyService) fetchImageWithRetry(ctx context.Context, imageURL, refererURL, cookie string, retryCount int) (*ProxyResult, error) {
