@@ -59,12 +59,17 @@ type generalSettingsResponse struct {
 	FallbackUserAgent string `json:"fallbackUserAgent"`
 	AutoReadability   bool   `json:"autoReadability"`
 	MarkReadOnScroll  bool   `json:"markReadOnScroll"`
+	// RSSHub 自有实例（添加订阅时自动换域名用）——不回这两个字段的话界面每次打开都是空的
+	RSSHubBaseURL   string `json:"rsshubBaseUrl"`
+	RSSHubAccessKey string `json:"rsshubAccessKey"`
 }
 
 type generalSettingsRequest struct {
 	FallbackUserAgent string `json:"fallbackUserAgent"`
 	AutoReadability   bool   `json:"autoReadability"`
 	MarkReadOnScroll  bool   `json:"markReadOnScroll"`
+	RSSHubBaseURL     string `json:"rsshubBaseUrl"`
+	RSSHubAccessKey   string `json:"rsshubAccessKey"`
 }
 
 type networkSettingsResponse struct {
@@ -324,6 +329,8 @@ func (h *SettingsHandler) GetGeneralSettings(c echo.Context) error {
 		FallbackUserAgent: settings.FallbackUserAgent,
 		AutoReadability:   settings.AutoReadability,
 		MarkReadOnScroll:  settings.MarkReadOnScroll,
+		RSSHubBaseURL:     settings.RSSHubBaseURL,
+		RSSHubAccessKey:   settings.RSSHubAccessKey,
 	})
 }
 
@@ -348,6 +355,8 @@ func (h *SettingsHandler) UpdateGeneralSettings(c echo.Context) error {
 		FallbackUserAgent: req.FallbackUserAgent,
 		AutoReadability:   req.AutoReadability,
 		MarkReadOnScroll:  req.MarkReadOnScroll,
+		RSSHubBaseURL:     req.RSSHubBaseURL,
+		RSSHubAccessKey:   req.RSSHubAccessKey,
 	}
 
 	if err := h.service.SetGeneralSettings(c.Request().Context(), settings); err != nil {

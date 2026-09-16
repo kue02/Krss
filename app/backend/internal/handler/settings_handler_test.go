@@ -205,6 +205,55 @@ func TestSettingsHandler_UpdateGeneralSettings_Success(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 }
 
+// RSSHub 实例设置必须能原样读回来，否则界面每次打开都是空框（用户报的「设了关闭再打开又让我输入」）
+func TestSettingsHandler_GeneralSettings_RSSHubRoundTrip(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockSettingsService(ctrl)
+	h := handler.NewSettingsHandlerHelper(mockService, nil)
+
+	const baseURL = "https://rsshub.example.com"
+	const accessKey = "secret-key"
+
+	// 读：字段要出现在响应里
+	mockService.EXPECT().
+		GetGeneralSettings(gomock.Any()).
+		Return(&service.GeneralSettings{RSSHubBaseURL: baseURL, RSSHubAccessKey: accessKey}, nil)
+
+	e := newTestEcho()
+	req := newJSONRequest(http.MethodGet, "/settings/general", nil)
+	c, rec := newTestContext(e, req)
+
+	require.NoError(t, h.GetGeneralSettings(c))
+
+	var resp handler.GeneralSettingsResponse
+	assertJSONResponse(t, rec, http.StatusOK, &resp)
+	require.Equal(t, baseURL, resp.RSSHubBaseURL)
+	require.Equal(t, accessKey, resp.RSSHubAccessKey)
+
+	// 写：请求体的字段要传到 service，不能被 handler 丢掉
+	mockService.EXPECT().
+		SetGeneralSettings(gomock.Any(), gomock.AssignableToTypeOf(&service.GeneralSettings{})).
+		DoAndReturn(func(_ context.Context, settings *service.GeneralSettings) error {
+			require.Equal(t, baseURL, settings.RSSHubBaseURL)
+			require.Equal(t, accessKey, settings.RSSHubAccessKey)
+			return nil
+		})
+	mockService.EXPECT().
+		GetGeneralSettings(gomock.Any()).
+		Return(&service.GeneralSettings{RSSHubBaseURL: baseURL, RSSHubAccessKey: accessKey}, nil)
+
+	putReq := newJSONRequest(http.MethodPut, "/settings/general", map[string]interface{}{
+		"rsshubBaseUrl":   baseURL,
+		"rsshubAccessKey": accessKey,
+	})
+	c2, rec2 := newTestContext(e, putReq)
+
+	require.NoError(t, h.UpdateGeneralSettings(c2))
+	require.Equal(t, http.StatusOK, rec2.Code)
+}
+
 func TestSettingsHandler_GetAppearanceSettings_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
