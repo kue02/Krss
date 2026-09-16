@@ -73,7 +73,6 @@ export function EntryContentHeader({
   hasTranslation,
   translationDisabled,
   onToggleTranslation,
-  isMobile,
   onBack,
 }: EntryContentHeaderProps) {
   const { t } = useTranslation();
@@ -93,7 +92,7 @@ export function EntryContentHeader({
       {/* Content Layer */}
       <div className="relative flex h-12 items-center justify-between gap-3 px-4">
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-          {isMobile && onBack && (
+          {onBack && (
             <button
               type="button"
               onClick={onBack}

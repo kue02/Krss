@@ -66,6 +66,7 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
       : null;
     const [iconError, setIconError] = useState(false);
     const [imageError, setImageError] = useState(false);
+    const [isThumbLoaded, setIsThumbLoaded] = useState(false);
     const showIcon = feed?.iconPath && !iconError;
     const fallbackTitle = t("entry.untitled");
     const fallbackFeedName = t("entry.unknown_feed");
@@ -365,14 +366,21 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
           <div
             className={cn(
               "overflow-hidden rounded-lg bg-muted",
-              isLargeImage ? "h-[168px] w-full shrink-0" : "h-[92px] w-[92px] shrink-0 self-start",
+              !isThumbLoaded && "animate-pulse",
+              isLargeImage
+                ? "h-[168px] w-full shrink-0"
+                : "h-[92px] w-[92px] shrink-0 self-start",
             )}
           >
             <img
               src={thumbnail ?? ""}
               alt=""
               loading="lazy"
-              className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+              className={cn(
+                "size-full object-cover transition-[transform,opacity] duration-300 group-hover:scale-[1.03]",
+                isThumbLoaded ? "opacity-100" : "opacity-0",
+              )}
+              onLoad={() => setIsThumbLoaded(true)}
               onError={() => setImageError(true)}
             />
           </div>

@@ -481,6 +481,52 @@ function AuthenticatedApp() {
     );
   }
 
+  // Desktop social mode —— 两栏（对齐 Folo：SocialMedia 是 wideMode 视图，没有独立列表列；
+  // 选中条目时内容在主列内替换时间线，而不是占用第三列）
+  if (contentType === "social") {
+    return (
+      <>
+        <ThreeColumnLayout
+          sidebar={sidebarContent}
+          list={null}
+          content={
+            selectedEntryId ? (
+              <Suspense fallback={<EntryContentFallback />}>
+                <LazyEntryContent
+                  key={selectedEntryId}
+                  entryId={selectedEntryId}
+                  onBack={() => selectEntry(null)}
+                />
+              </Suspense>
+            ) : (
+              <EntryList
+                selection={selection}
+                selectedEntryId={selectedEntryId}
+                onSelectEntry={selectEntry}
+                onMarkAllRead={handleMarkAllRead}
+                unreadOnly={unreadOnly}
+                onToggleUnreadOnly={toggleUnreadOnly}
+                onFilterChange={handleFilterChange}
+                onCloseEntry={() => selectEntry(null)}
+                contentType={contentType}
+                isTablet={isTablet}
+                onToggleSidebar={toggleSidebarVisible}
+                sidebarVisible={sidebarVisible}
+              />
+            )
+          }
+          hideList
+          showSidebar={showSidebar}
+        />
+        <ImagePreview />
+        <ShortcutsHelpDialog
+          open={isShortcutsOpen}
+          onOpenChange={(open) => shortcutsHelp.set(open)}
+        />
+      </>
+    );
+  }
+
   // Desktop picture mode - two column layout
   if (contentType === "picture") {
     return (
