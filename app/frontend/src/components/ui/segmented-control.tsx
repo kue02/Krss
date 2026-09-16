@@ -21,7 +21,8 @@ export function SegmentedControl<T extends string>({
     <div
       role="tablist"
       className={cn(
-        "flex h-8 items-center rounded-lg border border-border bg-muted/30 p-1",
+        // 容器与滑块的取值对齐 Nextflux 的 segment 令牌（亮色为白、暗色为其指定的蓝灰）
+        "flex h-8 items-center rounded-lg border border-border/60 bg-muted/40 p-1",
         className,
       )}
     >
@@ -47,11 +48,13 @@ export function SegmentedControl<T extends string>({
             {isActive && (
               <motion.span
                 layoutId={id}
-                className="absolute inset-0 z-0 rounded-md bg-background shadow-sm"
+                className="absolute inset-0 z-0 rounded-md bg-[var(--segment)] shadow-nf-sm"
                 transition={{
+                  // Nextflux 的分段滑块是短促的位移，不用慢弹簧
                   type: "spring",
-                  duration: 0.4,
-                  bounce: 0,
+                  stiffness: 520,
+                  damping: 40,
+                  mass: 0.7,
                 }}
               />
             )}
