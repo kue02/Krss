@@ -20,6 +20,7 @@ import { ScrollToTopZone } from "@/components/layout/ScrollToTopZone";
 import { ImagePreview } from "@/components/ui/image-preview";
 import { LoginPage, RegisterPage, NetworkErrorPage } from "@/components/auth";
 import { UpdateNotice } from "@/components/update-notice";
+import { Toaster } from "@/components/ui/toaster";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { refreshAllFeeds } from "@/api";
 import { ShortcutsHelpDialog } from "@/components/shortcuts/ShortcutsHelpDialog";
@@ -663,6 +664,7 @@ function App() {
           <Router>
             <AppContent />
             <UpdateNotice />
+            <Toaster />
           </Router>
         </TooltipProvider>
       </MotionConfig>

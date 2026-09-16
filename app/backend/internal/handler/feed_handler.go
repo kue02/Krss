@@ -348,13 +348,40 @@ func (h *FeedHandler) RefreshStatus(c echo.Context) error {
 
 // RefreshAll triggers a refresh of all feeds.
 // @Summary Refresh all feeds
-// @Description Trigger an immediate refresh of all subscribed feeds
+// @Description Trigger an immediate refresh of feeds; pass {"feedIds": [...]} to refresh only those
 // @Tags feeds
 // @Success 204 "No Content"
 // @Failure 409 {object} errorResponse "Refresh already in progress"
 // @Router /feeds/refresh [post]
+// refreshRequest 可选指定要刷新的订阅；不传则刷新全部
+type refreshRequest struct {
+	FeedIDs []string `json:"feedIds"`
+}
+
 func (h *FeedHandler) RefreshAll(c echo.Context) error {
-	if err := h.refreshService.RefreshAll(c.Request().Context()); err != nil {
+	ctx := c.Request().Context()
+
+	// 带 feedIds 时只刷这些源（按文件夹 / 单个源 / 某个视图刷新都走这里）
+	var req refreshRequest
+	if err := c.Bind(&req); err == nil && len(req.FeedIDs) > 0 {
+		ids := make([]int64, 0, len(req.FeedIDs))
+		for _, raw := range req.FeedIDs {
+			id, parseErr := strconv.ParseInt(raw, 10, 64)
+			if parseErr != nil {
+				return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid feedIds"})
+			}
+			ids = append(ids, id)
+		}
+
+		if err := h.refreshService.RefreshFeeds(ctx, ids); err != nil {
+			logger.Error("feed refresh failed", "module", "handler", "action", "refresh", "resource", "feed", "result", "failed", "count", len(ids), "error", err)
+			return writeServiceError(c, err)
+		}
+		logger.Info("feed refresh triggered", "module", "handler", "action", "refresh", "resource", "feed", "result", "ok", "count", len(ids))
+		return c.NoContent(http.StatusNoContent)
+	}
+
+	if err := h.refreshService.RefreshAll(ctx); err != nil {
 		if errors.Is(err, service.ErrAlreadyRefreshing) {
 			logger.Warn("feed refresh skipped", "module", "handler", "action", "refresh", "resource", "feed", "result", "skipped")
 			return c.JSON(http.StatusConflict, errorResponse{Error: "refresh already in progress"})

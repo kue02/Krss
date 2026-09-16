@@ -18,12 +18,15 @@ import {
 } from "@/components/ui/tooltip";
 import { RssIcon, ErrorIcon } from "@/components/ui/icons";
 import { useContextMenu } from "@/hooks/useContextMenu";
+import { copyToClipboard } from "@/stores/toast-store";
 import { feedItemStyles, sidebarItemIconStyles, feedIconImageStyles } from "./styles";
 import type { ContentType, Folder } from "@/types/api";
 
 interface FeedItemProps {
   name: string;
   feedId: string;
+  /** 订阅地址，用于右键菜单里的「复制 Feed 地址」 */
+  feedUrl?: string;
   iconPath?: string;
   unreadCount?: number;
   isActive?: boolean;
@@ -41,6 +44,7 @@ interface FeedItemProps {
 export function FeedItem({
   name,
   feedId,
+  feedUrl,
   iconPath,
   unreadCount,
   isActive = false,
@@ -134,6 +138,15 @@ export function FeedItem({
         {onRefresh && (
           <ContextMenuItem onClick={() => onRefresh(feedId)}>
             {t("actions.refresh")}
+          </ContextMenuItem>
+        )}
+        {feedUrl && (
+          <ContextMenuItem
+            onClick={() => {
+              void copyToClipboard(feedUrl, t("actions.copied_feed_url"));
+            }}
+          >
+            {t("actions.copy_feed_url")}
           </ContextMenuItem>
         )}
         {onEdit && (

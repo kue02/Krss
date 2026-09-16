@@ -426,6 +426,14 @@ export async function refreshAllFeeds(): Promise<void> {
   });
 }
 
+/** 只刷新指定订阅（按文件夹 / 单个源 / 某个视图刷新都用它） */
+export async function refreshFeeds(ids: (string | number)[]): Promise<void> {
+  return request<void>("/api/feeds/refresh", {
+    method: "POST",
+    body: JSON.stringify({ feedIds: ids.map(String) }),
+  });
+}
+
 export interface RefreshStatus {
   isRefreshing: boolean;
   lastRefreshedAt?: string;

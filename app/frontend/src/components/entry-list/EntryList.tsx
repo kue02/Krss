@@ -9,6 +9,9 @@ import {
 import { useTranslation } from "react-i18next";
 import { useEntriesInfinite, useUnreadCounts } from "@/hooks/useEntries";
 import { useFeeds } from "@/hooks/useFeeds";
+import { queryClient } from "@/lib/queryClient";
+import { refreshAllFeeds, refreshFeeds } from "@/api";
+import { showToast } from "@/stores/toast-store";
 import { useFolders } from "@/hooks/useFolders";
 import { useAISettings } from "@/hooks/useAISettings";
 import { useGeneralSettings } from "@/hooks/useGeneralSettings";
@@ -283,6 +286,47 @@ export function EntryList({
     };
   }, [entries.length]);
 
+  // 刷新：按当前选中范围（单个源 / 文件夹内所有源 / 某个视图的所有源）
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const handleRefresh = useCallback(async () => {
+    if (isRefreshing) return;
+
+    let ids: string[] = [];
+    if (selection.type === "feed") {
+      ids = [selection.feedId];
+    } else if (selection.type === "folder") {
+      ids = feeds
+        .filter((feed) => feed.folderId === selection.folderId)
+        .map((feed) => feed.id);
+    } else if (selection.type === "all") {
+      ids = feeds
+        .filter((feed) => (feed.type ?? "article") === contentType)
+        .map((feed) => feed.id);
+    }
+    // 星标视图或算不出范围时刷新全部（ids 为空即刷新全部）
+
+    setIsRefreshing(true);
+    try {
+      if (ids.length > 0) {
+        await refreshFeeds(ids);
+      } else {
+        await refreshAllFeeds();
+      }
+      queryClient.invalidateQueries({ queryKey: ["entries"] });
+      queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
+      queryClient.invalidateQueries({ queryKey: ["feeds"] });
+      showToast(
+        ids.length > 0
+          ? t("entry.refreshing_n_feeds", { count: ids.length })
+          : t("entry.refreshing_all"),
+      );
+    } catch {
+      showToast(t("entry.refresh_failed"));
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [contentType, feeds, isRefreshing, selection, t]);
+
   const { endPaddingHeight: scrollReadEndPaddingHeight } = useScrollMarkRead({
     surface: scrollSurface,
     contentRootRef: containerRef,
@@ -518,6 +562,8 @@ export function EntryList({
           unreadOnly={unreadOnly}
           onToggleUnreadOnly={onToggleUnreadOnly}
           onMarkAllRead={onMarkAllRead}
+          onRefresh={handleRefresh}
+          isRefreshing={isRefreshing}
           scrollToTopScope="entrylist"
           isMobile={isMobile}
           onMenuClick={handleMenuClick}

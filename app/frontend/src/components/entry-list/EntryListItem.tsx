@@ -6,6 +6,7 @@ import {
   Clock,
   ExternalLink,
   Globe,
+  Link2,
   Star,
   Undo2,
 } from "lucide-react";
@@ -23,6 +24,7 @@ import { stripDuplicatedTitle } from "@/lib/strip-duplicated-title";
 import { stripContentImages } from "@/lib/strip-content-images";
 import { parseSocialSource } from "@/lib/social-source";
 import { removeContentSeparators } from "@/lib/social-content";
+import { copyToClipboard } from "@/stores/toast-store";
 import { useInView } from "@/hooks/useInView";
 import { ArticleContent } from "@/components/ui/article-content";
 import { resolveReadingFontStack } from "@/lib/reading-fonts";
@@ -418,15 +420,27 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
                 {isUnread ? <Check className="size-4" /> : <Undo2 className="size-4" />}
               </button>
               {entry.url && (
-                <a
-                  href={entry.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title={t("entry.open_original")}
-                  className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
-                >
-                  <ExternalLink className="size-4" />
-                </a>
+                <>
+                  <a
+                    href={entry.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={t("entry.open_original")}
+                    className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
+                  >
+                    <ExternalLink className="size-4" />
+                  </a>
+                  <button
+                    type="button"
+                    title={t("entry.copy_link")}
+                    onClick={() =>
+                      void copyToClipboard(entry.url!, t("entry.copied_link"))
+                    }
+                    className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
+                  >
+                    <Link2 className="size-4" />
+                  </button>
+                </>
               )}
             </div>
 
@@ -438,7 +452,29 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
                   {readingTime}
                 </span>
               )}
-              {entry.url && <span className="ml-auto">{t("entry.open_original")}</span>}
+              {entry.url && (
+                <span className="ml-auto flex items-center gap-2">
+                  <a
+                    href={entry.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="transition-colors duration-200 hover:text-foreground"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    {t("entry.open_original")}
+                  </a>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void copyToClipboard(entry.url!, t("entry.copied_link"));
+                    }}
+                    className="transition-colors duration-200 hover:text-foreground"
+                  >
+                    {t("entry.copy_link")}
+                  </button>
+                </span>
+              )}
             </div>
           </div>
         </div>

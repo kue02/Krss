@@ -42,6 +42,9 @@ import {
   useSidebarHotkeys,
   type SidebarTarget,
 } from "@/hooks/useSidebarHotkeys";
+import { refreshFeeds } from "@/api";
+import { showToast } from "@/stores/toast-store";
+import { queryClient } from "@/lib/queryClient";
 import type { AppearanceSettings } from "@/types/settings";
 
 const defaultContentTypes: ContentType[] = [
@@ -326,6 +329,22 @@ export function Sidebar({
     onAddFeed: onAddClick ? () => onAddClick(contentType) : undefined,
   });
 
+  // 侧栏右键「刷新」：只刷这一个源
+  const handleRefreshFeed = useCallback(
+    async (feedId: string) => {
+      try {
+        await refreshFeeds([feedId]);
+        queryClient.invalidateQueries({ queryKey: ["entries"] });
+        queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
+        queryClient.invalidateQueries({ queryKey: ["feeds"] });
+        showToast(t("entry.refreshing_n_feeds", { count: 1 }));
+      } catch {
+        showToast(t("entry.refresh_failed"));
+      }
+    },
+    [queryClient, t],
+  );
+
   const isStarredSelected = selection.type === "starred";
   const isFeedSelected = (feedId: string) =>
     selection.type === "feed" && selection.feedId === feedId;
@@ -415,6 +434,8 @@ export function Sidebar({
                           key={feed.id}
                           feedId={feed.id}
                           name={feed.title}
+                          feedUrl={feed.url}
+                          onRefresh={handleRefreshFeed}
                           iconPath={feed.iconPath}
                           unreadCount={unreadCounts.get(feed.id) || 0}
                           isActive={isFeedSelected(feed.id)}
@@ -437,6 +458,8 @@ export function Sidebar({
                     key={feed.id}
                     feedId={feed.id}
                     name={feed.title}
+                    feedUrl={feed.url}
+                    onRefresh={handleRefreshFeed}
                     iconPath={feed.iconPath}
                     unreadCount={unreadCounts.get(feed.id) || 0}
                     isActive={isFeedSelected(feed.id)}

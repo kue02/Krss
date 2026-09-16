@@ -4,7 +4,9 @@ import {
   CircleFilledIcon,
   CheckCircleIcon,
   MenuIcon,
+  RefreshIcon,
 } from "@/components/ui/icons";
+import { cn } from "@/lib/utils";
 import { dispatchScrollToTop } from "@/hooks/useScrollToTop";
 
 interface EntryListHeaderProps {
@@ -13,6 +15,9 @@ interface EntryListHeaderProps {
   unreadOnly: boolean;
   onToggleUnreadOnly: () => void;
   onMarkAllRead: () => void;
+  /** 刷新当前选中范围（文件夹 / 单个源 / 某个视图） */
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
   scrollToTopScope?: string;
   isMobile?: boolean;
   onMenuClick?: () => void;
@@ -27,6 +32,8 @@ export function EntryListHeader({
   unreadOnly,
   onToggleUnreadOnly,
   onMarkAllRead,
+  onRefresh,
+  isRefreshing = false,
   scrollToTopScope,
   isMobile,
   onMenuClick,
@@ -90,6 +97,17 @@ export function EntryListHeader({
             <CircleOutlineIcon className="size-5" />
           )}
         </button>
+        {onRefresh && (
+          <button
+            type="button"
+            onClick={onRefresh}
+            title={t("entry.refresh_view")}
+            disabled={isRefreshing}
+            className="flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors duration-200 hover:bg-item-hover disabled:opacity-60"
+          >
+            <RefreshIcon className={cn("size-4", isRefreshing && "animate-spin")} />
+          </button>
+        )}
         <button
           type="button"
           onClick={onMarkAllRead}
