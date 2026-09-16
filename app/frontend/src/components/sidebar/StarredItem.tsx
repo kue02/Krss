@@ -27,7 +27,7 @@ export function StarredItem({
       </span>
       <span className="grow">{t("sidebar.starred")}</span>
       {count > 0 && (
-        <span className="text-[0.65rem] tabular-nums text-muted-foreground">
+        <span className="shrink-0 text-[0.7rem] font-medium tabular-nums text-muted-foreground">
           {count > 99 ? "99+" : count}
         </span>
       )}

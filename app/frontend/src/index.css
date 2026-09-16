@@ -1,30 +1,32 @@
 @import "tailwindcss";
+@import "@heroui/styles";
+@import "./styles/nextflux-theme.css";
 @plugin "tailwindcss-motion";
 @plugin "@tailwindcss/typography";
 
 @theme {
-  /* Colors - using shadcn/ui compatible CSS variables */
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-  --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
-  --color-sidebar: hsl(var(--sidebar));
-  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  /* Colors — 统一映射到 HeroUI v3 token（Nextflux 皮肤的真实色源） */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--surface-foreground);
+  --color-popover: var(--overlay);
+  --color-popover-foreground: var(--overlay-foreground);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--accent-foreground);
+  --color-secondary: var(--surface-secondary);
+  --color-secondary-foreground: var(--surface-secondary-foreground);
+  --color-muted: var(--surface-secondary);
+  --color-muted-foreground: var(--muted);
+  --color-accent: var(--surface-secondary);
+  --color-accent-foreground: var(--foreground);
+  --color-destructive: var(--danger);
+  --color-destructive-foreground: var(--danger-foreground);
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--focus);
+  --color-sidebar: var(--surface-secondary);
+  --color-sidebar-foreground: var(--foreground);
   --color-item-active: var(--item-active);
   --color-item-hover: var(--item-hover);
 
@@ -38,31 +40,10 @@
 :root {
   text-autospace: normal;
   --app-dvh: 100dvh;
-
-  --background: 0 0% 100%;
-  --foreground: 240 10% 3.9%;
-  --card: 0 0% 100%;
-  --card-foreground: 240 10% 3.9%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 240 10% 3.9%;
-  --primary: 240 5.9% 10%;
-  --primary-foreground: 0 0% 98%;
-  --secondary: 240 4.8% 95.9%;
-  --secondary-foreground: 240 5.9% 10%;
-  --muted: 240 4.8% 95.9%;
-  --muted-foreground: 240 3.8% 46.1%;
-  --accent: 240 4.8% 95.9%;
-  --accent-foreground: 240 5.9% 10%;
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 240 5.9% 90%;
-  --input: 240 5.9% 90%;
-  --ring: 240 5.9% 10%;
   --radius: 0.5rem;
-  --sidebar: 240 4.8% 95.9%;
-  --sidebar-foreground: 240 5.9% 10%;
-  --item-active: color-mix(in oklch, hsl(var(--foreground)) 12%, transparent);
-  --item-hover: color-mix(in oklch, hsl(var(--foreground)) 8%, transparent);
+
+  --item-active: color-mix(in oklch, var(--foreground) 12%, transparent);
+  --item-hover: color-mix(in oklch, var(--foreground) 8%, transparent);
 
   /* iOS-style easing curves */
   --ease-ios: cubic-bezier(0.22, 0.61, 0.36, 1);
@@ -77,33 +58,16 @@
 }
 
 .dark {
-  --background: 240 10% 3.9%;
-  --foreground: 0 0% 98%;
-  --card: 240 10% 3.9%;
-  --card-foreground: 0 0% 98%;
-  --popover: 240 10% 3.9%;
-  --popover-foreground: 0 0% 98%;
-  --primary: 0 0% 98%;
-  --primary-foreground: 240 5.9% 10%;
-  --secondary: 240 3.7% 15.9%;
-  --secondary-foreground: 0 0% 98%;
-  --muted: 240 3.7% 15.9%;
-  --muted-foreground: 240 5% 64.9%;
-  --accent: 240 3.7% 15.9%;
-  --accent-foreground: 0 0% 98%;
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 240 3.7% 15.9%;
-  --input: 240 3.7% 15.9%;
-  --ring: 240 4.9% 83.9%;
-  --sidebar: 240 5.9% 10%;
-  --sidebar-foreground: 240 4.8% 95.9%;
-  --item-active: color-mix(in oklch, hsl(var(--foreground)) 15%, transparent);
-  --item-hover: color-mix(in oklch, hsl(var(--foreground)) 10%, transparent);
+  --item-active: color-mix(in oklch, var(--foreground) 15%, transparent);
+  --item-hover: color-mix(in oklch, var(--foreground) 10%, transparent);
 }
 
-* {
-  border-color: theme(colors.border);
+/* 注意：这条必须待在 @layer base 里 —— 否则未分层的 * 规则会压过所有 utility
+   （曾导致 border-transparent / border-* 工具类完全失效） */
+@layer base {
+  * {
+    border-color: theme(colors.border);
+  }
 }
 
 html {
@@ -176,42 +140,45 @@ body.mobile-document-scroll-locked {
   height: var(--app-dvh);
 }
 
-/* PWA Safe Area Support - utility classes for components that need safe area padding */
-.safe-area-inset {
-  padding-top: env(safe-area-inset-top);
-  padding-bottom: env(safe-area-inset-bottom);
-  padding-left: env(safe-area-inset-left);
-  padding-right: env(safe-area-inset-right);
-}
-
-.safe-area-top {
-  padding-top: env(safe-area-inset-top);
-}
-
-.safe-area-bottom {
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
-.safe-area-left {
-  padding-left: env(safe-area-inset-left);
-}
-
-.safe-area-x {
-  padding-left: max(0px, env(safe-area-inset-left, 0px));
-  padding-right: max(0px, env(safe-area-inset-right, 0px));
-}
-
-@media (min-width: 640px) {
-  .safe-area-x {
-    padding-left: max(1rem, env(safe-area-inset-left, 0px));
-    padding-right: max(1rem, env(safe-area-inset-right, 0px));
+/* PWA Safe Area Support —— 必须放在 @layer components：
+   未分层的规则会盖过所有 Tailwind 工具类（例如布局里给容器加的 pt-* 会失效） */
+@layer components {
+  .safe-area-inset {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
-}
 
-@media (min-width: 1024px) {
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .safe-area-left {
+    padding-left: env(safe-area-inset-left);
+  }
+
   .safe-area-x {
-    padding-left: max(3rem, env(safe-area-inset-left, 0px));
-    padding-right: max(3rem, env(safe-area-inset-right, 0px));
+    padding-left: max(0px, env(safe-area-inset-left, 0px));
+    padding-right: max(0px, env(safe-area-inset-right, 0px));
+  }
+
+  @media (min-width: 640px) {
+    .safe-area-x {
+      padding-left: max(1rem, env(safe-area-inset-left, 0px));
+      padding-right: max(1rem, env(safe-area-inset-right, 0px));
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .safe-area-x {
+      padding-left: max(3rem, env(safe-area-inset-left, 0px));
+      padding-right: max(3rem, env(safe-area-inset-right, 0px));
+    }
   }
 }
 
@@ -320,10 +287,10 @@ body.mobile-document-scroll-locked {
 .ai-shimmer {
   background: linear-gradient(
     90deg,
-    hsl(var(--primary) / 0.06) 0%,
-    hsl(var(--primary) / 0.15) 20%,
-    hsl(var(--primary) / 0.06) 40%,
-    hsl(var(--primary) / 0.06) 100%
+    color-mix(in srgb, --accent 6%, transparent) 0%,
+    color-mix(in srgb, --accent 15%, transparent) 20%,
+    color-mix(in srgb, --accent 6%, transparent) 40%,
+    color-mix(in srgb, --accent 6%, transparent) 100%
   );
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
@@ -368,8 +335,8 @@ body.mobile-document-scroll-locked {
 .dropdown-surface {
   background-image: linear-gradient(
     to bottom right,
-    hsl(var(--popover) / 0.98),
-    hsl(var(--popover) / 0.9)
+    color-mix(in srgb, --overlay 98%, transparent),
+    color-mix(in srgb, --overlay 90%, transparent)
   );
   box-shadow:
     0 10px 24px rgba(0, 0, 0, 0.12),
@@ -379,71 +346,71 @@ body.mobile-document-scroll-locked {
 .dropdown-surface-glow {
   background: linear-gradient(
     to bottom right,
-    hsl(var(--primary) / 0.08),
+    color-mix(in srgb, --accent 8%, transparent),
     transparent 45%,
-    hsl(var(--primary) / 0.05)
+    color-mix(in srgb, --accent 5%, transparent)
   );
 }
 
 .entry-content {
-  --entry-border: hsl(var(--border));
-  --entry-muted: hsl(var(--muted-foreground));
-  --entry-link: hsl(var(--primary));
-  --entry-code-bg: hsl(var(--muted) / 0.6);
-  --entry-code-border: hsl(var(--border));
-  --entry-quote-bg: hsl(var(--muted) / 0.45);
-  --entry-table-head: hsl(var(--muted) / 0.6);
+  --entry-border: --border;
+  --entry-muted: --muted;
+  --entry-link: --accent;
+  --entry-code-bg: color-mix(in srgb, --surface-secondary 60%, transparent);
+  --entry-code-border: --border;
+  --entry-quote-bg: color-mix(in srgb, --surface-secondary 45%, transparent);
+  --entry-table-head: color-mix(in srgb, --surface-secondary 60%, transparent);
   --shiki-foreground: #1f2328;
   --shiki-background: #f6f8fa;
 }
 
 .dark .entry-content {
-  --entry-code-bg: hsl(var(--secondary) / 0.55);
-  --entry-quote-bg: hsl(var(--secondary) / 0.5);
-  --entry-table-head: hsl(var(--secondary) / 0.65);
+  --entry-code-bg: color-mix(in srgb, --surface-secondary 55%, transparent);
+  --entry-quote-bg: color-mix(in srgb, --surface-secondary 50%, transparent);
+  --entry-table-head: color-mix(in srgb, --surface-secondary 65%, transparent);
   --shiki-foreground: #e6edf3;
   --shiki-background: #0d1117;
 }
 
 /* Custom prose styling to match shadcn/ui theme */
 .entry-content .prose {
-  --tw-prose-body: hsl(var(--foreground));
-  --tw-prose-headings: hsl(var(--foreground));
-  --tw-prose-lead: hsl(var(--muted-foreground));
-  --tw-prose-links: hsl(var(--primary));
-  --tw-prose-bold: hsl(var(--foreground));
-  --tw-prose-counters: hsl(var(--muted-foreground));
-  --tw-prose-bullets: hsl(var(--muted-foreground));
-  --tw-prose-hr: hsl(var(--border));
-  --tw-prose-quotes: hsl(var(--foreground) / 0.8);
-  --tw-prose-quote-borders: hsl(var(--border));
-  --tw-prose-captions: hsl(var(--muted-foreground));
-  --tw-prose-kbd: hsl(var(--foreground));
-  --tw-prose-kbd-shadows: hsl(var(--foreground) / 0.1);
-  --tw-prose-code: hsl(var(--foreground));
+  --tw-prose-body: --foreground;
+  --tw-prose-headings: --foreground;
+  --tw-prose-lead: --muted;
+  --tw-prose-links: --accent;
+  --tw-prose-bold: --foreground;
+  --tw-prose-counters: --muted;
+  --tw-prose-bullets: --muted;
+  --tw-prose-hr: --border;
+  --tw-prose-quotes: color-mix(in srgb, --foreground 80%, transparent);
+  --tw-prose-quote-borders: --border;
+  --tw-prose-captions: --muted;
+  --tw-prose-kbd: --foreground;
+  --tw-prose-kbd-shadows: color-mix(in srgb, --foreground 10%, transparent);
+  --tw-prose-code: --foreground;
   --tw-prose-pre-code: var(--shiki-foreground);
   --tw-prose-pre-bg: var(--shiki-background);
-  --tw-prose-th-borders: hsl(var(--border));
-  --tw-prose-td-borders: hsl(var(--border));
+  --tw-prose-th-borders: --border;
+  --tw-prose-td-borders: --border;
   /* Invert colors for dark mode (prose-invert class uses these) */
-  --tw-prose-invert-body: hsl(var(--foreground));
-  --tw-prose-invert-headings: hsl(var(--foreground));
-  --tw-prose-invert-lead: hsl(var(--muted-foreground));
-  --tw-prose-invert-links: hsl(var(--primary));
-  --tw-prose-invert-bold: hsl(var(--foreground));
-  --tw-prose-invert-counters: hsl(var(--muted-foreground));
-  --tw-prose-invert-bullets: hsl(var(--muted-foreground));
-  --tw-prose-invert-hr: hsl(var(--border));
-  --tw-prose-invert-quotes: hsl(var(--foreground) / 0.8);
-  --tw-prose-invert-quote-borders: hsl(var(--border));
-  --tw-prose-invert-captions: hsl(var(--muted-foreground));
-  --tw-prose-invert-kbd: hsl(var(--foreground));
-  --tw-prose-invert-kbd-shadows: hsl(var(--foreground) / 0.1);
-  --tw-prose-invert-code: hsl(var(--foreground));
+  --tw-prose-invert-body: --foreground;
+  --tw-prose-invert-headings: --foreground;
+  --tw-prose-invert-lead: --muted;
+  --tw-prose-invert-links: --accent;
+  --tw-prose-invert-bold: --foreground;
+  --tw-prose-invert-counters: --muted;
+  --tw-prose-invert-bullets: --muted;
+  --tw-prose-invert-hr: --border;
+  --tw-prose-invert-quotes: color-mix(in srgb, --foreground 80%, transparent);
+  --tw-prose-invert-quote-borders: --border;
+  --tw-prose-invert-captions: --muted;
+  --tw-prose-invert-kbd: --foreground;
+  --tw-prose-invert-kbd-shadows: color-mix(in srgb, --foreground 10%, transparent);
+  --tw-prose-invert-code: --foreground;
   --tw-prose-invert-pre-code: var(--shiki-foreground);
   --tw-prose-invert-pre-bg: var(--shiki-background);
-  --tw-prose-invert-th-borders: hsl(var(--border));
-  --tw-prose-invert-td-borders: hsl(var(--border));
+  --tw-prose-invert-th-borders: --border;
+  --tw-prose-invert-td-borders: --border;
 }
 
 /* Code block internal styling - required for Shiki syntax highlighting */
@@ -470,7 +437,7 @@ body.mobile-document-scroll-locked {
 
 /* Line hover effect */
 .entry-content .prose pre code > .line:hover {
-  background: hsl(var(--foreground) / 0.04);
+  background: color-mix(in srgb, --foreground 4%, transparent);
 }
 
 /* Diff and highlight base styles */
@@ -509,11 +476,11 @@ body.mobile-document-scroll-locked {
 
 /* Line highlight */
 .entry-content .prose pre code > .line.highlighted {
-  background: hsl(var(--primary) / 0.1);
+  background: color-mix(in srgb, --accent 10%, transparent);
 }
 
 .entry-content .prose pre code > .line.highlighted::before {
-  background: hsl(var(--primary));
+  background: --accent;
 }
 
 /* Table wrapper - isolate layout calculation to prevent iOS Safari crash */

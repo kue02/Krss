@@ -110,7 +110,18 @@
     "light": "Light",
     "dark": "Dark",
     "label": "Theme",
-    "description": "Select the app display theme"
+    "description": "Select the app display theme",
+    "palette_label": "Theme palette",
+    "palette_description": "Pick one palette each for light and dark (from Nextflux)",
+    "light_palette": "Light palette",
+    "dark_palette": "Dark palette",
+    "themes": {
+      "light": "White",
+      "stone": "Stone",
+      "leaf": "Leaf",
+      "dark": "Black",
+      "nord-dark": "Nord Dark"
+    }
   },
   "language": {
     "label": "Language",

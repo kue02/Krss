@@ -95,9 +95,11 @@ export function FeedCategory({
               </span>
             </button>
             {/* Folder name - clicking selects the folder */}
-            <span className="grow truncate font-semibold">{name}</span>
+            <span className="grow truncate text-[0.8125rem] font-semibold">
+              {name}
+            </span>
             {unreadCount !== undefined && unreadCount > 0 && (
-              <span className="ml-2 shrink-0 text-[0.65rem] tabular-nums text-muted-foreground">
+              <span className="ml-2 shrink-0 text-[0.7rem] font-medium tabular-nums text-muted-foreground">
                 {unreadCount}
               </span>
             )}

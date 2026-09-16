@@ -19,6 +19,7 @@ const contentTypeMeta: Record<
   notification: { icon: BellIcon, labelKey: "content_type.notification" },
 };
 
+/** 内容类型切换 —— Nextflux 风格的分段胶囊：整条浅底容器，选中项浮起成卡片 */
 export function ContentTypeSwitcher({
   contentType,
   counts,
@@ -28,24 +29,27 @@ export function ContentTypeSwitcher({
   const { t } = useTranslation();
 
   return (
-    <div className="relative mb-2 mt-3">
-      <div className="flex h-11 items-center px-1 text-xl text-muted-foreground">
+    <div className="relative mb-1 mt-2 px-1">
+      <div className="flex h-12 items-center gap-1 rounded-xl bg-muted/50 p-1">
         {visibleContentTypes.map((type) => {
           const { icon: Icon, labelKey } = contentTypeMeta[type];
+          const isActive = contentType === type;
           return (
             <button
               key={type}
               onClick={() => onSelect(type)}
               className={cn(
-                "flex h-11 w-8 shrink-0 grow flex-col items-center justify-center gap-1 rounded-md transition-colors",
-                contentType === type
-                  ? "text-lime-600 dark:text-lime-500"
+                "flex h-full shrink-0 grow flex-col items-center justify-center gap-0.5 rounded-lg transition-all duration-200",
+                isActive
+                  ? "bg-card text-foreground shadow-nf"
                   : "text-muted-foreground hover:text-foreground",
               )}
               title={t(labelKey)}
             >
-              <Icon className="size-[1.375rem]" />
-              <div className="text-[0.625rem] font-medium leading-none">
+              <Icon
+                className={cn("size-[1.125rem]", isActive && "text-primary")}
+              />
+              <div className="text-[0.625rem] font-medium leading-none tabular-nums">
                 {counts[type]}
               </div>
             </button>

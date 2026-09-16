@@ -110,7 +110,18 @@
     "light": "浅色",
     "dark": "深色",
     "label": "主题",
-    "description": "选择应用的显示主题"
+    "description": "选择应用的显示主题",
+    "palette_label": "配色主题",
+    "palette_description": "亮色与暗色可各选一套（配色来自 Nextflux）",
+    "light_palette": "亮色配色",
+    "dark_palette": "暗色配色",
+    "themes": {
+      "light": "白色",
+      "stone": "石灰",
+      "leaf": "Leaf",
+      "dark": "黑色",
+      "nord-dark": "深蓝"
+    }
   },
   "language": {
     "label": "语言",

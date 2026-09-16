@@ -9,7 +9,14 @@ import {
 import { Reorder } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
-import { useTheme, type Theme } from "@/hooks/useTheme";
+import {
+  useTheme,
+  themes,
+  type Theme,
+  type ThemeOption,
+  type LightThemeId,
+  type DarkThemeId,
+} from "@/hooks/useTheme";
 import { useAppearanceSettings } from "@/hooks/useAppearanceSettings";
 import { updateAppearanceSettings } from "@/api";
 import { cn } from "@/lib/utils";
@@ -28,9 +35,63 @@ const defaultContentTypes: ContentType[] = [
   "notification",
 ];
 
+/** Nextflux 皮肤：亮/暗各一套配色的色卡选择行 */
+function ThemeSwatchRow({
+  title,
+  options,
+  value,
+  onSelect,
+}: {
+  title: string;
+  options: ThemeOption[];
+  value: string;
+  onSelect: (id: string) => void;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="text-xs text-muted-foreground">{title}</div>
+      <div className="flex items-center gap-2">
+        {options.map((option) => {
+          const isActive = option.id === value;
+          return (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => onSelect(option.id)}
+              aria-pressed={isActive}
+              title={t(`theme.themes.${option.id}`)}
+              className={cn(
+                "flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs transition-colors",
+                isActive
+                  ? "border-ring bg-item-active text-foreground"
+                  : "border-border text-muted-foreground hover:bg-item-hover",
+              )}
+            >
+              <span
+                className="size-4 shrink-0 rounded-full border border-border"
+                style={{ backgroundColor: option.color }}
+              />
+              {t(`theme.themes.${option.id}`)}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function AppearanceSettings() {
   const { t } = useTranslation();
-  const { theme, setTheme } = useTheme();
+  const {
+    theme,
+    setTheme,
+    lightTheme,
+    setLightTheme,
+    darkTheme,
+    setDarkTheme,
+  } = useTheme();
   const queryClient = useQueryClient();
   const { data: appearanceSettings } = useAppearanceSettings();
 
@@ -217,6 +278,32 @@ export function AppearanceSettings() {
             value={theme}
             onValueChange={setTheme}
             options={themeOptions}
+          />
+        </div>
+      </section>
+
+      {/* Palette Section — Nextflux 配色 */}
+      <section>
+        <div className="mb-3">
+          <div className="text-sm font-medium">
+            {t("theme.palette_label")}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {t("theme.palette_description")}
+          </div>
+        </div>
+        <div className="space-y-2.5">
+          <ThemeSwatchRow
+            title={t("theme.light_palette")}
+            options={themes.light}
+            value={lightTheme}
+            onSelect={(id) => setLightTheme(id as LightThemeId)}
+          />
+          <ThemeSwatchRow
+            title={t("theme.dark_palette")}
+            options={themes.dark}
+            value={darkTheme}
+            onSelect={(id) => setDarkTheme(id as DarkThemeId)}
           />
         </div>
       </section>

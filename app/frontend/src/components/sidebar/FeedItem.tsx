@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/tooltip";
 import { RssIcon, ErrorIcon } from "@/components/ui/icons";
 import { useContextMenu } from "@/hooks/useContextMenu";
-import { feedItemStyles, sidebarItemIconStyles } from "./styles";
+import { feedItemStyles, sidebarItemIconStyles, feedIconImageStyles } from "./styles";
 import type { ContentType, Folder } from "@/types/api";
 
 interface FeedItemProps {
@@ -102,14 +102,14 @@ export function FeedItem({
                 <img
                   src={`/icons/${iconPath}`}
                   alt=""
-                  className="size-4 rounded-sm object-cover"
+                  className={feedIconImageStyles}
                   onError={() => setIconError(true)}
                 />
               ) : (
-                <RssIcon className="size-4 text-muted-foreground" />
+                <RssIcon className="size-[18px] text-muted-foreground" />
               )}
             </span>
-            <span className="ml-2 min-w-0 truncate">{name}</span>
+            <span className="min-w-0 truncate">{name}</span>
             {hasError && (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -122,7 +122,7 @@ export function FeedItem({
             )}
           </div>
           {unreadCount !== undefined && unreadCount > 0 && (
-            <span className="shrink-0 text-[0.65rem] tabular-nums text-muted-foreground">
+            <span className="shrink-0 text-[0.7rem] font-medium tabular-nums text-muted-foreground">
               {unreadCount}
             </span>
           )}

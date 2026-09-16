@@ -1,8 +1,10 @@
 import { forwardRef, useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/date-utils";
 import { stripHtml } from "@/lib/html-utils";
+import { getEntryImages } from "@/lib/extract-images";
 import { useTranslationStore } from "@/stores/translation-store";
 import { FeedIcon } from "@/components/ui/feed-icon";
 import type { Entry, Feed } from "@/types/api";
@@ -21,6 +23,15 @@ interface EntryListItemProps {
   "data-entry-id"?: string;
 }
 
+/**
+ * 文章列表卡片 —— Nextflux 样式
+ *
+ * 视觉要点（对齐 Nextflux 的 ArticleCard）：
+ *   - 圆角卡片 + 选中时浮起（柔影 shadow-nf），未选中时无边框
+ *   - 右侧方形缩略图（无图则整块隐藏，不占位）
+ *   - 未读 = 深色粗体标题，已读 = 整体降透明度
+ *   - 顶部来源行（favicon + 源名 + 相对时间）、底部阅读时长
+ */
 export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
   function EntryListItem(
     {
@@ -41,6 +52,7 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
       ? formatRelativeTime(entry.publishedAt, t)
       : null;
     const [iconError, setIconError] = useState(false);
+    const [imageError, setImageError] = useState(false);
     const showIcon = feed?.iconPath && !iconError;
     const fallbackTitle = t("entry.untitled");
     const fallbackFeedName = t("entry.unknown_feed");
@@ -56,67 +68,120 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
       [entry.content],
     );
 
+    /** 缩略图：优先 thumbnailUrl，其次正文首图（都走图片代理） */
+    const thumbnail = useMemo(() => {
+      const images = getEntryImages(entry.thumbnailUrl, entry.content, entry.url);
+      return images[0] ?? null;
+    }, [entry.thumbnailUrl, entry.content, entry.url]);
+
+    /** 阅读时长（与 EntryContentBody 同口径） */
+    const readingTime = useMemo(() => {
+      if (!entry.content) return null;
+      const text = entry.content.replace(/<[^>]*>/g, "");
+      const words = text.match(/[\u4e00-\u9fa5]|\w+/g)?.length || 0;
+      const mins = Math.ceil(words / 230);
+      return mins > 0 ? t("entry.min_read", { mins }) : null;
+    }, [entry.content, t]);
+
     const displayTitle = translation?.title ?? entry.title;
     const displaySummary = translation?.summary ?? strippedContent;
     const displayFeedName = feed?.title || fallbackFeedName;
     const titleContainsUrl = URL_PATTERN.test(displayTitle ?? "");
     const summaryContainsUrl = URL_PATTERN.test(displaySummary ?? "");
+    const isUnread = !entry.read;
+    const showThumbnail = Boolean(thumbnail) && !imageError;
 
     return (
       <div
         ref={ref}
         className={cn(
-          "w-full min-w-0 overflow-hidden px-4 py-3 cursor-pointer transition-colors",
-          "hover:bg-item-hover",
-          isSelected && "bg-item-active",
-          !entry.read && !isSelected && "bg-accent/5",
+          "group relative mx-2 mb-1.5 flex cursor-pointer items-stretch gap-3 overflow-hidden rounded-xl border p-3 transition-all duration-200",
+          isSelected
+            ? "border-border/60 bg-card shadow-nf"
+            : "border-transparent hover:bg-item-hover",
         )}
         style={style}
         data-index={dataIndex}
         data-entry-id={dataEntryId}
         onClick={onClick}
       >
-        {/* Line 1: icon + feed name + time */}
-        <div className="flex min-w-0 items-center gap-1.5 overflow-hidden text-xs text-muted-foreground">
-          {showIcon ? (
-            <img
-              src={`/icons/${feed.iconPath}`}
-              alt=""
-              className="size-4 shrink-0 rounded object-contain"
-              onError={() => setIconError(true)}
-            />
-          ) : (
-            <FeedIcon className="size-4 shrink-0 text-muted-foreground/50" />
-          )}
-          <span className="block min-w-0 truncate">{displayFeedName}</span>
-          {publishedAt && (
-            <>
-              <span className="shrink-0 text-muted-foreground/50">·</span>
-              <span className="shrink-0 whitespace-nowrap">{publishedAt}</span>
-            </>
-          )}
-        </div>
-
-        {/* Line 2: title */}
-        <div
-          className={cn(
-            "mt-1 text-sm wrap-anywhere",
-            titleContainsUrl ? "line-clamp-3" : "line-clamp-2",
-            !entry.read ? "font-semibold" : "font-medium text-muted-foreground",
-          )}
-        >
-          {displayTitle || fallbackTitle}
-        </div>
-
-        {/* Line 3: summary */}
-        {displaySummary && (
+        {/* 左：文字区 */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          {/* 来源行 */}
           <div
             className={cn(
-              "mt-1 text-xs text-muted-foreground wrap-anywhere",
-              summaryContainsUrl ? "line-clamp-3" : "line-clamp-2",
+              "flex min-w-0 items-center gap-1.5 overflow-hidden text-[11px]",
+              isUnread ? "text-muted-foreground" : "text-muted-foreground/70",
             )}
           >
-            {displaySummary}
+            {showIcon ? (
+              <img
+                src={`/icons/${feed.iconPath}`}
+                alt=""
+                className="size-4 shrink-0 rounded object-contain"
+                onError={() => setIconError(true)}
+              />
+            ) : (
+              <FeedIcon className="size-4 shrink-0 text-muted-foreground/50" />
+            )}
+            <span className="block min-w-0 truncate font-medium">
+              {displayFeedName}
+            </span>
+            {publishedAt && (
+              <>
+                <span className="shrink-0 text-muted-foreground/40">·</span>
+                <span className="shrink-0 whitespace-nowrap">
+                  {publishedAt}
+                </span>
+              </>
+            )}
+          </div>
+
+          {/* 标题 */}
+          <div
+            className={cn(
+              "mt-1.5 text-[15px] leading-snug wrap-anywhere",
+              titleContainsUrl ? "line-clamp-3" : "line-clamp-2",
+              isUnread
+                ? "font-semibold text-foreground"
+                : "font-medium text-muted-foreground",
+            )}
+          >
+            {displayTitle || fallbackTitle}
+          </div>
+
+          {/* 摘要 */}
+          {displaySummary && (
+            <div
+              className={cn(
+                "mt-1 text-[13px] leading-relaxed text-muted-foreground wrap-anywhere",
+                summaryContainsUrl ? "line-clamp-3" : "line-clamp-2",
+                !isUnread && "text-muted-foreground/70",
+              )}
+            >
+              {displaySummary}
+            </div>
+          )}
+
+          {/* 阅读时长（沉底） */}
+          {readingTime && (
+            <div className="mt-auto flex items-center gap-1 pt-2 text-[11px] text-muted-foreground/80">
+              <Clock className="size-3 shrink-0" />
+              <span className="line-clamp-1">{readingTime}</span>
+            </div>
+          )}
+        </div>
+
+        {/* 右：缩略图 */}
+        {showThumbnail && (
+          <div className="h-[92px] w-[92px] shrink-0 self-start overflow-hidden rounded-lg bg-muted">
+            <img
+              src={thumbnail ?? ""}
+              alt=""
+              loading="lazy"
+              className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+              onError={() => setImageError(true)}
+            />
           </div>
         )}
       </div>

@@ -25,20 +25,25 @@
     <meta name="description" content="A modern RSS reader" />
     <script>
       (() => {
-        let theme = "system";
+        let mode = "system";
+        let lightTheme = "light";
+        let darkTheme = "dark";
         try {
-          theme = localStorage.getItem("gist-theme") || "system";
+          mode = localStorage.getItem("gist-theme") || "system";
+          lightTheme = localStorage.getItem("gist-light-theme") || "light";
+          darkTheme = localStorage.getItem("gist-dark-theme") || "dark";
         } catch {
           // Use the system theme when storage is unavailable.
         }
 
-        const isDark =
-          theme === "dark" ||
-          (theme !== "light" &&
-            window.matchMedia("(prefers-color-scheme: dark)").matches);
+        const prefersDark = window.matchMedia(
+          "(prefers-color-scheme: dark)",
+        ).matches;
+        const isDark = mode === "dark" || (mode === "system" && prefersDark);
         const root = document.documentElement;
-        root.dataset.theme = isDark ? "dark" : "light";
+        root.dataset.theme = isDark ? darkTheme : lightTheme;
         root.classList.toggle("dark", isDark);
+        root.classList.toggle("light", !isDark);
       })();
     </script>
     <style>
