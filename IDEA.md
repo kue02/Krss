@@ -121,10 +121,15 @@ Gist 的内容类型是后端枚举（`article/picture/notification`），要加
         → `useShowEntryDetailsColumn` 为 false → 两栏；`showEntryContentOnLeft` 为 true → 内容在主列内替换
       - 按视图设置（设置 → 外观 → 按视图设置）：滚动标已读（跟随通用/开/关）、缺全文时自动抓取（仅社交媒体）
       - 缺全文时自动抓取：条目进入视口且正文 < 400 字时调 fetch-readable，已抓过的条目不重复抓
-      - 单测：stripDuplicatedTitle 6 例、按视图设置 3 例、侧栏快捷键 8 例
+      - 条目按 Folo 的 SocialMediaItem 重做：32px 源图标在左 + 作者行 + 纯文字正文（图片抽成 112px 缩略图行）
+        + 300px 折叠（遮罩渐隐 + 显示更多，对应 Folo 的 CollapsedSocialMediaItem）
+      - 标题去重：源的标题常是「正文掐掉换行/带省略号截断」的版本，是正文开头就不单独渲染标题
+      - 单测：stripDuplicatedTitle 9 例、stripContentImages 4 例、按视图设置 3 例、侧栏快捷键 8 例
 - [x] 2026-09-16 **侧栏快捷键**：n / p 上下订阅（循环）、x 展开折叠所在分组、Shift+N 添加订阅
 - [x] 2026-09-16 动效细节：卡片涟漪（m3-ripple，Nextflux 同款参数）、已读卡片降透明度、
       主按钮内高光 + 描边、tooltip 胶囊、折叠缓动 ease-out
+- [x] 2026-09-16 列表骨架屏按卡片真实结构重写；缩略图加载前脉动、加载后淡入
+- [ ] 本机 Docker 打包部署（用户指定的最后一步；当前用 go run + vite dev 本地开发）
 
 - [x] 2026-09-16 **细节对齐 Nextflux**：m3-ripple 涟漪、已读卡片降透明度、主按钮内高光、
       tooltip 胶囊、折叠缓动 ease-out
