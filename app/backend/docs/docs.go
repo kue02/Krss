@@ -2323,6 +2323,10 @@ const docTemplate = `{
                 },
                 "summaryLanguage": {
                     "type": "string"
+                },
+                "translateChannel": {
+                    "description": "TranslateChannel：空 = 翻译走模型；google/youdao = 免 key 通道",
+                    "type": "string"
                 }
             }
         },
@@ -2364,6 +2368,10 @@ const docTemplate = `{
                     "additionalProperties": {}
                 },
                 "summaryLanguage": {
+                    "type": "string"
+                },
+                "translateChannel": {
+                    "description": "TranslateChannel：空 = 翻译走模型；google/youdao = 免 key 通道",
                     "type": "string"
                 }
             }

@@ -103,6 +103,9 @@ definitions:
         type: object
       summaryLanguage:
         type: string
+      translateChannel:
+        description: TranslateChannel：空 = 翻译走模型；google/youdao = 免 key 通道
+        type: string
     type: object
   internal_handler.aiSettingsResponse:
     properties:
@@ -130,6 +133,9 @@ definitions:
         additionalProperties: {}
         type: object
       summaryLanguage:
+        type: string
+      translateChannel:
+        description: TranslateChannel：空 = 翻译走模型；google/youdao = 免 key 通道
         type: string
     type: object
   internal_handler.aiTestRequest:
