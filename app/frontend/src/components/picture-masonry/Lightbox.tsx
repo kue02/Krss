@@ -1,3 +1,4 @@
+import { useImageZoom } from "@/hooks/useImageZoom";
 import { useEffect, useCallback, useState, useRef, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { AnimatePresence, motion } from "framer-motion";
@@ -209,6 +210,9 @@ export function Lightbox() {
     };
   }, [isOpen]);
 
+  // 图片手势：滚轮 / 双击 / 捏合缩放，放大后拖动平移（换图自动复位）
+  const zoom = useImageZoom(`${entry?.id ?? ""}:${currentIndex}`);
+
   const handleCarouselPointerDown = useCallback((e: React.PointerEvent) => {
     pointerDownPos.current = { x: e.clientX, y: e.clientY };
   }, []);
@@ -357,11 +361,14 @@ export function Lightbox() {
                   exit={{ scale: 0.9, opacity: 0 }}
                   transition={{ duration: 0.2 }}
                   className="relative flex size-full items-center justify-center"
+                  ref={zoom.containerRef}
+                  {...zoom.handlers}
                 >
                   <img
                     src={images[0]}
                     alt=""
                     className="max-h-full max-w-full object-contain"
+                    style={zoom.style}
                   />
                   {/* Video play overlay */}
                   {isVideoThumbnail(entry?.thumbnailUrl) && entry?.url && (
@@ -378,6 +385,12 @@ export function Lightbox() {
                 </motion.div>
               ) : (
                 <div
+                  ref={zoom.containerRef}
+                  className="size-full min-h-0"
+                  onWheel={zoom.handlers.onWheel}
+                  onDoubleClick={zoom.handlers.onDoubleClick}
+                >
+                <div
                   ref={emblaRef}
                   className="size-full min-h-0 overflow-hidden touch-manipulation"
                   onPointerDown={handleCarouselPointerDown}
@@ -393,6 +406,7 @@ export function Lightbox() {
                           src={src}
                           alt=""
                           className="max-h-full max-w-full object-contain"
+                          style={index === currentIndex ? zoom.style : undefined}
                           loading={
                             Math.abs(index - currentIndex) <= 1
                               ? "eager"
@@ -402,6 +416,7 @@ export function Lightbox() {
                       </div>
                     ))}
                   </div>
+                </div>
                 </div>
               )}
 
