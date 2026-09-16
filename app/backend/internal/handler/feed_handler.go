@@ -49,6 +49,8 @@ type updateFeedURLRequest struct {
 type updateFeedAIRequest struct {
 	AutoTranslate *bool `json:"autoTranslate"`
 	AutoSummary   *bool `json:"autoSummary"`
+	// ReaderMode：正文打开方式，nil = 跟随全局；true = 阅读模式，false = 原文
+	ReaderMode *bool `json:"readerMode"`
 }
 
 type deleteFeedsRequest struct {
@@ -72,6 +74,7 @@ type feedResponse struct {
 	UpdatedAt             string  `json:"updatedAt"`
 	AutoTranslate         *bool   `json:"autoTranslate,omitempty"`
 	AutoSummary           *bool   `json:"autoSummary,omitempty"`
+	ReaderMode            *bool   `json:"readerMode,omitempty"`
 }
 
 type refreshStatusResponse struct {
@@ -310,7 +313,7 @@ func (h *FeedHandler) UpdateAIOverrides(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
 	}
-	feed, err := h.service.UpdateAIOverrides(c.Request().Context(), id, req.AutoTranslate, req.AutoSummary)
+	feed, err := h.service.UpdateAIOverrides(c.Request().Context(), id, req.AutoTranslate, req.AutoSummary, req.ReaderMode)
 	if err != nil {
 		logger.Error("feed ai overrides update failed", "module", "handler", "action", "update", "resource", "feed", "result", "failed", "feed_id", id, "error", err)
 		return writeServiceError(c, err)
@@ -495,6 +498,7 @@ func toFeedResponse(feed model.Feed) feedResponse {
 		CreatedAt:             feed.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:             feed.UpdatedAt.UTC().Format(time.RFC3339),
 		AutoTranslate:         feed.AutoTranslate,
+		ReaderMode:            feed.ReaderMode,
 		AutoSummary:           feed.AutoSummary,
 	}
 }

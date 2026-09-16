@@ -374,6 +374,9 @@
     "password_changed": "密码已修改"
   },
   "feeds": {
+    "reader_mode": "正文打开方式",
+    "reader_mode_on": "阅读模式",
+    "reader_mode_off": "原文",
     "filter_all": "全部",
     "filter_custom": "有自定义 {{count}}",
     "filter_plain": "未自定义",

@@ -128,6 +128,7 @@ export function FeedsSettings() {
       const custom =
         feed.autoTranslate != null ||
         feed.autoSummary != null ||
+        feed.readerMode != null ||
         !!feed.summaryPromptReminder;
       return overrideFilter === "custom" ? custom : !custom;
     });
@@ -139,6 +140,7 @@ export function FeedsSettings() {
         (feed) =>
           feed.autoTranslate != null ||
           feed.autoSummary != null ||
+          feed.readerMode != null ||
           !!feed.summaryPromptReminder,
       ).length,
     [feeds],

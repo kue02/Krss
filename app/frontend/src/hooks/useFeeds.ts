@@ -58,10 +58,12 @@ export function useUpdateFeedAI() {
       id: string;
       autoTranslate?: boolean | null;
       autoSummary?: boolean | null;
+      readerMode?: boolean | null;
     }) =>
       updateFeedAI(payload.id, {
         autoTranslate: payload.autoTranslate,
         autoSummary: payload.autoSummary,
+        readerMode: payload.readerMode,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["feeds"] });

@@ -20,6 +20,8 @@ export interface Feed {
   /** 订阅级覆盖：null/undefined = 跟随全局设置 */
   autoTranslate?: boolean | null;
   autoSummary?: boolean | null;
+  /** 正文打开方式：true=阅读模式 false=原文 空=跟随全局（订阅级覆盖） */
+  readerMode?: boolean | null;
   iconPath?: string;
   type: ContentType;
   etag?: string;

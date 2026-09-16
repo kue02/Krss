@@ -29,6 +29,7 @@ export function EditFeedDialog({
   const [error, setError] = useState<string | null>(null);
   const [autoTranslate, setAutoTranslate] = useState<boolean | null>(null);
   const [autoSummary, setAutoSummary] = useState<boolean | null>(null);
+  const [readerMode, setReaderMode] = useState<boolean | null>(null);
   const updateFeed = useUpdateFeed();
   const updateFeedAI = useUpdateFeedAI();
   const reminderLength = Array.from(summaryPromptReminder).length;
@@ -41,6 +42,7 @@ export function EditFeedDialog({
       setSummaryPromptReminder(feed.summaryPromptReminder ?? "");
       setAutoTranslate(feed.autoTranslate ?? null);
       setAutoSummary(feed.autoSummary ?? null);
+      setReaderMode(feed.readerMode ?? null);
       setError(null);
       /* eslint-enable react-hooks/set-state-in-effect */
     }
@@ -62,6 +64,7 @@ export function EditFeedDialog({
         id: feed.id,
         autoTranslate,
         autoSummary,
+        readerMode,
       });
       onOpenChange(false);
     } catch {
@@ -178,6 +181,18 @@ export function EditFeedDialog({
               </span>
               <TriStateControl value={autoSummary} onChange={setAutoSummary} />
             </div>
+            {/* 正文打开方式：阅读模式（提取正文）/ 原文 */}
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm text-foreground">
+                {t("feeds.reader_mode")}
+              </span>
+              <TriStateControl
+                value={readerMode}
+                onChange={setReaderMode}
+                onLabel={t("feeds.reader_mode_on")}
+                offLabel={t("feeds.reader_mode_off")}
+              />
+            </div>
           </div>
 
           {/* 底部按钮区：对齐 Nextflux 的 Modal.Footer（border-t + p-4） */}
@@ -216,15 +231,20 @@ export function EditFeedDialog({
 function TriStateControl({
   value,
   onChange,
+  onLabel,
+  offLabel,
 }: {
   value: boolean | null;
   onChange: (value: boolean | null) => void;
+  /** true 那一档的文案，默认「开」（正文打开方式用它显示「阅读模式」） */
+  onLabel?: string;
+  offLabel?: string;
 }) {
   const { t } = useTranslation();
   const options: { value: boolean | null; label: string }[] = [
     { value: null, label: t("feeds.follow_global") },
-    { value: true, label: t("feeds.on") },
-    { value: false, label: t("feeds.off") },
+    { value: true, label: onLabel ?? t("feeds.on") },
+    { value: false, label: offLabel ?? t("feeds.off") },
   ];
 
   return (

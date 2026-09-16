@@ -13,6 +13,8 @@ type Feed struct {
 	// 订阅级覆盖：nil = 跟随全局设置
 	AutoTranslate *bool
 	AutoSummary   *bool
+	// ReaderMode：正文打开方式，nil = 跟随全局设置；true = 阅读模式，false = 原文
+	ReaderMode    *bool
 	IconPath              *string
 	Type                  string // article, picture, notification, social
 	ETag                  *string

@@ -2738,6 +2738,9 @@ const docTemplate = `{
                 "lastModified": {
                     "type": "string"
                 },
+                "readerMode": {
+                    "type": "boolean"
+                },
                 "siteUrl": {
                     "type": "string"
                 },
@@ -3099,6 +3102,10 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "autoTranslate": {
+                    "type": "boolean"
+                },
+                "readerMode": {
+                    "description": "ReaderMode：正文打开方式，nil = 跟随全局；true = 阅读模式，false = 原文",
                     "type": "boolean"
                 }
             }

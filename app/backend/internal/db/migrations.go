@@ -335,8 +335,9 @@ func runMigrations(db *sql.DB) error {
 		}
 	}
 
-	// Migration 19: 每个订阅可单独覆盖「自动翻译 / 自动摘要」（NULL = 跟随全局设置）
-	for _, column := range []string{"auto_translate", "auto_summary"} {
+	// Migration 19/20: 每个订阅可单独覆盖「自动翻译 / 自动摘要 / 正文打开方式」
+	// （NULL = 跟随全局设置；reader_mode 1=阅读模式 0=原文）
+	for _, column := range []string{"auto_translate", "auto_summary", "reader_mode"} {
 		err = db.QueryRow(`
 			SELECT COUNT(*) FROM pragma_table_info('feeds') WHERE name = ?
 		`, column).Scan(&count)

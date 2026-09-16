@@ -406,7 +406,11 @@ export async function deleteFeed(id: string): Promise<void> {
 /** 订阅级覆盖自动翻译/自动摘要（传 null 表示跟随全局） */
 export async function updateFeedAI(
   id: string,
-  payload: { autoTranslate?: boolean | null; autoSummary?: boolean | null },
+  payload: {
+    autoTranslate?: boolean | null;
+    autoSummary?: boolean | null;
+    readerMode?: boolean | null;
+  },
 ): Promise<Feed> {
   return request<Feed>(`/api/feeds/${id}/ai`, {
     method: "PATCH",

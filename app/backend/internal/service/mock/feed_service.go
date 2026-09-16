@@ -176,16 +176,16 @@ func (mr *MockFeedServiceMockRecorder) UpdateURL(ctx, id, feedURL any) *gomock.C
 }
 
 // UpdateAIOverrides mocks base method.
-func (m *MockFeedService) UpdateAIOverrides(ctx context.Context, id int64, autoTranslate, autoSummary *bool) (model.Feed, error) {
+func (m *MockFeedService) UpdateAIOverrides(ctx context.Context, id int64, autoTranslate, autoSummary, readerMode *bool) (model.Feed, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateAIOverrides", ctx, id, autoTranslate, autoSummary)
+	ret := m.ctrl.Call(m, "UpdateAIOverrides", ctx, id, autoTranslate, autoSummary, readerMode)
 	ret0, _ := ret[0].(model.Feed)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // UpdateAIOverrides indicates an expected call of UpdateAIOverrides.
-func (mr *MockFeedServiceMockRecorder) UpdateAIOverrides(ctx, id, autoTranslate, autoSummary any) *gomock.Call {
+func (mr *MockFeedServiceMockRecorder) UpdateAIOverrides(ctx, id, autoTranslate, autoSummary, readerMode any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateAIOverrides", reflect.TypeOf((*MockFeedService)(nil).UpdateAIOverrides), ctx, id, autoTranslate, autoSummary)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateAIOverrides", reflect.TypeOf((*MockFeedService)(nil).UpdateAIOverrides), ctx, id, autoTranslate, autoSummary, readerMode)
 }

@@ -295,6 +295,6 @@ func strPtr(value string) *string {
 
 // Ensure we satisfy the io.Reader interface import when not used in build tags.
 
-func (s *feedServiceStub) UpdateAIOverrides(ctx context.Context, id int64, autoTranslate, autoSummary *bool) (model.Feed, error) {
+func (s *feedServiceStub) UpdateAIOverrides(ctx context.Context, id int64, autoTranslate, autoSummary, readerMode *bool) (model.Feed, error) {
 	return model.Feed{}, nil
 }

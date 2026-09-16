@@ -47,8 +47,13 @@ export function EntryContent({ entryId, isMobile, onBack }: EntryContentProps) {
 
   const autoTranslate = aiSettings?.autoTranslate ?? false;
   const targetLanguage = aiSettings?.summaryLanguage ?? "zh-CN";
-  const autoReadability = generalSettings?.autoReadability ?? false;
   const { data: feeds = [] } = useFeeds();
+  // 订阅级覆盖优先（#8）：这个源单独设过「阅读模式 / 原文」就听它的，否则跟随全局
+  const feedReaderMode = entry
+    ? feeds.find((feed) => feed.id === entry.feedId)?.readerMode
+    : undefined;
+  const autoReadability =
+    feedReaderMode ?? generalSettings?.autoReadability ?? false;
   // 订阅级覆盖优先（#5）
   const feedAutoSummary = entry
     ? feeds.find((feed) => feed.id === entry.feedId)?.autoSummary

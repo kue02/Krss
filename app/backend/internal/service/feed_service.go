@@ -39,7 +39,7 @@ type FeedService interface {
 	// UpdateURL 改订阅地址（RSSHub 实例换域名等场景）
 	UpdateURL(ctx context.Context, id int64, feedURL string) (model.Feed, error)
 	// UpdateAIOverrides 单独设置某个订阅的自动翻译/自动摘要（nil = 跟随全局）
-	UpdateAIOverrides(ctx context.Context, id int64, autoTranslate, autoSummary *bool) (model.Feed, error)
+	UpdateAIOverrides(ctx context.Context, id int64, autoTranslate, autoSummary, readerMode *bool) (model.Feed, error)
 	Delete(ctx context.Context, id int64) error
 	DeleteBatch(ctx context.Context, ids []int64) error
 }
@@ -343,8 +343,9 @@ func (s *feedService) Update(ctx context.Context, id int64, title string, folder
 	return updated, nil
 }
 
-// UpdateAIOverrides 覆盖单个订阅的自动翻译/自动摘要；传 nil 表示恢复「跟随全局」。
-func (s *feedService) UpdateAIOverrides(ctx context.Context, id int64, autoTranslate, autoSummary *bool) (model.Feed, error) {
+// UpdateAIOverrides 覆盖单个订阅的自动翻译/自动摘要/正文打开方式；
+// 传 nil 表示恢复「跟随全局」。readerMode: true=阅读模式，false=原文。
+func (s *feedService) UpdateAIOverrides(ctx context.Context, id int64, autoTranslate, autoSummary, readerMode *bool) (model.Feed, error) {
 	feed, err := s.feeds.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -355,6 +356,7 @@ func (s *feedService) UpdateAIOverrides(ctx context.Context, id int64, autoTrans
 
 	feed.AutoTranslate = autoTranslate
 	feed.AutoSummary = autoSummary
+	feed.ReaderMode = readerMode
 
 	updated, err := s.feeds.Update(ctx, feed)
 	if err != nil {

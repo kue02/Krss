@@ -377,6 +377,9 @@
     "password_changed": "Password changed"
   },
   "feeds": {
+    "reader_mode": "Article view",
+    "reader_mode_on": "Reader",
+    "reader_mode_off": "Original",
     "filter_all": "All",
     "filter_custom": "Customized {{count}}",
     "filter_plain": "Plain",
