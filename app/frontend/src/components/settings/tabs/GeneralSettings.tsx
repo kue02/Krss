@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { useGeneralSettings } from "@/hooks/useGeneralSettings";
+import { RSSHubSettings } from "./RSSHubSettings";
 
 type Language = "zh" | "en";
 
@@ -39,6 +40,7 @@ export function GeneralSettings() {
     setSaveStatus("idle");
     try {
       await updateGeneralSettings({
+        ...generalSettings,
         fallbackUserAgent: fallbackUA,
         autoReadability,
         markReadOnScroll,
@@ -60,6 +62,7 @@ export function GeneralSettings() {
       setAutoReadability(checked);
       try {
         await updateGeneralSettings({
+          ...generalSettings,
           fallbackUserAgent: generalSettings.fallbackUserAgent,
           autoReadability: checked,
           markReadOnScroll,
@@ -80,6 +83,7 @@ export function GeneralSettings() {
       setMarkReadOnScroll(checked);
       try {
         await updateGeneralSettings({
+          ...generalSettings,
           fallbackUserAgent: generalSettings.fallbackUserAgent,
           autoReadability,
           markReadOnScroll: checked,
@@ -107,6 +111,8 @@ export function GeneralSettings() {
 
   return (
     <div className="space-y-6">
+      <RSSHubSettings />
+
       {/* Language Section */}
       <section>
         <div className="flex flex-wrap items-center justify-between gap-2">

@@ -106,7 +106,20 @@
     "appearance_hide": "Hide",
     "appearance_hidden": "Hidden",
     "appearance_keep_one": "Keep at least one category view",
-    "appearance_drag": "Draggable"
+    "appearance_drag": "Draggable",
+    "rsshub_label": "RSSHub instance",
+    "rsshub_description": "Point at your own RSSHub (optionally with ACCESS_KEY). New RSSHub subscriptions use it automatically, and existing ones can be migrated in one click.",
+    "rsshub_access_key_placeholder": "ACCESS_KEY (optional)",
+    "rsshub_saved": "RSSHub settings saved",
+    "rsshub_save_failed": "Save failed",
+    "rsshub_preview": "Preview affected subscriptions ({{count}})",
+    "rsshub_hide_preview": "Hide preview",
+    "rsshub_apply": "Switch to this instance ({{count}})",
+    "rsshub_applying": "Rewriting…",
+    "rsshub_applied": "Rewrote {{count}} subscriptions",
+    "rsshub_applied_partial": "Finished: {{changed}} of {{total}} succeeded",
+    "rsshub_nothing_to_migrate": "Nothing to rewrite",
+    "rsshub_rewritten_hint": "Switched to your RSSHub instance"
   },
   "theme": {
     "system": "Follow System",

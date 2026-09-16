@@ -159,3 +159,18 @@ func (mr *MockFeedServiceMockRecorder) UpdateType(ctx, id, feedType any) *gomock
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateType", reflect.TypeOf((*MockFeedService)(nil).UpdateType), ctx, id, feedType)
 }
+
+// UpdateURL mocks base method.
+func (m *MockFeedService) UpdateURL(ctx context.Context, id int64, feedURL string) (model.Feed, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateURL", ctx, id, feedURL)
+	ret0, _ := ret[0].(model.Feed)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateURL indicates an expected call of UpdateURL.
+func (mr *MockFeedServiceMockRecorder) UpdateURL(ctx, id, feedURL any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateURL", reflect.TypeOf((*MockFeedService)(nil).UpdateURL), ctx, id, feedURL)
+}

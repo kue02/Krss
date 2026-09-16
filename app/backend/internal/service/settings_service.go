@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"gist/backend/internal/repository"
 	"gist/backend/internal/service/ai"
@@ -30,6 +31,10 @@ type GeneralSettings struct {
 	FallbackUserAgent string `json:"fallbackUserAgent"`
 	AutoReadability   bool   `json:"autoReadability"`
 	MarkReadOnScroll  bool   `json:"markReadOnScroll"`
+	// RSSHub 适配：自有实例域名 + 可选 ACCESS_KEY，用于添加订阅时改写地址、
+	// 以及把已有订阅批量换到自己的实例
+	RSSHubBaseURL   string `json:"rsshubBaseUrl"`
+	RSSHubAccessKey string `json:"rsshubAccessKey"`
 }
 
 // NetworkSettings holds network proxy configuration.
@@ -63,6 +68,8 @@ const (
 	keyFallbackUserAgent = "general.fallback_user_agent"
 	keyAutoReadability   = "general.auto_readability"
 	keyMarkReadOnScroll  = "general.mark_read_on_scroll"
+	keyRSSHubBaseURL     = "general.rsshub_base_url"
+	keyRSSHubAccessKey   = "general.rsshub_access_key"
 	keyNetworkEnabled    = "network.proxy_enabled"
 	keyNetworkType       = "network.proxy_type"
 	keyNetworkHost       = "network.proxy_host"
@@ -353,6 +360,12 @@ func (s *settingsService) GetGeneralSettings(ctx context.Context) (*GeneralSetti
 	}
 	settings.AutoReadability = s.getBool(ctx, keyAutoReadability)
 	settings.MarkReadOnScroll = s.getBool(ctx, keyMarkReadOnScroll)
+	if val, err := s.getString(ctx, keyRSSHubBaseURL); err == nil {
+		settings.RSSHubBaseURL = val
+	}
+	if val, err := s.getString(ctx, keyRSSHubAccessKey); err == nil {
+		settings.RSSHubAccessKey = val
+	}
 	return settings, nil
 }
 
@@ -367,10 +380,20 @@ func (s *settingsService) SetGeneralSettings(ctx context.Context, settings *Gene
 		markReadOnScrollVal = "true"
 	}
 
+	baseURL := strings.TrimRight(strings.TrimSpace(settings.RSSHubBaseURL), "/")
+	if baseURL != "" {
+		parsed, parseErr := url.Parse(baseURL)
+		if parseErr != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+			return ErrInvalid
+		}
+	}
+
 	if err := s.repo.SetMany(ctx, map[string]string{
 		keyFallbackUserAgent: settings.FallbackUserAgent,
 		keyAutoReadability:   autoReadabilityVal,
 		keyMarkReadOnScroll:  markReadOnScrollVal,
+		keyRSSHubBaseURL:     baseURL,
+		keyRSSHubAccessKey:   strings.TrimSpace(settings.RSSHubAccessKey),
 	}); err != nil {
 		logger.Warn("general settings update failed", "module", "service", "action", "update", "resource", "settings", "result", "failed", "error", err)
 		return fmt.Errorf("set general settings: %w", err)

@@ -23,7 +23,7 @@ export function AddFeedPage({
   contentType = "article",
 }: AddFeedPageProps) {
   const { t } = useTranslation();
-  const { feedPreview, isLoading, error, discoverFeed, subscribeFeed } =
+  const { feedPreview, isLoading, error, rewrittenFrom, discoverFeed, subscribeFeed } =
     useAddFeed(contentType);
   const { data: folders = [] } = useFolders();
 
@@ -87,6 +87,13 @@ export function AddFeedPage({
 
           {/* URL Form */}
           <FeedUrlForm onSubmit={discoverFeed} isLoading={isLoading} />
+
+          {/* RSSHub 实例改写提示 */}
+          {rewrittenFrom && (
+            <p className="mt-2 break-all text-xs text-muted-foreground">
+              {t("settings.rsshub_rewritten_hint")}
+            </p>
+          )}
 
           {/* Error Message */}
           {error && (

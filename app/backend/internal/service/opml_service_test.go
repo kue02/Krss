@@ -212,6 +212,10 @@ func (s *feedServiceStub) UpdateType(ctx context.Context, id int64, feedType str
 	return nil
 }
 
+func (s *feedServiceStub) UpdateURL(ctx context.Context, id int64, feedURL string) (model.Feed, error) {
+	return model.Feed{}, nil
+}
+
 func (s *feedServiceStub) Delete(ctx context.Context, id int64) error {
 	return nil
 }

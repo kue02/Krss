@@ -42,6 +42,10 @@ type updateFeedRequest struct {
 	SummaryPromptReminder *string `json:"summaryPromptReminder"`
 }
 
+type updateFeedURLRequest struct {
+	URL string `json:"url"`
+}
+
 type deleteFeedsRequest struct {
 	IDs []string `json:"ids"`
 }
@@ -90,6 +94,7 @@ func (h *FeedHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/feeds", h.List)
 	g.PUT("/feeds/:id", h.Update)
 	g.PATCH("/feeds/:id/type", h.UpdateType)
+	g.PATCH("/feeds/:id/url", h.UpdateURL)
 	g.DELETE("/feeds/:id", h.Delete)
 	g.DELETE("/feeds", h.DeleteBatch)
 }
@@ -233,6 +238,34 @@ func (h *FeedHandler) Update(c echo.Context) error {
 		return writeServiceError(c, err)
 	}
 	logger.Info("feed updated", "module", "handler", "action", "update", "resource", "feed", "result", "ok", "feed_id", feed.ID, "feed_title", feed.Title)
+	return c.JSON(http.StatusOK, toFeedResponse(feed))
+}
+
+// UpdateURL 改订阅地址（RSSHub 换实例域名等）。
+//
+// @Summary Update feed URL
+// @Description Change the source URL of a subscription (e.g. switch RSSHub instance)
+// @Tags feeds
+// @Accept json
+// @Param id path int true "Feed ID"
+// @Param request body updateFeedURLRequest true "URL update request"
+// @Success 200 {object} feedResponse
+// @Router /api/feeds/{id}/url [patch]
+func (h *FeedHandler) UpdateURL(c echo.Context) error {
+	id, err := parseIDParam(c, "id")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
+	}
+	var req updateFeedURLRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
+	}
+	feed, err := h.service.UpdateURL(c.Request().Context(), id, req.URL)
+	if err != nil {
+		logger.Error("feed url update failed", "module", "handler", "action", "update", "resource", "feed", "result", "failed", "feed_id", id, "error", err)
+		return writeServiceError(c, err)
+	}
+	logger.Info("feed url updated", "module", "handler", "action", "update", "resource", "feed", "result", "ok", "feed_id", feed.ID)
 	return c.JSON(http.StatusOK, toFeedResponse(feed))
 }
 

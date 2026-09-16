@@ -106,7 +106,20 @@
     "appearance_hide": "隐藏",
     "appearance_hidden": "已隐藏",
     "appearance_keep_one": "至少保留一个分类视图",
-    "appearance_drag": "可拖拽"
+    "appearance_drag": "可拖拽",
+    "rsshub_label": "RSSHub 实例",
+    "rsshub_description": "填自有 RSSHub 地址（可带 ACCESS_KEY）。之后添加 RSSHub 订阅会自动换到该实例，也可以把现有订阅一键换过去。",
+    "rsshub_access_key_placeholder": "ACCESS_KEY（可选）",
+    "rsshub_saved": "RSSHub 设置已保存",
+    "rsshub_save_failed": "保存失败",
+    "rsshub_preview": "预览可改写的订阅（{{count}}）",
+    "rsshub_hide_preview": "收起预览",
+    "rsshub_apply": "换到该实例（{{count}}）",
+    "rsshub_applying": "正在改写…",
+    "rsshub_applied": "已改写 {{count}} 个订阅",
+    "rsshub_applied_partial": "改写完成：成功 {{changed}} / {{total}}",
+    "rsshub_nothing_to_migrate": "没有需要改写的订阅",
+    "rsshub_rewritten_hint": "已自动换成你的 RSSHub 实例"
   },
   "theme": {
     "system": "跟随系统",

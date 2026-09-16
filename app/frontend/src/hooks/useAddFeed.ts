@@ -9,6 +9,8 @@ import {
   previewFeed,
 } from "@/api";
 import { getErrorMessage } from "@/lib/errors";
+import { rewriteRssHubUrl } from "@/lib/rsshub";
+import { useGeneralSettings } from "@/hooks/useGeneralSettings";
 import type { ContentType, FeedPreview, Folder } from "@/types/api";
 
 export interface SubscribeOptions {
@@ -21,6 +23,8 @@ interface UseAddFeedReturn {
   feedPreview: FeedPreview | null;
   isLoading: boolean;
   error: string | null;
+  /** 用户输入的是 RSSHub 地址且被换到自有实例时，这里是原始地址 */
+  rewrittenFrom: string | null;
   discoverFeed: (url: string) => Promise<void>;
   subscribeFeed: (
     feedUrl: string,
@@ -56,9 +60,31 @@ export function useAddFeed(
   const [error, setError] = useState<string | null>(null);
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const { data: generalSettings } = useGeneralSettings();
+  const [rewrittenFrom, setRewrittenFrom] = useState<string | null>(null);
+
+  // RSSHub 地址自动换到自有实例（设置里配了才生效）
+  const applyRssHubBase = useCallback(
+    (rawUrl: string): string => {
+      const baseUrl = generalSettings?.rsshubBaseUrl ?? "";
+      if (!baseUrl) return rawUrl;
+
+      const rewritten = rewriteRssHubUrl(
+        rawUrl,
+        baseUrl,
+        generalSettings?.rsshubAccessKey ?? "",
+      );
+      if (!rewritten || rewritten === rawUrl) return rawUrl;
+
+      setRewrittenFrom(rawUrl);
+      return rewritten;
+    },
+    [generalSettings],
+  );
 
   const clearPreview = useCallback(() => {
     setFeedPreview(null);
+    setRewrittenFrom(null);
   }, []);
 
   const clearError = useCallback(() => {
@@ -69,9 +95,10 @@ export function useAddFeed(
     setIsLoading(true);
     setError(null);
     setFeedPreview(null);
+    setRewrittenFrom(null);
 
     try {
-      const data = await previewFeed(url);
+      const data = await previewFeed(applyRssHubBase(url));
       setFeedPreview(data);
     } catch (err) {
       setError(
@@ -83,7 +110,7 @@ export function useAddFeed(
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [applyRssHubBase]);
 
   const subscribeFeed = useCallback(
     async (feedUrl: string, options: SubscribeOptions): Promise<boolean> => {
@@ -107,7 +134,7 @@ export function useAddFeed(
         }
 
         await createFeed({
-          url: feedUrl,
+          url: applyRssHubBase(feedUrl),
           folderId,
           title: options.title,
           type: feedType,
@@ -127,13 +154,14 @@ export function useAddFeed(
         setIsLoading(false);
       }
     },
-    [queryClient, contentType, t],
+    [applyRssHubBase, queryClient, contentType, t],
   );
 
   return {
     feedPreview,
     isLoading,
     error,
+    rewrittenFrom,
     discoverFeed,
     subscribeFeed,
     clearPreview,

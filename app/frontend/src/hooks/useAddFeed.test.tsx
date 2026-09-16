@@ -23,6 +23,13 @@ vi.mock("@/api", () => ({
   createFolder: vi.fn(),
   listFolders: vi.fn(),
   previewFeed: vi.fn(),
+  getGeneralSettings: vi.fn().mockResolvedValue({
+    fallbackUserAgent: "",
+    autoReadability: false,
+    markReadOnScroll: false,
+    rsshubBaseUrl: "",
+    rsshubAccessKey: "",
+  }),
 }));
 
 describe("useAddFeed", () => {

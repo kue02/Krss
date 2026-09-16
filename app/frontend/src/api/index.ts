@@ -403,6 +403,14 @@ export async function deleteFeed(id: string): Promise<void> {
   });
 }
 
+/** 改订阅地址（RSSHub 换实例域名等；只改地址，不动标题/文件夹） */
+export async function updateFeedUrl(id: string, url: string): Promise<Feed> {
+  return request<Feed>(`/api/feeds/${id}/url`, {
+    method: "PATCH",
+    body: JSON.stringify({ url }),
+  });
+}
+
 export async function updateFeedType(
   id: string,
   type: ContentType,

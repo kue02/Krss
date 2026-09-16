@@ -34,6 +34,10 @@ export interface GeneralSettings {
   fallbackUserAgent: string;
   autoReadability: boolean;
   markReadOnScroll: boolean;
+  /** RSSHub 适配：自有实例地址（如 https://rsshub.example.com） */
+  rsshubBaseUrl: string;
+  /** RSSHub 实例的 ACCESS_KEY（可选，会作为 key 参数写入地址） */
+  rsshubAccessKey: string;
 }
 
 export type ProxyType = "http" | "socks5";

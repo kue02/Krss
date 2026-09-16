@@ -36,6 +36,8 @@ type FeedService interface {
 	List(ctx context.Context, folderID *int64) ([]model.Feed, error)
 	Update(ctx context.Context, id int64, title string, folderID *int64, summaryPromptReminder *string) (model.Feed, error)
 	UpdateType(ctx context.Context, id int64, feedType string) error
+	// UpdateURL 改订阅地址（RSSHub 实例换域名等场景）
+	UpdateURL(ctx context.Context, id int64, feedURL string) (model.Feed, error)
 	Delete(ctx context.Context, id int64) error
 	DeleteBatch(ctx context.Context, ids []int64) error
 }
@@ -310,6 +312,35 @@ func (s *feedService) Update(ctx context.Context, id int64, title string, folder
 		return model.Feed{}, err
 	}
 	logger.Info("feed updated", "module", "service", "action", "update", "resource", "feed", "result", "ok", "feed_id", updated.ID, "feed_title", updated.Title)
+	return updated, nil
+}
+
+// UpdateURL 改订阅地址：只换地址，不动标题/文件夹；下次刷新即走新地址。
+func (s *feedService) UpdateURL(ctx context.Context, id int64, feedURL string) (model.Feed, error) {
+	trimmed := strings.TrimSpace(feedURL)
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return model.Feed{}, ErrInvalid
+	}
+
+	feed, err := s.feeds.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return model.Feed{}, ErrNotFound
+		}
+		return model.Feed{}, fmt.Errorf("get feed: %w", err)
+	}
+	if feed.URL == trimmed {
+		return feed, nil
+	}
+
+	feed.URL = trimmed
+	updated, err := s.feeds.Update(ctx, feed)
+	if err != nil {
+		logger.Error("feed url update failed", "module", "service", "action", "update", "resource", "feed", "result", "failed", "feed_id", id, "error", err)
+		return model.Feed{}, err
+	}
+	logger.Info("feed url updated", "module", "service", "action", "update", "resource", "feed", "result", "ok", "feed_id", updated.ID)
 	return updated, nil
 }
 
