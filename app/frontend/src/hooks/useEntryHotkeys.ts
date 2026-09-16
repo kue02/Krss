@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useMarkAsRead, useMarkAsStarred } from "@/hooks/useEntries";
+import { isPlainKey, isTypingTarget } from "@/lib/keyboard";
 import type { Entry } from "@/types/api";
 
 export interface EntryHotkeysOptions {
@@ -13,17 +14,6 @@ export interface EntryHotkeysOptions {
   /** 列表不可见时（例如移动端正在读文章）不要抢键 */
   enabled?: boolean;
 }
-
-const isTypingTarget = (target: EventTarget | null): boolean => {
-  if (!(target instanceof HTMLElement)) return false;
-  const tag = target.tagName;
-  return (
-    tag === "INPUT" ||
-    tag === "TEXTAREA" ||
-    tag === "SELECT" ||
-    target.isContentEditable
-  );
-};
 
 /**
  * 文章列表的键盘快捷键（对齐 Nextflux 的 useHotkeys）
@@ -67,7 +57,7 @@ export function useEntryHotkeys({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (isTypingTarget(event.target)) return;
-      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if (!isPlainKey(event)) return;
 
       const currentIndex = selectedEntryId
         ? entries.findIndex((item) => item.id === selectedEntryId)

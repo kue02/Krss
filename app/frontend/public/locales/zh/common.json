@@ -367,5 +367,20 @@
     "all": "全部",
     "unread": "未读",
     "starred": "星标"
+  },
+  "shortcuts": {
+    "title": "快捷键",
+    "description": "在列表或文章上生效；输入框内不响应",
+    "article": "文章",
+    "global": "全局",
+    "next": "下一篇",
+    "previous": "上一篇",
+    "toggleRead": "切换已读 / 未读",
+    "toggleStar": "切换星标",
+    "toggleReadable": "切换阅读模式（原文 / 正文提取）",
+    "openOriginal": "在浏览器打开原文",
+    "close": "关闭文章",
+    "refresh": "刷新订阅",
+    "help": "显示 / 隐藏本页"
   }
 }

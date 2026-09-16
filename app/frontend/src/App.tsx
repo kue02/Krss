@@ -19,6 +19,14 @@ import { ScrollToTopZone } from "@/components/layout/ScrollToTopZone";
 import { ImagePreview } from "@/components/ui/image-preview";
 import { LoginPage, RegisterPage, NetworkErrorPage } from "@/components/auth";
 import { UpdateNotice } from "@/components/update-notice";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { refreshAllFeeds } from "@/api";
+import { ShortcutsHelpDialog } from "@/components/shortcuts/ShortcutsHelpDialog";
+import { useGlobalHotkeys } from "@/hooks/useGlobalHotkeys";
+import {
+  shortcutsHelp,
+  useShortcutsHelpOpen,
+} from "@/stores/shortcuts-store";
 import { useSelection, selectionToParams } from "@/hooks/useSelection";
 import { useMarkAllAsRead, useEntry } from "@/hooks/useEntries";
 import { useMobileLayout } from "@/hooks/useMobileLayout";
@@ -149,6 +157,27 @@ function AuthenticatedApp() {
 
   // Poll refresh status and auto-invalidate entries when scheduled refresh completes
   useRefreshStatus();
+
+  // ── 全局快捷键：? 快捷键帮助，r 刷新订阅 ──────────────────────────────
+  const isShortcutsOpen = useShortcutsHelpOpen();
+  const queryClient = useQueryClient();
+  const refreshFeeds = useMutation({
+    mutationFn: refreshAllFeeds,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["entries"] });
+      queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
+    },
+  });
+  const handleToggleShortcuts = useCallback(() => shortcutsHelp.toggle(), []);
+  const handleRefreshShortcut = useCallback(
+    () => refreshFeeds.mutate(),
+    [refreshFeeds],
+  );
+  useGlobalHotkeys({
+    onToggleHelp: handleToggleShortcuts,
+    onRefresh: handleRefreshShortcut,
+    enabled: !isShortcutsOpen,
+  });
 
   // Sidebar visibility for tablet/desktop
   const sidebarVisible = useUISettingKey("sidebarVisible");
@@ -422,6 +451,10 @@ function AuthenticatedApp() {
         <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
           {sidebarContent}
         </Sheet>
+        <ShortcutsHelpDialog
+          open={isShortcutsOpen}
+          onOpenChange={(open) => shortcutsHelp.set(open)}
+        />
       </>
     );
   }
@@ -495,6 +528,10 @@ function AuthenticatedApp() {
         showSidebar={showSidebar}
       />
       <ImagePreview />
+      <ShortcutsHelpDialog
+        open={isShortcutsOpen}
+        onOpenChange={(open) => shortcutsHelp.set(open)}
+      />
     </>
   );
 }

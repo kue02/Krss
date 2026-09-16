@@ -15,6 +15,7 @@ import { useAISummary } from "@/hooks/useAISummary";
 import { useAITranslation } from "@/hooks/useAITranslation";
 import { EntryContentHeader } from "./EntryContentHeader";
 import { EntryContentBody } from "./EntryContentBody";
+import { isPlainKey, isTypingTarget } from "@/lib/keyboard";
 
 interface EntryContentProps {
   entryId: string | null;
@@ -90,6 +91,21 @@ export function EntryContent({ entryId, isMobile, onBack }: EntryContentProps) {
       markAsRead({ id: entry.id, read: true, skipInvalidate: true });
     }
   }, [entry, markAsRead]);
+
+  // 快捷键 g：切换阅读模式（原文 / Readability）
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!entry) return;
+      if (isTypingTarget(event.target)) return;
+      if (!isPlainKey(event)) return;
+      if (event.key.toLowerCase() !== "g") return;
+      event.preventDefault();
+      handleToggleReadable();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [entry, handleToggleReadable]);
 
   // Remove read entries from unreadOnly list when component unmounts (switching articles)
   // Note: EntryContent uses key={entryId} in App.tsx, so it unmounts/remounts on switch

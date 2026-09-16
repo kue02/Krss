@@ -368,5 +368,20 @@
     "all": "All",
     "unread": "Unread",
     "starred": "Starred"
+  },
+  "shortcuts": {
+    "title": "Keyboard shortcuts",
+    "description": "Work on the list or the open article; ignored while typing",
+    "article": "Article",
+    "global": "Global",
+    "next": "Next article",
+    "previous": "Previous article",
+    "toggleRead": "Toggle read / unread",
+    "toggleStar": "Toggle starred",
+    "toggleReadable": "Toggle reader mode",
+    "openOriginal": "Open original in browser",
+    "close": "Close article",
+    "refresh": "Refresh feeds",
+    "help": "Show / hide this list"
   }
 }

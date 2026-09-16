@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { RootPortal } from "@/components/ui/portal";
+import { shortcutsHelp } from "@/stores/shortcuts-store";
 import useMeasure from "react-use-measure";
 
 const menuItemStyles = cn(
@@ -292,6 +293,38 @@ export function ProfileButton({
             </svg>
           </span>
           <span>{t("settings.title")}</span>
+        </DropdownMenuItem>
+
+        <DropdownMenuSeparator className="bg-border/50" />
+
+        {/* Shortcuts help —— 与 ? 键同一入口 */}
+        <DropdownMenuItem
+          className={menuItemStyles}
+          onSelect={() => shortcutsHelp.toggle()}
+        >
+          <span className="inline-flex size-4 items-center justify-center">
+            <svg
+              className={iconStyles}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M4 7.5h16v9H4z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M7.5 10.5h.01M10.5 10.5h.01M13.5 10.5h.01M16.5 10.5h.01M9 13.5h6"
+              />
+            </svg>
+          </span>
+          <span>{t("shortcuts.title")}</span>
+          <span className="ml-auto text-xs text-muted-foreground">?</span>
         </DropdownMenuItem>
 
         <DropdownMenuSeparator className="bg-border/50" />
