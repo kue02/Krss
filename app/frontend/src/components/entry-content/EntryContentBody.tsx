@@ -2,6 +2,8 @@ import type { RefCallback } from "react";
 import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useCodeHighlight } from "@/hooks/useCodeHighlight";
+import { useUISettingKey } from "@/hooks/useUISettings";
+import { resolveReadingFontStack } from "@/lib/reading-fonts";
 import { useEntryMeta } from "@/hooks/useEntryMeta";
 import { isSafeUrl } from "@/lib/url";
 import { ArticleContent } from "@/components/ui/article-content";
@@ -38,6 +40,10 @@ export function EntryContentBody({
 }: EntryContentBodyProps) {
   const { t } = useTranslation();
   const { publishedLong, readingTime } = useEntryMeta(entry);
+  const entryFontFamily = useUISettingKey("entryFontFamily");
+  const entryFontSize = useUISettingKey("entryFontSize");
+  const entryLineHeight = useUISettingKey("entryLineHeight");
+  const readingFontStack = resolveReadingFontStack(entryFontFamily);
   const title = displayTitle ?? entry.title ?? t("entry.untitled");
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -103,7 +109,12 @@ export function EntryContentBody({
 
         <div
           ref={contentRef}
-          className="prose dark:prose-invert max-w-none hyphens-auto text-[1.0625rem] leading-[1.8] break-words prose-img:!max-w-full prose-img:!h-auto prose-img:shadow-[0_4px_20px_rgba(0,0,0,0.08)] prose-video:!max-w-full prose-video:!h-auto prose-video:shadow-[0_4px_20px_rgba(0,0,0,0.08)] prose-figure:!max-w-full prose-a:underline prose-a:decoration-primary/30 prose-a:underline-offset-[3px] prose-a:break-words prose-blockquote:not-italic prose-blockquote:border-l-2 prose-blockquote:border-muted-foreground/30 prose-blockquote:bg-transparent prose-blockquote:text-foreground/85 prose-blockquote:py-1 prose-blockquote:pl-5 prose-blockquote:ml-0 prose-blockquote:rounded-none prose-th:bg-muted/60 prose-code:bg-muted/60 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:break-all prose-code:before:content-none prose-code:after:content-none prose-pre:p-0 prose-pre:rounded-lg prose-pre:border prose-pre:border-border prose-pre:overflow-hidden"
+          style={{
+            fontSize: `${entryFontSize}px`,
+            lineHeight: entryLineHeight,
+            ...(readingFontStack ? { fontFamily: readingFontStack } : {}),
+          }}
+          className="prose dark:prose-invert max-w-none hyphens-auto break-words prose-img:!max-w-full prose-img:!h-auto prose-img:shadow-[0_4px_20px_rgba(0,0,0,0.08)] prose-video:!max-w-full prose-video:!h-auto prose-video:shadow-[0_4px_20px_rgba(0,0,0,0.08)] prose-figure:!max-w-full prose-a:underline prose-a:decoration-primary/30 prose-a:underline-offset-[3px] prose-a:break-words prose-blockquote:not-italic prose-blockquote:border-l-2 prose-blockquote:border-muted-foreground/30 prose-blockquote:bg-transparent prose-blockquote:text-foreground/85 prose-blockquote:py-1 prose-blockquote:pl-5 prose-blockquote:ml-0 prose-blockquote:rounded-none prose-th:bg-muted/60 prose-code:bg-muted/60 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:break-all prose-code:before:content-none prose-code:after:content-none prose-pre:p-0 prose-pre:rounded-lg prose-pre:border prose-pre:border-border prose-pre:overflow-hidden"
         >
           {hasContent ? (
             hasBlocks ? (

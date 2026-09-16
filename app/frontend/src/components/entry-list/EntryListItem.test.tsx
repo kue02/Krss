@@ -92,6 +92,44 @@ describe("EntryListItem", () => {
     expect(title.className).toContain("wrap-anywhere");
     expect(title.className).toContain("line-clamp-3");
     expect(summary.className).toContain("wrap-anywhere");
-    expect(summary.className).toContain("line-clamp-3");
+    // 摘要行数改由本地外观设置驱动（内联 -webkit-line-clamp），URL 预览多给一行
+    expect(summary.getAttribute("style")).toContain("-webkit-line-clamp: 3");
+  });
+
+  it("列表图片设为「不显示」时不渲染缩略图", async () => {
+    const { setUISetting } = await import("@/hooks/useUISettings");
+    setUISetting("cardImageSize", "none");
+
+    const { container } = render(
+      <EntryListItem
+        entry={{ ...entry, thumbnailUrl: "https://example.com/cover.png" }}
+        feed={feed}
+        isSelected={false}
+        onClick={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector("img[loading='lazy']")).toBeNull();
+
+    setUISetting("cardImageSize", "small");
+  });
+
+  it("大图档位时缩略图铺满卡片宽度", async () => {
+    const { setUISetting } = await import("@/hooks/useUISettings");
+    setUISetting("cardImageSize", "large");
+
+    const { container } = render(
+      <EntryListItem
+        entry={{ ...entry, thumbnailUrl: "https://example.com/cover.png" }}
+        feed={feed}
+        isSelected={false}
+        onClick={vi.fn()}
+      />,
+    );
+
+    const image = container.querySelector("img[loading='lazy']");
+    expect(image?.parentElement?.className).toContain("w-full");
+
+    setUISetting("cardImageSize", "small");
   });
 });

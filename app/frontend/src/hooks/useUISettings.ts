@@ -1,9 +1,19 @@
 import { useCallback, useSyncExternalStore } from "react";
 
+export type CardImageSize = "none" | "small" | "large";
+
 interface UISettings {
   feedColWidth: number;
   entryColWidth: number;
   sidebarVisible: boolean;
+  /** 列表卡片的缩略图档位（对齐 Nextflux 的卡片图尺寸） */
+  cardImageSize: CardImageSize;
+  /** 卡片摘要显示行数，0 = 不显示摘要 */
+  cardPreviewLines: number;
+  /** 正文排版（本地偏好，不进后端设置） */
+  entryFontFamily: string;
+  entryFontSize: number;
+  entryLineHeight: number;
 }
 
 const STORAGE_KEY = "gist-ui-settings";
@@ -12,6 +22,11 @@ export const defaultUISettings: UISettings = {
   feedColWidth: 256,
   entryColWidth: 356,
   sidebarVisible: true,
+  cardImageSize: "small",
+  cardPreviewLines: 2,
+  entryFontFamily: "",
+  entryFontSize: 17,
+  entryLineHeight: 1.8,
 };
 
 function getStoredSettings(): UISettings {
@@ -100,15 +115,35 @@ export function useUISettingActions() {
     setUISetting("sidebarVisible", visible);
   }, []);
 
+  const setCardImageSize = useCallback((size: CardImageSize) => {
+    setUISetting("cardImageSize", size);
+  }, []);
+
+  const setCardPreviewLines = useCallback((lines: number) => {
+    setUISetting("cardPreviewLines", lines);
+  }, []);
+
+  const setEntryFontFamily = useCallback((family: string) => {
+    setUISetting("entryFontFamily", family);
+  }, []);
+
+  const setEntryFontSize = useCallback((size: number) => {
+    setUISetting("entryFontSize", size);
+  }, []);
+
+  const setEntryLineHeight = useCallback((height: number) => {
+    setUISetting("entryLineHeight", height);
+  }, []);
+
   const toggleSidebarVisible = useCallback(() => {
     const current = getUISettings().sidebarVisible;
     setUISetting("sidebarVisible", !current);
   }, []);
 
   const resetToDefaults = useCallback(() => {
-    setUISetting("feedColWidth", defaultUISettings.feedColWidth);
-    setUISetting("entryColWidth", defaultUISettings.entryColWidth);
-    setUISetting("sidebarVisible", defaultUISettings.sidebarVisible);
+    for (const [key, value] of Object.entries(defaultUISettings)) {
+      setUISetting(key as keyof UISettings, value as never);
+    }
   }, []);
 
   return {
@@ -116,6 +151,11 @@ export function useUISettingActions() {
     setEntryColWidth,
     setSidebarVisible,
     toggleSidebarVisible,
+    setCardImageSize,
+    setCardPreviewLines,
+    setEntryFontFamily,
+    setEntryFontSize,
+    setEntryLineHeight,
     resetToDefaults,
   };
 }

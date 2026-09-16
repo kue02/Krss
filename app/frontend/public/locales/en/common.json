@@ -383,5 +383,24 @@
     "close": "Close article",
     "refresh": "Refresh feeds",
     "help": "Show / hide this list"
+  },
+  "appearance_reading": {
+    "title": "Reading & list",
+    "description": "Stored on this device only",
+    "card_image": "List thumbnails",
+    "card_image_none": "Hidden",
+    "card_image_small": "Small",
+    "card_image_large": "Large",
+    "preview_lines": "Preview lines",
+    "none": "Hidden",
+    "font_family": "Article font",
+    "font_size": "Font size",
+    "line_height": "Line height"
+  },
+  "reading_font": {
+    "theme_default": "Theme default",
+    "sans": "Sans",
+    "serif": "Serif",
+    "mono": "Mono"
   }
 }

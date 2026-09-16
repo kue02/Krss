@@ -18,6 +18,12 @@ import {
   type DarkThemeId,
 } from "@/hooks/useTheme";
 import { useAppearanceSettings } from "@/hooks/useAppearanceSettings";
+import {
+  useUISettingActions,
+  useUISettingKey,
+  type CardImageSize,
+} from "@/hooks/useUISettings";
+import { readingFonts } from "@/lib/reading-fonts";
 import { updateAppearanceSettings } from "@/api";
 import { cn } from "@/lib/utils";
 import { SegmentedControl } from "@/components/ui/segmented-control";
@@ -82,6 +88,22 @@ function ThemeSwatchRow({
   );
 }
 
+/** 设置行：左侧说明 + 右侧控件 */
+function SettingRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="flex items-center gap-2">{children}</div>
+    </div>
+  );
+}
+
 export function AppearanceSettings() {
   const { t } = useTranslation();
   const {
@@ -93,6 +115,18 @@ export function AppearanceSettings() {
     setDarkTheme,
   } = useTheme();
   const queryClient = useQueryClient();
+  const cardImageSize = useUISettingKey("cardImageSize");
+  const cardPreviewLines = useUISettingKey("cardPreviewLines");
+  const entryFontFamily = useUISettingKey("entryFontFamily");
+  const entryFontSize = useUISettingKey("entryFontSize");
+  const entryLineHeight = useUISettingKey("entryLineHeight");
+  const {
+    setCardImageSize,
+    setCardPreviewLines,
+    setEntryFontFamily,
+    setEntryFontSize,
+    setEntryLineHeight,
+  } = useUISettingActions();
   const { data: appearanceSettings } = useAppearanceSettings();
 
   const themeOptions = useMemo(
@@ -305,6 +339,99 @@ export function AppearanceSettings() {
             value={darkTheme}
             onSelect={(id) => setDarkTheme(id as DarkThemeId)}
           />
+        </div>
+      </section>
+
+      {/* 阅读与列表 —— 本机偏好（对齐 Nextflux 的 Appearance / Readability） */}
+      <section>
+        <div className="mb-3">
+          <div className="text-sm font-medium">
+            {t("appearance_reading.title")}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {t("appearance_reading.description")}
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <SettingRow label={t("appearance_reading.card_image")}>
+            <SegmentedControl
+              className="shrink-0"
+              value={cardImageSize}
+              onValueChange={(value) => setCardImageSize(value as CardImageSize)}
+              options={[
+                {
+                  value: "none",
+                  label: t("appearance_reading.card_image_none"),
+                },
+                {
+                  value: "small",
+                  label: t("appearance_reading.card_image_small"),
+                },
+                {
+                  value: "large",
+                  label: t("appearance_reading.card_image_large"),
+                },
+              ]}
+            />
+          </SettingRow>
+
+          <SettingRow label={t("appearance_reading.preview_lines")}>
+            <SegmentedControl
+              className="shrink-0"
+              value={String(cardPreviewLines)}
+              onValueChange={(value) => setCardPreviewLines(Number(value))}
+              options={[
+                { value: "0", label: t("appearance_reading.none") },
+                { value: "1", label: "1" },
+                { value: "2", label: "2" },
+                { value: "3", label: "3" },
+              ]}
+            />
+          </SettingRow>
+
+          <SettingRow label={t("appearance_reading.font_family")}>
+            <SegmentedControl
+              className="shrink-0"
+              value={entryFontFamily}
+              onValueChange={setEntryFontFamily}
+              options={readingFonts.map((font) => ({
+                value: font.value,
+                label: (
+                  <span style={font.stack ? { fontFamily: font.stack } : undefined}>
+                    {t(`reading_font.${font.labelKey}`)}
+                  </span>
+                ),
+              }))}
+            />
+          </SettingRow>
+
+          <SettingRow label={t("appearance_reading.font_size")}>
+            <SegmentedControl
+              className="shrink-0"
+              value={String(entryFontSize)}
+              onValueChange={(value) => setEntryFontSize(Number(value))}
+              options={[
+                { value: "15", label: "15" },
+                { value: "17", label: "17" },
+                { value: "19", label: "19" },
+                { value: "21", label: "21" },
+              ]}
+            />
+          </SettingRow>
+
+          <SettingRow label={t("appearance_reading.line_height")}>
+            <SegmentedControl
+              className="shrink-0"
+              value={String(entryLineHeight)}
+              onValueChange={(value) => setEntryLineHeight(Number(value))}
+              options={[
+                { value: "1.6", label: "1.6" },
+                { value: "1.8", label: "1.8" },
+                { value: "2", label: "2.0" },
+              ]}
+            />
+          </SettingRow>
         </div>
       </section>
 

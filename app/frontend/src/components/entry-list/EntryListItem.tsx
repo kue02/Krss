@@ -7,6 +7,7 @@ import { stripHtml } from "@/lib/html-utils";
 import { getEntryImages } from "@/lib/extract-images";
 import { useTranslationStore } from "@/stores/translation-store";
 import { FeedIcon } from "@/components/ui/feed-icon";
+import { useUISettingKey } from "@/hooks/useUISettings";
 import type { Entry, Feed } from "@/types/api";
 
 const URL_PATTERN = /\bhttps?:\/\/\S+/i;
@@ -56,6 +57,8 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
     const showIcon = feed?.iconPath && !iconError;
     const fallbackTitle = t("entry.untitled");
     const fallbackFeedName = t("entry.unknown_feed");
+    const cardImageSize = useUISettingKey("cardImageSize");
+    const cardPreviewLines = useUISettingKey("cardPreviewLines");
 
     const translation = useTranslationStore((state) =>
       autoTranslate && targetLanguage
@@ -89,13 +92,16 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
     const titleContainsUrl = URL_PATTERN.test(displayTitle ?? "");
     const summaryContainsUrl = URL_PATTERN.test(displaySummary ?? "");
     const isUnread = !entry.read;
-    const showThumbnail = Boolean(thumbnail) && !imageError;
+    const isLargeImage = cardImageSize === "large";
+    const showThumbnail =
+      cardImageSize !== "none" && Boolean(thumbnail) && !imageError;
 
     return (
       <div
         ref={ref}
         className={cn(
-          "group relative mx-2 mb-1.5 flex cursor-pointer items-stretch gap-3 overflow-hidden rounded-xl border p-3 transition-all duration-200",
+          "group relative mx-2 mb-1.5 flex cursor-pointer overflow-hidden rounded-xl border p-3 transition-all duration-200",
+          isLargeImage ? "flex-col gap-3" : "items-stretch gap-3",
           isSelected
             ? "border-border/60 bg-card shadow-nf"
             : "border-transparent hover:bg-item-hover",
@@ -150,14 +156,20 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
             {displayTitle || fallbackTitle}
           </div>
 
-          {/* 摘要 */}
-          {displaySummary && (
+          {/* 摘要（行数可在 设置 → 外观 里调，0 = 不显示） */}
+          {displaySummary && cardPreviewLines > 0 && (
             <div
               className={cn(
                 "mt-1 text-[13px] leading-relaxed text-muted-foreground wrap-anywhere",
-                summaryContainsUrl ? "line-clamp-3" : "line-clamp-2",
                 !isUnread && "text-muted-foreground/70",
               )}
+              style={{
+                display: "-webkit-box",
+                WebkitBoxOrient: "vertical",
+                WebkitLineClamp:
+                  cardPreviewLines + (summaryContainsUrl ? 1 : 0),
+                overflow: "hidden",
+              }}
             >
               {displaySummary}
             </div>
@@ -172,9 +184,14 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
           )}
         </div>
 
-        {/* 右：缩略图 */}
+        {/* 缩略图：小图贴右，大图铺在正文下方 */}
         {showThumbnail && (
-          <div className="h-[92px] w-[92px] shrink-0 self-start overflow-hidden rounded-lg bg-muted">
+          <div
+            className={cn(
+              "overflow-hidden rounded-lg bg-muted",
+              isLargeImage ? "h-[168px] w-full shrink-0" : "h-[92px] w-[92px] shrink-0 self-start",
+            )}
+          >
             <img
               src={thumbnail ?? ""}
               alt=""
