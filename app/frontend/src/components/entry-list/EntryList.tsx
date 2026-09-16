@@ -10,7 +10,7 @@ import { useTranslation } from "react-i18next";
 import { useEntriesInfinite, useUnreadCounts } from "@/hooks/useEntries";
 import { useFeeds } from "@/hooks/useFeeds";
 import { queryClient } from "@/lib/queryClient";
-import { refreshAllFeeds, refreshFeeds } from "@/api";
+import { getRefreshStatus, refreshAllFeeds, refreshFeeds } from "@/api";
 import { showToast } from "@/stores/toast-store";
 import { useFolders } from "@/hooks/useFolders";
 import { useAISettings } from "@/hooks/useAISettings";
@@ -304,6 +304,22 @@ export function EntryList({
 
   // 刷新：按当前选中范围（单个源 / 文件夹内所有源 / 某个视图的所有源）
   const [isRefreshing, setIsRefreshing] = useState(false);
+  // 刷新进度（待刷新总数 / 已完成数）：后端刷新状态接口轮询得到，用于按钮里的递减计数
+  const [refreshProgress, setRefreshProgress] = useState<{
+    total: number;
+    completed: number;
+  } | null>(null);
+  const refreshPollRef = useRef<number | null>(null);
+
+  const stopRefreshPolling = useCallback(() => {
+    if (refreshPollRef.current !== null) {
+      window.clearInterval(refreshPollRef.current);
+      refreshPollRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => stopRefreshPolling, [stopRefreshPolling]);
+
   const handleRefresh = useCallback(async () => {
     if (isRefreshing) return;
 
@@ -321,7 +337,25 @@ export function EntryList({
     }
     // 星标视图或算不出范围时刷新全部（ids 为空即刷新全部）
 
+    // 先用本地已知的源数打底，随后由后端进度覆盖（后端只在刷新中返回进度）
+    const localTotal = ids.length > 0 ? ids.length : feeds.length;
+
     setIsRefreshing(true);
+    setRefreshProgress({ total: localTotal, completed: 0 });
+    stopRefreshPolling();
+    refreshPollRef.current = window.setInterval(() => {
+      void getRefreshStatus()
+        .then((status) => {
+          setRefreshProgress((prev) => ({
+            total: status.total || prev?.total || localTotal,
+            completed: status.completed ?? prev?.completed ?? 0,
+          }));
+        })
+        .catch(() => {
+          // 进度只是显示用，取不到就保持上一次的值
+        });
+    }, 400);
+
     // 后端刷新是同步的（要等所有源抓完才返回），所以先给即时反馈，完成后再报结果
     showToast(
       ids.length > 0
@@ -341,9 +375,18 @@ export function EntryList({
     } catch {
       showToast(t("entry.refresh_failed"));
     } finally {
+      stopRefreshPolling();
       setIsRefreshing(false);
+      setRefreshProgress(null);
     }
-  }, [contentType, feeds, isRefreshing, selection, t]);
+  }, [
+    contentType,
+    feeds,
+    isRefreshing,
+    selection,
+    stopRefreshPolling,
+    t,
+  ]);
 
   const { endPaddingHeight: scrollReadEndPaddingHeight } = useScrollMarkRead({
     surface: scrollSurface,
@@ -584,6 +627,8 @@ export function EntryList({
           onMarkAllRead={onMarkAllRead}
           onRefresh={handleRefresh}
           isRefreshing={isRefreshing}
+          refreshTotal={refreshProgress?.total ?? 0}
+          refreshCompleted={refreshProgress?.completed ?? 0}
           scrollToTopScope="entrylist"
           isMobile={isMobile}
           onMenuClick={handleMenuClick}

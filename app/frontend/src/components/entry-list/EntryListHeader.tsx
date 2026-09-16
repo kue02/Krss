@@ -5,8 +5,8 @@ import {
   CheckCircleIcon,
   MenuIcon,
   RefreshIcon,
+  RefreshSpinner,
 } from "@/components/ui/icons";
-import { cn } from "@/lib/utils";
 import { dispatchScrollToTop } from "@/hooks/useScrollToTop";
 
 interface EntryListHeaderProps {
@@ -18,6 +18,10 @@ interface EntryListHeaderProps {
   /** 刷新当前选中范围（文件夹 / 单个源 / 某个视图） */
   onRefresh?: () => void;
   isRefreshing?: boolean;
+  /** 本次刷新待刷新的源总数 */
+  refreshTotal?: number;
+  /** 本次刷新已完成的源数 */
+  refreshCompleted?: number;
   scrollToTopScope?: string;
   isMobile?: boolean;
   onMenuClick?: () => void;
@@ -34,6 +38,8 @@ export function EntryListHeader({
   onMarkAllRead,
   onRefresh,
   isRefreshing = false,
+  refreshTotal = 0,
+  refreshCompleted = 0,
   scrollToTopScope,
   isMobile,
   onMenuClick,
@@ -102,10 +108,16 @@ export function EntryListHeader({
             type="button"
             onClick={onRefresh}
             title={t("entry.refresh_view")}
-            disabled={isRefreshing}
-            className="flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors duration-200 hover:bg-item-hover disabled:opacity-60"
+            aria-busy={isRefreshing}
+            className="flex size-8 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95"
           >
-            <RefreshIcon className={cn("size-4", isRefreshing && "animate-spin")} />
+            {isRefreshing ? (
+              <RefreshSpinner
+                remaining={Math.max(0, refreshTotal - refreshCompleted)}
+              />
+            ) : (
+              <RefreshIcon className="size-4" />
+            )}
           </button>
         )}
         <button

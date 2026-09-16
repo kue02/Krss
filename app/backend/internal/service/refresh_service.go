@@ -203,6 +203,10 @@ var ErrAlreadyRefreshing = errors.New("refresh already in progress")
 type RefreshStatus struct {
 	IsRefreshing    bool
 	LastRefreshedAt *time.Time
+	// Total / Completed 是本次刷新的进度（供界面显示「还剩几个源」用）。
+	// 仅在刷新进行中有效，空闲时均为 0。
+	Total     int
+	Completed int
 }
 
 type RefreshService interface {
@@ -224,6 +228,8 @@ type refreshService struct {
 	mu              sync.Mutex
 	isRefreshing    bool
 	lastRefreshedAt *time.Time
+	progressTotal   int
+	progressDone    int
 }
 
 func NewRefreshService(feeds repository.FeedRepository, entries repository.EntryRepository, settings SettingsService, icons IconService, clientFactory *network.ClientFactory, anubisSolver AnubisSolver, rateLimitSvc DomainRateLimitService) RefreshService {
@@ -260,6 +266,7 @@ func (s *refreshService) RefreshAll(ctx context.Context) error {
 	}
 
 	logger.Info("refresh started", "module", "service", "action", "refresh", "resource", "feed", "result", "ok", "count", len(feeds))
+	s.resetRefreshProgress(len(feeds))
 	s.refreshFeedsWithRateLimit(ctx, feeds)
 	logger.Info("refresh completed", "module", "service", "action", "refresh", "resource", "feed", "result", "ok", "count", len(feeds))
 
@@ -277,13 +284,33 @@ func (s *refreshService) IsRefreshing() bool {
 	return s.isRefreshing
 }
 
+// resetRefreshProgress 开始一次刷新前重置进度（供界面显示还剩几个源）。
+func (s *refreshService) resetRefreshProgress(total int) {
+	s.mu.Lock()
+	s.progressTotal = total
+	s.progressDone = 0
+	s.mu.Unlock()
+}
+
+// recordRefreshedFeed 每刷完一个源（无论成功失败）进度加一。
+func (s *refreshService) recordRefreshedFeed() {
+	s.mu.Lock()
+	s.progressDone++
+	s.mu.Unlock()
+}
+
 func (s *refreshService) GetRefreshStatus() RefreshStatus {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return RefreshStatus{
+	status := RefreshStatus{
 		IsRefreshing:    s.isRefreshing,
 		LastRefreshedAt: s.lastRefreshedAt,
 	}
+	if s.isRefreshing {
+		status.Total = s.progressTotal
+		status.Completed = s.progressDone
+	}
+	return status
 }
 
 func (s *refreshService) RefreshFeed(ctx context.Context, feedID int64) error {
@@ -310,6 +337,7 @@ func (s *refreshService) RefreshFeeds(ctx context.Context, feedIDs []int64) erro
 		return nil
 	}
 
+	s.resetRefreshProgress(len(feeds))
 	s.refreshFeedsWithRateLimit(ctx, feeds)
 	return nil
 }
@@ -331,6 +359,7 @@ func (s *refreshService) refreshFeedsWithRateLimit(ctx context.Context, feeds []
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			defer s.recordRefreshedFeed()
 
 			host := network.ExtractHost(feed.URL)
 

@@ -77,6 +77,9 @@ type feedResponse struct {
 type refreshStatusResponse struct {
 	IsRefreshing    bool    `json:"isRefreshing"`
 	LastRefreshedAt *string `json:"lastRefreshedAt,omitempty"`
+	// 本次刷新进度：Total 待刷新源数、Completed 已完成数（仅刷新中有效）
+	Total     int `json:"total,omitempty"`
+	Completed int `json:"completed,omitempty"`
 }
 
 type feedPreviewResponse struct {
@@ -407,6 +410,8 @@ func (h *FeedHandler) RefreshStatus(c echo.Context) error {
 	status := h.refreshService.GetRefreshStatus()
 	resp := refreshStatusResponse{
 		IsRefreshing: status.IsRefreshing,
+		Total:        status.Total,
+		Completed:    status.Completed,
 	}
 	if status.LastRefreshedAt != nil {
 		t := status.LastRefreshedAt.UTC().Format(time.RFC3339)

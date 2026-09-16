@@ -1,3 +1,5 @@
+import { cn } from "@/lib/utils";
+
 interface IconProps {
   className?: string;
 }
@@ -338,6 +340,57 @@ export function RefreshIcon({ className }: IconProps) {
       <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
       <path d="M8 16H3v5" />
     </svg>
+  );
+}
+
+const REFRESH_RING_RADIUS = 9;
+const REFRESH_RING_CIRCUMFERENCE = 2 * Math.PI * REFRESH_RING_RADIUS;
+
+/**
+ * 刷新中的按钮图标：一圈持续转动的弧，圈内显示还剩多少个源没刷完。
+ * 用在列表头 / 订阅设置页的刷新按钮上。
+ */
+export function RefreshSpinner({
+  remaining,
+  className,
+}: {
+  remaining: number;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "relative flex size-7 items-center justify-center",
+        className,
+      )}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        className="absolute inset-0 size-7 animate-spin"
+        fill="none"
+        aria-hidden="true"
+      >
+        <circle
+          cx="12"
+          cy="12"
+          r={REFRESH_RING_RADIUS}
+          strokeWidth={2.5}
+          className="stroke-current opacity-15"
+        />
+        <circle
+          cx="12"
+          cy="12"
+          r={REFRESH_RING_RADIUS}
+          strokeWidth={2.5}
+          strokeLinecap="round"
+          strokeDasharray={`${REFRESH_RING_CIRCUMFERENCE * 0.7} ${REFRESH_RING_CIRCUMFERENCE * 0.3}`}
+          className="stroke-primary"
+        />
+      </svg>
+      <span className="relative text-[10px] font-bold leading-none tabular-nums">
+        {remaining}
+      </span>
+    </span>
   );
 }
 

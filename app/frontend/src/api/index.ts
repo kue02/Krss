@@ -456,6 +456,10 @@ export async function refreshFeeds(ids: (string | number)[]): Promise<void> {
 export interface RefreshStatus {
   isRefreshing: boolean;
   lastRefreshedAt?: string;
+  /** 本次刷新要刷的源数（仅刷新中返回） */
+  total?: number;
+  /** 本次刷新已完成数（仅刷新中返回） */
+  completed?: number;
 }
 
 export async function getRefreshStatus(): Promise<RefreshStatus> {
