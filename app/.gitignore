@@ -1,0 +1,15 @@
+# Claude Code local settings
+.claude/
+.codex/
+.entire/
+.antigravitycli/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# direnv
+.direnv
+
+# pre-commit
+.pre-commit-config.yaml
