@@ -16,9 +16,11 @@ describe("iOS PWA metadata", () => {
 
   it("provides matching light and dark colors before the app loads", () => {
     expect(indexHtml).toContain('name="color-scheme" content="light dark"');
-    expect(indexHtml).toContain('content="#FFFFFF"');
-    expect(indexHtml).toContain('content="#09090B"');
-    expect(indexHtml).toContain("background-color: #09090b");
+    // 与 Nextflux 的底色对齐（亮 #E3E1DE / 暗 #242933），避免首屏与安装后的状态栏串色
+    expect(indexHtml).toContain('content="#E3E1DE"');
+    expect(indexHtml).toContain('content="#242933"');
+    expect(indexHtml).toContain("background-color: #242933");
+    expect(indexHtml).toContain("background-color: #e3e1de");
   });
 
   it("applies the stored theme palette before the app loads", () => {

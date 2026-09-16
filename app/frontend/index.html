@@ -10,12 +10,12 @@
     <meta
       name="theme-color"
       media="(prefers-color-scheme: light)"
-      content="#FFFFFF"
+      content="#E3E1DE"
     />
     <meta
       name="theme-color"
       media="(prefers-color-scheme: dark)"
-      content="#09090B"
+      content="#242933"
     />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -48,16 +48,25 @@
     </script>
     <style>
       :root {
-        background-color: #ffffff;
+        background-color: #e3e1de;
       }
 
-      :root[data-theme="dark"] {
-        background-color: #09090b;
+      :root[data-theme="stone"] {
+        background-color: #e3e1de;
+      }
+
+      :root[data-theme="leaf"] {
+        background-color: #dfe7e1;
+      }
+
+      :root[data-theme="dark"],
+      :root[data-theme="nord-dark"] {
+        background-color: #242933;
       }
 
       @media (prefers-color-scheme: dark) {
         :root:not([data-theme]) {
-          background-color: #09090b;
+          background-color: #242933;
         }
       }
     </style>
