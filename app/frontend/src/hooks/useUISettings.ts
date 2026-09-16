@@ -25,6 +25,8 @@ interface UISettings {
   expandLongByView: ViewFlags;
   /** 减少动态效果：涟漪、过渡、折叠动画一律压到最短（系统 prefers-reduced-motion 也会自动生效） */
   reduceMotion: boolean;
+  /** 界面整体缩放：改的是 rem 基准字号，1 = 标准（对应 16px） */
+  uiScale: number;
   /** 按视图覆盖「滚动标已读」；inherit = 跟随通用设置 */
   scrollReadByView: ViewScrollRead;
   /** 已读判定时机：scrollPast = 滚出顶部（默认）；onVisible = 看到即已读（Folo 语义） */
@@ -55,6 +57,7 @@ export const defaultUISettings: UISettings = {
     social: false,
   },
   reduceMotion: false,
+  uiScale: 1,
   scrollReadTimingByView: {
     article: "scrollPast",
     picture: "scrollPast",
@@ -179,6 +182,10 @@ export function useUISettingActions() {
     setUISetting("reduceMotion", enabled);
   }, []);
 
+  const setUiScale = useCallback((scale: number) => {
+    setUISetting("uiScale", scale);
+  }, []);
+
   const setExpandLongForView = useCallback(
     (view: ContentType, enabled: boolean) => {
       setUISetting("expandLongByView", {
@@ -243,10 +250,18 @@ export function useUISettingActions() {
     setFetchReadableForView,
     setExpandLongForView,
     setReduceMotion,
+    setUiScale,
     setScrollReadForView,
     setScrollReadTimingForView,
     resetToDefaults,
   };
+}
+
+/** 把「界面字号」落到 <html> 的基准字号上（页面全是 rem，一改就整体缩放） */
+export function applyUiScaleToDocument(scale: number): void {
+  if (typeof document === "undefined") return;
+  const safe = Number.isFinite(scale) && scale > 0.5 && scale < 2 ? scale : 1;
+  document.documentElement.style.fontSize = `${16 * safe}px`;
 }
 
 /** 把「减少动态效果」开关落到 <html data-reduce-motion> 上，供 CSS 统一处理 */

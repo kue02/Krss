@@ -446,6 +446,11 @@
     "addFeed": "Add feed"
   },
   "appearance_reading": {
+    "ui_scale": "UI scale",
+    "ui_scale_small": "Small",
+    "ui_scale_default": "Default",
+    "ui_scale_large": "Large",
+    "ui_scale_xl": "XL",
     "title": "Reading & list",
     "description": "Stored on this device only",
     "card_image": "List thumbnails",

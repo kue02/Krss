@@ -127,12 +127,14 @@ export function AppearanceSettings() {
   const fetchReadableByView = useUISettingKey("fetchReadableByView");
   const expandLongByView = useUISettingKey("expandLongByView");
   const reduceMotion = useUISettingKey("reduceMotion");
+  const uiScale = useUISettingKey("uiScale");
   const scrollReadByView = useUISettingKey("scrollReadByView");
   const scrollReadTimingByView = useUISettingKey("scrollReadTimingByView");
   const {
     setFetchReadableForView,
     setExpandLongForView,
     setReduceMotion,
+    setUiScale,
     setScrollReadForView,
     setScrollReadTimingForView,
     setCardImageSize,
@@ -450,6 +452,19 @@ export function AppearanceSettings() {
                 { value: "1.6", label: "1.6" },
                 { value: "1.8", label: "1.8" },
                 { value: "2", label: "2.0" },
+              ]}
+            />
+          </SettingRow>
+          <SettingRow label={t("appearance_reading.ui_scale")}>
+            <SegmentedControl
+              className="shrink-0"
+              value={String(uiScale)}
+              onValueChange={(value) => setUiScale(Number(value))}
+              options={[
+                { value: "0.9", label: t("appearance_reading.ui_scale_small") },
+                { value: "1", label: t("appearance_reading.ui_scale_default") },
+                { value: "1.1", label: t("appearance_reading.ui_scale_large") },
+                { value: "1.25", label: t("appearance_reading.ui_scale_xl") },
               ]}
             />
           </SettingRow>

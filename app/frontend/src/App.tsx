@@ -44,6 +44,7 @@ import {
   hasSidebarVisibilitySetting,
   setUISetting,
   applyReduceMotionToDocument,
+  applyUiScaleToDocument,
 } from "@/hooks/useUISettings";
 import { useRefreshStatus } from "@/hooks/useRefreshStatus";
 import { isAddFeedPath } from "@/lib/router";
@@ -301,6 +302,12 @@ function AuthenticatedApp() {
   useEffect(() => {
     applyReduceMotionToDocument(Boolean(reduceMotion));
   }, [reduceMotion]);
+
+  // 「界面字号」改 <html> 基准字号（界面用的都是 rem，整体跟着缩放）
+  const uiScale = useUISettingKey("uiScale");
+  useEffect(() => {
+    applyUiScaleToDocument(uiScale);
+  }, [uiScale]);
 
   const visibleContentTypes = useMemo(() => {
     const current = appearanceSettings?.contentTypes;

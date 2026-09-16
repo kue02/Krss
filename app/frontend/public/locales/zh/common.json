@@ -443,6 +443,11 @@
     "addFeed": "添加订阅"
   },
   "appearance_reading": {
+    "ui_scale": "界面字号",
+    "ui_scale_small": "小",
+    "ui_scale_default": "标准",
+    "ui_scale_large": "大",
+    "ui_scale_xl": "特大",
     "title": "阅读与列表",
     "description": "仅保存在本机（换设备不影响）",
     "card_image": "列表图片",
