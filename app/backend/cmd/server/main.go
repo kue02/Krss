@@ -98,7 +98,7 @@ func main() {
 	opmlService := service.NewOPMLService(folderService, feedService, refreshService, iconService, folderRepo, feedRepo)
 
 	proxyService := service.NewProxyService(clientFactory, anubisSolver)
-	aiService := service.NewAIServiceWithFeedContext(aiSummaryRepo, aiTranslationRepo, aiListTranslationRepo, settingsRepo, rateLimiter, entryRepo, feedRepo)
+	aiService := service.NewAIServiceWithFeedContext(aiSummaryRepo, aiTranslationRepo, aiListTranslationRepo, settingsRepo, rateLimiter, entryRepo, feedRepo, clientFactory)
 	authService := service.NewAuthService(settingsRepo)
 
 	folderHandler := handler.NewFolderHandler(folderService)

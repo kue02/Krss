@@ -228,7 +228,7 @@ Gist 的内容类型是后端枚举（`article/picture/notification`），要加
 - [x] **8 终检**：前端 56 文件 561 例、后端 `go vet` + 全部包测试、`bun run build`（生产构建）全绿；
       页面运行时错误 0；swagger 按 swag 重新生成。**未做**：移动端与 PWA 回归、Docker 部署（用户明确暂缓）
 
-### 2026-09-16 第三批清单（用户第 2 轮；进度见勾选）
+### 2026-09-16 第三批清单（用户第 2 轮；11 项全部处理完，7 见下方说明）
 
 - [x] **环境问题（GitHub 图 30s 超时）**：① 应用自己的「网络 → 代理」是空的，后端所有出网请求都直连，
       而本机直连 github 不通 → 已指向 Clash 混合端口 127.0.0.1:10808；② 图片代理走 azuretls 会话，
@@ -249,7 +249,21 @@ Gist 的内容类型是后端枚举（`article/picture/notification`），要加
       卡片+实心细节的语汇）
 - [x] **6 头像 bug + 账户菜单**：头像根因是后端给 gravatar 的 d=mp（灰底小人），改成 d=404 + 前端首字母
       头像兜底；账户栏整行（头像+名字）都可点，不再是只有那 32px 头像能点
-- [ ] **7 免费翻译（Google / Bing / 有道，无需 key）**：未开始（后端要加三条免 key 通道并接进 AI 设置，量最大）
+- [x] **7 免费翻译（Google；Bing 与有道暂不提供）**：设置 → AI 增加「翻译通道」，可切到
+      「Google 翻译（免费，无需 Key）」，摘要仍然走配置的模型；选了免费通道时后端允许不配
+      provider/model（可以直接只用翻译）。
+      实现：`internal/service/ai/free_translate.go`（Google gtx 端点 / 有道 aidemo 端点，
+      端点是包级变量便于用 httptest 测；上游偶发 5xx 会重试一次）；免 key 分支在块翻译循环里
+      位于模型限流之前（免费通道不该占模型的速率额度），并发仍受 sem 限制。
+      实测（Cloudflare Blog 英文正文，走完整 /api/ai/translate 流）：
+        · Google：59 块全部译出，7.2 秒，无错误 ✓
+        · 有道：**上游按 IP 限流** —— 连续十来次之后一律 errorCode=411，串行 + 900ms 重试也没用，
+          所以下拉里没有它（代码与单测保留，短文本场景想用可以走 API 传 youdao）
+        · Bing：edge.microsoft.com/translate/auth 已 404，www.bing.com/ttranslatev3 拿到的是
+          {"ShowCaptcha":false} 空结果 —— 免 key 路径已经不通，不做
+      后端单测 5 例（两个通道的解析 + 语言码转换 + 空译报错）全过。
+      踩坑记录：批量替换把 httpClientForTranslate 自己的那行也换了，导致自递归 → stack overflow
+      把后端跑崩；已修（`s.clientFactory.NewHTTPClient`），这一条是因为替换后没重新 build 就验证才漏过去的
 - [x] **8 每个 feed 单独设置原文 / 阅读模式**：feeds 表加 reader_mode（迁移里加一项）+ 模型/仓库/接口
       全链路；编辑订阅里第三行「正文打开方式：跟随全局 / 阅读模式 / 原文」；正文按
       `feed.readerMode ?? 全局 autoReadability` 决定。实测：设 true → DB=1 → 接口返回 true →

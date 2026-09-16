@@ -31,10 +31,10 @@ func TestBuildPreviewEntries_MapsFields(t *testing.T) {
 	published := time.Date(2026, 9, 16, 9, 0, 0, 0, time.UTC)
 	items := []*gofeed.Item{
 		{
-			Title:          " 标题 ",
-			Link:           " https://example.com/post ",
-			Description:    "<p>正文</p>",
-			Author:         &gofeed.Person{Name: "作者"},
+			Title:           " 标题 ",
+			Link:            " https://example.com/post ",
+			Description:     "<p>正文</p>",
+			Author:          &gofeed.Person{Name: "作者"},
 			PublishedParsed: &published,
 			Extensions: ext.Extensions{
 				"media": {

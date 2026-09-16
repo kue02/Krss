@@ -39,6 +39,8 @@ type AISettings struct {
 	AutoTranslate   bool           `json:"autoTranslate"`
 	AutoSummary     bool           `json:"autoSummary"`
 	RateLimit       int            `json:"rateLimit"`
+	// TranslateChannel：翻译走哪条通道。空 = 用上面配置的模型；google/youdao = 免 key 通道
+	TranslateChannel string `json:"translateChannel"`
 	// 保存的提供商列表 + 当前使用哪一个（上面的 Provider/APIKey/... 始终等于当前使用的那份）
 	Providers        []AIProviderConfig `json:"providers"`
 	ActiveProviderID string             `json:"activeProviderId"`
@@ -73,17 +75,18 @@ type AppearanceSettings struct {
 
 // Setting keys
 const (
-	keyAIProvider        = "ai.provider"
-	keyAIAPIKey          = "ai.api_key"
-	keyAIBaseURL         = "ai.base_url"
-	keyAIModel           = "ai.model"
-	keyAIRequestOptions  = "ai.request_options"
-	keyAISummaryLanguage = "ai.summary_language"
-	keyAIAutoTranslate   = "ai.auto_translate"
-	keyAIAutoSummary     = "ai.auto_summary"
-	keyAIRateLimit       = "ai.rate_limit"
-	keyAIProviders       = "ai.providers"
-	keyAIActiveProvider  = "ai.active_provider_id"
+	keyAIProvider         = "ai.provider"
+	keyAIAPIKey           = "ai.api_key"
+	keyAIBaseURL          = "ai.base_url"
+	keyAIModel            = "ai.model"
+	keyAIRequestOptions   = "ai.request_options"
+	keyAISummaryLanguage  = "ai.summary_language"
+	keyAIAutoTranslate    = "ai.auto_translate"
+	keyAIAutoSummary      = "ai.auto_summary"
+	keyAIRateLimit        = "ai.rate_limit"
+	keyAITranslateChannel = "ai.translate_channel"
+	keyAIProviders        = "ai.providers"
+	keyAIActiveProvider   = "ai.active_provider_id"
 
 	keyFallbackUserAgent = "general.fallback_user_agent"
 	keyAutoReadability   = "general.auto_readability"
@@ -174,6 +177,9 @@ func (s *settingsService) GetAISettings(ctx context.Context) (*AISettings, error
 	}
 	settings.AutoTranslate = s.getBool(ctx, keyAIAutoTranslate)
 	settings.AutoSummary = s.getBool(ctx, keyAIAutoSummary)
+	if val, err := s.getString(ctx, keyAITranslateChannel); err == nil {
+		settings.TranslateChannel = val
+	}
 	if val, err := s.getInt(ctx, keyAIRateLimit); err == nil && val > 0 {
 		settings.RateLimit = val
 	} else {
@@ -277,6 +283,10 @@ func (s *settingsService) SetAISettings(ctx context.Context, settings *AISetting
 	if err := s.repo.Set(ctx, keyAIRateLimit, fmt.Sprintf("%d", rateLimit)); err != nil {
 		logger.Warn("ai settings update rate limit failed", "module", "service", "action", "update", "resource", "settings", "result", "failed", "error", err)
 		return fmt.Errorf("set rate limit: %w", err)
+	}
+	if err := s.repo.Set(ctx, keyAITranslateChannel, settings.TranslateChannel); err != nil {
+		logger.Warn("ai settings update translate channel failed", "module", "service", "action", "update", "resource", "settings", "result", "failed", "error", err)
+		return fmt.Errorf("set translate channel: %w", err)
 	}
 	if s.rateLimiter != nil {
 		s.rateLimiter.SetLimit(rateLimit)

@@ -5,15 +5,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"gist/backend/internal/model"
 	"gist/backend/internal/repository"
 	"gist/backend/internal/service/ai"
 	"gist/backend/pkg/logger"
+	"gist/backend/pkg/network"
 )
 
 // TranslateBlockResult represents a translated block result.
@@ -79,6 +82,8 @@ type aiService struct {
 	entryRepo           repository.EntryRepository
 	feedRepo            repository.FeedRepository
 	rateLimiter         *ai.RateLimiter
+	// clientFactory：走「设置 → 网络」里配的代理（免 key 翻译通道要用；为 nil 时退回默认客户端）
+	clientFactory *network.ClientFactory
 }
 
 // NewAIService creates a new AI service.
@@ -100,7 +105,12 @@ func NewAIServiceWithFeedContext(
 	rateLimiter *ai.RateLimiter,
 	entryRepo repository.EntryRepository,
 	feedRepo repository.FeedRepository,
+	clientFactory ...*network.ClientFactory,
 ) AIService {
+	var factory *network.ClientFactory
+	if len(clientFactory) > 0 {
+		factory = clientFactory[0]
+	}
 	return &aiService{
 		summaryRepo:         summaryRepo,
 		translationRepo:     translationRepo,
@@ -109,6 +119,7 @@ func NewAIServiceWithFeedContext(
 		entryRepo:           entryRepo,
 		feedRepo:            feedRepo,
 		rateLimiter:         rateLimiter,
+		clientFactory:       factory,
 	}
 }
 
@@ -190,6 +201,30 @@ func (s *aiService) SaveSummary(ctx context.Context, entryID int64, isReadabilit
 	}
 	logger.Info("ai summary saved", "module", "service", "action", "save", "resource", "ai", "result", "ok", "entry_id", entryID, "readability", isReadability)
 	return nil
+}
+
+// freeTranslateTimeout：免 key 通道单块翻译的超时（这些端点很快，不该像模型那样等很久）
+const freeTranslateTimeout = 20 * time.Second
+
+// httpClientForTranslate 翻译用的 HTTP 客户端：优先用带代理的工厂，没有就用默认客户端。
+func (s *aiService) httpClientForTranslate(ctx context.Context) *http.Client {
+	if s.clientFactory != nil {
+		return s.clientFactory.NewHTTPClient(ctx, freeTranslateTimeout)
+	}
+	return &http.Client{Timeout: freeTranslateTimeout}
+}
+
+// getFreeTranslateChannel 读「翻译通道」设置：留空表示用配置的模型，google/youdao 走免 key 通道。
+func (s *aiService) getFreeTranslateChannel(ctx context.Context) string {
+	setting, err := s.settingsRepo.Get(ctx, "ai.translate_channel")
+	if err != nil || setting == nil {
+		return ""
+	}
+	channel := setting.Value
+	if ai.IsFreeTranslateChannel(channel) {
+		return channel
+	}
+	return ""
 }
 
 func (s *aiService) GetSummaryLanguage(ctx context.Context) string {
@@ -301,6 +336,8 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 
 	// Get language setting
 	language := s.GetSummaryLanguage(ctx)
+	// 翻译通道：空 = 用配置的模型；google/youdao = 免 key 通道（摘要仍走模型）
+	freeChannel := s.getFreeTranslateChannel(ctx)
 
 	// Create channels
 	resultCh := make(chan TranslateBlockResult)
@@ -312,7 +349,12 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 		defer close(errCh)
 
 		var wg sync.WaitGroup
-		sem := make(chan struct{}, 3) // Limit to 3 concurrent translations
+		// 有道对并发很敏感（并发压上去会大面积返回 errorCode=411），这条通道串行
+		concurrency := 3
+		if freeChannel == ai.FreeChannelYoudao {
+			concurrency = 1
+		}
+		sem := make(chan struct{}, concurrency) // Limit concurrent translations
 
 		// Collect results for caching
 		var results []TranslateBlockResult
@@ -352,6 +394,33 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 				defer wg.Done()
 				defer func() { <-sem }() // Release semaphore
 
+				// 免 key 通道（Google / 有道）：整段纯文本丢过去，不走模型
+				if ai.IsFreeTranslateChannel(freeChannel) {
+					plainText := strings.TrimSpace(ai.HTMLToText(b.HTML))
+					if plainText == "" {
+						return
+					}
+					translatedText, err := ai.TranslateFreeText(ctx, s.httpClientForTranslate(ctx), freeChannel, plainText, language)
+					if err != nil {
+						select {
+						case errCh <- fmt.Errorf("translate block %d via %s: %w", b.Index, freeChannel, err):
+							hasError.Store(true)
+						default:
+						}
+						return
+					}
+					result := TranslateBlockResult{Index: b.Index, HTML: translatedText}
+					resultsMu.Lock()
+					results = append(results, result)
+					resultsMu.Unlock()
+					select {
+					case resultCh <- result:
+					case <-ctx.Done():
+						return
+					}
+					return
+				}
+
 				// Wait for rate limiter
 				if err := s.rateLimiter.Wait(ctx); err != nil {
 					select {
@@ -361,7 +430,6 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 					}
 					return
 				}
-
 				// Create provider for this goroutine
 				provider, err := ai.NewProvider(cfg)
 				if err != nil {

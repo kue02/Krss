@@ -14,29 +14,33 @@ import (
 // Request/Response types
 
 type aiSettingsResponse struct {
-	Provider         string                     `json:"provider"`
-	APIKey           string                     `json:"apiKey"`
-	BaseURL          string                     `json:"baseUrl"`
-	Model            string                     `json:"model"`
-	RequestOptions   map[string]any             `json:"requestOptions"`
-	SummaryLanguage  string                     `json:"summaryLanguage"`
-	AutoTranslate    bool                       `json:"autoTranslate"`
-	AutoSummary      bool                       `json:"autoSummary"`
-	RateLimit        int                        `json:"rateLimit"`
+	Provider        string         `json:"provider"`
+	APIKey          string         `json:"apiKey"`
+	BaseURL         string         `json:"baseUrl"`
+	Model           string         `json:"model"`
+	RequestOptions  map[string]any `json:"requestOptions"`
+	SummaryLanguage string         `json:"summaryLanguage"`
+	AutoTranslate   bool           `json:"autoTranslate"`
+	AutoSummary     bool           `json:"autoSummary"`
+	RateLimit       int            `json:"rateLimit"`
+	// TranslateChannel：空 = 翻译走模型；google/youdao = 免 key 通道
+	TranslateChannel string                     `json:"translateChannel"`
 	Providers        []service.AIProviderConfig `json:"providers"`
 	ActiveProviderID string                     `json:"activeProviderId"`
 }
 
 type aiSettingsRequest struct {
-	Provider         string                     `json:"provider"`
-	APIKey           string                     `json:"apiKey"`
-	BaseURL          string                     `json:"baseUrl"`
-	Model            string                     `json:"model"`
-	RequestOptions   map[string]any             `json:"requestOptions"`
-	SummaryLanguage  string                     `json:"summaryLanguage"`
-	AutoTranslate    bool                       `json:"autoTranslate"`
-	AutoSummary      bool                       `json:"autoSummary"`
-	RateLimit        int                        `json:"rateLimit"`
+	Provider        string         `json:"provider"`
+	APIKey          string         `json:"apiKey"`
+	BaseURL         string         `json:"baseUrl"`
+	Model           string         `json:"model"`
+	RequestOptions  map[string]any `json:"requestOptions"`
+	SummaryLanguage string         `json:"summaryLanguage"`
+	AutoTranslate   bool           `json:"autoTranslate"`
+	AutoSummary     bool           `json:"autoSummary"`
+	RateLimit       int            `json:"rateLimit"`
+	// TranslateChannel：空 = 翻译走模型；google/youdao = 免 key 通道
+	TranslateChannel string                     `json:"translateChannel"`
 	Providers        []service.AIProviderConfig `json:"providers"`
 	ActiveProviderID string                     `json:"activeProviderId"`
 }
@@ -120,6 +124,11 @@ type SettingsHandler struct {
 	clientFactory *network.ClientFactory
 }
 
+// isFreeTranslateChannel：免 key 翻译通道（与 internal/service/ai 里的常量保持一致）
+func isFreeTranslateChannel(channel string) bool {
+	return channel == "google" || channel == "youdao"
+}
+
 func isBaseURLRequiredForProvider(provider string) bool {
 	return provider == "openai" || provider == "compatible"
 }
@@ -163,15 +172,16 @@ func (h *SettingsHandler) GetAISettings(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, aiSettingsResponse{
-		Provider:        settings.Provider,
-		APIKey:          settings.APIKey,
-		BaseURL:         settings.BaseURL,
-		Model:           settings.Model,
-		RequestOptions:  settings.RequestOptions,
-		SummaryLanguage: settings.SummaryLanguage,
-		AutoTranslate:   settings.AutoTranslate,
-		AutoSummary:     settings.AutoSummary,
-		RateLimit:       settings.RateLimit,
+		Provider:         settings.Provider,
+		APIKey:           settings.APIKey,
+		BaseURL:          settings.BaseURL,
+		Model:            settings.Model,
+		RequestOptions:   settings.RequestOptions,
+		SummaryLanguage:  settings.SummaryLanguage,
+		AutoTranslate:    settings.AutoTranslate,
+		AutoSummary:      settings.AutoSummary,
+		RateLimit:        settings.RateLimit,
+		TranslateChannel: settings.TranslateChannel,
 
 		Providers:        settings.Providers,
 		ActiveProviderID: settings.ActiveProviderID,
@@ -194,26 +204,31 @@ func (h *SettingsHandler) UpdateAISettings(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
 	}
-	if req.Provider == "" {
-		return c.JSON(http.StatusBadRequest, errorResponse{Error: "provider is required"})
-	}
-	if req.Model == "" {
-		return c.JSON(http.StatusBadRequest, errorResponse{Error: "model is required"})
-	}
-	if isBaseURLRequiredForProvider(req.Provider) && req.BaseURL == "" {
-		return c.JSON(http.StatusBadRequest, errorResponse{Error: "baseUrl is required"})
+	// 选了免 key 翻译通道时，可以完全不配模型（翻译能用，摘要才需要模型）
+	freeTranslateOnly := isFreeTranslateChannel(req.TranslateChannel) && req.Provider == "" && req.Model == ""
+	if !freeTranslateOnly {
+		if req.Provider == "" {
+			return c.JSON(http.StatusBadRequest, errorResponse{Error: "provider is required"})
+		}
+		if req.Model == "" {
+			return c.JSON(http.StatusBadRequest, errorResponse{Error: "model is required"})
+		}
+		if isBaseURLRequiredForProvider(req.Provider) && req.BaseURL == "" {
+			return c.JSON(http.StatusBadRequest, errorResponse{Error: "baseUrl is required"})
+		}
 	}
 
 	settings := &service.AISettings{
-		Provider:        req.Provider,
-		APIKey:          req.APIKey,
-		BaseURL:         req.BaseURL,
-		Model:           req.Model,
-		RequestOptions:  req.RequestOptions,
-		SummaryLanguage: req.SummaryLanguage,
-		AutoTranslate:   req.AutoTranslate,
-		AutoSummary:     req.AutoSummary,
-		RateLimit:       req.RateLimit,
+		Provider:         req.Provider,
+		APIKey:           req.APIKey,
+		BaseURL:          req.BaseURL,
+		Model:            req.Model,
+		RequestOptions:   req.RequestOptions,
+		SummaryLanguage:  req.SummaryLanguage,
+		AutoTranslate:    req.AutoTranslate,
+		AutoSummary:      req.AutoSummary,
+		RateLimit:        req.RateLimit,
+		TranslateChannel: req.TranslateChannel,
 
 		Providers:        req.Providers,
 		ActiveProviderID: req.ActiveProviderID,

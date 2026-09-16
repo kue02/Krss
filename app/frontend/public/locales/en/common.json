@@ -225,6 +225,11 @@
     "open_in_new_tab": "Open in new tab"
   },
   "ai_settings": {
+    "translate_channel": "Translation channel",
+    "translate_channel_hint": "Summaries still use the provider above; translation can use a free no-key channel (only Google's endpoint is reliable).",
+    "translate_channel_model": "Follow model (provider above)",
+    "translate_channel_google": "Google Translate (free, no key)",
+    "translate_channel_youdao": "Youdao Translate (free, no key)",
     "provider": "AI Provider",
     "api_key": "API Key",
     "base_url": "Base URL",

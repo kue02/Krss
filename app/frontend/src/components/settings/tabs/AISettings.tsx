@@ -647,6 +647,28 @@ export function AISettings() {
         </select>
       </div>
 
+      {/* 翻译通道：不想配模型也能用（免 key） */}
+      <div className="flex flex-wrap items-center justify-between gap-2 py-2">
+        <div className="min-w-0">
+          <span className="text-sm font-medium">
+            {t("ai_settings.translate_channel")}
+          </span>
+          <p className="text-xs text-muted-foreground">
+            {t("ai_settings.translate_channel_hint")}
+          </p>
+        </div>
+        <select
+          value={settings.translateChannel ?? ""}
+          onChange={(e) => handleChange("translateChannel", e.target.value)}
+          className={cn(selectClass, "w-52 shrink-0")}
+        >
+          <option value="">{t("ai_settings.translate_channel_model")}</option>
+          <option value="google">
+            {t("ai_settings.translate_channel_google")}
+          </option>
+        </select>
+      </div>
+
       {/* Auto Translate */}
       <div className="flex flex-wrap items-center justify-between gap-2 py-2">
         <div className="min-w-0">

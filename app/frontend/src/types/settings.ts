@@ -22,6 +22,8 @@ export interface AISettings {
   model: string;
   requestOptions: RequestOptions;
   summaryLanguage: string;
+  /** 翻译通道：空 = 用模型；google / youdao = 免 key 通道 */
+  translateChannel: string;
   autoTranslate: boolean;
   autoSummary: boolean;
   rateLimit: number;
