@@ -105,6 +105,7 @@ vi.mock("./EntryListHeader", () => ({
 }));
 
 import { EntryList } from "./EntryList";
+import { setUISetting } from "@/hooks/useUISettings";
 import { entryListScrollPositions } from "./scroll-key";
 import { useEntriesInfinite } from "@/hooks/useEntries";
 import { useAISettings } from "@/hooks/useAISettings";
@@ -569,6 +570,63 @@ describe("EntryList translation scheduling", () => {
         onError: expect.any(Function),
       }),
     );
+  });
+
+  it("按视图覆盖为「开」时，通用开关虽关也会滚动标已读", async () => {
+    vi.mocked(useGeneralSettings).mockReturnValue({
+      data: { markReadOnScroll: false },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    setUISetting("scrollReadByView", {
+      article: "on",
+      picture: "inherit",
+      notification: "inherit",
+    });
+    installScrollMarkObserver();
+    mockMarkManyAsRead.mockClear();
+
+    try {
+      render(<EntryList {...defaultProps} unreadOnly />);
+      await flushMarkReadBatch();
+
+      expect(mockMarkManyAsRead).toHaveBeenCalledWith(
+        { ids: ["1", "2", "3", "4", "5"], read: true, skipInvalidate: true },
+        expect.objectContaining({ onSuccess: expect.any(Function) }),
+      );
+    } finally {
+      setUISetting("scrollReadByView", {
+        article: "inherit",
+        picture: "inherit",
+        notification: "inherit",
+      });
+    }
+  });
+
+  it("按视图覆盖为「关」时，通用开关虽开也不标已读", async () => {
+    vi.mocked(useGeneralSettings).mockReturnValue({
+      data: { markReadOnScroll: true },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    setUISetting("scrollReadByView", {
+      article: "off",
+      picture: "inherit",
+      notification: "inherit",
+    });
+    installScrollMarkObserver();
+    mockMarkManyAsRead.mockClear();
+
+    try {
+      render(<EntryList {...defaultProps} unreadOnly />);
+      await flushMarkReadBatch();
+
+      expect(mockMarkManyAsRead).not.toHaveBeenCalled();
+    } finally {
+      setUISetting("scrollReadByView", {
+        article: "inherit",
+        picture: "inherit",
+        notification: "inherit",
+      });
+    }
   });
 
   it("滚动标已读底部填充只在自然内容溢出时使用滚动容器高度", async () => {

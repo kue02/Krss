@@ -212,3 +212,24 @@
     --background-tertiary: rgb(67, 76, 94);
   }
 }
+
+@layer components {
+  /* 主按钮：Nextflux 的主按钮样式（细强调色描边 + 内高光 + 柔影）
+     对应 Nextflux 的 `.button--primary`（@apply shadow-custom-btn border border-accent） */
+  button.bg-primary,
+  a.bg-primary {
+    border: 1px solid var(--accent);
+    box-shadow: var(--shadow-custom-btn);
+    background-image: linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0.06),
+      rgba(255, 255, 255, 0.02)
+    );
+  }
+
+  /* 危险按钮同款处理 */
+  button.bg-destructive {
+    border: 1px solid var(--danger);
+    box-shadow: var(--shadow-custom-btn);
+  }
+}

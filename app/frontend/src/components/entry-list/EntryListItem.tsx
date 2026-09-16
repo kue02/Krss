@@ -1,13 +1,19 @@
 import { forwardRef, useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Clock } from "lucide-react";
+import { Ripple } from "m3-ripple";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/date-utils";
 import { stripHtml } from "@/lib/html-utils";
 import { getEntryImages } from "@/lib/extract-images";
 import { useTranslationStore } from "@/stores/translation-store";
 import { FeedIcon } from "@/components/ui/feed-icon";
-import { useUISettingKey } from "@/hooks/useUISettings";
+import {
+  useUISettingKey,
+} from "@/hooks/useUISettings";
+import { useInView } from "@/hooks/useInView";
+import { ArticleContent } from "@/components/ui/article-content";
+import { resolveReadingFontStack } from "@/lib/reading-fonts";
 import type { Entry, Feed } from "@/types/api";
 
 const URL_PATTERN = /\bhttps?:\/\/\S+/i;
@@ -19,6 +25,8 @@ interface EntryListItemProps {
   onClick: () => void;
   autoTranslate?: boolean;
   targetLanguage?: string;
+  /** 该视图开启了「自动展开正文」：直接在卡片里渲染全文（Folo 式信息流） */
+  autoExpand?: boolean;
   style?: React.CSSProperties;
   "data-index"?: number;
   "data-entry-id"?: string;
@@ -42,6 +50,7 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
       onClick,
       autoTranslate,
       targetLanguage,
+      autoExpand = false,
       style,
       "data-index": dataIndex,
       "data-entry-id": dataEntryId,
@@ -59,6 +68,9 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
     const fallbackFeedName = t("entry.unknown_feed");
     const cardImageSize = useUISettingKey("cardImageSize");
     const cardPreviewLines = useUISettingKey("cardPreviewLines");
+    const entryFontFamily = useUISettingKey("entryFontFamily");
+    const entryFontSize = useUISettingKey("entryFontSize");
+    const entryLineHeight = useUISettingKey("entryLineHeight");
 
     const translation = useTranslationStore((state) =>
       autoTranslate && targetLanguage
@@ -91,6 +103,10 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
     const displayFeedName = feed?.title || fallbackFeedName;
     const titleContainsUrl = URL_PATTERN.test(displayTitle ?? "");
     const summaryContainsUrl = URL_PATTERN.test(displaySummary ?? "");
+    const { ref: inViewRef, inView } = useInView<HTMLDivElement>("600px");
+    const readingFontStack = resolveReadingFontStack(entryFontFamily);
+    const expandedContent = entry.content ?? null;
+    const isExpanded = autoExpand && Boolean(expandedContent);
     const isUnread = !entry.read;
     const isLargeImage = cardImageSize === "large";
     const showThumbnail =
@@ -98,19 +114,28 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
 
     return (
       <div
-        ref={ref}
+        ref={(node) => {
+          if (typeof ref === "function") ref(node);
+          else if (ref) ref.current = node;
+          inViewRef.current = node;
+        }}
         className={cn(
           "group relative mx-2 mb-1.5 flex cursor-pointer overflow-hidden rounded-xl border p-3 transition-all duration-200",
           isLargeImage ? "flex-col gap-3" : "items-stretch gap-3",
           isSelected
             ? "border-border/60 bg-card shadow-nf"
             : "border-transparent hover:bg-item-hover",
+          // 对齐 Nextflux：已读且未加星标的卡片整体降透明度
+          !isUnread && !entry.starred && !isSelected && "opacity-75",
         )}
         style={style}
         data-index={dataIndex}
         data-entry-id={dataEntryId}
         onClick={onClick}
       >
+        {/* Material 3 涟漪 —— 与 Nextflux 的 ArticleCard 同库同参数 */}
+        <Ripple hoverOpacity={0} pressedOpacity={0.05} duration={100} />
+
         {/* 左：文字区 */}
         <div className="flex min-w-0 flex-1 flex-col">
           {/* 来源行 */}
@@ -157,7 +182,7 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
           </div>
 
           {/* 摘要（行数可在 设置 → 外观 里调，0 = 不显示） */}
-          {displaySummary && cardPreviewLines > 0 && (
+          {displaySummary && cardPreviewLines > 0 && !isExpanded && (
             <div
               className={cn(
                 "mt-1 text-[13px] leading-relaxed text-muted-foreground wrap-anywhere",
@@ -199,6 +224,31 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
               className="size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
               onError={() => setImageError(true)}
             />
+          </div>
+        )}
+
+        {/* 自动展开的正文（Folo 式信息流）：只在卡片接近视口时才渲染全文 */}
+        {isExpanded && (
+          <div className="mt-0.5 w-full border-t border-border/40 pt-3">
+            {inView ? (
+              <div
+                className="entry-content prose prose-sm dark:prose-invert max-w-none break-words prose-img:my-3 prose-img:rounded-lg prose-a:break-words"
+                style={{
+                  fontSize: `${Math.max(14, entryFontSize - 2)}px`,
+                  lineHeight: entryLineHeight,
+                  ...(readingFontStack ? { fontFamily: readingFontStack } : {}),
+                  contentVisibility: "auto",
+                  containIntrinsicSize: "400px",
+                }}
+              >
+                <ArticleContent
+                  content={expandedContent ?? ""}
+                  articleUrl={entry.url}
+                />
+              </div>
+            ) : (
+              <div className="h-16 animate-pulse rounded-lg bg-muted/40" />
+            )}
           </div>
         )}
       </div>

@@ -34,6 +34,7 @@ import { cn } from "@/lib/utils";
 import { useScrollMarkRead } from "./useScrollMarkRead";
 import { useEntryListScrollSurface } from "./scroll-surface";
 import { useEntryHotkeys } from "@/hooks/useEntryHotkeys";
+import { useUISettingKey } from "@/hooks/useUISettings";
 import type { Entry, Feed, Folder, ContentType } from "@/types/api";
 
 interface EntryListProps {
@@ -128,6 +129,15 @@ export function EntryList({
   const autoTranslate = aiSettings?.autoTranslate ?? false;
   const targetLanguage = aiSettings?.summaryLanguage ?? "zh-CN";
   const markReadOnScroll = generalSettings?.markReadOnScroll ?? false;
+  // 按视图（文章 / 图片 / 通知）的独立开关：自动展开正文、覆盖滚动标已读
+  const autoExpandByView = useUISettingKey("autoExpandByView");
+  const scrollReadByView = useUISettingKey("scrollReadByView");
+  const autoExpand = autoExpandByView?.[contentType] ?? false;
+  const scrollReadOverride = scrollReadByView?.[contentType] ?? "inherit";
+  const scrollReadEnabled =
+    scrollReadOverride === "inherit"
+      ? markReadOnScroll
+      : scrollReadOverride === "on";
 
   // Save/restore scroll position per selection+contentType
   const scrollKey = selectionScrollKey(selection, contentType);
@@ -229,10 +239,10 @@ export function EntryList({
     surface: scrollSurface,
     contentRootRef: containerRef,
     entries,
-    enabled: markReadOnScroll && isActive,
+    enabled: scrollReadEnabled && isActive,
     unreadOnly,
     hasNextPage: Boolean(hasNextPage),
-    resetKey: `${scrollKey}\u0000${unreadOnly}\u0000${markReadOnScroll}`,
+    resetKey: `${scrollKey}\u0000${unreadOnly}\u0000${scrollReadEnabled}`,
   });
 
   useEffect(() => {
@@ -501,6 +511,7 @@ export function EntryList({
                   onClick={() => handleSelectEntry(entry.id)}
                   autoTranslate={autoTranslate}
                   targetLanguage={targetLanguage}
+                  autoExpand={autoExpand}
                 />
               ))}
               {scrollReadEndPaddingHeight > 0 && (

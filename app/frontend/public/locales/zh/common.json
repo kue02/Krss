@@ -401,5 +401,14 @@
     "sans": "无衬线",
     "serif": "衬线",
     "mono": "等宽"
+  },
+  "appearance_view": {
+    "title": "按视图设置",
+    "description": "文章 / 图片 / 通知各自独立；自动展开＝在列表里直接铺开正文（Folo 式信息流）",
+    "auto_expand": "自动展开正文",
+    "scroll_read": "滚动标已读",
+    "inherit": "跟随通用",
+    "on": "开",
+    "off": "关"
   }
 }

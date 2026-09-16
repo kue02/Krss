@@ -22,6 +22,7 @@ import {
   useUISettingActions,
   useUISettingKey,
   type CardImageSize,
+  type ScrollReadOverride,
 } from "@/hooks/useUISettings";
 import { readingFonts } from "@/lib/reading-fonts";
 import { updateAppearanceSettings } from "@/api";
@@ -120,7 +121,11 @@ export function AppearanceSettings() {
   const entryFontFamily = useUISettingKey("entryFontFamily");
   const entryFontSize = useUISettingKey("entryFontSize");
   const entryLineHeight = useUISettingKey("entryLineHeight");
+  const autoExpandByView = useUISettingKey("autoExpandByView");
+  const scrollReadByView = useUISettingKey("scrollReadByView");
   const {
+    setAutoExpandForView,
+    setScrollReadForView,
     setCardImageSize,
     setCardPreviewLines,
     setEntryFontFamily,
@@ -432,6 +437,60 @@ export function AppearanceSettings() {
               ]}
             />
           </SettingRow>
+        </div>
+      </section>
+
+      {/* 按视图设置 —— 每个视图（文章 / 图片 / 通知）独立控制 */}
+      <section>
+        <div className="mb-3">
+          <div className="text-sm font-medium">
+            {t("appearance_view.title")}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {t("appearance_view.description")}
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {(["article", "picture", "notification"] as ContentType[]).map(
+            (view) => (
+              <div
+                key={view}
+                className="space-y-2 rounded-xl border border-border/50 p-2.5"
+              >
+                <div className="text-xs font-semibold text-foreground">
+                  {t(`content_type.${view}`)}
+                </div>
+                <SettingRow label={t("appearance_view.auto_expand")}>
+                  <SegmentedControl
+                    className="shrink-0"
+                    value={autoExpandByView[view] ? "on" : "off"}
+                    onValueChange={(value) =>
+                      setAutoExpandForView(view, value === "on")
+                    }
+                    options={[
+                      { value: "off", label: t("appearance_view.off") },
+                      { value: "on", label: t("appearance_view.on") },
+                    ]}
+                  />
+                </SettingRow>
+                <SettingRow label={t("appearance_view.scroll_read")}>
+                  <SegmentedControl
+                    className="shrink-0"
+                    value={scrollReadByView[view]}
+                    onValueChange={(value) =>
+                      setScrollReadForView(view, value as ScrollReadOverride)
+                    }
+                    options={[
+                      { value: "inherit", label: t("appearance_view.inherit") },
+                      { value: "on", label: t("appearance_view.on") },
+                      { value: "off", label: t("appearance_view.off") },
+                    ]}
+                  />
+                </SettingRow>
+              </div>
+            ),
+          )}
         </div>
       </section>
 

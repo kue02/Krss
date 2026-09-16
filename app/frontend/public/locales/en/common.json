@@ -402,5 +402,14 @@
     "sans": "Sans",
     "serif": "Serif",
     "mono": "Mono"
+  },
+  "appearance_view": {
+    "title": "Per-view settings",
+    "description": "Article / image / notification each on its own; auto-expand renders the full post inline (Folo-style feed)",
+    "auto_expand": "Auto-expand content",
+    "scroll_read": "Mark read on scroll",
+    "inherit": "Follow general",
+    "on": "On",
+    "off": "Off"
   }
 }

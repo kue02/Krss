@@ -21,6 +21,7 @@ import { PictureItem } from "./PictureItem";
 import { useGeneralSettings } from "@/hooks/useGeneralSettings";
 import { useScrollToTop } from "@/hooks/useScrollToTop";
 import { useMasonryScrollMarkRead } from "./useMasonryScrollMarkRead";
+import { useUISettingKey } from "@/hooks/useUISettings";
 import { EntryListHeader } from "@/components/entry-list/EntryListHeader";
 import { MobileDocumentHeader } from "@/components/layout/MobileDocumentHeader";
 import { useEntryListScrollSurface } from "@/components/entry-list/scroll-surface";
@@ -144,6 +145,13 @@ export function PictureMasonry({
     });
   const { data: generalSettings } = useGeneralSettings();
   const markReadOnScroll = generalSettings?.markReadOnScroll ?? false;
+  // 图片视图也可单独覆盖「滚动标已读」（设置 → 外观 → 按视图）
+  const scrollReadByView = useUISettingKey("scrollReadByView");
+  const scrollReadOverride = scrollReadByView?.picture ?? "inherit";
+  const scrollReadEnabled =
+    scrollReadOverride === "inherit"
+      ? markReadOnScroll
+      : scrollReadOverride === "on";
 
   const feedsMap = useMemo(() => {
     const map = new Map<string, Feed>();
@@ -270,10 +278,10 @@ export function PictureMasonry({
       scrollElement,
       scrollSurface,
       entries,
-      enabled: markReadOnScroll,
+      enabled: scrollReadEnabled,
       unreadOnly,
       hasNextPage: Boolean(hasNextPage),
-      resetKey: `${filterKey}\u0000${markReadOnScroll}`,
+      resetKey: `${filterKey}\u0000${scrollReadEnabled}`,
     });
   const title = useMemo(() => {
     switch (selection.type) {

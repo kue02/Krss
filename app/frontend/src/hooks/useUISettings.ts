@@ -1,6 +1,10 @@
 import { useCallback, useSyncExternalStore } from "react";
+import type { ContentType } from "@/types/api";
 
 export type CardImageSize = "none" | "small" | "large";
+export type ScrollReadOverride = "inherit" | "on" | "off";
+export type ViewFlags = Record<ContentType, boolean>;
+export type ViewScrollRead = Record<ContentType, ScrollReadOverride>;
 
 interface UISettings {
   feedColWidth: number;
@@ -14,6 +18,10 @@ interface UISettings {
   entryFontFamily: string;
   entryFontSize: number;
   entryLineHeight: number;
+  /** 按视图（文章 / 图片 / 通知）自动展开正文 —— Folo 式信息流 */
+  autoExpandByView: ViewFlags;
+  /** 按视图覆盖「滚动标已读」；inherit = 跟随通用设置 */
+  scrollReadByView: ViewScrollRead;
 }
 
 const STORAGE_KEY = "gist-ui-settings";
@@ -27,6 +35,16 @@ export const defaultUISettings: UISettings = {
   entryFontFamily: "",
   entryFontSize: 17,
   entryLineHeight: 1.8,
+  autoExpandByView: {
+    article: false,
+    picture: false,
+    notification: false,
+  },
+  scrollReadByView: {
+    article: "inherit",
+    picture: "inherit",
+    notification: "inherit",
+  },
 };
 
 function getStoredSettings(): UISettings {
@@ -135,6 +153,26 @@ export function useUISettingActions() {
     setUISetting("entryLineHeight", height);
   }, []);
 
+  const setAutoExpandForView = useCallback(
+    (view: ContentType, enabled: boolean) => {
+      setUISetting("autoExpandByView", {
+        ...getUISettings().autoExpandByView,
+        [view]: enabled,
+      });
+    },
+    [],
+  );
+
+  const setScrollReadForView = useCallback(
+    (view: ContentType, value: ScrollReadOverride) => {
+      setUISetting("scrollReadByView", {
+        ...getUISettings().scrollReadByView,
+        [view]: value,
+      });
+    },
+    [],
+  );
+
   const toggleSidebarVisible = useCallback(() => {
     const current = getUISettings().sidebarVisible;
     setUISetting("sidebarVisible", !current);
@@ -156,6 +194,8 @@ export function useUISettingActions() {
     setEntryFontFamily,
     setEntryFontSize,
     setEntryLineHeight,
+    setAutoExpandForView,
+    setScrollReadForView,
     resetToDefaults,
   };
 }
