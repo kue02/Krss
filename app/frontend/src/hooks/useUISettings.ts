@@ -37,7 +37,7 @@ export const defaultUISettings: UISettings = {
   cardImageSize: "small",
   cardPreviewLines: 2,
   entryFontFamily: "",
-  entryFontSize: 17,
+  entryFontSize: 16,
   entryLineHeight: 1.8,
   fetchReadableByView: {
     article: false,

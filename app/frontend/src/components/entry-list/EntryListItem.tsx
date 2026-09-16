@@ -489,7 +489,7 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
           inViewRef.current = node;
         }}
         className={cn(
-          "group relative mx-2 mb-1.5 flex cursor-pointer overflow-hidden rounded-xl border p-3 transition-all duration-200",
+          "group relative mx-2 mb-1.5 flex cursor-pointer overflow-hidden rounded-[10px] border p-2 transition-all duration-200",
           isLargeImage ? "flex-col gap-3" : "items-stretch gap-3",
           isSelected
             ? "border-border/60 bg-card shadow-nf"
@@ -510,7 +510,7 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
           {/* 来源行 */}
           <div
             className={cn(
-              "flex min-w-0 items-center gap-1.5 overflow-hidden text-[11px]",
+              "flex min-w-0 items-center gap-1.5 overflow-hidden text-xs",
               isUnread ? "text-muted-foreground" : "text-muted-foreground/70",
             )}
           >
@@ -518,13 +518,13 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
               <img
                 src={`/icons/${feed.iconPath}`}
                 alt=""
-                className="size-4 shrink-0 rounded object-contain"
+                className="size-5 shrink-0 rounded-[3px] object-contain"
                 onError={() => setIconError(true)}
               />
             ) : (
-              <FeedIcon className="size-4 shrink-0 text-muted-foreground/50" />
+              <FeedIcon className="size-5 shrink-0 text-muted-foreground/50" />
             )}
-            <span className="block min-w-0 truncate font-medium">
+            <span className="block min-w-0 truncate font-bold">
               {displayFeedName}
             </span>
             {publishedAt && (
@@ -540,7 +540,7 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
           {/* 标题 */}
           <div
             className={cn(
-              "mt-1.5 text-[15px] leading-snug wrap-anywhere",
+              "mt-1.5 text-base font-semibold leading-6 wrap-anywhere",
               titleContainsUrl ? "line-clamp-3" : "line-clamp-2",
               // Nextflux 只用 opacity 表示已读；这里标题始终是前景色，
               // 已读/未读只差字重，避免再叠一层灰导致正文难以辨认
@@ -554,7 +554,7 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
           {displaySummary && cardPreviewLines > 0 && !isExpanded && (
             <div
               className={cn(
-                "mt-1 text-[13px] leading-relaxed text-muted-foreground wrap-anywhere",
+                "mt-1 text-sm leading-relaxed text-muted-foreground wrap-anywhere",
                 !isUnread && "text-muted-foreground/70",
               )}
               style={{
@@ -571,7 +571,7 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
 
           {/* 阅读时长（沉底） */}
           {readingTime && (
-            <div className="mt-auto flex items-center gap-1 pt-2 text-[11px] text-muted-foreground/80">
+            <div className="mt-auto flex items-center gap-1 pt-2 text-xs text-muted-foreground/80">
               <Clock className="size-3 shrink-0" />
               <span className="line-clamp-1">{readingTime}</span>
             </div>
