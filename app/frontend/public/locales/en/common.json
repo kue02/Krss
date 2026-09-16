@@ -229,10 +229,10 @@
   },
   "ai_settings": {
     "translate_channel": "Translation channel",
-    "translate_channel_hint": "Summaries still use the provider above; translation can use a free no-key channel (only Google's endpoint is reliable).",
+    "translate_channel_hint": "Summaries still use the provider above. Free no-key channels fall back to the model on failure.",
     "translate_channel_model": "Follow model (provider above)",
     "translate_channel_google": "Google Translate (free, no key)",
-    "translate_channel_youdao": "Youdao Translate (free, no key)",
+    "translate_channel_youdao": "Youdao Translate (free, no key; may be rate-limited on long articles)",
     "provider": "AI Provider",
     "api_key": "API Key",
     "base_url": "Base URL",

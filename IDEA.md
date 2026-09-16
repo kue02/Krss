@@ -276,6 +276,31 @@ Gist 的内容类型是后端枚举（`article/picture/notification`），要加
       实测：资讯分类 6 个订阅 → 全设阅读模式（DB 里 6 条 reader_mode=1）→ 再全按「跟随全局」保存 → 回到 0 条覆盖
 - [x] **11 悬浮目录的可见提示**：右缘常驻一小段「竖条 + 三个刻度点」，悬浮时变亮变长
 
+
+### 2026-09-16 第四批：菜单样式/动效按 NextFlux 真机对齐（用户第 3 轮）
+
+- [x] **4 加号下拉 / 右键菜单样式与动效**：数值取自 NAS 上 NextFlux 容器里的**编译产物 CSS**
+      （`/assets/index-RHAsxXFq.css`，491KB）与源码组件 `AddFeedButton.jsx` / `ProfileButton.jsx`。
+      浮层：圆角 24px（原 12px）、背景 `bg-overlay/90` + `backdrop-blur-sm`(8px)（原 95% 无模糊）、
+      min-width 220px、max-height 320px、内距 6px、阴影沿用 shadow-custom-md。
+      菜单行：min-height 36px、圆角 16px、内距 6px/10px、gap 12px、hover 背景 `--default`、按压 scale(.98)。
+      动效：进场 150ms ease（opacity 0→1、scale .9→1、按方向位移 4px）、退场 100ms ease（scale→.95）、
+      触发按钮按压 scale(.97)。加号菜单补齐三项（添加订阅源 / 导入 OPML / 新增分类）。
+      实测 computed style：圆角 24px / alpha .9 / blur(8px) / 6px / 220px / `dropdown-in 0.15s ease` /
+      行高 36px / 行圆角 16px / 6px 10px / gap 12px / 14px
+- [x] **6 账户菜单 + kue 那一行**：账户行结构对齐 NextFlux ProfileButton（图标 + 名字 font-semibold
+      truncate + 右侧 ChevronsUpDown），退出登录走 danger 红；菜单面板与加号菜单同参数（实测一致）
+- 备注：NextFlux 容器需要登录才能进到内页；本轮登录墙没过（不代填密码），所以取值走的是
+  **同一容器 CSS/源码**（等价于浏览器里看到的那份样式），不是截图估的。若要逐帧对动效，
+  可以在 Ego 里登录一次 NextFlux（http://192.0.2.1:3100）后再比
+- 另注：本项目当前主题是 `light`（纯白，`--overlay: oklch(100% 0 0)`），而 NextFlux 截图/默认
+  是 stone（暖灰 `rgb(244,241,236)`）。同样是 90% + 8px 模糊，白色底上的「玻璃感」会明显弱于
+  暖灰底。想要 NextFlux 那种观感，设置 → 外观里选「石灰」主题
+
+- [x] **7 补充（用户第 3 轮追加）**：有道通道加回下拉（标注「长文可能被上游限流」）；
+      免费通道失败自动**退回模型**兜底（日志记 `free translate failed, falling back to model`）。
+      兜底只在配置了模型时生效；没配模型时按「免费通道失败且无模型兜底」直接报错，不静默
+
 ### 待拍板（等用户）
 
 - ~~Folo 滚动已读的语义差异~~ → 已解决：做成按视图可选（滚出顶部 / 看到即已读），默认滚出顶部

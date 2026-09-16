@@ -400,25 +400,29 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 					if plainText == "" {
 						return
 					}
-					translatedText, err := ai.TranslateFreeText(ctx, s.httpClientForTranslate(ctx), freeChannel, plainText, language)
-					if err != nil {
+					translatedText, freeErr := ai.TranslateFreeText(ctx, s.httpClientForTranslate(ctx), freeChannel, plainText, language)
+					if freeErr == nil {
+						result := TranslateBlockResult{Index: b.Index, HTML: translatedText}
+						resultsMu.Lock()
+						results = append(results, result)
+						resultsMu.Unlock()
 						select {
-						case errCh <- fmt.Errorf("translate block %d via %s: %w", b.Index, freeChannel, err):
+						case resultCh <- result:
+						case <-ctx.Done():
+							return
+						}
+						return
+					}
+					// 免费通道失败：配了模型就退回模型兜底；没配模型才是真失败
+					if cfg.Provider == "" || cfg.Model == "" {
+						select {
+						case errCh <- fmt.Errorf("translate block %d via %s: %w (且没有配置模型可以兜底)", b.Index, freeChannel, freeErr):
 							hasError.Store(true)
 						default:
 						}
 						return
 					}
-					result := TranslateBlockResult{Index: b.Index, HTML: translatedText}
-					resultsMu.Lock()
-					results = append(results, result)
-					resultsMu.Unlock()
-					select {
-					case resultCh <- result:
-					case <-ctx.Done():
-						return
-					}
-					return
+					logger.Warn("free translate failed, falling back to model", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", entryID, "block", b.Index, "channel", freeChannel, "error", freeErr)
 				}
 
 				// Wait for rate limiter

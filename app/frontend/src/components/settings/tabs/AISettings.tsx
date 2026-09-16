@@ -666,6 +666,9 @@ export function AISettings() {
           <option value="google">
             {t("ai_settings.translate_channel_google")}
           </option>
+          <option value="youdao">
+            {t("ai_settings.translate_channel_youdao")}
+          </option>
         </select>
       </div>
 
