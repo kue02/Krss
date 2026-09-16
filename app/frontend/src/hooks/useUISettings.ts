@@ -1,5 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
 import type { ContentType } from "@/types/api";
+import type { ScrollMarkReadTiming } from "@/components/entry-list/useScrollMarkRead";
 
 export type CardImageSize = "none" | "small" | "large";
 export type ScrollReadOverride = "inherit" | "on" | "off";
@@ -26,6 +27,8 @@ interface UISettings {
   reduceMotion: boolean;
   /** 按视图覆盖「滚动标已读」；inherit = 跟随通用设置 */
   scrollReadByView: ViewScrollRead;
+  /** 已读判定时机：scrollPast = 滚出顶部（默认）；onVisible = 看到即已读（Folo 语义） */
+  scrollReadTimingByView: Record<ContentType, ScrollMarkReadTiming>;
 }
 
 const STORAGE_KEY = "gist-ui-settings";
@@ -52,6 +55,12 @@ export const defaultUISettings: UISettings = {
     social: false,
   },
   reduceMotion: false,
+  scrollReadTimingByView: {
+    article: "scrollPast",
+    picture: "scrollPast",
+    notification: "scrollPast",
+    social: "scrollPast",
+  },
   scrollReadByView: {
     article: "inherit",
     picture: "inherit",
@@ -200,6 +209,16 @@ export function useUISettingActions() {
     [],
   );
 
+  const setScrollReadTimingForView = useCallback(
+    (view: ContentType, timing: ScrollMarkReadTiming) => {
+      setUISetting("scrollReadTimingByView", {
+        ...getUISettings().scrollReadTimingByView,
+        [view]: timing,
+      });
+    },
+    [],
+  );
+
   const toggleSidebarVisible = useCallback(() => {
     const current = getUISettings().sidebarVisible;
     setUISetting("sidebarVisible", !current);
@@ -225,6 +244,7 @@ export function useUISettingActions() {
     setExpandLongForView,
     setReduceMotion,
     setScrollReadForView,
+    setScrollReadTimingForView,
     resetToDefaults,
   };
 }

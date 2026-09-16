@@ -152,6 +152,7 @@ export function EntryList({
   // 按视图（文章 / 图片 / 通知）的独立开关：自动展开正文、覆盖滚动标已读
 
   const scrollReadByView = useUISettingKey("scrollReadByView");
+  const scrollReadTimingByView = useUISettingKey("scrollReadTimingByView");
   // 社交媒体是第四类内容（与文章 / 图片 / 通知并列），不是文章视图的另一种排布
   const isSocialView = contentType === "social";
   const fetchReadableByView = useUISettingKey("fetchReadableByView");
@@ -352,6 +353,7 @@ export function EntryList({
     unreadOnly,
     hasNextPage: Boolean(hasNextPage),
     resetKey: `${scrollKey}\u0000${unreadOnly}\u0000${scrollReadEnabled}`,
+    timing: scrollReadTimingByView?.[contentType] ?? "scrollPast",
   });
 
   useEffect(() => {

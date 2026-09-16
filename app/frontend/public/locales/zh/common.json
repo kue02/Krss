@@ -469,7 +469,10 @@
     "scroll_read": "滚动标已读",
     "inherit": "跟随通用",
     "on": "开",
-    "off": "关"
+    "off": "关",
+    "read_timing": "已读判定",
+    "timing_scroll_past": "滚出顶部",
+    "timing_on_visible": "看到即已读"
   },
   "folder": {
     "rename": "重命名文件夹",

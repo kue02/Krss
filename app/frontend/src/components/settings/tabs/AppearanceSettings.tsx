@@ -128,11 +128,13 @@ export function AppearanceSettings() {
   const expandLongByView = useUISettingKey("expandLongByView");
   const reduceMotion = useUISettingKey("reduceMotion");
   const scrollReadByView = useUISettingKey("scrollReadByView");
+  const scrollReadTimingByView = useUISettingKey("scrollReadTimingByView");
   const {
     setFetchReadableForView,
     setExpandLongForView,
     setReduceMotion,
     setScrollReadForView,
+    setScrollReadTimingForView,
     setCardImageSize,
     setCardPreviewLines,
     setEntryFontFamily,
@@ -532,6 +534,35 @@ export function AppearanceSettings() {
                       { value: "off", label: t("appearance_view.off") },
                     ]}
                   />
+                </SettingRow>
+
+
+                {/* 已读判定时机：滚出顶部（默认）／看到即已读（对齐 Folo 的 useEntryMarkReadHandler） */}
+
+                <SettingRow label={t("appearance_view.read_timing")}>
+
+                  <SegmentedControl
+
+                    className="shrink-0"
+
+                    value={scrollReadTimingByView?.[view] ?? "scrollPast"}
+
+                    onValueChange={(value) =>
+
+                      setScrollReadTimingForView(view, value as "scrollPast" | "onVisible")
+
+                    }
+
+                    options={[
+
+                      { value: "scrollPast", label: t("appearance_view.timing_scroll_past") },
+
+                      { value: "onVisible", label: t("appearance_view.timing_on_visible") },
+
+                    ]}
+
+                  />
+
                 </SettingRow>
               </div>
             ),

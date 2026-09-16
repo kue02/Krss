@@ -472,7 +472,10 @@
     "scroll_read": "Mark read on scroll",
     "inherit": "Follow general",
     "on": "On",
-    "off": "Off"
+    "off": "Off",
+    "read_timing": "Mark read when",
+    "timing_scroll_past": "Scrolled past",
+    "timing_on_visible": "Seen"
   },
   "folder": {
     "rename": "Rename folder",

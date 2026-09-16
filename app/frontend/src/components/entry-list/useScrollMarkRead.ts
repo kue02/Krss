@@ -12,6 +12,11 @@ import type { ScrollSurface } from "./scroll-surface";
 
 const MARK_READ_ON_SCROLL_BATCH_DELAY_MS = 200;
 const MARK_READ_ON_SCROLL_GRACE_MS = 1000;
+/** 「看到即已读」（Folo 语义）下，条目需在视口停留这么久才算读过 */
+const MARK_READ_ON_VISIBLE_DWELL_MS = 600;
+
+/** 滚动已读的判定时机 */
+export type ScrollMarkReadTiming = "scrollPast" | "onVisible";
 
 interface UseScrollMarkReadOptions {
   surface: ScrollSurface;
@@ -21,6 +26,8 @@ interface UseScrollMarkReadOptions {
   unreadOnly: boolean;
   hasNextPage: boolean;
   resetKey: string;
+  /** 滚出顶部才算读过（默认）／进入视口停留片刻就算读过（Folo 语义） */
+  timing?: ScrollMarkReadTiming;
 }
 
 interface UseScrollMarkReadResult {
@@ -35,12 +42,14 @@ export function useScrollMarkRead({
   unreadOnly,
   hasNextPage,
   resetKey,
+  timing = "scrollPast",
 }: UseScrollMarkReadOptions): UseScrollMarkReadResult {
   const { mutate: markManyAsRead } = useMarkManyAsRead();
   const removeFromUnreadList = useRemoveFromUnreadList();
   const seenEntryIds = useRef(new Set<string>());
   const markedReadIds = useRef(new Set<string>());
   const pendingReadEntries = useRef(new Map<string, number>());
+  const dwellTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const batchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const graceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const session = useRef(0);
@@ -267,6 +276,43 @@ export function useScrollMarkRead({
 
           if (item.isIntersecting) {
             seenEntryIds.current.add(entryId);
+
+            // Folo 语义：进入视口后停留片刻即视为已读
+            if (timing === "onVisible" && !dwellTimers.current.has(entryId)) {
+              const timer = setTimeout(() => {
+                dwellTimers.current.delete(entryId);
+                if (markedReadIds.current.has(entryId)) return;
+
+                const node = contentRoot.querySelector<HTMLElement>(
+                  `[data-entry-id="${entryId}"]`,
+                );
+                const rect = node?.getBoundingClientRect();
+                const viewportRect = surface.getViewportRect();
+                // 定时器到点后再确认一次仍在视口内（快速划过不留痕）
+                if (
+                  !rect ||
+                  rect.bottom < viewportRect.top ||
+                  rect.top > viewportRect.bottom
+                ) {
+                  return;
+                }
+
+                markedReadIds.current.add(entryId);
+                queueRead(entryId, rect.height || node?.offsetHeight || 0);
+              }, MARK_READ_ON_VISIBLE_DWELL_MS);
+
+              dwellTimers.current.set(entryId, timer);
+            }
+            continue;
+          }
+
+          const pendingDwell = dwellTimers.current.get(entryId);
+          if (pendingDwell) {
+            clearTimeout(pendingDwell);
+            dwellTimers.current.delete(entryId);
+          }
+
+          if (timing === "onVisible") {
             continue;
           }
 
@@ -314,8 +360,12 @@ export function useScrollMarkRead({
       observer.observe(item);
     }
 
-    return () => observer.disconnect();
-  }, [contentRootRef, entries, enabled, observerVersion, queueRead, surface]);
+    return () => {
+      observer.disconnect();
+      for (const timer of dwellTimers.current.values()) clearTimeout(timer);
+      dwellTimers.current.clear();
+    };
+  }, [contentRootRef, entries, enabled, observerVersion, queueRead, surface, timing]);
 
   return { endPaddingHeight };
 }
