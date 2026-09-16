@@ -91,6 +91,15 @@ function prefersDark(): boolean {
   );
 }
 
+/** 各配色主题的首屏/状态栏底色（与 index.html 里内联的取值保持一致） */
+const THEME_COLORS: Record<string, string> = {
+  light: "#E3E1DE",
+  stone: "#E3E1DE",
+  leaf: "#DFE7E1",
+  dark: "#242933",
+  "nord-dark": "#242933",
+};
+
 function applyTheme(config: ThemeConfig) {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
@@ -101,7 +110,19 @@ function applyTheme(config: ThemeConfig) {
   root.classList.toggle("dark", isDark);
   root.classList.toggle("light", !isDark);
   root.dataset.theme = themeId;
+
+  // PWA 状态栏/主屏图标底色跟随当前配色，而不是只跟亮暗
+  const themeColor = THEME_COLORS[themeId];
+  if (themeColor) {
+    document
+      .querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')
+      .forEach((meta) => {
+        meta.content = themeColor;
+      });
+  }
 }
+
+export { THEME_COLORS };
 
 function persist(config: ThemeConfig) {
   try {
