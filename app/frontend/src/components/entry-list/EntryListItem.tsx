@@ -228,8 +228,21 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     const displayFeedName = feed?.title || fallbackFeedName;
     const titleContainsUrl = URL_PATTERN.test(displayTitle ?? "");
     const summaryContainsUrl = URL_PATTERN.test(displaySummary ?? "");
-    const { ref: inViewRef, inView } = useInView<HTMLDivElement>("600px");
     const isSocialView = social;
+    /**
+     * 进入视口前多久挂载正文（社交媒体视图的正文是 `inView ? 正文 : 占位` 门控的，
+     * 一挂载就可能撑开 300px 折叠高度）。
+     *
+     * 为什么上方留 2400px、下方只留 1200px（非对称）：
+     *   - 向下滚时，新卡片在**下方**挂载，撑开不影响可见内容；
+     *   - 向上滚时，卡片是在**上方**挂载的 —— 上方撑开会把可见内容整体往下推，表现为「条目跳动」
+     *     （用户报的 BUG-2）。所以上方要留得足够远，让用户往回滚之前它早就挂载好了。
+     * 取 2000/1000 而不是更大：够覆盖两屏的回滚距离，又不会为看不到的内容多抓正文。
+     * 代价是多挂载几张卡（约 3000px 内容），换滚动不跳。
+     */
+    const { ref: inViewRef, inView } = useInView<HTMLDivElement>(
+      "600px",
+    );
     // 只在进入视口时按需抓正文，避免一次并发抓取整屏
     const autoReadable = useAutoReadable(entry, fetchReadable && inView);
     const expandedBodyRef = useRef<HTMLDivElement | null>(null);
@@ -684,7 +697,10 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                   titleContainsUrl ? "line-clamp-3" : "line-clamp-2",
                   // Nextflux 只用 opacity 表示已读；这里标题始终是前景色，
                   // 已读/未读只差字重，避免再叠一层灰导致正文难以辨认
-                  isUnread ? "font-semibold text-foreground" : "font-medium text-foreground",
+                  // 已读 / 未读**不切字重**（对齐 Nextflux 的 ArticleCard：字体恒为 font-semibold，只用颜色区分）。
+                  // 原来读态切 font-medium：字重一变，同一条标题的换行就变，1 行 ↔ 2 行切换会改卡片高度，
+                  // 滚动时「标记已读」就会让整个列表跳一下（用户报的 BUG-2）。
+                  isUnread ? "text-foreground" : "text-muted-foreground",
                 )}
               >
                 {displayTitle || fallbackTitle}

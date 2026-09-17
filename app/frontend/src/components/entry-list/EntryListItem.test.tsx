@@ -235,6 +235,41 @@ describe("EntryListItem", () => {
     });
   });
 
+  describe("已读 / 未读的样式不改变布局（BUG-2 回归）", () => {
+    // 原来读态把标题从 font-semibold 切成 font-medium：字重一变，同一条标题的换行数就可能变
+    // （1 行 ↔ 2 行），卡片高度跟着变 —— 滚动时「标记已读」会让整个列表跳一下。
+    // 对齐 Nextflux 的 ArticleCard：字体恒为 semibold，只用颜色区分读态。
+    // 注：jsdom 里没有 Tailwind 的 CSS，量 computed style 拿不到字重，所以断言类名。
+    it("未读与已读的标题类名都是 font-semibold，只有文字颜色类不同", () => {
+      const unread = render(
+        <EntryListItem
+          entry={{ ...entry, read: false }}
+          feed={feed}
+          isSelected={false}
+          onClick={vi.fn()}
+        />,
+      );
+      const unreadClass = screen.getByText(entry.title!).className;
+      expect(unreadClass).toContain("font-semibold");
+      expect(unreadClass).not.toContain("font-medium");
+      expect(unreadClass).toContain("text-foreground");
+      unread.unmount();
+
+      render(
+        <EntryListItem
+          entry={{ ...entry, read: true }}
+          feed={feed}
+          isSelected={false}
+          onClick={vi.fn()}
+        />,
+      );
+      const readClass = screen.getByText(entry.title!).className;
+      expect(readClass).toContain("font-semibold");
+      expect(readClass).not.toContain("font-medium");
+      expect(readClass).toContain("text-muted-foreground");
+    });
+  });
+
   describe("过滤规则入口", () => {
     beforeEach(() => {
       useFilterEditorStore.getState().close();

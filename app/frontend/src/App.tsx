@@ -524,30 +524,48 @@ function AuthenticatedApp() {
           sidebar={sidebarContent}
           list={null}
           content={
-            selectedEntryId ? (
-              <Suspense fallback={<EntryContentFallback />}>
-                <LazyEntryContent
-                  key={selectedEntryId}
-                  entryId={selectedEntryId}
-                  onBack={() => selectEntry(null)}
+            /* 列表**常驻**：选中条目时只把详情盖在上面，不卸载列表。
+               原来这里是「详情 or 列表」二选一 —— 点开条目会整块卸载 EntryList，关闭时重新挂载，
+               滚动位置只能靠模块级 map 还原，表现就是「关掉详情后列表自己往上滚了」（用户报的 BUG-1）。
+               移动端那段早就用「列表保持挂载以保留状态」，这里与它对齐。 */
+            <div className="relative h-full min-h-0">
+              <section
+                className={cn(
+                  "h-full min-h-0",
+                  selectedEntryId && "pointer-events-none select-none",
+                )}
+                aria-hidden={selectedEntryId ? true : undefined}
+                inert={selectedEntryId ? true : undefined}
+              >
+                <EntryList
+                  selection={selection}
+                  selectedEntryId={selectedEntryId}
+                  onSelectEntry={selectEntry}
+                  onMarkAllRead={handleMarkAllRead}
+                  unreadOnly={unreadOnly}
+                  onToggleUnreadOnly={toggleUnreadOnly}
+                  onFilterChange={handleFilterChange}
+                  onCloseEntry={() => selectEntry(null)}
+                  contentType={contentType}
+                  isActive={!selectedEntryId}
+                  isTablet={isTablet}
+                  onToggleSidebar={toggleSidebarVisible}
+                  sidebarVisible={sidebarVisible}
                 />
-              </Suspense>
-            ) : (
-              <EntryList
-                selection={selection}
-                selectedEntryId={selectedEntryId}
-                onSelectEntry={selectEntry}
-                onMarkAllRead={handleMarkAllRead}
-                unreadOnly={unreadOnly}
-                onToggleUnreadOnly={toggleUnreadOnly}
-                onFilterChange={handleFilterChange}
-                onCloseEntry={() => selectEntry(null)}
-                contentType={contentType}
-                isTablet={isTablet}
-                onToggleSidebar={toggleSidebarVisible}
-                sidebarVisible={sidebarVisible}
-              />
-            )
+              </section>
+
+              {selectedEntryId && (
+                <section className="absolute inset-0 z-10 overflow-hidden bg-background">
+                  <Suspense fallback={<EntryContentFallback />}>
+                    <LazyEntryContent
+                      key={selectedEntryId}
+                      entryId={selectedEntryId}
+                      onBack={() => selectEntry(null)}
+                    />
+                  </Suspense>
+                </section>
+              )}
+            </div>
           }
           hideList
           showSidebar={showSidebar}
