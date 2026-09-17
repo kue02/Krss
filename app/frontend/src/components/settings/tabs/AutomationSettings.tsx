@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useFeeds } from "@/hooks/useFeeds";
 import { useFolders } from "@/hooks/useFolders";
 import { useFilterMutations, useFilters } from "@/hooks/useFilters";
+import { FilterMatchesDialog } from "@/components/automation/FilterMatchesDialog";
 import { useFilterEditorStore } from "@/stores/filter-editor-store";
 import { showToast } from "@/stores/toast-store";
 import {
@@ -51,6 +52,7 @@ export function AutomationSettings() {
 
   const [pendingDelete, setPendingDelete] = useState<FilterRule | null>(null);
   const [deleteWithRevert, setDeleteWithRevert] = useState(true);
+  const [matchesRule, setMatchesRule] = useState<FilterRule | null>(null);
 
   const sorted = useMemo(
     () =>
@@ -280,7 +282,19 @@ export function AutomationSettings() {
                   {describeActions(rule.actions ?? {}, t)}
                 </td>
                 <td className="border-b border-border/60 py-2 text-right text-xs tabular-nums">
-                  {rule.matchCount}
+                  <button
+                    type="button"
+                    onClick={() => setMatchesRule(rule)}
+                    title={t("automation.matches_title")}
+                    className={cn(
+                      "rounded px-1 tabular-nums transition-colors hover:bg-accent",
+                      rule.matchCount > 0
+                        ? "text-foreground"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    {rule.matchCount}
+                  </button>
                 </td>
                 <td className="border-b border-border/60 py-2 text-xs text-muted-foreground">
                   {rule.lastMatchedAt
@@ -323,6 +337,12 @@ export function AutomationSettings() {
           </tbody>
         </table>
       )}
+
+      {/* 命中日志（「为什么这条看不到」的答案） */}
+      <FilterMatchesDialog
+        rule={matchesRule}
+        onClose={() => setMatchesRule(null)}
+      />
 
       {/* 删除确认（可选顺带撤销） */}
       <Dialog

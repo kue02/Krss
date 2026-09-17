@@ -123,6 +123,9 @@ export interface FilterMatch {
   id: string;
   filterId: string;
   entryId: string;
+  /** 命中时的条目标题与来源名（条目被删后为空串，日志仍在） */
+  entryTitle: string;
+  feedTitle: string;
   actions: FilterActions;
   createdAt: string;
 }

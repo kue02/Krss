@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, cleanup, fireEvent, screen } from "@testing-library/react";
+import { render, cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { AutomationSettings } from "./AutomationSettings";
 import { useFilterEditorStore } from "@/stores/filter-editor-store";
 import type { FilterRule } from "@/types/filters";
@@ -21,6 +21,21 @@ vi.mock("react-i18next", () => ({
 
 vi.mock("@/hooks/useFilters", () => ({
   useFilters: () => ({ data: rules.current, isLoading: false, isError: false }),
+  useFilterMatches: () => ({
+    data: [
+      {
+        id: "m1",
+        filterId: "rule-1",
+        entryId: "e1",
+        entryTitle: "赞助商投稿：某云厂商",
+        feedTitle: "少数派",
+        actions: { mute: true },
+        createdAt: "2026-09-17T04:00:00Z",
+      },
+    ],
+    isLoading: false,
+    isError: false,
+  }),
   useFilterMutations: () => ({
     create: { mutate: createMutate, isPending: false, isError: false },
     update: { mutate: updateMutate, isPending: false, isError: false },
@@ -154,6 +169,22 @@ describe("AutomationSettings", () => {
     expect(state.open).toBe(true);
     expect(state.editingId).toBe("rule-1");
     expect(state.draft?.name).toBe("屏蔽推广");
+  });
+
+  it("点命中数打开命中日志（条目标题 + 来源 + 动作）", () => {
+    rules.current = [rule()];
+    render(<AutomationSettings />);
+
+    expect(screen.queryByText("赞助商投稿：某云厂商")).toBeNull();
+
+    fireEvent.click(screen.getByTitle("automation.matches_title"));
+
+    // 弹窗里断言（表格行里也有「少数派」这个范围名，得限定在弹窗内查）
+    const dialogs = screen.getAllByRole("dialog");
+    const dialog = dialogs[dialogs.length - 1]!;
+    expect(within(dialog).getByText("automation.matches_of")).toBeTruthy();
+    expect(within(dialog).getByText("赞助商投稿：某云厂商")).toBeTruthy();
+    expect(within(dialog).getByText("少数派")).toBeTruthy();
   });
 
   it("点「新建规则」打开空白编辑器", () => {

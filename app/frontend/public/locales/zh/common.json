@@ -618,6 +618,8 @@
     "muted_unknown_rule": "已静音 · 规则已删除",
     "unmute_entry": "取消静音",
     "unmuted": "已取消静音",
-    "muted_view_hint": "被规则静音 · 仍可阅读与取消"
+    "muted_view_hint": "被规则静音 · 仍可阅读与取消",
+    "matches_entry": "条目",
+    "matches_deleted_entry": "条目已删除"
   }
 }

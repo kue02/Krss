@@ -621,6 +621,8 @@
     "muted_unknown_rule": "Muted · rule deleted",
     "unmute_entry": "Unmute",
     "unmuted": "Unmuted",
-    "muted_view_hint": "Muted by rules — readable, reversible"
+    "muted_view_hint": "Muted by rules — readable, reversible",
+    "matches_entry": "Entry",
+    "matches_deleted_entry": "Entry deleted"
   }
 }
