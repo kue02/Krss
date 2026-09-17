@@ -351,6 +351,73 @@ func runMigrations(db *sql.DB) error {
 		}
 	}
 
+	// Migration 21: 过滤规则（自动化）
+	// filters = 规则本体（conditions/actions 存 JSON），filter_matches = 命中审计（供「为什么看不到这条」与一键反悔）
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS filters (
+			id INTEGER PRIMARY KEY,
+			name TEXT NOT NULL,
+			enabled INTEGER NOT NULL DEFAULT 1,
+			position INTEGER NOT NULL DEFAULT 0,
+			scope_type TEXT NOT NULL DEFAULT 'all',
+			scope_id INTEGER,
+			conditions TEXT NOT NULL DEFAULT '[]',
+			actions TEXT NOT NULL DEFAULT '{}',
+			match_count INTEGER NOT NULL DEFAULT 0,
+			last_matched_at TEXT,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		)
+	`); err != nil {
+		return fmt.Errorf("create filters table: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_filters_scope ON filters(scope_type, scope_id)`); err != nil {
+		return fmt.Errorf("create filters scope index: %w", err)
+	}
+
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS filter_matches (
+			id INTEGER PRIMARY KEY,
+			filter_id INTEGER NOT NULL,
+			entry_id INTEGER NOT NULL,
+			actions TEXT NOT NULL DEFAULT '{}',
+			created_at TEXT NOT NULL
+		)
+	`); err != nil {
+		return fmt.Errorf("create filter_matches table: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_filter_matches_entry ON filter_matches(entry_id)`); err != nil {
+		return fmt.Errorf("create filter_matches entry index: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_filter_matches_filter ON filter_matches(filter_id, id DESC)`); err != nil {
+		return fmt.Errorf("create filter_matches filter index: %w", err)
+	}
+
+	// muted = 被规则静音（与 read 区分：可回看、可一键反悔）；filter_id = 最后命中的那条规则
+	if err := addColumnIfMissing(db, "entries", "muted", `ALTER TABLE entries ADD COLUMN muted INTEGER NOT NULL DEFAULT 0`); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "entries", "filter_id", `ALTER TABLE entries ADD COLUMN filter_id INTEGER`); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// addColumnIfMissing 幂等地加列（pragma_table_info 守卫），用于增量迁移。
+func addColumnIfMissing(db *sql.DB, table string, column string, statement string) error {
+	var count int
+	if err := db.QueryRow(`
+		SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?
+	`, table, column).Scan(&count); err != nil {
+		return fmt.Errorf("check %s %s column: %w", table, column, err)
+	}
+	if count > 0 {
+		return nil
+	}
+	if _, err := db.Exec(statement); err != nil {
+		return fmt.Errorf("add %s %s column: %w", table, column, err)
+	}
 	return nil
 }
 

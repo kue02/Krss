@@ -42,6 +42,20 @@ func (m *MockEntryRepository) EXPECT() *MockEntryRepositoryMockRecorder {
 	return m.recorder
 }
 
+// ApplyFilterState mocks base method.
+func (m *MockEntryRepository) ApplyFilterState(ctx context.Context, id int64, state repository.EntryFilterState) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ApplyFilterState", ctx, id, state)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ApplyFilterState indicates an expected call of ApplyFilterState.
+func (mr *MockEntryRepositoryMockRecorder) ApplyFilterState(ctx, id, state any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ApplyFilterState", reflect.TypeOf((*MockEntryRepository)(nil).ApplyFilterState), ctx, id, state)
+}
+
 // ClearAllReadableContent mocks base method.
 func (m *MockEntryRepository) ClearAllReadableContent(ctx context.Context) (int64, error) {
 	m.ctrl.T.Helper()
@@ -146,6 +160,21 @@ func (mr *MockEntryRepositoryMockRecorder) GetByID(ctx, id any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByID", reflect.TypeOf((*MockEntryRepository)(nil).GetByID), ctx, id)
 }
 
+// GetIDsByHashes mocks base method.
+func (m *MockEntryRepository) GetIDsByHashes(ctx context.Context, feedID int64, hashes []string) (map[string]int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetIDsByHashes", ctx, feedID, hashes)
+	ret0, _ := ret[0].(map[string]int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetIDsByHashes indicates an expected call of GetIDsByHashes.
+func (mr *MockEntryRepositoryMockRecorder) GetIDsByHashes(ctx, feedID, hashes any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIDsByHashes", reflect.TypeOf((*MockEntryRepository)(nil).GetIDsByHashes), ctx, feedID, hashes)
+}
+
 // GetStarredCount mocks base method.
 func (m *MockEntryRepository) GetStarredCount(ctx context.Context) (int, error) {
 	m.ctrl.T.Helper()
@@ -188,6 +217,21 @@ func (m *MockEntryRepository) MarkAllAsRead(ctx context.Context, feedID, folderI
 func (mr *MockEntryRepositoryMockRecorder) MarkAllAsRead(ctx, feedID, folderID, contentType any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkAllAsRead", reflect.TypeOf((*MockEntryRepository)(nil).MarkAllAsRead), ctx, feedID, folderID, contentType)
+}
+
+// ResetFilterState mocks base method.
+func (m *MockEntryRepository) ResetFilterState(ctx context.Context, ids []int64, restoreUnread bool) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResetFilterState", ctx, ids, restoreUnread)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResetFilterState indicates an expected call of ResetFilterState.
+func (mr *MockEntryRepositoryMockRecorder) ResetFilterState(ctx, ids, restoreUnread any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResetFilterState", reflect.TypeOf((*MockEntryRepository)(nil).ResetFilterState), ctx, ids, restoreUnread)
 }
 
 // UpdateManyReadStatus mocks base method.

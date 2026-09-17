@@ -19,8 +19,19 @@ type EntryListFilter struct {
 	UnreadOnly   bool
 	StarredOnly  bool
 	HasThumbnail bool
+	// 默认（两个都为 false）= 隐藏被规则静音的条目
+	IncludeMuted bool
+	MutedOnly    bool
 	Limit        int
 	Offset       int
+}
+
+// EntryFilterState 过滤规则要写到条目上的标记（nil 表示该位不动）。
+type EntryFilterState struct {
+	Muted    bool
+	Read     *bool
+	Starred  *bool
+	FilterID int64
 }
 
 type UnreadCount struct {
@@ -43,6 +54,12 @@ type EntryRepository interface {
 	ExistsByLegacyURL(ctx context.Context, feedID int64, rawURL string, hash string) (bool, error)
 	ClearAllReadableContent(ctx context.Context) (int64, error)
 	DeleteUnstarred(ctx context.Context) (int64, error)
+	// GetIDsByHashes 按 feed 内 hash 批量取条目 ID（规则引擎在入库后定位刚写进去的那批条目）。
+	GetIDsByHashes(ctx context.Context, feedID int64, hashes []string) (map[string]int64, error)
+	// ApplyFilterState 写入规则标记（muted / filter_id，可选 read / starred）。
+	ApplyFilterState(ctx context.Context, id int64, state EntryFilterState) error
+	// ResetFilterState 撤销规则标记（muted 清零、filter_id 置空；restoreUnread 时把已读退回未读）。
+	ResetFilterState(ctx context.Context, ids []int64, restoreUnread bool) (int64, error)
 }
 
 type entryRepository struct {
@@ -56,7 +73,7 @@ func NewEntryRepository(db dbtx) EntryRepository {
 func (r *entryRepository) GetByID(ctx context.Context, id int64) (model.Entry, error) {
 	row := r.db.QueryRowContext(
 		ctx,
-		`SELECT id, feed_id, hash, title, url, content, readable_content, thumbnail_url, author, published_at, read, starred, created_at, updated_at
+		`SELECT id, feed_id, hash, title, url, content, readable_content, thumbnail_url, author, published_at, read, starred, muted, filter_id, created_at, updated_at
 		 FROM entries WHERE id = ?`,
 		id,
 	)
@@ -67,7 +84,7 @@ func (r *entryRepository) List(ctx context.Context, filter EntryListFilter) ([]m
 	var args []interface{}
 	query := `
 		SELECT e.id, e.feed_id, e.hash, e.title, e.url, e.content, e.readable_content, e.thumbnail_url, e.author,
-		       e.published_at, e.read, e.starred, e.created_at, e.updated_at
+		       e.published_at, e.read, e.starred, e.muted, e.filter_id, e.created_at, e.updated_at
 		FROM entries e
 	`
 
@@ -105,6 +122,13 @@ func (r *entryRepository) List(ctx context.Context, filter EntryListFilter) ([]m
 		conditions = append(conditions, "e.thumbnail_url IS NOT NULL AND e.thumbnail_url != ''")
 	}
 
+	// 被规则静音的条目默认不出现在列表里；「已静音」视图里才单独看
+	if filter.MutedOnly {
+		conditions = append(conditions, "e.muted = 1")
+	} else if !filter.IncludeMuted {
+		conditions = append(conditions, "e.muted = 0")
+	}
+
 	if len(conditions) > 0 {
 		query += " WHERE " + strings.Join(conditions, " AND ")
 	}
@@ -140,6 +164,129 @@ func (r *entryRepository) List(ctx context.Context, filter EntryListFilter) ([]m
 	}
 
 	return entries, nil
+}
+
+// GetIDsByHashes 按 feed 内 hash 批量取条目 ID（规则引擎在入库后定位刚写进去的那批条目）。
+func (r *entryRepository) GetIDsByHashes(ctx context.Context, feedID int64, hashes []string) (map[string]int64, error) {
+	result := make(map[string]int64, len(hashes))
+	if len(hashes) == 0 {
+		return result, nil
+	}
+
+	unique := make([]string, 0, len(hashes))
+	seen := make(map[string]struct{}, len(hashes))
+	for _, hash := range hashes {
+		if hash == "" {
+			continue
+		}
+		if _, ok := seen[hash]; ok {
+			continue
+		}
+		seen[hash] = struct{}{}
+		unique = append(unique, hash)
+	}
+	if len(unique) == 0 {
+		return result, nil
+	}
+
+	// SQLite 变量数有上限，分批查
+	const batchSize = 400
+	for start := 0; start < len(unique); start += batchSize {
+		end := start + batchSize
+		if end > len(unique) {
+			end = len(unique)
+		}
+		chunk := unique[start:end]
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(chunk)), ",")
+		args := make([]interface{}, 0, len(chunk)+1)
+		args = append(args, feedID)
+		for _, hash := range chunk {
+			args = append(args, hash)
+		}
+
+		rows, err := r.db.QueryContext(ctx,
+			`SELECT hash, id FROM entries WHERE feed_id = ? AND hash IN (`+placeholders+`)`, args...)
+		if err != nil {
+			return result, err
+		}
+		for rows.Next() {
+			var (
+				hash string
+				id   int64
+			)
+			if err := rows.Scan(&hash, &id); err != nil {
+				rows.Close()
+				return result, err
+			}
+			result[hash] = id
+		}
+		scanErr := rows.Err()
+		rows.Close()
+		if scanErr != nil {
+			return result, scanErr
+		}
+	}
+	return result, nil
+}
+
+// ApplyFilterState 写入规则标记（muted / filter_id，可选 read / starred）。
+func (r *entryRepository) ApplyFilterState(ctx context.Context, id int64, state EntryFilterState) error {
+	sets := []string{"muted = ?", "filter_id = ?"}
+	args := []interface{}{boolToInt(state.Muted), state.FilterID}
+	if state.Read != nil {
+		sets = append(sets, "read = ?")
+		args = append(args, boolToInt(*state.Read))
+	}
+	if state.Starred != nil {
+		sets = append(sets, "starred = ?")
+		args = append(args, boolToInt(*state.Starred))
+	}
+	sets = append(sets, "updated_at = ?")
+	args = append(args, formatTime(time.Now()))
+	args = append(args, id)
+
+	_, err := r.db.ExecContext(ctx, `UPDATE entries SET `+strings.Join(sets, ", ")+` WHERE id = ?`, args...)
+	return err
+}
+
+// ResetFilterState 撤销规则标记（muted 清零、filter_id 置空；restoreUnread 时把已读退回未读）。
+func (r *entryRepository) ResetFilterState(ctx context.Context, ids []int64, restoreUnread bool) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	sets := "muted = 0, filter_id = NULL"
+	if restoreUnread {
+		sets += ", read = 0"
+	}
+	sets += ", updated_at = ?"
+	stamp := formatTime(time.Now())
+
+	var affected int64
+	const batchSize = 400
+	for start := 0; start < len(ids); start += batchSize {
+		end := start + batchSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		chunk := ids[start:end]
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(chunk)), ",")
+		args := make([]interface{}, 0, len(chunk)+1)
+		args = append(args, stamp)
+		for _, id := range chunk {
+			args = append(args, id)
+		}
+
+		result, err := r.db.ExecContext(ctx,
+			`UPDATE entries SET `+sets+` WHERE id IN (`+placeholders+`)`, args...)
+		if err != nil {
+			return affected, err
+		}
+		if rows, err := result.RowsAffected(); err == nil {
+			affected += rows
+		}
+	}
+	return affected, nil
 }
 
 func boolToInt(value bool) int {
@@ -265,11 +412,12 @@ func scanEntry(s entryScanner) (model.Entry, error) {
 	var e model.Entry
 	var publishedAt sql.NullString
 	var createdAt, updatedAt string
-	var readInt, starredInt int
+	var readInt, starredInt, mutedInt int
+	var filterID sql.NullInt64
 
 	err := s.Scan(
 		&e.ID, &e.FeedID, &e.Hash, &e.Title, &e.URL, &e.Content, &e.ReadableContent, &e.ThumbnailURL, &e.Author,
-		&publishedAt, &readInt, &starredInt, &createdAt, &updatedAt,
+		&publishedAt, &readInt, &starredInt, &mutedInt, &filterID, &createdAt, &updatedAt,
 	)
 	if err != nil {
 		return model.Entry{}, err
@@ -277,6 +425,11 @@ func scanEntry(s entryScanner) (model.Entry, error) {
 
 	e.Read = readInt == 1
 	e.Starred = starredInt == 1
+	e.Muted = mutedInt == 1
+	if filterID.Valid {
+		value := filterID.Int64
+		e.FilterID = &value
+	}
 	if publishedAt.Valid {
 		e.PublishedAt = parseTimePtr(publishedAt.String)
 	}
