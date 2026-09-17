@@ -24,6 +24,7 @@ import {
   type CardImageSize,
   type QuoteStyle,
   type ScrollReadOverride,
+  type SidebarFeedAppearance,
   type UnreadStyle,
 } from "@/hooks/useUISettings";
 import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
@@ -159,6 +160,7 @@ export function AppearanceSettings() {
   const uiScale = useUISettingKey("uiScale");
   const quoteStyle = useUISettingKey("quoteStyle");
   const unreadStyle = useUISettingKey("unreadStyle");
+  const sidebarFeedAppearance = useUISettingKey("sidebarFeedAppearance");
   const scrollReadByView = useUISettingKey("scrollReadByView");
   // 「滚动标已读」总开关形态：perView 才显示下面的按视图覆盖；off 时判定项置灰
   const { mode: scrollReadMode } = useScrollReadSetting();
@@ -172,6 +174,7 @@ export function AppearanceSettings() {
     setUiScale,
     setQuoteStyle,
     setUnreadStyle,
+    setSidebarFeedAppearance,
     setScrollReadForView,
     setScrollReadTimingForView,
     setCardImageSize,
@@ -510,6 +513,25 @@ export function AppearanceSettings() {
                 { value: "1", label: t("appearance_reading.ui_scale_default") },
                 { value: "1.1", label: t("appearance_reading.ui_scale_large") },
                 { value: "1.25", label: t("appearance_reading.ui_scale_xl") },
+              ]}
+            />
+          </SettingRow>
+          <SettingRow label={t("appearance_reading.sidebar_feed_appearance")}>
+            <SegmentedControl
+              className="shrink-0"
+              value={sidebarFeedAppearance}
+              onValueChange={(value) =>
+                setSidebarFeedAppearance(value as SidebarFeedAppearance)
+              }
+              options={[
+                {
+                  value: "default",
+                  label: t("appearance_reading.sidebar_feed_default"),
+                },
+                {
+                  value: "name_and_site",
+                  label: t("appearance_reading.sidebar_feed_name_and_site"),
+                },
               ]}
             />
           </SettingRow>

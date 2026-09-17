@@ -9,6 +9,15 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
+// 第一栏订阅外观（用户 11-12）：默认只有名称；切成 name_and_site 才挂 @源站
+const uiSettings: Record<string, unknown> = { sidebarFeedAppearance: "default" };
+vi.mock("@/hooks/useUISettings", async () => {
+  const actual = await vi.importActual<typeof import("@/hooks/useUISettings")>(
+    "@/hooks/useUISettings",
+  );
+  return { ...actual, useUISettingKey: (key: string) => uiSettings[key] };
+});
+
 const feed: Feed = {
   id: "feed-1",
   title: "Example Feed",
@@ -23,6 +32,7 @@ describe("FeedItem 右键菜单", () => {
     cleanup();
     useFilterEditorStore.getState().close();
     queryClient.clear();
+    uiSettings.sidebarFeedAppearance = "default";
   });
 
   it("「为此订阅新建规则」按该订阅打开规则编辑器", () => {
@@ -108,5 +118,33 @@ describe("FeedItem 右键菜单", () => {
     expect(state.open).toBe(true);
     expect(state.draft?.scopeType).toBe("feed");
     expect(state.draft?.scopeId).toBe("feed-uncached");
+  });
+
+  it("「名称 + @源站」外观：行里挂一条指向主页的链接（用户 11-12）", () => {
+    uiSettings.sidebarFeedAppearance = "name_and_site";
+
+    render(
+      <FeedItem
+        feedId="feed-tw"
+        name="Twitter @歸藏"
+        feedUrl="https://rsshub.example.com/twitter/user/op7418"
+      />,
+    );
+
+    const link = screen.getByText("@x.com");
+    expect(link.getAttribute("href")).toBe("https://x.com/op7418");
+    expect(link.getAttribute("target")).toBe("_blank");
+  });
+
+  it("默认外观：行里没有 @源站 链接", () => {
+    render(
+      <FeedItem
+        feedId="feed-tw"
+        name="Twitter @歸藏"
+        feedUrl="https://rsshub.example.com/twitter/user/op7418"
+      />,
+    );
+
+    expect(screen.queryByText("@x.com")).toBeNull();
   });
 });

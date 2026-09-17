@@ -16,6 +16,12 @@ export type QuoteStyle = "block" | "divider" | "card";
  * 三种都同时作用于所有视图 —— 用户原话：「需要做成可切换的全局统一样式」。
  */
 export type UnreadStyle = "badge" | "dot" | "dim";
+/**
+ * 第一栏（侧栏）订阅行的外观（用户 11-12）：
+ *   default       = 现在这样，只有订阅名
+ *   name_and_site = 名称 + @源站（悬浮源站可点，直接开主页）
+ */
+export type SidebarFeedAppearance = "default" | "name_and_site";
 
 interface UISettings {
   feedColWidth: number;
@@ -55,6 +61,8 @@ interface UISettings {
   quoteStyle: QuoteStyle;
   /** 已读/未读的标记样式（全局统一，见 UnreadStyle） */
   unreadStyle: UnreadStyle;
+  /** 第一栏订阅行的外观（默认只有名称；可切成「名称 + @源站」） */
+  sidebarFeedAppearance: SidebarFeedAppearance;
   /**
    * 主题色（用户 11-13）：用户自选的强调色，`null` = 跟随当前主题（默认）。
    * 落地方式：在 `<html>` 上写内联的 `--accent` / `--accent-foreground` ——
@@ -113,6 +121,7 @@ export const defaultUISettings: UISettings = {
   reduceMotion: false,
   quoteStyle: "block",
   unreadStyle: "badge",
+  sidebarFeedAppearance: "default",
   accentColor: null,
   showLineNumbers: true,
   uiScale: 1,
@@ -262,6 +271,13 @@ export function useUISettingActions() {
     [],
   );
 
+  const setSidebarFeedAppearance = useCallback(
+    (appearance: SidebarFeedAppearance) => {
+      setUISetting("sidebarFeedAppearance", appearance);
+    },
+    [setUISetting],
+  );
+
   const setAccentColor = useCallback(
     (color: string | null) => {
       setUISetting("accentColor", color);
@@ -354,6 +370,7 @@ export function useUISettingActions() {
     setQuoteStyle,
     setUnreadStyle,
     setAccentColor,
+    setSidebarFeedAppearance,
     setScrollReadForView,
     setScrollReadTimingForView,
     resetToDefaults,

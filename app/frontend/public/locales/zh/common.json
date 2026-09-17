@@ -539,7 +539,10 @@
     "unread_style": "未读标记",
     "unread_style_badge": "角标",
     "unread_style_dot": "小圆点",
-    "unread_style_dim": "变灰"
+    "unread_style_dim": "变灰",
+    "sidebar_feed_appearance": "第一栏订阅外观",
+    "sidebar_feed_default": "默认（只有名称）",
+    "sidebar_feed_name_and_site": "名称 + @源站"
   },
   "reading_font": {
     "theme_default": "跟随主题",

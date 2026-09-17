@@ -542,7 +542,10 @@
     "unread_style": "Unread marker",
     "unread_style_badge": "Badge",
     "unread_style_dot": "Dot",
-    "unread_style_dim": "Dim"
+    "unread_style_dim": "Dim",
+    "sidebar_feed_appearance": "Feed row style",
+    "sidebar_feed_default": "Name only",
+    "sidebar_feed_name_and_site": "Name + @site"
   },
   "reading_font": {
     "theme_default": "Theme default",

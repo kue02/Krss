@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { useContextMenu } from "@/hooks/useContextMenu";
 import { resolveFeedSiteUrl } from "@/lib/feed-site";
+import { useUISettingKey } from "@/hooks/useUISettings";
 import { copyToClipboard } from "@/stores/toast-store";
 import { queryClient } from "@/lib/queryClient";
 import { openFilterEditorForFeed } from "@/stores/filter-editor-store";
@@ -85,6 +86,16 @@ export function FeedItem({
     [siteUrl, feedUrl],
   );
   const [iconError, setIconError] = useState(false);
+  // 第一栏订阅外观（用户 11-12）：「名称 + @源站」时把主站域名挂在名字后面，悬浮/点击直接去主页
+  const feedAppearance = useUISettingKey("sidebarFeedAppearance");
+  const siteHost = useMemo(() => {
+    if (feedAppearance !== "name_and_site" || !siteUrlResolved) return null;
+    try {
+      return new URL(siteUrlResolved).hostname.replace(/^www\./, "");
+    } catch {
+      return null;
+    }
+  }, [feedAppearance, siteUrlResolved]);
   const hasError = !!errorMessage;
   const triggerRef = useRef<HTMLSpanElement>(null);
 
@@ -166,7 +177,21 @@ export function FeedItem({
                 <RssIcon className="size-4 text-muted-foreground" />
               )}
             </span>
+            {/* 订阅名；「名称 + @源站」外观下把主站域名挂在后面（用户 11-12），
+                悬浮变色、点击直接开主页，点它不要连带选中这个订阅（stopPropagation） */}
             <span className="min-w-0 truncate">{name}</span>
+            {siteHost && (
+              <a
+                href={siteUrlResolved ?? undefined}
+                title={siteUrlResolved ?? undefined}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(event) => event.stopPropagation()}
+                className="shrink-0 truncate text-[0.7rem] text-muted-foreground/70 transition-colors hover:text-foreground hover:underline"
+              >
+                @{siteHost}
+              </a>
+            )}
             {hasError && (
               <Tooltip>
                 <TooltipTrigger asChild>
