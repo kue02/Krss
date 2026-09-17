@@ -566,11 +566,23 @@ body.mobile-document-scroll-locked {
 @layer components {
   /* 社交媒体正文里的引用推文（RSSHub 的 .rsshub-quote 默认没有样式，
      不处理的话会跟正文糊在一起，看起来就是「格式乱」） */
+  /* 引文（RSSHub 的 .rsshub-quote）：做成独立引块，作者名单独一行加粗，
+     文字压灰、左侧一条竖线 + 淡底，和正文拉开层次（不做成整块灰底卡片，免得抢正文） */
   .entry-content .rsshub-quote {
     margin-top: 10px;
-    padding-left: 10px;
-    border-left: 2px solid var(--border);
-    color: color-mix(in srgb, var(--foreground) 82%, transparent);
+    padding: 8px 12px;
+    border-left: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--foreground) 4%, transparent);
+    color: color-mix(in srgb, var(--foreground) 78%, transparent);
+    font-size: 0.9375em;
+  }
+
+  .entry-content .rsshub-quote-author {
+    display: block;
+    margin-bottom: 2px;
+    font-weight: 600;
+    color: color-mix(in srgb, var(--foreground) 90%, transparent);
   }
 
   /* RSSHub 有时用 hr 做分隔，去掉后靠引用块的间距区分；万一还有 hr 也压一压默认外边距 */

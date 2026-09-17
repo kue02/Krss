@@ -1,7 +1,8 @@
 import type { RefCallback } from "react";
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useCodeHighlight } from "@/hooks/useCodeHighlight";
+import { removeContentSeparators } from "@/lib/social-content";
 import { useUISettingKey } from "@/hooks/useUISettings";
 import { resolveReadingFontStack } from "@/lib/reading-fonts";
 import { useEntryMeta } from "@/hooks/useEntryMeta";
@@ -48,6 +49,11 @@ export function EntryContentBody({
   const contentRef = useRef<HTMLDivElement>(null);
 
   // Apply code highlighting after content renders
+  // 正文也走一遍规范化：去掉 <hr> 分隔线、把引文作者拆成单独一行（列表里已有，正文之前漏了）
+  const normalizedContent = useMemo(
+    () => removeContentSeparators(displayContent),
+    [displayContent],
+  );
   useCodeHighlight(contentRef, highlightContent ?? displayContent ?? "");
 
   const hasBlocks = !!displayBlocks && displayBlocks.length > 0;
@@ -124,7 +130,7 @@ export function EntryContentBody({
               />
             ) : (
               <ArticleContent
-                content={displayContent ?? ""}
+                content={normalizedContent ?? ""}
                 articleUrl={entry.url}
               />
             )
