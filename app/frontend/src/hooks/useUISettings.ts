@@ -27,6 +27,11 @@ interface UISettings {
   reduceMotion: boolean;
   /** 引文（引用推文）的呈现：block = 强调色竖线 + 淡底（默认，我们现在的样子）；divider = Folo 那样一条很浅的分割线 */
   quoteStyle: "block" | "divider";
+  /**
+   * 正文代码块是否显示行号（Nextflux 也有这个开关，但它默认关）。
+   * 用户 2026-09-17 明确要「代码块显示行号」，所以这里默认开；不想要的去 外观 → 阅读 关掉。
+   */
+  showLineNumbers: boolean;
   /** 界面整体缩放：改的是 rem 基准字号，1 = 标准（对应 16px） */
   uiScale: number;
   /** 按视图覆盖「滚动标已读」；inherit = 跟随通用设置 */
@@ -60,6 +65,7 @@ export const defaultUISettings: UISettings = {
   },
   reduceMotion: false,
   quoteStyle: "block",
+  showLineNumbers: true,
   uiScale: 1,
   scrollReadTimingByView: {
     article: "scrollPast",
@@ -181,6 +187,10 @@ export function useUISettingActions() {
     setUISetting("entryLineHeight", height);
   }, []);
 
+  const setShowLineNumbers = useCallback((enabled: boolean) => {
+    setUISetting("showLineNumbers", enabled);
+  }, []);
+
   const setReduceMotion = useCallback((enabled: boolean) => {
     setUISetting("reduceMotion", enabled);
   }, []);
@@ -260,6 +270,7 @@ export function useUISettingActions() {
     setFetchReadableForView,
     setExpandLongForView,
     setReduceMotion,
+    setShowLineNumbers,
     setUiScale,
     setQuoteStyle,
     setScrollReadForView,

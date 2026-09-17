@@ -127,6 +127,7 @@ export function AppearanceSettings() {
   const fetchReadableByView = useUISettingKey("fetchReadableByView");
   const expandLongByView = useUISettingKey("expandLongByView");
   const reduceMotion = useUISettingKey("reduceMotion");
+  const showLineNumbers = useUISettingKey("showLineNumbers");
   const uiScale = useUISettingKey("uiScale");
   const quoteStyle = useUISettingKey("quoteStyle");
   const scrollReadByView = useUISettingKey("scrollReadByView");
@@ -135,6 +136,7 @@ export function AppearanceSettings() {
     setFetchReadableForView,
     setExpandLongForView,
     setReduceMotion,
+    setShowLineNumbers,
     setUiScale,
     setQuoteStyle,
     setScrollReadForView,
@@ -486,6 +488,17 @@ export function AppearanceSettings() {
                   value: "divider",
                   label: t("appearance_reading.quote_style_divider"),
                 },
+              ]}
+            />
+          </SettingRow>
+          <SettingRow label={t("appearance_reading.code_line_numbers")}>
+            <SegmentedControl
+              className="shrink-0"
+              value={showLineNumbers ? "on" : "off"}
+              onValueChange={(value) => setShowLineNumbers(value === "on")}
+              options={[
+                { value: "off", label: t("appearance_view.off") },
+                { value: "on", label: t("appearance_view.on") },
               ]}
             />
           </SettingRow>

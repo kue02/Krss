@@ -1,5 +1,6 @@
 import type { RefObject } from "react";
 import { useEffect } from "react";
+import { useUISettingKey } from "@/hooks/useUISettings";
 
 type HighlightRuntimeModule = typeof import("@/lib/code-highlight-runtime");
 
@@ -31,6 +32,31 @@ function normalizeLanguage(lang: string): string {
     "c++": "cpp",
   };
   return aliases[lang.toLowerCase()] || lang.toLowerCase();
+}
+
+/**
+ * 猜语言。
+ *
+ * 标准 markdown 给的是 `<code class="language-bash">`；
+ * 而 WordPress / WP-Syntax 那类文章给的是 `<pre class="brush: bash; title: ; notranslate">`，
+ * **没有 code 子元素** —— 这类块之前被整个跳过（既不高亮也没行号），见 BUG/待办记录。
+ * 顺序：code 的 language-x → pre 的 language-x / lang-x / brush: x → pre 的 data-language。
+ */
+function detectLanguage(pre: HTMLElement, code: HTMLElement | null): string {
+  const candidates = [
+    code?.className ?? "",
+    pre.className,
+    pre.dataset.language ?? "",
+  ];
+  for (const value of candidates) {
+    const languageMatch = /language-([a-z0-9_+-]+)/i.exec(value);
+    if (languageMatch) return languageMatch[1]!;
+    const shortMatch = /\blang-([a-z0-9_+-]+)/i.exec(value);
+    if (shortMatch) return shortMatch[1]!;
+    const brushMatch = /\bbrush:\s*([a-z0-9_+-]+)/i.exec(value);
+    if (brushMatch) return brushMatch[1]!;
+  }
+  return "";
 }
 
 function createCopyButton(code: string): HTMLButtonElement {
@@ -70,11 +96,22 @@ export function useCodeHighlight(
   containerRef: RefObject<HTMLElement | null>,
   content: string,
 ) {
+  // 行号：整块代码统一加一个标记，具体样式由 CSS 计数器画（对齐 Nextflux 的 .line-numbers 做法）
+  const showLineNumbers = useUISettingKey("showLineNumbers");
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const blocks = container.querySelectorAll("pre code");
+    for (const pre of container.querySelectorAll("pre")) {
+      if (!(pre instanceof HTMLElement)) continue;
+      if (showLineNumbers) pre.dataset.lineNumbers = "true";
+      else delete pre.dataset.lineNumbers;
+    }
+
+    // 兼容两类代码块：带 <code> 的（标准 markdown 渲染）与**裸 <pre>**
+    // （WordPress / WP-Syntax 那类文章：`<pre class="brush: bash">`，之前会被整个跳过）
+    const blocks = Array.from(container.querySelectorAll("pre"));
     if (blocks.length === 0) return;
 
     let cancelled = false;
@@ -83,17 +120,22 @@ export function useCodeHighlight(
       const { highlightCode } = await getHighlightRuntime();
       if (cancelled) return;
 
-      for (const block of blocks) {
+      for (const pre of blocks) {
         if (cancelled) break;
-        if (!(block instanceof HTMLElement)) continue;
-
-        const pre = block.parentElement;
         if (!(pre instanceof HTMLElement)) continue;
-
         if (pre.dataset.shikiHighlighted) continue;
 
-        const match = /language-([a-z0-9_+-]+)/i.exec(block.className || "");
-        const rawLang = match?.[1] ?? "";
+        // 裸 <pre>：先补一个 <code> 壳，之后 CSS（pre code）、行号、复制按钮都按同一套走
+        let block = pre.querySelector(":scope > code");
+        if (!block) {
+          block = document.createElement("code");
+          block.textContent = pre.textContent ?? "";
+          pre.textContent = "";
+          pre.appendChild(block);
+        }
+        if (!(block instanceof HTMLElement)) continue;
+
+        const rawLang = detectLanguage(pre, block);
         const lang = rawLang ? normalizeLanguage(rawLang) : "text";
 
         const code = block.textContent || "";
@@ -141,9 +183,12 @@ export function useCodeHighlight(
               pre.insertBefore(header, pre.firstChild);
             }
 
+            if (showLineNumbers) pre.dataset.lineNumbers = "true";
             pre.dataset.shikiHighlighted = "true";
           }
         } catch {
+          // 高亮失败也要把行号开关落上去：至少代码是可读的，行号不该跟着一起消失
+          if (showLineNumbers) pre.dataset.lineNumbers = "true";
           pre.dataset.shikiHighlighted = "true";
         }
       }
@@ -154,5 +199,5 @@ export function useCodeHighlight(
     return () => {
       cancelled = true;
     };
-  }, [containerRef, content]);
+  }, [containerRef, content, showLineNumbers]);
 }

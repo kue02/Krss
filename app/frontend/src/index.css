@@ -438,6 +438,66 @@ body.mobile-document-scroll-locked {
 }
 
 /* Line styling */
+/* 行号（对齐 Nextflux 的 .line-numbers：CSS 计数器画，不额外包一层 DOM）
+   —— 开关在 外观 → 阅读 → 代码块行号；整块代码统一处理，不做「超过 N 行才显示」的花活 */
+.entry-content .prose pre[data-line-numbers="true"] code {
+  counter-reset: shiki-line;
+}
+
+.entry-content .prose pre[data-line-numbers="true"] code > .line::before {
+  counter-increment: shiki-line;
+  content: counter(shiki-line);
+  display: inline-block;
+  width: 2ch;
+  margin-right: 1.25rem;
+  text-align: right;
+  color: color-mix(in oklab, currentColor 45%, transparent);
+  /* 行号不该被选中/复制走 —— 复制按钮给的是纯代码，选中的也应该是纯代码 */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 代码块外观（「适配」的另一半）：原先 pre 是透明的、没有边框与圆角，
+   看起来就是一段等宽文字而不是「代码块」。这里给它块级外观，滚动交给内部的 code，
+   这样圆角不会被滚动的长行切掉。 */
+.entry-content .prose pre {
+  position: relative;
+  margin: 1.25rem 0;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--shiki-background);
+  overflow: hidden;
+  overscroll-behavior-x: contain;
+}
+
+.entry-content .prose pre > code {
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+}
+
+/* 长行适配：窄屏横向滚动（滚动容器是 code，上面 pre 负责圆角裁剪），宽屏折行 */
+.entry-content .prose pre code {
+  overflow-x: auto;
+}
+
+.entry-content .prose pre,
+.entry-content .prose pre code {
+  white-space: pre;
+}
+
+@media (min-width: 768px) {
+  .entry-content .prose pre {
+    overflow-x: visible;
+  }
+  /* 宽屏折行：长行不会把正文拖出横向滚动条（与 Nextflux 的 pre code 表现一致）。
+     同时覆盖裸 <pre>（WP-Syntax 那类，还没有 code 壳的时候也不该溢出）。 */
+  .entry-content .prose pre,
+  .entry-content .prose pre code {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+}
+
 .entry-content .prose pre code > .line {
   display: block;
   padding: 0 1rem;
@@ -506,13 +566,26 @@ body.mobile-document-scroll-locked {
 }
 
 /* Shiki syntax highlighting - CSS variables mode for dual theme support */
-.entry-content .prose pre.shiki,
+/* 代码块底 / 字色。
+   历史：这两条原本把 pre 与 span 一起设成透明，结果是代码块「没有底」，
+   看着就是一段等宽文字而不是代码块（Nextflux 的代码块是带主题底的）。现在：
+   - span 保持透明（每个 token 只带自己的前景色，底色由块统一给）
+   - 块本体用主题的 shiki 底（亮/暗各一份，见 --shiki-background） */
+.entry-content .prose pre.shiki {
+  color: var(--shiki-light);
+  background-color: var(--shiki-background);
+}
+
 .entry-content .prose pre.shiki span {
   color: var(--shiki-light);
   background-color: transparent;
 }
 
-.dark .entry-content .prose pre.shiki,
+.dark .entry-content .prose pre.shiki {
+  color: var(--shiki-dark);
+  background-color: var(--shiki-background);
+}
+
 .dark .entry-content .prose pre.shiki span {
   color: var(--shiki-dark);
   background-color: transparent;
