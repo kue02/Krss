@@ -106,6 +106,19 @@ func collectBlocks(parent *html.Node, blocks *[]Block, index *int) {
 	}
 
 	for _, child := range children {
+		// 引文容器（.rsshub-quote / blockquote）整块当一段，不往里拆：
+		// 拆了之后引文的外层 div 就没人认领了，译文里引文没有容器 →
+		// 正文看不出哪段是引文（用户报的「点进去引文没样式」）
+		if child.Type == html.ElementNode && isQuoteWrapper(child) {
+			*blocks = append(*blocks, Block{
+				Index:         *index,
+				HTML:          renderNode(child),
+				NeedTranslate: shouldTranslate(child),
+			})
+			*index++
+			continue
+		}
+
 		// Check if this is a wrapper element that should be expanded
 		if child.Type == html.ElementNode && wrapperElements[child.Data] {
 			// Always expand wrapper elements recursively
