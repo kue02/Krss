@@ -8,17 +8,13 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
       document.documentElement.lang = lng === "zh" ? "zh-CN" : "en";
     };
 
+    // 语言只认「设置 → 通用 → 语言」里手动选的那一项（存 localStorage 的 gist-lang）。
+    // 2026-09-17 用户明确要求去掉自动切换：不再按 navigator.language 猜，
+    // 没设置过就固定用中文（应用主语言）。
     const saved = localStorage.getItem("gist-lang");
-    if (saved && (saved === "zh" || saved === "en")) {
-      i18n.changeLanguage(saved);
-      applyLang(saved);
-    } else {
-      const browser = navigator.language || "en";
-      const base = browser.split("-")[0];
-      const detected = base === "zh" ? "zh" : "en";
-      i18n.changeLanguage(detected);
-      applyLang(detected);
-    }
+    const lang = saved === "zh" || saved === "en" ? saved : "zh";
+    i18n.changeLanguage(lang);
+    applyLang(lang);
 
     const onChange = (lng: string) => applyLang(lng);
     i18n.on("languageChanged", onChange);

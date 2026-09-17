@@ -404,6 +404,37 @@ body.mobile-document-scroll-locked {
 }
 
 
+:root {
+  /* 外链小箭头图标（lucide arrow-up-right），用 mask 上色、颜色跟文字走 */
+  --icon-external-link: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='M7 17 17 7'/><path d='M8 7h9v9'/></svg>");
+}
+
+/* 正文外链加一个小箭头（对齐 Folo：光有下划线不够显眼）。
+   范围收紧：只在正文 prose 里、只给绝对 http(s) 链接、图片链接与已标注的不加。
+   标题链接在 <h1>（prose 之外）所以天然不会中招。 */
+.entry-content .prose a[href^="http"]:not(:has(> img)):not(:has(> picture)):not([data-no-ext-arrow])::after {
+  content: "";
+  display: inline-block;
+  inline-size: 0.7em;
+  block-size: 0.7em;
+  margin-inline-start: 0.18em;
+  vertical-align: -0.02em;
+  background-color: currentColor;
+  opacity: 0.45;
+  -webkit-mask: var(--icon-external-link) center / contain no-repeat;
+  mask: var(--icon-external-link) center / contain no-repeat;
+  transition: opacity 150ms var(--ease-ios);
+}
+
+.entry-content .prose a[href^="http"]:hover::after {
+  opacity: 0.8;
+}
+
+.entry-content .prose a[href^="http"]:not(:has(> img)):not(:has(> picture)):not([data-no-ext-arrow]) {
+  /* 箭头紧贴文字，避免长链接换行时箭头被孤立到下一行开头 */
+  text-decoration-skip-ink: auto;
+}
+
 .entry-content {
   --entry-border: --border;
   --entry-muted: --muted;
