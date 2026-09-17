@@ -27,7 +27,7 @@ func TestProxyHandler_ProxyImage_Success(t *testing.T) {
 	refEncoded := base64.URLEncoding.EncodeToString([]byte(refererURL))
 
 	mockService.EXPECT().
-		FetchImage(gomock.Any(), imageURL, refererURL).
+		FetchMedia(gomock.Any(), imageURL, refererURL, "").
 		Return(&service.ProxyResult{Data: []byte("image-data"), ContentType: "image/png"}, nil)
 
 	e := newTestEcho()
@@ -56,7 +56,7 @@ func TestProxyHandler_ProxyImage_SVGSecurityHeaders(t *testing.T) {
 	svgData := []byte(`<svg xmlns="http://www.w3.org/2000/svg"></svg>`)
 
 	mockService.EXPECT().
-		FetchImage(gomock.Any(), imageURL, "").
+		FetchMedia(gomock.Any(), imageURL, "", "").
 		Return(&service.ProxyResult{Data: svgData, ContentType: "image/svg+xml"}, nil)
 
 	e := newTestEcho()
@@ -134,7 +134,7 @@ func TestProxyHandler_ProxyImage_ErrorMapping(t *testing.T) {
 			h := handler.NewProxyHandlerHelper(mockService)
 
 			mockService.EXPECT().
-				FetchImage(gomock.Any(), imageURL, "").
+				FetchMedia(gomock.Any(), imageURL, "", "").
 				Return(nil, tc.err)
 
 			e := newTestEcho()

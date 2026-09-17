@@ -75,7 +75,13 @@ func (h *ProxyHandler) ProxyImage(c echo.Context) error {
 		}
 	}
 
-	result, err := h.proxyService.FetchImage(c.Request().Context(), imageURL, refererURL)
+	// <video> 会带 Range 来取片段（拖动进度条），透传给上游并原样回 206
+	result, err := h.proxyService.FetchMedia(
+		c.Request().Context(),
+		imageURL,
+		refererURL,
+		c.Request().Header.Get("Range"),
+	)
 	if err != nil {
 		logger.Warn("proxy image fetch failed", "module", "handler", "action", "fetch", "resource", "proxy", "result", "failed", "host", safeHost(imageURL), "error", err)
 		return h.handleServiceError(c, err)
@@ -85,11 +91,19 @@ func (h *ProxyHandler) ProxyImage(c echo.Context) error {
 	c.Response().Header().Set("Content-Type", result.ContentType)
 	c.Response().Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", cacheMaxAge))
 	c.Response().Header().Set("X-Content-Type-Options", "nosniff")
+	c.Response().Header().Set("Accept-Ranges", "bytes")
+	if result.ContentRange != "" {
+		c.Response().Header().Set("Content-Range", result.ContentRange)
+	}
 	if strings.EqualFold(result.ContentType, "image/svg+xml") {
 		c.Response().Header().Set("Content-Security-Policy", svgContentSecurityPolicy)
 	}
 
-	return c.Blob(http.StatusOK, result.ContentType, result.Data)
+	status := result.StatusCode
+	if status != http.StatusPartialContent {
+		status = http.StatusOK
+	}
+	return c.Blob(status, result.ContentType, result.Data)
 }
 
 func (h *ProxyHandler) handleServiceError(c echo.Context, err error) error {
