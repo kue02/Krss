@@ -516,7 +516,7 @@
   },
   "automation": {
     "title": "自动化",
-    "subtitle": "规则在抓取入库之后执行，只作用于刚入库的新条目；命中即停，顺序即优先级。",
+    "subtitle": "规则在抓取入库之后执行，默认只作用于刚入库的新条目（可用「回溯历史」补跑旧条目）；命中即停，顺序即优先级。",
     "new_rule": "新建规则",
     "empty": "还没有规则",
     "empty_hint": "点「新建规则」写第一条；不确定正则会不会误伤，先点「预览影响」看清命中哪些。",
@@ -620,6 +620,12 @@
     "unmuted": "已取消静音",
     "muted_view_hint": "被规则静音 · 仍可阅读与取消",
     "matches_entry": "条目",
-    "matches_deleted_entry": "条目已删除"
+    "matches_deleted_entry": "条目已删除",
+    "apply_history": "回溯历史",
+    "apply_history_title": "对历史条目补跑规则？",
+    "apply_history_description": "会扫描这条规则作用域内最近 {{limit}} 条历史条目，按规则顺序补跑一遍（命中即停）。已经归这条规则管的条目会跳过，重复点不会重复处理。",
+    "apply_history_confirm": "开始回溯",
+    "apply_history_done": "已扫描 {{scanned}} 条，应用 {{applied}} 条",
+    "apply_history_none": "没有需要补跑的历史条目"
   }
 }

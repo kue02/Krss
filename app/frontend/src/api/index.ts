@@ -25,6 +25,7 @@ import type {
   NetworkTestResponse,
 } from "@/types/settings";
 import type {
+  FilterApplyHistoryResult,
   FilterMatch,
   FilterPreviewResult,
   FilterRevertResult,
@@ -1107,6 +1108,20 @@ export async function revertFilter(id: string): Promise<FilterRevertResult> {
   return request<FilterRevertResult>(`/api/filters/${id}/revert`, {
     method: "POST",
   });
+}
+
+/**
+ * 手动回溯：把规则链补跑到这条规则作用域内的历史条目上。
+ * 语义与增量一致（首个命中即停）且幂等 —— 已归同一条规则管的条目会跳过。
+ */
+export async function applyFilterToHistory(
+  id: string,
+  limit = 500,
+): Promise<FilterApplyHistoryResult> {
+  return request<FilterApplyHistoryResult>(
+    `/api/filters/${id}/apply?limit=${limit}`,
+    { method: "POST" },
+  );
 }
 
 export async function listFilterMatches(

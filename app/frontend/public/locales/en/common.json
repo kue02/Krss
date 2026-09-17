@@ -519,7 +519,7 @@
   },
   "automation": {
     "title": "Automation",
-    "subtitle": "Rules run right after new entries are saved; most specific match wins and only the first matching rule applies.",
+    "subtitle": "Rules run after entries are stored and only affect newly fetched entries by default (use “Apply to history” to backfill); first match wins, order is priority.",
     "new_rule": "New rule",
     "empty": "No rules yet",
     "empty_hint": "Create one to start. Not sure a regex is safe? Run “Preview impact” first.",
@@ -623,6 +623,12 @@
     "unmuted": "Unmuted",
     "muted_view_hint": "Muted by rules — readable, reversible",
     "matches_entry": "Entry",
-    "matches_deleted_entry": "Entry deleted"
+    "matches_deleted_entry": "Entry deleted",
+    "apply_history": "Apply to history",
+    "apply_history_title": "Run the rules over historical entries?",
+    "apply_history_description": "Scans the latest {{limit}} entries in this rule's scope and runs the rule chain over them (first match wins). Entries already handled by this rule are skipped, so running it twice is safe.",
+    "apply_history_confirm": "Run",
+    "apply_history_done": "Scanned {{scanned}}, applied {{applied}}",
+    "apply_history_none": "Nothing to backfill"
   }
 }

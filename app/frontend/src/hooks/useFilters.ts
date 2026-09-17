@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  applyFilterToHistory,
   createFilter,
   deleteFilter,
   listFilterMatches,
@@ -95,6 +96,22 @@ export function useUnmuteEntry() {
       queryClient.invalidateQueries({ queryKey: ["entries"] });
       queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
       queryClient.invalidateQueries({ queryKey: ["filters"] });
+    },
+  });
+}
+
+/** 手动回溯：把规则链补跑到历史条目上（幂等，返回扫描/应用条数） */
+export function useApplyFilterHistory() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (variables: { id: string; limit?: number }) =>
+      applyFilterToHistory(variables.id, variables.limit ?? 500),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["filters"] });
+      queryClient.invalidateQueries({ queryKey: ["entries"] });
+      queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
+      queryClient.invalidateQueries({ queryKey: ["filterMatches"] });
     },
   });
 }

@@ -4,12 +4,13 @@ import { AutomationSettings } from "./AutomationSettings";
 import { useFilterEditorStore } from "@/stores/filter-editor-store";
 import type { FilterRule } from "@/types/filters";
 
-const { createMutate, updateMutate, removeMutate, revertMutate, showToast } =
+const { createMutate, updateMutate, removeMutate, revertMutate, applyHistoryMutate, showToast } =
   vi.hoisted(() => ({
     createMutate: vi.fn(),
     updateMutate: vi.fn(),
     removeMutate: vi.fn(),
     revertMutate: vi.fn(),
+    applyHistoryMutate: vi.fn(),
     showToast: vi.fn(),
   }));
 
@@ -21,6 +22,11 @@ vi.mock("react-i18next", () => ({
 
 vi.mock("@/hooks/useFilters", () => ({
   useFilters: () => ({ data: rules.current, isLoading: false, isError: false }),
+  useApplyFilterHistory: () => ({
+    mutate: applyHistoryMutate,
+    isPending: false,
+    isError: false,
+  }),
   useFilterMatches: () => ({
     data: [
       {
@@ -84,6 +90,7 @@ beforeEach(() => {
   updateMutate.mockClear();
   removeMutate.mockClear();
   revertMutate.mockClear();
+  applyHistoryMutate.mockClear();
   showToast.mockClear();
   useFilterEditorStore.getState().close();
 });
@@ -185,6 +192,29 @@ describe("AutomationSettings", () => {
     expect(within(dialog).getByText("automation.matches_of")).toBeTruthy();
     expect(within(dialog).getByText("赞助商投稿：某云厂商")).toBeTruthy();
     expect(within(dialog).getByText("少数派")).toBeTruthy();
+  });
+
+  it("回溯历史：先确认（说清范围与语义），确认后才调用接口并按结果提示", () => {
+    rules.current = [rule()];
+    render(<AutomationSettings />);
+
+    fireEvent.click(screen.getByText("automation.apply_history"));
+
+    // 未确认前不该动数据
+    expect(applyHistoryMutate).not.toHaveBeenCalled();
+    expect(screen.getByText("automation.apply_history_title")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("automation.apply_history_confirm"));
+
+    expect(applyHistoryMutate).toHaveBeenCalledTimes(1);
+    const [variables, options] = applyHistoryMutate.mock.calls[0] as [
+      { id: string; limit: number },
+      { onSuccess: (result: { scanned: number; applied: number }) => void },
+    ];
+    expect(variables).toEqual({ id: "rule-1", limit: 500 });
+
+    options.onSuccess({ scanned: 500, applied: 12 });
+    expect(showToast).toHaveBeenCalledWith("automation.apply_history_done");
   });
 
   it("点「新建规则」打开空白编辑器", () => {

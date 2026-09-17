@@ -134,6 +134,12 @@ export interface FilterRevertResult {
   reverted: number;
 }
 
+/** 手动回溯的结果：扫了多少条历史条目、实际应用了多少条 */
+export interface FilterApplyHistoryResult {
+  scanned: number;
+  applied: number;
+}
+
 /** 规则是否没有任何动作（后端视为无效规则） */
 export function hasAnyAction(actions: FilterActions): boolean {
   return Boolean(

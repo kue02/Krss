@@ -5,7 +5,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useFeeds } from "@/hooks/useFeeds";
 import { useFolders } from "@/hooks/useFolders";
-import { useFilterMutations, useFilters } from "@/hooks/useFilters";
+import { useFilterMutations, useFilters, useApplyFilterHistory } from "@/hooks/useFilters";
 import { FilterMatchesDialog } from "@/components/automation/FilterMatchesDialog";
 import { useFilterEditorStore } from "@/stores/filter-editor-store";
 import { showToast } from "@/stores/toast-store";
@@ -47,12 +47,16 @@ export function AutomationSettings() {
   const { data: feeds } = useFeeds();
   const { data: folders } = useFolders();
   const { update, remove, revert } = useFilterMutations();
+  const applyHistory = useApplyFilterHistory();
   const openNew = useFilterEditorStore((state) => state.openNew);
   const openEdit = useFilterEditorStore((state) => state.openEdit);
 
   const [pendingDelete, setPendingDelete] = useState<FilterRule | null>(null);
   const [deleteWithRevert, setDeleteWithRevert] = useState(true);
   const [matchesRule, setMatchesRule] = useState<FilterRule | null>(null);
+  const [applyRule, setApplyRule] = useState<FilterRule | null>(null);
+  /** 回溯的扫描上限：一次别拖垮实例（后端上限 2000） */
+  const applyHistoryLimit = 500;
 
   const sorted = useMemo(
     () =>
@@ -319,6 +323,13 @@ export function AutomationSettings() {
                     </button>
                     <button
                       type="button"
+                      onClick={() => setApplyRule(rule)}
+                      className={actionButton}
+                    >
+                      {t("automation.apply_history")}
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => {
                         setDeleteWithRevert(true);
                         setPendingDelete(rule);
@@ -337,6 +348,60 @@ export function AutomationSettings() {
           </tbody>
         </table>
       )}
+
+      {/* 回溯确认（会改历史条目，所以先说清范围与语义再执行） */}
+      <Dialog
+        open={applyRule !== null}
+        onOpenChange={(open) => !open && setApplyRule(null)}
+      >
+        <DialogContent className="max-w-md">
+          <DialogTitle className="text-base font-semibold">
+            {t("automation.apply_history_title")}
+          </DialogTitle>
+          <div className="mt-2 text-sm text-muted-foreground">
+            {t("automation.apply_history_description", {
+              limit: applyHistoryLimit,
+            })}
+          </div>
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setApplyRule(null)}
+              className="h-8 rounded-md px-3 text-sm text-muted-foreground hover:text-foreground"
+            >
+              {t("automation.cancel")}
+            </button>
+            <button
+              type="button"
+              disabled={applyHistory.isPending}
+              onClick={() => {
+                if (!applyRule) return;
+                applyHistory.mutate(
+                  { id: applyRule.id, limit: applyHistoryLimit },
+                  {
+                    onSuccess: (result) => {
+                      setApplyRule(null);
+                      showToast(
+                        result.applied > 0
+                          ? t("automation.apply_history_done", {
+                              scanned: result.scanned,
+                              applied: result.applied,
+                            })
+                          : t("automation.apply_history_none"),
+                      );
+                    },
+                  },
+                );
+              }}
+              className="h-8 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {applyHistory.isPending
+                ? t("automation.saving")
+                : t("automation.apply_history_confirm")}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* 命中日志（「为什么这条看不到」的答案） */}
       <FilterMatchesDialog
