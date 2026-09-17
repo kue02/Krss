@@ -28,6 +28,12 @@ vi.mock("@/hooks/useEntries", () => ({
 
 vi.mock("@/hooks/useFilters", () => ({
   useUnmuteEntry: () => ({ mutate: unmuteMutate }),
+  // MutedBadge 用规则名做悬停说明；测试里给一条规则即可
+  useFilters: () => ({
+    data: [{ id: "rule-1", name: "静音推广" }],
+    isLoading: false,
+    isError: false,
+  }),
 }));
 
 vi.mock("@/stores/translation-store", () => ({
@@ -296,7 +302,11 @@ describe("EntryListItem", () => {
       fireEvent.contextMenu(screen.getByText("Entry title"));
       fireEvent.click(screen.getByText("automation.unmute_entry"));
 
-      expect(unmuteMutate).toHaveBeenCalledWith(entry.id);
+      // 取消静音后会弹一条提示，所以第二个参数是 onSuccess 回调
+      expect(unmuteMutate).toHaveBeenCalledWith(
+        entry.id,
+        expect.objectContaining({ onSuccess: expect.any(Function) }),
+      );
       // 取消静音不该顺带打开规则编辑器
       expect(useFilterEditorStore.getState().open).toBe(false);
     });

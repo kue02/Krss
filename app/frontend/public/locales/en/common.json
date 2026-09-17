@@ -537,9 +537,7 @@
     "scope_all": "All feeds",
     "scope_folder": "Folder",
     "scope_feed": "Feed",
-    "scope_all_hint": "Applies to every feed",
     "conditions_any": "No conditions (matches everything)",
-    "conditions_count": "{{count}} conditions",
     "edit": "Edit",
     "delete": "Delete",
     "revert": "Revert",
@@ -586,7 +584,6 @@
     "preview_failed": "Preview failed",
     "save": "Save",
     "saving": "Saving…",
-    "saved": "Saved",
     "cancel": "Cancel",
     "invalid": "Name, scope and at least one action are required; values are required per operator",
     "save_failed": "Failed to save",
@@ -619,12 +616,11 @@
     "matches_title": "Match log",
     "matches_empty": "No matches yet",
     "matches_of": "Match log of “{{name}}”",
-    "revert_this": "Revert this rule's impact",
     "muted_badge": "Muted",
     "muted_by": "Muted · {{name}}",
     "muted_unknown_rule": "Muted · rule deleted",
     "unmute_entry": "Unmute",
     "unmuted": "Unmuted",
-    "muted_view_hint": "These entries were muted by rules. They stay readable and starrable; unmuting puts them back in the unread flow."
+    "muted_view_hint": "Muted by rules — readable, reversible"
   }
 }

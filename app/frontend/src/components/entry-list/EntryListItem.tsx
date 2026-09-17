@@ -26,7 +26,8 @@ import {
 } from "@/components/ui/context-menu";
 import { useUISettingKey } from "@/hooks/useUISettings";
 import { useMarkAsRead, useMarkAsStarred } from "@/hooks/useEntries";
-import { useUnmuteEntry } from "@/hooks/useFilters";
+import { useUnmuteEntry, useFilters } from "@/hooks/useFilters";
+import { showToast } from "@/stores/toast-store";
 import { openFilterEditorForEntry } from "@/stores/filter-editor-store";
 import { useAutoReadable } from "@/hooks/useAutoReadable";
 import { stripDuplicatedTitle } from "@/lib/strip-duplicated-title";
@@ -80,12 +81,24 @@ const SOCIAL_COLLAPSE_MASK =
  *
  * 挂在元信息行里当一个小字标签用（细边 + 2px 圆角 + 10px 字号），
  * 不做大卡片/大圆角：它只是状态说明，不是操作入口（撤销在右键菜单里）。
+ * 悬停时说明是哪条规则干的（entry.filterId → 规则名），规则被删了就说清楚。
  */
-function MutedBadge() {
+function MutedBadge({ filterId }: { filterId?: string }) {
   const { t } = useTranslation();
+  const { data: filters } = useFilters();
+  const rule = filterId
+    ? filters?.find((item) => item.id === filterId)
+    : undefined;
 
   return (
-    <span className="shrink-0 rounded-[3px] border border-border/60 bg-muted/40 px-1 py-px text-[10px] font-medium leading-4 text-muted-foreground">
+    <span
+      title={
+        rule
+          ? t("automation.muted_by", { name: rule.name })
+          : t("automation.muted_unknown_rule")
+      }
+      className="shrink-0 rounded-[3px] border border-border/60 bg-muted/40 px-1 py-px text-[10px] font-medium leading-4 text-muted-foreground"
+    >
       {t("automation.muted_badge")}
     </span>
   );
@@ -106,7 +119,13 @@ function EntryContextMenuContent({ entry }: { entry: Entry }) {
     <ContextMenuContent>
       {entry.muted && (
         <>
-          <ContextMenuItem onClick={() => unmute.mutate(entry.id)}>
+          <ContextMenuItem
+            onClick={() =>
+              unmute.mutate(entry.id, {
+                onSuccess: () => showToast(t("automation.unmuted")),
+              })
+            }
+          >
             {t("automation.unmute_entry")}
           </ContextMenuItem>
           <ContextMenuSeparator />
@@ -359,7 +378,7 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
                   {entry.starred && (
                     <Star className="ml-1 size-3.5 shrink-0 text-amber-500" />
                   )}
-                  {entry.muted && <MutedBadge />}
+                  {entry.muted && <MutedBadge filterId={entry.filterId} />}
                 </div>
 
                 {/* 标题：只有不是「正文开头」时才单独显示（对齐 Folo：社交条目以正文为主） */}
@@ -599,7 +618,7 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
                     </span>
                   </>
                 )}
-                {entry.muted && <MutedBadge />}
+                {entry.muted && <MutedBadge filterId={entry.filterId} />}
               </div>
 
               {/* 标题 */}

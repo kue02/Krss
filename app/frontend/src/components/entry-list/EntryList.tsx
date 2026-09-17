@@ -155,8 +155,13 @@ export function EntryList({
     useEntriesInfinite({
       ...params,
       unreadOnly: effectiveUnreadOnly,
-      // 「已静音」才传 mutedOnly；其余状态不传 includeMuted（默认就是隐藏静音条目）
-      ...(filterValue === "muted" ? { mutedOnly: true } : {}),
+      // 「已静音」才传 mutedOnly；星标视图带上静音条目（用户显式收藏的内容不该被规则藏起来）；
+      // 其余状态不传 includeMuted（默认就是隐藏静音条目）
+      ...(filterValue === "muted"
+        ? { mutedOnly: true }
+        : filterValue === "starred"
+          ? { includeMuted: true }
+          : {}),
     });
 
   // Swipe gesture: Right swipe opens sidebar (only on mobile)
@@ -647,6 +652,11 @@ export function EntryList({
   }, [unreadCounts, selection, feeds, contentType]);
 
   // 底部筛选胶囊的当前态 filterValue 在文件上方定义（列表参数要用到它）
+  // 「已静音」是回看视图：标题跟着变，并给一行说明（这条视图里看到的不是新内容，而是被规则收起来的）
+  const headerTitle =
+    filterValue === "muted" ? t("entry_filter.muted") : title;
+  const headerSubtitle =
+    filterValue === "muted" ? t("automation.muted_view_hint") : undefined;
 
   return (
     <div
@@ -663,7 +673,8 @@ export function EntryList({
         testId="entry-list-header"
       >
         <EntryListHeader
-          title={title}
+          title={headerTitle}
+          subtitle={headerSubtitle}
           unreadCount={unreadCount}
           unreadOnly={unreadOnly}
           onToggleUnreadOnly={onToggleUnreadOnly}

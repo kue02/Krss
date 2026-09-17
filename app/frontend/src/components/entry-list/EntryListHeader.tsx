@@ -11,6 +11,8 @@ import { dispatchScrollToTop } from "@/hooks/useScrollToTop";
 
 interface EntryListHeaderProps {
   title: string;
+  /** 标题下的一行说明（如「已静音」视图的解释）；有它时不再显示未读计数 */
+  subtitle?: string;
   unreadCount: number;
   unreadOnly: boolean;
   onToggleUnreadOnly: () => void;
@@ -32,6 +34,7 @@ interface EntryListHeaderProps {
 
 export function EntryListHeader({
   title,
+  subtitle,
   unreadCount,
   unreadOnly,
   onToggleUnreadOnly,
@@ -82,10 +85,16 @@ export function EntryListHeader({
           >
             {title}
           </h2>
-          {unreadCount > 0 && (
+          {subtitle ? (
             <span className="block truncate text-xs text-muted-foreground">
-              {t("entry.unread_count", { count: unreadCount })}
+              {subtitle}
             </span>
+          ) : (
+            unreadCount > 0 && (
+              <span className="block truncate text-xs text-muted-foreground">
+                {t("entry.unread_count", { count: unreadCount })}
+              </span>
+            )
           )}
         </div>
       </div>

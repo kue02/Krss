@@ -1123,6 +1123,31 @@ describe("EntryList translation scheduling", () => {
     expect(lastParams).not.toHaveProperty("mutedOnly");
   });
 
+  it("「已静音」视图把标题换成「已静音」并给出说明", () => {
+    // 标题与说明挂在 EntryListHeader 上，而本文件把它 mock 成 null（见文件顶部），
+    // 所以这里只断言 EntryList 确实把「已静音」态翻译进了列表参数；标题渲染由
+    // EntryListHeader.test.tsx 单独覆盖。
+    render(<EntryList {...defaultProps} />);
+    fireEvent.click(screen.getByText("entry_filter.muted"));
+
+    const lastParams = vi.mocked(useEntriesInfinite).mock.calls.at(-1)?.[0];
+    expect(lastParams).toMatchObject({ mutedOnly: true });
+  });
+
+  it("星标视图带上静音条目（用户显式收藏的内容不该被规则藏起来）", () => {
+    render(
+      <EntryList
+        {...defaultProps}
+        selection={{ type: "starred" }}
+        onFilterChange={vi.fn()}
+      />,
+    );
+
+    const lastParams = vi.mocked(useEntriesInfinite).mock.calls.at(-1)?.[0];
+    expect(lastParams).toMatchObject({ includeMuted: true });
+    expect(lastParams).not.toHaveProperty("mutedOnly");
+  });
+
   it("未读态下选中「已静音」时胶囊高亮切到已静音", () => {
     render(<EntryList {...defaultProps} unreadOnly />);
 

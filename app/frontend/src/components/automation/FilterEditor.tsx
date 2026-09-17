@@ -441,19 +441,23 @@ export function FilterEditor({
                     Boolean(draft.actions[pair.negative])) ||
                   (pair.negative === key && Boolean(draft.actions[pair.positive])),
               );
+              // 「只保留匹配」本身就会把不匹配的静音，再叠一个「静音」等于全静音 —— 挡掉这个误操作
+              const conflictsKeepOnly =
+                key === "mute" && Boolean(draft.actions.keepOnly);
               return (
                 <button
                   key={key}
                   type="button"
                   aria-pressed={active}
-                  disabled={disabled}
+                  disabled={disabled || conflictsKeepOnly}
                   onClick={() => toggleAction(key)}
                   className={cn(
                     "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
                     active
                       ? "border-primary/40 bg-primary/10 text-primary"
                       : "border-border text-muted-foreground hover:text-foreground",
-                    disabled && "cursor-not-allowed opacity-40",
+                    (disabled || conflictsKeepOnly) &&
+                      "cursor-not-allowed opacity-40",
                     key === "keepOnly" && "ml-auto",
                   )}
                 >
@@ -532,9 +536,11 @@ export function FilterEditor({
           </section>
         )}
 
-        {(validationError || saveError) && (
+        {(validationError || saveError || preview.isError) && (
           <div className="text-xs text-destructive">
-            {validationError ?? saveError}
+            {validationError ??
+              saveError ??
+              (preview.isError ? t("automation.preview_failed") : null)}
           </div>
         )}
       </div>

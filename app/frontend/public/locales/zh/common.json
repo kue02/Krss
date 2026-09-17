@@ -534,9 +534,7 @@
     "scope_all": "全部订阅",
     "scope_folder": "分类",
     "scope_feed": "订阅",
-    "scope_all_hint": "对所有订阅生效",
     "conditions_any": "无条件（全部命中）",
-    "conditions_count": "{{count}} 条条件",
     "edit": "编辑",
     "delete": "删除",
     "revert": "撤销影响",
@@ -583,7 +581,6 @@
     "preview_failed": "预览失败",
     "save": "保存",
     "saving": "保存中…",
-    "saved": "已保存",
     "cancel": "取消",
     "invalid": "名称、范围、动作都必填；条件的值按操作符必填",
     "save_failed": "保存失败",
@@ -616,12 +613,11 @@
     "matches_title": "命中记录",
     "matches_empty": "还没有命中记录",
     "matches_of": "「{{name}}」的命中记录",
-    "revert_this": "撤销这条规则的影响",
     "muted_badge": "已静音",
     "muted_by": "已静音 · {{name}}",
     "muted_unknown_rule": "已静音 · 规则已删除",
     "unmute_entry": "取消静音",
     "unmuted": "已取消静音",
-    "muted_view_hint": "这些条目被规则静音了：仍可阅读与收藏，取消静音后会回到未读流。"
+    "muted_view_hint": "被规则静音 · 仍可阅读与取消"
   }
 }

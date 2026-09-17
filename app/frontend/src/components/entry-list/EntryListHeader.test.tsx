@@ -111,3 +111,26 @@ describe("EntryListHeader 刷新按钮", () => {
     expect(screen.queryByTitle("entry.refresh_view")).toBeNull();
   });
 });
+
+describe("EntryListHeader 标题行", () => {
+  it("默认显示标题与未读计数", () => {
+    render(<EntryListHeader {...baseProps} />);
+
+    expect(screen.getByText("全部文章")).toBeTruthy();
+    expect(screen.getByText("entry.unread_count")).toBeTruthy();
+  });
+
+  it("给了 subtitle 时用它替换未读计数（「已静音」回看视图用）", () => {
+    render(
+      <EntryListHeader
+        {...baseProps}
+        title="已静音"
+        subtitle="被规则静音 · 仍可阅读与取消"
+      />,
+    );
+
+    expect(screen.getByText("已静音")).toBeTruthy();
+    expect(screen.getByText("被规则静音 · 仍可阅读与取消")).toBeTruthy();
+    expect(screen.queryByText("entry.unread_count")).toBeNull();
+  });
+});
