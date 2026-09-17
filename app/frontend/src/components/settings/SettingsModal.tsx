@@ -13,6 +13,7 @@ import { NetworkSettings } from "./tabs/NetworkSettings";
 import { AdvancedSettings } from "./tabs/AdvancedSettings";
 import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/select";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 export type SettingsTab =
   | "general"
@@ -61,29 +62,10 @@ interface SettingsModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const MOBILE_BREAKPOINT = 768;
-
-function useMobileDetect() {
-  const [isMobile, setIsMobile] = useState(
-    typeof window !== "undefined"
-      ? window.innerWidth < MOBILE_BREAKPOINT
-      : false,
-  );
-
-  useEffect(() => {
-    const handleResize = () =>
-      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  return isMobile;
-}
-
 export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
-  const isMobile = useMobileDetect();
+  const isMobile = useIsMobile();
 
   // Reset to general when modal opens
   useEffect(() => {

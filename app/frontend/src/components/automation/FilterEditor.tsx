@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { SegmentedControl } from "@/components/ui/segmented-control";
+import { Select } from "@/components/ui/select";
 import { useFeeds } from "@/hooks/useFeeds";
 import { useFolders } from "@/hooks/useFolders";
 import { useFilterPreview } from "@/hooks/useFilters";
@@ -75,11 +76,6 @@ const ACTION_ORDER: ActionKey[] = [
 const inputClass = cn(
   "h-8 w-full rounded-md border border-border bg-background px-2 text-sm",
   "placeholder:text-muted-foreground/50",
-  "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
-);
-
-const selectClass = cn(
-  "h-8 rounded-md border border-border bg-background px-2 text-sm",
   "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
 );
 
@@ -323,32 +319,37 @@ export function FilterEditor({
             options={scopeOptions}
           />
           {draft.scopeType === "folder" && (
-            <select
+            <Select
+              ariaLabel={t("automation.scope")}
               value={draft.scopeId ?? ""}
-              onChange={(event) => update({ scopeId: event.target.value })}
-              className={cn(selectClass, "w-full")}
-            >
-              <option value="">{t("automation.scope_folder_placeholder")}</option>
-              {(folders ?? []).map((folder) => (
-                <option key={folder.id} value={folder.id}>
-                  {folder.name}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => update({ scopeId: value })}
+              options={[
+                {
+                  value: "",
+                  label: t("automation.scope_folder_placeholder"),
+                },
+                ...(folders ?? []).map((folder) => ({
+                  value: folder.id,
+                  label: folder.name,
+                })),
+              ]}
+              className="w-full"
+            />
           )}
           {draft.scopeType === "feed" && (
-            <select
+            <Select
+              ariaLabel={t("automation.scope")}
               value={draft.scopeId ?? ""}
-              onChange={(event) => update({ scopeId: event.target.value })}
-              className={cn(selectClass, "w-full")}
-            >
-              <option value="">{t("automation.scope_feed_placeholder")}</option>
-              {(feeds ?? []).map((feed) => (
-                <option key={feed.id} value={feed.id}>
-                  {feed.title}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => update({ scopeId: value })}
+              options={[
+                { value: "", label: t("automation.scope_feed_placeholder") },
+                ...(feeds ?? []).map((feed) => ({
+                  value: feed.id,
+                  label: feed.title,
+                })),
+              ]}
+              className="w-full"
+            />
           )}
         </section>
 
@@ -415,11 +416,11 @@ export function FilterEditor({
                     >
                       !
                     </button>
-                    <select
+                    <Select
+                      ariaLabel={t("automation.conditions")}
                       value={condition.field}
-                      onChange={(event) => {
-                        const nextField = event.target
-                          .value as FilterConditionField;
+                      onChange={(value) => {
+                        const nextField = value as FilterConditionField;
                         // AI 相关性只配 is_relevant（后端也拦）；换回普通字段时把操作符复位
                         if (nextField === "ai_relevance") {
                           updateCondition(index, {
@@ -436,29 +437,20 @@ export function FilterEditor({
                               : condition.operator,
                         });
                       }}
-                      className={cn(selectClass, "w-28 shrink-0")}
-                    >
-                      {fieldOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                    <select
+                      options={fieldOptions}
+                      className="w-28 shrink-0"
+                    />
+                    <Select
+                      ariaLabel={t("automation.conditions")}
                       value={condition.operator}
-                      onChange={(event) =>
+                      onChange={(value) =>
                         updateCondition(index, {
-                          operator: event.target.value as FilterConditionOperator,
+                          operator: value as FilterConditionOperator,
                         })
                       }
-                      className={cn(selectClass, "w-24 shrink-0")}
-                    >
-                      {operatorOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
+                      options={operatorOptions}
+                      className="w-24 shrink-0"
+                    />
                     {needsValue ? (
                       <input
                         type="text"

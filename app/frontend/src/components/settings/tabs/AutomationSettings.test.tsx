@@ -97,6 +97,20 @@ beforeEach(() => {
   useFilterEditorStore.getState().close();
 });
 
+
+/**
+ * 打开某一行行尾的「⋯」菜单。
+ *
+ * 2026-09-17 重做自动化页时，编辑/回溯/撤销/删除 都从行内按钮收进了「⋯」菜单，
+ * 测试不能再直接点文本，得先把菜单打开（react-aria 的 MenuTrigger 认指针事件）。
+ */
+function openRowMenu(index = 0) {
+  const trigger = screen.getAllByLabelText("automation.more_actions")[index]!;
+  fireEvent.pointerDown(trigger, { pointerType: "mouse", button: 0 });
+  fireEvent.pointerUp(trigger, { pointerType: "mouse", button: 0 });
+  fireEvent.click(trigger);
+}
+
 describe("AutomationSettings", () => {
   it("没有规则时显示空态与新建入口", () => {
     render(<AutomationSettings />);
@@ -113,13 +127,14 @@ describe("AutomationSettings", () => {
     expect(screen.getByText("少数派")).toBeTruthy();
     expect(screen.getByText("automation.field_title automation.op_contains 推广")).toBeTruthy();
     expect(screen.getByText("automation.action_mute")).toBeTruthy();
-    expect(screen.getByText("3")).toBeTruthy();
+    expect(screen.getByText("automation.hits")).toBeTruthy();
   });
 
   it("点「撤销影响」调用撤销接口，并按返回条数提示", () => {
     rules.current = [rule()];
     render(<AutomationSettings />);
 
+    openRowMenu();
     fireEvent.click(screen.getByText("automation.revert"));
 
     expect(revertMutate).toHaveBeenCalledTimes(1);
@@ -156,8 +171,10 @@ describe("AutomationSettings", () => {
     rules.current = [rule()];
     render(<AutomationSettings />);
 
+    openRowMenu();
+    // 菜单里的「删除」项 → 打开确认弹窗
     fireEvent.click(screen.getByText("automation.delete"));
-    // 弹窗里的确认按钮与行内按钮同名，取最后一个（弹窗在 DOM 末尾）
+    // 弹窗里的确认按钮与菜单项同名，取最后一个（弹窗在 DOM 末尾）
     const confirmButtons = screen.getAllByText("automation.delete");
     fireEvent.click(confirmButtons[confirmButtons.length - 1]!);
 
@@ -200,6 +217,7 @@ describe("AutomationSettings", () => {
     rules.current = [rule()];
     render(<AutomationSettings />);
 
+    openRowMenu();
     fireEvent.click(screen.getByText("automation.apply_history"));
 
     // 未确认前不该动数据

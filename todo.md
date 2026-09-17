@@ -31,8 +31,17 @@
   - [ ] feed / 文件夹右键菜单：加图标 + 弹出框标题，项与 Nextflux 对齐（含分组与危险项样式）
 - [x] **3. Krss 左侧加号菜单**：已改为「添加订阅源 / 新建自动化 / 新增分类」，**移除「导入 OPML」**（连带删掉隐藏 file input 与导入逻辑）
       实测：菜单三项且无 OPML；点「新建自动化」直接开出「新建规则」抽屉（ego-browser 真点）
-- [ ] **4. 设置 → 自动化页重构**（现表格被压得看不清）：定位为**纯管理页**——规则列表 + 视图列表分开，
-      行内不再堆按钮（改行尾「⋯」菜单）、错误以行内提示 + tooltip 呈现；编辑器抽屉一起重做
+- [x] **4. 设置 → 自动化页重构**：改成纯管理页 —— 顶部工具条（用文字建规则 / + 新建规则）、「已静音条目」块、
+      **规则段**（一条两行：开关+名称+范围+状态 / 条件 → 动作 + 命中·最近命中）、**视图段**（带数量与新建入口）；
+      8 列表格删了（`tableStillThere: 0`），行内只剩开关与 ↑↓，编辑/命中记录/回溯历史/撤销影响/删除 收进行尾「⋯」菜单
+      （实测菜单 5 项）；执行失败在行内红字 + tooltip
+      —— 弹窗全部换 HeroUI（Modal / AlertDialog），控制台那条 Radix「Missing Description」告警随之消失；
+      实测：命中数点开是 HeroUI `modal__dialog--md`，含条目标题 / 动作 / 来源 / 时间
+- [x] **6. 自动化编辑器外壳（方案 A）**：桌面 HeroUI `Drawer` 右侧 620px；移动端底部全屏 Sheet；共用同一个 `FilterEditor`
+      —— 实测（ego-browser 真点）：桌面 `drawer__content--right` 右贴边（right=视口宽）宽 620；
+      抽屉开着把视口收窄到 390×844 后**实时**切成 `drawer__content--bottom`，盒子 390×844 满屏
+      —— 踩到的坑：HeroUI 的 drawer content 默认 left/right 齐设（过约束），只给宽度会让浏览器按 left 解、抽屉跑到左边（实测 x=0），
+      必须显式 `left-auto right-0`
 - [x] **5. 中栏筛选胶囊去掉「已静音」**：只剩星标 / 未读 / 全部三态；回看入口搬进 设置 → 自动化
       （「已静音条目 · 查看已静音」一键切视图 + 关设置）
       —— 实测：自动化页有该块、点击后设置关闭 + 列表标题变「已静音」+ 胶囊保持三态
@@ -46,7 +55,8 @@
   - [x] 下拉框换 HeroUI 组件：新增 `src/components/ui/select.tsx`（HeroUI v3 `Select` + `ListBox`，react-aria 引擎、自带弹层动效/键盘/触摸），
         **设置页 4 处已换**（AI: provider / 摘要语言 / 翻译通道；设置弹窗移动端 tab 选择器）
         —— 实测：`select__trigger` → 弹层 `data-slot="list-box"` 带 3 个 option（ego-browser 真点）
-  - [ ] `FilterEditor` 里剩下的 4 处原生 `<select>`：随第 4/6 项重构一并换（避免改两遍）
+  - [x] `FilterEditor` 里剩下的 4 处原生 `<select>` 已随第 4/6 项重构换掉（编辑器的范围/字段/操作符）
+        —— 实测：全仓 `<select>` 归零（仅剩 HeroUI Select 内部用于表单语义的隐藏原生元素）；顺手删掉只有它用的 `selectClass`
   - [x] **性能基线实测（改动前取证）**：`language-detect-*.js` **454 KB(gzip)**（全站最大，懒加载但列表判定语言即拉起）；
         条目列表**无虚拟化**（只有社交流用的 `@virtuoso.dev/masonry`）；`EntryListItem` **无 `memo()`** → 列表状态一变就重渲染所有卡片；
         `framer-motion` 与 `motion` 12.x **双份依赖**；`dist/assets` 里已有 shiki 语言分块（cpp 46KB、ts/tsx/jsx 各 16KB）
