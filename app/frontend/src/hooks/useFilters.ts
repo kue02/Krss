@@ -1,0 +1,100 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  createFilter,
+  deleteFilter,
+  listFilterMatches,
+  listFilters,
+  previewFilter,
+  revertFilter,
+  unmuteEntry,
+  updateFilter,
+} from "@/api";
+import type { FilterWritePayload } from "@/types/filters";
+
+function filtersQueryKey() {
+  return ["filters"] as const;
+}
+
+/** 规则列表（按 position 升序，顺序即优先级） */
+export function useFilters() {
+  return useQuery({
+    queryKey: filtersQueryKey(),
+    queryFn: listFilters,
+  });
+}
+
+interface UpdateFilterVariables {
+  id: string;
+  payload: FilterWritePayload;
+}
+
+/**
+ * 规则写操作。
+ * 任何写操作都可能改动条目上的标记（静音/已读/星标），所以一并让 entries 失效 —— 否则
+ * 「刚建的规则把条目静音了」这件事要等下一次轮询才在列表里体现出来。
+ */
+export function useFilterMutations() {
+  const queryClient = useQueryClient();
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: filtersQueryKey() });
+    queryClient.invalidateQueries({ queryKey: ["entries"] });
+    queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
+    queryClient.invalidateQueries({ queryKey: ["starredCount"] });
+  };
+
+  const create = useMutation({
+    mutationFn: (payload: FilterWritePayload) => createFilter(payload),
+    onSuccess: invalidate,
+  });
+
+  const update = useMutation({
+    mutationFn: ({ id, payload }: UpdateFilterVariables) =>
+      updateFilter(id, payload),
+    onSuccess: invalidate,
+  });
+
+  const remove = useMutation({
+    mutationFn: ({ id, revert }: { id: string; revert?: boolean }) =>
+      deleteFilter(id, revert ?? false),
+    onSuccess: invalidate,
+  });
+
+  const revert = useMutation({
+    mutationFn: (id: string) => revertFilter(id),
+    onSuccess: invalidate,
+  });
+
+  return { create, update, remove, revert };
+}
+
+/** 干跑预览（会命中哪些、会影响多少条）—— 不写任何数据 */
+export function useFilterPreview() {
+  return useMutation({
+    mutationFn: (variables: { payload: FilterWritePayload; limit?: number }) =>
+      previewFilter(variables.payload, variables.limit ?? 200),
+  });
+}
+
+/** 某条规则的命中记录（「为什么看不到这条」的依据） */
+export function useFilterMatches(id: string | null, limit = 50) {
+  return useQuery({
+    queryKey: ["filterMatches", id, limit],
+    queryFn: () => listFilterMatches(id!, limit),
+    enabled: Boolean(id),
+  });
+}
+
+/** 取消单条条目的静音（条目上的「取消静音」按钮用） */
+export function useUnmuteEntry() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => unmuteEntry(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["entries"] });
+      queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
+      queryClient.invalidateQueries({ queryKey: ["filters"] });
+    },
+  });
+}

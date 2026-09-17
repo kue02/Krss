@@ -64,6 +64,10 @@ export interface Entry {
   publishedAt?: string;
   read: boolean;
   starred: boolean;
+  /** 被过滤规则静音：列表默认隐藏，可在「已静音」里回看、可撤销 */
+  muted: boolean;
+  /** 最后命中这条条目的规则 ID（用于显示「已静音 · 规则名」） */
+  filterId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -80,6 +84,10 @@ export interface EntryListParams {
   unreadOnly?: boolean;
   starredOnly?: boolean;
   hasThumbnail?: boolean;
+  /** 连被规则静音的条目一起列出（默认隐藏） */
+  includeMuted?: boolean;
+  /** 只看被规则静音的条目 */
+  mutedOnly?: boolean;
   limit?: number;
   offset?: number;
 }

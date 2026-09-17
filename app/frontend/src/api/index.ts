@@ -24,6 +24,13 @@ import type {
   NetworkTestRequest,
   NetworkTestResponse,
 } from "@/types/settings";
+import type {
+  FilterMatch,
+  FilterPreviewResult,
+  FilterRevertResult,
+  FilterRule,
+  FilterWritePayload,
+} from "@/types/filters";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? "";
 const TOKEN_KEY = "gist_auth_token";
@@ -498,6 +505,12 @@ export async function listEntries(
   if (params.hasThumbnail) {
     searchParams.set("hasThumbnail", "true");
   }
+  if (params.includeMuted) {
+    searchParams.set("includeMuted", "true");
+  }
+  if (params.mutedOnly) {
+    searchParams.set("mutedOnly", "true");
+  }
   if (params.limit !== undefined) {
     searchParams.set("limit", String(params.limit));
   }
@@ -567,6 +580,14 @@ export async function updateEntryStarred(
 
 export async function getStarredCount(): Promise<StarredCountResponse> {
   return request<StarredCountResponse>("/api/starred-count");
+}
+
+/**
+ * 取消单条条目的静音 —— 规则写上去的标记由用户手动反悔：
+ * 清掉 muted/filter_id，并让这条回到未读流里。
+ */
+export async function unmuteEntry(id: string): Promise<void> {
+  return request<void>(`/api/entries/${id}/unmute`, { method: "POST" });
 }
 
 export async function startImportOPML(file: File): Promise<void> {
@@ -1030,4 +1051,70 @@ export async function deleteDomainRateLimit(host: string): Promise<void> {
   return request<void>(`/api/domain-rate-limits/${encodeURIComponent(host)}`, {
     method: "DELETE",
   });
+}
+
+// —— 过滤规则（自动化） ——
+// 规则挂在抓取入库之后执行：只对刚入库的新条目生效，只改条目上的标记。
+// 想对老条目生效用 preview 看清影响后再手动处理（本项目默认不回溯）。
+
+export async function listFilters(): Promise<FilterRule[]> {
+  const data = await request<{ filters: FilterRule[] | null }>("/api/filters");
+  return data.filters ?? [];
+}
+
+export async function createFilter(
+  payload: FilterWritePayload,
+): Promise<FilterRule> {
+  return request<FilterRule>("/api/filters", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateFilter(
+  id: string,
+  payload: FilterWritePayload,
+): Promise<FilterRule> {
+  return request<FilterRule>(`/api/filters/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** revert=true 时顺带把这条规则静音过的条目恢复未读 */
+export async function deleteFilter(
+  id: string,
+  revert = false,
+): Promise<FilterRevertResult> {
+  const query = revert ? "?revert=true" : "";
+  return request<FilterRevertResult>(`/api/filters/${id}${query}`, {
+    method: "DELETE",
+  });
+}
+
+/** 干跑：不写任何数据，只回答「会命中哪些、会影响多少条」 */
+export async function previewFilter(
+  payload: FilterWritePayload,
+  limit = 200,
+): Promise<FilterPreviewResult> {
+  return request<FilterPreviewResult>(`/api/filters/preview?limit=${limit}`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function revertFilter(id: string): Promise<FilterRevertResult> {
+  return request<FilterRevertResult>(`/api/filters/${id}/revert`, {
+    method: "POST",
+  });
+}
+
+export async function listFilterMatches(
+  id: string,
+  limit = 50,
+): Promise<FilterMatch[]> {
+  const data = await request<{ matches: FilterMatch[] | null }>(
+    `/api/filters/${id}/matches?limit=${limit}`,
+  );
+  return data.matches ?? [];
 }
