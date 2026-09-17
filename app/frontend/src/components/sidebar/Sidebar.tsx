@@ -25,9 +25,11 @@ import { SidebarHeader } from "./SidebarHeader";
 import { SidebarAccountBar } from "./SidebarAccountBar";
 import { StarredItem } from "./StarredItem";
 import { FeedCategory } from "./FeedCategory";
+import { ListBox } from "@heroui/react";
 import { FeedItem } from "./FeedItem";
 import { ContentTypeSwitcher } from "./ContentTypeSwitcher";
 import { useFilters, useViewCounts } from "@/hooks/useFilters";
+import { useUISettingKey } from "@/hooks/useUISettings";
 import { useFilterViewStore } from "@/stores/filter-view-store";
 import { useSettingsModalStore } from "@/stores/settings-modal-store";
 import { feedItemStyles, sidebarItemIconStyles } from "./styles";
@@ -418,6 +420,15 @@ export function Sidebar({
 
   // 保存的筛选视图：设置 → 自动化里建的「范围 + 条件」，这里只是快捷入口
   const { data: filterList } = useFilters();
+  // 第一栏订阅外观（用户 11-12）：「名称 + @源站」这一档把订阅行放进 HeroUI ListBox。
+  // ListBox 的项要求是它的直接子元素，所以 FeedItem 在那一档下换成 ListBox.Item 当根
+  //（两侧根共用同一份行内容与右键菜单，见 FeedItem 的 asListBoxItem）。
+  const feedAppearance = useUISettingKey("sidebarFeedAppearance");
+  const listBoxMode = feedAppearance === "name_and_site";
+  const selectedFeedKeys = new Set<string>(
+    selection.type === "feed" && selection.feedId ? [selection.feedId] : [],
+  );
+
   // 数量角标（用户 11-15）：两档星标各一个数 + 每条视图的命中数，都跟进当前内容类型
   const starredCountAll = useStarredCount().data?.count ?? 0;
   const starredCountView = useStarredCount(contentType).data?.count ?? 0;
@@ -596,7 +607,39 @@ export function Sidebar({
                         onChangeType={handleChangeFolderType}
                         onBulkOverrides={handleBulkOverrides}
                       >
-                        {folderFeeds.map((feed) => (
+                        {listBoxMode ? (
+                          <ListBox
+                            aria-label={folder.name}
+                            selectionMode="single"
+                            selectedKeys={selectedFeedKeys}
+                            onAction={(key) => onSelectFeed(String(key))}
+                            className="space-y-px"
+                          >
+                            {folderFeeds.map((feed) => (
+                            <FeedItem
+                              asListBoxItem
+                              key={feed.id}
+                              feedId={feed.id}
+                              name={feed.title}
+                              feedUrl={feed.url}
+                              siteUrl={feed.siteUrl}
+                              onRefresh={handleRefreshFeed}
+                              iconPath={feed.iconPath}
+                              unreadCount={unreadCounts.get(feed.id) || 0}
+                              isActive={isFeedSelected(feed.id)}
+                              errorMessage={feed.errorMessage}
+                              onClick={() => onSelectFeed(feed.id)}
+                              className="pl-6"
+                              folders={folders}
+                              onEdit={handleEditFeed}
+                              onDelete={handleDeleteFeed}
+                              onMoveToFolder={handleMoveToFolder}
+                              onChangeType={handleChangeFeedType}
+                            />
+                            ))}
+                          </ListBox>
+                        ) : (
+                          folderFeeds.map((feed) => (
                           <FeedItem
                             key={feed.id}
                             feedId={feed.id}
@@ -616,13 +659,46 @@ export function Sidebar({
                             onMoveToFolder={handleMoveToFolder}
                             onChangeType={handleChangeFeedType}
                           />
-                        ))}
+                          ))
+                        )}
                       </FeedCategory>
                     </div>
                   ),
                 )}
 
-                {sortedUncategorizedFeeds.map((feed) => (
+                {listBoxMode ? (
+                  <ListBox
+                    aria-label="feeds"
+                    selectionMode="single"
+                    selectedKeys={selectedFeedKeys}
+                    onAction={(key) => onSelectFeed(String(key))}
+                    className="space-y-px"
+                  >
+                    {sortedUncategorizedFeeds.map((feed) => (
+                  <FeedItem
+                    asListBoxItem
+                      key={feed.id}
+                      feedId={feed.id}
+                      name={feed.title}
+                      feedUrl={feed.url}
+                              siteUrl={feed.siteUrl}
+                      onRefresh={handleRefreshFeed}
+                      iconPath={feed.iconPath}
+                      unreadCount={unreadCounts.get(feed.id) || 0}
+                      isActive={isFeedSelected(feed.id)}
+                      errorMessage={feed.errorMessage}
+                      onClick={() => onSelectFeed(feed.id)}
+                      className="pl-2.5"
+                      folders={folders}
+                      onEdit={handleEditFeed}
+                      onDelete={handleDeleteFeed}
+                      onMoveToFolder={handleMoveToFolder}
+                      onChangeType={handleChangeFeedType}
+                    />
+                    ))}
+                  </ListBox>
+                ) : (
+                  sortedUncategorizedFeeds.map((feed) => (
                   <FeedItem
                     key={feed.id}
                     feedId={feed.id}
@@ -642,7 +718,8 @@ export function Sidebar({
                     onMoveToFolder={handleMoveToFolder}
                     onChangeType={handleChangeFeedType}
                   />
-                ))}
+                  ))
+                )}
               </div>
             </SidebarScrollArea>
           </motion.div>

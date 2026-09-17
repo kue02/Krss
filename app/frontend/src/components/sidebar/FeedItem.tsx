@@ -31,6 +31,7 @@ import {
   Tags,
   Trash2,
 } from "lucide-react";
+import { ListBox, Label, Description } from "@heroui/react";
 import { useContextMenu } from "@/hooks/useContextMenu";
 import { resolveFeedSiteUrl } from "@/lib/feed-site";
 import { useUISettingKey } from "@/hooks/useUISettings";
@@ -47,6 +48,13 @@ interface FeedItemProps {
   feedUrl?: string;
   /** 订阅主页地址（RSS 元数据里的 site_url）；为空时由 feedUrl 反解（见 lib/feed-site） */
   siteUrl?: string;
+  /**
+   * 作为 HeroUI `ListBox.Item` 渲染（用户 11-12「名称 + @源站」外观用）。
+   * 为什么不能只把外层 div 换掉：RAC 的集合要求**项是 ListBox 的直接子元素**，
+   * 而默认结构里每一项外面套着 Radix 的 ContextMenu 触发器 —— 所以 ListBox 模式下
+   * 根就是 `ListBox.Item`，把 ContextMenu 触发器挪到项内部包住内容。
+   */
+  asListBoxItem?: boolean;
   iconPath?: string;
   unreadCount?: number;
   isActive?: boolean;
@@ -66,6 +74,7 @@ export function FeedItem({
   feedId,
   feedUrl,
   siteUrl,
+  asListBoxItem = false,
   iconPath,
   unreadCount,
   isActive = false,
@@ -143,20 +152,9 @@ export function FeedItem({
     );
   }, [feedId, feedUrl, name]);
 
-  return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild ref={triggerRef}>
-        <div
-          data-active={isActive}
-          className={cn(
-            feedItemStyles,
-            "group relative justify-between py-0.5 pr-2",
-            className,
-          )}
-          onClick={onClick}
-          {...contextMenuProps}
-        >
-          <Ripple hoverOpacity={0} pressedOpacity={0.05} duration={100} />
+  /** 行内容（图标 + 名称/源站 + 错误提示 + 未读数）：两套根共用 */
+  const rowContent = (
+    <>
           <div
             className={cn(
               // gap-2：与分组行/内容类型行一致，图标和名称之间留 8px（原来贴在一起）
@@ -179,8 +177,30 @@ export function FeedItem({
             </span>
             {/* 订阅名；「名称 + @源站」外观下把主站域名挂在后面（用户 11-12），
                 悬浮变色、点击直接开主页，点它不要连带选中这个订阅（stopPropagation） */}
-            <span className="min-w-0 truncate">{name}</span>
-            {siteHost && (
+            {asListBoxItem ? (
+              <span className="flex min-w-0 flex-col items-start">
+                <Label className="max-w-full truncate text-[0.8125rem] leading-4 font-medium">
+                  {name}
+                </Label>
+                {siteHost && (
+                  <Description className="max-w-full truncate text-[0.7rem]">
+                    <a
+                      href={siteUrlResolved ?? undefined}
+                      title={siteUrlResolved ?? undefined}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(event) => event.stopPropagation()}
+                      className="hover:text-foreground hover:underline"
+                    >
+                      @{siteHost}
+                    </a>
+                  </Description>
+                )}
+              </span>
+            ) : (
+              <span className="min-w-0 truncate">{name}</span>
+            )}
+            {!asListBoxItem && siteHost && (
               <a
                 href={siteUrlResolved ?? undefined}
                 title={siteUrlResolved ?? undefined}
@@ -208,8 +228,11 @@ export function FeedItem({
               {unreadCount}
             </span>
           )}
-        </div>
-      </ContextMenuTrigger>
+    </>
+  );
+
+  /** 右键菜单内容：两套根共用 */
+  const rowMenu = (
       <ContextMenuContent>
         {/* 标题行：说清这是「哪个订阅」的菜单 —— Nextflux 的右键菜单顶部也有这么一行，
             这里额外带上 favicon（用户要求：弹出框要有标题、项要有图标） */}
@@ -325,6 +348,100 @@ export function FeedItem({
           </>
         )}
       </ContextMenuContent>
+  );
+
+  if (asListBoxItem) {
+    return (
+      <ListBox.Item
+        id={feedId}
+        textValue={name}
+        data-active={isActive}
+        className={cn("group", hasError && "text-red-500 dark:text-red-400", className)}
+        {...contextMenuProps}
+      >
+        <ContextMenu>
+          <ContextMenuTrigger asChild>
+            <span
+              ref={triggerRef}
+              className="flex w-full min-w-0 items-center justify-between gap-2"
+            >
+              {rowContent}
+            </span>
+          </ContextMenuTrigger>
+          {rowMenu}
+        </ContextMenu>
+      </ListBox.Item>
+    );
+  }
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild ref={triggerRef}>
+        <div
+          data-active={isActive}
+          className={cn(
+            feedItemStyles,
+            "group relative justify-between py-0.5 pr-2",
+            className,
+          )}
+          onClick={onClick}
+          {...contextMenuProps}
+        >
+          <Ripple hoverOpacity={0} pressedOpacity={0.05} duration={100} />
+          <div
+            className={cn(
+              // gap-2：与分组行/内容类型行一致，图标和名称之间留 8px（原来贴在一起）
+              "flex min-w-0 items-center gap-2",
+              hasError && "text-red-500 dark:text-red-400",
+            )}
+          >
+            <span className={sidebarItemIconStyles}>
+              {iconPath && !iconError ? (
+                <img
+                  src={`/icons/${iconPath}`}
+                  alt=""
+                  className={feedIconImageStyles}
+                  onError={() => setIconError(true)}
+                />
+              ) : (
+                // 无图标时占位图标要与 favicon 同尺寸（16px），否则这一行的名称会比其他行偏一点
+                <RssIcon className="size-4 text-muted-foreground" />
+              )}
+            </span>
+            {/* 订阅名；「名称 + @源站」外观下把主站域名挂在后面（用户 11-12），
+                悬浮变色、点击直接开主页，点它不要连带选中这个订阅（stopPropagation） */}
+            <span className="min-w-0 truncate">{name}</span>
+            {siteHost && (
+              <a
+                href={siteUrlResolved ?? undefined}
+                title={siteUrlResolved ?? undefined}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(event) => event.stopPropagation()}
+                className="shrink-0 truncate text-[0.7rem] text-muted-foreground/70 transition-colors hover:text-foreground hover:underline"
+              >
+                @{siteHost}
+              </a>
+            )}
+            {hasError && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="ml-1 flex shrink-0 cursor-default">
+                    <ErrorIcon className="size-3.5 text-red-500" />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="right">{errorMessage}</TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+          {unreadCount !== undefined && unreadCount > 0 && (
+            <span className="shrink-0 text-[0.7rem] font-medium tabular-nums text-muted-foreground">
+              {unreadCount}
+            </span>
+          )}
+        </div>
+      </ContextMenuTrigger>
+      {rowMenu}
     </ContextMenu>
   );
 }

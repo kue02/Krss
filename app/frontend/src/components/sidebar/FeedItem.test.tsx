@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ListBox } from "@heroui/react";
 import { FeedItem } from "./FeedItem";
 import { queryClient } from "@/lib/queryClient";
 import { useFilterEditorStore } from "@/stores/filter-editor-store";
@@ -134,6 +135,29 @@ describe("FeedItem 右键菜单", () => {
     const link = screen.getByText("@x.com");
     expect(link.getAttribute("href")).toBe("https://x.com/op7418");
     expect(link.getAttribute("target")).toBe("_blank");
+  });
+
+  it("ListBox 模式：渲染成 ListBox.Item，名称与 @源站 走 Label + Description（用户 11-12）", () => {
+    uiSettings.sidebarFeedAppearance = "name_and_site";
+
+    render(
+      <ListBox aria-label="订阅">
+        <FeedItem
+          feedId="feed-tw"
+          name="Twitter @歸藏"
+          feedUrl="https://rsshub.example.com/twitter/user/op7418"
+          asListBoxItem
+        />
+      </ListBox>,
+    );
+
+    const option = document.querySelector('[role="option"]');
+    expect(option).not.toBeNull();
+    // 两行：Label（名称）+ Description（@源站）—— 这正是 HeroUI 文档里那种排版
+    expect(option?.querySelector('[data-slot="label"]')?.textContent).toBe("Twitter @歸藏");
+    const desc = option?.querySelector('[data-slot="description"]');
+    expect(desc?.textContent).toBe("@x.com");
+    expect(desc?.querySelector("a")?.getAttribute("href")).toBe("https://x.com/op7418");
   });
 
   it("默认外观：行里没有 @源站 链接", () => {
