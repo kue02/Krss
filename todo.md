@@ -59,7 +59,16 @@
       （实测接口：`mutedOnly=true` 返回 2 条，加 `contentType=article` 返回 0 条 —— 静音条目属于别的内容类型）；
       回看态现在不带 contentType，实测变成 2 张卡；补了回归测试
 - [ ] **6. 自动化编辑器（右侧抽屉）重构**：桌面保留抽屉、移动端改全屏 Sheet（考虑移动端输入与滚动体验）
-- [ ] **7. 正文代码块**：适配 + 语法高亮 + 行号（对齐 Nextflux 的 shiki 实现；按需加载语言，避免拖慢首屏）
+- [x] **7. 正文代码块**：适配 + 语法高亮 + 行号
+      - **适配（真问题）**：文章里的代码块是 WordPress/WP-Syntax 风格 `<pre class="brush: bash">`，**没有 `<code>` 子元素**，
+        而高亮 hook 只找 `pre code` → 这类块被整个跳过（既不高亮也没行号）。现在：裸 `pre` 先补 `<code>` 壳再走同一套流程，
+        语言从 `brush: x` / `language-x` / `lang-x` / `data-language` 里认
+      - **外观**：`pre.shiki` 原先被设成透明底（看着就是一段等宽文字），改成「块本体用主题 shiki 底、span 保持透明」；
+        补边框 + 10px 圆角 + 内边距；窄屏横向滚动、宽屏折行（与 Nextflux 的 `pre code` 表现一致）
+      - **行号**：CSS 计数器画（对齐 Nextflux 的 `.line-numbers`，不额外包 DOM），行号不可被选中；
+        开关在 外观 → 阅读 → **代码块行号**（`showLineNumbers`，默认**开** —— Nextflux 默认关，但用户明确要行号）
+      - 实测（ego-browser + 截图逐项核对）：`brush: bash` 被识别 → 15 行、29 个着色 token、`data-shiki-highlighted=true`、
+        头部 BASH + 复制按钮、`overflowPx=0`、行号 1–15 可见、灰底圆角边框
 - [ ] **8. 自动化顺序改拖动**（现在是 ↑↓ 按钮）：拖拽手柄 + 位移动效，落库仍用 position
 - [ ] **9. 细调与性能**（贯穿全批）
   - [x] 下拉框换 HeroUI 组件：新增 `src/components/ui/select.tsx`（HeroUI v3 `Select` + `ListBox`，react-aria 引擎、自带弹层动效/键盘/触摸），
