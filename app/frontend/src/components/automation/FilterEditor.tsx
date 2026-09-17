@@ -420,25 +420,25 @@ export function FilterEditor({
           {draft.scopeType === "feed" && (
             <div className="space-y-1">
               {/* 订阅范围可多选（用户 11-16）：勾几个源，规则/视图就作用在这几个源上 */}
-              <Select
-                ariaLabel={t("automation.scope")}
+              <ToggleButtonGroup
+                aria-label={t("automation.scope")}
                 selectionMode="multiple"
-                values={draft.scopeIds ?? (draft.scopeId ? [draft.scopeId] : [])}
-                onValuesChange={(values) =>
+                selectedKeys={draft.scopeIds ?? (draft.scopeId ? [draft.scopeId] : [])}
+                onSelectionChange={(keys) =>
                   update({
-                    scopeIds: values,
-                    // 多选后不再写单选字段，免得两个字段各说一套；清空时回落到未选
+                    scopeIds: [...keys].map(String),
+                    // 多选后不再写单选字段，免得两个字段各说一套
                     scopeId: undefined,
                   })
                 }
-                value=""
-                onChange={() => undefined}
-                options={(feeds ?? []).map((feed) => ({
-                  value: feed.id,
-                  label: feed.title,
-                }))}
-                className="w-full"
-              />
+                className="flex max-h-56 flex-wrap gap-1 overflow-y-auto rounded-md border border-border p-2"
+              >
+                {(feeds ?? []).map((feed) => (
+                  <ToggleButton key={feed.id} id={feed.id} className="text-xs">
+                    {feed.title}
+                  </ToggleButton>
+                ))}
+              </ToggleButtonGroup>
               <div className="text-xs text-muted-foreground">
                 {t("automation.scope_feed_multi_hint")}
               </div>
