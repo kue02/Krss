@@ -1598,6 +1598,53 @@ const docTemplate = `{
                 }
             }
         },
+        "/filters/{id}/apply": {
+            "post": {
+                "description": "Backfill: run the rule chain (first match wins, idempotent) over the most recent entries in this rule's scope",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "filters"
+                ],
+                "summary": "Apply rule to history",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Filter ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "How many recent entries to scan (default 500, max 2000)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.filterApplyHistoryResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/filters/{id}/matches": {
             "get": {
                 "description": "Get the recent entries this rule matched (audit log for \"why is this hidden\")",
@@ -3141,6 +3188,17 @@ const docTemplate = `{
                 },
                 "unstar": {
                     "type": "boolean"
+                }
+            }
+        },
+        "internal_handler.filterApplyHistoryResponse": {
+            "type": "object",
+            "properties": {
+                "applied": {
+                    "type": "integer"
+                },
+                "scanned": {
+                    "type": "integer"
                 }
             }
         },

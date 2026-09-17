@@ -67,6 +67,7 @@ func TestHandler_RegisterRoutes(t *testing.T) {
 	assertRoute(t, routes, http.MethodPatch, "/filters/:id")
 	assertRoute(t, routes, http.MethodDelete, "/filters/:id")
 	assertRoute(t, routes, http.MethodPost, "/filters/preview")
+	assertRoute(t, routes, http.MethodPost, "/filters/:id/apply")
 	assertRoute(t, routes, http.MethodPost, "/filters/:id/revert")
 	assertRoute(t, routes, http.MethodGet, "/filters/:id/matches")
 

@@ -29,6 +29,7 @@ func (h *FilterHandler) RegisterRoutes(g *echo.Group) {
 	g.PATCH("/filters/:id", h.Update)
 	g.DELETE("/filters/:id", h.Delete)
 	g.POST("/filters/preview", h.Preview)
+	g.POST("/filters/:id/apply", h.ApplyToHistory)
 	g.POST("/filters/:id/revert", h.Revert)
 	g.GET("/filters/:id/matches", h.ListMatches)
 }
@@ -99,6 +100,11 @@ type filterPreviewResponse struct {
 
 type filterRevertResponse struct {
 	Reverted int64 `json:"reverted"`
+}
+
+type filterApplyHistoryResponse struct {
+	Scanned int `json:"scanned"`
+	Applied int `json:"applied"`
 }
 
 type filterMatchItem struct {
@@ -269,6 +275,39 @@ func (h *FilterHandler) Preview(c echo.Context) error {
 		response.Matched[i] = entry
 	}
 	return c.JSON(http.StatusOK, response)
+}
+
+// ApplyToHistory re-runs the rule chain over historical entries in the rule's scope.
+// @Summary Apply rule to history
+// @Description Backfill: run the rule chain (first match wins, idempotent) over the most recent entries in this rule's scope
+// @Tags filters
+// @Produce json
+// @Param id path int true "Filter ID"
+// @Param limit query int false "How many recent entries to scan (default 500, max 2000)"
+// @Success 200 {object} filterApplyHistoryResponse
+// @Failure 400 {object} errorResponse
+// @Failure 404 {object} errorResponse
+// @Router /filters/{id}/apply [post]
+func (h *FilterHandler) ApplyToHistory(c echo.Context) error {
+	id, err := parseIDParam(c, "id")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid id"})
+	}
+
+	limit := 500
+	if raw := c.QueryParam("limit"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+
+	scanned, applied, err := h.service.ApplyToHistory(c.Request().Context(), id, limit)
+	if err != nil {
+		return writeFilterError(c, err)
+	}
+
+	logger.Info("filter applied to history", "module", "handler", "action", "apply", "resource", "filter", "result", "ok", "filter_id", id, "scanned", scanned, "applied", applied)
+	return c.JSON(http.StatusOK, filterApplyHistoryResponse{Scanned: scanned, Applied: applied})
 }
 
 // Revert restores the entries muted by a rule.

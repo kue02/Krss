@@ -75,6 +75,8 @@ type FilterService interface {
 	Preview(ctx context.Context, params FilterWriteParams, limit int) (FilterPreviewResult, error)
 	// ApplyToEntries 对「本次刚入库的新条目」执行规则：首个命中即停，命中即写标记 + 审计 + 计数。
 	ApplyToEntries(ctx context.Context, feed model.Feed, entries []model.Entry) (int, error)
+	// ApplyToHistory 手动回溯：把规则链补跑到某条规则作用域内的历史条目上（幂等）。
+	ApplyToHistory(ctx context.Context, filterID int64, limit int) (scanned int, applied int, err error)
 	// Revert 把某条规则静音过的条目恢复（muted 清掉，被它标已读的退回未读）。
 	Revert(ctx context.Context, filterID int64) (int64, error)
 	ListMatches(ctx context.Context, filterID int64, limit int) ([]model.FilterMatch, error)
@@ -244,6 +246,104 @@ func (s *filterService) Preview(ctx context.Context, params FilterWriteParams, l
 	}
 
 	return result, nil
+}
+
+// ApplyToHistory 手动回溯：把规则链补跑到某条规则作用域内的历史条目上。
+//
+// 语义与增量执行一致 —— 按 position 顺序、首个命中即停；已经归命中的那条规则管的条目跳过
+// （幂等，重复点不会重复计数）。上限 limit 取该作用域内最近的若干条，避免一次拖垮实例。
+func (s *filterService) ApplyToHistory(ctx context.Context, filterID int64, limit int) (scanned int, applied int, err error) {
+	rule, err := s.filters.GetByID(ctx, filterID)
+	if err != nil {
+		return 0, 0, ErrFilterNotFound
+	}
+	if limit <= 0 || limit > 2000 {
+		limit = 500
+	}
+
+	all, err := s.filters.List(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+	candidates := make([]model.Filter, 0, len(all))
+	for _, filter := range all {
+		if !filter.Enabled || len(filter.Conditions) == 0 && filter.Actions.IsEmpty() {
+			continue
+		}
+		candidates = append(candidates, filter)
+	}
+	if len(candidates) == 0 {
+		return 0, 0, nil
+	}
+
+	// 扫描范围 = 这条规则的作用域（分类 / 订阅 / 全部），含已静音条目（它们也要能被回溯修正）
+	scope := repository.EntryListFilter{Limit: limit, IncludeMuted: true}
+	switch rule.ScopeType {
+	case model.FilterScopeFeed:
+		scope.FeedID = rule.ScopeID
+	case model.FilterScopeFolder:
+		scope.FolderID = rule.ScopeID
+	}
+	entries, err := s.entries.List(ctx, scope)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	feedByID, folderNames, err := s.loadFeedContext(ctx)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	now := time.Now()
+	stats := make(map[int64]int64, len(candidates))
+
+	for _, entry := range entries {
+		feed, ok := feedByID[entry.FeedID]
+		if !ok {
+			continue
+		}
+		scanned++
+		entryCtx := buildEntryContext(entry, feed, folderNames)
+		for _, filter := range candidates {
+			if !scopeMatches(filter.ScopeType, filter.ScopeID, feed) {
+				continue
+			}
+			effective, applies := ResolveActions(MatchConditions(entryCtx, filter.Conditions, now), filter.Actions)
+			if !applies {
+				continue
+			}
+			// 幂等：已经归这条规则管的条目不再重复写（重复点回溯不该重复计数）
+			if entry.FilterID != nil && *entry.FilterID == filter.ID {
+				break
+			}
+			if err := s.entries.ApplyFilterState(ctx, entry.ID, buildFilterState(effective, filter.ID)); err != nil {
+				logger.Warn("apply filter state failed", "module", "service", "action", "apply", "resource", "filter", "result", "failed", "filter_id", filter.ID, "entry_id", entry.ID, "error", err)
+				break
+			}
+			if err := s.filters.RecordMatch(ctx, model.FilterMatch{
+				FilterID:  filter.ID,
+				EntryID:   entry.ID,
+				Actions:   effective,
+				CreatedAt: now,
+			}); err != nil {
+				logger.Warn("record filter match failed", "module", "service", "action", "record", "resource", "filter", "result", "failed", "filter_id", filter.ID, "entry_id", entry.ID, "error", err)
+			}
+			stats[filter.ID]++
+			applied++
+			break
+		}
+	}
+
+	if err := s.filters.BumpMatchStats(ctx, stats, now); err != nil {
+		logger.Warn("bump filter stats failed", "module", "service", "action", "update", "resource", "filter", "result", "failed", "error", err)
+	}
+	if applied > 0 {
+		if err := s.filters.PruneMatches(ctx, filterMatchRetention); err != nil {
+			logger.Warn("prune filter matches failed", "module", "service", "action", "prune", "resource", "filter", "result", "failed", "error", err)
+		}
+	}
+	logger.Info("filter applied to history", "module", "service", "action", "apply", "resource", "filter", "result", "ok", "filter_id", filterID, "scanned", scanned, "applied", applied)
+	return scanned, applied, nil
 }
 
 // ApplyToEntries 规则引擎的执行入口（在 saveEntries 之后、只对刚入库的新条目调用）。

@@ -275,6 +275,51 @@ func TestFilterHandler_ListMatches_Success(t *testing.T) {
 	require.Equal(t, "Solidot", resp.Matches[0].FeedTitle)
 }
 
+func TestFilterHandler_ApplyToHistory_Success(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockFilterService(ctrl)
+	h := handler.NewFilterHandlerHelper(mockService)
+
+	mockService.EXPECT().
+		ApplyToHistory(gomock.Any(), int64(9), 300).
+		Return(120, 7, nil)
+
+	e := newTestEcho()
+	c, rec := newTestContext(e, newJSONRequest(http.MethodPost, "/filters/9/apply?limit=300", nil))
+	setPathParams(c, map[string]string{"id": "9"})
+
+	require.NoError(t, h.ApplyToHistory(c))
+
+	var resp struct {
+		Scanned int `json:"scanned"`
+		Applied int `json:"applied"`
+	}
+	assertJSONResponse(t, rec, http.StatusOK, &resp)
+	require.Equal(t, 120, resp.Scanned)
+	require.Equal(t, 7, resp.Applied)
+}
+
+func TestFilterHandler_ApplyToHistory_NotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockFilterService(ctrl)
+	h := handler.NewFilterHandlerHelper(mockService)
+
+	mockService.EXPECT().
+		ApplyToHistory(gomock.Any(), int64(9), 500).
+		Return(0, 0, service.ErrFilterNotFound)
+
+	e := newTestEcho()
+	c, rec := newTestContext(e, newJSONRequest(http.MethodPost, "/filters/9/apply", nil))
+	setPathParams(c, map[string]string{"id": "9"})
+
+	require.NoError(t, h.ApplyToHistory(c))
+	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
 func TestFilterHandler_InternalError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

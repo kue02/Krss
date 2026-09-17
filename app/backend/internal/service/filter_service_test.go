@@ -406,6 +406,67 @@ func TestFilterService_ListMatches_CarriesEntryAndFeedTitles(t *testing.T) {
 	require.Empty(t, matches[0].EntryTitle)
 }
 
+// 手动回溯：把规则链补跑到历史条目上（首个命中即停 + 幂等）。
+func TestFilterService_ApplyToHistory(t *testing.T) {
+	fixture := newFilterFixture(t)
+	ctx := context.Background()
+
+	feed := fixture.seedFeed(t, "Solidot", "article")
+	sponsor := fixture.seedEntry(t, feed.ID, "hash-sponsor", "赞助商投稿：某云厂商", timePtr(time.Now()))
+	gossip := fixture.seedEntry(t, feed.ID, "hash-gossip", "行业八卦：赞助商跑路", timePtr(time.Now()))
+	plain := fixture.seedEntry(t, feed.ID, "hash-plain", "Linux 6.12 发布", timePtr(time.Now()))
+
+	// 靠前的窄规则先命中（回溯也要遵守顺序）
+	narrow := fixture.create(t, service.FilterWriteParams{
+		Name:       "静音八卦",
+		ScopeType:  model.FilterScopeAll,
+		Conditions: []model.FilterCondition{{Field: model.FilterFieldTitle, Operator: model.FilterOpContains, Value: "八卦"}},
+		Actions:    model.FilterActions{Mute: true},
+	})
+	wide := fixture.create(t, service.FilterWriteParams{
+		Name:       "静音赞助商",
+		ScopeType:  model.FilterScopeFeed,
+		ScopeID:    &feed.ID,
+		Conditions: []model.FilterCondition{{Field: model.FilterFieldTitle, Operator: model.FilterOpContains, Value: "赞助商"}},
+		Actions:    model.FilterActions{Star: true},
+	})
+
+	scanned, applied, err := fixture.service.ApplyToHistory(ctx, wide.ID, 500)
+	require.NoError(t, err)
+	require.Equal(t, 3, scanned, "扫描该规则作用域内的历史条目")
+	require.Equal(t, 2, applied, "「八卦」那条归属靠前规则，「赞助商」那条归属本规则")
+
+	sponsorEntry := fixture.reload(t, sponsor.ID)
+	require.True(t, sponsorEntry.Starred)
+	require.NotNil(t, sponsorEntry.FilterID)
+	require.Equal(t, wide.ID, *sponsorEntry.FilterID)
+
+	gossipEntry := fixture.reload(t, gossip.ID)
+	require.True(t, gossipEntry.Muted, "首个命中即停：靠前规则赢了")
+	require.Equal(t, narrow.ID, *gossipEntry.FilterID)
+
+	plainEntry := fixture.reload(t, plain.ID)
+	require.False(t, plainEntry.Muted)
+	require.False(t, plainEntry.Starred)
+	require.Nil(t, plainEntry.FilterID, "没命中的条目不该被打标记")
+
+	// 幂等：再点一次不重复写、不重复计数
+	scanned2, applied2, err := fixture.service.ApplyToHistory(ctx, wide.ID, 500)
+	require.NoError(t, err)
+	require.Equal(t, 3, scanned2)
+	require.Equal(t, 0, applied2)
+
+	// 命中日志也记下了
+	matches, err := fixture.service.ListMatches(ctx, wide.ID, 10)
+	require.NoError(t, err)
+	require.Len(t, matches, 1)
+	require.Equal(t, sponsor.ID, matches[0].EntryID)
+
+	// 不存在的规则 → ErrFilterNotFound
+	_, _, err = fixture.service.ApplyToHistory(ctx, 999999, 500)
+	require.ErrorIs(t, err, service.ErrFilterNotFound)
+}
+
 // 被静音的条目默认不出现在列表里，只有 mutedOnly 才单独看得到。
 func TestFilterService_MutedEntriesHiddenFromList(t *testing.T) {
 	fixture := newFilterFixture(t)

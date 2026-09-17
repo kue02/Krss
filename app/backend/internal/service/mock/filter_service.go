@@ -57,6 +57,22 @@ func (mr *MockFilterServiceMockRecorder) ApplyToEntries(ctx, feed, entries any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ApplyToEntries", reflect.TypeOf((*MockFilterService)(nil).ApplyToEntries), ctx, feed, entries)
 }
 
+// ApplyToHistory mocks base method.
+func (m *MockFilterService) ApplyToHistory(ctx context.Context, filterID int64, limit int) (int, int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ApplyToHistory", ctx, filterID, limit)
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].(int)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ApplyToHistory indicates an expected call of ApplyToHistory.
+func (mr *MockFilterServiceMockRecorder) ApplyToHistory(ctx, filterID, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ApplyToHistory", reflect.TypeOf((*MockFilterService)(nil).ApplyToHistory), ctx, filterID, limit)
+}
+
 // Create mocks base method.
 func (m *MockFilterService) Create(ctx context.Context, params service.FilterWriteParams) (model.Filter, error) {
 	m.ctrl.T.Helper()

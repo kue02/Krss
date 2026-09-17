@@ -421,6 +421,13 @@ definitions:
       unstar:
         type: boolean
     type: object
+  internal_handler.filterApplyHistoryResponse:
+    properties:
+      applied:
+        type: integer
+      scanned:
+        type: integer
+    type: object
   internal_handler.filterConditionRequest:
     properties:
       field:
@@ -1872,6 +1879,38 @@ paths:
           schema:
             $ref: '#/definitions/internal_handler.errorResponse'
       summary: Update filter rule
+      tags:
+      - filters
+  /filters/{id}/apply:
+    post:
+      description: 'Backfill: run the rule chain (first match wins, idempotent) over
+        the most recent entries in this rule''s scope'
+      parameters:
+      - description: Filter ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: How many recent entries to scan (default 500, max 2000)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.filterApplyHistoryResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: Apply rule to history
       tags:
       - filters
   /filters/{id}/matches:
