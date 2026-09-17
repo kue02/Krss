@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { searchEntries } from "@/api";
 import { useFeeds } from "@/hooks/useFeeds";
+import { useFolders } from "@/hooks/useFolders";
+import { useCategoryActions } from "@/hooks/useCategoryState";
 import { useMarkAsRead } from "@/hooks/useEntries";
 import { useSelection } from "@/hooks/useSelection";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -31,9 +32,9 @@ const SEARCH_DEBOUNCE_MS = 300;
  */
 export function SearchModal({ open, onOpenChange }: SearchModalProps) {
   const { t } = useTranslation();
-  const [, navigate] = useLocation();
-  const { selectEntry } = useSelection();
+  const { selectEntry, selectFeed } = useSelection();
   const { data: feeds } = useFeeds();
+  const { data: folders } = useFolders();
   const { mutate: markAsRead } = useMarkAsRead();
 
   /**
@@ -41,12 +42,27 @@ export function SearchModal({ open, onOpenChange }: SearchModalProps) {
    * 订阅卡片已经有本地列表（NextFlux 也是本地过滤名称/地址），顺手建个查表。
    */
   const feedById = useMemo(() => {
-    const map = new Map<string, { title: string; iconPath?: string }>();
+    const map = new Map<string, { title: string; iconPath?: string; folderId?: string }>();
     for (const feed of feeds ?? []) {
-      map.set(feed.id, { title: feed.title, iconPath: feed.iconPath });
+      map.set(feed.id, {
+        title: feed.title,
+        iconPath: feed.iconPath,
+        folderId: feed.folderId,
+      });
     }
     return map;
   }, [feeds]);
+
+  /** folderId → 分类名：点订阅时要把它所在的分类展开，否则侧栏那条是折叠的、看不到选中态 */
+  const folderNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const folder of folders ?? []) {
+      map.set(folder.id, folder.name);
+    }
+    return map;
+  }, [folders]);
+
+  const { expandAll } = useCategoryActions();
 
   const [tab, setTab] = useState<SearchTab>("articles");
   const [keyword, setKeyword] = useState("");
@@ -129,7 +145,13 @@ export function SearchModal({ open, onOpenChange }: SearchModalProps) {
       const feed = feedResults[index];
       if (!feed) return;
       onOpenChange(false);
-      navigate(`/feed/${feed.id}`);
+      // 侧栏选中态是从路由派生的，但订阅可能躺在**折叠的分类**里 —— 那样第一栏看不到选中，
+      // 所以先把它的分类展开（用户 2026-09-17 要求「点订阅时第一栏也自动选中到这个订阅」）。
+      const folderName = feed.folderId ? folderNameById.get(feed.folderId) : undefined;
+      if (folderName) expandAll([folderName]);
+      // 用 selectFeed 而不是裸 navigate：前者会把当前的 ?type= / ?unread= 带上，
+      // 裸 navigate("/feed/<id>") 会丢掉它们（视图被重置成「文章」）。
+      selectFeed(feed.id);
     },
     [
       tab,
@@ -137,7 +159,9 @@ export function SearchModal({ open, onOpenChange }: SearchModalProps) {
       feedResults,
       markAsRead,
       selectEntry,
-      navigate,
+      selectFeed,
+      folderNameById,
+      expandAll,
       onOpenChange,
     ],
   );
@@ -217,6 +241,12 @@ export function SearchModal({ open, onOpenChange }: SearchModalProps) {
                         index === selectedIndex ? "bg-item-hover" : "hover:bg-item-hover/60",
                       )}
                     >
+                      {/* 订阅图标：条目只带 feedId，一眼看出「来自哪个订阅」（用户 2026-09-17 要求） */}
+                      <FeedAvatar
+                        iconPath={feedById.get(entry.feedId)?.iconPath}
+                        size={20}
+                        rounded="circle"
+                      />
                       <span className="min-w-0 flex-1 truncate">
                         {entry.title || entry.url || entry.id}
                       </span>

@@ -127,7 +127,12 @@
       排除图片链接（`:has(> img)`）与已标注项，标题链接在 `<h1>`（prose 之外）天然不中。
       实测：在位 CSS 测试（真实标记结构的合成链接）外链 `::after` content `""`／宽 **11.2px**／mask ✓，图片链接·相对链接·标注项一律 `content: none`；
       真实文章「城市漫步指南｜威海初秋」1 条外链 → **1 个箭头** ✓
-- [ ] **10-2 搜索结果补订阅图标 + 点订阅要选中侧栏**：条目行前也要订阅图标；从搜索点开某订阅时，第一栏（侧栏）要自动选中到该订阅
+- [x] **10-2 搜索结果补订阅图标 + 点订阅要选中侧栏**（2026-09-17）：
+      ① 条目行前加订阅头像（`FeedAvatar iconPath size=20 rounded=circle`）；
+      ② 点订阅结果改走 `selectFeed()`（原先裸 `navigate("/feed/<id>")` 会把 `?type=`/`?unread=` **丢掉**，视图被重置成「文章」）；
+      ③ 订阅若躺在**折叠的分类**里，侧栏那条根本没渲染 → 选中态看不见，所以同时 `expandAll([分类名])` 展开它。
+      实测：搜 Obsidian 的 3 条条目结果**每条前面都有 IMG 头像 20px**（leftOffset 12）；
+      先真实点分类箭头折叠（`gist-category-state` = `{"资讯":false}`）→ 搜索点「小众软件」→ **状态变 `{"资讯":true}`（自动展开）**、`activeRows: ["小众软件"]`、URL = `/feed/…?type=article`（视图保住了）
 - [x] **10-3 去掉界面语言的自动切换**（2026-09-17）：`components/i18n-provider.tsx` 不再读 `navigator.language`，只认 通用→语言 存的 `gist-lang`，没设过就固定 **zh**。
       实测：清掉 `gist-lang` 后 `html lang = zh-CN`、界面中文（注意：ego 浏览器本机 locale 也是 zh-CN，所以这条**不是**判定「不再跟随浏览器」的强证据；强证据是代码里已无 `navigator.language`）
 - [ ] **10-4 RSSHub 换链接导致订阅地址相同时：弹框确认覆盖并合并为一个源**
