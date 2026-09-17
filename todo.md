@@ -135,7 +135,13 @@
       先真实点分类箭头折叠（`gist-category-state` = `{"资讯":false}`）→ 搜索点「小众软件」→ **状态变 `{"资讯":true}`（自动展开）**、`activeRows: ["小众软件"]`、URL = `/feed/…?type=article`（视图保住了）
 - [x] **10-3 去掉界面语言的自动切换**（2026-09-17）：`components/i18n-provider.tsx` 不再读 `navigator.language`，只认 通用→语言 存的 `gist-lang`，没设过就固定 **zh**。
       实测：清掉 `gist-lang` 后 `html lang = zh-CN`、界面中文（注意：ego 浏览器本机 locale 也是 zh-CN，所以这条**不是**判定「不再跟随浏览器」的强证据；强证据是代码里已无 `navigator.language`）
-- [ ] **10-4 RSSHub 换链接导致订阅地址相同时：弹框确认覆盖并合并为一个源**
+- [x] **10-4 RSSHub 换链接导致订阅地址相同时：弹框确认覆盖并合并为一个源** —— 已完成
+      「换到该实例」点应用时先逐条探预览 → 撞上弹 HeroUI AlertDialog（逐条列「旧链接（N 条/M 星标）→ 并入 新链接（X 条/Y 星标）」+ 另几条只换地址的说明）→「确认合并」逐条并入；
+      **保留先存在的那条**（用户拍板），来源条目/星标/分类并过去后删来源；后端 PATCH 同时加了 409 兜底（带冲突订阅 id/title）。
+      实测：副本库 :8099 真链路 —— PATCH 撞车 **409**（conflict.id 正确、A 地址未改）→ 预览 source 7 条/1 星标 · target 20 条/0 星标（与库一致）→
+      合并 `{movedEntries:7,dedupedEntries:0}` → 查库 A 条目 0 / A 订阅 0 / B 条目 **27** / B 星标 1（跟随）；脚本 `~/Documents/test/gist-nextflux-e2e/verify-feed-merge.py`。
+      单测：repo 2 + service 6 + handler 4 全过；`make test` 绿、lint 0、swagger 已重生成；前端 **617/617**、tsc 干净。
+      `:8080` 已换新二进制（merge-preview 实测 200），用户库未被实验动过（79 订阅 / 2237 条）。
 - [x] **10-5 翻译选项文案**（2026-09-17）：zh/en 各改 3 条 —— 「跟随模型」「Google 翻译（免费）」「有道翻译（免费）」（原先括号里写了「用上面的提供商 / 无需 Key / 长文可能被限流」）
 - [x] **10-6 去掉下拉框/按钮的蓝色选中边框（focus ring）**（2026-09-17）：默认主题 `--focus` 就是 HeroUI 的蓝色 accent，HeroUI 组件拿它画焦点环 →
       改成中性 `color-mix(in oklab, var(--foreground) 32%, transparent)`；顺带把**浏览器 UA 蓝框**（`outline: auto` → `rgb(0,95,204)`）也换成中性 `:focus-visible` 环。
@@ -179,7 +185,7 @@
       接口层机制验证（你库里只有 **1 条**星标条目、属 article 类型订阅，所以界面上两档看不出差别）：
       `starredOnly=true&includeMuted=true` → **1**；加 `&contentType=article` → **1**；加 `&contentType=social` → **0**；`picture` → **0** ✓
       门禁：`bunx tsc -b` 干净、`bun run test` **608/608**（router 老用例补 `viewOnly:false`，新增 scope=view 用例）
-- [~] **10-12 图片视图**（2026-09-17，两半都实现，但**图片视图本身有既有 bug 挡住端到端验证**）：
+- [x] **10-12 图片视图**（2026-09-17，两半都实现 + 用户复看后修掉「格子一样高」）：
       **① 图片布局设置**（用户澄清：瀑布流 = 不规则那种、网格 = 等高正方格）：外观 → 按视图设置 → 图片 那一块新增「图片布局」
       （`ui-settings.pictureLayout`，默认 `masonry` 不规则瀑布流；选 `grid` 时 `PictureItem` 强制 1:1 正方格）。
       **② 灯箱左右箭头**（用户选 C）：同条目内先切图，切到头跳到**下一条目**的第一张（左箭头对称：退到上一条目最后一张）；

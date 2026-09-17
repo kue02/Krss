@@ -56,6 +56,11 @@ type EntryRepository interface {
 	MarkAllAsRead(ctx context.Context, feedID *int64, folderID *int64, contentType *string) error
 	GetAllUnreadCounts(ctx context.Context) ([]UnreadCount, error)
 	GetStarredCount(ctx context.Context) (int, error)
+	// FeedEntryStats 某个订阅的条目数与其中星标数（合并订阅时给弹框显示两边各有几条）
+	FeedEntryStats(ctx context.Context, feedID int64) (total int64, starred int64, err error)
+	// MoveFeedEntries 把 from 订阅的条目改归到 to：先删掉与目标同 hash 的重复项（保留目标那份），再改归属。
+	// 返回 (改了归属的条数, 因重复被删掉的条数)。
+	MoveFeedEntries(ctx context.Context, fromFeedID, toFeedID int64) (moved int64, deduped int64, err error)
 	CreateOrUpdate(ctx context.Context, entry model.Entry) error
 	ExistsByHash(ctx context.Context, feedID int64, hash string) (bool, error)
 	ExistsByLegacyURL(ctx context.Context, feedID int64, rawURL string, hash string) (bool, error)
@@ -706,4 +711,45 @@ func (r *entryRepository) DeleteUnstarred(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+// FeedEntryStats 统计某个订阅的条目数与星标数。
+func (r *entryRepository) FeedEntryStats(ctx context.Context, feedID int64) (int64, int64, error) {
+	var total, starred int64
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COUNT(*), COALESCE(SUM(CASE WHEN starred THEN 1 ELSE 0 END), 0)
+		   FROM entries WHERE feed_id = ?`, feedID).Scan(&total, &starred)
+	if err != nil {
+		return 0, 0, fmt.Errorf("feed entry stats: %w", err)
+	}
+	return total, starred, nil
+}
+
+// MoveFeedEntries 合并订阅用：把来源订阅的条目改归到目标订阅。
+//
+// entries 上有唯一索引 (feed_id, hash)，所以必须**先删掉目标已存在的同 hash 条目**再改归属，
+// 否则会撞唯一约束。注意 FTS 只有 INSERT/DELETE 触发器（没有 UPDATE），改 feed_id 不碰 FTS。
+//
+// 刻意不用显式事务：仓储层拿到的 dbtx 只有 Query/Exec（没有 BeginTx）；而两步的顺序本身是安全的 ——
+// 第一步删的只是**与目标重复**的条目（保留目标那份），即使第二步失败也只是少一批重复项，不会丢数据。
+func (r *entryRepository) MoveFeedEntries(ctx context.Context, fromFeedID, toFeedID int64) (int64, int64, error) {
+	del, err := r.db.ExecContext(ctx,
+		`DELETE FROM entries
+		  WHERE feed_id = ?
+		    AND hash IN (SELECT hash FROM entries WHERE feed_id = ?)`,
+		fromFeedID, toFeedID)
+	if err != nil {
+		return 0, 0, fmt.Errorf("delete duplicate entries: %w", err)
+	}
+	deduped, _ := del.RowsAffected()
+
+	upd, err := r.db.ExecContext(ctx,
+		`UPDATE entries SET feed_id = ?, updated_at = ? WHERE feed_id = ?`,
+		toFeedID, time.Now().UTC(), fromFeedID)
+	if err != nil {
+		return 0, 0, fmt.Errorf("move entries: %w", err)
+	}
+	moved, _ := upd.RowsAffected()
+
+	return moved, deduped, nil
 }

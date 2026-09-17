@@ -116,6 +116,36 @@ func (mr *MockFeedServiceMockRecorder) List(ctx, folderID any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockFeedService)(nil).List), ctx, folderID)
 }
 
+// MergeInto mocks base method.
+func (m *MockFeedService) MergeInto(ctx context.Context, sourceID, targetID int64) (service.FeedMergeResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MergeInto", ctx, sourceID, targetID)
+	ret0, _ := ret[0].(service.FeedMergeResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MergeInto indicates an expected call of MergeInto.
+func (mr *MockFeedServiceMockRecorder) MergeInto(ctx, sourceID, targetID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MergeInto", reflect.TypeOf((*MockFeedService)(nil).MergeInto), ctx, sourceID, targetID)
+}
+
+// MergePreview mocks base method.
+func (m *MockFeedService) MergePreview(ctx context.Context, sourceID int64, targetURL string) (service.FeedMergePreview, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MergePreview", ctx, sourceID, targetURL)
+	ret0, _ := ret[0].(service.FeedMergePreview)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MergePreview indicates an expected call of MergePreview.
+func (mr *MockFeedServiceMockRecorder) MergePreview(ctx, sourceID, targetURL any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MergePreview", reflect.TypeOf((*MockFeedService)(nil).MergePreview), ctx, sourceID, targetURL)
+}
+
 // Preview mocks base method.
 func (m *MockFeedService) Preview(ctx context.Context, feedURL string) (service.FeedPreview, error) {
 	m.ctrl.T.Helper()

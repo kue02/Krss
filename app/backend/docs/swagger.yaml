@@ -337,6 +337,33 @@ definitions:
       existingFeed:
         $ref: '#/definitions/internal_handler.feedResponse'
     type: object
+  internal_handler.feedMergePreviewResponse:
+    properties:
+      source:
+        $ref: '#/definitions/internal_handler.feedMergeSideResponse'
+      target:
+        $ref: '#/definitions/internal_handler.feedMergeSideResponse'
+    type: object
+  internal_handler.feedMergeResultResponse:
+    properties:
+      dedupedEntries:
+        type: integer
+      movedEntries:
+        type: integer
+      targetId:
+        type: string
+    type: object
+  internal_handler.feedMergeSideResponse:
+    properties:
+      entries:
+        type: integer
+      id:
+        type: string
+      starred:
+        type: integer
+      title:
+        type: string
+    type: object
   internal_handler.feedPreviewEntryResponse:
     properties:
       author:
@@ -702,6 +729,11 @@ definitions:
       feedId:
         type: string
       folderId:
+        type: string
+    type: object
+  internal_handler.mergeIntoRequest:
+    properties:
+      targetId:
         type: string
     type: object
   internal_handler.networkSettingsRequest:
@@ -1167,6 +1199,31 @@ paths:
       summary: Update feed AI overrides
       tags:
       - feeds
+  /api/feeds/{id}/merge:
+    post:
+      consumes:
+      - application/json
+      description: Move entries of :id into targetId, then delete :id (target is kept)
+      parameters:
+      - description: Source feed ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Merge target
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.mergeIntoRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.feedMergeResultResponse'
+      summary: Merge feed into another
+      tags:
+      - feeds
   /api/feeds/{id}/url:
     patch:
       consumes:
@@ -1190,6 +1247,31 @@ paths:
           schema:
             $ref: '#/definitions/internal_handler.feedResponse'
       summary: Update feed URL
+      tags:
+      - feeds
+  /api/feeds/merge-preview:
+    get:
+      description: Preview merging a subscription into the one that already owns the
+        target URL
+      parameters:
+      - description: Source feed ID
+        in: query
+        name: sourceId
+        required: true
+        type: integer
+      - description: Target URL
+        in: query
+        name: url
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.feedMergePreviewResponse'
+      summary: Feed merge preview
       tags:
       - feeds
   /api/proxy/image/{encoded}:

@@ -43,6 +43,39 @@ type updateFeedRequest struct {
 	SummaryPromptReminder *string `json:"summaryPromptReminder"`
 }
 
+// 改地址时撞上另一个订阅（RSSHub 换实例后同源）：带上是哪条，前端据此弹「确认合并」
+type feedURLConflictResponse struct {
+	Error    string              `json:"error"`
+	Conflict *feedConflictDetail `json:"conflict"`
+}
+
+type feedConflictDetail struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+}
+
+type mergeIntoRequest struct {
+	TargetID string `json:"targetId"`
+}
+
+type feedMergeSideResponse struct {
+	ID      string `json:"id"`
+	Title   string `json:"title"`
+	Entries int64  `json:"entries"`
+	Starred int64  `json:"starred"`
+}
+
+type feedMergePreviewResponse struct {
+	Source feedMergeSideResponse  `json:"source"`
+	Target *feedMergeSideResponse `json:"target"`
+}
+
+type feedMergeResultResponse struct {
+	TargetID       string `json:"targetId"`
+	MovedEntries   int64  `json:"movedEntries"`
+	DedupedEntries int64  `json:"dedupedEntries"`
+}
+
 type updateFeedURLRequest struct {
 	URL string `json:"url"`
 }
@@ -120,6 +153,8 @@ func (h *FeedHandler) RegisterRoutes(g *echo.Group) {
 	g.PUT("/feeds/:id", h.Update)
 	g.PATCH("/feeds/:id/type", h.UpdateType)
 	g.PATCH("/feeds/:id/url", h.UpdateURL)
+	g.GET("/feeds/merge-preview", h.MergePreview)
+	g.POST("/feeds/:id/merge", h.MergeInto)
 	g.PATCH("/feeds/:id/ai", h.UpdateAIOverrides)
 	g.DELETE("/feeds/:id", h.Delete)
 	g.DELETE("/feeds", h.DeleteBatch)
@@ -288,11 +323,99 @@ func (h *FeedHandler) UpdateURL(c echo.Context) error {
 	}
 	feed, err := h.service.UpdateURL(c.Request().Context(), id, req.URL)
 	if err != nil {
+		var conflict *service.FeedURLConflictError
+		if errors.As(err, &conflict) {
+			logger.Info("feed url conflict", "module", "handler", "action", "update", "resource", "feed", "result", "conflict", "feed_id", id, "conflict_feed_id", conflict.Feed.ID)
+			return c.JSON(http.StatusConflict, feedURLConflictResponse{
+				Error: "feed url already exists",
+				Conflict: &feedConflictDetail{
+					ID:    idToString(conflict.Feed.ID),
+					Title: conflict.Feed.Title,
+				},
+			})
+		}
 		logger.Error("feed url update failed", "module", "handler", "action", "update", "resource", "feed", "result", "failed", "feed_id", id, "error", err)
 		return writeServiceError(c, err)
 	}
 	logger.Info("feed url updated", "module", "handler", "action", "update", "resource", "feed", "result", "ok", "feed_id", feed.ID)
 	return c.JSON(http.StatusOK, toFeedResponse(feed))
+}
+
+// MergePreview 合并预览：把这个订阅换成某地址时，目标是谁、两边各有几条/几条星标。
+//
+// @Summary Feed merge preview
+// @Description Preview merging a subscription into the one that already owns the target URL
+// @Tags feeds
+// @Produce json
+// @Param sourceId query int true "Source feed ID"
+// @Param url query string true "Target URL"
+// @Success 200 {object} feedMergePreviewResponse
+// @Router /api/feeds/merge-preview [get]
+func (h *FeedHandler) MergePreview(c echo.Context) error {
+	sourceID, err := strconv.ParseInt(c.QueryParam("sourceId"), 10, 64)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
+	}
+	preview, err := h.service.MergePreview(c.Request().Context(), sourceID, c.QueryParam("url"))
+	if err != nil {
+		return writeServiceError(c, err)
+	}
+	response := feedMergePreviewResponse{
+		Source: feedMergeSideResponse{
+			ID:      idToString(preview.Source.ID),
+			Title:   preview.Source.Title,
+			Entries: preview.Source.Entries,
+			Starred: preview.Source.Starred,
+		},
+	}
+	if preview.Target != nil {
+		response.Target = &feedMergeSideResponse{
+			ID:      idToString(preview.Target.ID),
+			Title:   preview.Target.Title,
+			Entries: preview.Target.Entries,
+			Starred: preview.Target.Starred,
+		}
+	}
+	return c.JSON(http.StatusOK, response)
+}
+
+// MergeInto 把 :id 这个订阅并入 targetId（保留 target，条目/星标/分类都并过去，然后删掉 :id）。
+//
+// @Summary Merge feed into another
+// @Description Move entries of :id into targetId, then delete :id (target is kept)
+// @Tags feeds
+// @Accept json
+// @Param id path int true "Source feed ID"
+// @Param request body mergeIntoRequest true "Merge target"
+// @Success 200 {object} feedMergeResultResponse
+// @Router /api/feeds/{id}/merge [post]
+func (h *FeedHandler) MergeInto(c echo.Context) error {
+	sourceID, err := parseIDParam(c, "id")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
+	}
+	var req mergeIntoRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
+	}
+	targetID, err := strconv.ParseInt(strings.TrimSpace(req.TargetID), 10, 64)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
+	}
+
+	result, err := h.service.MergeInto(c.Request().Context(), sourceID, targetID)
+	if err != nil {
+		logger.Error("feed merge failed", "module", "handler", "action", "merge", "resource", "feed", "result", "failed", "feed_id", sourceID, "error", err)
+		return writeServiceError(c, err)
+	}
+	logger.Info("feed merged", "module", "handler", "action", "merge", "resource", "feed", "result", "ok",
+		"source_feed_id", sourceID, "target_feed_id", result.TargetID,
+		"moved", result.MovedEntries, "deduped", result.DedupedEntries)
+	return c.JSON(http.StatusOK, feedMergeResultResponse{
+		TargetID:       idToString(result.TargetID),
+		MovedEntries:   result.MovedEntries,
+		DedupedEntries: result.DedupedEntries,
+	})
 }
 
 // UpdateAIOverrides 单独设置某个订阅的自动翻译/自动摘要（字段为 null 表示跟随全局）。

@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { updateFeedUrl, updateGeneralSettings } from "@/api";
+import { AlertDialog, Button } from "@heroui/react";
+import {
+  getFeedMergePreview,
+  mergeFeed,
+  updateFeedUrl,
+  updateGeneralSettings,
+  type FeedMergeSide,
+} from "@/api";
 import { useFeeds } from "@/hooks/useFeeds";
 import { useGeneralSettings } from "@/hooks/useGeneralSettings";
 import { rewriteRssHubUrl } from "@/lib/rsshub";
@@ -12,6 +19,12 @@ interface PendingRewrite {
   title: string;
   from: string;
   to: string;
+}
+
+/** 换地址后与已有订阅撞成同一地址的那条：弹框要显示两边各有几条 */
+interface MergeConflict extends PendingRewrite {
+  source: FeedMergeSide;
+  target: FeedMergeSide;
 }
 
 /**
@@ -28,6 +41,10 @@ export function RSSHubSettings() {
   const [isSaving, setIsSaving] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [mergePlan, setMergePlan] = useState<{
+    plain: PendingRewrite[];
+    conflicts: MergeConflict[];
+  } | null>(null);
 
   useEffect(() => {
     if (!generalSettings) return;
@@ -74,35 +91,88 @@ export function RSSHubSettings() {
     }
   }, [accessKey, baseUrl, generalSettings, t]);
 
+  /** 真正执行：plain 直接换地址；conflicts 按用户拍板决定「合并」还是「跳过」 */
+  const runRewrites = useCallback(
+    async (
+      plain: PendingRewrite[],
+      conflicts: MergeConflict[],
+      doMerge: boolean,
+    ) => {
+      setIsApplying(true);
+      let changed = 0;
+      let merged = 0;
+      for (const item of plain) {
+        try {
+          await updateFeedUrl(item.feedId, item.to);
+          changed += 1;
+        } catch {
+          // 单条失败不影响其余，最后统一汇报
+        }
+      }
+      if (doMerge) {
+        for (const conflict of conflicts) {
+          try {
+            await mergeFeed(conflict.feedId, conflict.target.id);
+            merged += 1;
+          } catch {
+            // 同上：失败不吞掉其余，最后统一汇报
+          }
+        }
+      }
+      setIsApplying(false);
+      setShowPreview(false);
+      setMergePlan(null);
+      queryClient.invalidateQueries({ queryKey: ["feeds"] });
+      queryClient.invalidateQueries({ queryKey: ["entries"] });
+
+      if (merged > 0) {
+        showToast(t("settings.rsshub_merge_merged", { merged, changed }));
+      } else if (changed === plain.length) {
+        showToast(t("settings.rsshub_applied", { count: changed }));
+      } else {
+        showToast(
+          t("settings.rsshub_applied_partial", {
+            changed,
+            total: plain.length,
+          }),
+        );
+      }
+    },
+    [t],
+  );
+
   const handleApply = useCallback(async () => {
     if (pending.length === 0) return;
 
+    // 换地址前先探一遍：换过去之后地址是不是已经属于另一个订阅（RSSHub 换实例后两条订阅同源）。
+    // 撞上了就交给用户拍板，不撞车直接改。
     setIsApplying(true);
-    let changed = 0;
+    const conflicts: MergeConflict[] = [];
+    const plain: PendingRewrite[] = [];
     for (const item of pending) {
       try {
-        await updateFeedUrl(item.feedId, item.to);
-        changed += 1;
+        const preview = await getFeedMergePreview(item.feedId, item.to);
+        if (preview.target) {
+          conflicts.push({
+            ...item,
+            source: preview.source,
+            target: preview.target,
+          });
+          continue;
+        }
       } catch {
-        // 单条失败不影响其余，最后统一汇报
+        // 探不动就按老路走：后端 PATCH 那边还有 409 兜底
       }
+      plain.push(item);
     }
     setIsApplying(false);
-    setShowPreview(false);
-    queryClient.invalidateQueries({ queryKey: ["feeds"] });
-    queryClient.invalidateQueries({ queryKey: ["entries"] });
 
-    if (changed === pending.length) {
-      showToast(t("settings.rsshub_applied", { count: changed }));
-    } else {
-      showToast(
-        t("settings.rsshub_applied_partial", {
-          changed,
-          total: pending.length,
-        }),
-      );
+    if (conflicts.length > 0) {
+      setMergePlan({ plain, conflicts });
+      return;
     }
-  }, [pending, t]);
+    await runRewrites(plain, [], false);
+  }, [pending, runRewrites]);
 
   return (
     <section className="space-y-3">
@@ -182,6 +252,79 @@ export function RSSHubSettings() {
           )}
         </div>
       )}
+      <AlertDialog>
+        <Button className="hidden" aria-hidden />
+        <AlertDialog.Backdrop
+          isOpen={mergePlan !== null}
+          onOpenChange={(open) => !open && setMergePlan(null)}
+        >
+          <AlertDialog.Container>
+            <AlertDialog.Dialog className="max-w-lg">
+              <AlertDialog.Header>
+                <AlertDialog.Heading>
+                  {t("settings.rsshub_merge_title")}
+                </AlertDialog.Heading>
+              </AlertDialog.Header>
+              <AlertDialog.Body>
+                <div className="text-sm text-muted-foreground">
+                  {t("settings.rsshub_merge_description")}
+                </div>
+                <ul className="mt-3 space-y-2">
+                  {mergePlan?.conflicts.map((item) => (
+                    <li
+                      key={item.feedId}
+                      className="rounded-lg border border-border p-2 text-xs"
+                    >
+                      <div className="font-medium text-foreground">
+                        {item.title}
+                      </div>
+                      <div className="mt-1 text-muted-foreground">
+                        {t("settings.rsshub_merge_line", {
+                          source: item.source.title,
+                          sourceEntries: item.source.entries,
+                          sourceStarred: item.source.starred,
+                          target: item.target.title,
+                          targetEntries: item.target.entries,
+                          targetStarred: item.target.starred,
+                        })}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                {mergePlan && mergePlan.plain.length > 0 && (
+                  <div className="mt-3 text-xs text-muted-foreground">
+                    {t("settings.rsshub_merge_also", {
+                      count: mergePlan.plain.length,
+                    })}
+                  </div>
+                )}
+              </AlertDialog.Body>
+              <AlertDialog.Footer>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onPress={() => setMergePlan(null)}
+                >
+                  {t("actions.cancel")}
+                </Button>
+                <Button
+                  size="sm"
+                  onPress={() => {
+                    if (!mergePlan) return;
+                    void runRewrites(
+                      mergePlan.plain,
+                      mergePlan.conflicts,
+                      true,
+                    );
+                  }}
+                >
+                  {t("settings.rsshub_merge_confirm")}
+                </Button>
+              </AlertDialog.Footer>
+            </AlertDialog.Dialog>
+          </AlertDialog.Container>
+        </AlertDialog.Backdrop>
+      </AlertDialog>
     </section>
   );
 }

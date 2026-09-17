@@ -36,8 +36,13 @@ type FeedService interface {
 	List(ctx context.Context, folderID *int64) ([]model.Feed, error)
 	Update(ctx context.Context, id int64, title string, folderID *int64, summaryPromptReminder *string) (model.Feed, error)
 	UpdateType(ctx context.Context, id int64, feedType string) error
-	// UpdateURL 改订阅地址（RSSHub 实例换域名等场景）
+	// UpdateURL 改订阅地址（RSSHub 实例换域名等场景）。
+	// 目标地址已被别的订阅占用时返回 *FeedURLConflictError（前端据此弹「确认合并」）。
 	UpdateURL(ctx context.Context, id int64, feedURL string) (model.Feed, error)
+	// MergePreview 预览「把这个订阅换成某个地址」会发生什么：目标是谁、两边各有几条/几条星标
+	MergePreview(ctx context.Context, sourceID int64, targetURL string) (FeedMergePreview, error)
+	// MergeInto 把 source 订阅并入 target（条目改归属、去重、补分类，然后删掉 source）
+	MergeInto(ctx context.Context, sourceID, targetID int64) (FeedMergeResult, error)
 	// UpdateAIOverrides 单独设置某个订阅的自动翻译/自动摘要（nil = 跟随全局）
 	UpdateAIOverrides(ctx context.Context, id int64, autoTranslate, autoSummary, readerMode *bool) (model.Feed, error)
 	Delete(ctx context.Context, id int64) error
@@ -398,6 +403,16 @@ func (s *feedService) UpdateURL(ctx context.Context, id int64, feedURL string) (
 	}
 	if feed.URL == trimmed {
 		return feed, nil
+	}
+
+	// RSSHub 换实例后可能和另一个订阅撞成同一个地址：这时不能默默写下去（会变成两个同源订阅），
+	// 交给上层弹「确认合并」（用户 2026-09-17 要求）。
+	existing, err := s.feeds.FindByURL(ctx, trimmed)
+	if err != nil {
+		return model.Feed{}, fmt.Errorf("find feed by url: %w", err)
+	}
+	if existing != nil && existing.ID != id {
+		return model.Feed{}, &FeedURLConflictError{Feed: *existing}
 	}
 
 	feed.URL = trimmed
@@ -866,4 +881,126 @@ func isValidURL(value string) bool {
 		return false
 	}
 	return parsed.Host != ""
+}
+
+// FeedURLConflictError：改订阅地址时撞上另一个订阅（RSSHub 换链路后两个订阅指向同一地址）。
+type FeedURLConflictError struct {
+	Feed model.Feed
+}
+
+func (e *FeedURLConflictError) Error() string {
+	return "feed url already used by another subscription"
+}
+
+// FeedMergeSide：弹框里一侧的情况
+type FeedMergeSide struct {
+	ID      int64  `json:"id"`
+	Title   string `json:"title"`
+	Entries int64  `json:"entries"`
+	Starred int64  `json:"starred"`
+}
+
+// FeedMergePreview：合并前给用户看的两侧对比
+type FeedMergePreview struct {
+	Source FeedMergeSide  `json:"source"`
+	Target *FeedMergeSide `json:"target"`
+}
+
+// FeedMergeResult：合并结果
+type FeedMergeResult struct {
+	TargetID       int64 `json:"targetId"`
+	MovedEntries   int64 `json:"movedEntries"`
+	DedupedEntries int64 `json:"dedupedEntries"`
+}
+
+// MergePreview 预览合并：目标地址属于哪个订阅、两边各有几条。
+func (s *feedService) MergePreview(ctx context.Context, sourceID int64, targetURL string) (FeedMergePreview, error) {
+	source, err := s.feeds.GetByID(ctx, sourceID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return FeedMergePreview{}, ErrNotFound
+		}
+		return FeedMergePreview{}, fmt.Errorf("get source feed: %w", err)
+	}
+
+	sourceEntries, sourceStarred, err := s.entries.FeedEntryStats(ctx, sourceID)
+	if err != nil {
+		return FeedMergePreview{}, err
+	}
+	preview := FeedMergePreview{
+		Source: FeedMergeSide{
+			ID:      source.ID,
+			Title:   source.Title,
+			Entries: sourceEntries,
+			Starred: sourceStarred,
+		},
+	}
+
+	trimmed := strings.TrimSpace(targetURL)
+	if trimmed == "" {
+		return preview, nil
+	}
+	target, err := s.feeds.FindByURL(ctx, trimmed)
+	if err != nil {
+		return FeedMergePreview{}, fmt.Errorf("find target feed: %w", err)
+	}
+	if target == nil || target.ID == sourceID {
+		return preview, nil
+	}
+
+	targetEntries, targetStarred, err := s.entries.FeedEntryStats(ctx, target.ID)
+	if err != nil {
+		return FeedMergePreview{}, err
+	}
+	preview.Target = &FeedMergeSide{
+		ID:      target.ID,
+		Title:   target.Title,
+		Entries: targetEntries,
+		Starred: targetStarred,
+	}
+	return preview, nil
+}
+
+// MergeInto 把 source 并入 target：**保留目标那条订阅**（用户 2026-09-17 拍板），
+// 来源的条目/星标/未读状态随条目一起过去；来源有分类而目标没有时，把分类补上；最后删掉来源。
+func (s *feedService) MergeInto(ctx context.Context, sourceID, targetID int64) (FeedMergeResult, error) {
+	if sourceID == targetID {
+		return FeedMergeResult{}, ErrInvalid
+	}
+	source, err := s.feeds.GetByID(ctx, sourceID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return FeedMergeResult{}, ErrNotFound
+		}
+		return FeedMergeResult{}, fmt.Errorf("get source feed: %w", err)
+	}
+	target, err := s.feeds.GetByID(ctx, targetID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return FeedMergeResult{}, ErrNotFound
+		}
+		return FeedMergeResult{}, fmt.Errorf("get target feed: %w", err)
+	}
+
+	moved, deduped, err := s.entries.MoveFeedEntries(ctx, source.ID, target.ID)
+	if err != nil {
+		return FeedMergeResult{}, err
+	}
+
+	// 来源有分类、目标没有 → 把分类补过去（目标已有分类就不动，以保留的那条为准）
+	if target.FolderID == nil && source.FolderID != nil {
+		target.FolderID = source.FolderID
+		if _, err := s.feeds.Update(ctx, target); err != nil {
+			return FeedMergeResult{}, fmt.Errorf("carry over folder: %w", err)
+		}
+	}
+
+	if err := s.feeds.Delete(ctx, source.ID); err != nil {
+		return FeedMergeResult{}, fmt.Errorf("delete merged feed: %w", err)
+	}
+
+	logger.Info("feed merged", "module=service", "action=merge", "resource=feed", "result=ok",
+		"source_feed_id", source.ID, "target_feed_id", target.ID,
+		"moved_entries", moved, "deduped_entries", deduped)
+	return FeedMergeResult{TargetID: target.ID, MovedEntries: moved, DedupedEntries: deduped}, nil
 }

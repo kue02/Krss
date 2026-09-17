@@ -217,6 +217,14 @@ func (s *feedServiceStub) UpdateURL(ctx context.Context, id int64, feedURL strin
 	return model.Feed{}, nil
 }
 
+func (s *feedServiceStub) MergePreview(ctx context.Context, sourceID int64, targetURL string) (service.FeedMergePreview, error) {
+	return service.FeedMergePreview{}, nil
+}
+
+func (s *feedServiceStub) MergeInto(ctx context.Context, sourceID, targetID int64) (service.FeedMergeResult, error) {
+	return service.FeedMergeResult{}, nil
+}
+
 func (s *feedServiceStub) Delete(ctx context.Context, id int64) error {
 	return nil
 }

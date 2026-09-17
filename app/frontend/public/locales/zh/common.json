@@ -132,7 +132,13 @@
     "scroll_read_off": "关",
     "scroll_read_on": "开",
     "scroll_read_per_view": "按视图单独设",
-    "scroll_read_per_view_hint": "已选「按视图单独设」——各视图的开关在 外观 → 按视图设置 里"
+    "scroll_read_per_view_hint": "已选「按视图单独设」——各视图的开关在 外观 → 按视图设置 里",
+    "rsshub_merge_title": "换链接后与已有订阅重复",
+    "rsshub_merge_description": "下面这些订阅换到该实例后地址与已有订阅完全相同。确认后会合并为一个源：保留先存在的那条，把本次要改的条目、星标、分类并过去，然后删掉重复的那条。",
+    "rsshub_merge_line": "{{source}}（{{sourceEntries}} 条 / {{sourceStarred}} 星标）→ 并入 {{target}}（{{targetEntries}} 条 / {{targetStarred}} 星标）",
+    "rsshub_merge_also": "另有 {{count}} 条订阅只是换地址，不受影响。",
+    "rsshub_merge_confirm": "确认合并",
+    "rsshub_merge_merged": "已合并 {{merged}} 条重复订阅，另有 {{changed}} 条换了地址"
   },
   "theme": {
     "system": "跟随系统",

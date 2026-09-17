@@ -325,6 +325,42 @@
                 }
             }
         },
+        "/api/feeds/merge-preview": {
+            "get": {
+                "description": "Preview merging a subscription into the one that already owns the target URL",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feeds"
+                ],
+                "summary": "Feed merge preview",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Source feed ID",
+                        "name": "sourceId",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Target URL",
+                        "name": "url",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.feedMergePreviewResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/feeds/{id}/ai": {
             "patch": {
                 "description": "Per-feed override for auto translate / auto summary (null = follow global)",
@@ -358,6 +394,44 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/internal_handler.feedResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/feeds/{id}/merge": {
+            "post": {
+                "description": "Move entries of :id into targetId, then delete :id (target is kept)",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feeds"
+                ],
+                "summary": "Merge feed into another",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Source feed ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Merge target",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.mergeIntoRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.feedMergeResultResponse"
                         }
                     }
                 }
@@ -3186,6 +3260,48 @@
                 }
             }
         },
+        "internal_handler.feedMergePreviewResponse": {
+            "type": "object",
+            "properties": {
+                "source": {
+                    "$ref": "#/definitions/internal_handler.feedMergeSideResponse"
+                },
+                "target": {
+                    "$ref": "#/definitions/internal_handler.feedMergeSideResponse"
+                }
+            }
+        },
+        "internal_handler.feedMergeResultResponse": {
+            "type": "object",
+            "properties": {
+                "dedupedEntries": {
+                    "type": "integer"
+                },
+                "movedEntries": {
+                    "type": "integer"
+                },
+                "targetId": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.feedMergeSideResponse": {
+            "type": "object",
+            "properties": {
+                "entries": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "starred": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_handler.feedPreviewEntryResponse": {
             "type": "object",
             "properties": {
@@ -3742,6 +3858,14 @@
                     "type": "string"
                 },
                 "folderId": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.mergeIntoRequest": {
+            "type": "object",
+            "properties": {
+                "targetId": {
                     "type": "string"
                 }
             }

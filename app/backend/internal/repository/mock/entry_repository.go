@@ -130,6 +130,22 @@ func (mr *MockEntryRepositoryMockRecorder) ExistsByLegacyURL(ctx, feedID, rawURL
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExistsByLegacyURL", reflect.TypeOf((*MockEntryRepository)(nil).ExistsByLegacyURL), ctx, feedID, rawURL, hash)
 }
 
+// FeedEntryStats mocks base method.
+func (m *MockEntryRepository) FeedEntryStats(ctx context.Context, feedID int64) (int64, int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FeedEntryStats", ctx, feedID)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(int64)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// FeedEntryStats indicates an expected call of FeedEntryStats.
+func (mr *MockEntryRepositoryMockRecorder) FeedEntryStats(ctx, feedID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FeedEntryStats", reflect.TypeOf((*MockEntryRepository)(nil).FeedEntryStats), ctx, feedID)
+}
+
 // GetAllUnreadCounts mocks base method.
 func (m *MockEntryRepository) GetAllUnreadCounts(ctx context.Context) ([]repository.UnreadCount, error) {
 	m.ctrl.T.Helper()
@@ -217,6 +233,22 @@ func (m *MockEntryRepository) MarkAllAsRead(ctx context.Context, feedID, folderI
 func (mr *MockEntryRepositoryMockRecorder) MarkAllAsRead(ctx, feedID, folderID, contentType any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkAllAsRead", reflect.TypeOf((*MockEntryRepository)(nil).MarkAllAsRead), ctx, feedID, folderID, contentType)
+}
+
+// MoveFeedEntries mocks base method.
+func (m *MockEntryRepository) MoveFeedEntries(ctx context.Context, fromFeedID, toFeedID int64) (int64, int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MoveFeedEntries", ctx, fromFeedID, toFeedID)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(int64)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// MoveFeedEntries indicates an expected call of MoveFeedEntries.
+func (mr *MockEntryRepositoryMockRecorder) MoveFeedEntries(ctx, fromFeedID, toFeedID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MoveFeedEntries", reflect.TypeOf((*MockEntryRepository)(nil).MoveFeedEntries), ctx, fromFeedID, toFeedID)
 }
 
 // ResetFilterState mocks base method.

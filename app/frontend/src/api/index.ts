@@ -429,6 +429,46 @@ export async function updateFeedAI(
   });
 }
 
+/** 合并前的一侧：这个订阅有几条、几条星标（给确认弹框显示「两边各有几条」） */
+export interface FeedMergeSide {
+  id: string;
+  title: string;
+  entries: number;
+  starred: number;
+}
+
+/** 合并预览：把 sourceId 换成 url 时，目标地址属于哪个订阅（null = 没撞车） */
+export interface FeedMergePreview {
+  source: FeedMergeSide;
+  target: FeedMergeSide | null;
+}
+
+/**
+ * 合并预览（RSSHub 换实例后两个订阅撞成同一地址时用）。
+ *
+ * 前端在换地址**之前**探一次，撞上就弹「确认合并」；不撞车才直接 PATCH。
+ * 后端 PATCH 那边也有 409 兜底，两条路都能兜住。
+ */
+export async function getFeedMergePreview(
+  sourceId: string,
+  url: string,
+): Promise<FeedMergePreview> {
+  return request<FeedMergePreview>(
+    `/api/feeds/merge-preview?sourceId=${encodeURIComponent(sourceId)}&url=${encodeURIComponent(url)}`,
+  );
+}
+
+/** 把一个订阅并入另一个：保留 target，source 的条目/星标/分类并过去，然后 source 被删掉 */
+export async function mergeFeed(
+  sourceId: string,
+  targetId: string,
+): Promise<{ targetId: string; movedEntries: number; dedupedEntries: number }> {
+  return request<{ targetId: string; movedEntries: number; dedupedEntries: number }>(
+    `/api/feeds/${sourceId}/merge`,
+    { method: "POST", body: JSON.stringify({ targetId }) },
+  );
+}
+
 /** 改订阅地址（RSSHub 换实例域名等；只改地址，不动标题/文件夹） */
 export async function updateFeedUrl(id: string, url: string): Promise<Feed> {
   return request<Feed>(`/api/feeds/${id}/url`, {
