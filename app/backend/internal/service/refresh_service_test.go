@@ -34,6 +34,7 @@ func TestRefreshService_RefreshAll_AlreadyRefreshing(t *testing.T) {
 		network.NewClientFactoryForTest(&http.Client{}),
 		nil,
 		nil,
+		nil,
 	)
 	service.SetRefreshServiceRefreshing(svc, true)
 
@@ -54,6 +55,7 @@ func TestRefreshService_RefreshAll_ListError(t *testing.T) {
 		nil,
 		nil,
 		network.NewClientFactoryForTest(&http.Client{}),
+		nil,
 		nil,
 		nil,
 	)
@@ -91,6 +93,7 @@ func TestRefreshService_RefreshFeed_NotModified(t *testing.T) {
 		nil,
 		nil,
 		network.NewClientFactoryForTest(client),
+		nil,
 		nil,
 		nil,
 	)
@@ -148,6 +151,7 @@ func TestRefreshService_RefreshFeed_Success(t *testing.T) {
 		network.NewClientFactoryForTest(client),
 		nil,
 		nil,
+		nil,
 	)
 
 	err := svc.RefreshFeed(context.Background(), 10)
@@ -199,6 +203,7 @@ func TestRefreshService_RefreshFeed_FallbackUserAgent(t *testing.T) {
 		network.NewClientFactoryForTest(client),
 		nil,
 		nil,
+		nil,
 	)
 
 	err := svc.RefreshFeed(context.Background(), 2)
@@ -215,6 +220,7 @@ func TestRefreshService_RefreshFeeds_Empty(t *testing.T) {
 		nil,
 		nil,
 		network.NewClientFactoryForTest(&http.Client{}),
+		nil,
 		nil,
 		nil,
 	)
@@ -236,6 +242,7 @@ func TestRefreshService_RefreshFeeds_GetByIDsError(t *testing.T) {
 		nil,
 		nil,
 		network.NewClientFactoryForTest(&http.Client{}),
+		nil,
 		nil,
 		nil,
 	)
@@ -313,6 +320,7 @@ func TestRefreshService_RefreshFeed_SameGUIDDifferentURL_SecondRefreshCountsAsUp
 		network.NewClientFactoryForTest(client),
 		nil,
 		nil,
+		nil,
 	)
 
 	err := svc.RefreshFeed(context.Background(), 20)
@@ -386,6 +394,7 @@ func TestRefreshService_RefreshFeeds_WithRateLimit(t *testing.T) {
 		network.NewClientFactoryForTest(client),
 		nil,
 		&rateLimitStub{interval: 5 * time.Millisecond},
+		nil,
 	)
 
 	err := svc.RefreshFeeds(context.Background(), []int64{1, 2})
@@ -425,6 +434,7 @@ func TestRefreshService_RefreshFeedWithFreshClient_HTTPError(t *testing.T) {
 		nil,
 		nil,
 		network.NewClientFactoryForTest(client),
+		nil,
 		nil,
 		nil,
 	)

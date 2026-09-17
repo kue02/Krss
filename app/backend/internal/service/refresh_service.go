@@ -135,9 +135,19 @@ func (s *refreshService) processParsedFeed(ctx context.Context, feed model.Feed,
 	}
 
 	// Save entries
-	newCount, updatedCount := s.saveEntries(ctx, feed.ID, parsed.Items)
+	newCount, updatedCount, newEntries := s.saveEntries(ctx, feed.ID, parsed.Items)
 	if newCount > 0 || updatedCount > 0 {
 		logger.Info("feed refreshed", "module", "service", "action", "refresh", "resource", "feed", "result", "ok", "feed_id", feed.ID, "feed_title", feed.Title, "new", newCount, "updated", updatedCount)
+	}
+
+	// 规则引擎挂在入库之后：只对本次新增的条目按顺序跑一遍（首个命中即停），只改标记。
+	// 仅新条目生效 —— 已存在的条目走更新分支时不回头改，避免「刷新一次就被追改一遍」。
+	if len(newEntries) > 0 && s.filters != nil {
+		if applied, err := s.filters.ApplyToEntries(ctx, feed, newEntries); err != nil {
+			logger.Warn("apply filters failed", "module", "service", "action", "apply", "resource", "filter", "result", "failed", "feed_id", feed.ID, "error", err)
+		} else if applied > 0 {
+			logger.Info("filters applied on new entries", "module", "service", "action", "apply", "resource", "filter", "result", "ok", "feed_id", feed.ID, "applied", applied)
+		}
 	}
 
 	// Backfill siteURL if empty (for feeds added before siteURL was implemented)
@@ -168,8 +178,9 @@ func (s *refreshService) processParsedFeed(ctx context.Context, feed model.Feed,
 }
 
 // saveEntries saves parsed feed items to the database.
-// Returns the count of new and updated entries.
-func (s *refreshService) saveEntries(ctx context.Context, feedID int64, items []*gofeed.Item) (newCount, updatedCount int) {
+// Returns the count of new and updated entries, plus the newly created ones
+// （规则引擎只处理「刚入库的新条目」，因此把新条目一并回传）。
+func (s *refreshService) saveEntries(ctx context.Context, feedID int64, items []*gofeed.Item) (newCount, updatedCount int, newEntries []model.Entry) {
 	dynamicTime := hasDynamicTime(items)
 	for _, item := range items {
 		entry := itemToEntry(feedID, item, dynamicTime)
@@ -200,6 +211,7 @@ func (s *refreshService) saveEntries(ctx context.Context, feedID int64, items []
 			updatedCount++
 		} else {
 			newCount++
+			newEntries = append(newEntries, entry)
 		}
 	}
 	return
@@ -233,6 +245,7 @@ type refreshService struct {
 	clientFactory   *network.ClientFactory
 	anubis          AnubisSolver
 	rateLimitSvc    DomainRateLimitService
+	filters         FilterService
 	mu              sync.Mutex
 	isRefreshing    bool
 	lastRefreshedAt *time.Time
@@ -240,7 +253,7 @@ type refreshService struct {
 	progressDone    int
 }
 
-func NewRefreshService(feeds repository.FeedRepository, entries repository.EntryRepository, settings SettingsService, icons IconService, clientFactory *network.ClientFactory, anubisSolver AnubisSolver, rateLimitSvc DomainRateLimitService) RefreshService {
+func NewRefreshService(feeds repository.FeedRepository, entries repository.EntryRepository, settings SettingsService, icons IconService, clientFactory *network.ClientFactory, anubisSolver AnubisSolver, rateLimitSvc DomainRateLimitService, filters FilterService) RefreshService {
 	return &refreshService{
 		feeds:         feeds,
 		entries:       entries,
@@ -249,6 +262,7 @@ func NewRefreshService(feeds repository.FeedRepository, entries repository.Entry
 		clientFactory: clientFactory,
 		anubis:        anubisSolver,
 		rateLimitSvc:  rateLimitSvc,
+		filters:       filters,
 	}
 }
 

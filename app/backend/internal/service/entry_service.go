@@ -18,8 +18,12 @@ type EntryListParams struct {
 	UnreadOnly   bool
 	StarredOnly  bool
 	HasThumbnail bool
-	Limit        int
-	Offset       int
+	// IncludeMuted 为 true 时把被规则静音的条目也列出来（默认隐藏）。
+	IncludeMuted bool
+	// MutedOnly 只看被规则静音的条目（「已静音」视图）。
+	MutedOnly bool
+	Limit     int
+	Offset    int
 }
 
 type EntryService interface {
@@ -95,6 +99,8 @@ func (s *entryService) List(ctx context.Context, params EntryListParams) ([]mode
 		UnreadOnly:   params.UnreadOnly,
 		StarredOnly:  params.StarredOnly,
 		HasThumbnail: params.HasThumbnail,
+		IncludeMuted: params.IncludeMuted,
+		MutedOnly:    params.MutedOnly,
 		Limit:        limit,
 		Offset:       params.Offset,
 	}

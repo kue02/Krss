@@ -50,8 +50,11 @@ type entryResponse struct {
 	PublishedAt     *string `json:"publishedAt,omitempty"`
 	Read            bool    `json:"read"`
 	Starred         bool    `json:"starred"`
-	CreatedAt       string  `json:"createdAt"`
-	UpdatedAt       string  `json:"updatedAt"`
+	// Muted 条目是被过滤规则静音的（列表默认隐藏，可在「已静音」里回看）。
+	Muted     bool    `json:"muted"`
+	FilterID  *string `json:"filterId,omitempty"`
+	CreatedAt string  `json:"createdAt"`
+	UpdatedAt string  `json:"updatedAt"`
 }
 
 type readableContentResponse struct {
@@ -129,6 +132,8 @@ func parseEntryIDList(rawIDs []string) ([]int64, string) {
 // @Param contentType query string false "Filter by content type (article, picture, notification, social)"
 // @Param unreadOnly query bool false "Only return unread entries"
 // @Param starredOnly query bool false "Only return starred entries"
+// @Param includeMuted query bool false "Include entries muted by filter rules"
+// @Param mutedOnly query bool false "Only return entries muted by filter rules"
 // @Param limit query int false "Limit the number of entries (default 50)"
 // @Param offset query int false "Offset for pagination"
 // @Success 200 {object} entryListResponse
@@ -173,6 +178,15 @@ func (h *EntryHandler) List(c echo.Context) error {
 
 	if c.QueryParam("hasThumbnail") == "true" {
 		params.HasThumbnail = true
+	}
+
+	// 被规则静音的条目默认隐藏；includeMuted 表示「连静音一起显示」，mutedOnly 表示「只看静音的」
+	if c.QueryParam("includeMuted") == "true" {
+		params.IncludeMuted = true
+	}
+	if c.QueryParam("mutedOnly") == "true" {
+		params.MutedOnly = true
+		params.IncludeMuted = true
 	}
 
 	if raw := c.QueryParam("limit"); raw != "" {
@@ -524,6 +538,8 @@ func toEntryResponse(e model.Entry) entryResponse {
 		Author:          e.Author,
 		Read:            e.Read,
 		Starred:         e.Starred,
+		Muted:           e.Muted,
+		FilterID:        idPtrToString(e.FilterID),
 		CreatedAt:       e.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:       e.UpdatedAt.UTC().Format(time.RFC3339),
 	}

@@ -43,6 +43,8 @@ func TestNewRouter_RegistersRoutes(t *testing.T) {
 	aiHandler := handler.NewAIHandler(aiService)
 	authHandler := handler.NewAuthHandler(authService)
 	domainRateLimitHandler := handler.NewDomainRateLimitHandler(domainRateLimitService)
+	filterService := mock.NewMockFilterService(ctrl)
+	filterHandler := handler.NewFilterHandler(filterService)
 
 	e := gh.NewRouter(
 		folderHandler,
@@ -55,6 +57,7 @@ func TestNewRouter_RegistersRoutes(t *testing.T) {
 		aiHandler,
 		authHandler,
 		domainRateLimitHandler,
+		filterHandler,
 		authService,
 		"",
 		true,
@@ -95,6 +98,8 @@ func TestNewRouter_SwaggerDisabled(t *testing.T) {
 	aiHandler := handler.NewAIHandler(aiService)
 	authHandler := handler.NewAuthHandler(authService)
 	domainRateLimitHandler := handler.NewDomainRateLimitHandler(domainRateLimitService)
+	filterService := mock.NewMockFilterService(ctrl)
+	filterHandler := handler.NewFilterHandler(filterService)
 
 	e := gh.NewRouter(
 		folderHandler,
@@ -107,6 +112,7 @@ func TestNewRouter_SwaggerDisabled(t *testing.T) {
 		aiHandler,
 		authHandler,
 		domainRateLimitHandler,
+		filterHandler,
 		authService,
 		"",
 		false,
@@ -147,6 +153,8 @@ func TestNewRouter_LogoutRouteIsPublic(t *testing.T) {
 	aiHandler := handler.NewAIHandler(aiService)
 	authHandler := handler.NewAuthHandler(authService)
 	domainRateLimitHandler := handler.NewDomainRateLimitHandler(domainRateLimitService)
+	filterService := mock.NewMockFilterService(ctrl)
+	filterHandler := handler.NewFilterHandler(filterService)
 
 	e := gh.NewRouter(
 		folderHandler,
@@ -159,6 +167,7 @@ func TestNewRouter_LogoutRouteIsPublic(t *testing.T) {
 		aiHandler,
 		authHandler,
 		domainRateLimitHandler,
+		filterHandler,
 		authService,
 		"",
 		false,

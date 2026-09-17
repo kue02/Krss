@@ -34,6 +34,7 @@ func TestHandler_RegisterRoutes(t *testing.T) {
 	handler.NewEntryHandler(nil, nil).RegisterRoutes(g)
 	handler.NewFeedHandler(nil, nil).RegisterRoutes(g)
 	handler.NewFolderHandler(nil).RegisterRoutes(g)
+	handler.NewFilterHandler(nil).RegisterRoutes(g)
 	handler.NewProxyHandler(nil).RegisterRoutes(g)
 	handler.NewOPMLHandler(nil, nil).RegisterRoutes(g)
 	handler.NewSettingsHandler(nil, network.NewClientFactoryForTest(&http.Client{})).RegisterRoutes(g)
@@ -60,6 +61,14 @@ func TestHandler_RegisterRoutes(t *testing.T) {
 	assertRoute(t, routes, http.MethodPost, "/domain-rate-limits")
 	assertRoute(t, routes, http.MethodPut, "/domain-rate-limits/:host")
 	assertRoute(t, routes, http.MethodDelete, "/domain-rate-limits/:host")
+
+	assertRoute(t, routes, http.MethodGet, "/filters")
+	assertRoute(t, routes, http.MethodPost, "/filters")
+	assertRoute(t, routes, http.MethodPatch, "/filters/:id")
+	assertRoute(t, routes, http.MethodDelete, "/filters/:id")
+	assertRoute(t, routes, http.MethodPost, "/filters/preview")
+	assertRoute(t, routes, http.MethodPost, "/filters/:id/revert")
+	assertRoute(t, routes, http.MethodGet, "/filters/:id/matches")
 
 	assertRoute(t, routes, http.MethodGet, "/entries")
 	assertRoute(t, routes, http.MethodGet, "/entries/:id")

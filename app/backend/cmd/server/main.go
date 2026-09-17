@@ -55,6 +55,7 @@ func main() {
 	aiTranslationRepo := repository.NewAITranslationRepository(dbConn)
 	aiListTranslationRepo := repository.NewAIListTranslationRepository(dbConn)
 	domainRateLimitRepo := repository.NewDomainRateLimitRepository(dbConn)
+	filterRepo := repository.NewFilterRepository(dbConn)
 
 	// Initialize rate limiter with stored setting
 	initialRateLimit := ai.DefaultRateLimit
@@ -94,7 +95,9 @@ func main() {
 	entryService := service.NewEntryService(entryRepo, feedRepo, folderRepo)
 	readabilityService := service.NewReadabilityService(entryRepo, clientFactory, anubisSolver)
 	domainRateLimitService := service.NewDomainRateLimitService(domainRateLimitRepo)
-	refreshService := service.NewRefreshService(feedRepo, entryRepo, settingsService, iconService, clientFactory, anubisSolver, domainRateLimitService)
+	// 规则引擎：抓取入库之后跑，只改条目上的标记（muted / read / starred）
+	filterService := service.NewFilterService(filterRepo, entryRepo, feedRepo, folderRepo)
+	refreshService := service.NewRefreshService(feedRepo, entryRepo, settingsService, iconService, clientFactory, anubisSolver, domainRateLimitService, filterService)
 	opmlService := service.NewOPMLService(folderService, feedService, refreshService, iconService, folderRepo, feedRepo)
 
 	proxyService := service.NewProxyService(clientFactory, anubisSolver)
@@ -112,8 +115,9 @@ func main() {
 	aiHandler := handler.NewAIHandler(aiService)
 	authHandler := handler.NewAuthHandler(authService)
 	domainRateLimitHandler := handler.NewDomainRateLimitHandler(domainRateLimitService)
+	filterHandler := handler.NewFilterHandler(filterService)
 
-	router := transport.NewRouter(folderHandler, feedHandler, entryHandler, opmlHandler, iconHandler, proxyHandler, settingsHandler, aiHandler, authHandler, domainRateLimitHandler, authService, cfg.StaticDir, cfg.EnableSwagger)
+	router := transport.NewRouter(folderHandler, feedHandler, entryHandler, opmlHandler, iconHandler, proxyHandler, settingsHandler, aiHandler, authHandler, domainRateLimitHandler, filterHandler, authService, cfg.StaticDir, cfg.EnableSwagger)
 	pprofServer := startPprofServer(cfg.PprofAddr)
 
 	// Start background scheduler (15 minutes interval)
