@@ -26,6 +26,10 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { useUISettingKey } from "@/hooks/useUISettings";
+import {
+  UnreadIndicator,
+  unreadRowClass,
+} from "@/components/entry-list/unread-indicator";
 import { useMarkAsRead, useMarkAsStarred } from "@/hooks/useEntries";
 import { useUnmuteEntry, useFilters, useCreateFilterException } from "@/hooks/useFilters";
 import { showToast } from "@/stores/toast-store";
@@ -312,6 +316,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     // 「长贴自动展开」开启后不做折叠（按视图设置，由 EntryList 传进来）
     const bodyClamped = isContentClipped && !bodyExpanded && !autoExpandLong;
     const isUnread = !entry.read;
+    const unreadStyle = useUISettingKey("unreadStyle");
     const isLargeImage = cardImageSize === "large";
     const showThumbnail =
       cardImageSize !== "none" && Boolean(thumbnail) && !imageError;
@@ -333,7 +338,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                 // Folo 的社交时间线是「居中可读宽度」而不是通栏
                 "group relative mx-auto mb-1 flex w-full max-w-[clamp(45ch,60vw,65ch)] cursor-pointer rounded-xl border border-transparent px-3 py-4 transition-colors duration-200",
                 isSelected ? "border-border/60 bg-card shadow-nf" : "hover:bg-item-hover",
-                !isUnread && !entry.starred && !isSelected && "opacity-[0.78]",
+                unreadRowClass(isUnread, !!entry.starred, isSelected, unreadStyle),
               )}
               style={style}
               data-index={dataIndex}
@@ -342,10 +347,12 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
             >
               <Ripple hoverOpacity={0} pressedOpacity={0.05} duration={100} />
 
-              {/* 未读点：Folo 放在条目最左侧 */}
-              {isUnread && (
+              {/* 未读点：原来是 Folo 那样画在条目最左侧的绝对定位小圆点，
+                  现在只在「小圆点」样式下出现（角标 / 变灰两种样式下不出点） */}
+              {unreadStyle === "dot" && isUnread && (
                 <span
                   aria-hidden="true"
+                  data-unread-marker="dot-abs"
                   className="absolute -left-0.5 top-8 size-2 rounded-full bg-primary"
                 />
               )}
@@ -390,6 +397,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                   <span className="truncate text-base font-semibold text-foreground">
                     {displayFeedName}
                   </span>
+                  <UnreadIndicator unread={isUnread} />
                   {/* Folo 会在源名后面挂 @handle（可点进作者主页）；
                       源名里已经带同一 handle 时不重复显示 */}
                   {socialSource &&
@@ -642,8 +650,8 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
               isSelected
                 ? "border-border/60 bg-card shadow-nf"
                 : "border-transparent hover:bg-item-hover",
-              // 对齐 Nextflux：已读且未加星标的卡片整体降透明度
-              !isUnread && !entry.starred && !isSelected && "opacity-[0.78]",
+              // 对齐 Nextflux：已读且未加星标的卡片整体降透明度（只在「变灰」样式下；其余样式由 UnreadIndicator 表达）
+              unreadRowClass(isUnread, !!entry.starred, isSelected, unreadStyle),
             )}
             style={style}
             data-index={dataIndex}
@@ -679,6 +687,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                 <span className="block min-w-0 truncate font-bold">
                   {displayFeedName}
                 </span>
+                <UnreadIndicator unread={isUnread} />
                 {publishedAt && (
                   <>
                     <span className="shrink-0 text-muted-foreground/40">·</span>

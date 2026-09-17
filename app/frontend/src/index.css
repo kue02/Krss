@@ -758,6 +758,17 @@ body.mobile-document-scroll-locked {
   /* 引文样式三：卡片（用户 11-10 要求新增）。
      规格对齐本项目已有的卡片外观（rounded-xl + border + 淡底 + shadow-nf），
      而不是随便画一个框；引文是正文 HTML，套不了 HeroUI 的 React Card 组件，所以取同一套 token 与圆角/阴影。 */
+  /* 「未读角标」档（设置 → 外观 → 阅读 → 未读标记 = 角标）：
+     HeroUI 的 Badge 根节点默认是**绝对定位**的角标（`.badge--top-right`），设计给「贴在某个锚点右上角」用；
+     我们把它放在来源名后面当行内标签，不中和定位的话它会飘到卡片的右上角、和名字完全脱开
+     （实测 x=564 而名字在 x=299）。这里**只中和定位**，颜色 / 圆角 / 字号 / 尺寸仍全部来自 HeroUI 的 badge 变体。
+     未分层（顶层）是为了压过 HeroUI 在 @layer components 里写的定位。 */
+  [data-unread-marker="badge"] {
+    position: static;
+    inset: auto;
+    transform: none;
+  }
+
   html[data-quote-style="card"] .rsshub-quote {
     margin-top: 12px;
     padding: 12px 14px;

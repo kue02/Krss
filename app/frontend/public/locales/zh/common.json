@@ -529,7 +529,11 @@
     "quote_style_divider": "分割线",
     "reduce_motion": "减少动态效果",
     "code_line_numbers": "代码块行号",
-    "quote_style_card": "卡片"
+    "quote_style_card": "卡片",
+    "unread_style": "未读标记",
+    "unread_style_badge": "角标",
+    "unread_style_dot": "小圆点",
+    "unread_style_dim": "变灰"
   },
   "reading_font": {
     "theme_default": "跟随主题",

@@ -532,7 +532,11 @@
     "quote_style_divider": "Divider",
     "reduce_motion": "Reduce motion",
     "code_line_numbers": "Code line numbers",
-    "quote_style_card": "Card"
+    "quote_style_card": "Card",
+    "unread_style": "Unread marker",
+    "unread_style_badge": "Badge",
+    "unread_style_dot": "Dot",
+    "unread_style_dim": "Dim"
   },
   "reading_font": {
     "theme_default": "Theme default",

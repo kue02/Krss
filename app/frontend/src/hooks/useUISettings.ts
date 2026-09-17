@@ -8,6 +8,14 @@ export type ScrollReadMode = "off" | "on" | "perView";
 export type ViewFlags = Record<ContentType, boolean>;
 export type ViewScrollRead = Record<ContentType, ScrollReadOverride>;
 export type QuoteStyle = "block" | "divider" | "card";
+/**
+ * 已读/未读的全局统一标记（用户 11-14）：
+ *   badge = HeroUI `Badge` 角标（**用户拍板的默认**）
+ *   dot   = 小圆点（原来只有社交媒体视图有）
+ *   dim   = 已读变灰（原来只有其它视图有）
+ * 三种都同时作用于所有视图 —— 用户原话：「需要做成可切换的全局统一样式」。
+ */
+export type UnreadStyle = "badge" | "dot" | "dim";
 
 interface UISettings {
   feedColWidth: number;
@@ -45,6 +53,8 @@ interface UISettings {
    *   card    = 卡片（描边 + 圆角 + 淡底 + 轻阴影，用户 2026-09-18 要求新增）
    */
   quoteStyle: QuoteStyle;
+  /** 已读/未读的标记样式（全局统一，见 UnreadStyle） */
+  unreadStyle: UnreadStyle;
   /**
    * 正文代码块是否显示行号（Nextflux 也有这个开关，但它默认关）。
    * 用户 2026-09-17 明确要「代码块显示行号」，所以这里默认开；不想要的去 外观 → 阅读 关掉。
@@ -96,6 +106,7 @@ export const defaultUISettings: UISettings = {
   },
   reduceMotion: false,
   quoteStyle: "block",
+  unreadStyle: "badge",
   showLineNumbers: true,
   uiScale: 1,
   scrollReadTimingByView: {
@@ -244,6 +255,13 @@ export function useUISettingActions() {
     [],
   );
 
+  const setUnreadStyle = useCallback(
+    (style: UnreadStyle) => {
+      setUISetting("unreadStyle", style);
+    },
+    [setUISetting],
+  );
+
   const setQuoteStyle = useCallback(
     (style: QuoteStyle) => {
       setUISetting("quoteStyle", style);
@@ -320,6 +338,7 @@ export function useUISettingActions() {
     setShowLineNumbers,
     setUiScale,
     setQuoteStyle,
+    setUnreadStyle,
     setScrollReadForView,
     setScrollReadTimingForView,
     resetToDefaults,

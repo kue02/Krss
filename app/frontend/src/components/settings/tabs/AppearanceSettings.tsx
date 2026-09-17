@@ -24,6 +24,7 @@ import {
   type CardImageSize,
   type QuoteStyle,
   type ScrollReadOverride,
+  type UnreadStyle,
 } from "@/hooks/useUISettings";
 import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
 import { readingFonts } from "@/lib/reading-fonts";
@@ -156,6 +157,7 @@ export function AppearanceSettings() {
   const showLineNumbers = useUISettingKey("showLineNumbers");
   const uiScale = useUISettingKey("uiScale");
   const quoteStyle = useUISettingKey("quoteStyle");
+  const unreadStyle = useUISettingKey("unreadStyle");
   const scrollReadByView = useUISettingKey("scrollReadByView");
   // 「滚动标已读」总开关形态：perView 才显示下面的按视图覆盖；off 时判定项置灰
   const { mode: scrollReadMode } = useScrollReadSetting();
@@ -168,6 +170,7 @@ export function AppearanceSettings() {
     setShowLineNumbers,
     setUiScale,
     setQuoteStyle,
+    setUnreadStyle,
     setScrollReadForView,
     setScrollReadTimingForView,
     setCardImageSize,
@@ -501,6 +504,21 @@ export function AppearanceSettings() {
                 { value: "1", label: t("appearance_reading.ui_scale_default") },
                 { value: "1.1", label: t("appearance_reading.ui_scale_large") },
                 { value: "1.25", label: t("appearance_reading.ui_scale_xl") },
+              ]}
+            />
+          </SettingRow>
+          <SettingRow label={t("appearance_reading.unread_style")}>
+            <SegmentedControl
+              className="shrink-0"
+              value={unreadStyle}
+              onValueChange={(value) => setUnreadStyle(value as UnreadStyle)}
+              options={[
+                {
+                  value: "badge",
+                  label: t("appearance_reading.unread_style_badge"),
+                },
+                { value: "dot", label: t("appearance_reading.unread_style_dot") },
+                { value: "dim", label: t("appearance_reading.unread_style_dim") },
               ]}
             />
           </SettingRow>
