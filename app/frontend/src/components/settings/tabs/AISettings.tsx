@@ -800,7 +800,7 @@ export function AISettings() {
           disabled={isTesting || !canSubmit}
           className={cn(
             "flex h-8 shrink-0 items-center gap-1.5 rounded-md px-4 text-sm font-medium transition-colors",
-            "bg-muted hover:bg-muted/80",
+            "bg-secondary hover:bg-secondary/80",
             "disabled:cursor-not-allowed disabled:opacity-50",
           )}
         >

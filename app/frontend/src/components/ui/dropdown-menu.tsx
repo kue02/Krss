@@ -116,8 +116,8 @@ const DropdownMenuSubTrigger = React.forwardRef<
       "group relative flex cursor-pointer select-none items-center rounded-lg",
       "px-2.5 py-1 h-[28px] text-sm outline-none",
       "transition-colors duration-100",
-      "focus:bg-accent/30 data-[highlighted]:bg-accent/20",
-      "data-[state=open]:bg-accent/30",
+      "focus:bg-secondary/30 data-[highlighted]:bg-secondary/20",
+      "data-[state=open]:bg-secondary/30",
       inset && "pl-8",
       className,
     )}

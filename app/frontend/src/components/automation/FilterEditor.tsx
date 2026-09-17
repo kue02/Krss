@@ -74,7 +74,8 @@ const ACTION_ORDER: ActionKey[] = [
 ];
 
 const inputClass = cn(
-  "h-8 w-full rounded-md border border-border bg-background px-2 text-sm",
+  // text-foreground：HeroUI 抽屉的 .drawer__body 默认是 muted 文字色，输入值要多一层才够黑
+  "h-8 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground",
   "placeholder:text-muted-foreground/50",
   "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
 );
@@ -256,7 +257,7 @@ export function FilterEditor({
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col text-foreground">
       <div className="min-h-0 flex-1 space-y-5 overflow-auto px-5 py-4">
         {/* 名称 + 启用 */}
         <section className="space-y-3">
@@ -288,7 +289,7 @@ export function FilterEditor({
 
         {/* 自然语言建规则：模型的一句话解释 + 被修正/丢弃的东西（绝不悄悄改） */}
         {(notes || warnings.length > 0) && (
-          <section className="space-y-1 rounded-md border border-border bg-accent/20 px-3 py-2">
+          <section className="space-y-1 rounded-md border border-border bg-secondary/20 px-3 py-2">
             <div className="text-xs font-medium">
               {t("automation.nl_draft_title")}
             </div>
@@ -575,7 +576,7 @@ export function FilterEditor({
 
         {/* 预览结果 */}
         {previewResult && (
-          <section className="space-y-1 rounded-md border border-border bg-accent/20 px-3 py-2">
+          <section className="space-y-1 rounded-md border border-border bg-secondary/20 px-3 py-2">
             <div className="text-xs font-medium">
               {t("automation.preview_summary", {
                 scanned: previewResult.scanned,
@@ -661,7 +662,7 @@ export function FilterEditor({
           disabled={preview.isPending}
           className={cn(
             "h-8 rounded-md border border-border px-3 text-sm font-medium transition-colors",
-            "hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50",
+            "hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50",
           )}
         >
           {preview.isPending

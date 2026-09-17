@@ -390,10 +390,10 @@ function MasonrySkeleton() {
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
       {Array.from({ length: 12 }, (_, i) => (
         <div key={i} className="animate-pulse">
-          <div className="bg-muted" style={{ height: 150 + (i % 3) * 50 }} />
+          <div className="bg-secondary" style={{ height: 150 + (i % 3) * 50 }} />
           <div className="mt-2 flex items-center gap-2">
-            <div className="size-4 rounded bg-muted" />
-            <div className="h-3 w-20 rounded bg-muted" />
+            <div className="size-4 rounded bg-secondary" />
+            <div className="h-3 w-20 rounded bg-secondary" />
           </div>
         </div>
       ))}

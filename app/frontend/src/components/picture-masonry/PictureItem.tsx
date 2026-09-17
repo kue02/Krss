@@ -85,7 +85,7 @@ export const PictureItem = memo(function PictureItem({
       >
         {/* Image container with aspect ratio */}
         <div
-          className="relative overflow-hidden bg-muted"
+          className="relative overflow-hidden bg-secondary"
           style={{ aspectRatio }}
         >
           <img

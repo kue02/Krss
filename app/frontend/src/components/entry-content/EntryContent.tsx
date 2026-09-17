@@ -238,19 +238,19 @@ function EntryContentSkeleton() {
       <div className="flex-1 overflow-auto">
         <div className="mx-auto w-full max-w-[720px] px-6 pb-20 pt-16">
           <div className="mb-10 space-y-5">
-            <div className="h-10 w-3/4 rounded bg-muted" />
+            <div className="h-10 w-3/4 rounded bg-secondary" />
             <div className="flex gap-6">
-              <div className="h-4 w-24 rounded bg-muted" />
-              <div className="h-4 w-32 rounded bg-muted" />
+              <div className="h-4 w-24 rounded bg-secondary" />
+              <div className="h-4 w-32 rounded bg-secondary" />
             </div>
             <hr className="border-border/60" />
           </div>
           <div className="space-y-4">
-            <div className="h-4 w-full rounded bg-muted" />
-            <div className="h-4 w-full rounded bg-muted" />
-            <div className="h-4 w-3/4 rounded bg-muted" />
-            <div className="h-4 w-full rounded bg-muted" />
-            <div className="h-4 w-5/6 rounded bg-muted" />
+            <div className="h-4 w-full rounded bg-secondary" />
+            <div className="h-4 w-full rounded bg-secondary" />
+            <div className="h-4 w-3/4 rounded bg-secondary" />
+            <div className="h-4 w-full rounded bg-secondary" />
+            <div className="h-4 w-5/6 rounded bg-secondary" />
           </div>
         </div>
       </div>

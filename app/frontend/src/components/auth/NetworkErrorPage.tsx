@@ -28,7 +28,7 @@ export function NetworkErrorPage({ onRetry }: NetworkErrorPageProps) {
           </p>
         </div>
 
-        <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
+        <div className="rounded-md bg-secondary/50 p-3 text-xs text-muted-foreground">
           {t("auth.network_error_hint")}
         </div>
 

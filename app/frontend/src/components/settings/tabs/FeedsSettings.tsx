@@ -262,13 +262,13 @@ export function FeedsSettings() {
 
       {/* Table */}
       {feeds.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-muted/20 p-8 text-center">
+        <div className="rounded-lg border border-dashed border-border bg-secondary/20 p-8 text-center">
           <p className="text-sm text-muted-foreground">{t("feeds.no_feeds")}</p>
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full min-w-[600px] text-sm">
-            <thead className="bg-muted/50">
+            <thead className="bg-secondary/50">
               <tr>
                 <th className="w-10 px-3 py-2 text-left">
                   <button
@@ -343,7 +343,7 @@ export function FeedsSettings() {
                     key={feed.id}
                     className={cn(
                       "transition-colors",
-                      isSelected ? "bg-primary/5" : "hover:bg-muted/30",
+                      isSelected ? "bg-primary/5" : "hover:bg-secondary/30",
                     )}
                   >
                     <td className="px-3 py-2">
@@ -383,7 +383,7 @@ export function FeedsSettings() {
                             className="size-4 shrink-0 rounded object-contain"
                           />
                         ) : (
-                          <div className="flex size-4 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">
+                          <div className="flex size-4 shrink-0 items-center justify-center rounded bg-secondary text-muted-foreground">
                             <svg
                               className="size-3"
                               fill="none"
@@ -419,7 +419,7 @@ export function FeedsSettings() {
                         onClick={() => setEditingFeed(feed)}
                         className={cn(
                           "flex size-7 items-center justify-center rounded transition-colors",
-                          "text-muted-foreground hover:bg-muted hover:text-foreground",
+                          "text-muted-foreground hover:bg-secondary hover:text-foreground",
                         )}
                         title={t("feeds.edit")}
                       >

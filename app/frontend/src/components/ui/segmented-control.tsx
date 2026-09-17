@@ -22,7 +22,7 @@ export function SegmentedControl<T extends string>({
       role="tablist"
       className={cn(
         // 容器与滑块的取值对齐 Nextflux 的 segment 令牌（亮色为白、暗色为其指定的蓝灰）
-        "flex h-8 items-center rounded-full border border-border/60 bg-muted/40 p-1",
+        "flex h-8 items-center rounded-full border border-border/60 bg-secondary/40 p-1",
         className,
       )}
     >

@@ -102,7 +102,7 @@ export const ArticleImage = memo(function ArticleImage({
     return (
       <span
         className={cn(
-          "inline-flex items-center justify-center bg-muted/50 text-muted-foreground rounded",
+          "inline-flex items-center justify-center bg-secondary/50 text-muted-foreground rounded",
           className,
         )}
         style={{
@@ -145,7 +145,7 @@ export const ArticleImage = memo(function ArticleImage({
       onClick={handleClick}
       className={cn(
         "max-w-full h-auto rounded transition-opacity duration-200",
-        showSkeleton && "bg-muted/30",
+        showSkeleton && "bg-secondary/30",
         isLoaded ? "opacity-100" : "opacity-70",
         imagePreviewContext && "cursor-zoom-in",
         className,

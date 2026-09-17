@@ -214,7 +214,7 @@ export function AdvancedSettings() {
                         <button
                           type="button"
                           onClick={cancelEdit}
-                          className="flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted"
+                          className="flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary"
                         >
                           <X className="size-4" />
                         </button>
@@ -227,7 +227,7 @@ export function AdvancedSettings() {
                         <button
                           type="button"
                           onClick={() => startEdit(item)}
-                          className="flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                          className="flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
                         >
                           <Edit2 className="size-4" />
                         </button>

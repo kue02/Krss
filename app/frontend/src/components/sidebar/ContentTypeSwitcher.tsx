@@ -42,7 +42,7 @@ export function ContentTypeSwitcher({
 
   return (
     <div className="relative mb-1 mt-2 px-1">
-      <div className="flex h-12 items-center gap-1 rounded-xl bg-muted/50 p-1">
+      <div className="flex h-12 items-center gap-1 rounded-xl bg-secondary/50 p-1">
         {visibleContentTypes.map((type) => {
           const { icon: Icon, labelKey } = contentTypeMeta[type];
           const isActive = contentType === type;

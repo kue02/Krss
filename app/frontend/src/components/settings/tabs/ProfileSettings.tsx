@@ -147,7 +147,7 @@ export function ProfileSettings() {
             value={username}
             disabled
             className={cn(
-              "h-9 w-48 max-w-full shrink-0 rounded-md border border-border bg-muted px-3 text-sm",
+              "h-9 w-48 max-w-full shrink-0 rounded-md border border-border bg-secondary px-3 text-sm",
               "text-muted-foreground cursor-not-allowed",
             )}
           />

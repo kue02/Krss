@@ -33,7 +33,7 @@ const UserAvatar = React.forwardRef<
     style={style}
     onTransitionEnd={onTransitionEnd}
     className={cn(
-      "relative flex shrink-0 overflow-hidden rounded-full border bg-muted select-none",
+      "relative flex shrink-0 overflow-hidden rounded-full border bg-secondary select-none",
       className,
     )}
   >

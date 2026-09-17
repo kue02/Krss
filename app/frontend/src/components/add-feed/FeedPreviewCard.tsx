@@ -223,7 +223,7 @@ export function FeedPreviewCard({
       {/* Feed Header */}
       <div className="flex items-start gap-4 p-4">
         {/* Feed Icon */}
-        <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-accent">
+        <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-secondary">
           {feed.imageUrl && isSafeUrl(feed.imageUrl) ? (
             <img
               src={getProxiedImageUrl(feed.imageUrl, feed.siteUrl)}
@@ -323,7 +323,7 @@ export function FeedPreviewCard({
 
       {/* Options Section */}
       {showOptions && (
-        <div className="border-t border-border bg-accent/30 px-4 py-4 space-y-4">
+        <div className="border-t border-border bg-secondary/30 px-4 py-4 space-y-4">
           {/* Custom Title */}
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1.5">
@@ -371,7 +371,7 @@ export function FeedPreviewCard({
                       type="button"
                       onClick={() => handleFolderSelect(folderInput.trim())}
                       className={cn(
-                        "w-full px-3 py-2 text-left text-sm hover:bg-accent",
+                        "w-full px-3 py-2 text-left text-sm hover:bg-secondary",
                         "flex items-center gap-2 text-primary",
                       )}
                     >
@@ -398,7 +398,7 @@ export function FeedPreviewCard({
                       key={folder.id}
                       type="button"
                       onClick={() => handleFolderSelect(folder.name)}
-                      className="w-full px-3 py-2 text-left text-sm hover:bg-accent flex items-center gap-2"
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-secondary flex items-center gap-2"
                     >
                       {getTypeIcon(folder.type)}
                       <span>{folder.name}</span>

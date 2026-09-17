@@ -281,7 +281,7 @@ export function NetworkSettings() {
               disabled={isTesting || !canTest}
               className={cn(
                 "h-9 rounded-md px-4 text-sm font-medium transition-colors shrink-0",
-                "border border-border bg-background hover:bg-accent",
+                "border border-border bg-background hover:bg-secondary",
                 "disabled:cursor-not-allowed disabled:opacity-50",
                 testStatus === "success" && "border-green-600 text-green-600",
                 testStatus === "error" && "border-destructive text-destructive",

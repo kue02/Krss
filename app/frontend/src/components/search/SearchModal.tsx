@@ -222,7 +222,7 @@ export function SearchModal({ open, onOpenChange }: SearchModalProps) {
                       </span>
                       {/* 来源名标签：条目只带 feedId，命中后要能一眼看出「来自哪个订阅」 */}
                       {feedById.get(entry.feedId)?.title ? (
-                        <span className="shrink-0 rounded-[4px] border border-border/60 bg-muted/40 px-1.5 py-px text-[11px] font-medium leading-4 text-muted-foreground">
+                        <span className="shrink-0 rounded-[4px] border border-border/60 bg-secondary/40 px-1.5 py-px text-[11px] font-medium leading-4 text-muted-foreground">
                           {feedById.get(entry.feedId)?.title}
                         </span>
                       ) : null}

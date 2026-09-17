@@ -870,9 +870,9 @@ function EntryListSkeleton() {
         >
           {/* 来源行 + favicon + 时间 */}
           <div className="flex items-center gap-1.5">
-            <div className="size-5 rounded-[6px] bg-muted/70" />
-            <div className="h-3 w-24 rounded bg-muted/70" />
-            <div className="h-3 w-12 rounded bg-muted/60" />
+            <div className="size-5 rounded-[6px] bg-secondary/70" />
+            <div className="h-3 w-24 rounded bg-secondary/70" />
+            <div className="h-3 w-12 rounded bg-secondary/60" />
           </div>
 
           <div
@@ -883,18 +883,18 @@ function EntryListSkeleton() {
           >
             <div className="min-w-0 flex-1">
               {/* 标题两行 */}
-              <div className="h-4 w-4/5 rounded bg-muted/70" />
-              <div className="mt-1 h-4 w-3/5 rounded bg-muted/70" />
+              <div className="h-4 w-4/5 rounded bg-secondary/70" />
+              <div className="mt-1 h-4 w-3/5 rounded bg-secondary/70" />
               {/* 摘要三行（对齐卡片的摘要行高） */}
-              <div className="mt-2 h-3 w-full rounded bg-muted/60" />
-              <div className="mt-1 h-3 w-11/12 rounded bg-muted/60" />
-              <div className="mt-1 h-3 w-2/3 rounded bg-muted/60" />
+              <div className="mt-2 h-3 w-full rounded bg-secondary/60" />
+              <div className="mt-1 h-3 w-11/12 rounded bg-secondary/60" />
+              <div className="mt-1 h-3 w-2/3 rounded bg-secondary/60" />
             </div>
 
             {showThumb && (
               <div
                 className={cn(
-                  "shrink-0 rounded-lg bg-muted/70",
+                  "shrink-0 rounded-lg bg-secondary/70",
                   isLarge ? "mt-3 aspect-video w-full" : "size-16",
                 )}
               />

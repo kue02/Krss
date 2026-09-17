@@ -102,7 +102,7 @@ function MutedBadge({ filterId }: { filterId?: string }) {
           ? t("automation.muted_by", { name: rule.name })
           : t("automation.muted_unknown_rule")
       }
-      className="shrink-0 rounded-[3px] border border-border/60 bg-muted/40 px-1 py-px text-[10px] font-medium leading-4 text-muted-foreground"
+      className="shrink-0 rounded-[3px] border border-border/60 bg-secondary/40 px-1 py-px text-[10px] font-medium leading-4 text-muted-foreground"
     >
       {t("automation.muted_badge")}
     </span>
@@ -363,7 +363,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                   onError={() => setIconError(true)}
                 />
               ) : (
-                <div className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground/70">
+                <div className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary text-muted-foreground/70">
                   {/* 源没给图标时，社交条目按平台给字形（Folo 这里显示作者头像） */}
                   {socialSource?.platform === "x" ? (
                     <svg
@@ -494,7 +494,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                       )}
                     </>
                   ) : (
-                    <div className="h-20 animate-pulse rounded-lg bg-muted/40" />
+                    <div className="h-20 animate-pulse rounded-lg bg-secondary/40" />
                   )}
                 </div>
 
@@ -513,7 +513,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                             event.stopPropagation();
                             openImagePreview(socialImages, index);
                           }}
-                          className="shrink-0 cursor-zoom-in overflow-hidden rounded-lg bg-muted"
+                          className="shrink-0 cursor-zoom-in overflow-hidden rounded-lg bg-secondary"
                           aria-label="查看大图"
                         >
                           <img
@@ -738,7 +738,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
             {showThumbnail && (
               <div
                 className={cn(
-                  "overflow-hidden rounded-lg bg-muted",
+                  "overflow-hidden rounded-lg bg-secondary",
                   !isThumbLoaded && "animate-pulse",
                   isLargeImage
                     ? "h-[168px] w-full shrink-0"

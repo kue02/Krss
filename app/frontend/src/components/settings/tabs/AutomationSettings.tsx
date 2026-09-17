@@ -70,7 +70,7 @@ function Badge({
         "shrink-0 rounded-[4px] border px-1.5 py-px text-[11px] font-medium leading-4",
         tone === "danger"
           ? "border-destructive/40 bg-destructive/10 text-destructive"
-          : "border-border/60 bg-muted/40 text-muted-foreground",
+          : "border-border/60 bg-secondary/40 text-muted-foreground",
       )}
     >
       {children}
@@ -100,7 +100,7 @@ function RowMenu({
         className={cn(
           "inline-flex size-7 items-center justify-center rounded-md",
           "text-muted-foreground transition-colors",
-          "hover:bg-accent hover:text-foreground data-[pressed]:bg-accent",
+          "hover:bg-secondary hover:text-foreground data-[pressed]:bg-secondary",
         )}
       >
         <MoreHorizontal className="size-4" />
@@ -173,7 +173,7 @@ function RuleRow({
       value={rule}
       dragListener={false}
       dragControls={dragControls}
-      className="flex items-start gap-2 px-2 py-2.5 transition-colors hover:bg-accent/25"
+      className="flex items-start gap-2 px-2 py-2.5 transition-colors hover:bg-secondary/25"
     >
       {/* 拖动把手：拖动排序的主入口（只在把手上按下才拖，不会跟行内点击抢事件） */}
       <button
@@ -183,7 +183,7 @@ function RuleRow({
         onPointerDown={(event) => dragControls.start(event)}
         className={cn(
           "mt-0.5 cursor-grab touch-none rounded p-0.5 text-muted-foreground/60",
-          "transition-colors hover:bg-accent hover:text-foreground active:cursor-grabbing",
+          "transition-colors hover:bg-secondary hover:text-foreground active:cursor-grabbing",
         )}
       >
         <GripVerticalIcon className="size-4" />
@@ -237,7 +237,7 @@ function RuleRow({
             onClick={onShowMatches}
             title={t("automation.matches_title")}
             className={cn(
-              "rounded px-1 tabular-nums transition-colors hover:bg-accent",
+              "rounded px-1 tabular-nums transition-colors hover:bg-secondary",
               rule.matchCount > 0 ? "text-foreground" : "text-muted-foreground",
             )}
           >
@@ -511,7 +511,7 @@ export function AutomationSettings() {
 
       {/* 「已静音」回看入口 —— 被规则静音的东西是个回看角落，不该占中栏的高位入口；
           放在自动化页也顺手回答了「它为什么被静音」（规则都在这一页） */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border/60 bg-secondary/20 px-3 py-2">
         <div className="min-w-0">
           <div className="text-sm font-medium">{t("automation.muted_entries")}</div>
           <div className="mt-0.5 text-xs text-muted-foreground">
@@ -614,7 +614,7 @@ export function AutomationSettings() {
             {views.map((view) => (
               <div
                 key={view.id}
-                className="flex items-center gap-3 px-3 py-2 transition-colors hover:bg-accent/25"
+                className="flex items-center gap-3 px-3 py-2 transition-colors hover:bg-secondary/25"
               >
                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
                   <button

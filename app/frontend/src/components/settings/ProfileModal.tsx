@@ -47,7 +47,7 @@ export function ProfileModal({ open, onOpenChange }: ProfileModalProps) {
                 onClick={() => onOpenChange(false)}
                 className={cn(
                   "rounded-md p-1.5 shrink-0",
-                  "text-muted-foreground hover:text-foreground hover:bg-accent",
+                  "text-muted-foreground hover:text-foreground hover:bg-secondary",
                   "transition-colors focus:outline-none",
                 )}
                 aria-label={t("entry.close")}
@@ -92,7 +92,7 @@ export function ProfileModal({ open, onOpenChange }: ProfileModalProps) {
               onClick={() => onOpenChange(false)}
               className={cn(
                 "rounded-md p-1.5",
-                "text-muted-foreground hover:text-foreground hover:bg-accent",
+                "text-muted-foreground hover:text-foreground hover:bg-secondary",
                 "transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               )}
               aria-label={t("entry.close")}

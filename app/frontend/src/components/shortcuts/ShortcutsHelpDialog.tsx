@@ -49,7 +49,7 @@ function ShortcutList({ rows }: { rows: ShortcutRow[] }) {
             {row.keys.map((key) => (
               <kbd
                 key={key}
-                className="min-w-[1.75rem] rounded-md border border-border/70 bg-muted/70 px-2 py-1 text-center text-[11px] font-semibold text-foreground shadow-[0_1px_0_rgba(0,0,0,0.04)]"
+                className="min-w-[1.75rem] rounded-md border border-border/70 bg-secondary/70 px-2 py-1 text-center text-[11px] font-semibold text-foreground shadow-[0_1px_0_rgba(0,0,0,0.04)]"
               >
                 {key}
               </kbd>

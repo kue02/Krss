@@ -233,7 +233,7 @@ export function DataControl() {
               disabled={isImporting}
               className={cn(
                 "inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 text-sm font-medium",
-                "transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50",
+                "transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50",
               )}
             >
               {isImporting ? (
@@ -284,7 +284,7 @@ export function DataControl() {
           {task && task.status === "running" && task.total > 0 && (
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                <div className="h-2 flex-1 overflow-hidden rounded-full bg-secondary">
                   <div
                     className="h-full bg-primary transition-all duration-300"
                     style={{ width: `${(task.current / task.total) * 100}%` }}
@@ -386,7 +386,7 @@ export function DataControl() {
             onClick={handleExport}
             className={cn(
               "inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 text-sm font-medium",
-              "transition-colors hover:bg-accent",
+              "transition-colors hover:bg-secondary",
             )}
           >
             <svg

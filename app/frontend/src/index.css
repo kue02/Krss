@@ -16,10 +16,12 @@
   --color-primary-foreground: var(--accent-foreground);
   --color-secondary: var(--surface-secondary);
   --color-secondary-foreground: var(--surface-secondary-foreground);
-  --color-muted: var(--surface-secondary);
+  /* muted = HeroUI 的「次要文字色」（它组件内部用它当 color），不能当底色 */
+  --color-muted: var(--muted);
   --color-muted-foreground: var(--muted);
-  --color-accent: var(--surface-secondary);
-  --color-accent-foreground: var(--foreground);
+  /* accent = HeroUI 的强调色（选中/悬浮态用它上色），底色场景请用 bg-secondary */
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--danger);
   --color-destructive-foreground: var(--danger-foreground);
   --color-border: var(--border);
@@ -50,6 +52,42 @@
   --ease-ios: cubic-bezier(0.22, 0.61, 0.36, 1);
   --duration-sidebar-expand: 260ms;
   --duration-sidebar-collapse: 220ms;
+}
+
+/* 焦点环：HeroUI 默认主题的 --focus 直接等于蓝色 accent，点下拉框/按钮时会冒出一圈蓝框
+   （2026-09-17 用户要求去掉）。这里把**默认主题**的焦点环换成中性灰；
+   我们自定义的 [data-theme=stone] / [data-theme=nord-dark] 等各自定义了 --focus，不受影响。 */
+:root,
+.light,
+.default,
+[data-theme="light"],
+[data-theme="default"] {
+  --focus: color-mix(in oklab, var(--foreground) 32%, transparent);
+}
+
+/* HeroUI 弹层的点击恢复：
+   react-aria 打开 Modal/Drawer 时会把 <body> 设成 pointer-events:none（点外部由 overlay 兜住关闭），
+   而 HeroUI 的弹层是 portal 到 body 上的兄弟节点，于是继承了 none —— 表现就是「设置弹窗里下拉框弹出的
+   选项点不动 / 规则行 ⋯ 菜单每一项都没反应」（2026-09-17 用户报）。只给「打开中的弹层」恢复点击；
+   HeroUI 自己给 [data-entering]/[data-exiting] 写了 pointer-events:none，特异性更高，动画态不受影响。 */
+:is(
+  .dropdown__popover,
+  .select__popover,
+  .autocomplete__popover,
+  .combo-box__popover,
+  .color-picker__popover,
+  .date-picker__popover,
+  .date-range-picker__popover
+) {
+  pointer-events: auto;
+}
+
+/* 全站焦点环：浏览器默认的 UA 焦点环是蓝色（outline: auto → rgb(0,95,204)），
+   手写按钮/可聚焦元素上点一下就会冒蓝框（2026-09-17 用户要求去掉）。
+   统一换成中性环：颜色跟前景走、不跟强调色走。 */
+:where(button, [role="button"], a, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--foreground) 35%, transparent);
+  outline-offset: 1px;
 }
 
 @media (display-mode: standalone) {

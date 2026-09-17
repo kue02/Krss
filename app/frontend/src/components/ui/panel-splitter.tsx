@@ -23,7 +23,7 @@ export function PanelSplitter({
         className={cn(
           "absolute inset-y-0 -left-1 w-2 cursor-ew-resize flex items-center justify-center transition-colors duration-200 group",
           "touch-none select-none",
-          isDragging && "bg-accent/30",
+          isDragging && "bg-secondary/30",
         )}
         onPointerDown={onPointerDown}
         onTouchStart={onTouchStart}

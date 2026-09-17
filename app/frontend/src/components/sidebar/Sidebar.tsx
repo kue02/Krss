@@ -503,7 +503,7 @@ export function Sidebar({
                         : t("sidebar.expand_all")
                     }
                     disabled={folderNames.length === 0}
-                    className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors duration-200 hover:bg-accent/50 hover:text-foreground disabled:opacity-40"
+                    className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors duration-200 hover:bg-secondary/50 hover:text-foreground disabled:opacity-40"
                   >
                     {allFoldersOpen ? (
                       <ChevronsDownUpIcon className="size-3.5" />
@@ -513,7 +513,7 @@ export function Sidebar({
                   </button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/50 hover:text-foreground">
+                    <button className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary/50 hover:text-foreground">
                       {sortBy === "name" ? (
                         <ArrowDownAZIcon className="size-3.5" />
                       ) : (
@@ -524,14 +524,14 @@ export function Sidebar({
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem
                       onClick={() => setSortBy("name")}
-                      className={cn(sortBy === "name" && "bg-accent")}
+                      className={cn(sortBy === "name" && "bg-secondary")}
                     >
                       <ArrowDownAZIcon className="mr-2 size-4" />
                       {t("sidebar.sort_name")}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={() => setSortBy("date")}
-                      className={cn(sortBy === "date" && "bg-accent")}
+                      className={cn(sortBy === "date" && "bg-secondary")}
                     >
                       <CalendarIcon className="mr-2 size-4" />
                       {t("sidebar.sort_date")}

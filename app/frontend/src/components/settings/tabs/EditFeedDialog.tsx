@@ -110,7 +110,7 @@ export function EditFeedDialog({
             </label>
             <div
               className={cn(
-                "w-full truncate rounded-md border border-border bg-muted/50 px-3 py-2 text-sm",
+                "w-full truncate rounded-md border border-border bg-secondary/50 px-3 py-2 text-sm",
                 "text-muted-foreground",
               )}
               title={feed?.url}
@@ -202,7 +202,7 @@ export function EditFeedDialog({
               onClick={handleClose}
               className={cn(
                 "rounded-md px-4 py-2 text-sm font-medium transition-colors",
-                "border border-border bg-background hover:bg-muted",
+                "border border-border bg-background hover:bg-secondary",
               )}
             >
               {t("actions.cancel")}
