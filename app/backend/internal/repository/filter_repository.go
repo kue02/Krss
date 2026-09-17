@@ -52,7 +52,7 @@ func NewFilterRepository(db dbtx) FilterRepository {
 	return &filterRepository{db: db}
 }
 
-const filterColumns = `id, name, enabled, position, kind, scope_type, scope_id, scope_ids, conditions, actions, match_count, last_matched_at, last_error, last_error_at, created_at, updated_at`
+const filterColumns = `id, name, enabled, position, kind, scope_type, scope_id, scope_ids, content_types, icon, conditions, actions, match_count, last_matched_at, last_error, last_error_at, created_at, updated_at`
 
 func (r *filterRepository) List(ctx context.Context) ([]model.Filter, error) {
 	rows, err := r.db.QueryContext(ctx,
@@ -104,11 +104,15 @@ func (r *filterRepository) Create(ctx context.Context, filter model.Filter) (mod
 	if err != nil {
 		return model.Filter{}, err
 	}
+	contentTypes, err := marshalStringList(filter.ContentTypes)
+	if err != nil {
+		return model.Filter{}, err
+	}
 
 	_, err = r.db.ExecContext(ctx, `
-		INSERT INTO filters (id, name, enabled, position, kind, scope_type, scope_id, scope_ids, conditions, actions,
+		INSERT INTO filters (id, name, enabled, position, kind, scope_type, scope_id, scope_ids, content_types, icon, conditions, actions,
 		                     match_count, last_matched_at, last_error, last_error_at, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL, NULL, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL, NULL, ?, ?)`,
 		filter.ID,
 		filter.Name,
 		boolToInt(filter.Enabled),
@@ -117,6 +121,8 @@ func (r *filterRepository) Create(ctx context.Context, filter model.Filter) (mod
 		filter.ScopeType,
 		nullableInt64(filter.ScopeID),
 		scopeIDs,
+		contentTypes,
+		nullableString(iconPtr(filter.Icon)),
 		string(conditions),
 		string(actions),
 		formatTime(now),
@@ -141,10 +147,14 @@ func (r *filterRepository) Update(ctx context.Context, filter model.Filter) erro
 	if err != nil {
 		return err
 	}
+	contentTypes, err := marshalStringList(filter.ContentTypes)
+	if err != nil {
+		return err
+	}
 
 	_, err = r.db.ExecContext(ctx, `
 		UPDATE filters SET
-			name = ?, enabled = ?, position = ?, kind = ?, scope_type = ?, scope_id = ?, scope_ids = ?,
+			name = ?, enabled = ?, position = ?, kind = ?, scope_type = ?, scope_id = ?, scope_ids = ?, content_types = ?, icon = ?,
 			conditions = ?, actions = ?, updated_at = ?
 		WHERE id = ?`,
 		filter.Name,
@@ -154,6 +164,8 @@ func (r *filterRepository) Update(ctx context.Context, filter model.Filter) erro
 		filter.ScopeType,
 		nullableInt64(filter.ScopeID),
 		scopeIDs,
+		contentTypes,
+		nullableString(iconPtr(filter.Icon)),
 		string(conditions),
 		string(actions),
 		formatTime(time.Now()),
@@ -327,6 +339,26 @@ func (r *filterRepository) ListMatchedEntryIDs(ctx context.Context, filterID int
 	return matched, rows.Err()
 }
 
+// marshalStringList 字符串集合 → JSON；空写 NULL（与 scope_ids 同规约：NULL 与 "[]" 是两种含义）。
+func marshalStringList(values []string) (interface{}, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	raw, err := json.Marshal(values)
+	if err != nil {
+		return nil, err
+	}
+	return string(raw), nil
+}
+
+// iconPtr 空图标写 NULL，别存空串。
+func iconPtr(icon string) *string {
+	if icon == "" {
+		return nil
+	}
+	return &icon
+}
+
 // marshalScopeIDs 多选订阅集合 → JSON 字符串；空集合写 NULL
 //（NULL 与 "[]" 对「有没有多选」是两种含义，别让读的人猜）。
 func marshalScopeIDs(ids []int64) (interface{}, error) {
@@ -346,6 +378,8 @@ func scanFilter(scan func(dest ...interface{}) error) (model.Filter, error) {
 		enabled       int
 		scopeID       sql.NullInt64
 		scopeIDsRaw   sql.NullString
+		contentTypes  sql.NullString
+		icon          sql.NullString
 		conditionsRaw string
 		actionsRaw    string
 		lastMatched   sql.NullString
@@ -355,7 +389,7 @@ func scanFilter(scan func(dest ...interface{}) error) (model.Filter, error) {
 		updatedAt     string
 	)
 	if err := scan(&filter.ID, &filter.Name, &enabled, &filter.Position, &filter.Kind, &filter.ScopeType, &scopeID, &scopeIDsRaw,
-		&conditionsRaw, &actionsRaw, &filter.MatchCount, &lastMatched, &lastError, &lastErrorAt, &createdAt, &updatedAt); err != nil {
+		&contentTypes, &icon, &conditionsRaw, &actionsRaw, &filter.MatchCount, &lastMatched, &lastError, &lastErrorAt, &createdAt, &updatedAt); err != nil {
 		return model.Filter{}, err
 	}
 	filter.Enabled = enabled != 0
@@ -365,6 +399,15 @@ func scanFilter(scan func(dest ...interface{}) error) (model.Filter, error) {
 	if scopeID.Valid {
 		value := scopeID.Int64
 		filter.ScopeID = &value
+	}
+	if contentTypes.Valid && contentTypes.String != "" {
+		var types []string
+		if err := json.Unmarshal([]byte(contentTypes.String), &types); err == nil && len(types) > 0 {
+			filter.ContentTypes = types
+		}
+	}
+	if icon.Valid {
+		filter.Icon = icon.String
 	}
 	if scopeIDsRaw.Valid && scopeIDsRaw.String != "" {
 		var ids []int64

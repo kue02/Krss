@@ -7,6 +7,8 @@
  * 字段与操作符的取值必须与后端白名单一致（internal/model/filter.go）。
  */
 
+import type { ContentType } from "@/types/api";
+
 export type FilterScopeType = "all" | "folder" | "feed";
 
 /**
@@ -108,6 +110,10 @@ export interface FilterRule {
   scopeId?: string;
   /** 多选订阅（范围 = 订阅时可多选，用户 11-16）；空/缺省 = 用 scopeId 的单个 */
   scopeIds?: string[];
+  /** 视图只在哪些内容类型下显示（空 = 都显示，用户 11-5） */
+  contentTypes?: ContentType[];
+  /** 视图自定义图标：builtin:<key> / emoji:<字符> / data:image/...（用户 11-5） */
+  icon?: string;
   conditions: FilterCondition[];
   actions: FilterActions;
   matchCount: number;
@@ -128,6 +134,10 @@ export interface FilterWritePayload {
   scopeId?: string;
   /** 多选订阅（范围 = 订阅时可多选，用户 11-16）；空/缺省 = 用 scopeId 的单个 */
   scopeIds?: string[];
+  /** 视图只在哪些内容类型下显示（空 = 都显示，用户 11-5） */
+  contentTypes?: ContentType[];
+  /** 视图自定义图标：builtin:<key> / emoji:<字符> / data:image/...（用户 11-5） */
+  icon?: string;
   conditions: FilterCondition[];
   actions: FilterActions;
 }
@@ -139,6 +149,10 @@ export interface FilterDraft {
   scopeId?: string;
   /** 多选订阅（范围 = 订阅时可多选，用户 11-16） */
   scopeIds?: string[];
+  /** 视图只在哪些内容类型下显示（用户 11-5） */
+  contentTypes?: ContentType[];
+  /** 视图自定义图标（用户 11-5） */
+  icon?: string;
   conditions: FilterCondition[];
   actions: FilterActions;
   /** 模型的一句话解释 */

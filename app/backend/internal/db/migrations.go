@@ -449,6 +449,16 @@ func runMigrations(db *sql.DB) error {
 		return err
 	}
 
+	// Migration 25: 视图的「只在哪些内容类型下显示」与「自定义图标」（用户 11-5）。
+	//   filters.content_types —— JSON 数组（article/picture/notification/social）；空 = 所有视图都显示（老行为）。
+	//   filters.icon —— 图标：`builtin:<key>` / `emoji:<字符>` / `data:image/...`（上传后 128px 缩放，与头像同一套）。
+	if err := addColumnIfMissing(db, "filters", "content_types", `ALTER TABLE filters ADD COLUMN content_types TEXT`); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "filters", "icon", `ALTER TABLE filters ADD COLUMN icon TEXT`); err != nil {
+		return err
+	}
+
 	return nil
 }
 

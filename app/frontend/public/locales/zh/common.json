@@ -749,7 +749,18 @@
     "unsaved_save": "保存并关闭",
     "unsaved_discard": "放弃更改",
     "unsaved_keep_editing": "继续编辑",
-    "scope_feed_multi_hint": "可多选：范围会作用在选中的这几个源上"
+    "scope_feed_multi_hint": "可多选：范围会作用在选中的这几个源上",
+    "view_display": "视图显示",
+    "view_only_in": "只在哪些视图下显示",
+    "view_only_in_hint": "不选 = 所有视图都显示（默认）；选了就只在这些视图的第一栏出现。",
+    "view_icon": "图标",
+    "view_icon_builtin": "内置图标",
+    "view_icon_emoji": "Emoji",
+    "view_icon_upload": "上传",
+    "view_icon_emoji_input": "直接输入 emoji",
+    "view_icon_pick_file": "选择图片",
+    "view_icon_hint": "与头像同一套 128px 缩放",
+    "view_icon_clear": "清除图标"
   },
   "search": {
     "title": "搜索",

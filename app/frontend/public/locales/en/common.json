@@ -752,7 +752,18 @@
     "unsaved_save": "Save and close",
     "unsaved_discard": "Discard",
     "unsaved_keep_editing": "Keep editing",
-    "scope_feed_multi_hint": "Multi-select: the scope covers every selected feed"
+    "scope_feed_multi_hint": "Multi-select: the scope covers every selected feed",
+    "view_display": "View display",
+    "view_only_in": "Show only in",
+    "view_only_in_hint": "Nothing selected = show in every view (default).",
+    "view_icon": "Icon",
+    "view_icon_builtin": "Built-in",
+    "view_icon_emoji": "Emoji",
+    "view_icon_upload": "Upload",
+    "view_icon_emoji_input": "Type an emoji",
+    "view_icon_pick_file": "Pick an image",
+    "view_icon_hint": "Same 128px scaling as the avatar",
+    "view_icon_clear": "Clear icon"
   },
   "search": {
     "title": "Search",

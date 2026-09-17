@@ -641,3 +641,50 @@ func TestFilterService_MultiFeedScope(t *testing.T) {
 	})
 	require.ErrorIs(t, err, service.ErrInvalidFilter)
 }
+
+// 用户 11-5：视图可以固定只在某些内容类型下显示，并且能设自定义图标。
+func TestFilterService_ViewContentTypesAndIcon(t *testing.T) {
+	fixture := newFilterFixture(t)
+	ctx := context.Background()
+
+	view, err := fixture.service.Create(ctx, service.FilterWriteParams{
+		Name:         "只在文章和图片下显示",
+		Kind:         model.FilterKindView,
+		ScopeType:    model.FilterScopeAll,
+		ContentTypes: []string{"article", "picture", "article", "不存在的类型"},
+		Icon:         "emoji:🔥",
+		Conditions:   []model.FilterCondition{{Field: model.FilterFieldTitle, Operator: model.FilterOpContains, Value: "x"}},
+	})
+	require.NoError(t, err)
+	// 去重 + 只留白名单内
+	require.Equal(t, []string{"article", "picture"}, view.ContentTypes)
+	require.Equal(t, "emoji:🔥", view.Icon)
+
+	reloaded, err := fixture.service.List(ctx)
+	require.NoError(t, err)
+	require.Len(t, reloaded, 1)
+	require.Equal(t, []string{"article", "picture"}, reloaded[0].ContentTypes)
+	require.Equal(t, "emoji:🔥", reloaded[0].Icon)
+
+	// 图标只在视图上有意义：规则带图标要被清掉；不认识的图标前缀也要拒
+	rule, err := fixture.service.Create(ctx, service.FilterWriteParams{
+		Name:       "一条规则",
+		Kind:       model.FilterKindRule,
+		ScopeType:  model.FilterScopeAll,
+		Icon:       "emoji:🔥",
+		Conditions: []model.FilterCondition{{Field: model.FilterFieldTitle, Operator: model.FilterOpContains, Value: "x"}},
+		Actions:    model.FilterActions{Mute: true},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "", rule.Icon)
+
+	weird, err := fixture.service.Create(ctx, service.FilterWriteParams{
+		Name:       "怪图标",
+		Kind:       model.FilterKindView,
+		ScopeType:  model.FilterScopeAll,
+		Icon:       "javascript:alert(1)",
+		Conditions: []model.FilterCondition{{Field: model.FilterFieldTitle, Operator: model.FilterOpContains, Value: "x"}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "", weird.Icon)
+}

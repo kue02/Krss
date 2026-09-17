@@ -74,7 +74,10 @@ type filterWriteRequest struct {
 	ScopeType  string                   `json:"scopeType"`
 	ScopeID    *string                  `json:"scopeId"`
 	ScopeIDs   []string                 `json:"scopeIds"`
-	Conditions []filterConditionRequest `json:"conditions"`
+	// 视图专用（用户 11-5）：只在哪些内容类型下显示 / 自定义图标
+	ContentTypes []string                 `json:"contentTypes"`
+	Icon         string                   `json:"icon"`
+	Conditions   []filterConditionRequest `json:"conditions"`
 	Actions    filterActionsPayload     `json:"actions"`
 }
 
@@ -87,6 +90,8 @@ type filterResponse struct {
 	ScopeType     string                   `json:"scopeType"`
 	ScopeID       *string                  `json:"scopeId,omitempty"`
 	ScopeIDs      []string                 `json:"scopeIds,omitempty"`
+	ContentTypes  []string                 `json:"contentTypes,omitempty"`
+	Icon          string                   `json:"icon,omitempty"`
 	Conditions    []filterConditionRequest `json:"conditions"`
 	Actions       filterActionsPayload     `json:"actions"`
 	MatchCount    int64                    `json:"matchCount"`
@@ -583,6 +588,9 @@ func bindFilterWriteRequest(c echo.Context) (service.FilterWriteParams, error) {
 		}
 		params.ScopeID = &scopeID
 	}
+	params.ContentTypes = req.ContentTypes
+	params.Icon = req.Icon
+
 	// 多选订阅（用户 11-16）：同样是 snowflake 字符串
 	for _, raw := range req.ScopeIDs {
 		if raw == "" {
@@ -652,6 +660,8 @@ func toFilterResponse(filter model.Filter) filterResponse {
 			response.ScopeIDs = append(response.ScopeIDs, idToString(id))
 		}
 	}
+	response.ContentTypes = filter.ContentTypes
+	response.Icon = filter.Icon
 	response.Conditions = make([]filterConditionRequest, len(filter.Conditions))
 	for i, condition := range filter.Conditions {
 		response.Conditions[i] = filterConditionRequest{

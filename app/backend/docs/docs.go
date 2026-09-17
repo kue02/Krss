@@ -3743,11 +3743,20 @@ const docTemplate = `{
                         "$ref": "#/definitions/internal_handler.filterConditionRequest"
                     }
                 },
+                "contentTypes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "createdAt": {
                     "type": "string"
                 },
                 "enabled": {
                     "type": "boolean"
+                },
+                "icon": {
+                    "type": "string"
                 },
                 "id": {
                     "type": "string"
@@ -3811,8 +3820,18 @@ const docTemplate = `{
                         "$ref": "#/definitions/internal_handler.filterConditionRequest"
                     }
                 },
+                "contentTypes": {
+                    "description": "视图专用（用户 11-5）：只在哪些内容类型下显示 / 自定义图标",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "enabled": {
                     "type": "boolean"
+                },
+                "icon": {
+                    "type": "string"
                 },
                 "kind": {
                     "type": "string"

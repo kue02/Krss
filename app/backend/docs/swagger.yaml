@@ -615,10 +615,16 @@ definitions:
         items:
           $ref: '#/definitions/internal_handler.filterConditionRequest'
         type: array
+      contentTypes:
+        items:
+          type: string
+        type: array
       createdAt:
         type: string
       enabled:
         type: boolean
+      icon:
+        type: string
       id:
         type: string
       kind:
@@ -660,8 +666,15 @@ definitions:
         items:
           $ref: '#/definitions/internal_handler.filterConditionRequest'
         type: array
+      contentTypes:
+        description: 视图专用（用户 11-5）：只在哪些内容类型下显示 / 自定义图标
+        items:
+          type: string
+        type: array
       enabled:
         type: boolean
+      icon:
+        type: string
       kind:
         type: string
       name:

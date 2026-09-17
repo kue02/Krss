@@ -26,14 +26,28 @@ import { SidebarAccountBar } from "./SidebarAccountBar";
 import { StarredItem } from "./StarredItem";
 import { FeedCategory } from "./FeedCategory";
 import { ListBox } from "@heroui/react";
+import { Pencil, Trash2 } from "lucide-react";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import { ViewIcon } from "@/components/automation/ViewIcon";
+import { useFilterEditorStore } from "@/stores/filter-editor-store";
 import { FeedItem } from "./FeedItem";
 import { ContentTypeSwitcher } from "./ContentTypeSwitcher";
-import { useFilters, useViewCounts } from "@/hooks/useFilters";
+import {
+  useFilterMutations,
+  useFilters,
+  useViewCounts,
+} from "@/hooks/useFilters";
 import { useUISettingKey } from "@/hooks/useUISettings";
 import { useFilterViewStore } from "@/stores/filter-view-store";
 import { useSettingsModalStore } from "@/stores/settings-modal-store";
 import { feedItemStyles, sidebarItemIconStyles } from "./styles";
-import { SearchIcon } from "@/components/ui/icons";
 import { SettingsModal, ProfileModal } from "@/components/settings";
 import { EditFeedDialog } from "@/components/settings/tabs/EditFeedDialog";
 import { RenameFolderDialog } from "./RenameFolderDialog";
@@ -433,11 +447,19 @@ export function Sidebar({
   const starredCountAll = useStarredCount().data?.count ?? 0;
   const starredCountView = useStarredCount(contentType).data?.count ?? 0;
   const viewCounts = useViewCounts(contentType).data?.counts;
+  // 视图可以固定只在某些内容类型下显示（用户 11-5）：没设 = 都显示（老行为）
   const savedViews = useMemo(
-    () => (filterList ?? []).filter((item) => item.kind === "view"),
-    [filterList],
+    () =>
+      (filterList ?? []).filter(
+        (item) =>
+          item.kind === "view" &&
+          (!item.contentTypes?.length || item.contentTypes.includes(contentType)),
+      ),
+    [filterList, contentType],
   );
   const activeViewId = useFilterViewStore((state) => state.viewId);
+  const openEdit = useFilterEditorStore((state) => state.openEdit);
+  const { remove } = useFilterMutations();
   const selectView = useFilterViewStore((state) => state.selectView);
   const handleSelectView = useCallback(
     (view: { id: string; name: string }) => {
@@ -506,14 +528,15 @@ export function Sidebar({
                   </div>
                   <div className="mt-0.5 space-y-px">
                     {savedViews.map((view) => (
+                      <ContextMenu key={view.id}>
+                        <ContextMenuTrigger asChild>
                       <div
-                        key={view.id}
                         data-active={activeViewId === view.id}
                         className={cn(feedItemStyles, "pl-2.5")}
                         onClick={() => handleSelectView(view)}
                       >
                         <span className={sidebarItemIconStyles}>
-                          <SearchIcon className="size-4 -translate-y-px text-muted-foreground" />
+                          <ViewIcon icon={view.icon} />
                         </span>
                         <span className="grow truncate">{view.name}</span>
                         {viewCountOf(viewCounts, view.id) > 0 && (
@@ -524,6 +547,27 @@ export function Sidebar({
                           </span>
                         )}
                       </div>
+                        </ContextMenuTrigger>
+                        {/* 视图右键菜单（用户 11-5）：编辑 / 删除 */}
+                        <ContextMenuContent>
+                          <ContextMenuLabel className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-medium text-muted-foreground">
+                            <ViewIcon icon={view.icon} />
+                            <span className="min-w-0 flex-1 truncate">{view.name}</span>
+                          </ContextMenuLabel>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem onClick={() => openEdit(view)}>
+                            <Pencil className="size-4 shrink-0 text-muted-foreground" />
+                            {t("actions.edit")}
+                          </ContextMenuItem>
+                          <ContextMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => remove.mutate({ id: view.id })}
+                          >
+                            <Trash2 className="size-4 shrink-0" />
+                            {t("actions.delete")}
+                          </ContextMenuItem>
+                        </ContextMenuContent>
+                      </ContextMenu>
                     ))}
                   </div>
                 </div>

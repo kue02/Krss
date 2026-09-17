@@ -11,6 +11,9 @@ import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Select } from "@/components/ui/select";
+import { ViewIconPicker } from "@/components/automation/ViewIconPicker";
+import { CONTENT_TYPE_ORDER } from "@/lib/content-type-meta";
+import type { ContentType } from "@/types/api";
 import { useFeeds } from "@/hooks/useFeeds";
 import { useFolders } from "@/hooks/useFolders";
 import { useFilterPreview } from "@/hooks/useFilters";
@@ -442,6 +445,48 @@ export function FilterEditor({
             </div>
           )}
         </section>
+
+        {/* 视图专属（用户 11-5）：固定只在某些内容类型下显示 + 自定义图标 */}
+        {isView && (
+          <section className="space-y-2 border-t border-border pt-4">
+            <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              {t("automation.view_display")}
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs text-muted-foreground">
+                {t("automation.view_only_in")}
+              </span>
+              <ToggleButtonGroup
+                selectionMode="multiple"
+                size="sm"
+                selectedKeys={draft.contentTypes ?? []}
+                onSelectionChange={(keys) =>
+                  update({
+                    contentTypes: [...keys].map(String) as ContentType[],
+                  })
+                }
+              >
+                {CONTENT_TYPE_ORDER.map((type) => (
+                  <ToggleButton key={type} id={type}>
+                    {t(`content_type.${type}`)}
+                  </ToggleButton>
+                ))}
+              </ToggleButtonGroup>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-muted-foreground">
+                {t("automation.view_icon")}
+              </span>
+              <ViewIconPicker
+                value={draft.icon ?? ""}
+                onChange={(icon) => update({ icon })}
+              />
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {t("automation.view_only_in_hint")}
+            </div>
+          </section>
+        )}
 
         {/* 条件 */}
         <section className="space-y-2 border-t border-border pt-4">

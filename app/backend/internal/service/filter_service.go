@@ -46,7 +46,11 @@ type FilterWriteParams struct {
 	ScopeType string `json:"scopeType"`
 	ScopeID   *int64 `json:"scopeId"`
 	// ScopeIDs 多选订阅（scope_type=feed；空 = 用 ScopeID 的单个）。用户 11-16：规则范围里订阅可多选。
-	ScopeIDs   []int64                 `json:"scopeIds"`
+	ScopeIDs []int64 `json:"scopeIds"`
+	// ContentTypes 视图只在哪些内容类型下显示（空 = 都显示）。用户 11-5。
+	ContentTypes []string `json:"contentTypes"`
+	// Icon 视图自定义图标：`builtin:<key>` / `emoji:<字符>` / `data:image/...`（用户 11-5）。
+	Icon string `json:"icon"`
 	Conditions []model.FilterCondition `json:"conditions"`
 	Actions    model.FilterActions     `json:"actions"`
 }
@@ -173,8 +177,10 @@ func (s *filterService) Create(ctx context.Context, params FilterWriteParams) (m
 		Kind:       normalizeKind(params.Kind),
 		ScopeType:  params.ScopeType,
 		ScopeID:    params.ScopeID,
-		ScopeIDs:   normalizeScopeIDs(params.ScopeIDs),
-		Conditions: params.Conditions,
+		ScopeIDs:     normalizeScopeIDs(params.ScopeIDs),
+		ContentTypes: normalizeViewContentTypes(params.ContentTypes),
+		Icon:         normalizeViewIcon(params.Kind, params.Icon),
+		Conditions:   params.Conditions,
 		Actions:    effectiveActions(params.Kind, params.Actions),
 	}
 	if filter.ScopeType == "" {
@@ -216,6 +222,8 @@ func (s *filterService) Update(ctx context.Context, id int64, params FilterWrite
 	}
 	current.ScopeID = params.ScopeID
 	current.ScopeIDs = normalizeScopeIDs(params.ScopeIDs)
+	current.ContentTypes = normalizeViewContentTypes(params.ContentTypes)
+	current.Icon = normalizeViewIcon(params.Kind, params.Icon)
 	current.Conditions = params.Conditions
 	current.Actions = effectiveActions(params.Kind, params.Actions)
 	if params.Enabled != nil {
@@ -229,6 +237,58 @@ func (s *filterService) Update(ctx context.Context, id int64, params FilterWrite
 	}
 	logger.Info("filter updated", "module", "service", "action", "update", "resource", "filter", "result", "ok", "filter_id", id)
 	return s.filters.GetByID(ctx, id)
+}
+
+// contentTypeWhitelist 视图能绑的内容类型（与 handler 的参数白名单同一套语义）。
+var contentTypeWhitelist = map[string]struct{}{
+	"article": {}, "picture": {}, "notification": {}, "social": {},
+}
+
+// normalizeViewContentTypes 视图的「只在哪些内容类型下显示」：只留白名单内、去重；空 = 都显示。
+func normalizeViewContentTypes(types []string) []string {
+	if len(types) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(types))
+	out := make([]string, 0, len(types))
+	for _, item := range types {
+		value := strings.TrimSpace(item)
+		if _, ok := contentTypeWhitelist[value]; !ok {
+			continue
+		}
+		if _, dup := seen[value]; dup {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// normalizeViewIcon 图标只在视图上有意义（规则行不显示图标）；
+// 只认三种前缀，别把任意字符串塞进库里当图标——前端渲染不认识就白板。
+func normalizeViewIcon(kind string, icon string) string {
+	if normalizeKind(kind) != model.FilterKindView {
+		return ""
+	}
+	value := strings.TrimSpace(icon)
+	switch {
+	case value == "":
+		return ""
+	case strings.HasPrefix(value, "builtin:"), strings.HasPrefix(value, "emoji:"):
+		return value
+	case strings.HasPrefix(value, "data:image/"):
+		// 上传图标：与头像同一套（前端 128px 缩放后的 data URL），限长防超大数据入库
+		if len(value) > 200_000 {
+			return ""
+		}
+		return value
+	default:
+		return ""
+	}
 }
 
 // normalizeScopeIDs 多选订阅集合：去重、丢掉非法值；空集合 = 「没多选」（回落到单个 scope_id）。

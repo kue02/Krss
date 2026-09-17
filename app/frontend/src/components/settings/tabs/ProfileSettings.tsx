@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { downscaleImage } from "@/lib/downscale-image";
 import { getCurrentUser, updateProfile, setAuthToken } from "@/api";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
@@ -450,17 +451,3 @@ export function ProfileSettings() {
  * 把用户选的图片压到 maxSize 见方、JPEG 0.85，返回 data URL。
  * 头像用不着大图：128px 的 JPEG 大约几 KB，直接存进设置也毫无压力。
  */
-async function downscaleImage(file: File, maxSize: number): Promise<string> {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, maxSize / Math.max(bitmap.width, bitmap.height));
-  const width = Math.max(1, Math.round(bitmap.width * scale));
-  const height = Math.max(1, Math.round(bitmap.height * scale));
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("canvas unavailable");
-  ctx.drawImage(bitmap, 0, 0, width, height);
-  bitmap.close?.();
-  return canvas.toDataURL("image/jpeg", 0.85);
-}

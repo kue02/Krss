@@ -7,6 +7,7 @@ import type {
   FilterRule,
   FilterWritePayload,
 } from "@/types/filters";
+import type { ContentType } from "@/types/api";
 
 /**
  * 规则编辑器（右侧抽屉）的打开状态。
@@ -24,6 +25,10 @@ export interface FilterEditorPreset {
   scopeId?: string;
   /** 多选订阅（用户 11-16）：范围 = 订阅时可多选多个源 */
   scopeIds?: string[];
+  /** 视图只在哪些内容类型下显示（用户 11-5） */
+  contentTypes?: ContentType[];
+  /** 视图自定义图标（用户 11-5） */
+  icon?: string;
   conditions?: FilterCondition[];
   name?: string;
 }
@@ -107,6 +112,8 @@ export const useFilterEditorStore = create<FilterEditorStore>((set) => ({
         scopeType: rule.scopeType,
         scopeId: rule.scopeId,
         scopeIds: rule.scopeIds,
+        contentTypes: rule.contentTypes,
+        icon: rule.icon,
         conditions: rule.conditions ?? [],
         actions: rule.actions ?? {},
       },
@@ -134,6 +141,8 @@ export const useFilterEditorStore = create<FilterEditorStore>((set) => ({
         scopeType: draft.scopeType,
         scopeId: draft.scopeId,
         scopeIds: draft.scopeIds,
+        contentTypes: draft.contentTypes,
+        icon: draft.icon,
         kind: "rule",
         conditions: draft.conditions ?? [],
         actions: draft.actions ?? {},
