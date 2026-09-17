@@ -142,6 +142,9 @@
       合并 `{movedEntries:7,dedupedEntries:0}` → 查库 A 条目 0 / A 订阅 0 / B 条目 **27** / B 星标 1（跟随）；脚本 `~/Documents/test/gist-nextflux-e2e/verify-feed-merge.py`。
       单测：repo 2 + service 6 + handler 4 全过；`make test` 绿、lint 0、swagger 已重生成；前端 **617/617**、tsc 干净。
       `:8080` 已换新二进制（merge-preview 实测 200），用户库未被实验动过（79 订阅 / 2237 条）。
+      **真机点过（ego-browser @5173）**：你库里正好有 2 条会撞车（Newlearner 0 条 → 已有 25 条；Twitter @歸藏 0 条 → 已有 10 条）——
+      点「换到该实例（2）」→ 弹框出现且逐条显示「（0 条 / 0 星标）→ 并入 …（25 条 / 0 星标）」，按钮「取消 / 确认合并」；
+      点「取消」→ 弹框关闭、设置面板仍可交互、**库内订阅数 79 与两条 URL 均未变**（有冲突时全部不写，只等你拍板）；控制台 0 错误。
 - [x] **10-5 翻译选项文案**（2026-09-17）：zh/en 各改 3 条 —— 「跟随模型」「Google 翻译（免费）」「有道翻译（免费）」（原先括号里写了「用上面的提供商 / 无需 Key / 长文可能被限流」）
 - [x] **10-6 去掉下拉框/按钮的蓝色选中边框（focus ring）**（2026-09-17）：默认主题 `--focus` 就是 HeroUI 的蓝色 accent，HeroUI 组件拿它画焦点环 →
       改成中性 `color-mix(in oklab, var(--foreground) 32%, transparent)`；顺带把**浏览器 UA 蓝框**（`outline: auto` → `rgb(0,95,204)`）也换成中性 `:focus-visible` 环。
