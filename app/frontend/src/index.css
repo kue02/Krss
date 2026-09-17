@@ -83,11 +83,17 @@
 }
 
 /* 全站焦点环：浏览器默认的 UA 焦点环是蓝色（outline: auto → rgb(0,95,204)），
-   手写按钮/可聚焦元素上点一下就会冒蓝框（2026-09-17 用户要求去掉）。
-   统一换成中性环：颜色跟前景走、不跟强调色走。 */
-:where(button, [role="button"], a, input, select, textarea, summary, [tabindex]):focus-visible {
-  outline: 2px solid color-mix(in oklab, var(--foreground) 35%, transparent);
-  outline-offset: 1px;
+   手写按钮/可聚焦元素上会冒蓝框（2026-09-17 用户要求去掉）。
+   注意**必须放在 @layer base 里**：HeroUI 给自家组件（菜单项/选项/下拉框…）在
+   `@layer components` 里写了 `outline: none`，靠的是「组件层 > 基础层」；
+   早前把这条写成未分层 CSS，反而盖过了 HeroUI，点开下拉时菜单项会出现一圈黑框
+   （用户 2026-09-17 截图报的就是这个，Nextflux 没有）。放进 base 层后两头都对：
+   我们的手写控件仍有中性环，HeroUI 组件恢复它自己的无框设计。 */
+@layer base {
+  :where(button, [role="button"], a, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid color-mix(in oklab, var(--foreground) 35%, transparent);
+    outline-offset: 1px;
+  }
 }
 
 @media (display-mode: standalone) {
