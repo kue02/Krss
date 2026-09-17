@@ -44,7 +44,14 @@
   - [x] **性能基线实测（改动前取证）**：`language-detect-*.js` **454 KB(gzip)**（全站最大，懒加载但列表判定语言即拉起）；
         条目列表**无虚拟化**（只有社交流用的 `@virtuoso.dev/masonry`）；`EntryListItem` **无 `memo()`** → 列表状态一变就重渲染所有卡片；
         `framer-motion` 与 `motion` 12.x **双份依赖**；`dist/assets` 里已有 shiki 语言分块（cpp 46KB、ts/tsx/jsx 各 16KB）
-  - [ ] 动画/动效流畅度对齐 Nextflux：按上面基线逐项改（虚拟化 / memo / language-detect 降级 / 去重动画库），每项留改前改后数据
+  - [x] **动画/动效流畅度（第一轮，已实测）**：卡片 `memo` 化 + 选中回调身份稳定（根因：`selectEntry` 来自 wouter，点条目必换路由 → 50 张卡全量重渲）
+        —— 实测点一条 **100 → 2 次**卡片渲染、长任务 72ms → 0；图片补 `decoding="async"`/宽高/懒加载
+        —— 实测 lazy 31→231、async 0→231、缺宽高 234→34、LayoutCount 237→126、LayoutDuration 52→16ms（提交 `92adf94`）
+  - [ ] **列表虚拟化（下一个大动作）**：实测 200 张卡挂在 DOM（3271 节点），25 步滚动主线程忙 **2837ms**，其中 JS 800ms /
+        792 次样式重算 491ms —— 屏外排版已用 `content-visibility` 试过**无收益**（67ms/帧 → 基本不变，已撤），
+        残留开销来自「每张卡都真在 React 树里」，只有虚拟化能削。需按「文档滚动 / 元素滚动 + 社交媒体时间线 + 滚动位置还原」分别设计
+  - [ ] `language-detect-*.js` **454 KB(gzip)**（全站最大块，懒加载但列表判定语言即拉起）：当前只在开启翻译时走，是否还要压/降级待定
+  - [x] 双份动画依赖（`framer-motion` + `motion`）已清成一份 —— **但实测包体没变**（打包器本来就去重），如实记为「清依赖」而非性能收益
   - [ ] `notify` 动作（Bark）一并做掉（见上一节 P2）
 
 
