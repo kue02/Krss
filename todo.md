@@ -190,7 +190,12 @@
       `data-testid=virtuoso-list` 出来 N 个**空列**、连拍观察到 item **一闪就消失**（t2 有 6 个 → t3 起 0 个）；
       同时界面里**没有** EmptyState 文案（说明 `entries` 非空）、控制台只有 `ResizeObserver loop` 警告、也无重复请求；
       `git stash` 掉本轮改动后**同样是 0 项**，且接口层同一 token 同参数 `/api/entries?contentType=picture&hasThumbnail=true` 返回 **21 条** ✓。
-      → 见 `## 0.8` 的 BUG-3，等你确认你在 5173 上图片视图能不能正常看到图
+      用户复看：「看得到图，但格子**一样高**」→ 已定位并修（见下）。
+      **③ 格子一样高的真因（已修）**：图片命中**浏览器缓存**时不会再触发 `onLoad`，而 `PictureItem` 只在 onLoad 里记真实宽高 →
+      尺寸永远没记下来、每个格子都退回默认 `DEFAULT_RATIO = 3/4`（实测：所有容器 `aspect-ratio: 0.75`）。
+      修法：`imgRef` + 挂载时检查 `img.complete && naturalWidth/Height` 补记一次（onLoad 路径保留）。
+      单测：新增 `PictureItem.test.tsx` 3 例 —— 未知尺寸仍 0.75；**模拟缓存图 → 挂载即记录 1200×400 且容器比例变 3**（格子才参差）；网格模式强制 1:1 ✓
+      全量 **617/617**。**待你在 5173 复看**：刷新后图片视图的格子高度应该开始参差了（旧图第一次仍会先按 3:4 出现，加载/补记后即刻变形）。
 - [x] **10-13 个人资料可修改头像**（2026-09-17）：原先头像**只能是邮箱的 Gravatar**（`gravatarURL(email)`，没有可改字段）。
       后端：新增设置键 `user.avatar_url`（空 = 沿用 Gravatar，**默认行为不变**），`PUT /api/auth/profile` 收可选 `avatarUrl`
       （不传 = 不动；空串 = 恢复默认；其余 = 直接用），三处返回头像的地方改走 `resolveAvatarURL()`；接口签名变更已 `make gen` 重生成 mock、`swag init` 重生成文档。

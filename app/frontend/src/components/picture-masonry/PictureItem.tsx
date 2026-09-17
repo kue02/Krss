@@ -1,4 +1,4 @@
-import { memo, useState, useCallback } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Play } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -50,8 +50,23 @@ export const PictureItem = memo(function PictureItem({
 
   const [imageLoaded, setImageLoaded] = useState(false);
   const [iconError, setIconError] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
 
   const showIcon = feed?.iconPath && !iconError;
+
+  /**
+   * 缓存命中的图片不会再触发 onLoad（浏览器直接给 complete=true），
+   * 于是真实宽高永远没被记录 → 所有格子都退回默认 3:4 → 瀑布流看着「一样高」。
+   * 挂载时补记一次，保证「缓存图」也参与不规则排布（2026-09-17 用户反馈）。
+   */
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img || !thumbnailUrl) return;
+    if (img.complete && img.naturalWidth && img.naturalHeight) {
+      setDimension(thumbnailUrl, img.naturalWidth, img.naturalHeight);
+      setImageLoaded(true);
+    }
+  }, [setDimension, thumbnailUrl]);
 
   const handleImageLoad = useCallback(
     (e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -99,6 +114,7 @@ export const PictureItem = memo(function PictureItem({
           style={{ aspectRatio }}
         >
           <img
+            ref={imgRef}
             src={getProxiedImageUrl(thumbnailUrl, entry.url ?? undefined)}
             alt={entry.title || ""}
             className={cn(
