@@ -13,7 +13,8 @@ import type { FilterWritePayload } from "@/types/filters";
  */
 export function FilterEditorDialog() {
   const { t } = useTranslation();
-  const { open, draft, editingId, close } = useFilterEditorStore();
+  const { open, draft, editingId, kind, draftNotes, draftWarnings, close } =
+    useFilterEditorStore();
   const { create, update } = useFilterMutations();
 
   const saving = create.isPending || update.isPending;
@@ -41,7 +42,13 @@ export function FilterEditorDialog() {
         <div className="flex h-full min-h-0 flex-col">
           <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-5">
             <DialogTitle className="text-base font-semibold">
-              {editingId ? t("automation.edit") : t("automation.new_rule")}
+              {kind === "view"
+                ? editingId
+                  ? t("automation.edit_view")
+                  : t("automation.new_view")
+                : editingId
+                  ? t("automation.edit")
+                  : t("automation.new_rule")}
             </DialogTitle>
             <button
               type="button"
@@ -67,8 +74,11 @@ export function FilterEditorDialog() {
 
           {draft && (
             <FilterEditor
-              key={`${editingId ?? "new"}:${draft.scopeId ?? ""}`}
+              key={`${editingId ?? "new"}:${kind}:${draft.scopeId ?? ""}`}
               initial={draft}
+              kind={kind}
+              notes={draftNotes}
+              warnings={draftWarnings}
               saving={saving}
               saveError={
                 create.isError || update.isError

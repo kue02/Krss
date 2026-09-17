@@ -15,11 +15,14 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-const { markAsRead, markAsStarred, unmuteMutate } = vi.hoisted(() => ({
-  markAsRead: vi.fn(),
-  markAsStarred: vi.fn(),
-  unmuteMutate: vi.fn(),
-}));
+const { markAsRead, markAsStarred, unmuteMutate, exceptionMutate } = vi.hoisted(
+  () => ({
+    markAsRead: vi.fn(),
+    markAsStarred: vi.fn(),
+    unmuteMutate: vi.fn(),
+    exceptionMutate: vi.fn(),
+  }),
+);
 
 vi.mock("@/hooks/useEntries", () => ({
   useMarkAsRead: () => ({ mutate: markAsRead }),
@@ -28,6 +31,7 @@ vi.mock("@/hooks/useEntries", () => ({
 
 vi.mock("@/hooks/useFilters", () => ({
   useUnmuteEntry: () => ({ mutate: unmuteMutate }),
+  useCreateFilterException: () => ({ mutate: exceptionMutate, isPending: false }),
   // MutedBadge 用规则名做悬停说明；测试里给一条规则即可
   useFilters: () => ({
     data: [{ id: "rule-1", name: "静音推广" }],

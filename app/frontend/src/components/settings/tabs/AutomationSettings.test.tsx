@@ -4,13 +4,14 @@ import { AutomationSettings } from "./AutomationSettings";
 import { useFilterEditorStore } from "@/stores/filter-editor-store";
 import type { FilterRule } from "@/types/filters";
 
-const { createMutate, updateMutate, removeMutate, revertMutate, applyHistoryMutate, showToast } =
+const { createMutate, updateMutate, removeMutate, revertMutate, applyHistoryMutate, nlDraftMutate, showToast } =
   vi.hoisted(() => ({
     createMutate: vi.fn(),
     updateMutate: vi.fn(),
     removeMutate: vi.fn(),
     revertMutate: vi.fn(),
     applyHistoryMutate: vi.fn(),
+    nlDraftMutate: vi.fn(),
     showToast: vi.fn(),
   }));
 
@@ -22,6 +23,7 @@ vi.mock("react-i18next", () => ({
 
 vi.mock("@/hooks/useFilters", () => ({
   useFilters: () => ({ data: rules.current, isLoading: false, isError: false }),
+  useFilterDraft: () => ({ mutate: nlDraftMutate, isPending: false }),
   useApplyFilterHistory: () => ({
     mutate: applyHistoryMutate,
     isPending: false,

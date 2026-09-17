@@ -10,10 +10,12 @@ import {
   FILTER_CONDITION_FIELDS,
   FILTER_CONDITION_OPERATORS,
   FILTER_OPERATORS_WITHOUT_VALUE,
+  hasAnyAction,
   type FilterActions,
   type FilterCondition,
   type FilterConditionField,
   type FilterConditionOperator,
+  type FilterKind,
   type FilterPreviewResult,
   type FilterScopeType,
   type FilterWritePayload,
@@ -21,19 +23,53 @@ import {
 
 interface FilterEditorProps {
   initial: FilterWritePayload;
+  /** view = 「保存筛选视图」：同一套范围 + 条件，但没有动作区 */
+  kind?: FilterKind;
+  /** 自然语言建规则给出的解释（刚生成时显示一次） */
+  notes?: string | null;
+  /** 自然语言建规则被修正/丢弃的东西（必须显示出来） */
+  warnings?: string[];
   saving?: boolean;
   saveError?: string | null;
   onSubmit: (payload: FilterWritePayload) => void;
   onCancel: () => void;
 }
 
-/** 正反成对的动作（勾了正就禁用反，同一条规则里互斥） */
-type ActionKey = keyof FilterActions;
+/** 正反成对的动作（勾了正就禁用反，同一条规则里互斥）；webhookUrl 不是开关，排除在外 */
+type ActionKey = Exclude<keyof FilterActions, "webhookUrl">;
 
 const ACTION_PAIRS: { positive: ActionKey; negative: ActionKey }[] = [
   { positive: "mute", negative: "unmute" },
   { positive: "markRead", negative: "markUnread" },
   { positive: "star", negative: "unstar" },
+];
+
+/** 动作 → i18n 键（新增动作只改这里 + 语言文件） */
+const ACTION_LABEL_KEYS: Record<string, string> = {
+  mute: "action_mute",
+  unmute: "action_unmute",
+  markRead: "action_mark_read",
+  markUnread: "action_mark_unread",
+  star: "action_star",
+  unstar: "action_unstar",
+  keepOnly: "action_keep_only",
+  translate: "action_translate",
+  summarize: "action_summarize",
+  webhook: "action_webhook",
+};
+
+/** 动作区的按钮顺序：本地标记 → 要在打开时花 AI 的 → 出网的 → keepOnly 收尾 */
+const ACTION_ORDER: ActionKey[] = [
+  "mute",
+  "unmute",
+  "markRead",
+  "markUnread",
+  "star",
+  "unstar",
+  "translate",
+  "summarize",
+  "webhook",
+  "keepOnly",
 ];
 
 const inputClass = cn(
@@ -59,6 +95,9 @@ function emptyCondition(): FilterCondition {
  */
 export function FilterEditor({
   initial,
+  kind = "rule",
+  notes = null,
+  warnings = [],
   saving = false,
   saveError = null,
   onSubmit,
@@ -68,6 +107,8 @@ export function FilterEditor({
   const { data: feeds } = useFeeds();
   const { data: folders } = useFolders();
   const preview = useFilterPreview();
+
+  const isView = kind === "view";
 
   const [draft, setDraft] = useState<FilterWritePayload>(initial);
   const [previewResult, setPreviewResult] =
@@ -151,8 +192,14 @@ export function FilterEditor({
 
   const validate = (payload: FilterWritePayload): string | null => {
     if (!payload.name.trim()) return t("automation.invalid");
-    if (!payload.actions || Object.values(payload.actions).every((v) => !v)) {
-      return t("automation.invalid");
+    if (isView) {
+      // 视图只筛条目：必须有条件，且不带任何动作
+      if (payload.conditions.length === 0) return t("automation.view_needs_condition");
+    } else {
+      if (!hasAnyAction(payload.actions)) return t("automation.invalid");
+      if (payload.actions.webhook && !(payload.actions.webhookUrl ?? "").trim()) {
+        return t("automation.webhook_needs_url");
+      }
     }
     if (
       (payload.scopeType === "feed" || payload.scopeType === "folder") &&
@@ -185,10 +232,18 @@ export function FilterEditor({
     const error = validate(draft);
     setValidationError(error);
     if (error) return;
-    onSubmit({ ...draft, name: draft.name.trim() });
+    onSubmit({
+      ...draft,
+      name: draft.name.trim(),
+      kind: isView ? "view" : "rule",
+      actions: isView ? {} : draft.actions,
+    });
   };
 
   const valuePlaceholder = (condition: FilterCondition): string => {
+    if (condition.field === "ai_relevance") {
+      return t("automation.value_hint_ai");
+    }
     if (condition.field === "published_at") {
       return condition.operator === "older_than"
         ? t("automation.value_hint_duration")
@@ -234,6 +289,23 @@ export function FilterEditor({
             />
           </div>
         </section>
+
+        {/* 自然语言建规则：模型的一句话解释 + 被修正/丢弃的东西（绝不悄悄改） */}
+        {(notes || warnings.length > 0) && (
+          <section className="space-y-1 rounded-md border border-border bg-accent/20 px-3 py-2">
+            <div className="text-xs font-medium">
+              {t("automation.nl_draft_title")}
+            </div>
+            {notes && (
+              <div className="text-xs text-muted-foreground">{notes}</div>
+            )}
+            {warnings.map((warning, index) => (
+              <div key={index} className="text-xs text-destructive">
+                {warning}
+              </div>
+            ))}
+          </section>
+        )}
 
         {/* 范围 */}
         <section className="space-y-2 border-t border-border pt-4">
@@ -345,11 +417,25 @@ export function FilterEditor({
                     </button>
                     <select
                       value={condition.field}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        const nextField = event.target
+                          .value as FilterConditionField;
+                        // AI 相关性只配 is_relevant（后端也拦）；换回普通字段时把操作符复位
+                        if (nextField === "ai_relevance") {
+                          updateCondition(index, {
+                            field: nextField,
+                            operator: "is_relevant",
+                          });
+                          return;
+                        }
                         updateCondition(index, {
-                          field: event.target.value as FilterConditionField,
-                        })
-                      }
+                          field: nextField,
+                          operator:
+                            condition.operator === "is_relevant"
+                              ? "contains"
+                              : condition.operator,
+                        });
+                      }}
                       className={cn(selectClass, "w-28 shrink-0")}
                     >
                       {fieldOptions.map((option) => (
@@ -403,78 +489,97 @@ export function FilterEditor({
           </div>
         </section>
 
-        {/* 动作 */}
-        <section className="space-y-2 border-t border-border pt-4">
-          <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            {t("automation.actions")}
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {(
-              [
-                "mute",
-                "unmute",
-                "markRead",
-                "markUnread",
-                "star",
-                "unstar",
-                "keepOnly",
-              ] as ActionKey[]
-            ).map((key) => {
-              const active = Boolean(draft.actions[key]);
-              const labelKey =
-                key === "mute"
-                  ? "action_mute"
-                  : key === "unmute"
-                    ? "action_unmute"
-                    : key === "markRead"
-                      ? "action_mark_read"
-                      : key === "markUnread"
-                        ? "action_mark_unread"
-                        : key === "star"
-                          ? "action_star"
-                          : key === "unstar"
-                            ? "action_unstar"
-                            : "action_keep_only";
-              const disabled = ACTION_PAIRS.some(
-                (pair) =>
-                  (pair.positive === key &&
-                    Boolean(draft.actions[pair.negative])) ||
-                  (pair.negative === key && Boolean(draft.actions[pair.positive])),
-              );
-              // 「只保留匹配」本身就会把不匹配的静音，再叠一个「静音」等于全静音 —— 挡掉这个误操作
-              const conflictsKeepOnly =
-                key === "mute" && Boolean(draft.actions.keepOnly);
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  aria-pressed={active}
-                  disabled={disabled || conflictsKeepOnly}
-                  onClick={() => toggleAction(key)}
-                  className={cn(
-                    "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
-                    active
-                      ? "border-primary/40 bg-primary/10 text-primary"
-                      : "border-border text-muted-foreground hover:text-foreground",
-                    (disabled || conflictsKeepOnly) &&
-                      "cursor-not-allowed opacity-40",
-                    key === "keepOnly" && "ml-auto",
-                  )}
-                >
-                  {t(`automation.${labelKey}`)}
-                </button>
-              );
-            })}
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {t("automation.actions_hint")}
-          </div>
-          {draft.actions.keepOnly && (
-            <div className="text-xs text-muted-foreground">
-              {t("automation.keep_only_hint")}
+        {/* 动作（视图没有动作区：它只筛条目、不写数据） */}
+        {isView ? (
+          <section className="space-y-2 border-t border-border pt-4">
+            <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              {t("automation.view_kind")}
             </div>
-          )}
-        </section>
+            <div className="text-xs text-muted-foreground">
+              {t("automation.view_actions_hint")}
+            </div>
+          </section>
+        ) : (
+          <section className="space-y-2 border-t border-border pt-4">
+            <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              {t("automation.actions")}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {ACTION_ORDER.map((key) => {
+                const active = Boolean(draft.actions[key]);
+                const disabled = ACTION_PAIRS.some(
+                  (pair) =>
+                    (pair.positive === key &&
+                      Boolean(draft.actions[pair.negative])) ||
+                    (pair.negative === key &&
+                      Boolean(draft.actions[pair.positive])),
+                );
+                // 「只保留匹配」本身就会把不匹配的静音，再叠一个「静音」等于全静音 —— 挡掉这个误操作
+                const conflictsKeepOnly =
+                  key === "mute" && Boolean(draft.actions.keepOnly);
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-pressed={active}
+                    disabled={disabled || conflictsKeepOnly}
+                    onClick={() => toggleAction(key)}
+                    className={cn(
+                      "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
+                      active
+                        ? "border-primary/40 bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:text-foreground",
+                      (disabled || conflictsKeepOnly) &&
+                        "cursor-not-allowed opacity-40",
+                      key === "keepOnly" && "ml-auto",
+                    )}
+                  >
+                    {t(`automation.${ACTION_LABEL_KEYS[key] ?? "actions"}`)}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {t("automation.actions_hint")}
+            </div>
+            {draft.actions.translate && (
+              <div className="text-xs text-muted-foreground">
+                {t("automation.translate_hint")}
+              </div>
+            )}
+            {draft.actions.summarize && (
+              <div className="text-xs text-muted-foreground">
+                {t("automation.summarize_hint")}
+              </div>
+            )}
+            {draft.actions.webhook && (
+              <div className="space-y-1">
+                <input
+                  type="text"
+                  value={draft.actions.webhookUrl ?? ""}
+                  onChange={(event) =>
+                    update({
+                      actions: {
+                        ...draft.actions,
+                        webhookUrl: event.target.value,
+                      },
+                    })
+                  }
+                  placeholder={t("automation.webhook_url_placeholder")}
+                  className={inputClass}
+                />
+                <div className="text-xs text-muted-foreground">
+                  {t("automation.webhook_hint")}
+                </div>
+              </div>
+            )}
+            {draft.actions.keepOnly && (
+              <div className="text-xs text-muted-foreground">
+                {t("automation.keep_only_hint")}
+              </div>
+            )}
+          </section>
+        )}
 
         {/* 预览结果 */}
         {previewResult && (
@@ -514,6 +619,17 @@ export function FilterEditor({
                     })}
                   </span>
                 )}
+              </div>
+            )}
+            {/* AI 条件在预览里只吃已有判定缓存：这里把「没判成多少条」说清楚 */}
+            {(previewResult.aiSkipped ?? 0) > 0 && (
+              <div className="text-xs text-muted-foreground">
+                {t("automation.preview_ai_skipped", {
+                  count: previewResult.aiSkipped ?? 0,
+                })}
+                {(previewResult.aiSkipReasons ?? []).length > 0
+                  ? ` — ${(previewResult.aiSkipReasons ?? []).join("；")}`
+                  : ""}
               </div>
             )}
             {previewResult.matched.length > 0 && (

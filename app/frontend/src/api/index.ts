@@ -26,6 +26,7 @@ import type {
 } from "@/types/settings";
 import type {
   FilterApplyHistoryResult,
+  FilterDraft,
   FilterMatch,
   FilterPreviewResult,
   FilterRevertResult,
@@ -505,6 +506,9 @@ export async function listEntries(
   }
   if (params.folderId !== undefined) {
     searchParams.set("folderId", String(params.folderId));
+  }
+  if (params.viewId !== undefined) {
+    searchParams.set("viewId", String(params.viewId));
   }
   if (params.contentType !== undefined) {
     searchParams.set("contentType", params.contentType);
@@ -1144,4 +1148,30 @@ export async function listFilterMatches(
     `/api/filters/${id}/matches?limit=${limit}`,
   );
   return data.matches ?? [];
+}
+
+/**
+ * 自然语言建规则：把人话交给后端 → 模型 → 规则草稿（**不落库**）。
+ * 草稿由调用方填进编辑器，用户确认后走常规 createFilter 保存。
+ */
+export async function parseFilterNaturalLanguage(
+  text: string,
+): Promise<FilterDraft> {
+  return request<FilterDraft>("/api/filters/parse", {
+    method: "POST",
+    body: JSON.stringify({ text }),
+  });
+}
+
+/**
+ * 条目级「豁免这类内容」：把误伤转成一条顺序最靠前、只做反向动作的例外规则，
+ * 并立刻把这一条放回未读流。
+ */
+export async function createFilterException(
+  entryId: string,
+): Promise<FilterRule> {
+  return request<FilterRule>("/api/filters/exception", {
+    method: "POST",
+    body: JSON.stringify({ entryId }),
+  });
 }

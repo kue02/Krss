@@ -39,6 +39,7 @@ import { useScrollMarkRead } from "./useScrollMarkRead";
 import { useEntryListScrollSurface } from "./scroll-surface";
 import { useEntryHotkeys } from "@/hooks/useEntryHotkeys";
 import { useUISettingKey } from "@/hooks/useUISettings";
+import { useFilterViewStore } from "@/stores/filter-view-store";
 import { ArrowUp, Inbox } from "lucide-react";
 import type { Entry, Feed, Folder, ContentType } from "@/types/api";
 
@@ -103,6 +104,15 @@ export function EntryList({
    * 免得带着 mutedOnly 去看别的列表。
    */
   const [mutedOnly, setMutedOnly] = useState(false);
+  /**
+   * 保存筛选视图（设置 → 自动化 里建的「范围 + 条件」）：侧栏点一下就叠加到当前列表上。
+   * 与「已静音」同一套本地状态的理由 —— 它不是一个导航维度，选中时若列表作用域
+   * （订阅/分类/内容类型/已读态）变了就自动退出，免得带着别人的筛法看新列表。
+   */
+  const activeViewId = useFilterViewStore((state) => state.viewId);
+  const activeViewName = useFilterViewStore((state) => state.viewName);
+  const viewScopeKey = useFilterViewStore((state) => state.scopeKey);
+  const clearView = useFilterViewStore((state) => state.clearView);
   const selectionScopeKey = useMemo(() => {
     switch (selection.type) {
       case "feed":
@@ -116,6 +126,18 @@ export function EntryList({
   useEffect(() => {
     setMutedOnly(false);
   }, [selectionScopeKey, contentType, unreadOnly]);
+  useEffect(() => {
+    if (!activeViewId || !viewScopeKey) return;
+    if (viewScopeKey !== `${selectionScopeKey}:${contentType}`) {
+      clearView();
+    }
+  }, [
+    activeViewId,
+    viewScopeKey,
+    selectionScopeKey,
+    contentType,
+    clearView,
+  ]);
 
   // 当前筛选态（四者互斥）：星标 > 已静音 > 未读 > 全部
   const filterValue: EntryFilter =
@@ -161,6 +183,8 @@ export function EntryList({
     useEntriesInfinite({
       ...params,
       unreadOnly: effectiveUnreadOnly,
+      // 选中的筛选视图：作用域与条件都由视图携带（后端按视图取数）
+      ...(activeViewId ? { viewId: activeViewId } : {}),
       // 「已静音」才传 mutedOnly；星标视图带上静音条目（用户显式收藏的内容不该被规则藏起来）；
       // 其余状态不传 includeMuted（默认就是隐藏静音条目）
       ...(filterValue === "muted"
@@ -689,9 +713,17 @@ export function EntryList({
   // 底部筛选胶囊的当前态 filterValue 在文件上方定义（列表参数要用到它）
   // 「已静音」是回看视图：标题跟着变，并给一行说明（这条视图里看到的不是新内容，而是被规则收起来的）
   const headerTitle =
-    filterValue === "muted" ? t("entry_filter.muted") : title;
+    filterValue === "muted"
+      ? t("entry_filter.muted")
+      : activeViewId && activeViewName
+        ? activeViewName
+        : title;
   const headerSubtitle =
-    filterValue === "muted" ? t("automation.muted_view_hint") : undefined;
+    filterValue === "muted"
+      ? t("automation.muted_view_hint")
+      : activeViewId
+        ? t("automation.view_active_hint")
+        : undefined;
 
   return (
     <div

@@ -3,9 +3,15 @@ import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { ApiError } from "@/api";
 import { useFeeds } from "@/hooks/useFeeds";
 import { useFolders } from "@/hooks/useFolders";
-import { useFilterMutations, useFilters, useApplyFilterHistory } from "@/hooks/useFilters";
+import {
+  useApplyFilterHistory,
+  useFilterDraft,
+  useFilterMutations,
+  useFilters,
+} from "@/hooks/useFilters";
 import { FilterMatchesDialog } from "@/components/automation/FilterMatchesDialog";
 import { useFilterEditorStore } from "@/stores/filter-editor-store";
 import { showToast } from "@/stores/toast-store";
@@ -21,6 +27,7 @@ function toWritePayload(rule: FilterRule, position: number): FilterWritePayload 
     name: rule.name,
     enabled: rule.enabled,
     position,
+    kind: rule.kind === "view" ? "view" : "rule",
     scopeType: rule.scopeType,
     scopeId: rule.scopeId,
     conditions: rule.conditions ?? [],
@@ -36,34 +43,51 @@ function formatTime(value: string | undefined): string {
 }
 
 /**
- * 设置 → 自动化：规则表格 + 编辑器抽屉入口。
+ * 设置 → 自动化：规则表格 + 筛选视图 + 编辑器抽屉入口。
  *
  * 全宽高密度表格（顶栏工具条 + 一行一条规则），次要操作（撤销、删除）压在行尾。
  * 顺序即优先级：命中即停，所以顺序做成显式上下移动，而不是藏一个优先级数字。
+ *
+ * 「自然语言建规则」只负责把模型给的草稿填进同一个编辑器 —— 生成的东西必须先被人看见，
+ * 才可能被保存（模型说了不算，见后端 /api/filters/parse）。
  */
 export function AutomationSettings() {
   const { t } = useTranslation();
-  const { data: rules, isLoading, isError } = useFilters();
+  const { data: filters, isLoading, isError } = useFilters();
   const { data: feeds } = useFeeds();
   const { data: folders } = useFolders();
   const { update, remove, revert } = useFilterMutations();
   const applyHistory = useApplyFilterHistory();
+  const nlDraft = useFilterDraft();
   const openNew = useFilterEditorStore((state) => state.openNew);
+  const openNewView = useFilterEditorStore((state) => state.openNewView);
   const openEdit = useFilterEditorStore((state) => state.openEdit);
+  const openWithDraft = useFilterEditorStore((state) => state.openWithDraft);
 
   const [pendingDelete, setPendingDelete] = useState<FilterRule | null>(null);
   const [deleteWithRevert, setDeleteWithRevert] = useState(true);
   const [matchesRule, setMatchesRule] = useState<FilterRule | null>(null);
   const [applyRule, setApplyRule] = useState<FilterRule | null>(null);
+  const [nlOpen, setNlOpen] = useState(false);
+  const [nlText, setNlText] = useState("");
+  const [nlError, setNlError] = useState<string | null>(null);
   /** 回溯的扫描上限：一次别拖垮实例（后端上限 2000） */
   const applyHistoryLimit = 500;
 
   const sorted = useMemo(
     () =>
-      [...(rules ?? [])].sort(
-        (a, b) => a.position - b.position || a.id.localeCompare(b.id),
-      ),
-    [rules],
+      [...(filters ?? [])]
+        .filter((item) => item.kind !== "view")
+        .sort((a, b) => a.position - b.position || a.id.localeCompare(b.id)),
+    [filters],
+  );
+
+  const views = useMemo(
+    () =>
+      [...(filters ?? [])]
+        .filter((item) => item.kind === "view")
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [filters],
   );
 
   const feedTitles = useMemo(() => {
@@ -136,6 +160,32 @@ export function AutomationSettings() {
     );
   };
 
+  /** 自然语言建规则：错误要能被看懂（AI 没配好 / 模型输出没法用 / 别的） */
+  const handleGenerate = () => {
+    const text = nlText.trim();
+    if (!text) return;
+    setNlError(null);
+    nlDraft.mutate(text, {
+      onSuccess: (draft) => {
+        setNlOpen(false);
+        setNlText("");
+        openWithDraft(draft);
+      },
+      onError: (error) => {
+        const message = error instanceof ApiError ? error.message : "";
+        if (message === "ai_not_configured") {
+          setNlError(t("automation.nl_ai_not_configured"));
+          return;
+        }
+        if (message === "ai_draft_invalid") {
+          setNlError(t("automation.nl_draft_invalid"));
+          return;
+        }
+        setNlError(t("automation.nl_failed"));
+      },
+    });
+  };
+
   const actionButton = cn(
     "rounded px-1.5 py-0.5 text-xs transition-colors",
     "text-muted-foreground hover:bg-accent hover:text-foreground",
@@ -155,16 +205,31 @@ export function AutomationSettings() {
             </div>
           )}
         </div>
-        <button
-          type="button"
-          onClick={openNew}
-          className={cn(
-            "h-8 shrink-0 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground",
-            "transition-colors hover:bg-primary/90",
-          )}
-        >
-          + {t("automation.new_rule")}
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setNlError(null);
+              setNlOpen(true);
+            }}
+            className={cn(
+              "h-8 rounded-md border border-border px-3 text-sm font-medium",
+              "transition-colors hover:bg-accent",
+            )}
+          >
+            {t("automation.nl_open")}
+          </button>
+          <button
+            type="button"
+            onClick={openNew}
+            className={cn(
+              "h-8 shrink-0 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground",
+              "transition-colors hover:bg-primary/90",
+            )}
+          >
+            + {t("automation.new_rule")}
+          </button>
+        </div>
       </div>
 
       {isLoading && (
@@ -273,6 +338,15 @@ export function AutomationSettings() {
                   >
                     {rule.name}
                   </button>
+                  {/* 规则执行失败的可见出口（webhook 投递失败 / AI 判定失败） */}
+                  {rule.lastError && (
+                    <div
+                      title={rule.lastError}
+                      className="mt-0.5 truncate text-[11px] text-destructive"
+                    >
+                      {rule.lastError}
+                    </div>
+                  )}
                 </td>
                 <td className="border-b border-border/60 py-2 pr-2 text-xs text-muted-foreground">
                   <span className="block truncate">{scopeLabel(rule)}</span>
@@ -334,10 +408,7 @@ export function AutomationSettings() {
                         setDeleteWithRevert(true);
                         setPendingDelete(rule);
                       }}
-                      className={cn(
-                        actionButton,
-                        "hover:text-destructive",
-                      )}
+                      className={cn(actionButton, "hover:text-destructive")}
                     >
                       {t("automation.delete")}
                     </button>
@@ -348,6 +419,156 @@ export function AutomationSettings() {
           </tbody>
         </table>
       )}
+
+      {/* 筛选视图：同一套范围 + 条件，但只筛条目、不写数据，作为侧栏快捷入口 */}
+      <div className="space-y-2 border-t border-border pt-3">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              {t("automation.views_title")}
+            </div>
+            <div className="mt-0.5 text-xs text-muted-foreground/70">
+              {t("automation.views_hint")}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={openNewView}
+            className={cn(
+              "h-8 shrink-0 rounded-md border border-border px-3 text-sm font-medium",
+              "transition-colors hover:bg-accent",
+            )}
+          >
+            + {t("automation.new_view")}
+          </button>
+        </div>
+
+        {views.length === 0 ? (
+          <div className="rounded-md border border-dashed border-border px-4 py-4 text-center text-xs text-muted-foreground">
+            {t("automation.views_empty")}
+          </div>
+        ) : (
+          <table className="w-full table-fixed border-separate border-spacing-0 text-sm">
+            <thead>
+              <tr className="text-xs font-medium text-muted-foreground">
+                <th className="w-56 border-b border-border py-1.5 text-left font-medium">
+                  {t("automation.col_name")}
+                </th>
+                <th className="w-40 border-b border-border py-1.5 text-left font-medium">
+                  {t("automation.col_scope")}
+                </th>
+                <th className="border-b border-border py-1.5 text-left font-medium">
+                  {t("automation.col_conditions")}
+                </th>
+                <th className="w-24 border-b border-border py-1.5 text-right font-medium" />
+              </tr>
+            </thead>
+            <tbody>
+              {views.map((view) => (
+                <tr
+                  key={view.id}
+                  className="group align-top hover:bg-accent/20"
+                >
+                  <td className="border-b border-border/60 py-2 pr-2">
+                    <button
+                      type="button"
+                      onClick={() => openEdit(view)}
+                      className="text-left font-medium hover:underline"
+                    >
+                      {view.name}
+                    </button>
+                  </td>
+                  <td className="border-b border-border/60 py-2 pr-2 text-xs text-muted-foreground">
+                    <span className="block truncate">{scopeLabel(view)}</span>
+                  </td>
+                  <td className="border-b border-border/60 py-2 pr-2 text-xs text-muted-foreground">
+                    <span className="block truncate font-mono">
+                      {describeConditions(view.conditions ?? [], t)}
+                    </span>
+                  </td>
+                  <td className="border-b border-border/60 py-2 text-right">
+                    <div className="flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                      <button
+                        type="button"
+                        onClick={() => openEdit(view)}
+                        className={actionButton}
+                      >
+                        {t("automation.edit")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeleteWithRevert(false);
+                          setPendingDelete(view);
+                        }}
+                        className={cn(actionButton, "hover:text-destructive")}
+                      >
+                        {t("automation.delete")}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* 自然语言建规则：一句人话 → 规则草稿（填进编辑器，由人确认后才落库） */}
+      <Dialog
+        open={nlOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setNlOpen(false);
+            setNlError(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogTitle className="text-base font-semibold">
+            {t("automation.nl_title")}
+          </DialogTitle>
+          <div className="mt-2 text-xs text-muted-foreground">
+            {t("automation.nl_hint")}
+          </div>
+          <textarea
+            value={nlText}
+            onChange={(event) => setNlText(event.target.value)}
+            rows={3}
+            placeholder={t("automation.nl_placeholder")}
+            className={cn(
+              "mt-2 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm",
+              "placeholder:text-muted-foreground/50",
+              "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20",
+            )}
+          />
+          {nlError && (
+            <div className="mt-2 text-xs text-destructive">{nlError}</div>
+          )}
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setNlOpen(false);
+                setNlError(null);
+              }}
+              className="h-8 rounded-md px-3 text-sm text-muted-foreground hover:text-foreground"
+            >
+              {t("automation.cancel")}
+            </button>
+            <button
+              type="button"
+              disabled={nlDraft.isPending || nlText.trim().length === 0}
+              onClick={handleGenerate}
+              className="h-8 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {nlDraft.isPending
+                ? t("automation.nl_generating")
+                : t("automation.nl_generate")}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* 回溯确认（会改历史条目，所以先说清范围与语义再执行） */}
       <Dialog
@@ -409,26 +630,32 @@ export function AutomationSettings() {
         onClose={() => setMatchesRule(null)}
       />
 
-      {/* 删除确认（可选顺带撤销） */}
+      {/* 删除确认（规则可选顺带撤销；视图没有动作，不显示这个勾选框） */}
       <Dialog
         open={pendingDelete !== null}
         onOpenChange={(open) => !open && setPendingDelete(null)}
       >
         <DialogContent className="max-w-md">
           <DialogTitle className="text-base font-semibold">
-            {t("automation.delete_title")}
+            {pendingDelete?.kind === "view"
+              ? t("automation.delete_view_title")
+              : t("automation.delete_title")}
           </DialogTitle>
           <div className="mt-2 text-sm text-muted-foreground">
-            {t("automation.delete_description")}
+            {pendingDelete?.kind === "view"
+              ? t("automation.delete_view_description")
+              : t("automation.delete_description")}
           </div>
-          <label className="mt-3 flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={deleteWithRevert}
-              onChange={(event) => setDeleteWithRevert(event.target.checked)}
-            />
-            {t("automation.delete_with_revert")}
-          </label>
+          {pendingDelete?.kind !== "view" && (
+            <label className="mt-3 flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={deleteWithRevert}
+                onChange={(event) => setDeleteWithRevert(event.target.checked)}
+              />
+              {t("automation.delete_with_revert")}
+            </label>
+          )}
           <div className="mt-4 flex justify-end gap-2">
             <button
               type="button"

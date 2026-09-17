@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/context-menu";
 import { useUISettingKey } from "@/hooks/useUISettings";
 import { useMarkAsRead, useMarkAsStarred } from "@/hooks/useEntries";
-import { useUnmuteEntry, useFilters } from "@/hooks/useFilters";
+import { useUnmuteEntry, useFilters, useCreateFilterException } from "@/hooks/useFilters";
 import { showToast } from "@/stores/toast-store";
 import { openFilterEditorForEntry } from "@/stores/filter-editor-store";
 import { useAutoReadable } from "@/hooks/useAutoReadable";
@@ -108,13 +108,15 @@ function MutedBadge({ filterId }: { filterId?: string }) {
 /**
  * 条目卡片的右键菜单。
  *
- * 两条：
+ * 三条：
  *   - 「取消静音」只在条目确实被静音时出现（撤销规则写上去的 muted 标记）；
+ *   - 「豁免这类内容」把误伤转成一条例外规则（顺序最前 + 反向动作）并立刻放行这一条；
  *   - 「按此条新建规则」永远可用，用作者/标题片段预填条件（见 filter-editor-store）。
  */
 function EntryContextMenuContent({ entry }: { entry: Entry }) {
   const { t } = useTranslation();
   const unmute = useUnmuteEntry();
+  const exception = useCreateFilterException();
 
   return (
     <ContextMenuContent>
@@ -132,6 +134,18 @@ function EntryContextMenuContent({ entry }: { entry: Entry }) {
           <ContextMenuSeparator />
         </>
       )}
+      <ContextMenuItem
+        disabled={exception.isPending}
+        onClick={() =>
+          exception.mutate(entry.id, {
+            onSuccess: (rule) =>
+              showToast(t("automation.exception_created", { name: rule.name })),
+            onError: () => showToast(t("automation.exception_failed")),
+          })
+        }
+      >
+        {t("automation.exception_entry")}
+      </ContextMenuItem>
       <ContextMenuItem onClick={() => openFilterEditorForEntry(entry)}>
         {t("automation.rule_from_entry")}
       </ContextMenuItem>

@@ -26,6 +26,10 @@ import { SidebarAccountBar } from "./SidebarAccountBar";
 import { FeedCategory } from "./FeedCategory";
 import { FeedItem } from "./FeedItem";
 import { ContentTypeSwitcher } from "./ContentTypeSwitcher";
+import { useFilters } from "@/hooks/useFilters";
+import { useFilterViewStore } from "@/stores/filter-view-store";
+import { feedItemStyles, sidebarItemIconStyles } from "./styles";
+import { SearchIcon } from "@/components/ui/icons";
 import { SettingsModal, ProfileModal } from "@/components/settings";
 import { EditFeedDialog } from "@/components/settings/tabs/EditFeedDialog";
 import { RenameFolderDialog } from "./RenameFolderDialog";
@@ -396,6 +400,23 @@ export function Sidebar({
   const isFolderSelected = (folderId: string) =>
     selection.type === "folder" && selection.folderId === folderId;
 
+  // 保存的筛选视图：设置 → 自动化里建的「范围 + 条件」，这里只是快捷入口
+  const { data: filterList } = useFilters();
+  const savedViews = useMemo(
+    () => (filterList ?? []).filter((item) => item.kind === "view"),
+    [filterList],
+  );
+  const activeViewId = useFilterViewStore((state) => state.viewId);
+  const selectView = useFilterViewStore((state) => state.selectView);
+  const handleSelectView = useCallback(
+    (view: { id: string; name: string }) => {
+      // 视图自带作用域，列表这边统一回到「全部」再叠加视图筛选
+      onSelectAll?.(contentType);
+      selectView(view, `all:${contentType}`);
+    },
+    [contentType, onSelectAll, selectView],
+  );
+
   return (
     <div className="flex h-full flex-col bg-transparent">
       <SidebarHeader
@@ -429,6 +450,32 @@ export function Sidebar({
             className="absolute inset-0 will-change-[transform,opacity]"
           >
             <SidebarScrollArea scrollKey={animatedContentType}>
+              {/* 保存的筛选视图（设置 → 自动化 里维护；这里只是快捷入口，没有就不显示这一段） */}
+              {savedViews.length > 0 && (
+                <div className="mb-1.5">
+                  <div className="px-2.5">
+                    <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground/70">
+                      {t("sidebar.views")}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 space-y-px">
+                    {savedViews.map((view) => (
+                      <div
+                        key={view.id}
+                        data-active={activeViewId === view.id}
+                        className={cn(feedItemStyles, "pl-2.5")}
+                        onClick={() => handleSelectView(view)}
+                      >
+                        <span className={sidebarItemIconStyles}>
+                          <SearchIcon className="size-4 -translate-y-px text-muted-foreground" />
+                        </span>
+                        <span className="grow truncate">{view.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Feed categories header with sort */}
               <div className="flex items-center justify-between px-2.5">
                 <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground/70">

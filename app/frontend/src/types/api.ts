@@ -68,6 +68,9 @@ export interface Entry {
   muted: boolean;
   /** 最后命中这条条目的规则 ID（用于显示「已静音 · 规则名」） */
   filterId?: string;
+  /** 规则动作 translate/summarize 打的条目级标记：打开这条时自动翻译 / 自动摘要 */
+  autoTranslate?: boolean;
+  autoSummary?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -81,6 +84,8 @@ export interface EntryListParams {
   feedId?: string;
   folderId?: string;
   contentType?: ContentType;
+  /** 按「保存筛选视图」取条目（作用域与条件都在视图里） */
+  viewId?: string;
   unreadOnly?: boolean;
   starredOnly?: boolean;
   hasThumbnail?: boolean;

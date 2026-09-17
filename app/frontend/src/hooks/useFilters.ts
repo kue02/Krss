@@ -2,9 +2,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   applyFilterToHistory,
   createFilter,
+  createFilterException,
   deleteFilter,
   listFilterMatches,
   listFilters,
+  parseFilterNaturalLanguage,
   previewFilter,
   revertFilter,
   unmuteEntry,
@@ -107,6 +109,34 @@ export function useApplyFilterHistory() {
   return useMutation({
     mutationFn: (variables: { id: string; limit?: number }) =>
       applyFilterToHistory(variables.id, variables.limit ?? 500),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["filters"] });
+      queryClient.invalidateQueries({ queryKey: ["entries"] });
+      queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
+      queryClient.invalidateQueries({ queryKey: ["filterMatches"] });
+    },
+  });
+}
+
+/**
+ * 自然语言建规则：一次补全换一份规则草稿（不落库）。
+ * 这里只负责拿到草稿，填进编辑器、让用户确认后再保存 —— 见 AutomationSettings 的入口。
+ */
+export function useFilterDraft() {
+  return useMutation({
+    mutationFn: (text: string) => parseFilterNaturalLanguage(text),
+  });
+}
+
+/**
+ * 条目级「豁免这类内容」：建例外规则 + 立刻放行这一条。
+ * 放行会改条目状态（取消静音、退回未读），所以 entries / unreadCounts 也要失效。
+ */
+export function useCreateFilterException() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (entryId: string) => createFilterException(entryId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["filters"] });
       queryClient.invalidateQueries({ queryKey: ["entries"] });

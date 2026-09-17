@@ -45,7 +45,8 @@ export function EntryContent({ entryId, isMobile, onBack }: EntryContentProps) {
   // 自动「打开即已读」每篇文章只做一次：否则手动切回未读（快捷键 m）会被立刻改回已读
   const autoMarkedEntryRef = useRef<string | null>(null);
 
-  const autoTranslate = aiSettings?.autoTranslate ?? false;
+  const autoTranslateRule = entry?.autoTranslate ?? false;
+  const autoTranslate = autoTranslateRule || (aiSettings?.autoTranslate ?? false);
   const targetLanguage = aiSettings?.summaryLanguage ?? "zh-CN";
   const { data: feeds = [] } = useFeeds();
   // 订阅级覆盖优先（#8）：这个源单独设过「阅读模式 / 原文」就听它的，否则跟随全局
@@ -54,11 +55,13 @@ export function EntryContent({ entryId, isMobile, onBack }: EntryContentProps) {
     : undefined;
   const autoReadability =
     feedReaderMode ?? generalSettings?.autoReadability ?? false;
-  // 订阅级覆盖优先（#5）
+  // 订阅级覆盖优先（#5）；规则动作 summarize 打的条目级标记最大（它本来就是为这条打的）
   const feedAutoSummary = entry
     ? feeds.find((feed) => feed.id === entry.feedId)?.autoSummary
     : undefined;
-  const autoSummary = feedAutoSummary ?? aiSettings?.autoSummary ?? false;
+  const autoSummary = entry?.autoSummary
+    ? true
+    : (feedAutoSummary ?? aiSettings?.autoSummary ?? false);
 
   // Readability hook
   const {
