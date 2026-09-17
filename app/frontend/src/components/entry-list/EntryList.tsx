@@ -271,12 +271,25 @@ export function EntryList({
     }
   }, [fetchNextPage, hasNextPage, isActive, isFetchingNextPage, scrollSurface]);
 
+  // 选中回调**必须身份稳定**：它作为 prop 传给每一张 EntryListItem，
+  // 一变就是几百张卡全量重渲（实测：点一条 = 50 张卡重渲）。
+  // 而 onSelectEntry 来自 wouter 路由（点条目就会换路由 → 回调换引用），
+  // scrollKey 也可能随视图变，所以用「latest ref」把它们的当前值取出来，
+  // 回调本身只依赖 scrollSurface（useMemo 稳定）。
+  const onSelectEntryRef = useRef(onSelectEntry);
+  onSelectEntryRef.current = onSelectEntry;
+  const scrollKeyRef = useRef(scrollKey);
+  scrollKeyRef.current = scrollKey;
+
   const handleSelectEntry = useCallback(
     (entryId: string) => {
-      entryListScrollPositions.set(scrollKey, scrollSurface.getScrollTop());
-      onSelectEntry(entryId);
+      entryListScrollPositions.set(
+        scrollKeyRef.current,
+        scrollSurface.getScrollTop(),
+      );
+      onSelectEntryRef.current(entryId);
     },
-    [onSelectEntry, scrollKey, scrollSurface],
+    [scrollSurface],
   );
 
   useEffect(() => {
@@ -804,7 +817,7 @@ export function EntryList({
                   entry={entry}
                   feed={feedsMap.get(entry.feedId)}
                   isSelected={entry.id === selectedEntryId}
-                  onClick={() => handleSelectEntry(entry.id)}
+                  onClick={handleSelectEntry}
                   autoTranslate={autoTranslate}
                   targetLanguage={targetLanguage}
                   social={isSocialView}

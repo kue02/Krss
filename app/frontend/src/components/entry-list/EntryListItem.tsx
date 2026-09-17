@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useRef, useState, useMemo } from "react";
+import { forwardRef, memo, useEffect, useRef, useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Check,
@@ -47,7 +47,11 @@ interface EntryListItemProps {
   entry: Entry;
   feed?: Feed;
   isSelected: boolean;
-  onClick: () => void;
+  /**
+   * 选中回调。收 entryId 而不是闭包 —— 父级因此能传 `useCallback` 出来的稳定引用，
+   * memo 才拦得住列表级状态变化带来的全量重渲染。
+   */
+  onClick: (entryId: string) => void;
   autoTranslate?: boolean;
   targetLanguage?: string;
   /** 社交媒体视图（第四类内容）：时间线式铺开正文，而不是卡片列表 */
@@ -153,7 +157,7 @@ function EntryContextMenuContent({ entry }: { entry: Entry }) {
   );
 }
 
-export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
+export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
   function EntryListItem(
     {
       entry,
@@ -321,7 +325,7 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
               style={style}
               data-index={dataIndex}
               data-entry-id={dataEntryId}
-              onClick={onClick}
+              onClick={() => onClick(entry.id)}
             >
               <Ripple hoverOpacity={0} pressedOpacity={0.05} duration={100} />
 
@@ -338,6 +342,10 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
                 <img
                   src={`/icons/${feed.iconPath}`}
                   alt=""
+                  width={32}
+                  height={32}
+                  loading="lazy"
+                  decoding="async"
                   className="mt-1 size-8 shrink-0 rounded-full object-cover"
                   onError={() => setIconError(true)}
                 />
@@ -498,7 +506,10 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
                           <img
                             src={url}
                             alt=""
+                            width={112}
+                            height={112}
                             loading="lazy"
+                            decoding="async"
                             className="size-28 object-cover transition-transform duration-200 hover:scale-[1.03]"
                             onError={() =>
                               setFailedThumbs((prev) => new Set(prev).add(url))
@@ -610,7 +621,10 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
               inViewRef.current = node;
             }}
             className={cn(
-              "group relative mx-2 mb-1.5 flex cursor-pointer overflow-hidden rounded-[10px] border p-2 transition-all duration-200",
+              
+              // 只过渡真正会变的属性：transition-all 会让几百张卡片为「任何」属性变化做检查
+              "group relative mx-2 mb-1.5 flex cursor-pointer overflow-hidden rounded-[10px] border p-2",
+              "transition-[background-color,border-color,box-shadow,opacity] duration-200",
               isLargeImage ? "flex-col gap-3" : "items-stretch gap-3",
               isSelected
                 ? "border-border/60 bg-card shadow-nf"
@@ -621,7 +635,7 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
             style={style}
             data-index={dataIndex}
             data-entry-id={dataEntryId}
-            onClick={onClick}
+            onClick={() => onClick(entry.id)}
           >
             {/* Material 3 涟漪 —— 与 Nextflux 的 ArticleCard 同库同参数 */}
             <Ripple hoverOpacity={0} pressedOpacity={0.05} duration={100} />
@@ -639,6 +653,10 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
                   <img
                     src={`/icons/${feed.iconPath}`}
                     alt=""
+                    width={20}
+                    height={20}
+                    loading="lazy"
+                    decoding="async"
                     className="size-5 shrink-0 rounded-[3px] object-contain"
                     onError={() => setIconError(true)}
                   />
@@ -715,6 +733,7 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
                   src={thumbnail ?? ""}
                   alt=""
                   loading="lazy"
+                  decoding="async"
                   className={cn(
                     "size-full object-cover transition-[transform,opacity] duration-300 group-hover:scale-[1.03]",
                     isThumbLoaded ? "opacity-100" : "opacity-0",
@@ -732,3 +751,14 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
     );
   },
 );
+
+/**
+ * 用 memo 包一层。
+ *
+ * 列表里动辄几百张卡片，每张卡都挂着若干 hook、图片与动效。此前父级每次状态变化
+ * （选中条目、切筛选、翻译进度）都会重渲染**所有**卡片。父级已把选中回调
+ * （handleSelectEntry，useCallback）与 feedsMap 查表结果做成稳定引用，
+ * 卡片自己的内部状态（图片加载、展开）不受影响，所以浅比较就够。
+ */
+export const EntryListItem = memo(EntryListItemBase);
+

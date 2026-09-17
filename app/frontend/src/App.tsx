@@ -10,7 +10,7 @@ import { Router, useLocation, Redirect } from "wouter";
 import { useTranslation } from "react-i18next";
 import { ThreeColumnLayout } from "@/components/layout/three-column-layout";
 import { Sheet } from "@/components/ui/sheet";
-import { MotionConfig } from "motion/react";
+import { MotionConfig } from "framer-motion";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Sidebar } from "@/components/sidebar";
 import { AddFeedPage } from "@/components/add-feed";
