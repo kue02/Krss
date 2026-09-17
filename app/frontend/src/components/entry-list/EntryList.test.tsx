@@ -119,6 +119,7 @@ function makeEntry(id: string): Entry {
     content: `<p>Content for entry ${id}</p>`,
     read: false,
     starred: false,
+    muted: false,
     createdAt: "2024-01-01T00:00:00Z",
     updatedAt: "2024-01-01T00:00:00Z",
   };
@@ -1086,5 +1087,56 @@ describe("EntryList translation scheduling", () => {
       "2",
       "3",
     ]);
+  });
+
+  it("「已静音」筛选把 mutedOnly 传给列表接口，且不叠加只看未读", () => {
+    render(<EntryList {...defaultProps} unreadOnly />);
+
+    fireEvent.click(screen.getByText("entry_filter.muted"));
+
+    const lastParams = vi.mocked(useEntriesInfinite).mock.calls.at(-1)?.[0];
+    expect(lastParams).toMatchObject({ mutedOnly: true, unreadOnly: false });
+    // 其余状态不传 includeMuted：默认行为就是隐藏静音条目
+    expect(lastParams).not.toHaveProperty("includeMuted");
+  });
+
+  it("星标 / 未读 / 全部三个状态都不传 mutedOnly", () => {
+    render(<EntryList {...defaultProps} unreadOnly />);
+
+    const lastParams = vi.mocked(useEntriesInfinite).mock.calls.at(-1)?.[0];
+    expect(lastParams).toMatchObject({ unreadOnly: true });
+    expect(lastParams).not.toHaveProperty("mutedOnly");
+    expect(lastParams).not.toHaveProperty("includeMuted");
+  });
+
+  it("点「已静音」只切本地状态（不导航），点其余三态才回调 onFilterChange", () => {
+    const onFilterChange = vi.fn();
+    render(<EntryList {...defaultProps} onFilterChange={onFilterChange} />);
+
+    fireEvent.click(screen.getByText("entry_filter.muted"));
+    expect(onFilterChange).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText("entry_filter.all"));
+    expect(onFilterChange).toHaveBeenCalledWith("all");
+
+    const lastParams = vi.mocked(useEntriesInfinite).mock.calls.at(-1)?.[0];
+    expect(lastParams).not.toHaveProperty("mutedOnly");
+  });
+
+  it("未读态下选中「已静音」时胶囊高亮切到已静音", () => {
+    render(<EntryList {...defaultProps} unreadOnly />);
+
+    expect(
+      screen.getByText("entry_filter.unread").getAttribute("aria-pressed"),
+    ).toBe("true");
+
+    fireEvent.click(screen.getByText("entry_filter.muted"));
+
+    expect(
+      screen.getByText("entry_filter.muted").getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      screen.getByText("entry_filter.unread").getAttribute("aria-pressed"),
+    ).toBe("false");
   });
 });

@@ -51,8 +51,12 @@ interface EntryListProps {
   onMarkAllRead: () => void;
   unreadOnly: boolean;
   onToggleUnreadOnly: () => void;
-  /** 底部筛选胶囊：全部 / 未读 / 星标 的切换（一次导航，见 useSelection.selectFilter） */
-  onFilterChange?: (filter: EntryFilter) => void;
+  /**
+   * 底部筛选胶囊：星标 / 未读 / 全部 的切换（一次导航，见 useSelection.selectFilter）。
+   * 第四个状态「已静音」不走导航（路由里没有这个维度），由 EntryList 本地承载，
+   * 所以这里的回调类型不含 "muted"。
+   */
+  onFilterChange?: (filter: Exclude<EntryFilter, "muted">) => void;
   contentType: ContentType;
   isMobile?: boolean;
   onMenuClick?: () => void;
@@ -83,6 +87,42 @@ export function EntryList({
 
   const { t } = useTranslation();
   const params = selectionToParams(selection, contentType);
+
+  /**
+   * 「已静音」是本地的第四个筛选态。
+   *
+   * 星标 / 未读对应路由里的 selection 与 unreadOnly，切换一次导航；「已静音」没有
+   * 对应的路由维度（路由/订阅参数都不该为一个回看视图扩容），所以由这里用本地状态承载，
+   * 只体现在 listEntries 的 mutedOnly 参数上。切到别的订阅 / 视图 / 已读态时自动退出，
+   * 免得带着 mutedOnly 去看别的列表。
+   */
+  const [mutedOnly, setMutedOnly] = useState(false);
+  const selectionScopeKey = useMemo(() => {
+    switch (selection.type) {
+      case "feed":
+        return `feed:${selection.feedId}`;
+      case "folder":
+        return `folder:${selection.folderId}`;
+      default:
+        return selection.type;
+    }
+  }, [selection]);
+  useEffect(() => {
+    setMutedOnly(false);
+  }, [selectionScopeKey, contentType, unreadOnly]);
+
+  // 当前筛选态（四者互斥）：星标 > 已静音 > 未读 > 全部
+  const filterValue: EntryFilter =
+    selection.type === "starred"
+      ? "starred"
+      : mutedOnly
+        ? "muted"
+        : unreadOnly
+          ? "unread"
+          : "all";
+  // 「已静音」是独立的回看视图，不叠加「只看未读」——否则规则静音前已读的条目就回看不到了
+  const effectiveUnreadOnly = filterValue === "muted" ? false : unreadOnly;
+
   const containerRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const listWrapperRef = useRef<HTMLDivElement>(null);
@@ -112,7 +152,12 @@ export function EntryList({
   const { data: generalSettings } = useGeneralSettings();
   const { data: unreadCounts } = useUnreadCounts();
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
-    useEntriesInfinite({ ...params, unreadOnly });
+    useEntriesInfinite({
+      ...params,
+      unreadOnly: effectiveUnreadOnly,
+      // 「已静音」才传 mutedOnly；其余状态不传 includeMuted（默认就是隐藏静音条目）
+      ...(filterValue === "muted" ? { mutedOnly: true } : {}),
+    });
 
   // Swipe gesture: Right swipe opens sidebar (only on mobile)
   useSwipeGesture(listWrapperRef, {
@@ -393,9 +438,9 @@ export function EntryList({
     contentRootRef: containerRef,
     entries,
     enabled: scrollReadEnabled && isActive,
-    unreadOnly,
+    unreadOnly: effectiveUnreadOnly,
     hasNextPage: Boolean(hasNextPage),
-    resetKey: `${scrollKey}\u0000${unreadOnly}\u0000${scrollReadEnabled}`,
+    resetKey: `${scrollKey}\u0000${effectiveUnreadOnly}\u0000${scrollReadEnabled}`,
     timing: scrollReadTimingByView?.[contentType] ?? "scrollPast",
   });
 
@@ -601,9 +646,7 @@ export function EntryList({
     }
   }, [unreadCounts, selection, feeds, contentType]);
 
-  // 底部筛选胶囊的当前态与切换
-  const filterValue: EntryFilter =
-    selection.type === "starred" ? "starred" : unreadOnly ? "unread" : "all";
+  // 底部筛选胶囊的当前态 filterValue 在文件上方定义（列表参数要用到它）
 
   return (
     <div
@@ -674,7 +717,7 @@ export function EntryList({
             <EntryListEmpty />
           ) : (
             <div className="w-full pb-16">
-              {/* pb-16：底部悬浮的「星标 / 未读 / 全部」胶囊会盖住内容，留白让最后一条能滚上来 */}
+              {/* pb-16：底部悬浮的「星标 / 未读 / 已静音 / 全部」胶囊会盖住内容，留白让最后一条能滚上来 */}
               {entries.map((entry, index) => (
                 <EntryListItem
                   key={entry.id}
@@ -706,7 +749,15 @@ export function EntryList({
         {!usesDocumentScroll && (
           <EntryListFilterPill
             value={filterValue}
-            onChange={(next) => onFilterChange?.(next)}
+            onChange={(next) => {
+              // 「已静音」只切本地状态（见上方 mutedOnly 的说明）；其余三态走一次导航
+              if (next === "muted") {
+                setMutedOnly(true);
+                return;
+              }
+              setMutedOnly(false);
+              onFilterChange?.(next);
+            }}
           />
         )}
       </div>

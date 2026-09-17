@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EntryListItem } from "./EntryListItem";
+import { useFilterEditorStore } from "@/stores/filter-editor-store";
 import type { Entry, Feed } from "@/types/api";
 
 vi.mock("react-i18next", () => ({
@@ -14,14 +15,19 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-const { markAsRead, markAsStarred } = vi.hoisted(() => ({
+const { markAsRead, markAsStarred, unmuteMutate } = vi.hoisted(() => ({
   markAsRead: vi.fn(),
   markAsStarred: vi.fn(),
+  unmuteMutate: vi.fn(),
 }));
 
 vi.mock("@/hooks/useEntries", () => ({
   useMarkAsRead: () => ({ mutate: markAsRead }),
   useMarkAsStarred: () => ({ mutate: markAsStarred }),
+}));
+
+vi.mock("@/hooks/useFilters", () => ({
+  useUnmuteEntry: () => ({ mutate: unmuteMutate }),
 }));
 
 vi.mock("@/stores/translation-store", () => ({
@@ -37,6 +43,7 @@ const entry: Entry = {
   content: "<p>Entry summary</p>",
   read: false,
   starred: false,
+  muted: false,
   publishedAt: "2024-01-01T09:00:00.000Z",
   createdAt: "2024-01-01T09:00:00.000Z",
   updatedAt: "2024-01-01T09:00:00.000Z",
@@ -215,6 +222,116 @@ describe("EntryListItem", () => {
         />,
       );
       expect(screen.queryByText("@op7418")).toBeNull();
+    });
+  });
+
+  describe("过滤规则入口", () => {
+    beforeEach(() => {
+      useFilterEditorStore.getState().close();
+      unmuteMutate.mockClear();
+    });
+
+    it("被静音的条目在元信息行显示「已静音」细标签", () => {
+      render(
+        <EntryListItem
+          entry={{ ...entry, muted: true }}
+          feed={feed}
+          isSelected={false}
+          onClick={vi.fn()}
+        />,
+      );
+
+      const badge = screen.getByText("automation.muted_badge");
+      // 细标签而不是大卡片：小字号 + muted-foreground + 小圆角
+      expect(badge.className).toContain("text-[10px]");
+      expect(badge.className).toContain("text-muted-foreground");
+      expect(badge.className).toContain("rounded-[3px]");
+      expect(badge.className).not.toContain("rounded-full");
+    });
+
+    it("未被静音的条目不显示标签", () => {
+      render(
+        <EntryListItem
+          entry={entry}
+          feed={feed}
+          isSelected={false}
+          onClick={vi.fn()}
+        />,
+      );
+
+      expect(screen.queryByText("automation.muted_badge")).toBeNull();
+    });
+
+    it("右键菜单：「按此条新建规则」打开编辑器并按该条预填", () => {
+      render(
+        <EntryListItem
+          entry={entry}
+          feed={feed}
+          isSelected={false}
+          onClick={vi.fn()}
+        />,
+      );
+
+      fireEvent.contextMenu(screen.getByText("Entry title"));
+      expect(screen.queryByText("automation.unmute_entry")).toBeNull();
+
+      fireEvent.click(screen.getByText("automation.rule_from_entry"));
+
+      const state = useFilterEditorStore.getState();
+      expect(state.open).toBe(true);
+      expect(state.draft?.scopeType).toBe("feed");
+      expect(state.draft?.scopeId).toBe(entry.feedId);
+    });
+
+    it("右键菜单：静音条目多一条「取消静音」并调用 unmute", () => {
+      render(
+        <EntryListItem
+          entry={{ ...entry, muted: true, filterId: "rule-1" }}
+          feed={feed}
+          isSelected={false}
+          onClick={vi.fn()}
+        />,
+      );
+
+      fireEvent.contextMenu(screen.getByText("Entry title"));
+      fireEvent.click(screen.getByText("automation.unmute_entry"));
+
+      expect(unmuteMutate).toHaveBeenCalledWith(entry.id);
+      // 取消静音不该顺带打开规则编辑器
+      expect(useFilterEditorStore.getState().open).toBe(false);
+    });
+
+    it("右键菜单不会触发卡片点击（不打开文章）", () => {
+      const onClick = vi.fn();
+      render(
+        <EntryListItem
+          entry={entry}
+          feed={feed}
+          isSelected={false}
+          onClick={onClick}
+        />,
+      );
+
+      fireEvent.contextMenu(screen.getByText("Entry title"));
+      expect(onClick).not.toHaveBeenCalled();
+    });
+
+    it("社交媒体视图同样显示「已静音」标签", () => {
+      render(
+        <EntryListItem
+          entry={{
+            ...entry,
+            muted: true,
+            url: "https://x.com/op7418/status/2100033975758856654",
+          }}
+          feed={feed}
+          isSelected={false}
+          onClick={vi.fn()}
+          social
+        />,
+      );
+
+      expect(screen.getByText("automation.muted_badge")).toBeTruthy();
     });
   });
 });

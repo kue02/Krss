@@ -17,8 +17,17 @@ import { stripHtml } from "@/lib/html-utils";
 import { getEntryImages } from "@/lib/extract-images";
 import { useTranslationStore } from "@/stores/translation-store";
 import { FeedIcon } from "@/components/ui/feed-icon";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { useUISettingKey } from "@/hooks/useUISettings";
 import { useMarkAsRead, useMarkAsStarred } from "@/hooks/useEntries";
+import { useUnmuteEntry } from "@/hooks/useFilters";
+import { openFilterEditorForEntry } from "@/stores/filter-editor-store";
 import { useAutoReadable } from "@/hooks/useAutoReadable";
 import { stripDuplicatedTitle } from "@/lib/strip-duplicated-title";
 import { stripContentImages } from "@/lib/strip-content-images";
@@ -65,6 +74,50 @@ const SOCIAL_COLLAPSED_HEIGHT = `${SOCIAL_COLLAPSED_PX}px`;
 /** Folo 的 mask-b-2xl：只在最后 90px 做淡出 */
 const SOCIAL_COLLAPSE_MASK =
   "linear-gradient(to bottom, #000 calc(100% - 90px), transparent)";
+
+/**
+ * 「已静音」细标签 —— 被过滤规则静音时的标记。
+ *
+ * 挂在元信息行里当一个小字标签用（细边 + 2px 圆角 + 10px 字号），
+ * 不做大卡片/大圆角：它只是状态说明，不是操作入口（撤销在右键菜单里）。
+ */
+function MutedBadge() {
+  const { t } = useTranslation();
+
+  return (
+    <span className="shrink-0 rounded-[3px] border border-border/60 bg-muted/40 px-1 py-px text-[10px] font-medium leading-4 text-muted-foreground">
+      {t("automation.muted_badge")}
+    </span>
+  );
+}
+
+/**
+ * 条目卡片的右键菜单。
+ *
+ * 两条：
+ *   - 「取消静音」只在条目确实被静音时出现（撤销规则写上去的 muted 标记）；
+ *   - 「按此条新建规则」永远可用，用作者/标题片段预填条件（见 filter-editor-store）。
+ */
+function EntryContextMenuContent({ entry }: { entry: Entry }) {
+  const { t } = useTranslation();
+  const unmute = useUnmuteEntry();
+
+  return (
+    <ContextMenuContent>
+      {entry.muted && (
+        <>
+          <ContextMenuItem onClick={() => unmute.mutate(entry.id)}>
+            {t("automation.unmute_entry")}
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+        </>
+      )}
+      <ContextMenuItem onClick={() => openFilterEditorForEntry(entry)}>
+        {t("automation.rule_from_entry")}
+      </ContextMenuItem>
+    </ContextMenuContent>
+  );
+}
 
 export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
   function EntryListItem(
@@ -216,397 +269,409 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
     // 正文超过 300px 折叠 + 遮罩淡出 + 「显示更多」；未读点在最左侧。
     if (isSocialView) {
       return (
-        <div
-          ref={(node) => {
-            if (typeof ref === "function") ref(node);
-            else if (ref) ref.current = node;
-            inViewRef.current = node;
-          }}
-          className={cn(
-            // Folo 的社交时间线是「居中可读宽度」而不是通栏
-            "group relative mx-auto mb-1 flex w-full max-w-[clamp(45ch,60vw,65ch)] cursor-pointer rounded-xl border border-transparent px-3 py-4 transition-colors duration-200",
-            isSelected ? "border-border/60 bg-card shadow-nf" : "hover:bg-item-hover",
-            !isUnread && !entry.starred && !isSelected && "opacity-[0.78]",
-          )}
-          style={style}
-          data-index={dataIndex}
-          data-entry-id={dataEntryId}
-          onClick={onClick}
-        >
-          <Ripple hoverOpacity={0} pressedOpacity={0.05} duration={100} />
+        <ContextMenu>
+          <ContextMenuTrigger asChild>
+            <div
+              ref={(node) => {
+                if (typeof ref === "function") ref(node);
+                else if (ref) ref.current = node;
+                inViewRef.current = node;
+              }}
+              className={cn(
+                // Folo 的社交时间线是「居中可读宽度」而不是通栏
+                "group relative mx-auto mb-1 flex w-full max-w-[clamp(45ch,60vw,65ch)] cursor-pointer rounded-xl border border-transparent px-3 py-4 transition-colors duration-200",
+                isSelected ? "border-border/60 bg-card shadow-nf" : "hover:bg-item-hover",
+                !isUnread && !entry.starred && !isSelected && "opacity-[0.78]",
+              )}
+              style={style}
+              data-index={dataIndex}
+              data-entry-id={dataEntryId}
+              onClick={onClick}
+            >
+              <Ripple hoverOpacity={0} pressedOpacity={0.05} duration={100} />
 
-          {/* 未读点：Folo 放在条目最左侧 */}
-          {isUnread && (
-            <span
-              aria-hidden="true"
-              className="absolute -left-0.5 top-8 size-2 rounded-full bg-primary"
-            />
-          )}
+              {/* 未读点：Folo 放在条目最左侧 */}
+              {isUnread && (
+                <span
+                  aria-hidden="true"
+                  className="absolute -left-0.5 top-8 size-2 rounded-full bg-primary"
+                />
+              )}
 
-          {/* 头像式 favicon（Folo 用 32px 的源图标当作者头像） */}
-          {showIcon ? (
-            <img
-              src={`/icons/${feed.iconPath}`}
-              alt=""
-              className="mt-1 size-8 shrink-0 rounded-full object-cover"
-              onError={() => setIconError(true)}
-            />
-          ) : (
-            <div className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground/70">
-              {/* 源没给图标时，社交条目按平台给字形（Folo 这里显示作者头像） */}
-              {socialSource?.platform === "x" ? (
-                <svg
-                  className="size-3.5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={2.5}
-                  strokeLinecap="round"
-                >
-                  <path d="M5 5l14 14M19 5L5 19" />
-                </svg>
-              ) : socialSource ? (
-                <Globe className="size-4" />
+              {/* 头像式 favicon（Folo 用 32px 的源图标当作者头像） */}
+              {showIcon ? (
+                <img
+                  src={`/icons/${feed.iconPath}`}
+                  alt=""
+                  className="mt-1 size-8 shrink-0 rounded-full object-cover"
+                  onError={() => setIconError(true)}
+                />
               ) : (
-                <FeedIcon className="size-4" />
+                <div className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground/70">
+                  {/* 源没给图标时，社交条目按平台给字形（Folo 这里显示作者头像） */}
+                  {socialSource?.platform === "x" ? (
+                    <svg
+                      className="size-3.5"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2.5}
+                      strokeLinecap="round"
+                    >
+                      <path d="M5 5l14 14M19 5L5 19" />
+                    </svg>
+                  ) : socialSource ? (
+                    <Globe className="size-4" />
+                  ) : (
+                    <FeedIcon className="size-4" />
+                  )}
+                </div>
               )}
-            </div>
-          )}
 
-          <div className="ml-2 min-w-0 flex-1">
-            {/* 作者行：源名 · @handle · 时间（Folo 这里 select-none，拖选只作用于正文） */}
-            <div className="flex select-none flex-wrap items-center gap-x-1 leading-6">
-              <span className="truncate text-base font-semibold text-foreground">
-                {displayFeedName}
-              </span>
-              {/* Folo 会在源名后面挂 @handle（可点进作者主页）；
-                  源名里已经带同一 handle 时不重复显示 */}
-              {socialSource &&
-                !displayFeedName.toLowerCase().includes(
-                  socialSource.handle.toLowerCase(),
-                ) && (
-                  <a
-                    href={socialSource.profileUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="truncate text-muted-foreground transition-colors duration-200 hover:text-foreground"
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    @{socialSource.handle}
-                  </a>
-                )}
-              {publishedAt && (
-                <>
-                  <span className="text-muted-foreground">·</span>
-                  <span className="text-muted-foreground">{publishedAt}</span>
-                </>
-              )}
-              {entry.starred && (
-                <Star className="ml-1 size-3.5 shrink-0 text-amber-500" />
-              )}
-            </div>
-
-            {/* 标题：只有不是「正文开头」时才单独显示（对齐 Folo：社交条目以正文为主） */}
-            {displayTitle && !titleIsBodyPrefix && (
-              <div className="mt-1 line-clamp-2 text-[15px] font-semibold leading-snug text-foreground wrap-anywhere">
-                {displayTitle}
-              </div>
-            )}
-
-            {/* 正文：纯文字 + 300px 折叠（Folo 的 CollapsedSocialMediaItem） */}
-            <div className="relative mt-1">
-              {inView ? (
-                <>
-                  <div
-                    ref={expandedBodyRef}
-                    className={cn(
-                      "entry-content prose prose-sm dark:prose-invert max-w-none break-words",
-                      bodyClamped && "overflow-hidden",
+              <div className="ml-2 min-w-0 flex-1">
+                {/* 作者行：源名 · @handle · 时间（Folo 这里 select-none，拖选只作用于正文） */}
+                <div className="flex select-none flex-wrap items-center gap-x-1 leading-6">
+                  <span className="truncate text-base font-semibold text-foreground">
+                    {displayFeedName}
+                  </span>
+                  {/* Folo 会在源名后面挂 @handle（可点进作者主页）；
+                      源名里已经带同一 handle 时不重复显示 */}
+                  {socialSource &&
+                    !displayFeedName.toLowerCase().includes(
+                      socialSource.handle.toLowerCase(),
+                    ) && (
+                      <a
+                        href={socialSource.profileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="truncate text-muted-foreground transition-colors duration-200 hover:text-foreground"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        @{socialSource.handle}
+                      </a>
                     )}
-                    style={{
-                      fontSize: `${Math.max(14, entryFontSize - 2)}px`,
-                      lineHeight: entryLineHeight,
-                      ...(readingFontStack
-                        ? { fontFamily: readingFontStack }
-                        : {}),
-                      ...(bodyClamped
-                        ? {
-                            maxHeight: SOCIAL_COLLAPSED_HEIGHT,
-                            overflow: "hidden",
-                            maskImage: SOCIAL_COLLAPSE_MASK,
-                            WebkitMaskImage: SOCIAL_COLLAPSE_MASK,
-                          }
-                        : {}),
-                      ...(expandTarget !== null
-                        ? {
-                            maxHeight: `${expandTarget}px`,
-                            overflow: "hidden",
-                            transition:
-                              "max-height 220ms cubic-bezier(0.22, 0.61, 0.36, 1)",
-                          }
-                        : {}),
-                    }}
-                    onTransitionEnd={() => setExpandTarget(null)}
-                  >
-                    <ArticleContent content={socialBody} articleUrl={entry.url} />
-                  </div>
+                  {publishedAt && (
+                    <>
+                      <span className="text-muted-foreground">·</span>
+                      <span className="text-muted-foreground">{publishedAt}</span>
+                    </>
+                  )}
+                  {entry.starred && (
+                    <Star className="ml-1 size-3.5 shrink-0 text-amber-500" />
+                  )}
+                  {entry.muted && <MutedBadge />}
+                </div>
 
-                  {/* 显示更多：Folo 是「纯文字 + 下箭头」压在正文底部，不是一颗胶囊按钮 */}
-                  {bodyClamped && (
-                    <div className="absolute inset-x-0 -bottom-2 flex select-none justify-center py-2">
+                {/* 标题：只有不是「正文开头」时才单独显示（对齐 Folo：社交条目以正文为主） */}
+                {displayTitle && !titleIsBodyPrefix && (
+                  <div className="mt-1 line-clamp-2 text-[15px] font-semibold leading-snug text-foreground wrap-anywhere">
+                    {displayTitle}
+                  </div>
+                )}
+
+                {/* 正文：纯文字 + 300px 折叠（Folo 的 CollapsedSocialMediaItem） */}
+                <div className="relative mt-1">
+                  {inView ? (
+                    <>
+                      <div
+                        ref={expandedBodyRef}
+                        className={cn(
+                          "entry-content prose prose-sm dark:prose-invert max-w-none break-words",
+                          bodyClamped && "overflow-hidden",
+                        )}
+                        style={{
+                          fontSize: `${Math.max(14, entryFontSize - 2)}px`,
+                          lineHeight: entryLineHeight,
+                          ...(readingFontStack
+                            ? { fontFamily: readingFontStack }
+                            : {}),
+                          ...(bodyClamped
+                            ? {
+                                maxHeight: SOCIAL_COLLAPSED_HEIGHT,
+                                overflow: "hidden",
+                                maskImage: SOCIAL_COLLAPSE_MASK,
+                                WebkitMaskImage: SOCIAL_COLLAPSE_MASK,
+                              }
+                            : {}),
+                          ...(expandTarget !== null
+                            ? {
+                                maxHeight: `${expandTarget}px`,
+                                overflow: "hidden",
+                                transition:
+                                  "max-height 220ms cubic-bezier(0.22, 0.61, 0.36, 1)",
+                              }
+                            : {}),
+                        }}
+                        onTransitionEnd={() => setExpandTarget(null)}
+                      >
+                        <ArticleContent content={socialBody} articleUrl={entry.url} />
+                      </div>
+
+                      {/* 显示更多：Folo 是「纯文字 + 下箭头」压在正文底部，不是一颗胶囊按钮 */}
+                      {bodyClamped && (
+                        <div className="absolute inset-x-0 -bottom-2 flex select-none justify-center py-2">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              const node = expandedBodyRef.current;
+                              setExpandTarget(node ? node.scrollHeight : null);
+                              setBodyExpanded(true);
+                            }}
+                            className="flex items-center justify-center text-xs text-muted-foreground transition-colors duration-200 hover:text-foreground"
+                          >
+                            <ChevronDown className="size-3.5" />
+                            <span className="ml-2">{t("entry.show_more")}</span>
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="h-20 animate-pulse rounded-lg bg-muted/40" />
+                  )}
+                </div>
+
+                {/* 图片：正文里已摘掉，这里排成一行缩略图（Folo 的 MediaGallery） */}
+                {socialImages.length > 0 && (
+                  <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+                    {socialImages
+                      .slice(0, 3)
+                      .filter((url) => !failedThumbs.has(url))
+                      .map((url) => (
+                        <img
+                          key={url}
+                          src={url}
+                          alt=""
+                          loading="lazy"
+                          className="size-28 shrink-0 rounded-lg bg-muted object-cover"
+                          onError={() =>
+                            setFailedThumbs((prev) => new Set(prev).add(url))
+                          }
+                        />
+                      ))}
+                  </div>
+                )}
+
+                {/* 悬停操作条（对齐 Folo 的 ActionBar）：默认透明，悬停/选中时浮出 */}
+                <div
+                  className={cn(
+                    "absolute right-2 top-2 z-10 flex items-center gap-0.5 rounded-lg border border-border/60 bg-overlay/90 p-1 shadow-nf backdrop-blur-sm transition-opacity duration-200",
+                    isSelected
+                      ? "opacity-100"
+                      : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100",
+                  )}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <button
+                    type="button"
+                    title={entry.starred ? t("entry.remove_from_starred") : t("entry.add_to_starred")}
+                    onClick={() => markAsStarred({ id: entry.id, starred: !entry.starred })}
+                    className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
+                  >
+                    <Star className={cn("size-4", entry.starred && "fill-amber-500 text-amber-500")} />
+                  </button>
+                  <button
+                    type="button"
+                    title={isUnread ? t("entry.mark_read") : t("entry.mark_unread")}
+                    onClick={() => markAsRead({ id: entry.id, read: isUnread })}
+                    className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
+                  >
+                    {isUnread ? <Check className="size-4" /> : <Undo2 className="size-4" />}
+                  </button>
+                  {entry.url && (
+                    <>
+                      <a
+                        href={entry.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={t("entry.open_original")}
+                        className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
+                      >
+                        <ExternalLink className="size-4" />
+                      </a>
+                      <button
+                        type="button"
+                        title={t("entry.copy_link")}
+                        onClick={() =>
+                          void copyToClipboard(entry.url!, t("entry.copied_link"))
+                        }
+                        className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
+                      >
+                        <Link2 className="size-4" />
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {/* 底部元信息 */}
+                <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground">
+                  {readingTime && (
+                    <span className="flex items-center gap-1">
+                      <Clock className="size-3 shrink-0" />
+                      {readingTime}
+                    </span>
+                  )}
+                  {entry.url && (
+                    <span className="ml-auto flex items-center gap-2">
+                      <a
+                        href={entry.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="transition-colors duration-200 hover:text-foreground"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        {t("entry.open_original")}
+                      </a>
                       <button
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
-                          const node = expandedBodyRef.current;
-                          setExpandTarget(node ? node.scrollHeight : null);
-                          setBodyExpanded(true);
+                          void copyToClipboard(entry.url!, t("entry.copied_link"));
                         }}
-                        className="flex items-center justify-center text-xs text-muted-foreground transition-colors duration-200 hover:text-foreground"
+                        className="transition-colors duration-200 hover:text-foreground"
                       >
-                        <ChevronDown className="size-3.5" />
-                        <span className="ml-2">{t("entry.show_more")}</span>
+                        {t("entry.copy_link")}
                       </button>
-                    </div>
+                    </span>
                   )}
-                </>
-              ) : (
-                <div className="h-20 animate-pulse rounded-lg bg-muted/40" />
-              )}
-            </div>
-
-            {/* 图片：正文里已摘掉，这里排成一行缩略图（Folo 的 MediaGallery） */}
-            {socialImages.length > 0 && (
-              <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-                {socialImages
-                  .slice(0, 3)
-                  .filter((url) => !failedThumbs.has(url))
-                  .map((url) => (
-                    <img
-                      key={url}
-                      src={url}
-                      alt=""
-                      loading="lazy"
-                      className="size-28 shrink-0 rounded-lg bg-muted object-cover"
-                      onError={() =>
-                        setFailedThumbs((prev) => new Set(prev).add(url))
-                      }
-                    />
-                  ))}
+                </div>
               </div>
-            )}
-
-            {/* 悬停操作条（对齐 Folo 的 ActionBar）：默认透明，悬停/选中时浮出 */}
-            <div
-              className={cn(
-                "absolute right-2 top-2 z-10 flex items-center gap-0.5 rounded-lg border border-border/60 bg-overlay/90 p-1 shadow-nf backdrop-blur-sm transition-opacity duration-200",
-                isSelected
-                  ? "opacity-100"
-                  : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100",
-              )}
-              onClick={(event) => event.stopPropagation()}
-            >
-              <button
-                type="button"
-                title={entry.starred ? t("entry.remove_from_starred") : t("entry.add_to_starred")}
-                onClick={() => markAsStarred({ id: entry.id, starred: !entry.starred })}
-                className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
-              >
-                <Star className={cn("size-4", entry.starred && "fill-amber-500 text-amber-500")} />
-              </button>
-              <button
-                type="button"
-                title={isUnread ? t("entry.mark_read") : t("entry.mark_unread")}
-                onClick={() => markAsRead({ id: entry.id, read: isUnread })}
-                className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
-              >
-                {isUnread ? <Check className="size-4" /> : <Undo2 className="size-4" />}
-              </button>
-              {entry.url && (
-                <>
-                  <a
-                    href={entry.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title={t("entry.open_original")}
-                    className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
-                  >
-                    <ExternalLink className="size-4" />
-                  </a>
-                  <button
-                    type="button"
-                    title={t("entry.copy_link")}
-                    onClick={() =>
-                      void copyToClipboard(entry.url!, t("entry.copied_link"))
-                    }
-                    className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
-                  >
-                    <Link2 className="size-4" />
-                  </button>
-                </>
-              )}
             </div>
-
-            {/* 底部元信息 */}
-            <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground">
-              {readingTime && (
-                <span className="flex items-center gap-1">
-                  <Clock className="size-3 shrink-0" />
-                  {readingTime}
-                </span>
-              )}
-              {entry.url && (
-                <span className="ml-auto flex items-center gap-2">
-                  <a
-                    href={entry.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="transition-colors duration-200 hover:text-foreground"
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    {t("entry.open_original")}
-                  </a>
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void copyToClipboard(entry.url!, t("entry.copied_link"));
-                    }}
-                    className="transition-colors duration-200 hover:text-foreground"
-                  >
-                    {t("entry.copy_link")}
-                  </button>
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
+          </ContextMenuTrigger>
+          <EntryContextMenuContent entry={entry} />
+        </ContextMenu>
       );
     }
 
     return (
-      <div
-        ref={(node) => {
-          if (typeof ref === "function") ref(node);
-          else if (ref) ref.current = node;
-          inViewRef.current = node;
-        }}
-        className={cn(
-          "group relative mx-2 mb-1.5 flex cursor-pointer overflow-hidden rounded-[10px] border p-2 transition-all duration-200",
-          isLargeImage ? "flex-col gap-3" : "items-stretch gap-3",
-          isSelected
-            ? "border-border/60 bg-card shadow-nf"
-            : "border-transparent hover:bg-item-hover",
-          // 对齐 Nextflux：已读且未加星标的卡片整体降透明度
-          !isUnread && !entry.starred && !isSelected && "opacity-[0.78]",
-        )}
-        style={style}
-        data-index={dataIndex}
-        data-entry-id={dataEntryId}
-        onClick={onClick}
-      >
-        {/* Material 3 涟漪 —— 与 Nextflux 的 ArticleCard 同库同参数 */}
-        <Ripple hoverOpacity={0} pressedOpacity={0.05} duration={100} />
-
-        {/* 左：文字区 */}
-        <div className="flex min-w-0 flex-1 flex-col">
-          {/* 来源行 */}
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
           <div
+            ref={(node) => {
+              if (typeof ref === "function") ref(node);
+              else if (ref) ref.current = node;
+              inViewRef.current = node;
+            }}
             className={cn(
-              "flex min-w-0 items-center gap-1.5 overflow-hidden text-xs",
-              isUnread ? "text-muted-foreground" : "text-muted-foreground/70",
+              "group relative mx-2 mb-1.5 flex cursor-pointer overflow-hidden rounded-[10px] border p-2 transition-all duration-200",
+              isLargeImage ? "flex-col gap-3" : "items-stretch gap-3",
+              isSelected
+                ? "border-border/60 bg-card shadow-nf"
+                : "border-transparent hover:bg-item-hover",
+              // 对齐 Nextflux：已读且未加星标的卡片整体降透明度
+              !isUnread && !entry.starred && !isSelected && "opacity-[0.78]",
             )}
+            style={style}
+            data-index={dataIndex}
+            data-entry-id={dataEntryId}
+            onClick={onClick}
           >
-            {showIcon ? (
-              <img
-                src={`/icons/${feed.iconPath}`}
-                alt=""
-                className="size-5 shrink-0 rounded-[3px] object-contain"
-                onError={() => setIconError(true)}
-              />
-            ) : (
-              <FeedIcon className="size-5 shrink-0 text-muted-foreground/50" />
-            )}
-            <span className="block min-w-0 truncate font-bold">
-              {displayFeedName}
-            </span>
-            {publishedAt && (
-              <>
-                <span className="shrink-0 text-muted-foreground/40">·</span>
-                <span className="shrink-0 whitespace-nowrap">
-                  {publishedAt}
+            {/* Material 3 涟漪 —— 与 Nextflux 的 ArticleCard 同库同参数 */}
+            <Ripple hoverOpacity={0} pressedOpacity={0.05} duration={100} />
+
+            {/* 左：文字区 */}
+            <div className="flex min-w-0 flex-1 flex-col">
+              {/* 来源行 */}
+              <div
+                className={cn(
+                  "flex min-w-0 items-center gap-1.5 overflow-hidden text-xs",
+                  isUnread ? "text-muted-foreground" : "text-muted-foreground/70",
+                )}
+              >
+                {showIcon ? (
+                  <img
+                    src={`/icons/${feed.iconPath}`}
+                    alt=""
+                    className="size-5 shrink-0 rounded-[3px] object-contain"
+                    onError={() => setIconError(true)}
+                  />
+                ) : (
+                  <FeedIcon className="size-5 shrink-0 text-muted-foreground/50" />
+                )}
+                <span className="block min-w-0 truncate font-bold">
+                  {displayFeedName}
                 </span>
-              </>
-            )}
-          </div>
+                {publishedAt && (
+                  <>
+                    <span className="shrink-0 text-muted-foreground/40">·</span>
+                    <span className="shrink-0 whitespace-nowrap">
+                      {publishedAt}
+                    </span>
+                  </>
+                )}
+                {entry.muted && <MutedBadge />}
+              </div>
 
-          {/* 标题 */}
-          <div
-            className={cn(
-              "mt-1.5 text-base font-semibold leading-6 wrap-anywhere",
-              titleContainsUrl ? "line-clamp-3" : "line-clamp-2",
-              // Nextflux 只用 opacity 表示已读；这里标题始终是前景色，
-              // 已读/未读只差字重，避免再叠一层灰导致正文难以辨认
-              isUnread ? "font-semibold text-foreground" : "font-medium text-foreground",
-            )}
-          >
-            {displayTitle || fallbackTitle}
-          </div>
+              {/* 标题 */}
+              <div
+                className={cn(
+                  "mt-1.5 text-base font-semibold leading-6 wrap-anywhere",
+                  titleContainsUrl ? "line-clamp-3" : "line-clamp-2",
+                  // Nextflux 只用 opacity 表示已读；这里标题始终是前景色，
+                  // 已读/未读只差字重，避免再叠一层灰导致正文难以辨认
+                  isUnread ? "font-semibold text-foreground" : "font-medium text-foreground",
+                )}
+              >
+                {displayTitle || fallbackTitle}
+              </div>
 
-          {/* 摘要（行数可在 设置 → 外观 里调，0 = 不显示） */}
-          {displaySummary && cardPreviewLines > 0 && !isExpanded && (
-            <div
-              className={cn(
-                "mt-1 text-sm leading-relaxed text-muted-foreground wrap-anywhere",
-                !isUnread && "text-muted-foreground/70",
+              {/* 摘要（行数可在 设置 → 外观 里调，0 = 不显示） */}
+              {displaySummary && cardPreviewLines > 0 && !isExpanded && (
+                <div
+                  className={cn(
+                    "mt-1 text-sm leading-relaxed text-muted-foreground wrap-anywhere",
+                    !isUnread && "text-muted-foreground/70",
+                  )}
+                  style={{
+                    display: "-webkit-box",
+                    WebkitBoxOrient: "vertical",
+                    WebkitLineClamp:
+                      cardPreviewLines + (summaryContainsUrl ? 1 : 0),
+                    overflow: "hidden",
+                  }}
+                >
+                  {displaySummary}
+                </div>
               )}
-              style={{
-                display: "-webkit-box",
-                WebkitBoxOrient: "vertical",
-                WebkitLineClamp:
-                  cardPreviewLines + (summaryContainsUrl ? 1 : 0),
-                overflow: "hidden",
-              }}
-            >
-              {displaySummary}
-            </div>
-          )}
 
-          {/* 阅读时长（沉底） */}
-          {readingTime && (
-            <div className="mt-auto flex items-center gap-1 pt-2 text-xs text-muted-foreground/80">
-              <Clock className="size-3 shrink-0" />
-              <span className="line-clamp-1">{readingTime}</span>
-            </div>
-          )}
-        </div>
-
-        {/* 缩略图：小图贴右，大图铺在正文下方 */}
-        {showThumbnail && (
-          <div
-            className={cn(
-              "overflow-hidden rounded-lg bg-muted",
-              !isThumbLoaded && "animate-pulse",
-              isLargeImage
-                ? "h-[168px] w-full shrink-0"
-                : "h-[92px] w-[92px] shrink-0 self-start",
-            )}
-          >
-            <img
-              src={thumbnail ?? ""}
-              alt=""
-              loading="lazy"
-              className={cn(
-                "size-full object-cover transition-[transform,opacity] duration-300 group-hover:scale-[1.03]",
-                isThumbLoaded ? "opacity-100" : "opacity-0",
+              {/* 阅读时长（沉底） */}
+              {readingTime && (
+                <div className="mt-auto flex items-center gap-1 pt-2 text-xs text-muted-foreground/80">
+                  <Clock className="size-3 shrink-0" />
+                  <span className="line-clamp-1">{readingTime}</span>
+                </div>
               )}
-              onLoad={() => setIsThumbLoaded(true)}
-              onError={() => setImageError(true)}
-            />
-          </div>
-        )}
+            </div>
 
-      </div>
+            {/* 缩略图：小图贴右，大图铺在正文下方 */}
+            {showThumbnail && (
+              <div
+                className={cn(
+                  "overflow-hidden rounded-lg bg-muted",
+                  !isThumbLoaded && "animate-pulse",
+                  isLargeImage
+                    ? "h-[168px] w-full shrink-0"
+                    : "h-[92px] w-[92px] shrink-0 self-start",
+                )}
+              >
+                <img
+                  src={thumbnail ?? ""}
+                  alt=""
+                  loading="lazy"
+                  className={cn(
+                    "size-full object-cover transition-[transform,opacity] duration-300 group-hover:scale-[1.03]",
+                    isThumbLoaded ? "opacity-100" : "opacity-0",
+                  )}
+                  onLoad={() => setIsThumbLoaded(true)}
+                  onError={() => setImageError(true)}
+                />
+              </div>
+            )}
+
+          </div>
+        </ContextMenuTrigger>
+        <EntryContextMenuContent entry={entry} />
+      </ContextMenu>
     );
   },
 );

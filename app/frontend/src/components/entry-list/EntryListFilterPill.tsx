@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
-export type EntryFilter = "all" | "unread" | "starred";
+export type EntryFilter = "all" | "unread" | "starred" | "muted";
 
 interface EntryListFilterPillProps {
   value: EntryFilter;
@@ -11,14 +11,16 @@ interface EntryListFilterPillProps {
 const OPTIONS: { id: EntryFilter; labelKey: string }[] = [
   { id: "starred", labelKey: "entry_filter.starred" },
   { id: "unread", labelKey: "entry_filter.unread" },
+  { id: "muted", labelKey: "entry_filter.muted" },
   { id: "all", labelKey: "entry_filter.all" },
 ];
 
 /**
  * 中栏底部的筛选胶囊 —— Nextflux 的标志元素
  *
- * Starred / Unread / All 三态，选中项为强调色实心胶囊。
- * 接的是 Gist 后端既有的 `starredOnly` / `unreadOnly` 参数，无新增接口。
+ * Starred / Unread / Muted / All 四态，选中项为强调色实心胶囊。
+ * 前两态接的是 Gist 后端既有的 `starredOnly` / `unreadOnly` 参数；
+ * 「已静音」接 v3 新增的 `mutedOnly`（见 EntryList 里的参数翻译）。
  */
 export function EntryListFilterPill({
   value,

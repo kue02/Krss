@@ -20,8 +20,10 @@ import {
 import { RssIcon, ErrorIcon } from "@/components/ui/icons";
 import { useContextMenu } from "@/hooks/useContextMenu";
 import { copyToClipboard } from "@/stores/toast-store";
+import { queryClient } from "@/lib/queryClient";
+import { openFilterEditorForFeed } from "@/stores/filter-editor-store";
 import { feedItemStyles, sidebarItemIconStyles, feedIconImageStyles } from "./styles";
-import type { ContentType, Folder } from "@/types/api";
+import type { ContentType, Feed, Folder } from "@/types/api";
 
 interface FeedItemProps {
   name: string;
@@ -83,6 +85,30 @@ export function FeedItem({
   const contextMenuProps = useContextMenu({
     onContextMenu: handleContextMenu,
   });
+
+  /**
+   * 「为此订阅新建规则」：打开规则编辑器抽屉并预填 scope = 这个订阅。
+   *
+   * 编辑器只用到 feed.id / feed.title（见 stores/filter-editor-store），而 Sidebar 传下来的是
+   * 拆开的 name / feedId / feedUrl，所以先从 feeds 缓存里取完整对象（图标、类型等字段齐全），
+   * 缓存里还没有这个订阅时再按 props 组装一个够用的。
+   */
+  const handleNewRuleFromFeed = useCallback(() => {
+    const cached = queryClient
+      .getQueryData<Feed[]>(["feeds"])
+      ?.find((feed) => feed.id === feedId);
+
+    openFilterEditorForFeed(
+      cached ?? {
+        id: feedId,
+        title: name,
+        url: feedUrl ?? "",
+        type: "article",
+        createdAt: "",
+        updatedAt: "",
+      },
+    );
+  }, [feedId, feedUrl, name]);
 
   return (
     <ContextMenu>
@@ -200,6 +226,10 @@ export function FeedItem({
             {t("actions.copy_feed_url")}
           </ContextMenuItem>
         )}
+        {/* 规则入口与上面的订阅操作同组；删除是破坏性操作，仍单独分组压在下面 */}
+        <ContextMenuItem onClick={handleNewRuleFromFeed}>
+          {t("automation.rule_from_feed")}
+        </ContextMenuItem>
         {onDelete && (
           <>
             {/* 删除是破坏性操作：单独一组，避免误点 */}
