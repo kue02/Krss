@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -26,6 +27,8 @@ func NewEntryHandler(service service.EntryService, readabilityService service.Re
 
 func (h *EntryHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/entries", h.List)
+	// 注意：/entries/search 必须注册在 /entries/:id 之前，否则会被 :id 吃掉
+	g.GET("/entries/search", h.Search)
 	g.GET("/entries/:id", h.GetByID)
 	g.PATCH("/entries/read", h.UpdateManyReadStatus)
 	g.PATCH("/entries/:id/read", h.UpdateReadStatus)
@@ -117,6 +120,46 @@ func parseEntryIDList(rawIDs []string) ([]int64, string) {
 	}
 
 	return ids, ""
+}
+
+// Search godoc
+// @Summary Search entries
+// @Description Full-text search over entries (title/content/author/url) via FTS5
+// @Tags entries
+// @Produce json
+// @Param q query string true "search keyword"
+// @Param limit query int false "max results (default 30, max 100)"
+// @Success 200 {object} entryListResponse
+// @Failure 400 {object} errorResponse
+// @Router /api/entries/search [get]
+func (h *EntryHandler) Search(c echo.Context) error {
+	keyword := strings.TrimSpace(c.QueryParam("q"))
+	if keyword == "" {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "q is required"})
+	}
+
+	limit := 30
+	if raw := c.QueryParam("limit"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 && parsed <= 100 {
+			limit = parsed
+		}
+	}
+
+	entries, err := h.service.Search(c.Request().Context(), keyword, limit)
+	if err != nil {
+		logger.Error("entry search failed", "module", "handler", "action", "search", "resource", "entry", "result", "failed", "error", err)
+		return writeServiceError(c, err)
+	}
+
+	response := entryListResponse{
+		Entries: make([]entryResponse, len(entries)),
+		HasMore: false,
+	}
+	for i, entry := range entries {
+		response.Entries[i] = toEntryResponse(entry)
+	}
+
+	return c.JSON(http.StatusOK, response)
 }
 
 // List returns a list of entries.

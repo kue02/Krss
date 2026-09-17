@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 
 	"gist/backend/internal/model"
 	"gist/backend/internal/repository"
@@ -24,6 +25,8 @@ type EntryListParams struct {
 
 type EntryService interface {
 	List(ctx context.Context, params EntryListParams) ([]model.Entry, error)
+	// Search 关键词检索（FTS5），供搜索弹窗用
+	Search(ctx context.Context, keyword string, limit int) ([]model.Entry, error)
 	GetByID(ctx context.Context, id int64) (model.Entry, error)
 	MarkAsRead(ctx context.Context, id int64, read bool) error
 	MarkManyAsRead(ctx context.Context, ids []int64, read bool) error
@@ -53,6 +56,19 @@ func NewEntryService(
 		feeds:   feeds,
 		folders: folders,
 	}
+}
+
+// Search 关键词检索（FTS5）。
+func (s *entryService) Search(ctx context.Context, keyword string, limit int) ([]model.Entry, error) {
+	if strings.TrimSpace(keyword) == "" {
+		return []model.Entry{}, nil
+	}
+	entries, err := s.entries.Search(ctx, keyword, limit)
+	if err != nil {
+		logger.Error("search entries", "module", "service", "action", "search", "resource", "entry", "result", "failed", "error", err)
+		return nil, err
+	}
+	return entries, nil
 }
 
 func (s *entryService) List(ctx context.Context, params EntryListParams) ([]model.Entry, error) {
