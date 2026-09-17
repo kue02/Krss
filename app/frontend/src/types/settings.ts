@@ -24,6 +24,8 @@ export interface AISettings {
   summaryLanguage: string;
   /** 翻译通道：空 = 用模型；google / youdao = 免 key 通道 */
   translateChannel: string;
+  /** 免费通道失败时是否自动切回模型（默认开） */
+  fallbackToModel: boolean;
   autoTranslate: boolean;
   autoSummary: boolean;
   rateLimit: number;

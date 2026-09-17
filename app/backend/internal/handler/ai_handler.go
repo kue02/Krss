@@ -179,6 +179,8 @@ type translateBlockData struct {
 type translateBlockEvent struct {
 	Index int    `json:"index"`
 	HTML  string `json:"html"`
+	// Fallback：这一段是免费通道失败后由模型兜底译出的
+	Fallback bool `json:"fallback,omitempty"`
 }
 
 // translateDoneEvent represents the completion of translation.
@@ -281,7 +283,7 @@ func (h *AIHandler) Translate(c echo.Context) error {
 			}
 
 			// Send translated block result
-			event := translateBlockEvent{Index: result.Index, HTML: result.HTML}
+			event := translateBlockEvent{Index: result.Index, HTML: result.HTML, Fallback: result.Fallback}
 			data, _ := json.Marshal(event)
 			fmt.Fprintf(c.Response(), "data: %s\n\n", data)
 			c.Response().Flush()

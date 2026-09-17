@@ -224,7 +224,10 @@
     "original_site": "查看原文网站",
     "original_site_hint": "已在内嵌窗口加载原站；若下方空白，说明该站点禁止被内嵌，请点右侧「在新窗口打开」。",
     "open_in_new_tab": "新窗口打开",
-    "original_site_loading": "正在加载原站…"
+    "original_site_loading": "正在加载原站…",
+    "auto_readability_on": "已自动切换到阅读模式",
+    "auto_translate_on": "正在自动翻译…",
+    "translate_fallback_hint": "部分段落走免费通道失败，已用模型兜底译出"
   },
   "ai_settings": {
     "translate_channel": "翻译通道",
@@ -288,7 +291,10 @@
     "new_provider": "新提供商",
     "probe_models": "探测模型",
     "probing": "探测中…",
-    "probe_failed": "探测模型失败"
+    "probe_failed": "探测模型失败",
+    "fallback_to_model": "免费通道失败时自动切回模型",
+    "fallback_to_model_hint": "开着的话，某一通道失败会自动用上面的模型补译；关掉就只报错不兜底。",
+    "model_hint": "填提供商那边的模型 ID；不确定就点右边「探测模型」拉列表。"
   },
   "data_control": {
     "import_opml": "导入 OPML",

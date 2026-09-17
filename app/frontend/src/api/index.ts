@@ -845,6 +845,8 @@ export interface TranslateInit {
 export interface TranslateBlockResult {
   index: number;
   html: string;
+  /** 这一段是免费通道失败后由模型兜底译出来的 */
+  fallback?: boolean;
 }
 
 export interface TranslateDone {

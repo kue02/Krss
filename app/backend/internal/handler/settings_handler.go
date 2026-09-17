@@ -24,7 +24,9 @@ type aiSettingsResponse struct {
 	AutoSummary     bool           `json:"autoSummary"`
 	RateLimit       int            `json:"rateLimit"`
 	// TranslateChannel：空 = 翻译走模型；google/youdao = 免 key 通道
-	TranslateChannel string                     `json:"translateChannel"`
+	TranslateChannel string `json:"translateChannel"`
+	// FallbackToModel：免费通道失败时是否自动切回模型
+	FallbackToModel  bool                       `json:"fallbackToModel"`
 	Providers        []service.AIProviderConfig `json:"providers"`
 	ActiveProviderID string                     `json:"activeProviderId"`
 }
@@ -40,7 +42,9 @@ type aiSettingsRequest struct {
 	AutoSummary     bool           `json:"autoSummary"`
 	RateLimit       int            `json:"rateLimit"`
 	// TranslateChannel：空 = 翻译走模型；google/youdao = 免 key 通道
-	TranslateChannel string                     `json:"translateChannel"`
+	TranslateChannel string `json:"translateChannel"`
+	// FallbackToModel：免费通道失败时是否自动切回模型
+	FallbackToModel  bool                       `json:"fallbackToModel"`
 	Providers        []service.AIProviderConfig `json:"providers"`
 	ActiveProviderID string                     `json:"activeProviderId"`
 }
@@ -182,6 +186,7 @@ func (h *SettingsHandler) GetAISettings(c echo.Context) error {
 		AutoSummary:      settings.AutoSummary,
 		RateLimit:        settings.RateLimit,
 		TranslateChannel: settings.TranslateChannel,
+		FallbackToModel:  settings.FallbackToModel,
 
 		Providers:        settings.Providers,
 		ActiveProviderID: settings.ActiveProviderID,
@@ -229,6 +234,7 @@ func (h *SettingsHandler) UpdateAISettings(c echo.Context) error {
 		AutoSummary:      req.AutoSummary,
 		RateLimit:        req.RateLimit,
 		TranslateChannel: req.TranslateChannel,
+		FallbackToModel:  req.FallbackToModel,
 
 		Providers:        req.Providers,
 		ActiveProviderID: req.ActiveProviderID,

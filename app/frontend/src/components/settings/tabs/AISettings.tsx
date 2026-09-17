@@ -542,54 +542,67 @@ export function AISettings() {
         )}
       </div>
 
-      {/* Model */}
-      <div className="flex flex-wrap items-center justify-between gap-2 py-2">
-        <span className="text-sm font-medium">{t("ai_settings.model")}</span>
-        <input
-          type="text"
-          value={settings.model}
-          onChange={(e) => handleChange("model", e.target.value)}
-          placeholder={
-            settings.provider === "openai"
-              ? "gpt-4o"
-              : settings.provider === "anthropic"
-                ? "claude-sonnet-4-20250514"
-                : t("ai_settings.model_example", {
-                    example: "anthropic/claude-3.5-sonnet",
-                  })
-          }
-          className={cn(inputClass, "shrink-0")}
-        />
-        <button
-          type="button"
-          onClick={handleProbeModels}
-          disabled={isProbing || !settings.baseUrl.trim()}
-          className="rounded-md border border-border px-2.5 py-1 text-xs text-foreground transition-colors duration-200 hover:bg-item-hover disabled:opacity-50"
-        >
-          {isProbing ? t("ai_settings.probing") : t("ai_settings.probe_models")}
-        </button>
+      {/* Model：标签单独一行，「输入框 + 探测模型」并排成一行（输入框吃剩余宽度），
+          探测结果紧贴在输入框下面，不再跟标签挤在一行里换行 */}
+      <div className="space-y-2 py-2">
+        <div className="flex flex-wrap items-baseline gap-2">
+          <span className="text-sm font-medium">{t("ai_settings.model")}</span>
+          <span className="text-xs text-muted-foreground">
+            {t("ai_settings.model_hint")}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={settings.model}
+            onChange={(e) => handleChange("model", e.target.value)}
+            placeholder={
+              settings.provider === "openai"
+                ? "gpt-4o"
+                : settings.provider === "anthropic"
+                  ? "claude-sonnet-4-20250514"
+                  : t("ai_settings.model_example", {
+                      example: "anthropic/claude-3.5-sonnet",
+                    })
+            }
+            className={cn(inputClass, "min-w-0 flex-1 sm:w-auto")}
+          />
+          <button
+            type="button"
+            onClick={handleProbeModels}
+            disabled={isProbing || !settings.baseUrl.trim()}
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-border px-3 text-xs text-foreground transition-colors duration-200 hover:bg-item-hover disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isProbing && (
+              <span className="size-3 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-transparent" />
+            )}
+            {isProbing ? t("ai_settings.probing") : t("ai_settings.probe_models")}
+          </button>
+        </div>
+        {modelChoices && modelChoices.length > 0 && (
+          <div className="max-h-40 overflow-y-auto rounded-md border border-border p-1">
+            {modelChoices.map((model) => (
+              <button
+                key={model}
+                type="button"
+                onClick={() => {
+                  handleChange("model", model);
+                  setModelChoices(null);
+                }}
+                className={cn(
+                  "block w-full truncate rounded px-2 py-1 text-left text-xs transition-colors duration-200 hover:bg-item-hover",
+                  model === settings.model
+                    ? "text-primary"
+                    : "text-muted-foreground",
+                )}
+              >
+                {model}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {modelChoices && modelChoices.length > 0 && (
-        <div className="max-h-40 overflow-y-auto rounded-md border border-border p-1">
-          {modelChoices.map((model) => (
-            <button
-              key={model}
-              type="button"
-              onClick={() => {
-                handleChange("model", model);
-                setModelChoices(null);
-              }}
-              className={cn(
-                "block w-full truncate rounded px-2 py-1 text-left text-xs transition-colors duration-200 hover:bg-item-hover",
-                model === settings.model ? "text-primary" : "text-muted-foreground",
-              )}
-            >
-              {model}
-            </button>
-          ))}
-        </div>
-      )}
 
       <div className="space-y-2 py-2">
         <div className="min-w-0">
@@ -670,6 +683,23 @@ export function AISettings() {
             {t("ai_settings.translate_channel_youdao")}
           </option>
         </select>
+      </div>
+
+      {/* 免费通道失败是否自动切回模型（只在选了免费通道时有意义） */}
+      <div className="flex flex-wrap items-center justify-between gap-2 py-2">
+        <div className="min-w-0">
+          <span className="text-sm font-medium">
+            {t("ai_settings.fallback_to_model")}
+          </span>
+          <p className="text-xs text-muted-foreground">
+            {t("ai_settings.fallback_to_model_hint")}
+          </p>
+        </div>
+        <Switch
+          className="shrink-0"
+          checked={settings.fallbackToModel !== false}
+          onCheckedChange={(checked) => handleChange("fallbackToModel", checked)}
+        />
       </div>
 
       {/* Auto Translate */}

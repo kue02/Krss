@@ -41,6 +41,8 @@ type AISettings struct {
 	RateLimit       int            `json:"rateLimit"`
 	// TranslateChannel：翻译走哪条通道。空 = 用上面配置的模型；google/youdao = 免 key 通道
 	TranslateChannel string `json:"translateChannel"`
+	// FallbackToModel：免费通道失败时是否自动切回模型（默认开）
+	FallbackToModel bool `json:"fallbackToModel"`
 	// 保存的提供商列表 + 当前使用哪一个（上面的 Provider/APIKey/... 始终等于当前使用的那份）
 	Providers        []AIProviderConfig `json:"providers"`
 	ActiveProviderID string             `json:"activeProviderId"`
@@ -85,6 +87,7 @@ const (
 	keyAIAutoSummary      = "ai.auto_summary"
 	keyAIRateLimit        = "ai.rate_limit"
 	keyAITranslateChannel = "ai.translate_channel"
+	keyAIFallbackToModel  = "ai.fallback_to_model"
 	keyAIProviders        = "ai.providers"
 	keyAIActiveProvider   = "ai.active_provider_id"
 
@@ -180,6 +183,7 @@ func (s *settingsService) GetAISettings(ctx context.Context) (*AISettings, error
 	if val, err := s.getString(ctx, keyAITranslateChannel); err == nil {
 		settings.TranslateChannel = val
 	}
+	settings.FallbackToModel = s.getBoolDefault(ctx, keyAIFallbackToModel, true)
 	if val, err := s.getInt(ctx, keyAIRateLimit); err == nil && val > 0 {
 		settings.RateLimit = val
 	} else {
@@ -283,6 +287,14 @@ func (s *settingsService) SetAISettings(ctx context.Context, settings *AISetting
 	if err := s.repo.Set(ctx, keyAIRateLimit, fmt.Sprintf("%d", rateLimit)); err != nil {
 		logger.Warn("ai settings update rate limit failed", "module", "service", "action", "update", "resource", "settings", "result", "failed", "error", err)
 		return fmt.Errorf("set rate limit: %w", err)
+	}
+	fallbackVal := "false"
+	if settings.FallbackToModel {
+		fallbackVal = "true"
+	}
+	if err := s.repo.Set(ctx, keyAIFallbackToModel, fallbackVal); err != nil {
+		logger.Warn("ai settings update fallback flag failed", "module", "service", "action", "update", "resource", "settings", "result", "failed", "error", err)
+		return fmt.Errorf("set fallback flag: %w", err)
 	}
 	if err := s.repo.Set(ctx, keyAITranslateChannel, settings.TranslateChannel); err != nil {
 		logger.Warn("ai settings update translate channel failed", "module", "service", "action", "update", "resource", "settings", "result", "failed", "error", err)
@@ -557,6 +569,15 @@ func (s *settingsService) getInt(ctx context.Context, key string) (int, error) {
 func (s *settingsService) getBool(ctx context.Context, key string) bool {
 	val, err := s.getString(ctx, key)
 	return err == nil && val == "true"
+}
+
+// getBoolDefault：没设过这个键时返回 fallback（用于「默认开」的开关）
+func (s *settingsService) getBoolDefault(ctx context.Context, key string, fallback bool) bool {
+	val, err := s.getString(ctx, key)
+	if err != nil || val == "" {
+		return fallback
+	}
+	return val == "true"
 }
 
 func (s *settingsService) getRequestOptions(ctx context.Context) (map[string]any, error) {

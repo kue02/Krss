@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import {
   streamTranslateBlocks,
   isTranslateInit,
@@ -14,6 +15,7 @@ import {
   translationActions,
 } from "@/stores/translation-store";
 import { translateArticlesBatch } from "@/services/translation-service";
+import { showToast } from "@/stores/toast-store";
 import type { Entry } from "@/types/api";
 
 interface UseAITranslationOptions {
@@ -42,9 +44,12 @@ export function useAITranslation({
   autoTranslate,
   targetLanguage,
 }: UseAITranslationOptions): UseAITranslationReturn {
+  const { t } = useTranslation();
   const [translatedContent, setTranslatedContent] = useState<string | null>(
     null,
   );
+  /** 免费通道失败→模型兜底：同一次翻译只提示一次 */
+  const fallbackToastShownRef = useRef(false);
   const [originalBlocks, setOriginalBlocks] = useState<TranslateBlockData[]>(
     [],
   );
@@ -214,6 +219,10 @@ export function useAITranslation({
           }
 
           if (isTranslateBlockResult(event)) {
+            if (event.fallback && !fallbackToastShownRef.current) {
+              fallbackToastShownRef.current = true;
+              showToast(t("entry.translate_fallback_hint"));
+            }
             setTranslatedBlocks((prev) => {
               const newMap = new Map(prev);
               newMap.set(event.index, event.html);
@@ -365,6 +374,8 @@ export function useAITranslation({
       return;
     }
 
+    // 自动翻译也是「自己动起来」的，给个提示说明正在做什么
+    showToast(t("entry.auto_translate_on"));
     generateTranslation(isReadableActive);
   }, [
     autoTranslate,

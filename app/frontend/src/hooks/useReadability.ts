@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { fetchReadableContent } from "@/api";
+import { showToast } from "@/stores/toast-store";
 import type { Entry } from "@/types/api";
 
 interface UseReadabilityOptions {
@@ -27,6 +29,7 @@ export function useReadability({
   >(null);
   const [showReadable, setShowReadable] = useState(false);
   const [readableError, setReadableError] = useState<string | null>(null);
+  const { t } = useTranslation();
 
   // Reset state when entry changes
   useEffect(() => {
@@ -55,6 +58,7 @@ export function useReadability({
       const content = await fetchReadableContent(entry.id);
       setLocalReadableContent(content);
       setShowReadable(true);
+        showToast(t("entry.auto_readability_on"));
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to fetch readable content";
@@ -71,6 +75,8 @@ export function useReadability({
 
     if (entry.readableContent) {
       setShowReadable(true);
+      // 自动展开全文是要给用户一个交代的，不然正文「自己变了」很懵
+      showToast(t("entry.auto_readability_on"));
       return;
     }
 

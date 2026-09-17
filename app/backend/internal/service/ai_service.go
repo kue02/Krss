@@ -23,6 +23,8 @@ import (
 type TranslateBlockResult struct {
 	Index int    `json:"index"`
 	HTML  string `json:"html"`
+	// Fallback：这个块是免费通道失败后由模型兜底译出来的（前端据此提示）
+	Fallback bool
 }
 
 // TranslateBlockInfo represents original block info.
@@ -214,6 +216,15 @@ func (s *aiService) httpClientForTranslate(ctx context.Context) *http.Client {
 	return &http.Client{Timeout: freeTranslateTimeout}
 }
 
+// isModelFallbackEnabled 读「免费通道失败时是否自动切回模型」（默认开）。
+func (s *aiService) isModelFallbackEnabled(ctx context.Context) bool {
+	setting, err := s.settingsRepo.Get(ctx, "ai.fallback_to_model")
+	if err != nil || setting == nil || setting.Value == "" {
+		return true
+	}
+	return setting.Value != "false"
+}
+
 // getFreeTranslateChannel 读「翻译通道」设置：留空表示用配置的模型，google/youdao 走免 key 通道。
 func (s *aiService) getFreeTranslateChannel(ctx context.Context) string {
 	setting, err := s.settingsRepo.Get(ctx, "ai.translate_channel")
@@ -397,6 +408,7 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 				// 免 key 通道（Google / 有道）：只吃纯文本。
 				// 带内联标记（链接/图片/加粗/换行）的块交给模型，否则这些标记会被抹平
 				// —— 也就是「翻译破坏原文结构」那个问题
+				fallbackFromFree := false
 				if ai.IsFreeTranslateChannel(freeChannel) && !ai.BlockHasInnerMarkup(b.HTML) {
 					plainText := strings.TrimSpace(ai.HTMLToText(b.HTML))
 					if plainText == "" {
@@ -416,8 +428,8 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 						}
 						return
 					}
-					// 免费通道失败：配了模型就退回模型兜底；没配模型才是真失败
-					if cfg.Provider == "" || cfg.Model == "" {
+					// 免费通道失败：配了模型 + 开了「自动切回模型」才兜底；否则按真失败处理
+					if !s.isModelFallbackEnabled(ctx) || cfg.Provider == "" || cfg.Model == "" {
 						select {
 						case errCh <- fmt.Errorf("translate block %d via %s: %w (且没有配置模型可以兜底)", b.Index, freeChannel, freeErr):
 							hasError.Store(true)
@@ -425,6 +437,7 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 						}
 						return
 					}
+					fallbackFromFree = true
 					logger.Warn("free translate failed, falling back to model", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", entryID, "block", b.Index, "channel", freeChannel, "error", freeErr)
 				}
 
@@ -471,8 +484,9 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 
 				// Send result
 				result := TranslateBlockResult{
-					Index: b.Index,
-					HTML:  translatedHTML,
+					Index:    b.Index,
+					HTML:     translatedHTML,
+					Fallback: fallbackFromFree,
 				}
 				resultsMu.Lock()
 				results = append(results, result)
