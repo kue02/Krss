@@ -102,7 +102,7 @@ func (r *entryRepository) Search(ctx context.Context, keyword string, limit int)
 	pattern := "%" + escapeLikePattern(trimmed) + "%"
 	query := `
 		SELECT e.id, e.feed_id, e.hash, e.title, e.url, e.content, e.readable_content, e.thumbnail_url, e.author,
-		       e.published_at, e.read, e.starred, e.created_at, e.updated_at
+		       e.published_at, e.read, e.starred, e.muted, e.filter_id, e.created_at, e.updated_at
 		FROM entries e
 		WHERE e.title LIKE ? ESCAPE '\'
 		   OR e.content LIKE ? ESCAPE '\'
