@@ -1,6 +1,5 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -10,9 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { RootPortal } from "@/components/ui/portal";
 import { shortcutsHelp } from "@/stores/shortcuts-store";
-import useMeasure from "react-use-measure";
 
 // 菜单行的度量统一由 DropdownMenuItem 提供（HeroUI v3 的 .menu-item），这里只压一点前景色
 const menuItemStyles = cn("text-foreground/90");
@@ -102,16 +99,20 @@ function AvatarFace({
   );
 }
 
+/**
+ * 账户行的触发按钮。
+ *
+ * 这里原来有个「飞行头像」：菜单打开时把头像放大成 56px 的浮层飘一下。
+ * 实测那个浮层会盖住账户行、看起来就是「头像变大了」（用户两次报这个问题），
+ * 而且 NextFlux 的账户行没有这种效果，所以整段去掉了。
+ */
 const TransitionAvatar = React.forwardRef<
   HTMLButtonElement,
   {
-    stage: "zoom-in" | "";
     avatarUrl?: string;
     name?: string;
   } & React.HTMLAttributes<HTMLButtonElement>
->(({ stage, avatarUrl, name, className, children, ...props }, forwardRef) => {
-  const [measureRef, { x, y }, forceRefresh] = useMeasure();
-  const zoomIn = stage === "zoom-in";
+>(({ avatarUrl, name, className, children, ...props }, forwardRef) => {
 
   return (
     <>
@@ -124,25 +125,8 @@ const TransitionAvatar = React.forwardRef<
           "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
           className,
         )}
-        onPointerDown={React.useCallback(
-          (e: React.PointerEvent<HTMLButtonElement>) => {
-            forceRefresh();
-            props.onPointerDown?.(e);
-          },
-          // eslint-disable-next-line react-hooks/exhaustive-deps
-          [forceRefresh, props.onPointerDown],
-        )}
-        onClick={React.useCallback(
-          (e: React.MouseEvent<HTMLButtonElement>) => {
-            forceRefresh();
-            props.onClick?.(e);
-          },
-          // eslint-disable-next-line react-hooks/exhaustive-deps
-          [forceRefresh, props.onClick],
-        )}
       >
         <UserAvatar
-          ref={measureRef}
           className="size-6 border-0"
           avatarUrl={avatarUrl}
           name={name}
@@ -150,46 +134,6 @@ const TransitionAvatar = React.forwardRef<
         {children}
       </button>
 
-      <RootPortal>
-        <AnimatePresence>
-          {zoomIn && x !== 0 && y !== 0 && (
-            <motion.div
-              initial={{
-                left: x,
-                top: y,
-                width: 24,
-                height: 24,
-                opacity: 0.5,
-              }}
-              animate={{
-                left: x - 16,
-                top: y,
-                width: 56,
-                height: 56,
-                opacity: 1,
-              }}
-              exit={{
-                left: x,
-                top: y,
-                width: 24,
-                height: 24,
-                opacity: 0,
-              }}
-              transition={{
-                duration: 0.2,
-                ease: [0.4, 0, 0.2, 1], // Standard Ease
-              }}
-              className="fixed p-0 border-0 pointer-events-none rounded-full overflow-hidden bg-muted z-[100] transform-gpu shadow-xl select-none"
-            >
-              <AvatarFace
-                avatarUrl={avatarUrl}
-                name={name}
-                letterClassName="text-[22px]"
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </RootPortal>
     </>
   );
 });
@@ -209,15 +153,13 @@ export function ProfileButton({
 }: ProfileButtonProps) {
   const { t } = useTranslation();
   const displayName = userName || t("user.guest");
-  const [isOpen, setIsOpen] = React.useState(false);
   const iconStyles =
     "size-4 text-muted-foreground transition-colors group-data-[highlighted]:text-foreground";
 
   return (
-    <DropdownMenu onOpenChange={setIsOpen}>
+    <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <TransitionAvatar
-          stage={isOpen ? "zoom-in" : ""}
           avatarUrl={avatarUrl}
           name={userName}
           className={triggerClassName}
