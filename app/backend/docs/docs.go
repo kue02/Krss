@@ -3187,6 +3187,12 @@ const docTemplate = `{
                 "entryId": {
                     "type": "string"
                 },
+                "entryTitle": {
+                    "type": "string"
+                },
+                "feedTitle": {
+                    "type": "string"
+                },
                 "filterId": {
                     "type": "string"
                 },

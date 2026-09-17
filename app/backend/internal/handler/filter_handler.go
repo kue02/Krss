@@ -102,11 +102,13 @@ type filterRevertResponse struct {
 }
 
 type filterMatchItem struct {
-	ID        string               `json:"id"`
-	FilterID  string               `json:"filterId"`
-	EntryID   string               `json:"entryId"`
-	Actions   filterActionsPayload `json:"actions"`
-	CreatedAt string               `json:"createdAt"`
+	ID         string               `json:"id"`
+	FilterID   string               `json:"filterId"`
+	EntryID    string               `json:"entryId"`
+	EntryTitle string               `json:"entryTitle"`
+	FeedTitle  string               `json:"feedTitle"`
+	Actions    filterActionsPayload `json:"actions"`
+	CreatedAt  string               `json:"createdAt"`
 }
 
 type filterMatchesResponse struct {
@@ -325,11 +327,13 @@ func (h *FilterHandler) ListMatches(c echo.Context) error {
 	response := filterMatchesResponse{Matches: make([]filterMatchItem, len(matches))}
 	for i, match := range matches {
 		response.Matches[i] = filterMatchItem{
-			ID:        idToString(match.ID),
-			FilterID:  idToString(match.FilterID),
-			EntryID:   idToString(match.EntryID),
-			Actions:   toActionsPayload(match.Actions),
-			CreatedAt: match.CreatedAt.UTC().Format(time.RFC3339),
+			ID:         idToString(match.ID),
+			FilterID:   idToString(match.FilterID),
+			EntryID:    idToString(match.EntryID),
+			EntryTitle: match.EntryTitle,
+			FeedTitle:  match.FeedTitle,
+			Actions:    toActionsPayload(match.Actions),
+			CreatedAt:  match.CreatedAt.UTC().Format(time.RFC3339),
 		}
 	}
 	return c.JSON(http.StatusOK, response)

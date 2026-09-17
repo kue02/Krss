@@ -114,10 +114,14 @@ type Filter struct {
 }
 
 // FilterMatch 一条命中记录（审计 + 反悔依据）。
+// EntryTitle / FeedTitle 是列表查询时带出来的（LEFT JOIN），条目被删就是空串 ——
+// 命中日志要给人看，只有 entry_id 串没法读。
 type FilterMatch struct {
-	ID        int64
-	FilterID  int64
-	EntryID   int64
-	Actions   FilterActions
-	CreatedAt time.Time
+	ID         int64
+	FilterID   int64
+	EntryID    int64
+	EntryTitle string
+	FeedTitle  string
+	Actions    FilterActions
+	CreatedAt  time.Time
 }

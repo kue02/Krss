@@ -372,6 +372,40 @@ func TestEntryService_Unmute_Integration(t *testing.T) {
 	require.NoError(t, entryService.Unmute(ctx, entry.ID))
 }
 
+// 命中日志要给人看：查询时把条目标题与来源名一起带出来。
+func TestFilterService_ListMatches_CarriesEntryAndFeedTitles(t *testing.T) {
+	fixture := newFilterFixture(t)
+	ctx := context.Background()
+
+	feed := fixture.seedFeed(t, "Solidot", "article")
+	entry := fixture.seedEntry(t, feed.ID, "hash-log", "赞助商投稿：某云厂商", timePtr(time.Now()))
+	rule := fixture.create(t, service.FilterWriteParams{
+		Name:       "静音赞助",
+		ScopeType:  model.FilterScopeAll,
+		Conditions: []model.FilterCondition{{Field: model.FilterFieldTitle, Operator: model.FilterOpContains, Value: "赞助商"}},
+		Actions:    model.FilterActions{Mute: true},
+	})
+
+	_, err := fixture.service.ApplyToEntries(ctx, feed, []model.Entry{entry})
+	require.NoError(t, err)
+
+	matches, err := fixture.service.ListMatches(ctx, rule.ID, 10)
+	require.NoError(t, err)
+	require.Len(t, matches, 1)
+	require.Equal(t, entry.ID, matches[0].EntryID)
+	require.Equal(t, "赞助商投稿：某云厂商", matches[0].EntryTitle)
+	require.Equal(t, "Solidot", matches[0].FeedTitle)
+	require.True(t, matches[0].Actions.Mute)
+
+	// 条目被删掉后日志还在，只是标题为空（LEFT JOIN，不该整行消失）
+	_, err = fixture.db.ExecContext(ctx, `DELETE FROM entries WHERE id = ?`, entry.ID)
+	require.NoError(t, err)
+	matches, err = fixture.service.ListMatches(ctx, rule.ID, 10)
+	require.NoError(t, err)
+	require.Len(t, matches, 1)
+	require.Empty(t, matches[0].EntryTitle)
+}
+
 // 被静音的条目默认不出现在列表里，只有 mutedOnly 才单独看得到。
 func TestFilterService_MutedEntriesHiddenFromList(t *testing.T) {
 	fixture := newFilterFixture(t)

@@ -168,10 +168,13 @@ func (r *filterRepository) ListMatches(ctx context.Context, filterID int64, limi
 		limit = 50
 	}
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, filter_id, entry_id, actions, created_at
-		FROM filter_matches
-		WHERE filter_id = ?
-		ORDER BY id DESC
+		SELECT fm.id, fm.filter_id, fm.entry_id, fm.actions, fm.created_at,
+		       COALESCE(e.title, ''), COALESCE(f.title, '')
+		FROM filter_matches fm
+		LEFT JOIN entries e ON e.id = fm.entry_id
+		LEFT JOIN feeds f ON f.id = e.feed_id
+		WHERE fm.filter_id = ?
+		ORDER BY fm.id DESC
 		LIMIT ?`, filterID, limit)
 	if err != nil {
 		return nil, err
@@ -185,7 +188,7 @@ func (r *filterRepository) ListMatches(ctx context.Context, filterID int64, limi
 			actions   string
 			createdAt string
 		)
-		if err := rows.Scan(&match.ID, &match.FilterID, &match.EntryID, &actions, &createdAt); err != nil {
+		if err := rows.Scan(&match.ID, &match.FilterID, &match.EntryID, &actions, &createdAt, &match.EntryTitle, &match.FeedTitle); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal([]byte(actions), &match.Actions)

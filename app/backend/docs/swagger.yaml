@@ -449,6 +449,10 @@ definitions:
         type: string
       entryId:
         type: string
+      entryTitle:
+        type: string
+      feedTitle:
+        type: string
       filterId:
         type: string
       id:

@@ -249,7 +249,14 @@ func TestFilterHandler_ListMatches_Success(t *testing.T) {
 	mockService.EXPECT().
 		ListMatches(gomock.Any(), int64(9), 50).
 		Return([]model.FilterMatch{
-			{ID: 1, FilterID: 9, EntryID: 77, Actions: model.FilterActions{Mute: true}},
+			{
+				ID:         1,
+				FilterID:   9,
+				EntryID:    77,
+				EntryTitle: "赞助商投稿",
+				FeedTitle:  "Solidot",
+				Actions:    model.FilterActions{Mute: true},
+			},
 		}, nil)
 
 	e := newTestEcho()
@@ -263,6 +270,9 @@ func TestFilterHandler_ListMatches_Success(t *testing.T) {
 	require.Len(t, resp.Matches, 1)
 	require.Equal(t, "77", resp.Matches[0].EntryID)
 	require.Equal(t, "9", resp.Matches[0].FilterID)
+	// 命中日志要给人看：带上条目标题与来源名
+	require.Equal(t, "赞助商投稿", resp.Matches[0].EntryTitle)
+	require.Equal(t, "Solidot", resp.Matches[0].FeedTitle)
 }
 
 func TestFilterHandler_InternalError(t *testing.T) {
