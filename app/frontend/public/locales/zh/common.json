@@ -532,7 +532,10 @@
     "read_timing": "已读判定",
     "timing_scroll_past": "滚出顶部",
     "timing_on_visible": "看到即已读",
-    "read_timing_disabled": "「滚动标已读」已关闭，判定不生效"
+    "read_timing_disabled": "「滚动标已读」已关闭，判定不生效",
+    "picture_layout": "图片布局",
+    "picture_layout_masonry": "瀑布流",
+    "picture_layout_grid": "网格"
   },
   "folder": {
     "create": "新增分类",

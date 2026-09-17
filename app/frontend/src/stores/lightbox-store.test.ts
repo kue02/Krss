@@ -218,3 +218,64 @@ describe("lightbox-store", () => {
     });
   });
 });
+
+describe("lightbox-store 画廊（跨条目导航）", () => {
+  const entryA: Entry = { ...mockEntry, id: "a", title: "A" };
+  const entryB: Entry = { ...mockEntry, id: "b", title: "B" };
+  const gallery = [
+    { entry: entryA, feed: mockFeed, images: ["a1.jpg", "a2.jpg"] },
+    { entry: entryB, feed: mockFeed, images: ["b1.jpg"] },
+  ];
+
+  beforeEach(() => {
+    useLightboxStore.getState().reset();
+  });
+
+  it("同一条目内先切图：右箭头在条目内逐张前进", () => {
+    useLightboxStore.getState().open(entryA, mockFeed, ["a1.jpg", "a2.jpg"], 0, gallery);
+    useLightboxStore.getState().next();
+    const { entry, currentIndex, galleryIndex } = useLightboxStore.getState();
+    expect(currentIndex).toBe(1);
+    expect(entry?.id).toBe("a");
+    expect(galleryIndex).toBe(0);
+  });
+
+  it("条目内切到头 → 跳到下一条目的第一张", () => {
+    useLightboxStore.getState().open(entryA, mockFeed, ["a1.jpg", "a2.jpg"], 3 - 2, gallery);
+    useLightboxStore.getState().next(); // a2
+    useLightboxStore.getState().next(); // → b1
+    const { entry, currentIndex, galleryIndex, images } = useLightboxStore.getState();
+    expect(entry?.id).toBe("b");
+    expect(currentIndex).toBe(0);
+    expect(galleryIndex).toBe(1);
+    expect(images).toEqual(["b1.jpg"]);
+  });
+
+  it("左箭头在条目开头 → 退回上一条目的最后一张", () => {
+    useLightboxStore.getState().open(entryB, mockFeed, ["b1.jpg"], 0, gallery);
+    useLightboxStore.getState().prev();
+    const { entry, currentIndex, galleryIndex, images } = useLightboxStore.getState();
+    expect(entry?.id).toBe("a");
+    expect(currentIndex).toBe(1); // a2 = 上一条目的最后一张
+    expect(galleryIndex).toBe(0);
+    expect(images).toEqual(["a1.jpg", "a2.jpg"]);
+  });
+
+  it("画廊两端不越界", () => {
+    useLightboxStore.getState().open(entryA, mockFeed, ["a1.jpg"], 0, gallery);
+    useLightboxStore.getState().prev();
+    expect(useLightboxStore.getState().entry?.id).toBe("a");
+    useLightboxStore.getState().open(entryB, mockFeed, ["b1.jpg"], 0, gallery);
+    useLightboxStore.getState().next();
+    expect(useLightboxStore.getState().entry?.id).toBe("b");
+  });
+
+  it("不传画廊时按单条目处理（老行为不变）", () => {
+    useLightboxStore.getState().open(entryA, mockFeed, ["a1.jpg"], 0);
+    useLightboxStore.getState().next();
+    const { entry, gallery, galleryIndex } = useLightboxStore.getState();
+    expect(entry?.id).toBe("a");
+    expect(gallery).toHaveLength(1);
+    expect(galleryIndex).toBe(0);
+  });
+});

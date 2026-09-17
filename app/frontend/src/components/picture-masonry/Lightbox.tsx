@@ -27,6 +27,10 @@ export function Lightbox() {
     close,
     reset,
     setIndex,
+    next,
+    prev,
+    gallery,
+    galleryIndex,
     updateEntryStarred,
   } = useLightboxStore();
   const { mutate: markAsRead } = useMarkAsRead();
@@ -133,17 +137,40 @@ export function Lightbox() {
           close();
           break;
         case "ArrowLeft":
-          emblaApi?.scrollPrev();
+          // 与左箭头同语义：同条目内退一张，到条目开头就退到上一条目的最后一张
+          if (currentIndex === 0 && galleryIndex > 0) {
+            prev();
+          } else {
+            emblaApi?.scrollPrev();
+          }
           break;
         case "ArrowRight":
-          emblaApi?.scrollNext();
+          // 同条目内切一张，切到条目末尾就跳到下一条目
+          if (
+            currentIndex === images.length - 1 &&
+            galleryIndex < gallery.length - 1
+          ) {
+            next();
+          } else {
+            emblaApi?.scrollNext();
+          }
           break;
       }
     };
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, close, emblaApi]);
+  }, [
+    isOpen,
+    close,
+    emblaApi,
+    currentIndex,
+    gallery.length,
+    galleryIndex,
+    images.length,
+    next,
+    prev,
+  ]);
 
   // Prevent body scroll when open. iOS PWA avoids position: fixed to prevent white bar.
   useEffect(() => {
@@ -258,6 +285,27 @@ export function Lightbox() {
   const contentPreview = entry?.content
     ? stripHtml(entry.content).slice(0, 200)
     : null;
+
+  /**
+   * 切到下一条目时给一条简洁提示（来源 + 标题）。
+   * 只在「画廊里跨条目」时出现 —— 同一条目内切图不需要提示（用户 2026-09-17 要求）。
+   */
+  const hasGallery = gallery.length > 1;
+  const [switchHint, setSwitchHint] = useState<string | null>(null);
+  const lastHintedEntryRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isOpen || !hasGallery || !entry) return;
+    if (lastHintedEntryRef.current === null) {
+      lastHintedEntryRef.current = entry.id;
+      return;
+    }
+    if (lastHintedEntryRef.current === entry.id) return;
+    lastHintedEntryRef.current = entry.id;
+    const source = feed?.title ? `${feed.title} · ` : "";
+    setSwitchHint(`${source}${entry.title || ""}`.trim());
+    const timer = setTimeout(() => setSwitchHint(null), 1800);
+    return () => clearTimeout(timer);
+  }, [entry, feed, hasGallery, isOpen]);
 
   return (
     <AnimatePresence onExitComplete={reset}>
@@ -420,20 +468,27 @@ export function Lightbox() {
                 </div>
               )}
 
-              {/* Navigation arrows */}
-              {images.length > 1 && (
+              {/* Navigation arrows —— 同条目多图，或画廊里还有别的条目时都要出现 */}
+              {(images.length > 1 || gallery.length > 1) && (
                 <>
                   <button
                     type="button"
                     className={cn(
                       "absolute left-4 top-1/2 z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white transition-colors",
-                      currentIndex === 0 ? "invisible" : "hover:bg-white/20",
+                      currentIndex === 0 && galleryIndex === 0
+                        ? "invisible"
+                        : "hover:bg-white/20",
                     )}
                     onClick={(e) => {
                       e.stopPropagation();
+                      // 画廊里退到尽头时，交给 store 切到上一个条目（embla 只管本条目的图）
+                      if (currentIndex === 0 && galleryIndex > 0) {
+                        prev();
+                        return;
+                      }
                       emblaApi?.scrollPrev();
                     }}
-                    disabled={currentIndex === 0}
+                    disabled={currentIndex === 0 && galleryIndex === 0}
                   >
                     <svg
                       className="size-6"
@@ -453,15 +508,27 @@ export function Lightbox() {
                     type="button"
                     className={cn(
                       "absolute right-4 top-1/2 z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white transition-colors",
-                      currentIndex === images.length - 1
+                      currentIndex === images.length - 1 &&
+                      galleryIndex === gallery.length - 1
                         ? "invisible"
                         : "hover:bg-white/20",
                     )}
                     onClick={(e) => {
                       e.stopPropagation();
+                      // 图片切到头 → 跳到下一条目（用户要的就是这个）
+                      if (
+                        currentIndex === images.length - 1 &&
+                        galleryIndex < gallery.length - 1
+                      ) {
+                        next();
+                        return;
+                      }
                       emblaApi?.scrollNext();
                     }}
-                    disabled={currentIndex === images.length - 1}
+                    disabled={
+                      currentIndex === images.length - 1 &&
+                      galleryIndex === gallery.length - 1
+                    }
                   >
                     <svg
                       className="size-6"
@@ -480,6 +547,21 @@ export function Lightbox() {
                 </>
               )}
             </div>
+
+            {/* 跨条目切换的简洁提示（来源 · 标题），1.8s 自动消失 */}
+            <AnimatePresence>
+              {switchHint && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.18 }}
+                  className="pointer-events-none absolute left-1/2 top-[calc(1rem+env(safe-area-inset-top,0px))] z-20 max-w-[min(80vw,32rem)] -translate-x-1/2 truncate rounded-full bg-black/70 px-4 py-1.5 text-sm text-white/90 backdrop-blur-sm"
+                >
+                  {switchHint}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Bottom info bar */}
             <div
@@ -511,6 +593,15 @@ export function Lightbox() {
                       <span>·</span>
                       <span>
                         {currentIndex + 1} / {images.length}
+                      </span>
+                    </>
+                  )}
+                  {/* 画廊位置：能跨条目浏览时才有意义 */}
+                  {gallery.length > 1 && (
+                    <>
+                      <span>·</span>
+                      <span data-testid="gallery-counter">
+                        {galleryIndex + 1} / {gallery.length}
                       </span>
                     </>
                   )}

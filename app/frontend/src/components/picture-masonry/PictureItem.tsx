@@ -6,7 +6,10 @@ import { getEntryImages } from "@/lib/extract-images";
 import { getProxiedImageUrl } from "@/lib/image-proxy";
 import { isVideoThumbnail } from "@/lib/media-utils";
 import { formatRelativeTime } from "@/lib/date-utils";
-import { useLightboxStore } from "@/stores/lightbox-store";
+import {
+  useLightboxStore,
+  type LightboxGalleryItem,
+} from "@/stores/lightbox-store";
 import {
   useImageDimension,
   useImageDimensionsStore,
@@ -18,6 +21,10 @@ import type { Entry, Feed } from "@/types/api";
 interface PictureItemProps {
   entry: Entry;
   feed?: Feed;
+  /** 网格模式：强制 1:1 正方格（图片视图设置里的「网格」） */
+  square?: boolean;
+  /** 图片视图里已加载的整条画廊：交给灯箱做「同条目内切图 → 切到头跳下一条目」 */
+  gallery?: LightboxGalleryItem[];
 }
 
 // Default 3:4 vertical aspect ratio for uncached images
@@ -25,6 +32,8 @@ const DEFAULT_RATIO = 3 / 4;
 export const PictureItem = memo(function PictureItem({
   entry,
   feed,
+  square = false,
+  gallery,
 }: PictureItemProps) {
   const { t } = useTranslation();
   const openLightbox = useLightboxStore((state) => state.open);
@@ -35,7 +44,8 @@ export const PictureItem = memo(function PictureItem({
   const thumbnailUrl = entry.thumbnailUrl;
   const cachedDimension = useImageDimension(thumbnailUrl);
   const isFailed = useImageFailed(thumbnailUrl);
-  const aspectRatio = cachedDimension?.ratio ?? DEFAULT_RATIO;
+  // 网格模式一律 1:1（等高正方格），瀑布流模式用缓存的真实比例
+  const aspectRatio = square ? 1 : (cachedDimension?.ratio ?? DEFAULT_RATIO);
   const isVideo = isVideoThumbnail(thumbnailUrl);
 
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -65,9 +75,9 @@ export const PictureItem = memo(function PictureItem({
       entry.url ?? undefined,
     );
     if (images.length > 0) {
-      openLightbox(entry, feed, images, 0);
+      openLightbox(entry, feed, images, 0, gallery);
     }
-  }, [entry, feed, openLightbox]);
+  }, [entry, feed, gallery, openLightbox]);
 
   const publishedAt = entry.publishedAt
     ? formatRelativeTime(entry.publishedAt, t)

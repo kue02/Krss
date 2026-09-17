@@ -179,7 +179,18 @@
       接口层机制验证（你库里只有 **1 条**星标条目、属 article 类型订阅，所以界面上两档看不出差别）：
       `starredOnly=true&includeMuted=true` → **1**；加 `&contentType=article` → **1**；加 `&contentType=social` → **0**；`picture` → **0** ✓
       门禁：`bunx tsc -b` 干净、`bun run test` **608/608**（router 老用例补 `viewOnly:false`，新增 scope=view 用例）
-- [ ] **10-12 图片视图**：加瀑布流设置；点开图片后左右加箭头可切换上一张/下一张
+- [~] **10-12 图片视图**（2026-09-17，两半都实现，但**图片视图本身有既有 bug 挡住端到端验证**）：
+      **① 图片布局设置**（用户澄清：瀑布流 = 不规则那种、网格 = 等高正方格）：外观 → 按视图设置 → 图片 那一块新增「图片布局」
+      （`ui-settings.pictureLayout`，默认 `masonry` 不规则瀑布流；选 `grid` 时 `PictureItem` 强制 1:1 正方格）。
+      **② 灯箱左右箭头**（用户选 C）：同条目内先切图，切到头跳到**下一条目**的第一张（左箭头对称：退到上一条目最后一张）；
+      跳条目时弹一条 1.8s 的简洁提示（来源 · 标题）；键盘 ←/→ 同语义；底部多一个画廊位置计数。
+      实现：`lightbox-store` 加 `gallery/galleryIndex`（`open(entry, feed, images, idx, gallery?)`，不传就按单条目=老行为）、`PictureMasonry` 把已加载条目连图一起作为画廊传下去；
+      单测：store 新增 5 例（条目内切图 / 跳到下一条目 / 回上一条目末张 / 两端不越界 / 不传画廊保持老行为）全过；全量 **614/614**、`tsc` 干净。
+      **⛔ 没能端到端验的原因（既有 bug，非本轮引入）**：我这边的浏览器里图片视图 **渲染不出任何 item** ——
+      `data-testid=virtuoso-list` 出来 N 个**空列**、连拍观察到 item **一闪就消失**（t2 有 6 个 → t3 起 0 个）；
+      同时界面里**没有** EmptyState 文案（说明 `entries` 非空）、控制台只有 `ResizeObserver loop` 警告、也无重复请求；
+      `git stash` 掉本轮改动后**同样是 0 项**，且接口层同一 token 同参数 `/api/entries?contentType=picture&hasThumbnail=true` 返回 **21 条** ✓。
+      → 见 `## 0.8` 的 BUG-3，等你确认你在 5173 上图片视图能不能正常看到图
 - [x] **10-13 个人资料可修改头像**（2026-09-17）：原先头像**只能是邮箱的 Gravatar**（`gravatarURL(email)`，没有可改字段）。
       后端：新增设置键 `user.avatar_url`（空 = 沿用 Gravatar，**默认行为不变**），`PUT /api/auth/profile` 收可选 `avatarUrl`
       （不传 = 不动；空串 = 恢复默认；其余 = 直接用），三处返回头像的地方改走 `resolveAvatarURL()`；接口签名变更已 `make gen` 重生成 mock、`swag init` 重生成文档。
@@ -193,6 +204,21 @@
       而 HeroUI 弹层是 portal 到 body 的兄弟节点、**继承了这个 none** → 真实点击穿透到 `<html>`（合成事件直接派发到元素，所以单测/脚本里是「好的」）。
       修法：`index.css` 给打开中的弹层恢复 `pointer-events: auto`。实测：弹层 `pe` none→auto、命中测试 `hitIsItem: true`、
       真实 `mouse.down` → `data-pressed=true` → `mouse.up` → **抽屉打开**
+
+## 0.8 Bug 队列 2（2026-09-17 本轮发现）
+
+- **BUG-3 图片视图渲染不出条目（既有 bug，与第十批改动无关）**
+  - 现象（我的 ego 浏览器，:5173，桌面 1568×951 与移动 390×844 都一样）：图片视图只有头部「全部图片」，
+    主体渲染出 N 个 `div[data-testid=virtuoso-list]`（**空列、height 0**），页面里 `[data-entry-id]` = 0；
+    连拍 6 秒：t0 文章视图 50 项 → 切过后 t2 出现过 **6 项** → t3 起一直是 **0 项**（一闪就没）。
+  - 已排除：
+    - **不是本轮引入**：`git stash push PictureMasonry.tsx` 后现象相同（同样 0 项）。
+    - **不是数据问题**：同一 token 同一参数（`contentType=picture&hasThumbnail=true&limit=50`）接口返回 **21 条**；库里该类型 21 条、均有缩略图。
+    - **不是空状态**：界面里没有 EmptyState 的文案（`entry_list.no_articles`），说明 `entries` 非空。
+    - **不是请求风暴**：无重复 `/api/entries` 请求；控制台只有 `ResizeObserver loop completed with undelivered notifications` 警告。
+  - 线索：`virtuoso-scroller` 带着 `padding-bottom: 895px`（滚动标已读的尾部占位），而各 `virtuoso-list` 高度为 0；
+    怀疑与 masonry 的测量/滚动容器 + 尾部 padding 的交互有关（`@virtuoso.dev/masonry@1.4.3`）。
+  - 影响：图片视图的「瀑布流/网格」两档与灯箱箭头都**只能算代码级完成**，端到端验收待这条修好。
 
 ## 1. 过滤规则（自动化） · 细节见 `docs/自动化-过滤规则.md`
 

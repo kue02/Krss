@@ -23,6 +23,7 @@ import { useGeneralSettings } from "@/hooks/useGeneralSettings";
 import { useScrollToTop } from "@/hooks/useScrollToTop";
 import { useMasonryScrollMarkRead } from "./useMasonryScrollMarkRead";
 import { useUISettingKey } from "@/hooks/useUISettings";
+import { getEntryImages } from "@/lib/extract-images";
 import { EntryListHeader } from "@/components/entry-list/EntryListHeader";
 import { MobileDocumentHeader } from "@/components/layout/MobileDocumentHeader";
 import { useEntryListScrollSurface } from "@/components/entry-list/scroll-surface";
@@ -73,15 +74,6 @@ function findScrollableElement(root: HTMLElement | null): HTMLElement | null {
   );
 }
 
-function MasonryItemContent({ data: item }: { data: MasonryItem }) {
-  if (!item?.entry) return null;
-  return (
-    <div data-entry-id={item.entry.id}>
-      <PictureItem entry={item.entry} feed={item.feed} />
-    </div>
-  );
-}
-
 export function PictureMasonry({
   selection,
   contentType,
@@ -128,6 +120,9 @@ export function PictureMasonry({
     enabled: Boolean(isMobile && onMenuClick),
   });
 
+  // 图片视图排布：瀑布流（默认）或等高正方格（用户 2026-09-17 要求可切）
+  const pictureLayout = useUISettingKey("pictureLayout");
+  const isGrid = pictureLayout === "grid";
   const { currentColumn, isReady } = useMasonryColumn(
     isMobile,
     scrollContainerRef,
@@ -200,6 +195,43 @@ export function PictureMasonry({
         feed: feedsMap.get(entry.feedId),
       })),
     [entries, feedsMap],
+  );
+
+  /**
+   * 灯箱画廊：把「当前已加载的条目」按顺序交给灯箱，这样左右箭头能跨条目走
+   * （用户 2026-09-17 要求：同条目内先切图，切到头跳到下一条目并给简洁提示）。
+   */
+  const gallery = useMemo(
+    () =>
+      items
+        .map(({ entry, feed }) => ({
+          entry,
+          feed,
+          images: getEntryImages(
+            entry.thumbnailUrl,
+            entry.content,
+            entry.url ?? undefined,
+          ),
+        }))
+        .filter((item) => item.images.length > 0),
+    [items],
+  );
+
+  const MasonryItemContent = useCallback(
+    ({ data: item }: { data: MasonryItem }) => {
+      if (!item?.entry) return null;
+      return (
+        <div data-entry-id={item.entry.id}>
+          <PictureItem
+            entry={item.entry}
+            feed={item.feed}
+            square={isGrid}
+            gallery={gallery}
+          />
+        </div>
+      );
+    },
+    [isGrid, gallery],
   );
 
   // Reset before passive scroll effects can inspect a previous view's position.
@@ -370,7 +402,7 @@ export function PictureMasonry({
           </div>
         ) : isReady ? (
           <VirtuosoMasonry
-            key={filterKey}
+            key={`${filterKey}-${pictureLayout}`}
             data={items}
             columnCount={currentColumn}
             ItemContent={MasonryItemContent}

@@ -172,8 +172,10 @@ export function AppearanceSettings() {
     setEntryFontFamily,
     setEntryFontSize,
     setEntryLineHeight,
+    setPictureLayout,
   } = useUISettingActions();
   const { data: appearanceSettings } = useAppearanceSettings();
+  const pictureLayout = useUISettingKey("pictureLayout");
 
   const themeOptions = useMemo(
     () => [
@@ -593,6 +595,28 @@ export function AppearanceSettings() {
                       options={[
                         { value: "off", label: t("appearance_view.off") },
                         { value: "on", label: t("appearance_view.on") },
+                      ]}
+                    />
+                  </SettingRow>
+                )}
+                {/* 图片视图：瀑布流 / 等高正方格（用户 2026-09-17 要求加这一档） */}
+                {view === "picture" && (
+                  <SettingRow label={t("appearance_view.picture_layout")}>
+                    <SegmentedControl
+                      className="shrink-0"
+                      value={pictureLayout}
+                      onValueChange={(value) =>
+                        setPictureLayout(value as "masonry" | "grid")
+                      }
+                      options={[
+                        {
+                          value: "masonry",
+                          label: t("appearance_view.picture_layout_masonry"),
+                        },
+                        {
+                          value: "grid",
+                          label: t("appearance_view.picture_layout_grid"),
+                        },
                       ]}
                     />
                   </SettingRow>
