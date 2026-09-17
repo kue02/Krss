@@ -46,7 +46,7 @@ export function Select({
       onSelectionChange={(key) => onChange(key === null ? "" : String(key))}
       className={cn("w-full", className)}
     >
-      <HeroSelect.Trigger className="h-8 w-full rounded-md px-2 text-sm">
+      <HeroSelect.Trigger className="w-full">
         <HeroSelect.Value className="truncate" />
         <HeroSelect.Indicator />
       </HeroSelect.Trigger>

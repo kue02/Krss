@@ -14,6 +14,41 @@
 - [ ] **残留清理**：`~/Documents/Docker/gist-nextflux/data-filter`（20M 测试库副本）—— 删否
 - [ ] （可选）`vite.config.ts` dev 代理硬编码 `:8080` 改成环境变量 —— 只在并行开工时才需要
 
+## 0.5 第九批：界面细调 + 自动化重构（2026-09-17 用户清单，按原序号）
+
+> 这一批的总要求：**界面、动效一律走 HeroUI v3（https://heroui.com/）与 Nextflux 既有实现**，取值量 computed style；
+> Nextflux 没有的形态（自动化页）用 HeroUI 组件自行组织，但必须沿用项目已有的视觉语汇。
+> Nextflux 源码要点：代码高亮用 **shiki**（`src/components/ArticleView/components/CodeBlock.jsx`）；
+> 账户菜单 `FeedList/components/ProfileButton.jsx`；feed/folder 右键 `FeedList/components/FeedItem.jsx` + `FeedsGroupContent.jsx`；
+> 通用菜单 `ui/ContextMenu.jsx`。**Nextflux 没有自动化页**，那部分没有可抄的形态。
+
+- [ ] **1. 搜索结果的来源标签 / 头像**：条目结果在每条后面补「订阅来源名」标签；订阅结果前面补订阅头像（复用 `feed-icon`）
+- [x] **2. 菜单对齐 Nextflux**
+  - [x] 账户（Kue）单击弹出框：**改用 HeroUI v3 `Dropdown`**（照 Nextflux `ProfileButton` 的结构：Popover placement="top left" + Menu onAction + Item id/textValue + lucide 图标），**已去掉「已加星标」**
+        —— 实测：触发器类名 `dropdown__trigger`、菜单 4 项（个人资料/设置/快捷键/退出登录）、宽 187px、无「已加星标」（ego-browser 真点）
+  - [x] **连带修**：`StarredItem` 组件写了但**全项目从未渲染**——账户菜单是星标唯一入口，删掉会让功能失联；
+        已按 Nextflux 的位置把它挂到侧栏导航顶部（实测：点击后 `data-active=true`）
+  - [ ] feed / 文件夹右键菜单：加图标 + 弹出框标题，项与 Nextflux 对齐（含分组与危险项样式）
+- [ ] **3. Krss 左侧加号菜单**：新增「新建自动化」入口；移除「导入 OPML」（导入改走 设置 → 数据控制）
+- [ ] **4. 设置 → 自动化页重构**（现表格被压得看不清）：定位为**纯管理页**——规则列表 + 视图列表分开，
+      行内不再堆按钮（改行尾「⋯」菜单）、错误以行内提示 + tooltip 呈现；编辑器抽屉一起重做
+- [ ] **5. 中栏筛选胶囊去掉「已静音」**：静音回看入口移入自动化页（列表默认隐藏静音，不再占高位入口）
+- [ ] **6. 自动化编辑器（右侧抽屉）重构**：桌面保留抽屉、移动端改全屏 Sheet（考虑移动端输入与滚动体验）
+- [ ] **7. 正文代码块**：适配 + 语法高亮 + 行号（对齐 Nextflux 的 shiki 实现；按需加载语言，避免拖慢首屏）
+- [ ] **8. 自动化顺序改拖动**（现在是 ↑↓ 按钮）：拖拽手柄 + 位移动效，落库仍用 position
+- [ ] **9. 细调与性能**（贯穿全批）
+  - [x] 下拉框换 HeroUI 组件：新增 `src/components/ui/select.tsx`（HeroUI v3 `Select` + `ListBox`，react-aria 引擎、自带弹层动效/键盘/触摸），
+        **设置页 4 处已换**（AI: provider / 摘要语言 / 翻译通道；设置弹窗移动端 tab 选择器）
+        —— 实测：`select__trigger` → 弹层 `data-slot="list-box"` 带 3 个 option（ego-browser 真点）
+  - [ ] `FilterEditor` 里剩下的 4 处原生 `<select>`：随第 4/6 项重构一并换（避免改两遍）
+  - [x] **性能基线实测（改动前取证）**：`language-detect-*.js` **454 KB(gzip)**（全站最大，懒加载但列表判定语言即拉起）；
+        条目列表**无虚拟化**（只有社交流用的 `@virtuoso.dev/masonry`）；`EntryListItem` **无 `memo()`** → 列表状态一变就重渲染所有卡片；
+        `framer-motion` 与 `motion` 12.x **双份依赖**；`dist/assets` 里已有 shiki 语言分块（cpp 46KB、ts/tsx/jsx 各 16KB）
+  - [ ] 动画/动效流畅度对齐 Nextflux：按上面基线逐项改（虚拟化 / memo / language-detect 降级 / 去重动画库），每项留改前改后数据
+  - [ ] `notify` 动作（Bark）一并做掉（见上一节 P2）
+
+
+
 ## 1. 过滤规则（自动化） · 细节见 `docs/自动化-过滤规则.md`
 
 ### 已完成（P1 全部 + P2 三项）
@@ -42,7 +77,8 @@
       真正翻译/摘要发生在打开这条时（复用既有 SSE 通道）—— 刻意不在入库时花 AI token，也就不需要队列与并发控制
 - [x] `webhook` 动作：命中后**异步** POST JSON 报文（走 `network.ClientFactory`，继承代理设置，10s 超时），
       投递失败/成功都写回规则的 `last_error`（规则表行内红字可见），成功自动清掉上一次的错误
-- [ ] `notify` 动作 —— **仍卡在通道**：后端目前零推送基建，要做得先定走哪条通道（iMessage / Bark / 别的）
+- [ ] `notify` 动作 —— **通道已定：Bark**（2026-09-17 用户拍板）。做法：规则里可填 Bark 地址（或跟随设置里的全局 Bark 地址），
+      命中后异步推送（标题 + 来源 + 链接），投递结果同样走规则的 `last_error`。详见第九批清单
 - [x] `block`（命中不入库）—— **决定不做**：MrRSS 也没这动作；静音已可回看、可反悔，block 不可逆
 - [x] 规则 JSON 导入导出 —— **决定不做**：单人自用价值低，且与「自然语言建规则」重复
 - [x] 小瑕疵：详情页引文最终效果 —— 2026-09-17 用 ego-browser 打开一条带引文的条目截图人工过眼：

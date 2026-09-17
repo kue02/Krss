@@ -5,9 +5,6 @@ import { ProfileButton } from "./ProfileButton";
 interface SidebarAccountBarProps {
   avatarUrl?: string;
   userName?: string;
-  starredCount?: number;
-  isStarredSelected?: boolean;
-  onStarredClick?: () => void;
   onProfileClick?: () => void;
   onSettingsClick?: () => void;
   onLogoutClick?: () => void;
@@ -22,9 +19,6 @@ interface SidebarAccountBarProps {
 export function SidebarAccountBar({
   avatarUrl,
   userName,
-  starredCount = 0,
-  isStarredSelected = false,
-  onStarredClick,
   onProfileClick,
   onSettingsClick,
   onLogoutClick,
@@ -37,9 +31,6 @@ export function SidebarAccountBar({
       <ProfileButton
         avatarUrl={avatarUrl}
         userName={displayName}
-        starredCount={starredCount}
-        isStarredSelected={isStarredSelected}
-        onStarredClick={onStarredClick}
         onProfileClick={onProfileClick}
         onSettingsClick={onSettingsClick}
         onLogoutClick={onLogoutClick}

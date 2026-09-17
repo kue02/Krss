@@ -9,6 +9,7 @@ import {
 } from "@/api";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
+import { Select } from "@/components/ui/select";
 import type {
   AIProvider,
   AIProviderConfig,
@@ -400,8 +401,6 @@ export function AISettings() {
     );
   }
 
-  const selectClass =
-    "h-9 w-full sm:w-48 rounded-md border border-border bg-background px-3 text-sm focus:border-primary focus:outline-none";
   const inputClass =
     "h-9 w-full sm:w-48 rounded-md border border-border bg-background px-3 text-sm focus:border-primary focus:outline-none";
   // 顶部那句「当前使用：××（模型）」用
@@ -498,17 +497,13 @@ export function AISettings() {
       {/* Provider */}
       <div className="flex flex-wrap items-center justify-between gap-2 py-2">
         <span className="text-sm font-medium">{t("ai_settings.provider")}</span>
-        <select
+        <Select
+          ariaLabel={t("ai_settings.provider")}
           value={settings.provider}
-          onChange={(e) => handleChange("provider", e.target.value)}
-          className={cn(selectClass, "shrink-0")}
-        >
-          {PROVIDERS.map((p) => (
-            <option key={p.value} value={p.value}>
-              {p.label}
-            </option>
-          ))}
-        </select>
+          onChange={(value) => handleChange("provider", value as AIProvider)}
+          options={PROVIDERS}
+          className="shrink-0 sm:w-48"
+        />
       </div>
 
       {/* API Key */}
@@ -692,17 +687,13 @@ export function AISettings() {
             {t("ai_settings.summary_language_hint")}
           </p>
         </div>
-        <select
+        <Select
+          ariaLabel={t("ai_settings.summary_language")}
           value={settings.summaryLanguage}
-          onChange={(e) => handleChange("summaryLanguage", e.target.value)}
-          className={cn(selectClass, "w-40 shrink-0")}
-        >
-          {SUMMARY_LANGUAGE_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+          onChange={(value) => handleChange("summaryLanguage", value)}
+          options={SUMMARY_LANGUAGE_OPTIONS}
+          className="w-40 shrink-0"
+        />
       </div>
 
       {/* 翻译通道：不想配模型也能用（免 key） */}
@@ -715,19 +706,17 @@ export function AISettings() {
             {t("ai_settings.translate_channel_hint")}
           </p>
         </div>
-        <select
+        <Select
+          ariaLabel={t("ai_settings.translate_channel")}
           value={settings.translateChannel ?? ""}
-          onChange={(e) => handleChange("translateChannel", e.target.value)}
-          className={cn(selectClass, "w-52 shrink-0")}
-        >
-          <option value="">{t("ai_settings.translate_channel_model")}</option>
-          <option value="google">
-            {t("ai_settings.translate_channel_google")}
-          </option>
-          <option value="youdao">
-            {t("ai_settings.translate_channel_youdao")}
-          </option>
-        </select>
+          onChange={(value) => handleChange("translateChannel", value)}
+          options={[
+            { value: "", label: t("ai_settings.translate_channel_model") },
+            { value: "google", label: t("ai_settings.translate_channel_google") },
+            { value: "youdao", label: t("ai_settings.translate_channel_youdao") },
+          ]}
+          className="w-52 shrink-0"
+        />
       </div>
 
       {/* 免费通道失败是否自动切回模型（只在选了免费通道时有意义） */}

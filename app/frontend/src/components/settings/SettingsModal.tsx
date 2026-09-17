@@ -12,6 +12,7 @@ import { AutomationSettings } from "./tabs/AutomationSettings";
 import { NetworkSettings } from "./tabs/NetworkSettings";
 import { AdvancedSettings } from "./tabs/AdvancedSettings";
 import { cn } from "@/lib/utils";
+import { Select } from "@/components/ui/select";
 
 export type SettingsTab =
   | "general"
@@ -154,35 +155,13 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
           <div className="flex h-full min-h-0 flex-col bg-background safe-area-inset">
             {/* Header */}
             <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border shrink-0">
-              <div className="relative flex-1">
-                <select
-                  value={activeTab}
-                  onChange={(e) => setActiveTab(e.target.value as SettingsTab)}
-                  className={cn(
-                    "w-full h-9 appearance-none rounded-md border border-border bg-background pl-3 pr-8 text-base font-medium",
-                    "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
-                  )}
-                >
-                  {tabs.map((tab) => (
-                    <option key={tab.id} value={tab.id}>
-                      {tab.label}
-                    </option>
-                  ))}
-                </select>
-                <svg
-                  className="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
-              </div>
+              <Select
+                ariaLabel={t("settings.title")}
+                value={activeTab}
+                onChange={(value) => setActiveTab(value as SettingsTab)}
+                options={tabs.map((tab) => ({ value: tab.id, label: tab.label }))}
+                className="flex-1"
+              />
               <button
                 onClick={() => onOpenChange(false)}
                 className={cn(

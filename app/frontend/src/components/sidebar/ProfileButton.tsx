@@ -1,25 +1,13 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
+import { Button, Dropdown, Label, Kbd } from "@heroui/react";
+import { ChevronsUpDown, CircleUser, Cog, Keyboard, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { shortcutsHelp } from "@/stores/shortcuts-store";
-
-// 菜单行的度量统一由 DropdownMenuItem 提供（HeroUI v3 的 .menu-item），这里只压一点前景色
-const menuItemStyles = cn("text-foreground/90");
 
 interface ProfileButtonProps {
   avatarUrl?: string;
   userName?: string;
-  starredCount?: number;
-  isStarredSelected?: boolean;
-  onStarredClick?: () => void;
   onProfileClick?: () => void;
   onSettingsClick?: () => void;
   onLogoutClick?: () => void;
@@ -49,11 +37,7 @@ const UserAvatar = React.forwardRef<
       className,
     )}
   >
-    {avatarUrl ? (
-      <AvatarFace avatarUrl={avatarUrl} name={name} />
-    ) : (
-      <AvatarFace name={name} />
-    )}
+    <AvatarFace avatarUrl={avatarUrl} name={name} />
   </span>
 ));
 
@@ -99,52 +83,19 @@ function AvatarFace({
   );
 }
 
+export { UserAvatar };
+
 /**
- * 账户行的触发按钮。
+ * 账户菜单（侧栏底部那一行）。
  *
- * 这里原来有个「飞行头像」：菜单打开时把头像放大成 56px 的浮层飘一下。
- * 实测那个浮层会盖住账户行、看起来就是「头像变大了」（用户两次报这个问题），
- * 而且 NextFlux 的账户行没有这种效果，所以整段去掉了。
+ * 2026-09-17 重做：**改用 HeroUI v3 的 Dropdown**，结构与 Nextflux 的
+ * `FeedList/components/ProfileButton.jsx` 同构（Dropdown → Popover placement="top left" →
+ * Menu onAction → Item id/textValue + lucide 图标 + Label），不再自绘菜单壳。
+ * 同时按用户要求**去掉「已加星标」**——星标有侧栏/Debug 之外的入口，不该占账户菜单。
  */
-const TransitionAvatar = React.forwardRef<
-  HTMLButtonElement,
-  {
-    avatarUrl?: string;
-    name?: string;
-  } & React.HTMLAttributes<HTMLButtonElement>
->(({ avatarUrl, name, className, children, ...props }, forwardRef) => {
-
-  return (
-    <>
-      <button
-        {...props}
-        ref={forwardRef}
-        className={cn(
-          // 键盘 Tab 时给出可见焦点环（与其它按钮一致），只有鼠标操作时不打扰
-          "group relative inline-flex items-center justify-center rounded-md size-8 select-none outline-none",
-          "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-          className,
-        )}
-      >
-        <UserAvatar
-          className="size-6 border-0"
-          avatarUrl={avatarUrl}
-          name={name}
-        />
-        {children}
-      </button>
-
-    </>
-  );
-});
-TransitionAvatar.displayName = "TransitionAvatar";
-
 export function ProfileButton({
   avatarUrl,
   userName,
-  starredCount = 0,
-  isStarredSelected = false,
-  onStarredClick,
   onProfileClick,
   onSettingsClick,
   onLogoutClick,
@@ -153,168 +104,62 @@ export function ProfileButton({
 }: ProfileButtonProps) {
   const { t } = useTranslation();
   const displayName = userName || t("user.guest");
-  const iconStyles =
-    "size-4 text-muted-foreground transition-colors group-data-[highlighted]:text-foreground";
+  const iconStyles = "size-4 text-muted-foreground group-data-[highlighted]:text-foreground";
+
+  const handleAction = (key: React.Key) => {
+    if (key === "profile") onProfileClick?.();
+    if (key === "settings") onSettingsClick?.();
+    if (key === "shortcuts") shortcutsHelp.toggle();
+    if (key === "logout") onLogoutClick?.();
+  };
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <TransitionAvatar
-          avatarUrl={avatarUrl}
-          name={userName}
-          className={triggerClassName}
-        >
-          {children}
-        </TransitionAvatar>
-      </DropdownMenuTrigger>
-
-      {/* 外观完全交给 .dropdown-content/.dropdown-surface（HeroUI v3 的度量 + NextFlux 的浮层参数） */}
-      <DropdownMenuContent side="top" align="start" sideOffset={4}>
-
-        {/* User info */}
-        <DropdownMenuLabel className="px-2 pb-3 pt-6 relative z-10 text-center">
-          <div className="flex flex-col items-center justify-center">
-            <div className="max-w-[20ch] truncate text-lg font-semibold tracking-tight text-foreground">
-              {displayName}
-            </div>
-          </div>
-        </DropdownMenuLabel>
-
-        <DropdownMenuSeparator className="bg-border/50" />
-
-        {/* Profile */}
-        <DropdownMenuItem className={menuItemStyles} onSelect={onProfileClick}>
-          <span className="inline-flex size-4 items-center justify-center">
-            <svg
-              className={iconStyles}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"
-              />
-            </svg>
+    <Dropdown>
+      <Dropdown.Trigger
+        className={cn(
+          "flex h-10 w-full items-center gap-2 rounded-[19.2px] px-3 py-2 text-left",
+          triggerClassName,
+        )}
+      >
+        <UserAvatar className="size-6 border-0" avatarUrl={avatarUrl} name={userName} />
+        {children ?? (
+          <span className="min-w-0 flex-1 select-none truncate text-sm font-medium leading-tight text-foreground/90">
+            {displayName}
           </span>
-          <span>{t("user.profile")}</span>
-        </DropdownMenuItem>
+        )}
+        <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
+      </Dropdown.Trigger>
 
-        {/* Starred */}
-        <DropdownMenuItem
-          className={cn(menuItemStyles, isStarredSelected && "bg-accent/30")}
-          onSelect={onStarredClick}
-        >
-          <span className="inline-flex size-4 items-center justify-center">
-            <svg
-              className={iconStyles}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z"
-              />
-            </svg>
-          </span>
-          <span>{t("sidebar.starred")}</span>
-          {starredCount > 0 && (
-            <span className="ml-auto text-xs text-muted-foreground">
-              {starredCount}
-            </span>
-          )}
-        </DropdownMenuItem>
+      <Dropdown.Popover placement="top left" className="min-w-[13rem]">
+        <Dropdown.Menu aria-label={displayName} onAction={handleAction}>
+          <Dropdown.Item id="profile" textValue={t("user.profile")}>
+            <CircleUser className={iconStyles} />
+            <Label>{t("user.profile")}</Label>
+          </Dropdown.Item>
 
-        <DropdownMenuSeparator className="bg-border/50" />
+          <Dropdown.Item id="settings" textValue={t("settings.title")}>
+            <Cog className={iconStyles} />
+            <Label>{t("settings.title")}</Label>
+          </Dropdown.Item>
 
-        {/* Settings */}
-        <DropdownMenuItem className={menuItemStyles} onSelect={onSettingsClick}>
-          <span className="inline-flex size-4 items-center justify-center">
-            <svg
-              className={iconStyles}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-              />
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-              />
-            </svg>
-          </span>
-          <span>{t("settings.title")}</span>
-        </DropdownMenuItem>
+          {/* Shortcuts help —— 与 ? 键同一入口 */}
+          <Dropdown.Item id="shortcuts" textValue={t("shortcuts.title")}>
+            <Keyboard className={iconStyles} />
+            <Label>{t("shortcuts.title")}</Label>
+            <Kbd className="ml-auto">?</Kbd>
+          </Dropdown.Item>
 
-        <DropdownMenuSeparator className="bg-border/50" />
-
-        {/* Shortcuts help —— 与 ? 键同一入口 */}
-        <DropdownMenuItem
-          className={menuItemStyles}
-          onSelect={() => shortcutsHelp.toggle()}
-        >
-          <span className="inline-flex size-4 items-center justify-center">
-            <svg
-              className={iconStyles}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M4 7.5h16v9H4z"
-              />
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M7.5 10.5h.01M10.5 10.5h.01M13.5 10.5h.01M16.5 10.5h.01M9 13.5h6"
-              />
-            </svg>
-          </span>
-          <span>{t("shortcuts.title")}</span>
-          <span className="ml-auto text-xs text-muted-foreground">?</span>
-        </DropdownMenuItem>
-
-        <DropdownMenuSeparator className="bg-border/50" />
-
-        {/* Logout */}
-        <DropdownMenuItem
-          className={cn(menuItemStyles, "text-danger")}
-          onSelect={onLogoutClick}
-        >
-          <span className="inline-flex size-4 items-center justify-center">
-            <svg
-              className={iconStyles}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-              />
-            </svg>
-          </span>
-          <span>{t("user.logout")}</span>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          <Dropdown.Item id="logout" textValue={t("user.logout")} variant="danger">
+            <LogOut className="size-4" />
+            <Label>{t("user.logout")}</Label>
+          </Dropdown.Item>
+        </Dropdown.Menu>
+      </Dropdown.Popover>
+    </Dropdown>
   );
+}
+
+/** 触发器按钮（其它地方要用同一颗按钮时用） */
+export function ProfileTriggerButton(props: React.ComponentProps<typeof Button>) {
+  return <Button variant="ghost" size="sm" {...props} />;
 }

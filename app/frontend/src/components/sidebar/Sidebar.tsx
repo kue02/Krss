@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/icons";
 import { SidebarHeader } from "./SidebarHeader";
 import { SidebarAccountBar } from "./SidebarAccountBar";
+import { StarredItem } from "./StarredItem";
 import { FeedCategory } from "./FeedCategory";
 import { FeedItem } from "./FeedItem";
 import { ContentTypeSwitcher } from "./ContentTypeSwitcher";
@@ -450,6 +451,9 @@ export function Sidebar({
             className="absolute inset-0 will-change-[transform,opacity]"
           >
             <SidebarScrollArea scrollKey={animatedContentType}>
+              {/* 星标入口：原先只在账户菜单里（那颗已按用户要求去掉），改放侧栏导航顶部 —— Nextflux 也是这个位置 */}
+              <StarredItem isActive={isStarredSelected} onClick={onSelectStarred} />
+
               {/* 保存的筛选视图（设置 → 自动化 里维护；这里只是快捷入口，没有就不显示这一段） */}
               {savedViews.length > 0 && (
                 <div className="mb-1.5">
@@ -608,8 +612,6 @@ export function Sidebar({
       <SidebarAccountBar
         avatarUrl={user?.avatarUrl}
         userName={user?.nickname || user?.username}
-        isStarredSelected={isStarredSelected}
-        onStarredClick={onSelectStarred}
         onProfileClick={() => setIsProfileOpen(true)}
         onSettingsClick={() => setIsSettingsOpen(true)}
         onLogoutClick={logout}
