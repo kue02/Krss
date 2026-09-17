@@ -54,6 +54,15 @@ export function useScrollMarkRead({
   const graceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const session = useRef(0);
   const graceUntil = useRef(0);
+  /**
+   * 「看到即已读」（onVisible）下的连锁问题：
+   * 一屏条目停留 600ms 就标已读 → 在「只看未读」列表里被移除 → 列表上移把下一屏顶进视口 →
+   * 又停留 600ms 又标已读……用户什么都没做，整列表自己读完消失了（实测 12 秒掉 15 条）。
+   * 所以一批标记完成后，必须等用户真的再滚一次才继续判定。
+   */
+  const awaitingUserScroll = useRef(false);
+  /** 自己补偿滚动的时间窗，用来把自己触发的 scroll 事件和用户滚动区分开 */
+  const programmaticScrollUntil = useRef(0);
   const [observerVersion, setObserverVersion] = useState(0);
   const endPaddingHeightRef = useRef(0);
   const [scrollLayout, setScrollLayout] = useState({
@@ -138,6 +147,7 @@ export function useScrollMarkRead({
     seenEntryIds.current.clear();
     markedReadIds.current.clear();
     pendingReadEntries.current.clear();
+    awaitingUserScroll.current = false;
     session.current += 1;
 
     if (batchTimer.current) {
@@ -184,6 +194,25 @@ export function useScrollMarkRead({
     };
   }, [entriesIdentityKey, enabled]);
 
+  useEffect(() => {
+    if (!enabled) return;
+
+    // 容错：单测里的 surface 桩可能没实现 subscribe
+    if (typeof surface.subscribe !== "function") return;
+
+    const unsubscribe = surface.subscribe(() => {
+      // 自己为补偿高度做的滚动不算「用户滚了」
+      if (Date.now() < programmaticScrollUntil.current) return;
+      if (!awaitingUserScroll.current) return;
+
+      awaitingUserScroll.current = false;
+      // 重新观察一遍：让此刻在视口里的条目重新开始计时
+      setObserverVersion((version) => version + 1);
+    });
+
+    return unsubscribe;
+  }, [enabled, surface]);
+
   const flushReadQueue = useCallback(() => {
     if (batchTimer.current) {
       clearTimeout(batchTimer.current);
@@ -208,10 +237,13 @@ export function useScrollMarkRead({
           if (!unreadOnly || session.current !== currentSession) return;
 
           removeFromUnreadList(new Set(ids));
+          // 别让「移除 → 顶上来 → 再标」自己转起来
+          awaitingUserScroll.current = true;
 
           if (removedHeight <= 0) return;
           requestAnimationFrame(() => {
             if (session.current !== currentSession) return;
+            programmaticScrollUntil.current = Date.now() + 200;
             surface.scrollBy(-removedHeight);
           });
         },
@@ -282,6 +314,8 @@ export function useScrollMarkRead({
               const timer = setTimeout(() => {
                 dwellTimers.current.delete(entryId);
                 if (markedReadIds.current.has(entryId)) return;
+                // 上一批刚移除完、用户还没再滚，先不判
+                if (awaitingUserScroll.current) return;
 
                 const node = contentRoot.querySelector<HTMLElement>(
                   `[data-entry-id="${entryId}"]`,

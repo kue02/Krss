@@ -104,9 +104,9 @@ function renderScrollMarkRead(
     useScrollMarkRead({
       surface: options.surface,
       contentRootRef,
-      entries: [makeEntry("e1")],
+      entries: options.entries ?? [makeEntry("e1")],
       enabled: true,
-      unreadOnly: false,
+      unreadOnly: options.unreadOnly ?? false,
       hasNextPage: true,
       resetKey: "k",
       timing: options.timing,
@@ -168,6 +168,56 @@ describe("useScrollMarkRead 的已读判定时机", () => {
     expect(markManyAsRead).toHaveBeenCalledTimes(1);
     const [visibleCall] = markManyAsRead.mock.calls;
     expect(visibleCall?.[0]?.ids).toEqual(["e1"]);
+  });
+
+  it("只看未读 + onVisible：标完一批后不再自动继续，等用户滚动才接着判", () => {
+    const container = document.createElement("div");
+    const { contentRoot, card, surface } = makeHarness(container);
+    // 让 surface 支持订阅滚动（真实实现里有，桩里补上）
+    const listeners: Array<() => void> = [];
+    (surface as unknown as { subscribe: (fn: () => void) => () => void }).subscribe = (
+      fn,
+    ) => {
+      listeners.push(fn);
+      return () => undefined;
+    };
+    // 让标记成功后真的走 onSuccess（真实实现里那里会移除未读项、进入「等用户滚动」）
+    markManyAsRead.mockImplementation(
+      (_payload: unknown, opts?: { onSuccess?: () => void }) =>
+        opts?.onSuccess?.(),
+    );
+
+    // 第二张卡片：模拟「上一批被移除后顶上来」的下一批
+    const card2 = document.createElement("div");
+    card2.dataset.entryId = "e2";
+    card2.getBoundingClientRect = () =>
+      ({ top: 100, bottom: 200, height: 100, left: 0, right: 600, width: 600 }) as DOMRect;
+    contentRoot.appendChild(card2);
+
+    renderScrollMarkRead({
+      contentRoot,
+      surface,
+      timing: "onVisible",
+      unreadOnly: true,
+      entries: [makeEntry("e1"), makeEntry("e2")],
+    });
+
+    const observer = FakeObserver.instances.at(-1) as FakeObserver;
+    observer.emit([{ target: card, isIntersecting: true, bottom: 200 }]);
+    vi.advanceTimersByTime(3000);
+    expect(markManyAsRead).toHaveBeenCalledTimes(1);
+
+    // 用户没滚动：被顶上来的一批不该继续标（否则整列表会自己读完消失）
+    observer.emit([{ target: card2, isIntersecting: true, bottom: 200 }]);
+    vi.advanceTimersByTime(3000);
+    expect(markManyAsRead).toHaveBeenCalledTimes(1);
+
+    // 用户滚一次之后可以继续
+    listeners.forEach((fn) => fn());
+    const next = FakeObserver.instances.at(-1) as FakeObserver;
+    next.emit([{ target: card2, isIntersecting: true, bottom: 200 }]);
+    vi.advanceTimersByTime(3000);
+    expect(markManyAsRead).toHaveBeenCalledTimes(2);
   });
 
   it("onVisible：还没到停留时间就划走，不标记", () => {
