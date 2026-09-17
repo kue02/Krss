@@ -5,6 +5,7 @@ const setFetchReadableForView = vi.fn();
 const setExpandLongForView = vi.fn();
 const setReduceMotion = vi.fn();
 const setScrollReadForView = vi.fn();
+const setScrollReadTimingForView = vi.fn();
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: "zh" } }),
@@ -39,6 +40,22 @@ vi.mock("@/hooks/useAppearanceSettings", () => ({
   useAppearanceSettings: () => ({ data: undefined, isLoading: false }),
 }));
 
+/**
+ * 「滚动标已读」总开关形态：默认按 perView 跑（这样按视图覆盖的行可见），
+ * 需要测 off 联动时改 scrollReadState.mode。
+ */
+const scrollReadState = vi.hoisted(() => ({
+  mode: "perView" as "off" | "on" | "perView",
+}));
+
+vi.mock("@/hooks/useScrollReadSetting", () => ({
+  useScrollReadSetting: () => ({
+    mode: scrollReadState.mode,
+    resolveFor: () => true,
+    globalOn: true,
+  }),
+}));
+
 vi.mock("@/hooks/useUISettings", async () => {
   const actual =
     await vi.importActual<typeof import("@/hooks/useUISettings")>(
@@ -66,6 +83,13 @@ vi.mock("@/hooks/useUISettings", async () => {
       picture: "inherit",
       notification: "inherit",
     },
+    scrollReadMode: "perView",
+    scrollReadTimingByView: {
+      article: "scrollPast",
+      picture: "scrollPast",
+      notification: "scrollPast",
+      social: "scrollPast",
+    },
     cardImageSize: "small",
     cardPreviewLines: 2,
     entryFontFamily: "system",
@@ -84,6 +108,7 @@ vi.mock("@/hooks/useUISettings", async () => {
       setExpandLongForView,
       setReduceMotion,
       setScrollReadForView,
+      setScrollReadTimingForView,
     }),
   };
 });
@@ -127,6 +152,8 @@ describe("AppearanceSettings 按视图设置", () => {
     setExpandLongForView.mockClear();
     setReduceMotion.mockClear();
     setScrollReadForView.mockClear();
+    setScrollReadTimingForView.mockClear();
+    scrollReadState.mode = "perView";
   });
 
   it("四个内容类型（含社交媒体）各有一组按视图设置", () => {
@@ -168,5 +195,23 @@ describe("AppearanceSettings 按视图设置", () => {
     const firstRow = rowOf("appearance_view.scroll_read");
     fireEvent.click(within(firstRow).getByText("on"));
     expect(setScrollReadForView).toHaveBeenCalledWith("article", "on");
+  });
+
+  it("总开关关掉「滚动标已读」时，「已读判定」整行置灰并说明不生效", () => {
+    scrollReadState.mode = "off";
+    render(<AppearanceSettings />);
+
+    // 按视图的「滚动标已读」开关只有在 perView 模式才出现
+    expect(screen.queryAllByText("appearance_view.scroll_read")).toHaveLength(0);
+
+    // 判定行还在，但标记为不可用 + 原因
+    const row = rowOf("appearance_view.read_timing");
+    expect(row.getAttribute("aria-disabled")).toBe("true");
+    expect(
+      screen.getAllByText("appearance_view.read_timing_disabled").length,
+    ).toBeGreaterThan(0);
+
+    // 注：jsdom 不做命中测试，「点不动」是 pointer-events:none 的真实浏览器行为，
+    // 单元层只能断言 aria-disabled 与原因文案；「点不动」在 :5173 用真实鼠标验。
   });
 });

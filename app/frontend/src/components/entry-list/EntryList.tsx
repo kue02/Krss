@@ -14,7 +14,6 @@ import { getRefreshStatus, refreshAllFeeds, refreshFeeds } from "@/api";
 import { showToast } from "@/stores/toast-store";
 import { useFolders } from "@/hooks/useFolders";
 import { useAISettings } from "@/hooks/useAISettings";
-import { useGeneralSettings } from "@/hooks/useGeneralSettings";
 import { useSwipeGesture } from "@/hooks/useSwipeGesture";
 import { selectionToParams, type SelectionType } from "@/hooks/useSelection";
 import { flattenUniqueEntries } from "@/lib/entry-pagination";
@@ -39,6 +38,7 @@ import { useScrollMarkRead } from "./useScrollMarkRead";
 import { useEntryListScrollSurface } from "./scroll-surface";
 import { useEntryHotkeys } from "@/hooks/useEntryHotkeys";
 import { useUISettingKey } from "@/hooks/useUISettings";
+import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
 import { useFilterViewStore } from "@/stores/filter-view-store";
 import { ArrowUp, Inbox } from "lucide-react";
 import type { Entry, Feed, Folder, ContentType } from "@/types/api";
@@ -182,7 +182,6 @@ export function EntryList({
   const { data: feeds = [] } = useFeeds();
   const { data: folders = [] } = useFolders();
   const { data: aiSettings } = useAISettings();
-  const { data: generalSettings } = useGeneralSettings();
   const { data: unreadCounts } = useUnreadCounts();
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
     useEntriesInfinite({
@@ -233,10 +232,10 @@ export function EntryList({
     [autoTranslate, feedsById],
   );
   const targetLanguage = aiSettings?.summaryLanguage ?? "zh-CN";
-  const markReadOnScroll = generalSettings?.markReadOnScroll ?? false;
   // 按视图（文章 / 图片 / 通知）的独立开关：自动展开正文、覆盖滚动标已读
 
-  const scrollReadByView = useUISettingKey("scrollReadByView");
+  // 「滚动标已读」的开关解析已收口到 useScrollReadSetting（总开关三态 + 按视图覆盖 + 判定联动）
+  const { resolveFor: resolveScrollRead } = useScrollReadSetting();
   const scrollReadTimingByView = useUISettingKey("scrollReadTimingByView");
   // 社交媒体是第四类内容（与文章 / 图片 / 通知并列），不是文章视图的另一种排布
   const isSocialView = contentType === "social";
@@ -247,11 +246,7 @@ export function EntryList({
   // 这里同时挡住存量设置里可能残留的 social=true。
   const fetchReadableEnabled =
     contentType === "article" && (fetchReadableByView?.[contentType] ?? false);
-  const scrollReadOverride = scrollReadByView?.[contentType] ?? "inherit";
-  const scrollReadEnabled =
-    scrollReadOverride === "inherit"
-      ? markReadOnScroll
-      : scrollReadOverride === "on";
+  const scrollReadEnabled = resolveScrollRead(contentType);
 
   // Save/restore scroll position per selection+contentType
   const scrollKey = selectionScrollKey(selection, contentType);

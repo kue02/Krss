@@ -24,6 +24,7 @@ import {
   type CardImageSize,
   type ScrollReadOverride,
 } from "@/hooks/useUISettings";
+import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
 import { readingFonts } from "@/lib/reading-fonts";
 import { updateAppearanceSettings } from "@/api";
 import { cn } from "@/lib/utils";
@@ -95,15 +96,38 @@ function ThemeSwatchRow({
 function SettingRow({
   label,
   children,
+  disabled = false,
+  hint,
 }: {
   label: string;
   children: ReactNode;
+  /** 该行当前不生效（如「滚动标已读」关了之后的「已读判定」）：整行变淡且不可交互 */
+  disabled?: boolean;
+  hint?: string;
 }) {
   return (
     // 对齐 Nextflux 的设置行：min-h-12 / px-2.5 py-2 / 标签 14px
-    <div className="flex min-h-12 flex-wrap items-center justify-between gap-2 px-1 py-2">
-      <div className="text-sm text-foreground">{label}</div>
-      <div className="flex items-center gap-2">{children}</div>
+    <div
+      className={cn(
+        "flex min-h-12 flex-wrap items-center justify-between gap-2 px-1 py-2",
+        disabled && "opacity-60",
+      )}
+      aria-disabled={disabled || undefined}
+    >
+      <div className="text-sm text-foreground">
+        {label}
+        {hint && (
+          <div className="mt-0.5 text-xs text-muted-foreground">{hint}</div>
+        )}
+      </div>
+      <div
+        className={cn(
+          "flex items-center gap-2",
+          disabled && "pointer-events-none",
+        )}
+      >
+        {children}
+      </div>
     </div>
   );
 }
@@ -131,6 +155,8 @@ export function AppearanceSettings() {
   const uiScale = useUISettingKey("uiScale");
   const quoteStyle = useUISettingKey("quoteStyle");
   const scrollReadByView = useUISettingKey("scrollReadByView");
+  // 「滚动标已读」总开关形态：perView 才显示下面的按视图覆盖；off 时判定项置灰
+  const { mode: scrollReadMode } = useScrollReadSetting();
   const scrollReadTimingByView = useUISettingKey("scrollReadTimingByView");
   const {
     setFetchReadableForView,
@@ -325,8 +351,11 @@ export function AppearanceSettings() {
 
   return (
     <div className="space-y-6">
-      {/* Theme Section */}
-      <section>
+      {/* 主题：模式 + 配色合并成一块（2026-09-17 用户要求整理）。
+          原先「主题」（跟随系统/浅色/深色）与「配色主题」（亮色配色/暗色配色）并排摆、
+          都用「亮/暗」字眼，看着像同一个东西设置了两遍；现在同一张卡片里说明：
+          **模式决定用哪一栏皮肤**。 */}
+      <section className="rounded-lg border border-border/60 p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
             <div className="text-sm font-medium">{t("theme.label")}</div>
@@ -341,31 +370,29 @@ export function AppearanceSettings() {
             options={themeOptions}
           />
         </div>
-      </section>
-
-      {/* Palette Section — Nextflux 配色 */}
-      <section>
-        <div className="mb-3">
-          <div className="text-sm font-medium">
-            {t("theme.palette_label")}
+        <div className="mt-3 border-t border-border/60 pt-3">
+          <div className="mb-2">
+            <div className="text-sm font-medium">
+              {t("theme.palette_label")}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {t("theme.palette_description")}
+            </div>
           </div>
-          <div className="text-xs text-muted-foreground">
-            {t("theme.palette_description")}
+          <div className="space-y-2.5">
+            <ThemeSwatchRow
+              title={t("theme.light_palette")}
+              options={themes.light}
+              value={lightTheme}
+              onSelect={(id) => setLightTheme(id as LightThemeId)}
+            />
+            <ThemeSwatchRow
+              title={t("theme.dark_palette")}
+              options={themes.dark}
+              value={darkTheme}
+              onSelect={(id) => setDarkTheme(id as DarkThemeId)}
+            />
           </div>
-        </div>
-        <div className="space-y-2.5">
-          <ThemeSwatchRow
-            title={t("theme.light_palette")}
-            options={themes.light}
-            value={lightTheme}
-            onSelect={(id) => setLightTheme(id as LightThemeId)}
-          />
-          <ThemeSwatchRow
-            title={t("theme.dark_palette")}
-            options={themes.dark}
-            value={darkTheme}
-            onSelect={(id) => setDarkTheme(id as DarkThemeId)}
-          />
         </div>
       </section>
 
@@ -570,48 +597,46 @@ export function AppearanceSettings() {
                     />
                   </SettingRow>
                 )}
-                <SettingRow label={t("appearance_view.scroll_read")}>
+                {/* 按视图覆盖只在总开关选了「按视图单独设」时出现 ——
+                    否则这里能和通用里的总开关打架（用户 2026-09-17 要求收口） */}
+                {scrollReadMode === "perView" && (
+                  <SettingRow label={t("appearance_view.scroll_read")}>
+                    <SegmentedControl
+                      className="shrink-0"
+                      value={scrollReadByView[view]}
+                      onValueChange={(value) =>
+                        setScrollReadForView(view, value as ScrollReadOverride)
+                      }
+                      options={[
+                        { value: "inherit", label: t("appearance_view.inherit") },
+                        { value: "on", label: t("appearance_view.on") },
+                        { value: "off", label: t("appearance_view.off") },
+                      ]}
+                    />
+                  </SettingRow>
+                )}
+                {/* 已读判定时机：滚出顶部（默认）／看到即已读（对齐 Folo 的 useEntryMarkReadHandler）。
+                    总开关把「滚动标已读」关掉时这一项不再生效 → 置灰 + 说明原因（用户 2026-09-17 要求联动） */}
+                <SettingRow
+                  label={t("appearance_view.read_timing")}
+                  disabled={scrollReadMode === "off"}
+                  hint={
+                    scrollReadMode === "off"
+                      ? t("appearance_view.read_timing_disabled")
+                      : undefined
+                  }
+                >
                   <SegmentedControl
                     className="shrink-0"
-                    value={scrollReadByView[view]}
-                    onValueChange={(value) =>
-                      setScrollReadForView(view, value as ScrollReadOverride)
-                    }
-                    options={[
-                      { value: "inherit", label: t("appearance_view.inherit") },
-                      { value: "on", label: t("appearance_view.on") },
-                      { value: "off", label: t("appearance_view.off") },
-                    ]}
-                  />
-                </SettingRow>
-
-
-                {/* 已读判定时机：滚出顶部（默认）／看到即已读（对齐 Folo 的 useEntryMarkReadHandler） */}
-
-                <SettingRow label={t("appearance_view.read_timing")}>
-
-                  <SegmentedControl
-
-                    className="shrink-0"
-
                     value={scrollReadTimingByView?.[view] ?? "scrollPast"}
-
                     onValueChange={(value) =>
-
                       setScrollReadTimingForView(view, value as "scrollPast" | "onVisible")
-
                     }
-
                     options={[
-
                       { value: "scrollPast", label: t("appearance_view.timing_scroll_past") },
-
                       { value: "onVisible", label: t("appearance_view.timing_on_visible") },
-
                     ]}
-
                   />
-
                 </SettingRow>
               </div>
             ),

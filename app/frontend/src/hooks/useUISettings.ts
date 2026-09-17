@@ -4,6 +4,7 @@ import type { ScrollMarkReadTiming } from "@/components/entry-list/useScrollMark
 
 export type CardImageSize = "none" | "small" | "large";
 export type ScrollReadOverride = "inherit" | "on" | "off";
+export type ScrollReadMode = "off" | "on" | "perView";
 export type ViewFlags = Record<ContentType, boolean>;
 export type ViewScrollRead = Record<ContentType, ScrollReadOverride>;
 
@@ -34,7 +35,13 @@ interface UISettings {
   showLineNumbers: boolean;
   /** 界面整体缩放：改的是 rem 基准字号，1 = 标准（对应 16px） */
   uiScale: number;
-  /** 按视图覆盖「滚动标已读」；inherit = 跟随通用设置 */
+  /**
+   * 「滚动标已读」的总开关形态（2026-09-17 收口，用户要求）：
+   * off = 全关（各视图的「已读判定」不再生效）；on = 全开；perView = 允许下面按视图覆盖。
+   * 未设置时按既有数据推导（见 hooks/useScrollReadSetting.ts），老用户行为不变。
+   */
+  scrollReadMode?: ScrollReadMode;
+  /** 按视图覆盖「滚动标已读」；inherit = 跟随通用设置（仅 perView 模式下生效） */
   scrollReadByView: ViewScrollRead;
   /** 已读判定时机：scrollPast = 滚出顶部（默认）；onVisible = 看到即已读（Folo 语义） */
   scrollReadTimingByView: Record<ContentType, ScrollMarkReadTiming>;

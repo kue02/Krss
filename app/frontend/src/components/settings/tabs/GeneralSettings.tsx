@@ -6,6 +6,8 @@ import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { useGeneralSettings } from "@/hooks/useGeneralSettings";
+import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
+import { setUISetting, type ScrollReadMode } from "@/hooks/useUISettings";
 import { RSSHubSettings } from "./RSSHubSettings";
 
 type Language = "zh" | "en";
@@ -32,6 +34,9 @@ export function GeneralSettings() {
   }, [generalSettings]);
 
   const settingsDisabled = isGeneralSettingsLoading || !generalSettings;
+
+  // 总开关的形态由 useScrollReadSetting 统一推导（没存过会按既有数据推导，行为不变）
+  const { mode: scrollReadMode } = useScrollReadSetting();
 
   const handleSaveFallbackUA = async () => {
     if (!generalSettings) return;
@@ -76,24 +81,35 @@ export function GeneralSettings() {
     [generalSettings, markReadOnScroll, queryClient],
   );
 
-  const handleMarkReadOnScrollChange = useCallback(
-    async (checked: boolean) => {
+  /**
+   * 「滚动标已读」总开关（三态，2026-09-17 收口）：
+   * - 关 / 开 → 同时把后端那个布尔一起写掉，保证「跟随通用」与其它读者口径一致；
+   * - 按视图单独设 → 保持后端值不动（它就是各视图「跟随通用」的落点），
+   *   真正的每视图覆盖在外观 → 按视图设置里，只有选了这一档才会出现。
+   */
+  const handleScrollReadModeChange = useCallback(
+    async (mode: ScrollReadMode) => {
+      setUISetting("scrollReadMode", mode);
       if (!generalSettings) return;
 
-      setMarkReadOnScroll(checked);
+      const nextBool =
+        mode === "on" ? true : mode === "off" ? false : markReadOnScroll;
+      if (nextBool === markReadOnScroll) return;
+
+      setMarkReadOnScroll(nextBool);
       try {
         await updateGeneralSettings({
           ...generalSettings,
           fallbackUserAgent: generalSettings.fallbackUserAgent,
           autoReadability,
-          markReadOnScroll: checked,
+          markReadOnScroll: nextBool,
         });
         queryClient.invalidateQueries({ queryKey: ["generalSettings"] });
       } catch {
-        setMarkReadOnScroll(!checked);
+        setMarkReadOnScroll(!nextBool);
       }
     },
-    [autoReadability, generalSettings, queryClient],
+    [autoReadability, generalSettings, markReadOnScroll, queryClient],
   );
 
   const languageOptions = useMemo(
@@ -161,12 +177,24 @@ export function GeneralSettings() {
               {t("settings.mark_read_on_scroll_description")}
             </div>
           </div>
-          <Switch
-            checked={markReadOnScroll}
-            onCheckedChange={handleMarkReadOnScrollChange}
-            disabled={settingsDisabled}
+          <SegmentedControl
+            value={scrollReadMode}
+            onValueChange={(value) =>
+              void handleScrollReadModeChange(value as ScrollReadMode)
+            }
+            disabledValues={settingsDisabled ? ["off", "on", "perView"] : undefined}
+            options={[
+              { value: "off", label: t("settings.scroll_read_off") },
+              { value: "on", label: t("settings.scroll_read_on") },
+              { value: "perView", label: t("settings.scroll_read_per_view") },
+            ]}
           />
         </div>
+        {scrollReadMode === "perView" && (
+          <div className="mt-1 text-xs text-muted-foreground">
+            {t("settings.scroll_read_per_view_hint")}
+          </div>
+        )}
       </section>
 
       {/* Advanced Section */}
