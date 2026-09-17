@@ -373,7 +373,7 @@ export function Sidebar({
     selection.type === "folder" && selection.folderId === folderId;
 
   return (
-    <div className="flex h-full flex-col bg-sidebar">
+    <div className="flex h-full flex-col bg-transparent">
       <SidebarHeader
         onAddClick={() => onAddClick?.(contentType)}
         onCreateFolder={() => setIsCreateFolderOpen(true)}

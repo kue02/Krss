@@ -233,7 +233,9 @@ export function ThreeColumnLayout({
       {/* Sidebar - left column (Feed list) - always rendered but animated in/out */}
       <aside
         className={cn(
-          "flex h-full shrink-0 flex-col overflow-hidden bg-sidebar safe-area-top safe-area-left",
+          // 侧栏背景对齐 NextFlux 真机：它的侧栏就是 bg-transparent（透出页面底色），
+          // 靠「灰色页面 + 白色圆角面板 + shadow-custom」拉开层次，而不是给侧栏刷一层更深的灰。
+          "flex h-full shrink-0 flex-col overflow-hidden bg-transparent safe-area-top safe-area-left",
           "ease-[var(--ease-ios)]",
           // Transition only when not dragging
           !feedColResizable.isDragging && "motion-reduce:transition-none",
@@ -302,7 +304,14 @@ export function ThreeColumnLayout({
           hideList ? "sm:pl-2" : "sm:pl-0",
         )}
       >
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 bg-card sm:rounded-[13px] sm:border sm:border-border/60">
+        <div
+          className={cn(
+            "flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 bg-card sm:rounded-[12.8px]",
+            // NextFlux 真机的面板：rounded-2xl = 12.8px + shadow-custom，没有真边框 ——（本项目 --radius-2xl 是 16px，所以写死 12.8px）
+            // 那条「边」是阴影里 0 0 1px rgba(0,0,0,.3) 那一层画出来的
+            "sm:shadow-nf",
+          )}
+        >
           {content}
         </div>
       </main>
