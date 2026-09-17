@@ -101,7 +101,7 @@ func TestFeedService_Add_Success(t *testing.T) {
 	).Times(1)
 
 	clientFactory := network.NewClientFactoryForTest(client)
-	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, clientFactory, nil)
+	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, clientFactory, nil, nil)
 	feed, err := svc.Add(context.Background(), feedURL, &folderID, "", "article")
 	require.NoError(t, err)
 	require.Equal(t, int64(123), feed.ID)
@@ -114,7 +114,7 @@ func TestFeedService_Add_InvalidURL(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	svc := service.NewFeedService(mock.NewMockFeedRepository(ctrl), mock.NewMockFolderRepository(ctrl), mock.NewMockEntryRepository(ctrl), nil, nil, nil, nil)
+	svc := service.NewFeedService(mock.NewMockFeedRepository(ctrl), mock.NewMockFolderRepository(ctrl), mock.NewMockEntryRepository(ctrl), nil, nil, nil, nil, nil)
 	_, err := svc.Add(context.Background(), "invalid-url", nil, "", "article")
 	require.ErrorIs(t, err, service.ErrInvalid)
 }
@@ -133,7 +133,7 @@ func TestFeedService_Add_FolderNotFound(t *testing.T) {
 	mockFeeds.EXPECT().FindByURL(gomock.Any(), feedURL).Return(nil, nil)
 	mockFolders.EXPECT().GetByID(gomock.Any(), folderID).Return(model.Folder{}, sql.ErrNoRows)
 
-	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, nil, nil, nil)
 	_, err := svc.Add(context.Background(), feedURL, &folderID, "", "article")
 	require.ErrorIs(t, err, service.ErrNotFound)
 }
@@ -151,7 +151,7 @@ func TestFeedService_Add_FindByURLError(t *testing.T) {
 
 	mockFeeds.EXPECT().FindByURL(gomock.Any(), feedURL).Return(nil, dbErr)
 
-	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, nil, nil, nil)
 	_, err := svc.Add(context.Background(), feedURL, nil, "", "article")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "check feed url")
@@ -168,7 +168,7 @@ func TestFeedService_Add_Conflict(t *testing.T) {
 	existing := &model.Feed{ID: 1, URL: "https://example.com"}
 	mockFeeds.EXPECT().FindByURL(gomock.Any(), "https://example.com").Return(existing, nil)
 
-	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, nil, nil, nil)
 	_, err := svc.Add(context.Background(), "https://example.com", nil, "", "article")
 	var conflict *service.FeedConflictError
 	require.ErrorAs(t, err, &conflict)
@@ -207,7 +207,7 @@ func TestFeedService_Add_FetchErrorCreatesFeed(t *testing.T) {
 	)
 
 	clientFactory := network.NewClientFactoryForTest(client)
-	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, clientFactory, nil)
+	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, clientFactory, nil, nil)
 	_, err := svc.Add(context.Background(), feedURL, nil, "Custom", "article")
 	require.NoError(t, err)
 }
@@ -244,7 +244,7 @@ func TestFeedService_Add_EntryCreateErrorIgnored(t *testing.T) {
 	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).Return(errors.New("entry error")).Times(1)
 
 	clientFactory := network.NewClientFactoryForTest(client)
-	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, clientFactory, nil)
+	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, clientFactory, nil, nil)
 	feed, err := svc.Add(context.Background(), feedURL, nil, "", "article")
 	require.NoError(t, err)
 	require.Equal(t, int64(123), feed.ID)
@@ -289,7 +289,7 @@ func TestFeedService_Add_IconFetchUpdatesPath(t *testing.T) {
 	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).Return(nil).Times(1)
 
 	clientFactory := network.NewClientFactoryForTest(client)
-	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, mockIcons, nil, clientFactory, nil)
+	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, mockIcons, nil, clientFactory, nil, nil)
 	feed, err := svc.Add(context.Background(), feedURL, nil, "", "article")
 	require.NoError(t, err)
 	require.NotNil(t, feed.IconPath)
@@ -306,7 +306,7 @@ func TestFeedService_AddWithoutFetch(t *testing.T) {
 
 	mockFeeds.EXPECT().FindByURL(gomock.Any(), "https://example.com").Return(&model.Feed{ID: 1, URL: "https://example.com"}, nil)
 
-	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, nil, nil, nil)
 	feed, isNew, err := svc.AddWithoutFetch(context.Background(), "https://example.com", nil, "", "article")
 	require.NoError(t, err)
 	require.False(t, isNew)
@@ -332,7 +332,7 @@ func TestFeedService_AddWithoutFetch_NewFeed(t *testing.T) {
 		},
 	)
 
-	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, nil, nil, nil)
 	feed, isNew, err := svc.AddWithoutFetch(context.Background(), feedURL, nil, "", "article")
 	require.NoError(t, err)
 	require.True(t, isNew)
@@ -370,7 +370,7 @@ func TestFeedService_Preview_WithFallbackUserAgent(t *testing.T) {
 	}
 
 	clientFactory := network.NewClientFactoryForTest(client)
-	svc := service.NewFeedService(mock.NewMockFeedRepository(ctrl), mock.NewMockFolderRepository(ctrl), mock.NewMockEntryRepository(ctrl), nil, settings, clientFactory, nil)
+	svc := service.NewFeedService(mock.NewMockFeedRepository(ctrl), mock.NewMockFolderRepository(ctrl), mock.NewMockEntryRepository(ctrl), nil, settings, clientFactory, nil, nil)
 	_, err := svc.Preview(context.Background(), feedURL)
 	require.NoError(t, err)
 	mu.Lock()
@@ -384,7 +384,7 @@ func TestFeedService_Preview_InvalidURL(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	svc := service.NewFeedService(mock.NewMockFeedRepository(ctrl), mock.NewMockFolderRepository(ctrl), mock.NewMockEntryRepository(ctrl), nil, nil, nil, nil)
+	svc := service.NewFeedService(mock.NewMockFeedRepository(ctrl), mock.NewMockFolderRepository(ctrl), mock.NewMockEntryRepository(ctrl), nil, nil, nil, nil, nil)
 	_, err := svc.Preview(context.Background(), "invalid-url")
 	require.ErrorIs(t, err, service.ErrInvalid)
 }
@@ -406,7 +406,7 @@ func TestFeedService_Preview_EmptyTitleFallback(t *testing.T) {
 	}
 
 	clientFactory := network.NewClientFactoryForTest(client)
-	svc := service.NewFeedService(mock.NewMockFeedRepository(ctrl), mock.NewMockFolderRepository(ctrl), mock.NewMockEntryRepository(ctrl), nil, nil, clientFactory, nil)
+	svc := service.NewFeedService(mock.NewMockFeedRepository(ctrl), mock.NewMockFolderRepository(ctrl), mock.NewMockEntryRepository(ctrl), nil, nil, clientFactory, nil, nil)
 	preview, err := svc.Preview(context.Background(), feedURL)
 	require.NoError(t, err)
 	require.Equal(t, feedURL, preview.Title)
@@ -420,7 +420,7 @@ func TestFeedService_Update_Delete_UpdateType_DeleteBatch(t *testing.T) {
 	mockFolders := mock.NewMockFolderRepository(ctrl)
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 
-	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, nil, nil, nil)
 
 	_, err := svc.Update(context.Background(), 1, "", nil, nil)
 	require.ErrorIs(t, err, service.ErrInvalid)
@@ -489,7 +489,7 @@ func TestFeedService_DeleteBatch_RepositoryError(t *testing.T) {
 	dbErr := errors.New("delete batch failed")
 	mockFeeds.EXPECT().DeleteBatch(gomock.Any(), []int64{1, 2}).Return(int64(0), dbErr)
 
-	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, nil, nil, nil)
 	err := svc.DeleteBatch(context.Background(), []int64{1, 2})
 	require.ErrorIs(t, err, dbErr)
 }
@@ -716,7 +716,7 @@ func TestFeedService_List_Success(t *testing.T) {
 	}
 	mockFeeds.EXPECT().List(gomock.Any(), (*int64)(nil)).Return(feeds, nil)
 
-	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, nil, nil, nil)
 	result, err := svc.List(context.Background(), nil)
 	require.NoError(t, err)
 	require.Len(t, result, 2)
@@ -733,7 +733,7 @@ func TestFeedService_List_WithFolderID(t *testing.T) {
 	feeds := []model.Feed{{ID: 1, Title: "Feed 1"}}
 	mockFeeds.EXPECT().List(gomock.Any(), &folderID).Return(feeds, nil)
 
-	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, nil, nil, nil)
 	result, err := svc.List(context.Background(), &folderID)
 	require.NoError(t, err)
 	require.Len(t, result, 1)
@@ -748,7 +748,7 @@ func TestFeedService_List_Error(t *testing.T) {
 	dbErr := errors.New("db list error")
 	mockFeeds.EXPECT().List(gomock.Any(), (*int64)(nil)).Return(nil, dbErr)
 
-	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, nil, nil, nil)
 	_, err := svc.List(context.Background(), nil)
 	require.ErrorIs(t, err, dbErr)
 }
@@ -767,7 +767,7 @@ func TestFeedService_Add_FolderGetByIDError(t *testing.T) {
 	mockFeeds.EXPECT().FindByURL(gomock.Any(), feedURL).Return(nil, nil)
 	mockFolders.EXPECT().GetByID(gomock.Any(), folderID).Return(model.Folder{}, dbErr)
 
-	svc := service.NewFeedService(mockFeeds, mockFolders, nil, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, mockFolders, nil, nil, nil, nil, nil, nil)
 	_, err := svc.Add(context.Background(), feedURL, &folderID, "", "article")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "check folder")
@@ -797,7 +797,7 @@ func TestFeedService_Add_CreateError(t *testing.T) {
 	mockFeeds.EXPECT().Create(gomock.Any(), gomock.Any()).Return(model.Feed{}, errors.New("create error"))
 
 	clientFactory := network.NewClientFactoryForTest(client)
-	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, clientFactory, nil)
+	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, clientFactory, nil, nil)
 	_, err := svc.Add(context.Background(), feedURL, nil, "", "article")
 	require.Error(t, err)
 }
@@ -833,7 +833,7 @@ func TestFeedService_Add_TitleOverride(t *testing.T) {
 	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	clientFactory := network.NewClientFactoryForTest(client)
-	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, clientFactory, nil)
+	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, clientFactory, nil, nil)
 	feed, err := svc.Add(context.Background(), feedURL, nil, "Custom Title", "article")
 	require.NoError(t, err)
 	require.Equal(t, int64(123), feed.ID)
@@ -843,7 +843,7 @@ func TestFeedService_AddWithoutFetch_InvalidURL(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	svc := service.NewFeedService(nil, nil, nil, nil, nil, nil, nil)
+	svc := service.NewFeedService(nil, nil, nil, nil, nil, nil, nil, nil)
 	_, _, err := svc.AddWithoutFetch(context.Background(), "invalid", nil, "", "article")
 	require.ErrorIs(t, err, service.ErrInvalid)
 }
@@ -857,7 +857,7 @@ func TestFeedService_AddWithoutFetch_FindByURLError(t *testing.T) {
 	feedURL := "https://example.com/rss"
 	mockFeeds.EXPECT().FindByURL(gomock.Any(), feedURL).Return(nil, errors.New("db error"))
 
-	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, nil, nil, nil)
 	_, _, err := svc.AddWithoutFetch(context.Background(), feedURL, nil, "", "article")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "check feed url")
@@ -876,7 +876,7 @@ func TestFeedService_AddWithoutFetch_FolderNotFound(t *testing.T) {
 	mockFeeds.EXPECT().FindByURL(gomock.Any(), feedURL).Return(nil, nil)
 	mockFolders.EXPECT().GetByID(gomock.Any(), folderID).Return(model.Folder{}, sql.ErrNoRows)
 
-	svc := service.NewFeedService(mockFeeds, mockFolders, nil, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, mockFolders, nil, nil, nil, nil, nil, nil)
 	_, _, err := svc.AddWithoutFetch(context.Background(), feedURL, &folderID, "", "article")
 	require.ErrorIs(t, err, service.ErrNotFound)
 }
@@ -894,7 +894,7 @@ func TestFeedService_AddWithoutFetch_FolderGetByIDError(t *testing.T) {
 	mockFeeds.EXPECT().FindByURL(gomock.Any(), feedURL).Return(nil, nil)
 	mockFolders.EXPECT().GetByID(gomock.Any(), folderID).Return(model.Folder{}, errors.New("db error"))
 
-	svc := service.NewFeedService(mockFeeds, mockFolders, nil, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, mockFolders, nil, nil, nil, nil, nil, nil)
 	_, _, err := svc.AddWithoutFetch(context.Background(), feedURL, &folderID, "", "article")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "check folder")
@@ -911,7 +911,7 @@ func TestFeedService_AddWithoutFetch_CreateError(t *testing.T) {
 	mockFeeds.EXPECT().FindByURL(gomock.Any(), feedURL).Return(nil, nil)
 	mockFeeds.EXPECT().Create(gomock.Any(), gomock.Any()).Return(model.Feed{}, errors.New("create error"))
 
-	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, nil, nil, nil)
 	_, _, err := svc.AddWithoutFetch(context.Background(), feedURL, nil, "", "article")
 	require.Error(t, err)
 }
@@ -924,7 +924,7 @@ func TestFeedService_Update_GetByIDError(t *testing.T) {
 
 	mockFeeds.EXPECT().GetByID(gomock.Any(), int64(1)).Return(model.Feed{}, errors.New("db error"))
 
-	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, nil, nil, nil)
 	_, err := svc.Update(context.Background(), 1, "Title", nil, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "get feed")
@@ -939,7 +939,7 @@ func TestFeedService_Update_UpdateError(t *testing.T) {
 	mockFeeds.EXPECT().GetByID(gomock.Any(), int64(1)).Return(model.Feed{ID: 1, Title: "Old"}, nil)
 	mockFeeds.EXPECT().Update(gomock.Any(), gomock.Any()).Return(model.Feed{}, errors.New("update error"))
 
-	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, nil, nil, nil)
 	_, err := svc.Update(context.Background(), 1, "New Title", nil, nil)
 	require.Error(t, err)
 }
@@ -964,7 +964,7 @@ func TestFeedService_Update_SummaryPromptReminder(t *testing.T) {
 		},
 	)
 
-	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, nil, nil, nil)
 	updated, err := svc.Update(context.Background(), 1, "New Title", nil, &rawReminder)
 	require.NoError(t, err)
 	require.NotNil(t, updated.SummaryPromptReminder)
@@ -992,7 +992,7 @@ func TestFeedService_Update_SummaryPromptReminderClearAndValidate(t *testing.T) 
 	)
 
 	clearReminder := "   "
-	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, nil, nil, nil)
 	updated, err := svc.Update(context.Background(), 1, "New Title", nil, &clearReminder)
 	require.NoError(t, err)
 	require.Nil(t, updated.SummaryPromptReminder)
@@ -1015,7 +1015,7 @@ func TestFeedService_Update_FolderNotFound(t *testing.T) {
 	// 然后获取 folder 失败
 	mockFolders.EXPECT().GetByID(gomock.Any(), folderID).Return(model.Folder{}, sql.ErrNoRows)
 
-	svc := service.NewFeedService(mockFeeds, mockFolders, nil, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, mockFolders, nil, nil, nil, nil, nil, nil)
 	_, err := svc.Update(context.Background(), 1, "Title", &folderID, nil)
 	require.ErrorIs(t, err, service.ErrNotFound)
 }
@@ -1028,7 +1028,7 @@ func TestFeedService_Delete_GetByIDError(t *testing.T) {
 
 	mockFeeds.EXPECT().GetByID(gomock.Any(), int64(1)).Return(model.Feed{}, errors.New("db error"))
 
-	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, nil, nil, nil)
 	err := svc.Delete(context.Background(), 1)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "get feed")
@@ -1043,7 +1043,7 @@ func TestFeedService_Delete_DeleteError(t *testing.T) {
 	mockFeeds.EXPECT().GetByID(gomock.Any(), int64(1)).Return(model.Feed{ID: 1}, nil)
 	mockFeeds.EXPECT().Delete(gomock.Any(), int64(1)).Return(errors.New("delete error"))
 
-	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, nil, nil, nil)
 	err := svc.Delete(context.Background(), 1)
 	require.Error(t, err)
 }
@@ -1056,7 +1056,7 @@ func TestFeedService_UpdateType_GetByIDError(t *testing.T) {
 
 	mockFeeds.EXPECT().GetByID(gomock.Any(), int64(1)).Return(model.Feed{}, errors.New("db error"))
 
-	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, nil, nil, nil)
 	err := svc.UpdateType(context.Background(), 1, "picture")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "get feed")
@@ -1071,7 +1071,7 @@ func TestFeedService_UpdateType_UpdateTypeError(t *testing.T) {
 	mockFeeds.EXPECT().GetByID(gomock.Any(), int64(1)).Return(model.Feed{ID: 1}, nil)
 	mockFeeds.EXPECT().UpdateType(gomock.Any(), int64(1), "picture").Return(errors.New("update type error"))
 
-	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, nil, nil, nil)
 	err := svc.UpdateType(context.Background(), 1, "picture")
 	require.Error(t, err)
 }
@@ -1093,7 +1093,7 @@ func TestFeedService_Preview_HTTPError(t *testing.T) {
 	}
 
 	clientFactory := network.NewClientFactoryForTest(client)
-	svc := service.NewFeedService(nil, nil, nil, nil, nil, clientFactory, nil)
+	svc := service.NewFeedService(nil, nil, nil, nil, nil, clientFactory, nil, nil)
 	_, err := svc.Preview(context.Background(), feedURL)
 	require.ErrorIs(t, err, service.ErrFeedFetch)
 }
@@ -1110,7 +1110,7 @@ func TestFeedService_Preview_NetworkError(t *testing.T) {
 	}
 
 	clientFactory := network.NewClientFactoryForTest(client)
-	svc := service.NewFeedService(nil, nil, nil, nil, nil, clientFactory, nil)
+	svc := service.NewFeedService(nil, nil, nil, nil, nil, clientFactory, nil, nil)
 	_, err := svc.Preview(context.Background(), feedURL)
 	require.ErrorIs(t, err, service.ErrFeedFetch)
 }
@@ -1132,7 +1132,7 @@ func TestFeedService_Preview_ParseError(t *testing.T) {
 	}
 
 	clientFactory := network.NewClientFactoryForTest(client)
-	svc := service.NewFeedService(nil, nil, nil, nil, nil, clientFactory, nil)
+	svc := service.NewFeedService(nil, nil, nil, nil, nil, clientFactory, nil, nil)
 	_, err := svc.Preview(context.Background(), feedURL)
 	require.ErrorIs(t, err, service.ErrFeedFetch)
 }
@@ -1172,7 +1172,7 @@ func TestFeedService_Add_IconFetchError(t *testing.T) {
 	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	clientFactory := network.NewClientFactoryForTest(client)
-	svc := service.NewFeedService(mockFeeds, nil, mockEntries, mockIcons, nil, clientFactory, nil)
+	svc := service.NewFeedService(mockFeeds, nil, mockEntries, mockIcons, nil, clientFactory, nil, nil)
 	feed, err := svc.Add(context.Background(), feedURL, nil, "", "article")
 	require.NoError(t, err)
 	require.Nil(t, feed.IconPath)
@@ -1208,7 +1208,7 @@ func TestFeedService_Add_TypeMismatch(t *testing.T) {
 	mockFolders.EXPECT().GetByID(gomock.Any(), folderID).Return(model.Folder{ID: folderID, Type: "picture"}, nil)
 
 	clientFactory := network.NewClientFactoryForTest(client)
-	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, clientFactory, nil)
+	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, clientFactory, nil, nil)
 	_, err := svc.Add(context.Background(), feedURL, &folderID, "", "article")
 	require.ErrorIs(t, err, service.ErrInvalid)
 }
@@ -1228,7 +1228,7 @@ func TestFeedService_AddWithoutFetch_TypeMismatch(t *testing.T) {
 	// Folder 是 article 类型，但 feed 是 picture 类型
 	mockFolders.EXPECT().GetByID(gomock.Any(), folderID).Return(model.Folder{ID: folderID, Type: "article"}, nil)
 
-	svc := service.NewFeedService(mockFeeds, mockFolders, nil, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, mockFolders, nil, nil, nil, nil, nil, nil)
 	_, _, err := svc.AddWithoutFetch(context.Background(), feedURL, &folderID, "", "picture")
 	require.ErrorIs(t, err, service.ErrInvalid)
 }
@@ -1248,7 +1248,7 @@ func TestFeedService_Update_TypeMismatch(t *testing.T) {
 	// 获取当前 feed
 	mockFeeds.EXPECT().GetByID(gomock.Any(), int64(1)).Return(model.Feed{ID: 1, Title: "Feed Title", Type: "article"}, nil)
 
-	svc := service.NewFeedService(mockFeeds, mockFolders, nil, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, mockFolders, nil, nil, nil, nil, nil, nil)
 	_, err := svc.Update(context.Background(), 1, "Feed Title", &newFolderID, nil)
 	require.ErrorIs(t, err, service.ErrInvalid)
 }
@@ -1276,7 +1276,7 @@ func TestFeedService_Update_SameTypeSucceeds(t *testing.T) {
 		},
 	)
 
-	svc := service.NewFeedService(mockFeeds, mockFolders, nil, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, mockFolders, nil, nil, nil, nil, nil, nil)
 	feed, err := svc.Update(context.Background(), 1, "Feed Title", &newFolderID, nil)
 	require.NoError(t, err)
 	require.Equal(t, &newFolderID, feed.FolderID)
@@ -1313,7 +1313,7 @@ func TestFeedService_Update_SameFolderNoTypeCheck(t *testing.T) {
 		},
 	)
 
-	svc := service.NewFeedService(mockFeeds, mockFolders, nil, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, mockFolders, nil, nil, nil, nil, nil, nil)
 	feed, err := svc.Update(context.Background(), 1, "New Title", &folderID, nil)
 	require.NoError(t, err)
 	require.Equal(t, &folderID, feed.FolderID)
@@ -1346,7 +1346,7 @@ func TestFeedService_Update_FromNullToFolder(t *testing.T) {
 		},
 	)
 
-	svc := service.NewFeedService(mockFeeds, mockFolders, nil, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, mockFolders, nil, nil, nil, nil, nil, nil)
 	_, err := svc.Update(context.Background(), 1, "Feed Title", &folderID, nil)
 	require.NoError(t, err)
 }
@@ -1379,7 +1379,7 @@ func TestFeedService_Update_FromFolderToNull(t *testing.T) {
 		},
 	)
 
-	svc := service.NewFeedService(mockFeeds, mockFolders, nil, nil, nil, nil, nil)
+	svc := service.NewFeedService(mockFeeds, mockFolders, nil, nil, nil, nil, nil, nil)
 	_, err := svc.Update(context.Background(), 1, "Feed Title", nil, nil)
 	require.NoError(t, err)
 }
@@ -1428,7 +1428,7 @@ func TestFeedService_Add_SameTypeSucceeds(t *testing.T) {
 	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	clientFactory := network.NewClientFactoryForTest(client)
-	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, clientFactory, nil)
+	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, clientFactory, nil, nil)
 	feed, err := svc.Add(context.Background(), feedURL, &folderID, "", "picture")
 	require.NoError(t, err)
 	require.Equal(t, int64(123), feed.ID)

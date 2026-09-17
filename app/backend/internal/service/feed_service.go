@@ -65,10 +65,11 @@ type feedService struct {
 	settings      SettingsService
 	clientFactory *network.ClientFactory
 	anubis        AnubisSolver
+	filters       FilterService
 }
 
-func NewFeedService(feeds repository.FeedRepository, folders repository.FolderRepository, entries repository.EntryRepository, icons IconService, settings SettingsService, clientFactory *network.ClientFactory, anubisSolver AnubisSolver) FeedService {
-	return &feedService{feeds: feeds, folders: folders, entries: entries, icons: icons, settings: settings, clientFactory: clientFactory, anubis: anubisSolver}
+func NewFeedService(feeds repository.FeedRepository, folders repository.FolderRepository, entries repository.EntryRepository, icons IconService, settings SettingsService, clientFactory *network.ClientFactory, anubisSolver AnubisSolver, filters FilterService) FeedService {
+	return &feedService{feeds: feeds, folders: folders, entries: entries, icons: icons, settings: settings, clientFactory: clientFactory, anubis: anubisSolver, filters: filters}
 }
 
 func (s *feedService) Add(ctx context.Context, feedURL string, folderID *int64, titleOverride string, feedType string) (model.Feed, error) {
@@ -158,6 +159,7 @@ func (s *feedService) Add(ctx context.Context, feedURL string, folderID *int64, 
 
 	// Save entries from the fetched feed
 	dynamicTime := hasDynamicTime(fetched.items)
+	newEntries := make([]model.Entry, 0, len(fetched.items))
 	for _, item := range fetched.items {
 		entry := itemToEntry(created.ID, item, dynamicTime)
 		if entry.URL == nil || *entry.URL == "" {
@@ -165,6 +167,18 @@ func (s *feedService) Add(ctx context.Context, feedURL string, folderID *int64, 
 		}
 		if err := s.entries.CreateOrUpdate(ctx, entry); err != nil {
 			logger.Warn("entry create failed", "module", "service", "action", "create", "resource", "entry", "result", "failed", "feed_id", created.ID, "feed_title", created.Title, "host", network.ExtractHost(*entry.URL), "error", err)
+			continue
+		}
+		newEntries = append(newEntries, entry)
+	}
+
+	// 规则引擎挂在入库之后：新订阅的第一批条目也要过一遍
+	// （这是本项目仅有的第二条入库路径，另一条在 refresh_service.saveEntries）。
+	if len(newEntries) > 0 && s.filters != nil {
+		if applied, err := s.filters.ApplyToEntries(ctx, created, newEntries); err != nil {
+			logger.Warn("apply filters failed", "module", "service", "action", "apply", "resource", "filter", "result", "failed", "feed_id", created.ID, "error", err)
+		} else if applied > 0 {
+			logger.Info("filters applied on new entries", "module", "service", "action", "apply", "resource", "filter", "result", "ok", "feed_id", created.ID, "applied", applied)
 		}
 	}
 

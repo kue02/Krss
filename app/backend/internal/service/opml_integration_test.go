@@ -67,7 +67,7 @@ func TestOPMLService_Integration_ImportAndExport(t *testing.T) {
 	folderRepo := repository.NewFolderRepository(dbConn)
 	entryRepo := repository.NewEntryRepository(dbConn)
 
-	feedSvc := service.NewFeedService(feedRepo, folderRepo, entryRepo, nil, nil, clientFactory, nil)
+	feedSvc := service.NewFeedService(feedRepo, folderRepo, entryRepo, nil, nil, clientFactory, nil, nil)
 	folderSvc := service.NewFolderService(folderRepo, feedRepo)
 	// Create OPML service with nil for optional dependencies
 	opmlSvc := service.NewOPMLService(folderSvc, feedSvc, nil, nil, folderRepo, feedRepo)
@@ -136,7 +136,7 @@ func TestOPMLService_Integration_ImportFromFile(t *testing.T) {
 	folderRepo := repository.NewFolderRepository(dbConn)
 	entryRepo := repository.NewEntryRepository(dbConn)
 
-	feedSvc := service.NewFeedService(feedRepo, folderRepo, entryRepo, nil, nil, clientFactory, nil)
+	feedSvc := service.NewFeedService(feedRepo, folderRepo, entryRepo, nil, nil, clientFactory, nil, nil)
 	folderSvc := service.NewFolderService(folderRepo, feedRepo)
 	opmlSvc := service.NewOPMLService(folderSvc, feedSvc, nil, nil, folderRepo, feedRepo)
 

@@ -107,3 +107,47 @@ func TestRefreshService_DoesNotRetroApplyToExistingEntries(t *testing.T) {
 	require.False(t, entries[0].Muted, "老条目要等用户手动回溯，不该被刷新顺手改掉")
 	require.False(t, entries[0].Read)
 }
+
+// 新订阅的首次抓取是第二条入库路径（feed_service.Add 自己写库），规则也必须跟上 ——
+// 实测踩到过：漏了这条路径，新订阅的第一批条目会全部绕过规则。
+func TestFeedService_Add_AppliesFiltersToFirstBatch(t *testing.T) {
+	fixture, _ := newRefreshFixture(t)
+	ctx := context.Background()
+
+	feedService := service.NewFeedService(
+		fixture.feeds,
+		repository.NewFolderRepository(fixture.db),
+		fixture.entries,
+		nil,
+		nil,
+		network.NewClientFactoryForTest(&http.Client{
+			Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(sampleRSS)),
+					Header:     make(http.Header),
+					Request:    req,
+				}, nil
+			}),
+		}),
+		nil,
+		fixture.service,
+	)
+
+	_, err := fixture.service.Create(ctx, service.FilterWriteParams{
+		Name:       "静音 Item",
+		ScopeType:  model.FilterScopeAll,
+		Conditions: []model.FilterCondition{{Field: model.FilterFieldTitle, Operator: model.FilterOpContains, Value: "Item"}},
+		Actions:    model.FilterActions{Mute: true},
+	})
+	require.NoError(t, err)
+
+	created, err := feedService.Add(ctx, "https://example.com/rss", nil, "", "article")
+	require.NoError(t, err)
+
+	entries, err := fixture.entries.List(ctx, repository.EntryListFilter{FeedID: &created.ID, Limit: 10, IncludeMuted: true})
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.True(t, entries[0].Muted, "新订阅的第一批条目也要过规则")
+	require.True(t, entries[0].Read)
+}

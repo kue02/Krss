@@ -60,7 +60,7 @@ func TestFeedService_Integration_Preview(t *testing.T) {
 	folderRepo := repository.NewFolderRepository(setupTestDB(t))
 	entryRepo := repository.NewEntryRepository(setupTestDB(t))
 
-	svc := service.NewFeedService(feedRepo, folderRepo, entryRepo, nil, nil, clientFactory, nil)
+	svc := service.NewFeedService(feedRepo, folderRepo, entryRepo, nil, nil, clientFactory, nil, nil)
 
 	for _, feed := range testFeeds {
 		t.Run(feed.name, func(t *testing.T) {
@@ -94,7 +94,7 @@ func TestFeedService_Integration_AddAndList(t *testing.T) {
 	folderRepo := repository.NewFolderRepository(dbConn)
 	entryRepo := repository.NewEntryRepository(dbConn)
 
-	svc := service.NewFeedService(feedRepo, folderRepo, entryRepo, nil, nil, clientFactory, nil)
+	svc := service.NewFeedService(feedRepo, folderRepo, entryRepo, nil, nil, clientFactory, nil, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -147,7 +147,7 @@ func TestFeedService_Integration_FetchMultipleFeeds(t *testing.T) {
 	folderRepo := repository.NewFolderRepository(dbConn)
 	entryRepo := repository.NewEntryRepository(dbConn)
 
-	svc := service.NewFeedService(feedRepo, folderRepo, entryRepo, nil, nil, clientFactory, nil)
+	svc := service.NewFeedService(feedRepo, folderRepo, entryRepo, nil, nil, clientFactory, nil, nil)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()

@@ -91,12 +91,13 @@ func main() {
 	}()
 
 	folderService := service.NewFolderService(folderRepo, feedRepo)
-	feedService := service.NewFeedService(feedRepo, folderRepo, entryRepo, iconService, settingsService, clientFactory, anubisSolver)
+	// 规则引擎：抓取入库之后跑，只改条目上的标记（muted / read / starred）。
+	// 本项目有两条入库路径（新订阅首次抓取、刷新），两条都要过规则，所以先建它再注入。
+	filterService := service.NewFilterService(filterRepo, entryRepo, feedRepo, folderRepo)
+	feedService := service.NewFeedService(feedRepo, folderRepo, entryRepo, iconService, settingsService, clientFactory, anubisSolver, filterService)
 	entryService := service.NewEntryService(entryRepo, feedRepo, folderRepo)
 	readabilityService := service.NewReadabilityService(entryRepo, clientFactory, anubisSolver)
 	domainRateLimitService := service.NewDomainRateLimitService(domainRateLimitRepo)
-	// 规则引擎：抓取入库之后跑，只改条目上的标记（muted / read / starred）
-	filterService := service.NewFilterService(filterRepo, entryRepo, feedRepo, folderRepo)
 	refreshService := service.NewRefreshService(feedRepo, entryRepo, settingsService, iconService, clientFactory, anubisSolver, domainRateLimitService, filterService)
 	opmlService := service.NewOPMLService(folderService, feedService, refreshService, iconService, folderRepo, feedRepo)
 
