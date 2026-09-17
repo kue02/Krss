@@ -318,7 +318,7 @@ function AuthenticatedApp() {
   // 「引文样式」落到 <html data-quote-style>：强调块 / Folo 式分割线
   const quoteStyle = useUISettingKey("quoteStyle");
   useEffect(() => {
-    applyQuoteStyleToDocument(quoteStyle === "divider" ? "divider" : "block");
+    applyQuoteStyleToDocument(quoteStyle);
   }, [quoteStyle]);
 
   // 「界面字号」改 <html> 基准字号（界面用的都是 rem，整体跟着缩放）

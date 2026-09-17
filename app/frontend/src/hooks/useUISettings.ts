@@ -7,6 +7,7 @@ export type ScrollReadOverride = "inherit" | "on" | "off";
 export type ScrollReadMode = "off" | "on" | "perView";
 export type ViewFlags = Record<ContentType, boolean>;
 export type ViewScrollRead = Record<ContentType, ScrollReadOverride>;
+export type QuoteStyle = "block" | "divider" | "card";
 
 interface UISettings {
   feedColWidth: number;
@@ -37,8 +38,13 @@ interface UISettings {
   splitterVisibleByView: ViewFlags;
   /** 减少动态效果：涟漪、过渡、折叠动画一律压到最短（系统 prefers-reduced-motion 也会自动生效） */
   reduceMotion: boolean;
-  /** 引文（引用推文）的呈现：block = 强调色竖线 + 淡底（默认，我们现在的样子）；divider = Folo 那样一条很浅的分割线 */
-  quoteStyle: "block" | "divider";
+  /**
+   * 引文（引用推文）的呈现：
+   *   block   = 强调色竖线 + 淡底（默认，我们原来的样子）
+   *   divider = Folo 那样一条很浅的分割线
+   *   card    = 卡片（描边 + 圆角 + 淡底 + 轻阴影，用户 2026-09-18 要求新增）
+   */
+  quoteStyle: QuoteStyle;
   /**
    * 正文代码块是否显示行号（Nextflux 也有这个开关，但它默认关）。
    * 用户 2026-09-17 明确要「代码块显示行号」，所以这里默认开；不想要的去 外观 → 阅读 关掉。
@@ -239,8 +245,8 @@ export function useUISettingActions() {
   );
 
   const setQuoteStyle = useCallback(
-    (style: "block" | "divider") => {
-      setUISetting("quoteStyle", style === "divider" ? "divider" : "block");
+    (style: QuoteStyle) => {
+      setUISetting("quoteStyle", style);
     },
     [setUISetting],
   );
@@ -328,12 +334,9 @@ export function applyUiScaleToDocument(scale: number): void {
 }
 
 /** 把「引文样式」落到 <html data-quote-style> 上，供 CSS 统一处理（正文与时间线卡片共用） */
-export function applyQuoteStyleToDocument(style: "block" | "divider"): void {
+export function applyQuoteStyleToDocument(style: QuoteStyle): void {
   if (typeof document === "undefined") return;
-  document.documentElement.setAttribute(
-    "data-quote-style",
-    style === "divider" ? "divider" : "block",
-  );
+  document.documentElement.setAttribute("data-quote-style", style);
 }
 
 /** 把「减少动态效果」开关落到 <html data-reduce-motion> 上，供 CSS 统一处理 */

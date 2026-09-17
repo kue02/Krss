@@ -22,6 +22,7 @@ import {
   useUISettingActions,
   useUISettingKey,
   type CardImageSize,
+  type QuoteStyle,
   type ScrollReadOverride,
 } from "@/hooks/useUISettings";
 import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
@@ -506,10 +507,8 @@ export function AppearanceSettings() {
           <SettingRow label={t("appearance_reading.quote_style")}>
             <SegmentedControl
               className="shrink-0"
-              value={quoteStyle === "divider" ? "divider" : "block"}
-              onValueChange={(value) =>
-                setQuoteStyle(value === "divider" ? "divider" : "block")
-              }
+              value={quoteStyle}
+              onValueChange={(value) => setQuoteStyle(value as QuoteStyle)}
               options={[
                 {
                   value: "block",
@@ -518,6 +517,10 @@ export function AppearanceSettings() {
                 {
                   value: "divider",
                   label: t("appearance_reading.quote_style_divider"),
+                },
+                {
+                  value: "card",
+                  label: t("appearance_reading.quote_style_card"),
                 },
               ]}
             />

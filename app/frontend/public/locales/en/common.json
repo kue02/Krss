@@ -531,7 +531,8 @@
     "quote_style_block": "Highlighted",
     "quote_style_divider": "Divider",
     "reduce_motion": "Reduce motion",
-    "code_line_numbers": "Code line numbers"
+    "code_line_numbers": "Code line numbers",
+    "quote_style_card": "Card"
   },
   "reading_font": {
     "theme_default": "Theme default",

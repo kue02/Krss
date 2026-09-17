@@ -715,8 +715,10 @@ body.mobile-document-scroll-locked {
   /* 社交媒体正文里的引用推文（RSSHub 的 .rsshub-quote 默认没有样式，
      不处理的话会跟正文糊在一起，看起来就是「格式乱」） */
   /* 引文（RSSHub 的 .rsshub-quote）：做成独立引块，作者名单独一行加粗，
-     文字压灰、左侧一条竖线 + 淡底，和正文拉开层次（不做成整块灰底卡片，免得抢正文） */
-  .entry-content .rsshub-quote {
+     文字压灰、左侧一条竖线 + 淡底，和正文拉开层次（不做成整块灰底卡片，免得抢正文）。
+     **刻意不挂在 .entry-content 下**（用户 11-22）：只要有引文，不管在文章、通知还是社媒视图里
+     都该套上引文样式 —— 挂在某个容器类下面时，换个容器（新视图 / 别的入口）就静默失效了。 */
+  .rsshub-quote {
     margin-top: 10px;
     padding: 8px 12px;
     border-left: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
@@ -753,7 +755,31 @@ body.mobile-document-scroll-locked {
     font-weight: 600;
   }
 
-  .entry-content .rsshub-quote-author {
+  /* 引文样式三：卡片（用户 11-10 要求新增）。
+     规格对齐本项目已有的卡片外观（rounded-xl + border + 淡底 + shadow-nf），
+     而不是随便画一个框；引文是正文 HTML，套不了 HeroUI 的 React Card 组件，所以取同一套 token 与圆角/阴影。 */
+  html[data-quote-style="card"] .rsshub-quote {
+    margin-top: 12px;
+    padding: 12px 14px;
+    border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+    border-left: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+    border-radius: 12px; /* = rounded-xl，与站内卡片一致 */
+    /* 用 --surface-secondary（HeroUI token，与站内 --entry-quote-bg 同源）：
+       第一版写的 var(--card) 在这个作用域里没有定义，量出来背景是透明的 */
+    background: color-mix(in srgb, var(--surface-secondary) 45%, transparent);
+    box-shadow: var(--shadow-nf, 0 1px 2px rgb(0 0 0 / 0.05));
+    color: color-mix(in srgb, var(--foreground) 82%, transparent);
+    font-size: 0.9375em;
+  }
+
+  html[data-quote-style="card"] .rsshub-quote-author {
+    display: block;
+    margin-bottom: 4px;
+    font-weight: 600;
+    color: color-mix(in srgb, var(--foreground) 92%, transparent);
+  }
+
+  .rsshub-quote-author {
     display: block;
     margin-bottom: 2px;
     font-weight: 600;
