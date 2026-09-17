@@ -1,4 +1,4 @@
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 
 interface CategoryState {
   [categoryName: string]: boolean;
@@ -108,4 +108,18 @@ export function useCategoryActions() {
   );
 
   return { expandAll, collapseAll, setAllCategories };
+}
+
+/**
+ * 这批分类是否全部展开（订阅式：状态变化会触发重渲染，按钮图标能跟着变）。
+ * 键是分类名（与 isCategoryOpen / toggleCategory 一致）。
+ */
+export function useAllCategoriesOpen(categories: string[]): boolean {
+  const state = useSyncExternalStore(subscribe, getSnapshot, getStoredState);
+  const key = categories.join("\u0000");
+
+  return useMemo(() => {
+    const names = key ? key.split("\u0000") : [];
+    return names.length > 0 && names.every((name) => state[name] ?? false);
+  }, [key, state]);
 }

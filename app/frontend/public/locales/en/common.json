@@ -4,6 +4,8 @@
   },
   "sidebar": {
     "feeds": "Feeds",
+    "expand_all": "Expand all",
+    "collapse_all": "Collapse all",
     "sort_name": "Sort by Name",
     "sort_date": "Sort by Date",
     "starred": "Starred",

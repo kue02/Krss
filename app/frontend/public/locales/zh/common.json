@@ -4,6 +4,8 @@
   },
   "sidebar": {
     "feeds": "订阅",
+    "expand_all": "全部展开",
+    "collapse_all": "全部收起",
     "sort_name": "按名称排序",
     "sort_date": "按日期排序",
     "starred": "已加星标",

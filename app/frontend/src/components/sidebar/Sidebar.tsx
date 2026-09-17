@@ -15,7 +15,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ArrowDownAZIcon, CalendarIcon } from "@/components/ui/icons";
+import {
+  ArrowDownAZIcon,
+  CalendarIcon,
+  ChevronsDownUpIcon,
+  ChevronsUpDownIcon,
+} from "@/components/ui/icons";
 import { SidebarHeader } from "./SidebarHeader";
 import { SidebarAccountBar } from "./SidebarAccountBar";
 import { FeedCategory } from "./FeedCategory";
@@ -38,6 +43,10 @@ import {
   useUpdateFeedType,
 } from "@/hooks/useFeeds";
 import { useUnreadCounts } from "@/hooks/useEntries";
+import {
+  useAllCategoriesOpen,
+  useCategoryActions,
+} from "@/hooks/useCategoryState";
 import { useAuth } from "@/hooks/useAuth";
 import type { SelectionType } from "@/hooks/useSelection";
 import type { Folder, Feed, ContentType } from "@/types/api";
@@ -303,6 +312,21 @@ export function Sidebar({
     }));
   }, [foldersWithFeeds, sortBy, sortFeeds]);
 
+  // 订阅区头部那个「全部展开 / 全部收起」按钮：分类的展开态以分类名为键存在 localStorage
+  const folderNames = useMemo(
+    () => sortedFoldersWithFeeds.map(({ folder }) => folder.name),
+    [sortedFoldersWithFeeds],
+  );
+  const allFoldersOpen = useAllCategoriesOpen(folderNames);
+  const { expandAll, collapseAll } = useCategoryActions();
+  const handleToggleAllFolders = useCallback(() => {
+    if (allFoldersOpen) {
+      collapseAll(folderNames);
+    } else {
+      expandAll(folderNames);
+    }
+  }, [allFoldersOpen, collapseAll, expandAll, folderNames]);
+
   // Sorted uncategorized feeds
   const sortedUncategorizedFeeds = useMemo(
     () => sortFeeds(uncategorizedFeeds),
@@ -410,6 +434,30 @@ export function Sidebar({
                 <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground/70">
                   {t("sidebar.feeds")}
                 </span>
+                <div className="flex items-center gap-0.5">
+                  {/* 全部展开 / 全部收起（放在排序之前，和 NextFlux 的订阅区头部一致） */}
+                  <button
+                    type="button"
+                    onClick={handleToggleAllFolders}
+                    title={
+                      allFoldersOpen
+                        ? t("sidebar.collapse_all")
+                        : t("sidebar.expand_all")
+                    }
+                    aria-label={
+                      allFoldersOpen
+                        ? t("sidebar.collapse_all")
+                        : t("sidebar.expand_all")
+                    }
+                    disabled={folderNames.length === 0}
+                    className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors duration-200 hover:bg-accent/50 hover:text-foreground disabled:opacity-40"
+                  >
+                    {allFoldersOpen ? (
+                      <ChevronsDownUpIcon className="size-3.5" />
+                    ) : (
+                      <ChevronsUpDownIcon className="size-3.5" />
+                    )}
+                  </button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-accent/50 hover:text-foreground">
@@ -437,6 +485,7 @@ export function Sidebar({
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
+                </div>
               </div>
 
               {/* Feed categories —— 分组之间留一点间距，让「一组订阅」读起来是一块 */}
