@@ -578,6 +578,32 @@ body.mobile-document-scroll-locked {
     font-size: 0.9375em;
   }
 
+  /* 引文样式二选一（设置 → 外观）：
+     block   = 强调色竖线 + 淡底（默认，就是上面那条规则）
+     divider = Folo 那种「很浅的一条分割线」，不带底色、不带竖线 */
+  html[data-quote-style="divider"] .rsshub-quote {
+    margin-top: 12px;
+    padding: 0;
+    border-left: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  html[data-quote-style="divider"] .rsshub-quote::before {
+    content: "";
+    display: block;
+    width: 40%;
+    height: 1px;
+    margin-bottom: 10px;
+    background: color-mix(in srgb, var(--foreground) 10%, transparent);
+  }
+
+  html[data-quote-style="divider"] .rsshub-quote-author {
+    display: inline;
+    margin-bottom: 0;
+    font-weight: 600;
+  }
+
   .entry-content .rsshub-quote-author {
     display: block;
     margin-bottom: 2px;

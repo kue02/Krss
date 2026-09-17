@@ -229,10 +229,39 @@ export function AISettings() {
     setSuccessMessage(null);
   };
 
-  const handleSetActiveProvider = (id: string) => {
+  /**
+   * 设为「当前使用」。
+   *
+   * 原来是只改本地 state、等用户再点保存 —— 用户看到「已是当前使用」就直接关掉弹窗，
+   * 下次打开又被打回原样（实测就是这个现象）。所以这里直接落库：切换即保存，
+   * 同时把该提供商的 provider/baseUrl/model/key 同步到后端的平铺字段（AI 请求实际读的是那几个）。
+   */
+  const handleSetActiveProvider = async (id: string) => {
+    const payload = buildSettingsPayload(id);
+    if (!payload) return;
+
     setActiveProviderId(id);
     setSuccessMessage(null);
-    showToast(t("ai_settings.active_provider_changed"));
+    setIsSaving(true);
+    setError(null);
+    try {
+      const saved = await updateAISettings(payload);
+      setSettings(saved);
+      if (saved.providers && saved.providers.length > 0) {
+        setProviders(saved.providers);
+      }
+      setActiveProviderId(saved.activeProviderId || id);
+      setSuccessMessage(t("ai_settings.settings_saved"));
+      showToast(t("ai_settings.active_provider_changed"));
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message);
+      } else {
+        setError(t("ai_settings.failed_to_save"));
+      }
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   /** 表单里的编辑合并回列表后再提交（当前编辑的那份用表单值，其余保持原样） */
@@ -275,12 +304,15 @@ export function AISettings() {
     }
   };
 
-  const buildSettingsPayload = (): AISettingsType | null => {
+  const buildSettingsPayload = (
+    activeIdOverride?: string,
+  ): AISettingsType | null => {
     if (!settings || !requestOptionsResult.ok) return null;
 
     const list = collectProviders();
+    const activeId = activeIdOverride ?? activeProviderId;
     const active =
-      list.find((item) => item.id === activeProviderId) ?? list[0] ?? null;
+      list.find((item) => item.id === activeId) ?? list[0] ?? null;
 
     return {
       ...settings,
@@ -293,7 +325,7 @@ export function AISettings() {
         ? (active.requestOptions ?? {})
         : requestOptionsResult.value,
       providers: list,
-      activeProviderId,
+      activeProviderId: activeId,
     };
   };
 
@@ -372,6 +404,10 @@ export function AISettings() {
     "h-9 w-full sm:w-48 rounded-md border border-border bg-background px-3 text-sm focus:border-primary focus:outline-none";
   const inputClass =
     "h-9 w-full sm:w-48 rounded-md border border-border bg-background px-3 text-sm focus:border-primary focus:outline-none";
+  // 顶部那句「当前使用：××（模型）」用
+  const activeProvider =
+    providers.find((item) => item.id === activeProviderId) ?? providers[0] ?? null;
+
   const canSubmit = Boolean(
     settings.apiKey &&
     settings.model &&
@@ -387,6 +423,15 @@ export function AISettings() {
           <span className="text-sm font-medium">
             {t("ai_settings.providers")}
           </span>
+          {/* 平铺字段（真正发给模型的那份）由「当前使用」决定，所以这里明确写出来 */}
+          {activeProvider && (
+            <span className="text-xs text-muted-foreground">
+              {t("ai_settings.current_provider", {
+                name: activeProvider.name || activeProvider.provider,
+                model: activeProvider.model || "-",
+              })}
+            </span>
+          )}
           <div className="flex items-center gap-2">
             {selectedProviderId !== activeProviderId && (
               <button

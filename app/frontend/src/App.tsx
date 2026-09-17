@@ -25,6 +25,7 @@ import { FilterEditorDialog } from "@/components/automation/FilterEditorDialog";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { refreshAllFeeds } from "@/api";
 import { ShortcutsHelpDialog } from "@/components/shortcuts/ShortcutsHelpDialog";
+import { SearchModal } from "@/components/search/SearchModal";
 import { useGlobalHotkeys } from "@/hooks/useGlobalHotkeys";
 import {
   shortcutsHelp,
@@ -44,6 +45,7 @@ import {
   useUISettingActions,
   hasSidebarVisibilitySetting,
   setUISetting,
+  applyQuoteStyleToDocument,
   applyReduceMotionToDocument,
   applyUiScaleToDocument,
 } from "@/hooks/useUISettings";
@@ -166,6 +168,7 @@ function AuthenticatedApp() {
 
   // ── 全局快捷键：? 快捷键帮助，r 刷新订阅 ──────────────────────────────
   const isShortcutsOpen = useShortcutsHelpOpen();
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const queryClient = useQueryClient();
   const refreshFeeds = useMutation({
     mutationFn: refreshAllFeeds,
@@ -182,6 +185,7 @@ function AuthenticatedApp() {
   useGlobalHotkeys({
     onToggleHelp: handleToggleShortcuts,
     onRefresh: handleRefreshShortcut,
+    onSearch: () => setIsSearchOpen(true),
     enabled: !isShortcutsOpen,
   });
 
@@ -303,6 +307,12 @@ function AuthenticatedApp() {
   useEffect(() => {
     applyReduceMotionToDocument(Boolean(reduceMotion));
   }, [reduceMotion]);
+
+  // 「引文样式」落到 <html data-quote-style>：强调块 / Folo 式分割线
+  const quoteStyle = useUISettingKey("quoteStyle");
+  useEffect(() => {
+    applyQuoteStyleToDocument(quoteStyle === "divider" ? "divider" : "block");
+  }, [quoteStyle]);
 
   // 「界面字号」改 <html> 基准字号（界面用的都是 rem，整体跟着缩放）
   const uiScale = useUISettingKey("uiScale");
@@ -476,6 +486,7 @@ function AuthenticatedApp() {
           open={isShortcutsOpen}
           onOpenChange={(open) => shortcutsHelp.set(open)}
         />
+        <SearchModal open={isSearchOpen} onOpenChange={setIsSearchOpen} />
       </>
     );
   }
@@ -540,6 +551,7 @@ function AuthenticatedApp() {
           open={isShortcutsOpen}
           onOpenChange={(open) => shortcutsHelp.set(open)}
         />
+        <SearchModal open={isSearchOpen} onOpenChange={setIsSearchOpen} />
       </>
     );
   }
@@ -599,6 +611,7 @@ function AuthenticatedApp() {
         open={isShortcutsOpen}
         onOpenChange={(open) => shortcutsHelp.set(open)}
       />
+      <SearchModal open={isSearchOpen} onOpenChange={setIsSearchOpen} />
     </>
   );
 }

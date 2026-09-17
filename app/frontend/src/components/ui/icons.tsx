@@ -253,6 +253,42 @@ export function ChevronsUpDownIcon({ className }: IconProps) {
   );
 }
 
+/** 搜索（lucide 的 search） */
+export function SearchIcon({ className }: IconProps) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.3-4.3" />
+    </svg>
+  );
+}
+
+/** 全部收起（四个箭头朝内，lucide 的 chevrons-down-up） */
+export function ChevronsDownUpIcon({ className }: IconProps) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m7 20 5-5 5 5" />
+      <path d="m7 4 5 5 5-5" />
+    </svg>
+  );
+}
+
 /** 导入（OPML） */
 export function UploadIcon({ className }: IconProps) {
   return (

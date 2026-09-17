@@ -4,6 +4,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"time"
 
@@ -42,6 +43,8 @@ type UnreadCount struct {
 type EntryRepository interface {
 	GetByID(ctx context.Context, id int64) (model.Entry, error)
 	List(ctx context.Context, filter EntryListFilter) ([]model.Entry, error)
+	// Search 用 FTS5 检索条目（标题/正文/作者/链接）
+	Search(ctx context.Context, keyword string, limit int) ([]model.Entry, error)
 	UpdateReadStatus(ctx context.Context, id int64, read bool) error
 	UpdateManyReadStatus(ctx context.Context, ids []int64, read bool) error
 	UpdateStarredStatus(ctx context.Context, id int64, starred bool) error
@@ -78,6 +81,62 @@ func (r *entryRepository) GetByID(ctx context.Context, id int64) (model.Entry, e
 		id,
 	)
 	return scanEntry(row)
+}
+
+// Search 关键词检索条目（标题/正文/作者/链接）。
+//
+// 用 LIKE 子串匹配而不是 FTS5：FTS5 的 unicode61 分词把一整串中文当成一个词，
+// 只有「从词首开始」的前缀能命中（搜「黄金」搜不到「今天黄金不错」里的那两个字），
+// 中文场景基本不可用；NextFlux 那边也就是标题 includes 一下。条目量级（几千条）下
+// LIKE 全表扫是毫秒级，够用且行为可预期。
+func (r *entryRepository) Search(ctx context.Context, keyword string, limit int) ([]model.Entry, error) {
+	trimmed := strings.TrimSpace(keyword)
+	if trimmed == "" {
+		return []model.Entry{}, nil
+	}
+
+	if limit <= 0 || limit > 200 {
+		limit = 30
+	}
+
+	pattern := "%" + escapeLikePattern(trimmed) + "%"
+	query := `
+		SELECT e.id, e.feed_id, e.hash, e.title, e.url, e.content, e.readable_content, e.thumbnail_url, e.author,
+		       e.published_at, e.read, e.starred, e.created_at, e.updated_at
+		FROM entries e
+		WHERE e.title LIKE ? ESCAPE '\'
+		   OR e.content LIKE ? ESCAPE '\'
+		   OR e.author LIKE ? ESCAPE '\'
+		   OR e.url LIKE ? ESCAPE '\'
+		ORDER BY e.published_at DESC
+		LIMIT ?
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, pattern, pattern, pattern, pattern, limit)
+	if err != nil {
+		return nil, fmt.Errorf("search entries: %w", err)
+	}
+	defer rows.Close()
+
+	entries := make([]model.Entry, 0, limit)
+	for rows.Next() {
+		entry, scanErr := scanEntry(rows)
+		if scanErr != nil {
+			return nil, fmt.Errorf("scan entry: %w", scanErr)
+		}
+		entries = append(entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate entries: %w", err)
+	}
+
+	return entries, nil
+}
+
+// escapeLikePattern 转义 LIKE 的通配符，避免用户输入的 % _ 变成「匹配任意」。
+func escapeLikePattern(input string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return replacer.Replace(input)
 }
 
 func (r *entryRepository) List(ctx context.Context, filter EntryListFilter) ([]model.Entry, error) {

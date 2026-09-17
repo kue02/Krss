@@ -482,6 +482,10 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 				// Restore media elements from placeholders
 				translatedHTML = ai.RestoreMediaFromPlaceholders(translatedHTML, mediaElements)
 
+				// 引文块的外层容器由我们兜住：模型经常把 <div class="rsshub-quote"> 当排版噪声丢掉，
+				// 丢掉之后正文里就看不出哪段是引文（点进去也没有引文样式）
+				translatedHTML = ai.RestoreOuterWrapper(b.HTML, translatedHTML)
+
 				// Send result
 				result := TranslateBlockResult{
 					Index:    b.Index,

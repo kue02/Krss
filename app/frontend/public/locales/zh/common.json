@@ -4,6 +4,8 @@
   },
   "sidebar": {
     "feeds": "订阅",
+    "expand_all": "全部展开",
+    "collapse_all": "全部收起",
     "sort_name": "按名称排序",
     "sort_date": "按日期排序",
     "starred": "已加星标",
@@ -285,7 +287,8 @@
     "add_provider": "添加",
     "set_active": "设为当前使用",
     "active_badge": "当前",
-    "active_provider_changed": "已设为当前使用（记得保存）",
+    "current_provider": "当前使用：{{name}} · {{model}}",
+    "active_provider_changed": "已设为当前使用（已保存）",
     "provider_name": "名称",
     "provider_name_placeholder": "给这份配置起个名字",
     "new_provider": "新提供商",
@@ -450,6 +453,7 @@
     "muted": "已静音"
   },
   "shortcuts": {
+    "search": "搜索",
     "title": "快捷键",
     "description": "在列表或文章上生效；输入框内不响应",
     "article": "文章",
@@ -486,6 +490,9 @@
     "font_family": "正文字体",
     "font_size": "正文字号",
     "line_height": "行高",
+    "quote_style": "引文样式",
+    "quote_style_block": "强调块",
+    "quote_style_divider": "分割线",
     "reduce_motion": "减少动态效果"
   },
   "reading_font": {
@@ -627,5 +634,17 @@
     "apply_history_confirm": "开始回溯",
     "apply_history_done": "已扫描 {{scanned}} 条，应用 {{applied}} 条",
     "apply_history_none": "没有需要补跑的历史条目"
+  }
+,
+  "search": {
+    "title": "搜索",
+    "articles_placeholder": "搜索文章…",
+    "feeds_placeholder": "搜索订阅…",
+    "tab_articles": "文章",
+    "tab_feeds": "订阅",
+    "switch": "切换",
+    "open": "打开",
+    "hint": "请输入关键词",
+    "no_results": "没有找到匹配的内容"
   }
 }

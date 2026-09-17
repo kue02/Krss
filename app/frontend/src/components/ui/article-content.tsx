@@ -9,6 +9,7 @@ import { parseHtml } from "@/lib/parse-html";
 import { getProxiedImageUrl } from "@/lib/image-proxy";
 import { useImagePreviewStore } from "@/stores/image-preview-store";
 import { ArticleImage, ArticleLinkContext } from "./article-image";
+import { ArticleVideo } from "./article-video";
 
 // Context for image preview - provides images list and open function
 export interface ImagePreviewContextValue {
@@ -137,6 +138,12 @@ const ArticleContentBlockRenderer = memo(function ArticleContentBlockRenderer({
           pruneImageCache();
           return element;
         },
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        video: ({ node: _, ...props }) =>
+          createElement(
+            ArticleVideo,
+            props as React.ComponentProps<typeof ArticleVideo>,
+          ),
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         a: ({ node: _, ...props }) =>
           createElement(ArticleLink, props as React.ComponentProps<"a">),

@@ -4,6 +4,8 @@
   },
   "sidebar": {
     "feeds": "Feeds",
+    "expand_all": "Expand all",
+    "collapse_all": "Collapse all",
     "sort_name": "Sort by Name",
     "sort_date": "Sort by Date",
     "starred": "Starred",
@@ -288,7 +290,8 @@
     "add_provider": "Add",
     "set_active": "Use this one",
     "active_badge": "active",
-    "active_provider_changed": "Set as active (remember to save)",
+    "current_provider": "In use: {{name}} · {{model}}",
+    "active_provider_changed": "Set as active (saved)",
     "provider_name": "Name",
     "provider_name_placeholder": "Name this configuration",
     "new_provider": "New provider",
@@ -453,6 +456,7 @@
     "muted": "Muted"
   },
   "shortcuts": {
+    "search": "Search",
     "title": "Keyboard shortcuts",
     "description": "Work on the list or the open article; ignored while typing",
     "article": "Article",
@@ -489,6 +493,9 @@
     "font_family": "Article font",
     "font_size": "Font size",
     "line_height": "Line height",
+    "quote_style": "Quote style",
+    "quote_style_block": "Highlighted",
+    "quote_style_divider": "Divider",
     "reduce_motion": "Reduce motion"
   },
   "reading_font": {
@@ -630,5 +637,17 @@
     "apply_history_confirm": "Run",
     "apply_history_done": "Scanned {{scanned}}, applied {{applied}}",
     "apply_history_none": "Nothing to backfill"
+  }
+,
+  "search": {
+    "title": "Search",
+    "articles_placeholder": "Search articles…",
+    "feeds_placeholder": "Search feeds…",
+    "tab_articles": "Articles",
+    "tab_feeds": "Feeds",
+    "switch": "switch",
+    "open": "open",
+    "hint": "Type a keyword",
+    "no_results": "No matching results"
   }
 }

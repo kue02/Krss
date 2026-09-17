@@ -13,12 +13,19 @@ export function stripContentImages(
   try {
     const doc = new DOMParser().parseFromString(html, "text/html");
 
+    // 引文块（.rsshub-quote / blockquote）里的媒体属于引文本身，留在引文框里；
+    // 只有正文自己的图片才摘出来放到底下那排缩略图（见用户反馈：引文里的图被甩到引文框外面）
+    const inQuote = (el: Element) =>
+      el.closest(".rsshub-quote, blockquote") !== null;
+
     for (const img of Array.from(doc.body.querySelectorAll("img, picture"))) {
+      if (inQuote(img)) continue;
       img.remove();
     }
 
-    // 只剩图片的 figure 会留下空壳，一并清掉
+    // 只剩图片的 figure 会留下空壳，一并清掉（引文里的不动）
     for (const figure of Array.from(doc.body.querySelectorAll("figure"))) {
+      if (inQuote(figure)) continue;
       if (!figure.textContent?.trim()) figure.remove();
     }
 

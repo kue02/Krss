@@ -23,6 +23,9 @@ import (
 
 const proxyTimeout = 30 * time.Second
 
+// maxProxyMediaBytes 单次代理回传的上限（视频可能几十 MB，别把内存吃爆）
+const maxProxyMediaBytes = 64 << 20
+
 var (
 	ErrInvalidURL       = fmt.Errorf("invalid URL")
 	ErrInvalidProtocol  = fmt.Errorf("invalid protocol")
@@ -35,10 +38,18 @@ var (
 type ProxyResult struct {
 	Data        []byte
 	ContentType string
+	// StatusCode 上游返回的状态码（206 表示这是 Range 请求的片段）
+	StatusCode int
+	// ContentRange / AcceptRanges 透传给浏览器，<video> 拖动进度条要用
+	ContentRange string
+	AcceptRanges string
 }
 
 type ProxyService interface {
 	FetchImage(ctx context.Context, imageURL, refererURL string) (*ProxyResult, error)
+	// FetchMedia 与 FetchImage 同一条管线，但额外支持音视频类型与 Range 请求
+	// （正文里的 <video> 走代理，见 frontend/src/components/ui/article-video.tsx）
+	FetchMedia(ctx context.Context, mediaURL, refererURL, rangeHeader string) (*ProxyResult, error)
 	Close()
 }
 
@@ -59,9 +70,13 @@ func (s *proxyService) Close() {
 }
 
 func (s *proxyService) FetchImage(ctx context.Context, imageURL, refererURL string) (*ProxyResult, error) {
+	return s.FetchMedia(ctx, imageURL, refererURL, "")
+}
+
+func (s *proxyService) FetchMedia(ctx context.Context, mediaURL, refererURL, rangeHeader string) (*ProxyResult, error) {
 	// 先用标准 HTTP 客户端：它能正确走「设置 → 网络」里配置的代理，也会自动跟随图床跳转
 	// （azuretls 会话在本机的 HTTP 代理下会超时，见 docs/移植笔记.md）
-	result, stdErr := s.fetchWithStandardClient(ctx, imageURL, refererURL)
+	result, stdErr := s.fetchWithStandardClient(ctx, mediaURL, refererURL, rangeHeader)
 	if stdErr == nil {
 		return result, nil
 	}
@@ -69,12 +84,13 @@ func (s *proxyService) FetchImage(ctx context.Context, imageURL, refererURL stri
 	logger.Debug("proxy standard client failed, falling back", "module", "service", "action", "fetch", "resource", "proxy", "result", "failed", "error", stdErr)
 
 	// 再退到 azuretls 会话（浏览器 TLS 指纹）：反爬 / Anubis 挑战的站点靠它
-	return s.fetchImageWithRetry(ctx, imageURL, refererURL, "", 0)
+	// （兜底这条路只做整段取，不带 Range）
+	return s.fetchImageWithRetry(ctx, mediaURL, refererURL, "", 0)
 }
 
 // fetchWithStandardClient 用 net/http 抓图：代理、跳转、cookie 都由标准栈处理。
 // 拿到的不是图片（例如 Anubis 挑战页）就返回错误，交给上层退到 azuretls。
-func (s *proxyService) fetchWithStandardClient(ctx context.Context, imageURL, refererURL string) (*ProxyResult, error) {
+func (s *proxyService) fetchWithStandardClient(ctx context.Context, imageURL, refererURL, rangeHeader string) (*ProxyResult, error) {
 	parsedURL, err := url.Parse(imageURL)
 	if err != nil {
 		return nil, ErrInvalidURL
@@ -100,22 +116,32 @@ func (s *proxyService) fetchWithStandardClient(ctx context.Context, imageURL, re
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	// 200 整段、206 片段都算成功（<video> 会带 Range 请求）
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
 		return nil, fmt.Errorf("%w: %d", ErrFetchFailed, resp.StatusCode)
 	}
 
-	data, err := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxProxyMediaBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrFetchFailed, err)
 	}
+	if len(data) > maxProxyMediaBytes {
+		return nil, fmt.Errorf("%w: response too large", ErrFetchFailed)
+	}
 
-	contentType, err := detectProxyImageContentType(data)
+	contentType, err := detectProxyMediaContentType(resp.Header.Get("Content-Type"), data)
 	if err != nil {
-		logger.Debug("proxy standard client got non-image", "module", "service", "action", "fetch", "resource", "proxy", "result", "failed", "host", parsedURL.Host, "error", err)
+		logger.Debug("proxy standard client got unsupported media", "module", "service", "action", "fetch", "resource", "proxy", "result", "failed", "host", parsedURL.Host, "error", err)
 		return nil, err
 	}
 
-	return &ProxyResult{Data: data, ContentType: contentType}, nil
+	return &ProxyResult{
+		Data:         data,
+		ContentType:  contentType,
+		StatusCode:   resp.StatusCode,
+		ContentRange: resp.Header.Get("Content-Range"),
+		AcceptRanges: resp.Header.Get("Accept-Ranges"),
+	}, nil
 }
 
 // setProxyImageHeaders 给标准客户端设置与 azuretls 那条路一致的取图请求头
@@ -217,9 +243,9 @@ func (s *proxyService) doFetch(ctx context.Context, session *azuretls.Session, i
 		return nil, ErrFetchFailed
 	}
 
-	contentType, err := detectProxyImageContentType(data)
+	contentType, err := detectProxyMediaContentType(resp.Header.Get("Content-Type"), data)
 	if err != nil {
-		logger.Warn("proxy invalid image", "module", "service", "action", "fetch", "resource", "proxy", "result", "failed", "host", parsedURL.Host, "error", err)
+		logger.Warn("proxy invalid media", "module", "service", "action", "fetch", "resource", "proxy", "result", "failed", "host", parsedURL.Host, "error", err)
 		return nil, err
 	}
 
@@ -227,6 +253,34 @@ func (s *proxyService) doFetch(ctx context.Context, session *azuretls.Session, i
 		Data:        data,
 		ContentType: contentType,
 	}, nil
+}
+
+// detectProxyMediaContentType 判定代理回来的东西能不能直接回给浏览器：
+// 图片照旧，另外放行 video/* 与 audio/*（正文里的 <video> 走的就是这条代理）。
+// header 优先（视频类型按内容嗅探不一定准），判定不出来再看内容。
+func detectProxyMediaContentType(header string, data []byte) (string, error) {
+	normalized := strings.ToLower(strings.TrimSpace(strings.Split(header, ";")[0]))
+	if isProxyableMediaType(normalized) {
+		return normalized, nil
+	}
+
+	contentType, err := detectProxyImageContentType(data)
+	if err == nil {
+		return contentType, nil
+	}
+
+	mtype := strings.ToLower(mimetype.Detect(data).String())
+	if isProxyableMediaType(mtype) {
+		return mtype, nil
+	}
+
+	return "", fmt.Errorf("%w: %s", ErrInvalidImage, mtype)
+}
+
+func isProxyableMediaType(contentType string) bool {
+	return strings.HasPrefix(contentType, "image/") ||
+		strings.HasPrefix(contentType, "video/") ||
+		strings.HasPrefix(contentType, "audio/")
 }
 
 func detectProxyImageContentType(data []byte) (string, error) {
