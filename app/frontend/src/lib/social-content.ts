@@ -17,20 +17,33 @@
 function normalizeQuoteBlocks(doc: Document): void {
   for (const quote of Array.from(doc.querySelectorAll(".rsshub-quote"))) {
     if (quote.querySelector(".rsshub-quote-author")) continue;
-    const text = quote.textContent ?? "";
-    // 作者名一般很短，且后面跟中英文冒号
-    const match = /^\s*([^：:\n]{1,30})\s*[：:]\s*([\s\S]+)$/.exec(text);
+
+    /*
+     * 只动「开头那一个文本节点」里的作者名。
+     *
+     * 原来是读 quote.textContent 之后把内容整体重建成两个 span —— 文本以外的节点
+     * （引文里的图片、视频、链接）会被一并丢掉，于是引文只剩一行字：
+     * 用户报的「点开正文看不到图片」和「引文里的媒体没被引文样式兜住」都是这个原因。
+     */
+    const walker = doc.createTreeWalker(quote, NodeFilter.SHOW_TEXT);
+    const firstText = walker.nextNode();
+    const value = firstText?.nodeValue;
+    if (!firstText || !value) continue;
+
+    // 作者名一般很短，且后面跟中英文冒号（且必须出现在整段开头）
+    const match = /^\s*([^：:\n]{1,30}?)\s*[：:]\s*/.exec(value);
     if (!match) continue;
 
-    const author = match[1] ?? "";
-    const rest = match[2] ?? "";
-    quote.textContent = "";
+    const author = match[1]?.trim() ?? "";
+    if (!author) continue;
+
     const authorEl = doc.createElement("span");
     authorEl.className = "rsshub-quote-author";
-    authorEl.textContent = author.trim();
-    const bodyEl = doc.createElement("span");
-    bodyEl.textContent = rest.trim();
-    quote.append(authorEl, bodyEl);
+    authorEl.textContent = author;
+
+    firstText.parentNode?.insertBefore(authorEl, firstText);
+    // 剩下的正文留在原文本节点里，后面的图片/视频/链接原样保留
+    firstText.nodeValue = value.slice(match[0].length);
   }
 }
 
