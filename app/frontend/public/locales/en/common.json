@@ -455,6 +455,7 @@
     "starred": "Starred"
   },
   "shortcuts": {
+    "search": "Search",
     "title": "Keyboard shortcuts",
     "description": "Work on the list or the open article; ignored while typing",
     "article": "Article",
@@ -518,5 +519,17 @@
     "rename": "Rename folder",
     "name_placeholder": "Folder name",
     "rename_failed": "Rename failed"
+  }
+,
+  "search": {
+    "title": "Search",
+    "articles_placeholder": "Search articles…",
+    "feeds_placeholder": "Search feeds…",
+    "tab_articles": "Articles",
+    "tab_feeds": "Feeds",
+    "switch": "switch",
+    "open": "open",
+    "hint": "Type a keyword",
+    "no_results": "No matching results"
   }
 }

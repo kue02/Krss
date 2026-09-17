@@ -24,6 +24,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { refreshAllFeeds } from "@/api";
 import { ShortcutsHelpDialog } from "@/components/shortcuts/ShortcutsHelpDialog";
+import { SearchModal } from "@/components/search/SearchModal";
 import { useGlobalHotkeys } from "@/hooks/useGlobalHotkeys";
 import {
   shortcutsHelp,
@@ -165,6 +166,7 @@ function AuthenticatedApp() {
 
   // ── 全局快捷键：? 快捷键帮助，r 刷新订阅 ──────────────────────────────
   const isShortcutsOpen = useShortcutsHelpOpen();
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const queryClient = useQueryClient();
   const refreshFeeds = useMutation({
     mutationFn: refreshAllFeeds,
@@ -181,6 +183,7 @@ function AuthenticatedApp() {
   useGlobalHotkeys({
     onToggleHelp: handleToggleShortcuts,
     onRefresh: handleRefreshShortcut,
+    onSearch: () => setIsSearchOpen(true),
     enabled: !isShortcutsOpen,
   });
 
@@ -475,6 +478,7 @@ function AuthenticatedApp() {
           open={isShortcutsOpen}
           onOpenChange={(open) => shortcutsHelp.set(open)}
         />
+        <SearchModal open={isSearchOpen} onOpenChange={setIsSearchOpen} />
       </>
     );
   }
@@ -539,6 +543,7 @@ function AuthenticatedApp() {
           open={isShortcutsOpen}
           onOpenChange={(open) => shortcutsHelp.set(open)}
         />
+        <SearchModal open={isSearchOpen} onOpenChange={setIsSearchOpen} />
       </>
     );
   }
@@ -598,6 +603,7 @@ function AuthenticatedApp() {
         open={isShortcutsOpen}
         onOpenChange={(open) => shortcutsHelp.set(open)}
       />
+      <SearchModal open={isSearchOpen} onOpenChange={setIsSearchOpen} />
     </>
   );
 }

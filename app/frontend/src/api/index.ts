@@ -470,6 +470,18 @@ export async function getRefreshStatus(): Promise<RefreshStatus> {
   return request<RefreshStatus>("/api/feeds/refresh");
 }
 
+/**
+ * 关键词检索条目（标题/正文/作者/链接），搜索弹窗用。
+ * 后端走子串匹配而不是 FTS5 —— unicode61 分词下中文只能从词首前缀命中，不可用。
+ */
+export async function searchEntries(
+  query: string,
+  limit = 30,
+): Promise<EntryListResponse> {
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  return request<EntryListResponse>(`/api/entries/search?${params.toString()}`);
+}
+
 export async function previewFeed(url: string): Promise<FeedPreview> {
   const params = new URLSearchParams({ url });
   return request<FeedPreview>(`/api/feeds/preview?${params.toString()}`);

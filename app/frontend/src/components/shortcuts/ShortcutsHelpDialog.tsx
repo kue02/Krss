@@ -29,6 +29,7 @@ const SIDEBAR_SHORTCUTS: ShortcutRow[] = [
 ];
 
 const GLOBAL_SHORTCUTS: ShortcutRow[] = [
+  { keys: ["F"], labelKey: "shortcuts.search" },
   { keys: ["R"], labelKey: "shortcuts.refresh" },
   { keys: ["?"], labelKey: "shortcuts.help" },
 ];

@@ -452,6 +452,7 @@
     "starred": "星标"
   },
   "shortcuts": {
+    "search": "搜索",
     "title": "快捷键",
     "description": "在列表或文章上生效；输入框内不响应",
     "article": "文章",
@@ -515,5 +516,17 @@
     "rename": "重命名文件夹",
     "name_placeholder": "文件夹名称",
     "rename_failed": "重命名失败"
+  }
+,
+  "search": {
+    "title": "搜索",
+    "articles_placeholder": "搜索文章…",
+    "feeds_placeholder": "搜索订阅…",
+    "tab_articles": "文章",
+    "tab_feeds": "订阅",
+    "switch": "切换",
+    "open": "打开",
+    "hint": "请输入关键词",
+    "no_results": "没有找到匹配的内容"
   }
 }
