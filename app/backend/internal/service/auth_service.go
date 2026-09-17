@@ -29,6 +29,8 @@ const (
 	keyUserEmail        = "user.email"
 	keyUserPasswordHash = "user.password_hash"
 	keyUserJWTSecret    = "user.jwt_secret"
+	// 自定义头像（data URL 或图片地址）。为空 = 用邮箱的 Gravatar（默认行为不变）。
+	keyUserAvatarURL = "user.avatar_url"
 )
 
 // Auth errors
@@ -69,7 +71,7 @@ type AuthService interface {
 	ValidateToken(token string) (bool, error)
 	// UpdateProfile updates user nickname, email and/or password.
 	// Returns new token when password is changed (old tokens become invalid).
-	UpdateProfile(ctx context.Context, nickname, email, currentPassword, newPassword string) (*UpdateProfileResponse, error)
+	UpdateProfile(ctx context.Context, nickname, email, currentPassword, newPassword string, avatarURL *string) (*UpdateProfileResponse, error)
 }
 
 // AuthResponse is returned after successful login/register.
@@ -253,7 +255,7 @@ func (s *authService) Login(ctx context.Context, identifier, password string) (*
 			Username:  storedUsername,
 			Nickname:  storedNickname,
 			Email:     storedEmail,
-			AvatarURL: gravatarURL(storedEmail),
+			AvatarURL: s.resolveAvatarURL(ctx, storedEmail),
 		},
 	}, nil
 }
@@ -278,7 +280,7 @@ func (s *authService) GetCurrentUser(ctx context.Context) (*User, error) {
 		Username:  username,
 		Nickname:  nickname,
 		Email:     email,
-		AvatarURL: gravatarURL(email),
+		AvatarURL: s.resolveAvatarURL(ctx, email),
 	}, nil
 }
 
@@ -331,7 +333,7 @@ func (s *authService) generateToken(username, jwtSecretHex string) (string, erro
 }
 
 // UpdateProfile updates user nickname, email and/or password.
-func (s *authService) UpdateProfile(ctx context.Context, nickname, email, currentPassword, newPassword string) (*UpdateProfileResponse, error) {
+func (s *authService) UpdateProfile(ctx context.Context, nickname, email, currentPassword, newPassword string, avatarURL *string) (*UpdateProfileResponse, error) {
 	// Check if user exists
 	username, err := s.getString(ctx, keyUserUsername)
 	if err != nil {
@@ -367,6 +369,16 @@ func (s *authService) UpdateProfile(ctx context.Context, nickname, email, curren
 			return nil, fmt.Errorf("update email: %w", err)
 		}
 		currentEmail = email
+	}
+
+	// 头像：nil = 不动；空串 = 恢复默认（Gravatar）；其它 = 存下来直接用
+	// （前端会把本地图片压到 128px 再转 data URL 传过来，所以这里不做下载/落盘）
+	if avatarURL != nil {
+		trimmed := strings.TrimSpace(*avatarURL)
+		if err := s.repo.Set(ctx, keyUserAvatarURL, trimmed); err != nil {
+			logger.Warn("auth profile update avatar failed", "module", "service", "action", "update", "resource", "auth", "result", "failed", "actor", username, "error", err)
+			return nil, fmt.Errorf("update avatar: %w", err)
+		}
 	}
 
 	var newToken *string
@@ -433,7 +445,7 @@ func (s *authService) UpdateProfile(ctx context.Context, nickname, email, curren
 			Username:  username,
 			Nickname:  currentNickname,
 			Email:     currentEmail,
-			AvatarURL: gravatarURL(currentEmail),
+			AvatarURL: s.resolveAvatarURL(ctx, currentEmail),
 		},
 		Token: newToken,
 	}, nil
@@ -449,6 +461,17 @@ func (s *authService) getString(ctx context.Context, key string) (string, error)
 		return "", nil
 	}
 	return setting.Value, nil
+}
+
+// resolveAvatarURL 返回该用户实际该用的头像地址：
+// 用户自定义过就用自定义的，否则沿用邮箱的 Gravatar（默认行为不变）。
+func (s *authService) resolveAvatarURL(ctx context.Context, email string) string {
+	if custom, err := s.getString(ctx, keyUserAvatarURL); err == nil {
+		if trimmed := strings.TrimSpace(custom); trimmed != "" {
+			return trimmed
+		}
+	}
+	return gravatarURL(email)
 }
 
 // gravatarURL generates a Gravatar URL for the given email.

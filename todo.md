@@ -163,7 +163,14 @@
       备份：`~/Documents/Docker/gist-nextflux/data.bak-0917-2217`
 - [ ] **10-11 星标再加一档「只显示当前视图」**：即只显示在当前内容类型（视图）下的星标条目
 - [ ] **10-12 图片视图**：加瀑布流设置；点开图片后左右加箭头可切换上一张/下一张
-- [ ] **10-13 个人资料可修改头像**
+- [x] **10-13 个人资料可修改头像**（2026-09-17）：原先头像**只能是邮箱的 Gravatar**（`gravatarURL(email)`，没有可改字段）。
+      后端：新增设置键 `user.avatar_url`（空 = 沿用 Gravatar，**默认行为不变**），`PUT /api/auth/profile` 收可选 `avatarUrl`
+      （不传 = 不动；空串 = 恢复默认；其余 = 直接用），三处返回头像的地方改走 `resolveAvatarURL()`；接口签名变更已 `make gen` 重生成 mock、`swag init` 重生成文档。
+      前端：资料弹窗顶部加头像区 —— **上传图片**（`createImageBitmap` + canvas 压到 128px → JPEG data URL，几 KB）、**用图片地址**、**恢复默认头像**。
+      实测：真实上传一张 196KB PNG → 库里 `user.avatar_url` 变成 **3195 字符的 `data:image/jpeg`**（≈2.4KB）、侧栏头像直接渲染该图（24px）；
+      `/api/auth/me` 返回同值；点「恢复默认头像」→ 库里该键变空、预览回到默认 ✓。
+      顺带修一个真 bug：`AvatarFace` 会缓存「加载失败」，Gravatar 404 后即使设置了新头像也仍显示首字母 → 改为 `avatarUrl` 变化时重置。
+      门禁：后端 `make test` 全绿 + `make lint` 0 issues；前端 `bunx tsc -b` 干净、`bun run test` 607/607
 - [x] **10-14 规则行右侧「⋯」菜单每一项都点不动（回归，优先修）**（2026-09-17 真实鼠标复现 + 修复 + 真点验证）：
       根因不在菜单本身 —— 打开 Modal/Drawer 时 react-aria 把 **`<body>` 设成 `pointer-events: none`**（点外部由 overlay 兜关闭），
       而 HeroUI 弹层是 portal 到 body 的兄弟节点、**继承了这个 none** → 真实点击穿透到 `<html>`（合成事件直接派发到元素，所以单测/脚本里是「好的」）。

@@ -102,18 +102,18 @@ func (mr *MockAuthServiceMockRecorder) Register(ctx, username, nickname, email, 
 }
 
 // UpdateProfile mocks base method.
-func (m *MockAuthService) UpdateProfile(ctx context.Context, nickname, email, currentPassword, newPassword string) (*service.UpdateProfileResponse, error) {
+func (m *MockAuthService) UpdateProfile(ctx context.Context, nickname, email, currentPassword, newPassword string, avatarURL *string) (*service.UpdateProfileResponse, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateProfile", ctx, nickname, email, currentPassword, newPassword)
+	ret := m.ctrl.Call(m, "UpdateProfile", ctx, nickname, email, currentPassword, newPassword, avatarURL)
 	ret0, _ := ret[0].(*service.UpdateProfileResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // UpdateProfile indicates an expected call of UpdateProfile.
-func (mr *MockAuthServiceMockRecorder) UpdateProfile(ctx, nickname, email, currentPassword, newPassword any) *gomock.Call {
+func (mr *MockAuthServiceMockRecorder) UpdateProfile(ctx, nickname, email, currentPassword, newPassword, avatarURL any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateProfile", reflect.TypeOf((*MockAuthService)(nil).UpdateProfile), ctx, nickname, email, currentPassword, newPassword)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateProfile", reflect.TypeOf((*MockAuthService)(nil).UpdateProfile), ctx, nickname, email, currentPassword, newPassword, avatarURL)
 }
 
 // ValidateToken mocks base method.

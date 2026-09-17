@@ -1,8 +1,9 @@
-import { useState, useEffect, type FormEvent } from "react";
+import { useState, useEffect, useRef, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { getCurrentUser, updateProfile, setAuthToken } from "@/api";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
+import { UserAvatar } from "@/components/sidebar/ProfileButton";
 
 export function ProfileSettings() {
   const { t } = useTranslation();
@@ -26,6 +27,12 @@ export function ProfileSettings() {
     "idle" | "success" | "error"
   >("idle");
   const [error, setError] = useState<string | null>(null);
+  const [avatarUrlInput, setAvatarUrlInput] = useState("");
+  const [isLoadingAvatar, setIsLoadingAvatar] = useState(false);
+  const [avatarStatus, setAvatarStatus] = useState<"idle" | "success" | "error">(
+    "idle",
+  );
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (user) {
@@ -44,6 +51,43 @@ export function ProfileSettings() {
         });
     }
   }, [user]);
+
+  /**
+   * 头像：本地图片先压到 128px 再转 data URL（几 KB），这样：
+   * - 不用为此加一套文件上传/静态服务；
+   * - 设置值本身就能直接被 <img src> 用；
+   * - 服务端只存字符串，默认行为（没设过用 Gravatar）不变。
+   */
+  const applyAvatar = async (avatarUrl: string, errorText?: string) => {
+    setIsLoadingAvatar(true);
+    setAvatarStatus("idle");
+    setError(null);
+    try {
+      const result = await updateProfile({ avatarUrl });
+      setUser(result.user);
+      setAvatarStatus("success");
+      setTimeout(() => setAvatarStatus("idle"), 2000);
+    } catch (err) {
+      setAvatarStatus("error");
+      setError(errorText ?? (err instanceof Error ? err.message : "Failed to update avatar"));
+    } finally {
+      setIsLoadingAvatar(false);
+    }
+  };
+
+  const handlePickAvatarFile = async (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError(t("profile.avatar_invalid"));
+      return;
+    }
+    try {
+      const dataUrl = await downscaleImage(file, 128);
+      await applyAvatar(dataUrl);
+    } catch {
+      setError(t("profile.avatar_invalid"));
+    }
+  };
 
   const handleSaveNickname = async () => {
     setIsLoadingNickname(true);
@@ -132,6 +176,86 @@ export function ProfileSettings() {
           </button>
         </div>
       )}
+
+      {/* Avatar Section */}
+      <section>
+        <div className="flex items-center gap-4">
+          <UserAvatar
+            className="size-16 shrink-0 border-0"
+            avatarUrl={user?.avatarUrl}
+            name={user?.nickname || user?.username || ""}
+          />
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium">{t("profile.avatar")}</div>
+            <div className="text-xs text-muted-foreground">
+              {t("profile.avatar_hint")}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => avatarInputRef.current?.click()}
+                disabled={isLoadingAvatar}
+                className={cn(
+                  "h-8 rounded-md px-3 text-xs font-medium transition-colors",
+                  "bg-primary text-primary-foreground hover:bg-primary/90",
+                  "disabled:cursor-not-allowed disabled:opacity-50",
+                  avatarStatus === "success" && "bg-green-600 hover:bg-green-600",
+                  avatarStatus === "error" && "bg-destructive hover:bg-destructive",
+                )}
+              >
+                {isLoadingAvatar
+                  ? t("profile.saving")
+                  : avatarStatus === "success"
+                    ? t("profile.saved")
+                    : t("profile.avatar_upload")}
+              </button>
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(event) => {
+                  void handlePickAvatarFile(event.target.files?.[0]);
+                  event.target.value = "";
+                }}
+              />
+              <input
+                type="text"
+                value={avatarUrlInput}
+                onChange={(event) => setAvatarUrlInput(event.target.value)}
+                placeholder={t("profile.avatar_url_placeholder")}
+                className={cn(
+                  "h-8 w-44 max-w-full rounded-md border border-border bg-background px-2 text-xs",
+                  "placeholder:text-muted-foreground/50",
+                  "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
+                )}
+              />
+              <button
+                type="button"
+                onClick={() => void applyAvatar(avatarUrlInput.trim())}
+                disabled={isLoadingAvatar || !avatarUrlInput.trim()}
+                className={cn(
+                  "h-8 rounded-md border border-border px-2.5 text-xs font-medium transition-colors",
+                  "hover:bg-secondary/60 disabled:cursor-not-allowed disabled:opacity-40",
+                )}
+              >
+                {t("profile.avatar_use_url")}
+              </button>
+              <button
+                type="button"
+                onClick={() => void applyAvatar("")}
+                disabled={isLoadingAvatar}
+                className={cn(
+                  "h-8 rounded-md px-2.5 text-xs font-medium text-muted-foreground transition-colors",
+                  "hover:bg-secondary/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40",
+                )}
+              >
+                {t("profile.avatar_reset")}
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* Username Section (Read-only) */}
       <section>
@@ -320,4 +444,23 @@ export function ProfileSettings() {
       </section>
     </div>
   );
+}
+
+/**
+ * 把用户选的图片压到 maxSize 见方、JPEG 0.85，返回 data URL。
+ * 头像用不着大图：128px 的 JPEG 大约几 KB，直接存进设置也毫无压力。
+ */
+async function downscaleImage(file: File, maxSize: number): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxSize / Math.max(bitmap.width, bitmap.height));
+  const width = Math.max(1, Math.round(bitmap.width * scale));
+  const height = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("canvas unavailable");
+  ctx.drawImage(bitmap, 0, 0, width, height);
+  bitmap.close?.();
+  return canvas.toDataURL("image/jpeg", 0.85);
 }

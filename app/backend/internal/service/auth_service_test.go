@@ -115,25 +115,25 @@ func TestAuthService_UpdateProfile(t *testing.T) {
 	repo.data[service.KeyUserEmail] = "alice@example.com"
 	repo.data[service.KeyUserPasswordHash] = string(hash)
 
-	updated, err := svc.UpdateProfile(context.Background(), "New Nick", "new@example.com", "", "")
+	updated, err := svc.UpdateProfile(context.Background(), "New Nick", "new@example.com", "", "", nil)
 	require.NoError(t, err, "update profile should not fail")
 	require.Equal(t, "New Nick", updated.User.Nickname)
 	require.Equal(t, "new@example.com", updated.User.Email)
 	require.Nil(t, updated.Token, "expected no token for non-password update")
 
-	_, err = svc.UpdateProfile(context.Background(), "", "", "", "newpass")
+	_, err = svc.UpdateProfile(context.Background(), "", "", "", "newpass", nil)
 	require.ErrorIs(t, err, service.ErrCurrentPasswordRequiredHelper)
 
-	_, err = svc.UpdateProfile(context.Background(), "", "", "wrong", "newpass")
+	_, err = svc.UpdateProfile(context.Background(), "", "", "wrong", "newpass", nil)
 	require.ErrorIs(t, err, service.ErrInvalidPasswordHelper)
 
-	_, err = svc.UpdateProfile(context.Background(), "", "", "secret1", "123")
+	_, err = svc.UpdateProfile(context.Background(), "", "", "secret1", "123", nil)
 	require.ErrorIs(t, err, service.ErrPasswordTooShortHelper)
 
-	_, err = svc.UpdateProfile(context.Background(), "", "", "secret1", "secret1")
+	_, err = svc.UpdateProfile(context.Background(), "", "", "secret1", "secret1", nil)
 	require.ErrorIs(t, err, service.ErrSamePasswordHelper)
 
-	updated, err = svc.UpdateProfile(context.Background(), "", "", "secret1", "newpass1")
+	updated, err = svc.UpdateProfile(context.Background(), "", "", "secret1", "newpass1", nil)
 	require.NoError(t, err, "update password should not fail")
 	require.Equal(t, "alice", updated.User.Username)
 	require.NotNil(t, updated.Token, "expected new token after password change")
@@ -223,4 +223,47 @@ func TestAuthService_CheckUserExists_RepoError(t *testing.T) {
 	_, err := svc.CheckUserExists(context.Background())
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "database error")
+}
+
+func TestAuthService_UpdateProfile_Avatar(t *testing.T) {
+	repo := newSettingsRepoStub()
+	svc := service.NewAuthService(repo)
+	ctx := context.Background()
+
+	require.NoError(t, repo.Set(ctx, "user.username", "kue"))
+	require.NoError(t, repo.Set(ctx, "user.email", "kue@example.com"))
+
+	// 默认：Gravatar
+	current, err := svc.GetCurrentUser(ctx)
+	require.NoError(t, err)
+	require.Contains(t, current.AvatarURL, "gravatar.com")
+
+	// 设置自定义头像（前端会把本地图片压成 data URL）
+	custom := "data:image/jpeg;base64,AAAA"
+	updated, err := svc.UpdateProfile(ctx, "", "", "", "", &custom)
+	require.NoError(t, err)
+	require.Equal(t, custom, updated.User.AvatarURL)
+	require.Equal(t, custom, mustCurrentAvatar(t, svc, ctx))
+
+	// 传空串 = 恢复默认（Gravatar）
+	empty := ""
+	updated, err = svc.UpdateProfile(ctx, "", "", "", "", &empty)
+	require.NoError(t, err)
+	require.Contains(t, updated.User.AvatarURL, "gravatar.com")
+	require.Contains(t, mustCurrentAvatar(t, svc, ctx), "gravatar.com")
+
+	// 不传（nil）= 不动：先设自定义，再用 nil 调一次，仍然是自定义
+	custom2 := "https://example.com/me.png"
+	_, err = svc.UpdateProfile(ctx, "", "", "", "", &custom2)
+	require.NoError(t, err)
+	_, err = svc.UpdateProfile(ctx, "Nick", "", "", "", nil)
+	require.NoError(t, err)
+	require.Equal(t, custom2, mustCurrentAvatar(t, svc, ctx))
+}
+
+func mustCurrentAvatar(t *testing.T, svc service.AuthService, ctx context.Context) string {
+	t.Helper()
+	user, err := svc.GetCurrentUser(ctx)
+	require.NoError(t, err)
+	return user.AvatarURL
 }

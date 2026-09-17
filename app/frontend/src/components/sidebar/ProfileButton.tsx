@@ -58,6 +58,11 @@ function AvatarFace({
   letterClassName?: string;
 }) {
   const [failed, setFailed] = React.useState(false);
+  // 换了头像地址要把「上次加载失败」清掉：否则 Gravatar 404 之后即使设置了新头像，
+  // 仍然一直显示首字母（2026-09-17 实测：上传成功后预览还是字母）。
+  React.useEffect(() => {
+    setFailed(false);
+  }, [avatarUrl]);
   const letter = (name?.trim()?.[0] ?? "?").toUpperCase();
 
   if (avatarUrl && !failed) {

@@ -393,7 +393,14 @@
     "save_password": "修改密码",
     "saving": "保存中...",
     "saved": "已保存",
-    "password_changed": "密码已修改"
+    "password_changed": "密码已修改",
+    "avatar": "头像",
+    "avatar_hint": "不设置就用邮箱对应的 Gravatar；本地图片会自动压到 128px",
+    "avatar_upload": "上传图片",
+    "avatar_use_url": "用图片地址",
+    "avatar_url_placeholder": "https://…",
+    "avatar_reset": "恢复默认头像",
+    "avatar_invalid": "这个文件不是图片，换一张试试"
   },
   "feeds": {
     "folder_overrides_menu": "批量设置订阅",

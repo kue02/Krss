@@ -44,6 +44,8 @@ type updateProfileRequest struct {
 	Email           string `json:"email"`
 	CurrentPassword string `json:"currentPassword"`
 	NewPassword     string `json:"newPassword"`
+	// 头像：不传 = 不动；空串 = 恢复默认（Gravatar）；其余 = 自定义地址（前端把本地图片压成 data URL）
+	AvatarURL *string `json:"avatarUrl"`
 }
 
 type authResponse struct {
@@ -210,7 +212,7 @@ func (h *AuthHandler) UpdateProfile(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
 	}
 
-	result, err := h.service.UpdateProfile(c.Request().Context(), req.Nickname, req.Email, req.CurrentPassword, req.NewPassword)
+	result, err := h.service.UpdateProfile(c.Request().Context(), req.Nickname, req.Email, req.CurrentPassword, req.NewPassword, req.AvatarURL)
 	if err != nil {
 		logger.Warn("auth profile update failed", "module", "handler", "action", "update", "resource", "auth", "result", "failed", "error", err)
 		return h.handleAuthError(c, err)

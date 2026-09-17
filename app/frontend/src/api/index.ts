@@ -314,6 +314,8 @@ export interface UpdateProfileRequest {
   email?: string;
   currentPassword?: string;
   newPassword?: string;
+  /** 头像：不传 = 不动；空串 = 恢复默认（Gravatar）；其余 = 自定义地址（本地图片前端会压成 data URL） */
+  avatarUrl?: string;
 }
 
 export interface UpdateProfileResponse {

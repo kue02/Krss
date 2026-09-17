@@ -396,7 +396,14 @@
     "save_password": "Change Password",
     "saving": "Saving...",
     "saved": "Saved",
-    "password_changed": "Password changed"
+    "password_changed": "Password changed",
+    "avatar": "Avatar",
+    "avatar_hint": "Leave empty to use the Gravatar for your email; local images are resized to 128px",
+    "avatar_upload": "Upload image",
+    "avatar_use_url": "Use image URL",
+    "avatar_url_placeholder": "https://…",
+    "avatar_reset": "Reset to default",
+    "avatar_invalid": "That file is not an image"
   },
   "feeds": {
     "folder_overrides_menu": "Bulk settings",

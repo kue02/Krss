@@ -188,7 +188,7 @@ func TestAuthHandler_UpdateProfile_Success(t *testing.T) {
 	}
 
 	mockService.EXPECT().
-		UpdateProfile(gomock.Any(), "New Nickname", "new@example.com", "", "").
+		UpdateProfile(gomock.Any(), "New Nickname", "new@example.com", "", "", nil).
 		Return(&service.UpdateProfileResponse{User: updatedUser}, nil)
 
 	err := h.UpdateProfile(c)
@@ -416,7 +416,7 @@ func TestAuthHandler_UpdateProfile_CurrentPasswordRequired(t *testing.T) {
 	c, rec := newTestContext(e, req)
 
 	mockService.EXPECT().
-		UpdateProfile(gomock.Any(), "", "", "", "newpass123").
+		UpdateProfile(gomock.Any(), "", "", "", "newpass123", nil).
 		Return(nil, service.ErrCurrentPasswordRequired)
 
 	err := h.UpdateProfile(c)
@@ -440,7 +440,7 @@ func TestAuthHandler_UpdateProfile_SamePassword(t *testing.T) {
 	c, rec := newTestContext(e, req)
 
 	mockService.EXPECT().
-		UpdateProfile(gomock.Any(), "", "", "oldpass", "oldpass").
+		UpdateProfile(gomock.Any(), "", "", "oldpass", "oldpass", nil).
 		Return(nil, service.ErrSamePassword)
 
 	err := h.UpdateProfile(c)
@@ -620,7 +620,7 @@ func TestAuthHandler_UpdateProfile_InternalError(t *testing.T) {
 	c, rec := newTestContext(e, req)
 
 	mockService.EXPECT().
-		UpdateProfile(gomock.Any(), "New Nickname", "", "", "").
+		UpdateProfile(gomock.Any(), "New Nickname", "", "", "", nil).
 		Return(nil, errors.New("unexpected database error"))
 
 	err := h.UpdateProfile(c)
@@ -651,7 +651,7 @@ func TestAuthHandler_UpdateProfile_PasswordChange_WithNewToken(t *testing.T) {
 	}
 
 	mockService.EXPECT().
-		UpdateProfile(gomock.Any(), "", "", "oldpass", "newpass123").
+		UpdateProfile(gomock.Any(), "", "", "oldpass", "newpass123", nil).
 		Return(&service.UpdateProfileResponse{User: updatedUser, Token: &newToken}, nil)
 
 	err := h.UpdateProfile(c)

@@ -4018,6 +4018,10 @@
         "internal_handler.updateProfileRequest": {
             "type": "object",
             "properties": {
+                "avatarUrl": {
+                    "description": "头像：不传 = 不动；空串 = 恢复默认（Gravatar）；其余 = 自定义地址（前端把本地图片压成 data URL）",
+                    "type": "string"
+                },
                 "currentPassword": {
                     "type": "string"
                 },
