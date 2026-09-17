@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
+	"time"
 
 	"gist/backend/internal/model"
 	"gist/backend/internal/repository"
@@ -13,9 +14,11 @@ import (
 )
 
 type EntryListParams struct {
-	FeedID       *int64
-	FolderID     *int64
-	ContentType  *string
+	FeedID      *int64
+	FolderID    *int64
+	ContentType *string
+	// ViewID 按「保存筛选视图」取条目（filters.kind = view）：作用域与条件都来自视图
+	ViewID       *int64
 	UnreadOnly   bool
 	StarredOnly  bool
 	HasThumbnail bool
@@ -50,17 +53,21 @@ type entryService struct {
 	entries repository.EntryRepository
 	feeds   repository.FeedRepository
 	folders repository.FolderRepository
+	// filters 只读用途：把「保存筛选视图」（filters.kind = view）的作用域与条件套到列表上
+	filters repository.FilterRepository
 }
 
 func NewEntryService(
 	entries repository.EntryRepository,
 	feeds repository.FeedRepository,
 	folders repository.FolderRepository,
+	filters repository.FilterRepository,
 ) EntryService {
 	return &entryService{
 		entries: entries,
 		feeds:   feeds,
 		folders: folders,
+		filters: filters,
 	}
 }
 
@@ -110,6 +117,11 @@ func (s *entryService) List(ctx context.Context, params EntryListParams) ([]mode
 		limit = 101
 	}
 
+	// 「保存筛选视图」：作用域与条件都来自视图，其余列表参数（未读/内容类型/星标/静音口径）照旧生效
+	if params.ViewID != nil {
+		return s.listByView(ctx, *params.ViewID, params, limit)
+	}
+
 	filter := repository.EntryListFilter{
 		FeedID:       params.FeedID,
 		FolderID:     params.FolderID,
@@ -130,6 +142,107 @@ func (s *entryService) List(ctx context.Context, params EntryListParams) ([]mode
 	}
 	logger.Debug("entry list", "module", "service", "action", "list", "resource", "entry", "result", "ok", "count", len(entries))
 	return entries, nil
+}
+
+// viewScanLimit 视图最多回看这么多条再在内存里按条件筛（避免为「一个视图」改造成 SQL 条件翻译）。
+// 视图本来就是「最近这些内容」的阅读入口，配未读/星标等胶囊足够收窄。
+const viewScanLimit = 1000
+
+// listByView 按「保存筛选视图」取条目：作用域 + 条件与规则引擎用的是同一套求值函数（不会两套语义）。
+//
+// 分页口径：作用域内先取最近 viewScanLimit 条，在内存里按条件筛完再按 offset/limit 切片。
+// handler 仍然按「多要一条判断 hasMore」的惯例调用 —— 这里的 limit 已经是 limit+1。
+func (s *entryService) listByView(ctx context.Context, viewID int64, params EntryListParams, limit int) ([]model.Entry, error) {
+	view, err := s.filters.GetByID(ctx, viewID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	if view.Kind != model.FilterKindView {
+		return nil, ErrNotFound
+	}
+
+	// 视图的作用域覆盖列表里的 feedId/folderId；其余筛选参数继续生效
+	scope := repository.EntryListFilter{
+		ContentType:  params.ContentType,
+		UnreadOnly:   params.UnreadOnly,
+		StarredOnly:  params.StarredOnly,
+		HasThumbnail: params.HasThumbnail,
+		IncludeMuted: params.IncludeMuted,
+		MutedOnly:    params.MutedOnly,
+		Limit:        viewScanLimit,
+	}
+	switch view.ScopeType {
+	case model.FilterScopeFeed:
+		scope.FeedID = view.ScopeID
+	case model.FilterScopeFolder:
+		scope.FolderID = view.ScopeID
+	}
+
+	candidates, err := s.entries.List(ctx, scope)
+	if err != nil {
+		logger.Error("entry list by view failed", "module", "service", "action", "list", "resource", "entry", "result", "failed", "view_id", viewID, "error", err)
+		return nil, err
+	}
+
+	feedByID, folderNames, err := s.viewContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	matched := make([]model.Entry, 0, limit)
+	skipped := 0
+	for _, entry := range candidates {
+		feed, ok := feedByID[entry.FeedID]
+		if !ok {
+			continue
+		}
+		if !ScopeMatches(view, feed) {
+			continue
+		}
+		entryCtx := buildEntryContext(entry, feed, folderNames)
+		// 视图不执行动作，AI 条件自然也不该在浏览列表时花钱：这里不注入判定函数（判不成 = 不命中）
+		if !MatchConditions(entryCtx, view.Conditions, now, nil) {
+			continue
+		}
+		if skipped < params.Offset {
+			skipped++
+			continue
+		}
+		matched = append(matched, entry)
+		if len(matched) >= limit {
+			break
+		}
+	}
+
+	logger.Debug("entry list by view", "module", "service", "action", "list", "resource", "entry", "result", "ok",
+		"view_id", viewID, "scanned", len(candidates), "matched", len(matched))
+	return matched, nil
+}
+
+// viewContext 视图求值要用订阅元数据与分类名（与规则引擎共用同一份上下文构造）。
+func (s *entryService) viewContext(ctx context.Context) (map[int64]model.Feed, map[int64]string, error) {
+	feeds, err := s.feeds.List(ctx, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	feedByID := make(map[int64]model.Feed, len(feeds))
+	for _, feed := range feeds {
+		feedByID[feed.ID] = feed
+	}
+
+	folderNames := make(map[int64]string)
+	if s.folders != nil {
+		if folders, err := s.folders.List(ctx); err == nil {
+			for _, folder := range folders {
+				folderNames[folder.ID] = folder.Name
+			}
+		}
+	}
+	return feedByID, folderNames, nil
 }
 
 func (s *entryService) GetByID(ctx context.Context, id int64) (model.Entry, error) {

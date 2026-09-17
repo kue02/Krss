@@ -20,7 +20,7 @@ func TestEntryService_Unmute_ClearsMarksAndRestoresUnread(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 
 	ctx := context.Background()
 	filterID := int64(42)
@@ -41,7 +41,7 @@ func TestEntryService_Unmute_NotMutedIsNoop(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 
 	ctx := context.Background()
 	mockEntries.EXPECT().
@@ -58,7 +58,7 @@ func TestEntryService_Unmute_MissingEntry(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 
 	ctx := context.Background()
 	mockEntries.EXPECT().GetByID(ctx, int64(9)).Return(model.Entry{}, errors.New("sql: no rows in result set"))

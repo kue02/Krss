@@ -117,21 +117,6 @@ func (mr *MockEntryServiceMockRecorder) GetUnreadCounts(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUnreadCounts", reflect.TypeOf((*MockEntryService)(nil).GetUnreadCounts), ctx)
 }
 
-// Search mocks base method.
-func (m *MockEntryService) Search(ctx context.Context, keyword string, limit int) ([]model.Entry, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Search", ctx, keyword, limit)
-	ret0, _ := ret[0].([]model.Entry)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// Search indicates an expected call of Search.
-func (mr *MockEntryServiceMockRecorder) Search(ctx, keyword, limit any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Search", reflect.TypeOf((*MockEntryService)(nil).Search), ctx, keyword, limit)
-}
-
 // List mocks base method.
 func (m *MockEntryService) List(ctx context.Context, params service.EntryListParams) ([]model.Entry, error) {
 	m.ctrl.T.Helper()
@@ -201,6 +186,21 @@ func (m *MockEntryService) MarkManyAsRead(ctx context.Context, ids []int64, read
 func (mr *MockEntryServiceMockRecorder) MarkManyAsRead(ctx, ids, read any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkManyAsRead", reflect.TypeOf((*MockEntryService)(nil).MarkManyAsRead), ctx, ids, read)
+}
+
+// Search mocks base method.
+func (m *MockEntryService) Search(ctx context.Context, keyword string, limit int) ([]model.Entry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Search", ctx, keyword, limit)
+	ret0, _ := ret[0].([]model.Entry)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Search indicates an expected call of Search.
+func (mr *MockEntryServiceMockRecorder) Search(ctx, keyword, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Search", reflect.TypeOf((*MockEntryService)(nil).Search), ctx, keyword, limit)
 }
 
 // Unmute mocks base method.

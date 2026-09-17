@@ -91,18 +91,29 @@ func main() {
 	}()
 
 	folderService := service.NewFolderService(folderRepo, feedRepo)
-	// 规则引擎：抓取入库之后跑，只改条目上的标记（muted / read / starred）。
+	// 规则引擎：抓取入库之后跑，只改条目上的标记（muted / read / starred / auto-translate）。
 	// 本项目有两条入库路径（新订阅首次抓取、刷新），两条都要过规则，所以先建它再注入。
-	filterService := service.NewFilterService(filterRepo, entryRepo, feedRepo, folderRepo)
+	// AI 与 webhook 是 P2/P3 动作的依赖：AI 供「AI 条件」与「自然语言建规则」，
+	// webhook 用统一的网络层（继承代理设置）出网投递（所以 aiService 得先于它建好）。
+	aiService := service.NewAIServiceWithFeedContext(aiSummaryRepo, aiTranslationRepo, aiListTranslationRepo, settingsRepo, rateLimiter, entryRepo, feedRepo, clientFactory)
+	webhookClient := clientFactory.NewHTTPClient(context.Background(), 15*time.Second)
+	filterService := service.NewFilterService(service.FilterServiceDeps{
+		Filters: filterRepo,
+		Entries: entryRepo,
+		Feeds:   feedRepo,
+		Folders: folderRepo,
+		AI:      aiService,
+		Webhook: service.NewHTTPWebhookSender(webhookClient),
+	})
 	feedService := service.NewFeedService(feedRepo, folderRepo, entryRepo, iconService, settingsService, clientFactory, anubisSolver, filterService)
-	entryService := service.NewEntryService(entryRepo, feedRepo, folderRepo)
+	// 条目列表要能按「保存筛选视图」（filters.kind = view）筛，所以 entryService 也拿到 filterRepo
+	entryService := service.NewEntryService(entryRepo, feedRepo, folderRepo, filterRepo)
 	readabilityService := service.NewReadabilityService(entryRepo, clientFactory, anubisSolver)
 	domainRateLimitService := service.NewDomainRateLimitService(domainRateLimitRepo)
 	refreshService := service.NewRefreshService(feedRepo, entryRepo, settingsService, iconService, clientFactory, anubisSolver, domainRateLimitService, filterService)
 	opmlService := service.NewOPMLService(folderService, feedService, refreshService, iconService, folderRepo, feedRepo)
 
 	proxyService := service.NewProxyService(clientFactory, anubisSolver)
-	aiService := service.NewAIServiceWithFeedContext(aiSummaryRepo, aiTranslationRepo, aiListTranslationRepo, settingsRepo, rateLimiter, entryRepo, feedRepo, clientFactory)
 	authService := service.NewAuthService(settingsRepo)
 
 	folderHandler := handler.NewFolderHandler(folderService)

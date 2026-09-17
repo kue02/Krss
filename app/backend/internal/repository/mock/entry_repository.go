@@ -190,21 +190,6 @@ func (mr *MockEntryRepositoryMockRecorder) GetStarredCount(ctx any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStarredCount", reflect.TypeOf((*MockEntryRepository)(nil).GetStarredCount), ctx)
 }
 
-// Search mocks base method.
-func (m *MockEntryRepository) Search(ctx context.Context, keyword string, limit int) ([]model.Entry, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Search", ctx, keyword, limit)
-	ret0, _ := ret[0].([]model.Entry)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// Search indicates an expected call of Search.
-func (mr *MockEntryRepositoryMockRecorder) Search(ctx, keyword, limit any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Search", reflect.TypeOf((*MockEntryRepository)(nil).Search), ctx, keyword, limit)
-}
-
 // List mocks base method.
 func (m *MockEntryRepository) List(ctx context.Context, filter repository.EntryListFilter) ([]model.Entry, error) {
 	m.ctrl.T.Helper()
@@ -247,6 +232,21 @@ func (m *MockEntryRepository) ResetFilterState(ctx context.Context, ids []int64,
 func (mr *MockEntryRepositoryMockRecorder) ResetFilterState(ctx, ids, restoreUnread any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResetFilterState", reflect.TypeOf((*MockEntryRepository)(nil).ResetFilterState), ctx, ids, restoreUnread)
+}
+
+// Search mocks base method.
+func (m *MockEntryRepository) Search(ctx context.Context, keyword string, limit int) ([]model.Entry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Search", ctx, keyword, limit)
+	ret0, _ := ret[0].([]model.Entry)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Search indicates an expected call of Search.
+func (mr *MockEntryRepositoryMockRecorder) Search(ctx, keyword, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Search", reflect.TypeOf((*MockEntryRepository)(nil).Search), ctx, keyword, limit)
 }
 
 // UpdateManyReadStatus mocks base method.

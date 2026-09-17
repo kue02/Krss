@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"gist/backend/internal/model"
@@ -33,6 +34,14 @@ type FilterRepository interface {
 	BumpMatchStats(ctx context.Context, stats map[int64]int64, at time.Time) error
 	// PruneMatches 只保留最近 keep 条命中记录，防止审计表无限增长。
 	PruneMatches(ctx context.Context, keep int) error
+	// SetLastError / ClearLastError 记录规则执行失败的可见原因（webhook 投递失败、AI 判定失败）；
+	// 下一次成功就清掉，规则表上始终显示「最近一次失败」。
+	SetLastError(ctx context.Context, filterID int64, message string, at time.Time) error
+	ClearLastError(ctx context.Context, filterID int64) error
+	// GetAIJudgement 取 AI 条件判定缓存（found=false 表示没判过，需要问模型）。
+	GetAIJudgement(ctx context.Context, entryID int64, questionHash string) (verdict bool, found bool, err error)
+	// SaveAIJudgement 落一条判定缓存（同条目同问题只问一次模型）。
+	SaveAIJudgement(ctx context.Context, entryID int64, questionHash string, verdict bool, model string, at time.Time) error
 }
 
 type filterRepository struct {
@@ -43,7 +52,7 @@ func NewFilterRepository(db dbtx) FilterRepository {
 	return &filterRepository{db: db}
 }
 
-const filterColumns = `id, name, enabled, position, scope_type, scope_id, conditions, actions, match_count, last_matched_at, created_at, updated_at`
+const filterColumns = `id, name, enabled, position, kind, scope_type, scope_id, conditions, actions, match_count, last_matched_at, last_error, last_error_at, created_at, updated_at`
 
 func (r *filterRepository) List(ctx context.Context) ([]model.Filter, error) {
 	rows, err := r.db.QueryContext(ctx,
@@ -87,15 +96,19 @@ func (r *filterRepository) Create(ctx context.Context, filter model.Filter) (mod
 	if filter.ScopeType == "" {
 		filter.ScopeType = model.FilterScopeAll
 	}
+	if filter.Kind == "" {
+		filter.Kind = model.FilterKindRule
+	}
 
 	_, err = r.db.ExecContext(ctx, `
-		INSERT INTO filters (id, name, enabled, position, scope_type, scope_id, conditions, actions,
-		                     match_count, last_matched_at, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)`,
+		INSERT INTO filters (id, name, enabled, position, kind, scope_type, scope_id, conditions, actions,
+		                     match_count, last_matched_at, last_error, last_error_at, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL, NULL, ?, ?)`,
 		filter.ID,
 		filter.Name,
 		boolToInt(filter.Enabled),
 		filter.Position,
+		filter.Kind,
 		filter.ScopeType,
 		nullableInt64(filter.ScopeID),
 		string(conditions),
@@ -121,12 +134,13 @@ func (r *filterRepository) Update(ctx context.Context, filter model.Filter) erro
 
 	_, err = r.db.ExecContext(ctx, `
 		UPDATE filters SET
-			name = ?, enabled = ?, position = ?, scope_type = ?, scope_id = ?,
+			name = ?, enabled = ?, position = ?, kind = ?, scope_type = ?, scope_id = ?,
 			conditions = ?, actions = ?, updated_at = ?
 		WHERE id = ?`,
 		filter.Name,
 		boolToInt(filter.Enabled),
 		filter.Position,
+		filter.Kind,
 		filter.ScopeType,
 		nullableInt64(filter.ScopeID),
 		string(conditions),
@@ -229,6 +243,44 @@ func (r *filterRepository) PruneMatches(ctx context.Context, keep int) error {
 	return err
 }
 
+// SetLastError / ClearLastError：规则执行失败的可见出口（webhook 投递失败、AI 判定失败）。
+func (r *filterRepository) SetLastError(ctx context.Context, filterID int64, message string, at time.Time) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE filters SET last_error = ?, last_error_at = ? WHERE id = ?`,
+		message, formatTime(at), filterID)
+	return err
+}
+
+func (r *filterRepository) ClearLastError(ctx context.Context, filterID int64) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE filters SET last_error = NULL, last_error_at = NULL WHERE id = ?`, filterID)
+	return err
+}
+
+// GetAIJudgement 取 AI 条件判定缓存：同一条目同一个问题只问模型一次。
+func (r *filterRepository) GetAIJudgement(ctx context.Context, entryID int64, questionHash string) (bool, bool, error) {
+	var verdict int
+	err := r.db.QueryRowContext(ctx,
+		`SELECT verdict FROM entry_ai_judgements WHERE entry_id = ? AND question_hash = ?`,
+		entryID, questionHash).Scan(&verdict)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, false, nil
+		}
+		return false, false, err
+	}
+	return verdict == 1, true, nil
+}
+
+func (r *filterRepository) SaveAIJudgement(ctx context.Context, entryID int64, questionHash string, verdict bool, model string, at time.Time) error {
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO entry_ai_judgements (id, entry_id, question_hash, verdict, model, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(entry_id, question_hash) DO UPDATE SET verdict = excluded.verdict`,
+		snowflake.NextID(), entryID, questionHash, boolToInt(verdict), model, formatTime(at))
+	return err
+}
+
 func (r *filterRepository) ListMatchedEntryIDs(ctx context.Context, filterID int64, limit int) ([]MatchedEntry, error) {
 	if limit <= 0 || limit > 20000 {
 		limit = 5000
@@ -272,14 +324,19 @@ func scanFilter(scan func(dest ...interface{}) error) (model.Filter, error) {
 		conditionsRaw string
 		actionsRaw    string
 		lastMatched   sql.NullString
+		lastError     sql.NullString
+		lastErrorAt   sql.NullString
 		createdAt     string
 		updatedAt     string
 	)
-	if err := scan(&filter.ID, &filter.Name, &enabled, &filter.Position, &filter.ScopeType, &scopeID,
-		&conditionsRaw, &actionsRaw, &filter.MatchCount, &lastMatched, &createdAt, &updatedAt); err != nil {
+	if err := scan(&filter.ID, &filter.Name, &enabled, &filter.Position, &filter.Kind, &filter.ScopeType, &scopeID,
+		&conditionsRaw, &actionsRaw, &filter.MatchCount, &lastMatched, &lastError, &lastErrorAt, &createdAt, &updatedAt); err != nil {
 		return model.Filter{}, err
 	}
 	filter.Enabled = enabled != 0
+	if filter.Kind == "" {
+		filter.Kind = model.FilterKindRule
+	}
 	if scopeID.Valid {
 		value := scopeID.Int64
 		filter.ScopeID = &value
@@ -293,6 +350,15 @@ func scanFilter(scan func(dest ...interface{}) error) (model.Filter, error) {
 	if lastMatched.Valid && lastMatched.String != "" {
 		if parsed, err := parseTime(lastMatched.String); err == nil {
 			filter.LastMatchedAt = &parsed
+		}
+	}
+	if lastError.Valid && lastError.String != "" {
+		value := lastError.String
+		filter.LastError = &value
+	}
+	if lastErrorAt.Valid && lastErrorAt.String != "" {
+		if parsed, err := parseTime(lastErrorAt.String); err == nil {
+			filter.LastErrorAt = &parsed
 		}
 	}
 	if parsed, err := parseTime(createdAt); err == nil {

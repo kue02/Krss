@@ -17,7 +17,7 @@ func TestEntryService_ClearReadabilityCache(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockEntries := mock.NewMockEntryRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mock.NewMockFeedRepository(ctrl), mock.NewMockFolderRepository(ctrl))
+	svc := service.NewEntryService(mockEntries, mock.NewMockFeedRepository(ctrl), mock.NewMockFolderRepository(ctrl), nil)
 
 	mockEntries.EXPECT().ClearAllReadableContent(context.Background()).Return(int64(5), nil)
 
@@ -32,7 +32,7 @@ func TestEntryService_ClearEntryCache(t *testing.T) {
 
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mock.NewMockFolderRepository(ctrl))
+	svc := service.NewEntryService(mockEntries, mockFeeds, mock.NewMockFolderRepository(ctrl), nil)
 
 	mockEntries.EXPECT().DeleteUnstarred(context.Background()).Return(int64(3), nil)
 	mockFeeds.EXPECT().ClearAllConditionalGet(context.Background()).Return(int64(2), nil)
@@ -47,7 +47,7 @@ func TestEntryService_ClearCaches_RepositoryError(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockEntries := mock.NewMockEntryRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mock.NewMockFeedRepository(ctrl), mock.NewMockFolderRepository(ctrl))
+	svc := service.NewEntryService(mockEntries, mock.NewMockFeedRepository(ctrl), mock.NewMockFolderRepository(ctrl), nil)
 
 	errReadability := errors.New("clear readability failed")
 	errEntries := errors.New("clear entries failed")

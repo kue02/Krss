@@ -88,6 +88,21 @@ func (mr *MockFilterServiceMockRecorder) Create(ctx, params any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockFilterService)(nil).Create), ctx, params)
 }
 
+// CreateException mocks base method.
+func (m *MockFilterService) CreateException(ctx context.Context, entryID int64) (model.Filter, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateException", ctx, entryID)
+	ret0, _ := ret[0].(model.Filter)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateException indicates an expected call of CreateException.
+func (mr *MockFilterServiceMockRecorder) CreateException(ctx, entryID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateException", reflect.TypeOf((*MockFilterService)(nil).CreateException), ctx, entryID)
+}
+
 // Delete mocks base method.
 func (m *MockFilterService) Delete(ctx context.Context, id int64, revert bool) (int64, error) {
 	m.ctrl.T.Helper()
@@ -131,6 +146,21 @@ func (m *MockFilterService) ListMatches(ctx context.Context, filterID int64, lim
 func (mr *MockFilterServiceMockRecorder) ListMatches(ctx, filterID, limit any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMatches", reflect.TypeOf((*MockFilterService)(nil).ListMatches), ctx, filterID, limit)
+}
+
+// ParseNaturalLanguage mocks base method.
+func (m *MockFilterService) ParseNaturalLanguage(ctx context.Context, text string) (service.FilterDraft, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ParseNaturalLanguage", ctx, text)
+	ret0, _ := ret[0].(service.FilterDraft)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ParseNaturalLanguage indicates an expected call of ParseNaturalLanguage.
+func (mr *MockFilterServiceMockRecorder) ParseNaturalLanguage(ctx, text any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ParseNaturalLanguage", reflect.TypeOf((*MockFilterService)(nil).ParseNaturalLanguage), ctx, text)
 }
 
 // Preview mocks base method.

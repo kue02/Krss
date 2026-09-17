@@ -74,6 +74,10 @@ type AIService interface {
 	// ClearAllCache deletes all AI cache data (summaries, translations, list translations).
 	// Returns the number of deleted records for each type.
 	ClearAllCache(ctx context.Context) (summaries, translations, listTranslations int64, err error)
+
+	// Complete 与 ModelName 让过滤规则侧复用同一套 AI 配置（AI 条件判定、自然语言建规则）。
+	Complete(ctx context.Context, systemPrompt, content string) (string, error)
+	ModelName(ctx context.Context) string
 }
 
 type aiService struct {
@@ -291,6 +295,29 @@ func (s *aiService) getAIConfig(ctx context.Context) (ai.Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// Complete 实现过滤器侧的 AICompleter：给「AI 条件判定」与「自然语言建规则」一段补全能力。
+// 不流式、不进摘要/翻译缓存 —— 调用方自己管结果。
+func (s *aiService) Complete(ctx context.Context, systemPrompt, content string) (string, error) {
+	cfg, err := s.getAIConfig(ctx)
+	if err != nil {
+		return "", err
+	}
+	provider, err := ai.NewProvider(cfg)
+	if err != nil {
+		return "", err
+	}
+	return provider.Complete(ctx, systemPrompt, content)
+}
+
+// ModelName 当前配置的模型名（写进规则判定缓存，便于解释「这条是谁判的」）。
+func (s *aiService) ModelName(ctx context.Context) string {
+	cfg, err := s.getAIConfig(ctx)
+	if err != nil {
+		return ""
+	}
+	return cfg.Model
 }
 
 func (s *aiService) GetCachedTranslation(ctx context.Context, entryID int64, isReadability bool) (*model.AITranslation, error) {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -26,6 +27,9 @@ func NewFilterHandler(service service.FilterService) *FilterHandler {
 func (h *FilterHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/filters", h.List)
 	g.POST("/filters", h.Create)
+	// 注意：/filters/parse 与 /filters/exception 是固定段，必须排在 /filters/:id 之前
+	g.POST("/filters/parse", h.ParseNaturalLanguage)
+	g.POST("/filters/exception", h.CreateException)
 	g.PATCH("/filters/:id", h.Update)
 	g.DELETE("/filters/:id", h.Delete)
 	g.POST("/filters/preview", h.Preview)
@@ -50,12 +54,18 @@ type filterActionsPayload struct {
 	Star       bool `json:"star"`
 	Unstar     bool `json:"unstar"`
 	KeepOnly   bool `json:"keepOnly"`
+	// P2 动作：条目级「打开时自动翻译 / 自动摘要」标记 + 出网 webhook
+	Translate  bool   `json:"translate"`
+	Summarize  bool   `json:"summarize"`
+	Webhook    bool   `json:"webhook"`
+	WebhookURL string `json:"webhookUrl,omitempty"`
 }
 
 type filterWriteRequest struct {
 	Name       string                   `json:"name"`
 	Enabled    *bool                    `json:"enabled"`
 	Position   *int                     `json:"position"`
+	Kind       string                   `json:"kind"`
 	ScopeType  string                   `json:"scopeType"`
 	ScopeID    *string                  `json:"scopeId"`
 	Conditions []filterConditionRequest `json:"conditions"`
@@ -67,14 +77,18 @@ type filterResponse struct {
 	Name          string                   `json:"name"`
 	Enabled       bool                     `json:"enabled"`
 	Position      int                      `json:"position"`
+	Kind          string                   `json:"kind"`
 	ScopeType     string                   `json:"scopeType"`
 	ScopeID       *string                  `json:"scopeId,omitempty"`
 	Conditions    []filterConditionRequest `json:"conditions"`
 	Actions       filterActionsPayload     `json:"actions"`
 	MatchCount    int64                    `json:"matchCount"`
 	LastMatchedAt *string                  `json:"lastMatchedAt,omitempty"`
-	CreatedAt     string                   `json:"createdAt"`
-	UpdatedAt     string                   `json:"updatedAt"`
+	// LastError / LastErrorAt：这条规则最近一次执行失败的原因（webhook 投递失败、AI 判定失败）
+	LastError   *string `json:"lastError,omitempty"`
+	LastErrorAt *string `json:"lastErrorAt,omitempty"`
+	CreatedAt   string  `json:"createdAt"`
+	UpdatedAt   string  `json:"updatedAt"`
 }
 
 type filterListResponse struct {
@@ -95,6 +109,10 @@ type filterPreviewResponse struct {
 	MuteCount     int                 `json:"muteCount"`
 	MarkReadCount int                 `json:"markReadCount"`
 	StarCount     int                 `json:"starCount"`
+	// AI 条件的预览口径：吃了几条已有判定缓存、多少条因为「没判过/正文太短/到上限」没算数
+	AIChecked     int                 `json:"aiChecked"`
+	AISkipped     int                 `json:"aiSkipped"`
+	AISkipReasons []string            `json:"aiSkipReasons,omitempty"`
 	Matched       []filterPreviewItem `json:"matched"`
 }
 
@@ -119,6 +137,27 @@ type filterMatchItem struct {
 
 type filterMatchesResponse struct {
 	Matches []filterMatchItem `json:"matches"`
+}
+
+type filterDraftRequest struct {
+	// Text 用户说的一句人话（「把标题里带赞助的广告都静音」）
+	Text string `json:"text"`
+}
+
+// filterDraftResponse 自然语言建规则的结果：一份可直接填进编辑器抽屉的草稿（尚未落库）。
+type filterDraftResponse struct {
+	Name       string                   `json:"name"`
+	ScopeType  string                   `json:"scopeType"`
+	ScopeID    *string                  `json:"scopeId,omitempty"`
+	Conditions []filterConditionRequest `json:"conditions"`
+	Actions    filterActionsPayload     `json:"actions"`
+	// Notes：模型给出的一句话解释；Warnings：被修正/丢弃的东西（必须显示给用户）
+	Notes    string   `json:"notes,omitempty"`
+	Warnings []string `json:"warnings,omitempty"`
+}
+
+type filterExceptionRequest struct {
+	EntryID string `json:"entryId"`
 }
 
 // List returns all filter rules ordered by position.
@@ -259,6 +298,9 @@ func (h *FilterHandler) Preview(c echo.Context) error {
 		MuteCount:     result.MuteCount,
 		MarkReadCount: result.MarkReadCount,
 		StarCount:     result.StarCount,
+		AIChecked:     result.AIChecked,
+		AISkipped:     result.AISkipped,
+		AISkipReasons: result.AISkipReasons,
 		Matched:       make([]filterPreviewItem, len(result.Matched)),
 	}
 	for i, item := range result.Matched {
@@ -378,6 +420,83 @@ func (h *FilterHandler) ListMatches(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
+// ParseNaturalLanguage turns a plain-language request into a rule draft (nothing is saved).
+// @Summary Parse natural-language rule
+// @Description Ask the configured AI provider to turn a sentence into a rule draft; the client confirms it in the editor
+// @Tags filters
+// @Accept json
+// @Produce json
+// @Param request body filterDraftRequest true "Natural language request"
+// @Success 200 {object} filterDraftResponse
+// @Failure 400 {object} errorResponse
+// @Failure 422 {object} errorResponse
+// @Router /filters/parse [post]
+func (h *FilterHandler) ParseNaturalLanguage(c echo.Context) error {
+	var req filterDraftRequest
+	if err := c.Bind(&req); err != nil || strings.TrimSpace(req.Text) == "" {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
+	}
+
+	draft, err := h.service.ParseNaturalLanguage(c.Request().Context(), req.Text)
+	if err != nil {
+		return writeFilterError(c, err)
+	}
+
+	response := filterDraftResponse{
+		Name:      draft.Name,
+		ScopeType: draft.ScopeType,
+		Actions:   toActionsPayload(draft.Actions),
+		Notes:     draft.Notes,
+		Warnings:  draft.Warnings,
+	}
+	if draft.ScopeID != nil {
+		response.ScopeID = idPtrToString(draft.ScopeID)
+	}
+	response.Conditions = make([]filterConditionRequest, len(draft.Conditions))
+	for i, condition := range draft.Conditions {
+		response.Conditions[i] = filterConditionRequest{
+			Logic:    condition.Logic,
+			Negate:   condition.Negate,
+			Field:    condition.Field,
+			Operator: condition.Operator,
+			Value:    condition.Value,
+		}
+	}
+
+	logger.Info("filter draft parsed", "module", "handler", "action", "parse", "resource", "filter", "result", "ok")
+	return c.JSON(http.StatusOK, response)
+}
+
+// CreateException turns "this entry was caught by mistake" into an exception rule.
+// @Summary Create exception rule for an entry
+// @Description Create a front-of-chain rule that only reverts actions (unmute + unread) for this entry's link, and release that entry now
+// @Tags filters
+// @Accept json
+// @Produce json
+// @Param request body filterExceptionRequest true "Entry to exempt"
+// @Success 201 {object} filterResponse
+// @Failure 400 {object} errorResponse
+// @Failure 404 {object} errorResponse
+// @Router /filters/exception [post]
+func (h *FilterHandler) CreateException(c echo.Context) error {
+	var req filterExceptionRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
+	}
+	entryID, err := strconv.ParseInt(strings.TrimSpace(req.EntryID), 10, 64)
+	if err != nil || entryID <= 0 {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid entryId"})
+	}
+
+	created, err := h.service.CreateException(c.Request().Context(), entryID)
+	if err != nil {
+		return writeFilterError(c, err)
+	}
+
+	logger.Info("filter exception created", "module", "handler", "action", "create", "resource", "filter", "result", "ok", "filter_id", created.ID, "entry_id", entryID)
+	return c.JSON(http.StatusCreated, toFilterResponse(created))
+}
+
 // bindFilterWriteRequest 把请求体翻成 service 入参（scopeId 是 snowflake 字符串）。
 func bindFilterWriteRequest(c echo.Context) (service.FilterWriteParams, error) {
 	var req filterWriteRequest
@@ -389,6 +508,7 @@ func bindFilterWriteRequest(c echo.Context) (service.FilterWriteParams, error) {
 		Name:      req.Name,
 		Enabled:   req.Enabled,
 		Position:  req.Position,
+		Kind:      req.Kind,
 		ScopeType: req.ScopeType,
 		Actions:   toFilterActions(req.Actions),
 	}
@@ -416,11 +536,16 @@ func bindFilterWriteRequest(c echo.Context) (service.FilterWriteParams, error) {
 	return params, nil
 }
 
-// writeFilterError 把规则相关的业务错误映射成 400/404（其余走通用映射）。
+// writeFilterError 把规则相关的业务错误映射成 400/404/422（其余走通用映射）。
 func writeFilterError(c echo.Context, err error) error {
 	switch {
-	case errors.Is(err, service.ErrFilterNotFound):
-		return c.JSON(http.StatusNotFound, errorResponse{Error: "filter not found"})
+	case errors.Is(err, service.ErrFilterNotFound), errors.Is(err, service.ErrEntryNotFound):
+		return c.JSON(http.StatusNotFound, errorResponse{Error: "not found"})
+	case errors.Is(err, service.ErrAIUnavailable):
+		// 前端据此提示「先去 设置 → AI 配好 provider / API key / model」
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "ai_not_configured"})
+	case errors.Is(err, service.ErrAIDraftInvalid):
+		return c.JSON(http.StatusUnprocessableEntity, errorResponse{Error: "ai_draft_invalid"})
 	case errors.Is(err, service.ErrInvalidFilter):
 		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid filter"})
 	default:
@@ -429,11 +554,16 @@ func writeFilterError(c echo.Context, err error) error {
 }
 
 func toFilterResponse(filter model.Filter) filterResponse {
+	kind := filter.Kind
+	if kind == "" {
+		kind = model.FilterKindRule
+	}
 	response := filterResponse{
 		ID:         idToString(filter.ID),
 		Name:       filter.Name,
 		Enabled:    filter.Enabled,
 		Position:   filter.Position,
+		Kind:       kind,
 		ScopeType:  filter.ScopeType,
 		ScopeID:    idPtrToString(filter.ScopeID),
 		Actions:    toActionsPayload(filter.Actions),
@@ -455,6 +585,14 @@ func toFilterResponse(filter model.Filter) filterResponse {
 		formatted := filter.LastMatchedAt.UTC().Format(time.RFC3339)
 		response.LastMatchedAt = &formatted
 	}
+	if filter.LastError != nil && *filter.LastError != "" {
+		message := *filter.LastError
+		response.LastError = &message
+	}
+	if filter.LastErrorAt != nil {
+		formatted := filter.LastErrorAt.UTC().Format(time.RFC3339)
+		response.LastErrorAt = &formatted
+	}
 	return response
 }
 
@@ -467,6 +605,10 @@ func toActionsPayload(actions model.FilterActions) filterActionsPayload {
 		Star:       actions.Star,
 		Unstar:     actions.Unstar,
 		KeepOnly:   actions.KeepOnly,
+		Translate:  actions.Translate,
+		Summarize:  actions.Summarize,
+		Webhook:    actions.Webhook,
+		WebhookURL: actions.WebhookURL,
 	}
 }
 
@@ -479,5 +621,9 @@ func toFilterActions(payload filterActionsPayload) model.FilterActions {
 		Star:       payload.Star,
 		Unstar:     payload.Unstar,
 		KeepOnly:   payload.KeepOnly,
+		Translate:  payload.Translate,
+		Summarize:  payload.Summarize,
+		Webhook:    payload.Webhook,
+		WebhookURL: strings.TrimSpace(payload.WebhookURL),
 	}
 }

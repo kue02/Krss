@@ -57,6 +57,20 @@ func (mr *MockFilterRepositoryMockRecorder) BumpMatchStats(ctx, stats, at any) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BumpMatchStats", reflect.TypeOf((*MockFilterRepository)(nil).BumpMatchStats), ctx, stats, at)
 }
 
+// ClearLastError mocks base method.
+func (m *MockFilterRepository) ClearLastError(ctx context.Context, filterID int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClearLastError", ctx, filterID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ClearLastError indicates an expected call of ClearLastError.
+func (mr *MockFilterRepositoryMockRecorder) ClearLastError(ctx, filterID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearLastError", reflect.TypeOf((*MockFilterRepository)(nil).ClearLastError), ctx, filterID)
+}
+
 // Create mocks base method.
 func (m *MockFilterRepository) Create(ctx context.Context, filter model.Filter) (model.Filter, error) {
 	m.ctrl.T.Helper()
@@ -84,6 +98,22 @@ func (m *MockFilterRepository) Delete(ctx context.Context, id int64) error {
 func (mr *MockFilterRepositoryMockRecorder) Delete(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockFilterRepository)(nil).Delete), ctx, id)
+}
+
+// GetAIJudgement mocks base method.
+func (m *MockFilterRepository) GetAIJudgement(ctx context.Context, entryID int64, questionHash string) (bool, bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetAIJudgement", ctx, entryID, questionHash)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(bool)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// GetAIJudgement indicates an expected call of GetAIJudgement.
+func (mr *MockFilterRepositoryMockRecorder) GetAIJudgement(ctx, entryID, questionHash any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAIJudgement", reflect.TypeOf((*MockFilterRepository)(nil).GetAIJudgement), ctx, entryID, questionHash)
 }
 
 // GetByID mocks base method.
@@ -172,6 +202,34 @@ func (m *MockFilterRepository) RecordMatch(ctx context.Context, match model.Filt
 func (mr *MockFilterRepositoryMockRecorder) RecordMatch(ctx, match any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordMatch", reflect.TypeOf((*MockFilterRepository)(nil).RecordMatch), ctx, match)
+}
+
+// SaveAIJudgement mocks base method.
+func (m *MockFilterRepository) SaveAIJudgement(ctx context.Context, entryID int64, questionHash string, verdict bool, arg4 string, at time.Time) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SaveAIJudgement", ctx, entryID, questionHash, verdict, arg4, at)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SaveAIJudgement indicates an expected call of SaveAIJudgement.
+func (mr *MockFilterRepositoryMockRecorder) SaveAIJudgement(ctx, entryID, questionHash, verdict, arg4, at any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveAIJudgement", reflect.TypeOf((*MockFilterRepository)(nil).SaveAIJudgement), ctx, entryID, questionHash, verdict, arg4, at)
+}
+
+// SetLastError mocks base method.
+func (m *MockFilterRepository) SetLastError(ctx context.Context, filterID int64, message string, at time.Time) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLastError", ctx, filterID, message, at)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLastError indicates an expected call of SetLastError.
+func (mr *MockFilterRepositoryMockRecorder) SetLastError(ctx, filterID, message, at any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLastError", reflect.TypeOf((*MockFilterRepository)(nil).SetLastError), ctx, filterID, message, at)
 }
 
 // Update mocks base method.

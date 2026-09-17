@@ -22,7 +22,7 @@ func TestEntryService_List_Success(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	expectedEntries := []model.Entry{
@@ -55,7 +55,7 @@ func TestEntryService_List_WithFeedID(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	feedID := int64(100)
@@ -88,7 +88,7 @@ func TestEntryService_List_FeedNotFound(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	feedID := int64(999)
@@ -108,7 +108,7 @@ func TestEntryService_List_FolderNotFound(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	folderID := int64(999)
@@ -128,7 +128,7 @@ func TestEntryService_List_LimitClamp(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	// Limit > 101 should be clamped to 101
@@ -150,7 +150,7 @@ func TestEntryService_List_DefaultLimit(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	// Limit <= 0 should default to 50
@@ -172,7 +172,7 @@ func TestEntryService_List_FeedCheckError(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	feedID := int64(100)
@@ -193,7 +193,7 @@ func TestEntryService_List_RepositoryError(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	dbErr := errors.New("list error")
@@ -216,7 +216,7 @@ func TestEntryService_GetByID_Success(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	expectedEntry := model.Entry{
@@ -241,7 +241,7 @@ func TestEntryService_GetByID_NotFound(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	mockEntries.EXPECT().
@@ -259,7 +259,7 @@ func TestEntryService_MarkAsRead_Success(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	mockEntries.EXPECT().
@@ -281,7 +281,7 @@ func TestEntryService_MarkAsRead_UpdateError(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	dbErr := errors.New("update failed")
@@ -305,7 +305,7 @@ func TestEntryService_MarkAsRead_NotFound(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	mockEntries.EXPECT().
@@ -323,7 +323,7 @@ func TestEntryService_MarkManyAsRead_Success(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	ids := []int64{123, 456}
@@ -342,7 +342,7 @@ func TestEntryService_MarkManyAsRead_EmptyIDs(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 
 	err := svc.MarkManyAsRead(context.Background(), nil, true)
 	require.NoError(t, err)
@@ -355,7 +355,7 @@ func TestEntryService_MarkAsStarred_Success(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	mockEntries.EXPECT().
@@ -377,7 +377,7 @@ func TestEntryService_MarkAsStarred_NotFound(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	mockEntries.EXPECT().
@@ -395,7 +395,7 @@ func TestEntryService_MarkAsStarred_UpdateError(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	dbErr := errors.New("update failed")
@@ -419,7 +419,7 @@ func TestEntryService_MarkAllAsRead_ByFeed(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	feedID := int64(100)
@@ -443,7 +443,7 @@ func TestEntryService_MarkAllAsRead_ByFolder(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	folderID := int64(200)
@@ -467,7 +467,7 @@ func TestEntryService_MarkAllAsRead_All(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	mockEntries.EXPECT().
@@ -485,7 +485,7 @@ func TestEntryService_MarkAllAsRead_FeedNotFound(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	feedID := int64(999)
@@ -505,7 +505,7 @@ func TestEntryService_MarkAllAsRead_FolderCheckError(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	folderID := int64(100)
@@ -526,7 +526,7 @@ func TestEntryService_MarkAllAsRead_RepositoryError(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	dbErr := errors.New("mark error")
@@ -546,7 +546,7 @@ func TestEntryService_GetUnreadCounts_Success(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	expectedCounts := []repository.UnreadCount{
@@ -573,7 +573,7 @@ func TestEntryService_GetUnreadCounts_Error(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	dbErr := errors.New("count error")
@@ -593,7 +593,7 @@ func TestEntryService_GetStarredCount_Success(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	mockEntries.EXPECT().
@@ -612,7 +612,7 @@ func TestEntryService_GetStarredCount_Error(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	dbErr := errors.New("count error")
@@ -632,7 +632,7 @@ func TestEntryService_List_WithFilters(t *testing.T) {
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	mockFolders := mock.NewMockFolderRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
 	ctx := context.Background()
 
 	contentType := "picture"
@@ -666,7 +666,7 @@ func TestEntryService_ClearEntryCache_ResetFailureIgnored(t *testing.T) {
 
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mock.NewMockFolderRepository(ctrl))
+	svc := service.NewEntryService(mockEntries, mockFeeds, mock.NewMockFolderRepository(ctrl), nil)
 
 	mockEntries.EXPECT().DeleteUnstarred(context.Background()).Return(int64(2), nil)
 	mockFeeds.EXPECT().ClearAllConditionalGet(context.Background()).Return(int64(0), errors.New("reset failed"))
@@ -687,7 +687,7 @@ func TestEntryService_ClearEntryCache_ResetsConditionalGet(t *testing.T) {
 
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mock.NewMockFolderRepository(ctrl))
+	svc := service.NewEntryService(mockEntries, mockFeeds, mock.NewMockFolderRepository(ctrl), nil)
 
 	// Both DeleteUnstarred and ClearAllConditionalGet should be called
 	mockEntries.EXPECT().DeleteUnstarred(context.Background()).Return(int64(5), nil)
@@ -705,7 +705,7 @@ func TestEntryService_ClearEntryCache_DeleteError(t *testing.T) {
 
 	mockEntries := mock.NewMockEntryRepository(ctrl)
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mock.NewMockFolderRepository(ctrl))
+	svc := service.NewEntryService(mockEntries, mockFeeds, mock.NewMockFolderRepository(ctrl), nil)
 
 	dbErr := errors.New("delete failed")
 	mockEntries.EXPECT().DeleteUnstarred(context.Background()).Return(int64(0), dbErr)

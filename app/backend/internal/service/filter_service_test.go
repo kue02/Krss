@@ -34,7 +34,12 @@ func newFilterFixture(t *testing.T) *filterFixture {
 
 	return &filterFixture{
 		db:      dbConn,
-		service: service.NewFilterService(filterRepo, entryRepo, feedRepo, folderRepo),
+		service: service.NewFilterService(service.FilterServiceDeps{
+			Filters: filterRepo,
+			Entries: entryRepo,
+			Feeds:   feedRepo,
+			Folders: folderRepo,
+		}),
 		entries: entryRepo,
 		feeds:   feedRepo,
 		filters: filterRepo,
@@ -360,7 +365,7 @@ func TestEntryService_Unmute_Integration(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, fixture.reload(t, entry.ID).Muted)
 
-	entryService := service.NewEntryService(fixture.entries, fixture.feeds, repository.NewFolderRepository(fixture.db))
+	entryService := service.NewEntryService(fixture.entries, fixture.feeds, repository.NewFolderRepository(fixture.db), fixture.filters)
 	require.NoError(t, entryService.Unmute(ctx, entry.ID))
 
 	restored := fixture.reload(t, entry.ID)

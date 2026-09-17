@@ -59,6 +59,21 @@ func (mr *MockAIServiceMockRecorder) ClearAllCache(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearAllCache", reflect.TypeOf((*MockAIService)(nil).ClearAllCache), ctx)
 }
 
+// Complete mocks base method.
+func (m *MockAIService) Complete(ctx context.Context, systemPrompt, content string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Complete", ctx, systemPrompt, content)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Complete indicates an expected call of Complete.
+func (mr *MockAIServiceMockRecorder) Complete(ctx, systemPrompt, content any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Complete", reflect.TypeOf((*MockAIService)(nil).Complete), ctx, systemPrompt, content)
+}
+
 // GetCachedSummary mocks base method.
 func (m *MockAIService) GetCachedSummary(ctx context.Context, entryID int64, isReadability bool) (*model.AISummary, error) {
 	m.ctrl.T.Helper()
@@ -101,6 +116,20 @@ func (m *MockAIService) GetSummaryLanguage(ctx context.Context) string {
 func (mr *MockAIServiceMockRecorder) GetSummaryLanguage(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSummaryLanguage", reflect.TypeOf((*MockAIService)(nil).GetSummaryLanguage), ctx)
+}
+
+// ModelName mocks base method.
+func (m *MockAIService) ModelName(ctx context.Context) string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ModelName", ctx)
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// ModelName indicates an expected call of ModelName.
+func (mr *MockAIServiceMockRecorder) ModelName(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ModelName", reflect.TypeOf((*MockAIService)(nil).ModelName), ctx)
 }
 
 // SaveSummary mocks base method.

@@ -287,6 +287,13 @@ definitions:
     properties:
       author:
         type: string
+      autoSummary:
+        type: boolean
+      autoTranslate:
+        description: |-
+          AutoTranslate / AutoSummary：规则动作 translate/summarize 打的条目级标记 ——
+          打开这条时自动翻译 / 自动摘要（前端与订阅级、全局设置取「或」）。
+        type: boolean
       content:
         type: string
       createdAt:
@@ -416,10 +423,19 @@ definitions:
         type: boolean
       star:
         type: boolean
+      summarize:
+        type: boolean
+      translate:
+        description: P2 动作：条目级「打开时自动翻译 / 自动摘要」标记 + 出网 webhook
+        type: boolean
       unmute:
         type: boolean
       unstar:
         type: boolean
+      webhook:
+        type: boolean
+      webhookUrl:
+        type: string
     type: object
   internal_handler.filterApplyHistoryResponse:
     properties:
@@ -439,6 +455,39 @@ definitions:
       operator:
         type: string
       value:
+        type: string
+    type: object
+  internal_handler.filterDraftRequest:
+    properties:
+      text:
+        description: Text 用户说的一句人话（「把标题里带赞助的广告都静音」）
+        type: string
+    type: object
+  internal_handler.filterDraftResponse:
+    properties:
+      actions:
+        $ref: '#/definitions/internal_handler.filterActionsPayload'
+      conditions:
+        items:
+          $ref: '#/definitions/internal_handler.filterConditionRequest'
+        type: array
+      name:
+        type: string
+      notes:
+        description: Notes：模型给出的一句话解释；Warnings：被修正/丢弃的东西（必须显示给用户）
+        type: string
+      scopeId:
+        type: string
+      scopeType:
+        type: string
+      warnings:
+        items:
+          type: string
+        type: array
+    type: object
+  internal_handler.filterExceptionRequest:
+    properties:
+      entryId:
         type: string
     type: object
   internal_handler.filterListResponse:
@@ -487,6 +536,15 @@ definitions:
     type: object
   internal_handler.filterPreviewResponse:
     properties:
+      aiChecked:
+        description: AI 条件的预览口径：吃了几条已有判定缓存、多少条因为「没判过/正文太短/到上限」没算数
+        type: integer
+      aiSkipReasons:
+        items:
+          type: string
+        type: array
+      aiSkipped:
+        type: integer
       markReadCount:
         type: integer
       matched:
@@ -515,6 +573,13 @@ definitions:
       enabled:
         type: boolean
       id:
+        type: string
+      kind:
+        type: string
+      lastError:
+        description: LastError / LastErrorAt：这条规则最近一次执行失败的原因（webhook 投递失败、AI 判定失败）
+        type: string
+      lastErrorAt:
         type: string
       lastMatchedAt:
         type: string
@@ -546,6 +611,8 @@ definitions:
         type: array
       enabled:
         type: boolean
+      kind:
+        type: string
       name:
         type: string
       position:
@@ -1044,6 +1111,33 @@ paths:
       summary: Update a domain rate limit
       tags:
       - domain-rate-limits
+  /api/entries/search:
+    get:
+      description: Full-text search over entries (title/content/author/url) via FTS5
+      parameters:
+      - description: search keyword
+        in: query
+        name: q
+        required: true
+        type: string
+      - description: max results (default 30, max 100)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.entryListResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: Search entries
+      tags:
+      - entries
   /api/feeds/{id}/ai:
     patch:
       consumes:
@@ -1967,6 +2061,68 @@ paths:
           schema:
             $ref: '#/definitions/internal_handler.errorResponse'
       summary: Revert filter rule
+      tags:
+      - filters
+  /filters/exception:
+    post:
+      consumes:
+      - application/json
+      description: Create a front-of-chain rule that only reverts actions (unmute
+        + unread) for this entry's link, and release that entry now
+      parameters:
+      - description: Entry to exempt
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.filterExceptionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_handler.filterResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: Create exception rule for an entry
+      tags:
+      - filters
+  /filters/parse:
+    post:
+      consumes:
+      - application/json
+      description: Ask the configured AI provider to turn a sentence into a rule draft;
+        the client confirms it in the editor
+      parameters:
+      - description: Natural language request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.filterDraftRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.filterDraftResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: Parse natural-language rule
       tags:
       - filters
   /filters/preview:

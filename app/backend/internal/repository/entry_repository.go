@@ -33,6 +33,10 @@ type EntryFilterState struct {
 	Read     *bool
 	Starred  *bool
 	FilterID int64
+	// AutoTranslate / AutoSummary：条目级的「打开时自动翻译 / 摘要」标记（规则动作 translate/summarize）。
+	// 只在为 true 时写；撤销规则时由 ResetFilterState 清零。
+	AutoTranslate *bool
+	AutoSummary   *bool
 }
 
 type UnreadCount struct {
@@ -76,7 +80,7 @@ func NewEntryRepository(db dbtx) EntryRepository {
 func (r *entryRepository) GetByID(ctx context.Context, id int64) (model.Entry, error) {
 	row := r.db.QueryRowContext(
 		ctx,
-		`SELECT id, feed_id, hash, title, url, content, readable_content, thumbnail_url, author, published_at, read, starred, muted, filter_id, created_at, updated_at
+		`SELECT id, feed_id, hash, title, url, content, readable_content, thumbnail_url, author, published_at, read, starred, muted, filter_id, auto_translate, auto_summary, created_at, updated_at
 		 FROM entries WHERE id = ?`,
 		id,
 	)
@@ -103,7 +107,7 @@ func (r *entryRepository) Search(ctx context.Context, keyword string, limit int)
 	// muted = 0：被规则静音的条目在列表里默认隐藏，搜索口径必须一致（否则「搜得到、点开找不到」）
 	query := `
 		SELECT e.id, e.feed_id, e.hash, e.title, e.url, e.content, e.readable_content, e.thumbnail_url, e.author,
-		       e.published_at, e.read, e.starred, e.muted, e.filter_id, e.created_at, e.updated_at
+		       e.published_at, e.read, e.starred, e.muted, e.filter_id, e.auto_translate, e.auto_summary, e.created_at, e.updated_at
 		FROM entries e
 		WHERE e.muted = 0
 		  AND (e.title LIKE ? ESCAPE '\'
@@ -145,7 +149,7 @@ func (r *entryRepository) List(ctx context.Context, filter EntryListFilter) ([]m
 	var args []interface{}
 	query := `
 		SELECT e.id, e.feed_id, e.hash, e.title, e.url, e.content, e.readable_content, e.thumbnail_url, e.author,
-		       e.published_at, e.read, e.starred, e.muted, e.filter_id, e.created_at, e.updated_at
+		       e.published_at, e.read, e.starred, e.muted, e.filter_id, e.auto_translate, e.auto_summary, e.created_at, e.updated_at
 		FROM entries e
 	`
 
@@ -302,6 +306,14 @@ func (r *entryRepository) ApplyFilterState(ctx context.Context, id int64, state 
 		sets = append(sets, "starred = ?")
 		args = append(args, boolToInt(*state.Starred))
 	}
+	if state.AutoTranslate != nil {
+		sets = append(sets, "auto_translate = ?")
+		args = append(args, boolToInt(*state.AutoTranslate))
+	}
+	if state.AutoSummary != nil {
+		sets = append(sets, "auto_summary = ?")
+		args = append(args, boolToInt(*state.AutoSummary))
+	}
 	sets = append(sets, "updated_at = ?")
 	args = append(args, formatTime(time.Now()))
 	args = append(args, id)
@@ -316,7 +328,7 @@ func (r *entryRepository) ResetFilterState(ctx context.Context, ids []int64, res
 		return 0, nil
 	}
 
-	sets := "muted = 0, filter_id = NULL"
+	sets := "muted = 0, filter_id = NULL, auto_translate = 0, auto_summary = 0"
 	if restoreUnread {
 		sets += ", read = 0"
 	}
@@ -473,12 +485,12 @@ func scanEntry(s entryScanner) (model.Entry, error) {
 	var e model.Entry
 	var publishedAt sql.NullString
 	var createdAt, updatedAt string
-	var readInt, starredInt, mutedInt int
+	var readInt, starredInt, mutedInt, autoTranslateInt, autoSummaryInt int
 	var filterID sql.NullInt64
 
 	err := s.Scan(
 		&e.ID, &e.FeedID, &e.Hash, &e.Title, &e.URL, &e.Content, &e.ReadableContent, &e.ThumbnailURL, &e.Author,
-		&publishedAt, &readInt, &starredInt, &mutedInt, &filterID, &createdAt, &updatedAt,
+		&publishedAt, &readInt, &starredInt, &mutedInt, &filterID, &autoTranslateInt, &autoSummaryInt, &createdAt, &updatedAt,
 	)
 	if err != nil {
 		return model.Entry{}, err
@@ -487,6 +499,8 @@ func scanEntry(s entryScanner) (model.Entry, error) {
 	e.Read = readInt == 1
 	e.Starred = starredInt == 1
 	e.Muted = mutedInt == 1
+	e.AutoTranslate = autoTranslateInt == 1
+	e.AutoSummary = autoSummaryInt == 1
 	if filterID.Valid {
 		value := filterID.Int64
 		e.FilterID = &value

@@ -53,21 +53,6 @@ func (mr *MockProxyServiceMockRecorder) Close() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockProxyService)(nil).Close))
 }
 
-// FetchMedia mocks base method.
-func (m *MockProxyService) FetchMedia(ctx context.Context, mediaURL, refererURL, rangeHeader string) (*service.ProxyResult, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FetchMedia", ctx, mediaURL, refererURL, rangeHeader)
-	ret0, _ := ret[0].(*service.ProxyResult)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// FetchMedia indicates an expected call of FetchMedia.
-func (mr *MockProxyServiceMockRecorder) FetchMedia(ctx, mediaURL, refererURL, rangeHeader any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchMedia", reflect.TypeOf((*MockProxyService)(nil).FetchMedia), ctx, mediaURL, refererURL, rangeHeader)
-}
-
 // FetchImage mocks base method.
 func (m *MockProxyService) FetchImage(ctx context.Context, imageURL, refererURL string) (*service.ProxyResult, error) {
 	m.ctrl.T.Helper()
@@ -81,4 +66,19 @@ func (m *MockProxyService) FetchImage(ctx context.Context, imageURL, refererURL 
 func (mr *MockProxyServiceMockRecorder) FetchImage(ctx, imageURL, refererURL any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchImage", reflect.TypeOf((*MockProxyService)(nil).FetchImage), ctx, imageURL, refererURL)
+}
+
+// FetchMedia mocks base method.
+func (m *MockProxyService) FetchMedia(ctx context.Context, mediaURL, refererURL, rangeHeader string) (*service.ProxyResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchMedia", ctx, mediaURL, refererURL, rangeHeader)
+	ret0, _ := ret[0].(*service.ProxyResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchMedia indicates an expected call of FetchMedia.
+func (mr *MockProxyServiceMockRecorder) FetchMedia(ctx, mediaURL, refererURL, rangeHeader any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchMedia", reflect.TypeOf((*MockProxyService)(nil).FetchMedia), ctx, mediaURL, refererURL, rangeHeader)
 }

@@ -31,8 +31,8 @@ func entryContextFixture() service.EntryContext {
 }
 
 func TestMatchConditions_EmptyConditionsMatchEverything(t *testing.T) {
-	require.True(t, service.MatchConditions(entryContextFixture(), nil, time.Now()))
-	require.True(t, service.MatchConditions(entryContextFixture(), []model.FilterCondition{}, time.Now()))
+	require.True(t, service.MatchConditions(entryContextFixture(), nil, time.Now(), nil))
+	require.True(t, service.MatchConditions(entryContextFixture(), []model.FilterCondition{}, time.Now(), nil))
 }
 
 func TestMatchConditions_ContainsIsCaseInsensitive(t *testing.T) {
@@ -40,10 +40,10 @@ func TestMatchConditions_ContainsIsCaseInsensitive(t *testing.T) {
 	conditions := []model.FilterCondition{
 		{Field: model.FilterFieldTitle, Operator: model.FilterOpContains, Value: "workers"},
 	}
-	require.True(t, service.MatchConditions(entry, conditions, time.Now()))
+	require.True(t, service.MatchConditions(entry, conditions, time.Now(), nil))
 
 	conditions[0].Value = "azure"
-	require.False(t, service.MatchConditions(entry, conditions, time.Now()))
+	require.False(t, service.MatchConditions(entry, conditions, time.Now(), nil))
 }
 
 func TestMatchConditions_ExactAndNegate(t *testing.T) {
@@ -51,12 +51,12 @@ func TestMatchConditions_ExactAndNegate(t *testing.T) {
 	exact := []model.FilterCondition{
 		{Field: model.FilterFieldFeedTitle, Operator: model.FilterOpExact, Value: "cloudflare blog"},
 	}
-	require.True(t, service.MatchConditions(entry, exact, time.Now()), "exact 忽略大小写与首尾空格")
+	require.True(t, service.MatchConditions(entry, exact, time.Now(), nil), "exact 忽略大小写与首尾空格")
 
 	negated := []model.FilterCondition{
 		{Field: model.FilterFieldFeedTitle, Operator: model.FilterOpExact, Value: "cloudflare blog", Negate: true},
 	}
-	require.False(t, service.MatchConditions(entry, negated, time.Now()))
+	require.False(t, service.MatchConditions(entry, negated, time.Now(), nil))
 }
 
 func TestMatchConditions_RegexAndInvalidRegexFailsClosed(t *testing.T) {
@@ -64,12 +64,12 @@ func TestMatchConditions_RegexAndInvalidRegexFailsClosed(t *testing.T) {
 	valid := []model.FilterCondition{
 		{Field: model.FilterFieldContent, Operator: model.FilterOpRegex, Value: `(?i)\b(sponsored|推广)\b`},
 	}
-	require.True(t, service.MatchConditions(entry, valid, time.Now()))
+	require.True(t, service.MatchConditions(entry, valid, time.Now(), nil))
 
 	invalid := []model.FilterCondition{
 		{Field: model.FilterFieldContent, Operator: model.FilterOpRegex, Value: `(?=lookahead)`},
 	}
-	require.False(t, service.MatchConditions(entry, invalid, time.Now()), "RE2 不支持 lookahead，编译失败按不命中处理")
+	require.False(t, service.MatchConditions(entry, invalid, time.Now(), nil), "RE2 不支持 lookahead，编译失败按不命中处理")
 }
 
 func TestMatchConditions_OrLogicAndDefaultAnd(t *testing.T) {
@@ -79,21 +79,21 @@ func TestMatchConditions_OrLogicAndDefaultAnd(t *testing.T) {
 		{Field: model.FilterFieldTitle, Operator: model.FilterOpContains, Value: "cloudflare"},
 		{Logic: "or", Field: model.FilterFieldTitle, Operator: model.FilterOpContains, Value: "azure"},
 	}
-	require.True(t, service.MatchConditions(entry, orMatch, time.Now()))
+	require.True(t, service.MatchConditions(entry, orMatch, time.Now(), nil))
 
 	// 第一条命中、第二条 and 不命中 → 整体不命中
 	andMiss := []model.FilterCondition{
 		{Field: model.FilterFieldTitle, Operator: model.FilterOpContains, Value: "cloudflare"},
 		{Field: model.FilterFieldTitle, Operator: model.FilterOpContains, Value: "azure"},
 	}
-	require.False(t, service.MatchConditions(entry, andMiss, time.Now()))
+	require.False(t, service.MatchConditions(entry, andMiss, time.Now(), nil))
 
 	// 首条不命中、第二条 or 命中 → 整体命中（or 可以救回来）
 	secondOrWins := []model.FilterCondition{
 		{Field: model.FilterFieldAuthor, Operator: model.FilterOpContains, Value: "某人"},
 		{Logic: "or", Field: model.FilterFieldFeedTitle, Operator: model.FilterOpContains, Value: "cloudflare"},
 	}
-	require.True(t, service.MatchConditions(entry, secondOrWins, time.Now()))
+	require.True(t, service.MatchConditions(entry, secondOrWins, time.Now(), nil))
 }
 
 func TestMatchConditions_DateOperators(t *testing.T) {
@@ -103,29 +103,29 @@ func TestMatchConditions_DateOperators(t *testing.T) {
 	olderThan := []model.FilterCondition{
 		{Field: model.FilterFieldPublishedAt, Operator: model.FilterOpOlderThan, Value: "7d"},
 	}
-	require.True(t, service.MatchConditions(entry, olderThan, now))
+	require.True(t, service.MatchConditions(entry, olderThan, now, nil))
 
 	olderThan[0].Value = "90d"
-	require.False(t, service.MatchConditions(entry, olderThan, now))
+	require.False(t, service.MatchConditions(entry, olderThan, now, nil))
 
 	before := []model.FilterCondition{
 		{Field: model.FilterFieldPublishedAt, Operator: model.FilterOpBefore, Value: "2026-09-10"},
 	}
-	require.True(t, service.MatchConditions(entry, before, now))
+	require.True(t, service.MatchConditions(entry, before, now, nil))
 
 	after := []model.FilterCondition{
 		{Field: model.FilterFieldPublishedAt, Operator: model.FilterOpAfter, Value: "2026-09-10"},
 	}
-	require.False(t, service.MatchConditions(entry, after, now))
+	require.False(t, service.MatchConditions(entry, after, now, nil))
 
 	future := []model.FilterCondition{
 		{Field: model.FilterFieldPublishedAt, Operator: model.FilterOpIsFuture},
 	}
-	require.False(t, service.MatchConditions(entry, future, now))
+	require.False(t, service.MatchConditions(entry, future, now, nil))
 
 	missingDate := entry
 	missingDate.PublishedAt = nil
-	require.False(t, service.MatchConditions(missingDate, before, now), "没有发布时间时日期条件一律不命中")
+	require.False(t, service.MatchConditions(missingDate, before, now, nil), "没有发布时间时日期条件一律不命中")
 }
 
 func TestMatchConditions_BooleanAndEmptyOperators(t *testing.T) {
@@ -134,21 +134,21 @@ func TestMatchConditions_BooleanAndEmptyOperators(t *testing.T) {
 	starred := []model.FilterCondition{
 		{Field: model.FilterFieldIsStarred, Operator: model.FilterOpContains, Value: "true"},
 	}
-	require.False(t, service.MatchConditions(entry, starred, time.Now()))
+	require.False(t, service.MatchConditions(entry, starred, time.Now(), nil))
 
 	notStarred := []model.FilterCondition{
 		{Field: model.FilterFieldIsStarred, Operator: model.FilterOpContains, Value: "false"},
 	}
-	require.True(t, service.MatchConditions(entry, notStarred, time.Now()))
+	require.True(t, service.MatchConditions(entry, notStarred, time.Now(), nil))
 
 	emptyTitle := entry
 	emptyTitle.Title = "   "
 	require.True(t, service.MatchConditions(emptyTitle, []model.FilterCondition{
 		{Field: model.FilterFieldTitle, Operator: model.FilterOpIsEmpty},
-	}, time.Now()))
+	}, time.Now(), nil))
 	require.False(t, service.MatchConditions(entry, []model.FilterCondition{
 		{Field: model.FilterFieldTitle, Operator: model.FilterOpIsEmpty},
-	}, time.Now()))
+	}, time.Now(), nil))
 }
 
 func TestResolveActions_MatchedAndUnmatched(t *testing.T) {

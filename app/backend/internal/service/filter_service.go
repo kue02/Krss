@@ -3,19 +3,34 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"gist/backend/internal/model"
 	"gist/backend/internal/repository"
 	"gist/backend/pkg/logger"
+	"gist/backend/pkg/network"
+)
+
+// 规则的 last_error 用前缀区分来源：只清掉「上一次属于自己」的那条，别互相覆盖。
+const (
+	webhookErrorPrefix = "webhook 投递失败："
+	aiErrorPrefix      = "AI 判定："
 )
 
 var (
 	ErrFilterNotFound = errors.New("filter not found")
 	ErrInvalidFilter  = errors.New("invalid filter")
+	// ErrAIUnavailable：AI 未配置（自然语言建规则要用）；ErrAIDraftInvalid：模型输出没法用。
+	ErrAIUnavailable  = errors.New("ai unavailable")
+	ErrAIDraftInvalid = errors.New("ai draft invalid")
+	ErrEntryNotFound  = errors.New("entry not found")
 )
 
 // 命中审计只保留最近这么多条（防止超大实例把审计表养肥）
@@ -26,6 +41,7 @@ type FilterWriteParams struct {
 	Name       string                  `json:"name"`
 	Enabled    *bool                   `json:"enabled"`
 	Position   *int                    `json:"position"`
+	Kind       string                  `json:"kind"`
 	ScopeType  string                  `json:"scopeType"`
 	ScopeID    *int64                  `json:"scopeId"`
 	Conditions []model.FilterCondition `json:"conditions"`
@@ -48,11 +64,17 @@ type FilterPreviewResult struct {
 	MuteCount     int                 `json:"muteCount"`
 	MarkReadCount int                 `json:"markReadCount"`
 	StarCount     int                 `json:"starCount"`
+	// AIChecked / AISkipped：这次预览里 AI 条件是「吃了缓存判定」还是「没判成」（预览绝不新发起模型调用）
+	AIChecked     int                 `json:"aiChecked"`
+	AISkipped     int                 `json:"aiSkipped"`
+	AISkipReasons []string            `json:"aiSkipReasons"`
 	Matched       []FilterPreviewItem `json:"matched"`
 }
 
 // EntryContext 一条条目在求值时可用的全部事实。
 type EntryContext struct {
+	// ID 条目 id（AI 条件按它做判定缓存）
+	ID           int64
 	Title        string
 	Content      string
 	Author       string
@@ -67,6 +89,10 @@ type EntryContext struct {
 	Starred      bool
 }
 
+// AIVerdictFunc 由调用方注入的 AI 判定：返回 (是否相关, 这次到底判没判成)。
+// nil 或 ok=false 都按「不命中」处理 —— 引擎不猜。
+type AIVerdictFunc func(entry EntryContext, question string) (bool, bool)
+
 type FilterService interface {
 	List(ctx context.Context) ([]model.Filter, error)
 	Create(ctx context.Context, params FilterWriteParams) (model.Filter, error)
@@ -80,22 +106,43 @@ type FilterService interface {
 	// Revert 把某条规则静音过的条目恢复（muted 清掉，被它标已读的退回未读）。
 	Revert(ctx context.Context, filterID int64) (int64, error)
 	ListMatches(ctx context.Context, filterID int64, limit int) ([]model.FilterMatch, error)
+	// ParseNaturalLanguage 用 AI 把一句人话翻成规则草稿（不落库；由编辑器确认后再保存）。
+	ParseNaturalLanguage(ctx context.Context, text string) (FilterDraft, error)
+	// CreateException 条目级「豁免这类内容」：建一条顺序最靠前、只做反向动作的例外规则，
+	// 并把这一条立刻放回未读流。
+	CreateException(ctx context.Context, entryID int64) (model.Filter, error)
 }
 
 type filterService struct {
-	filters repository.FilterRepository
-	entries repository.EntryRepository
-	feeds   repository.FeedRepository
-	folders repository.FolderRepository
+	filters  repository.FilterRepository
+	entries  repository.EntryRepository
+	feeds    repository.FeedRepository
+	folders  repository.FolderRepository
+	ai       AICompleter
+	webhook  FilterWebhookSender
+	governor *aiJudgeGovernor
 }
 
-func NewFilterService(
-	filters repository.FilterRepository,
-	entries repository.EntryRepository,
-	feeds repository.FeedRepository,
-	folders repository.FolderRepository,
-) FilterService {
-	return &filterService{filters: filters, entries: entries, feeds: feeds, folders: folders}
+// FilterServiceDeps 依赖（AI 与 webhook 可为 nil：没有就分别是「AI 条件判不成」与「webhook 不可用」）。
+type FilterServiceDeps struct {
+	Filters repository.FilterRepository
+	Entries repository.EntryRepository
+	Feeds   repository.FeedRepository
+	Folders repository.FolderRepository
+	AI      AICompleter
+	Webhook FilterWebhookSender
+}
+
+func NewFilterService(deps FilterServiceDeps) FilterService {
+	return &filterService{
+		filters:  deps.Filters,
+		entries:  deps.Entries,
+		feeds:    deps.Feeds,
+		folders:  deps.Folders,
+		ai:       deps.AI,
+		webhook:  deps.Webhook,
+		governor: &aiJudgeGovernor{},
+	}
 }
 
 func (s *filterService) List(ctx context.Context) ([]model.Filter, error) {
@@ -110,10 +157,11 @@ func (s *filterService) Create(ctx context.Context, params FilterWriteParams) (m
 		Name:       strings.TrimSpace(params.Name),
 		Enabled:    true,
 		Position:   0,
+		Kind:       normalizeKind(params.Kind),
 		ScopeType:  params.ScopeType,
 		ScopeID:    params.ScopeID,
 		Conditions: params.Conditions,
-		Actions:    params.Actions,
+		Actions:    effectiveActions(params.Kind, params.Actions),
 	}
 	if filter.ScopeType == "" {
 		filter.ScopeType = model.FilterScopeAll
@@ -147,13 +195,14 @@ func (s *filterService) Update(ctx context.Context, id int64, params FilterWrite
 		return model.Filter{}, ErrFilterNotFound
 	}
 	current.Name = strings.TrimSpace(params.Name)
+	current.Kind = normalizeKind(params.Kind)
 	current.ScopeType = params.ScopeType
 	if current.ScopeType == "" {
 		current.ScopeType = model.FilterScopeAll
 	}
 	current.ScopeID = params.ScopeID
 	current.Conditions = params.Conditions
-	current.Actions = params.Actions
+	current.Actions = effectiveActions(params.Kind, params.Actions)
 	if params.Enabled != nil {
 		current.Enabled = *params.Enabled
 	}
@@ -165,6 +214,22 @@ func (s *filterService) Update(ctx context.Context, id int64, params FilterWrite
 	}
 	logger.Info("filter updated", "module", "service", "action", "update", "resource", "filter", "result", "ok", "filter_id", id)
 	return s.filters.GetByID(ctx, id)
+}
+
+// normalizeKind 空值按 rule 处理（老数据与不带 kind 的调用都当规则）。
+func normalizeKind(kind string) string {
+	if kind == model.FilterKindView {
+		return model.FilterKindView
+	}
+	return model.FilterKindRule
+}
+
+// effectiveActions 视图不执行任何动作（它只筛条目），存库前一律清空 —— 免得看着像会写数据。
+func effectiveActions(kind string, actions model.FilterActions) model.FilterActions {
+	if normalizeKind(kind) == model.FilterKindView {
+		return model.FilterActions{}
+	}
+	return actions
 }
 
 // Delete 删除规则。revert=true 时顺带把这条规则静音的条目恢复未读。
@@ -209,6 +274,9 @@ func (s *filterService) Preview(ctx context.Context, params FilterWriteParams, l
 		return FilterPreviewResult{}, err
 	}
 
+	// 预览绝不新发起模型调用：AI 条件只吃已有判定缓存（否则按一下预览就花一笔钱）。
+	aiRun := s.newAIJudgeRun(ctx, nil, true)
+
 	for _, entry := range entries {
 		feed := feedByID[entry.FeedID]
 		if !scopeMatches(params.ScopeType, params.ScopeID, feed) {
@@ -216,7 +284,7 @@ func (s *filterService) Preview(ctx context.Context, params FilterWriteParams, l
 		}
 		result.Scanned++
 		entryCtx := buildEntryContext(entry, feed, folderNames)
-		effective, applies := ResolveActions(MatchConditions(entryCtx, params.Conditions, now), params.Actions)
+		effective, applies := ResolveActions(MatchConditions(entryCtx, params.Conditions, now, aiRun.verdict), params.Actions)
 		if !applies {
 			continue
 		}
@@ -245,6 +313,15 @@ func (s *filterService) Preview(ctx context.Context, params FilterWriteParams, l
 		}
 	}
 
+	// AI 条件的预览口径：吃了几条缓存、多少条没判成（原因照抄给界面）
+	result.AIChecked = len(result.Matched)
+	if aiRun.short+aiRun.limited > 0 {
+		result.AISkipped = aiRun.short + aiRun.limited
+		if message := aiRun.message(); message != "" {
+			result.AISkipReasons = []string{message}
+		}
+	}
+
 	return result, nil
 }
 
@@ -267,6 +344,10 @@ func (s *filterService) ApplyToHistory(ctx context.Context, filterID int64, limi
 	}
 	candidates := make([]model.Filter, 0, len(all))
 	for _, filter := range all {
+		// 视图只筛条目、不执行动作：引擎完全跳过它
+		if filter.Kind == model.FilterKindView {
+			continue
+		}
 		if !filter.Enabled || len(filter.Conditions) == 0 && filter.Actions.IsEmpty() {
 			continue
 		}
@@ -296,6 +377,14 @@ func (s *filterService) ApplyToHistory(ctx context.Context, filterID int64, limi
 
 	now := time.Now()
 	stats := make(map[int64]int64, len(candidates))
+	// AI 判定的额度整次运行共享；跳过与失败按规则分开记（原因要写回真正带 AI 条件的那条规则）
+	budget := newAIJudgeBudget()
+	runs := make(map[int64]*aiJudgeRun, len(candidates))
+	for _, filter := range candidates {
+		if hasAICondition(filter.Conditions) {
+			runs[filter.ID] = s.newAIJudgeRun(ctx, budget, false)
+		}
+	}
 
 	for _, entry := range entries {
 		feed, ok := feedByID[entry.FeedID]
@@ -308,7 +397,11 @@ func (s *filterService) ApplyToHistory(ctx context.Context, filterID int64, limi
 			if !scopeMatches(filter.ScopeType, filter.ScopeID, feed) {
 				continue
 			}
-			effective, applies := ResolveActions(MatchConditions(entryCtx, filter.Conditions, now), filter.Actions)
+			var judge AIVerdictFunc
+			if run := runs[filter.ID]; run != nil {
+				judge = run.verdict
+			}
+			effective, applies := ResolveActions(MatchConditions(entryCtx, filter.Conditions, now, judge), filter.Actions)
 			if !applies {
 				continue
 			}
@@ -328,6 +421,7 @@ func (s *filterService) ApplyToHistory(ctx context.Context, filterID int64, limi
 			}); err != nil {
 				logger.Warn("record filter match failed", "module", "service", "action", "record", "resource", "filter", "result", "failed", "filter_id", filter.ID, "entry_id", entry.ID, "error", err)
 			}
+			s.dispatchWebhook(ctx, filter, feed, entry, effective, now)
 			stats[filter.ID]++
 			applied++
 			break
@@ -336,6 +430,13 @@ func (s *filterService) ApplyToHistory(ctx context.Context, filterID int64, limi
 
 	if err := s.filters.BumpMatchStats(ctx, stats, now); err != nil {
 		logger.Warn("bump filter stats failed", "module", "service", "action", "update", "resource", "filter", "result", "failed", "error", err)
+	}
+	// 这一轮回溯里参与过求值的规则（含被回溯的那条）都收到自己的 AI 判定情况：
+	// 带 AI 条件的写回原因，判得成的清掉上一次的 AI 报错。
+	for _, filter := range candidates {
+		if run := runs[filter.ID]; run != nil {
+			s.recordAIRunOutcome(ctx, filter, run)
+		}
 	}
 	if applied > 0 {
 		if err := s.filters.PruneMatches(ctx, filterMatchRetention); err != nil {
@@ -359,6 +460,10 @@ func (s *filterService) ApplyToEntries(ctx context.Context, feed model.Feed, ent
 
 	candidates := make([]model.Filter, 0, len(all))
 	for _, filter := range all {
+		// 视图只筛条目、不执行动作：引擎完全跳过它
+		if filter.Kind == model.FilterKindView {
+			continue
+		}
 		if !filter.Enabled || len(filter.Conditions) == 0 && filter.Actions.IsEmpty() {
 			continue
 		}
@@ -390,6 +495,14 @@ func (s *filterService) ApplyToEntries(ctx context.Context, feed model.Feed, ent
 	now := time.Now()
 	applied := 0
 	stats := make(map[int64]int64, len(candidates))
+	// 入库路径同样：额度共享、原因按规则分开记
+	budget := newAIJudgeBudget()
+	runs := make(map[int64]*aiJudgeRun, len(candidates))
+	for _, filter := range candidates {
+		if hasAICondition(filter.Conditions) {
+			runs[filter.ID] = s.newAIJudgeRun(ctx, budget, false)
+		}
+	}
 
 	for _, entry := range entries {
 		entryID, ok := idsByHash[entry.Hash]
@@ -398,7 +511,11 @@ func (s *filterService) ApplyToEntries(ctx context.Context, feed model.Feed, ent
 		}
 		entryCtx := buildEntryContext(entry, feed, folderNames)
 		for _, filter := range candidates {
-			effective, applies := ResolveActions(MatchConditions(entryCtx, filter.Conditions, now), filter.Actions)
+			var judge AIVerdictFunc
+			if run := runs[filter.ID]; run != nil {
+				judge = run.verdict
+			}
+			effective, applies := ResolveActions(MatchConditions(entryCtx, filter.Conditions, now, judge), filter.Actions)
 			if !applies {
 				continue
 			}
@@ -414,6 +531,9 @@ func (s *filterService) ApplyToEntries(ctx context.Context, feed model.Feed, ent
 			}); err != nil {
 				logger.Warn("record filter match failed", "module", "service", "action", "record", "resource", "filter", "result", "failed", "filter_id", filter.ID, "entry_id", entryID, "error", err)
 			}
+			// webhook 是「要出网」的动作：异步投递，结果写回规则的 last_error
+			entry.ID = entryID
+			s.dispatchWebhook(ctx, filter, feed, entry, effective, now)
 			stats[filter.ID]++
 			applied++
 			// 首个命中即停：一条条目只由顺序最靠前的那条规则处理
@@ -423,6 +543,14 @@ func (s *filterService) ApplyToEntries(ctx context.Context, feed model.Feed, ent
 
 	if err := s.filters.BumpMatchStats(ctx, stats, now); err != nil {
 		logger.Warn("bump filter stats failed", "module", "service", "action", "update", "resource", "filter", "result", "failed", "error", err)
+	}
+	// 把这一轮的 AI 判定情况写回带 AI 条件的规则（成功就清掉上一次的 AI 报错）
+	for _, filter := range candidates {
+		run := runs[filter.ID]
+		if run == nil {
+			continue
+		}
+		s.recordAIRunOutcome(ctx, filter, run)
 	}
 	if applied > 0 {
 		if err := s.filters.PruneMatches(ctx, filterMatchRetention); err != nil {
@@ -518,13 +646,14 @@ func scopeMatches(scopeType string, scopeID *int64, feed model.Feed) bool {
 }
 
 // MatchConditions 求值条件链：条件之间按各自的 logic（and/or）折叠，空条件视为命中。
-func MatchConditions(entry EntryContext, conditions []model.FilterCondition, now time.Time) bool {
+// ai 为 nil 时 AI 条件一律不命中（AI 条件判不成就不猜）。
+func MatchConditions(entry EntryContext, conditions []model.FilterCondition, now time.Time, ai AIVerdictFunc) bool {
 	if len(conditions) == 0 {
 		return true
 	}
 	result := false
 	for index, condition := range conditions {
-		value := evaluateCondition(entry, condition, now)
+		value := evaluateCondition(entry, condition, now, ai)
 		if index == 0 || condition.Logic == "" || condition.Logic == "and" {
 			if index == 0 {
 				result = value
@@ -559,7 +688,7 @@ func ResolveActions(matched bool, actions model.FilterActions) (model.FilterActi
 	return model.FilterActions{}, false
 }
 
-func evaluateCondition(entry EntryContext, condition model.FilterCondition, now time.Time) bool {
+func evaluateCondition(entry EntryContext, condition model.FilterCondition, now time.Time, ai AIVerdictFunc) bool {
 	var matched bool
 	switch condition.Field {
 	case model.FilterFieldTitle:
@@ -586,6 +715,8 @@ func evaluateCondition(entry EntryContext, condition model.FilterCondition, now 
 		matched = matchBool(entry.Read, condition)
 	case model.FilterFieldIsStarred:
 		matched = matchBool(entry.Starred, condition)
+	case model.FilterFieldAIRelevance:
+		matched = matchAIRelevance(entry, condition, ai)
 	default:
 		matched = false
 	}
@@ -593,6 +724,20 @@ func evaluateCondition(entry EntryContext, condition model.FilterCondition, now 
 		return !matched
 	}
 	return matched
+}
+
+// matchAIRelevance AI 条件：把 value 当作主题描述交给注入的判定函数。
+// 判定没做成（ok=false）按「不命中」处理 —— 原因由调用方记录到规则的 last_error，不在这里造噪音。
+func matchAIRelevance(entry EntryContext, condition model.FilterCondition, ai AIVerdictFunc) bool {
+	question := strings.TrimSpace(condition.Value)
+	if question == "" || ai == nil {
+		return false
+	}
+	verdict, ok := ai(entry, question)
+	if !ok {
+		return false
+	}
+	return verdict
 }
 
 func matchText(value string, condition model.FilterCondition) bool {
@@ -691,6 +836,7 @@ func parseDurationValue(raw string) (time.Duration, bool) {
 // buildEntryContext 把条目 + 订阅元数据摊平成求值上下文。
 func buildEntryContext(entry model.Entry, feed model.Feed, folderNames map[int64]string) EntryContext {
 	context := EntryContext{
+		ID:        entry.ID,
 		FeedTitle: feed.Title,
 		FeedURL:   feed.URL,
 		FeedType:  feed.Type,
@@ -754,7 +900,137 @@ func buildFilterState(actions model.FilterActions, filterID int64) repository.En
 		state.Starred = &value
 	}
 
+	// translate / summarize：只打「打开时自动翻译 / 自动摘要」的条目标记，此刻不花 AI token
+	if actions.Translate {
+		value := true
+		state.AutoTranslate = &value
+	}
+	if actions.Summarize {
+		value := true
+		state.AutoSummary = &value
+	}
+
 	return state
+}
+
+// hasAICondition 这条规则里有没有 AI 条件（决定要不要把 AI 判定结果写回它）。
+func hasAICondition(conditions []model.FilterCondition) bool {
+	for _, condition := range conditions {
+		if condition.Field == model.FilterFieldAIRelevance {
+			return true
+		}
+	}
+	return false
+}
+
+// recordAIRunOutcome 把这一轮 AI 判定的情况写回规则：
+// 有因没判成（未配置 / 调用失败 / 正文过短 / 到上限）就记下原因，全判成了就清掉上一次的 AI 报错。
+func (s *filterService) recordAIRunOutcome(ctx context.Context, filter model.Filter, run *aiJudgeRun) {
+	if run == nil {
+		return
+	}
+	if message := run.message(); message != "" {
+		if err := s.filters.SetLastError(ctx, filter.ID, aiErrorPrefix+message, time.Now()); err != nil {
+			logger.Warn("set filter ai error failed", "module", "service", "action", "update", "resource", "filter", "result", "failed", "filter_id", filter.ID, "error", err)
+		}
+		return
+	}
+	if filter.LastError != nil && strings.HasPrefix(*filter.LastError, aiErrorPrefix) {
+		if err := s.filters.ClearLastError(ctx, filter.ID); err != nil {
+			logger.Warn("clear filter ai error failed", "module", "service", "action", "update", "resource", "filter", "result", "failed", "filter_id", filter.ID, "error", err)
+		}
+	}
+}
+
+// dispatchWebhook 把一次命中投递给规则配的地址：异步发出、不拖慢入库。
+// 成功会清掉上一次的 webhook 报错；失败把原因写回规则的 last_error（规则表上直接看得到）。
+func (s *filterService) dispatchWebhook(ctx context.Context, filter model.Filter, feed model.Feed, entry model.Entry, actions model.FilterActions, at time.Time) {
+	if !actions.Webhook {
+		return
+	}
+	target := strings.TrimSpace(actions.WebhookURL)
+	if target == "" {
+		s.markWebhookFailure(ctx, filter, "规则没有填 webhook 地址", at)
+		return
+	}
+	if s.webhook == nil {
+		s.markWebhookFailure(ctx, filter, "服务未启用 webhook 发送器", at)
+		return
+	}
+
+	payload, err := json.Marshal(FilterWebhookPayload{
+		Event:     "filter.matched",
+		Filter:    newWebhookRule(filter),
+		Entry:     newWebhookEntry(entry, feed),
+		Actions:   actions,
+		MatchedAt: at.UTC().Format(time.RFC3339),
+	})
+	if err != nil {
+		s.markWebhookFailure(ctx, filter, "构造报文失败："+err.Error(), at)
+		return
+	}
+
+	// 响应一返回 ctx 就被取消，所以后台投递要脱离它（配合超时自己管生命周期）
+	sendCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), filterWebhookTimeout)
+	go func() {
+		defer cancel()
+		status, sendErr := s.webhook.Send(sendCtx, target, payload)
+		if sendErr != nil {
+			s.markWebhookFailure(sendCtx, filter, fmt.Sprintf("%s（HTTP %d，目标 %s）", sendErr.Error(), status, network.ExtractHost(target)), time.Now())
+			return
+		}
+		s.clearWebhookFailure(sendCtx, filter)
+	}()
+}
+
+func (s *filterService) markWebhookFailure(ctx context.Context, filter model.Filter, reason string, at time.Time) {
+	if err := s.filters.SetLastError(ctx, filter.ID, webhookErrorPrefix+reason, at); err != nil {
+		logger.Warn("set filter webhook error failed", "module", "service", "action", "update", "resource", "filter", "result", "failed", "filter_id", filter.ID, "error", err)
+	}
+	logger.Warn("filter webhook delivery failed", "module", "service", "action", "webhook", "resource", "filter", "result", "failed", "filter_id", filter.ID, "reason", reason)
+}
+
+// clearWebhookFailure 只清掉「上一次是 webhook 报的错」，不碰 AI 判定留下的原因。
+func (s *filterService) clearWebhookFailure(ctx context.Context, filter model.Filter) {
+	if filter.LastError == nil || !strings.HasPrefix(*filter.LastError, webhookErrorPrefix) {
+		return
+	}
+	if err := s.filters.ClearLastError(ctx, filter.ID); err != nil {
+		logger.Warn("clear filter webhook error failed", "module", "service", "action", "update", "resource", "filter", "result", "failed", "filter_id", filter.ID, "error", err)
+	}
+}
+
+func newWebhookRule(filter model.Filter) FilterWebhookRule {
+	rule := FilterWebhookRule{
+		ID:        strconv.FormatInt(filter.ID, 10),
+		Name:      filter.Name,
+		ScopeType: filter.ScopeType,
+	}
+	if filter.ScopeID != nil {
+		rule.ScopeID = strconv.FormatInt(*filter.ScopeID, 10)
+	}
+	return rule
+}
+
+func newWebhookEntry(entry model.Entry, feed model.Feed) FilterWebhookEntry {
+	payload := FilterWebhookEntry{
+		ID:        strconv.FormatInt(entry.ID, 10),
+		FeedID:    strconv.FormatInt(feed.ID, 10),
+		FeedTitle: feed.Title,
+	}
+	if entry.Title != nil {
+		payload.Title = *entry.Title
+	}
+	if entry.URL != nil {
+		payload.URL = *entry.URL
+	}
+	if entry.Author != nil {
+		payload.Author = *entry.Author
+	}
+	if entry.PublishedAt != nil {
+		payload.PublishedAt = entry.PublishedAt.UTC().Format(time.RFC3339)
+	}
+	return payload
 }
 
 // scopeListFilter 预览时按作用范围取最近 N 条（包含已静音条目，便于看清规则全貌）。
@@ -777,6 +1053,10 @@ func ValidateFilterParams(params FilterWriteParams) error {
 	if len([]rune(strings.TrimSpace(params.Name))) > 60 {
 		return ErrInvalidFilter
 	}
+	kind := params.Kind
+	if kind != "" && kind != model.FilterKindRule && kind != model.FilterKindView {
+		return ErrInvalidFilter
+	}
 	switch params.ScopeType {
 	case "", model.FilterScopeAll:
 	case model.FilterScopeFolder, model.FilterScopeFeed:
@@ -786,27 +1066,53 @@ func ValidateFilterParams(params FilterWriteParams) error {
 	default:
 		return ErrInvalidFilter
 	}
-	if params.Actions.IsEmpty() {
-		return ErrInvalidFilter
-	}
-	if params.Actions.Mute && params.Actions.Unmute {
-		return ErrInvalidFilter
-	}
-	if params.Actions.MarkRead && params.Actions.MarkUnread {
-		return ErrInvalidFilter
-	}
-	if params.Actions.Star && params.Actions.Unstar {
-		return ErrInvalidFilter
-	}
-	// keepOnly 已经把「不匹配的」全静音了，再叠 mute 等于整片静音（UI 互斥，API 也要拦）
-	if params.Actions.Mute && params.Actions.KeepOnly {
-		return ErrInvalidFilter
+	if normalizeKind(params.Kind) == model.FilterKindView {
+		// 视图不执行动作、只筛条目：动作必须为空（存库时也会被清掉），但必须至少有一个条件
+		if params.Actions != (model.FilterActions{}) {
+			return ErrInvalidFilter
+		}
+		if len(params.Conditions) == 0 {
+			return ErrInvalidFilter
+		}
+	} else {
+		if params.Actions.IsEmpty() {
+			return ErrInvalidFilter
+		}
+		if params.Actions.Mute && params.Actions.Unmute {
+			return ErrInvalidFilter
+		}
+		if params.Actions.MarkRead && params.Actions.MarkUnread {
+			return ErrInvalidFilter
+		}
+		if params.Actions.Star && params.Actions.Unstar {
+			return ErrInvalidFilter
+		}
+		// keepOnly 已经把「不匹配的」全静音了，再叠 mute 等于整片静音（UI 互斥，API 也要拦）
+		if params.Actions.Mute && params.Actions.KeepOnly {
+			return ErrInvalidFilter
+		}
+		if params.Actions.Webhook {
+			if !isValidWebhookURL(params.Actions.WebhookURL) {
+				return ErrInvalidFilter
+			}
+		}
 	}
 	for _, condition := range params.Conditions {
 		if !containsString(model.FilterConditionFields, condition.Field) {
 			return ErrInvalidFilter
 		}
 		if !containsString(model.FilterConditionOperators, condition.Operator) {
+			return ErrInvalidFilter
+		}
+		// ai_relevance 只配 is_relevant（要「不相关」用取反），其余字段不许用 is_relevant
+		if condition.Field == model.FilterFieldAIRelevance {
+			if condition.Operator != model.FilterOpIsRelevant {
+				return ErrInvalidFilter
+			}
+			if len([]rune(strings.TrimSpace(condition.Value))) > 200 {
+				return ErrInvalidFilter
+			}
+		} else if condition.Operator == model.FilterOpIsRelevant {
 			return ErrInvalidFilter
 		}
 		if requiresValue(condition.Operator) && strings.TrimSpace(condition.Value) == "" {
@@ -822,6 +1128,18 @@ func ValidateFilterParams(params FilterWriteParams) error {
 		}
 	}
 	return nil
+}
+
+// isValidWebhookURL 只放行 http/https 的绝对地址（挡掉 file:// / 空主机这类会被当 SSRF 用的写法）。
+func isValidWebhookURL(raw string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return false
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return false
+	}
+	return parsed.Host != ""
 }
 
 func requiresValue(operator string) bool {

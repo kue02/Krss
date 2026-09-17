@@ -291,6 +291,47 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/entries/search": {
+            "get": {
+                "description": "Full-text search over entries (title/content/author/url) via FTS5",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "entries"
+                ],
+                "summary": "Search entries",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "search keyword",
+                        "name": "q",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "max results (default 30, max 100)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.entryListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/feeds/{id}/ai": {
             "patch": {
                 "description": "Per-feed override for auto translate / auto summary (null = follow global)",
@@ -1447,6 +1488,98 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/filters/exception": {
+            "post": {
+                "description": "Create a front-of-chain rule that only reverts actions (unmute + unread) for this entry's link, and release that entry now",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "filters"
+                ],
+                "summary": "Create exception rule for an entry",
+                "parameters": [
+                    {
+                        "description": "Entry to exempt",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.filterExceptionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.filterResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/filters/parse": {
+            "post": {
+                "description": "Ask the configured AI provider to turn a sentence into a rule draft; the client confirms it in the editor",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "filters"
+                ],
+                "summary": "Parse natural-language rule",
+                "parameters": [
+                    {
+                        "description": "Natural language request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.filterDraftRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.filterDraftResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/internal_handler.errorResponse"
                         }
@@ -2988,6 +3121,13 @@ const docTemplate = `{
                 "author": {
                     "type": "string"
                 },
+                "autoSummary": {
+                    "type": "boolean"
+                },
+                "autoTranslate": {
+                    "description": "AutoTranslate / AutoSummary：规则动作 translate/summarize 打的条目级标记 ——\n打开这条时自动翻译 / 自动摘要（前端与订阅级、全局设置取「或」）。",
+                    "type": "boolean"
+                },
                 "content": {
                     "type": "string"
                 },
@@ -3183,11 +3323,24 @@ const docTemplate = `{
                 "star": {
                     "type": "boolean"
                 },
+                "summarize": {
+                    "type": "boolean"
+                },
+                "translate": {
+                    "description": "P2 动作：条目级「打开时自动翻译 / 自动摘要」标记 + 出网 webhook",
+                    "type": "boolean"
+                },
                 "unmute": {
                     "type": "boolean"
                 },
                 "unstar": {
                     "type": "boolean"
+                },
+                "webhook": {
+                    "type": "boolean"
+                },
+                "webhookUrl": {
+                    "type": "string"
                 }
             }
         },
@@ -3218,6 +3371,56 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.filterDraftRequest": {
+            "type": "object",
+            "properties": {
+                "text": {
+                    "description": "Text 用户说的一句人话（「把标题里带赞助的广告都静音」）",
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.filterDraftResponse": {
+            "type": "object",
+            "properties": {
+                "actions": {
+                    "$ref": "#/definitions/internal_handler.filterActionsPayload"
+                },
+                "conditions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_handler.filterConditionRequest"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "notes": {
+                    "description": "Notes：模型给出的一句话解释；Warnings：被修正/丢弃的东西（必须显示给用户）",
+                    "type": "string"
+                },
+                "scopeId": {
+                    "type": "string"
+                },
+                "scopeType": {
+                    "type": "string"
+                },
+                "warnings": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "internal_handler.filterExceptionRequest": {
+            "type": "object",
+            "properties": {
+                "entryId": {
                     "type": "string"
                 }
             }
@@ -3293,6 +3496,19 @@ const docTemplate = `{
         "internal_handler.filterPreviewResponse": {
             "type": "object",
             "properties": {
+                "aiChecked": {
+                    "description": "AI 条件的预览口径：吃了几条已有判定缓存、多少条因为「没判过/正文太短/到上限」没算数",
+                    "type": "integer"
+                },
+                "aiSkipReasons": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "aiSkipped": {
+                    "type": "integer"
+                },
                 "markReadCount": {
                     "type": "integer"
                 },
@@ -3335,6 +3551,16 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "lastError": {
+                    "description": "LastError / LastErrorAt：这条规则最近一次执行失败的原因（webhook 投递失败、AI 判定失败）",
+                    "type": "string"
+                },
+                "lastErrorAt": {
                     "type": "string"
                 },
                 "lastMatchedAt": {
@@ -3382,6 +3608,9 @@ const docTemplate = `{
                 },
                 "enabled": {
                     "type": "boolean"
+                },
+                "kind": {
+                    "type": "string"
                 },
                 "name": {
                     "type": "string"

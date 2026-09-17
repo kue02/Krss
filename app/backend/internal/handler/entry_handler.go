@@ -55,10 +55,14 @@ type entryResponse struct {
 	Read            bool    `json:"read"`
 	Starred         bool    `json:"starred"`
 	// Muted 条目是被过滤规则静音的（列表默认隐藏，可在「已静音」里回看）。
-	Muted     bool    `json:"muted"`
-	FilterID  *string `json:"filterId,omitempty"`
-	CreatedAt string  `json:"createdAt"`
-	UpdatedAt string  `json:"updatedAt"`
+	Muted    bool    `json:"muted"`
+	FilterID *string `json:"filterId,omitempty"`
+	// AutoTranslate / AutoSummary：规则动作 translate/summarize 打的条目级标记 ——
+	// 打开这条时自动翻译 / 自动摘要（前端与订阅级、全局设置取「或」）。
+	AutoTranslate bool   `json:"autoTranslate"`
+	AutoSummary   bool   `json:"autoSummary"`
+	CreatedAt     string `json:"createdAt"`
+	UpdatedAt     string `json:"updatedAt"`
 }
 
 type readableContentResponse struct {
@@ -203,6 +207,15 @@ func (h *EntryHandler) List(c echo.Context) error {
 			return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid folderId"})
 		}
 		params.FolderID = &id
+	}
+
+	// viewId：按「保存筛选视图」取条目（作用域与条件都在视图里）
+	if raw := c.QueryParam("viewId"); raw != "" {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid viewId"})
+		}
+		params.ViewID = &id
 	}
 
 	if raw := c.QueryParam("contentType"); raw != "" {
@@ -609,6 +622,8 @@ func toEntryResponse(e model.Entry) entryResponse {
 		Starred:         e.Starred,
 		Muted:           e.Muted,
 		FilterID:        idPtrToString(e.FilterID),
+		AutoTranslate:   e.AutoTranslate,
+		AutoSummary:     e.AutoSummary,
 		CreatedAt:       e.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:       e.UpdatedAt.UTC().Format(time.RFC3339),
 	}

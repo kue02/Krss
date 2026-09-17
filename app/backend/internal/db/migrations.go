@@ -401,6 +401,47 @@ func runMigrations(db *sql.DB) error {
 		return err
 	}
 
+	// Migration 22: 动作扩充（P2）与「保存筛选视图」
+	//   entries.auto_translate / auto_summary —— 规则命中后打的条目级标记：
+	//   打开这条时自动翻译 / 自动摘要（复用既有 SSE 通道，入库时不花 AI token）。
+	//   filters.kind —— rule（命中执行动作）/ view（只筛条目、不写数据）。
+	//   filters.last_error / last_error_at —— 规则执行失败的可见出口（webhook 投递失败、AI 判定失败）。
+	if err := addColumnIfMissing(db, "entries", "auto_translate", `ALTER TABLE entries ADD COLUMN auto_translate INTEGER NOT NULL DEFAULT 0`); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "entries", "auto_summary", `ALTER TABLE entries ADD COLUMN auto_summary INTEGER NOT NULL DEFAULT 0`); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "filters", "kind", `ALTER TABLE filters ADD COLUMN kind TEXT NOT NULL DEFAULT 'rule'`); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "filters", "last_error", `ALTER TABLE filters ADD COLUMN last_error TEXT`); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "filters", "last_error_at", `ALTER TABLE filters ADD COLUMN last_error_at TEXT`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_filters_kind ON filters(kind)`); err != nil {
+		return fmt.Errorf("create filters kind index: %w", err)
+	}
+
+	// Migration 23: AI 条件（P3）的判定缓存 —— 同一条目同一个问题只问模型一次。
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS entry_ai_judgements (
+			id INTEGER PRIMARY KEY,
+			entry_id INTEGER NOT NULL,
+			question_hash TEXT NOT NULL,
+			verdict INTEGER NOT NULL,
+			model TEXT,
+			created_at TEXT NOT NULL
+		)
+	`); err != nil {
+		return fmt.Errorf("create entry_ai_judgements table: %w", err)
+	}
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_entry_ai_judgements_unique ON entry_ai_judgements(entry_id, question_hash)`); err != nil {
+		return fmt.Errorf("create entry_ai_judgements index: %w", err)
+	}
+
 	return nil
 }
 
