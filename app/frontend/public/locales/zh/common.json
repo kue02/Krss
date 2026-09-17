@@ -476,6 +476,9 @@
     "toggleFolder": "展开 / 折叠所在分组",
     "addFeed": "添加订阅"
   },
+  "dialog": {
+    "a11y": "对话框内容"
+  },
   "appearance_reading": {
     "ui_scale": "界面字号",
     "ui_scale_small": "小",

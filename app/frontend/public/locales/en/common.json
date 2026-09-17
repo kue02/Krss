@@ -479,6 +479,9 @@
     "toggleFolder": "Expand / collapse current folder",
     "addFeed": "Add feed"
   },
+  "dialog": {
+    "a11y": "Dialog content"
+  },
   "appearance_reading": {
     "ui_scale": "UI scale",
     "ui_scale_small": "Small",
