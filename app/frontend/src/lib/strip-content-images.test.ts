@@ -26,4 +26,24 @@ describe("stripContentImages", () => {
     expect(stripContentImages(null)).toBe("");
     expect(stripContentImages(undefined)).toBe("");
   });
+
+  it("引文块里的图片要留着（它属于引文，不能甩到引文框外面）", () => {
+    const html =
+      '<p>正文</p><img src="main.jpg">' +
+      '<div class="rsshub-quote">作者: 引文<img src="quote.jpg"></div>';
+
+    const out = stripContentImages(html);
+
+    // 正文自己的图摘掉（下面那排缩略图会用）
+    expect(out).not.toContain("main.jpg");
+    // 引文里的图必须留在引文框内
+    expect(out).toContain("quote.jpg");
+    expect(out).toContain("rsshub-quote");
+  });
+
+  it("blockquote 里的媒体同样保留", () => {
+    const html = '<p>正文</p><blockquote>引用<video src="v.mp4"></video></blockquote>';
+    const out = stripContentImages(html);
+    expect(out).toContain("v.mp4");
+  });
 });

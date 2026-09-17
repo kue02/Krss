@@ -44,6 +44,7 @@ import {
   useUISettingActions,
   hasSidebarVisibilitySetting,
   setUISetting,
+  applyQuoteStyleToDocument,
   applyReduceMotionToDocument,
   applyUiScaleToDocument,
 } from "@/hooks/useUISettings";
@@ -305,6 +306,12 @@ function AuthenticatedApp() {
   useEffect(() => {
     applyReduceMotionToDocument(Boolean(reduceMotion));
   }, [reduceMotion]);
+
+  // 「引文样式」落到 <html data-quote-style>：强调块 / Folo 式分割线
+  const quoteStyle = useUISettingKey("quoteStyle");
+  useEffect(() => {
+    applyQuoteStyleToDocument(quoteStyle === "divider" ? "divider" : "block");
+  }, [quoteStyle]);
 
   // 「界面字号」改 <html> 基准字号（界面用的都是 rem，整体跟着缩放）
   const uiScale = useUISettingKey("uiScale");

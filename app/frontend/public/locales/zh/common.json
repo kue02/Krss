@@ -489,6 +489,9 @@
     "font_family": "正文字体",
     "font_size": "正文字号",
     "line_height": "行高",
+    "quote_style": "引文样式",
+    "quote_style_block": "强调块",
+    "quote_style_divider": "分割线",
     "reduce_motion": "减少动态效果"
   },
   "reading_font": {

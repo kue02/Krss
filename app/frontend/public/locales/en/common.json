@@ -492,6 +492,9 @@
     "font_family": "Article font",
     "font_size": "Font size",
     "line_height": "Line height",
+    "quote_style": "Quote style",
+    "quote_style_block": "Highlighted",
+    "quote_style_divider": "Divider",
     "reduce_motion": "Reduce motion"
   },
   "reading_font": {

@@ -128,6 +128,7 @@ export function AppearanceSettings() {
   const expandLongByView = useUISettingKey("expandLongByView");
   const reduceMotion = useUISettingKey("reduceMotion");
   const uiScale = useUISettingKey("uiScale");
+  const quoteStyle = useUISettingKey("quoteStyle");
   const scrollReadByView = useUISettingKey("scrollReadByView");
   const scrollReadTimingByView = useUISettingKey("scrollReadTimingByView");
   const {
@@ -135,6 +136,7 @@ export function AppearanceSettings() {
     setExpandLongForView,
     setReduceMotion,
     setUiScale,
+    setQuoteStyle,
     setScrollReadForView,
     setScrollReadTimingForView,
     setCardImageSize,
@@ -465,6 +467,25 @@ export function AppearanceSettings() {
                 { value: "1", label: t("appearance_reading.ui_scale_default") },
                 { value: "1.1", label: t("appearance_reading.ui_scale_large") },
                 { value: "1.25", label: t("appearance_reading.ui_scale_xl") },
+              ]}
+            />
+          </SettingRow>
+          <SettingRow label={t("appearance_reading.quote_style")}>
+            <SegmentedControl
+              className="shrink-0"
+              value={quoteStyle === "divider" ? "divider" : "block"}
+              onValueChange={(value) =>
+                setQuoteStyle(value === "divider" ? "divider" : "block")
+              }
+              options={[
+                {
+                  value: "block",
+                  label: t("appearance_reading.quote_style_block"),
+                },
+                {
+                  value: "divider",
+                  label: t("appearance_reading.quote_style_divider"),
+                },
               ]}
             />
           </SettingRow>
