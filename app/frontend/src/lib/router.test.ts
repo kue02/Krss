@@ -76,7 +76,7 @@ describe("router", () => {
     it("should parse /starred", () => {
       const result = parseRoute("/starred", "");
       expect(result).toEqual({
-        selection: { type: "starred" },
+        selection: { type: "starred", viewOnly: false },
         entryId: null,
         unreadOnly: false,
         contentType: "article",
@@ -86,7 +86,7 @@ describe("router", () => {
     it("should parse /starred/:entryId", () => {
       const result = parseRoute("/starred/333", "");
       expect(result).toEqual({
-        selection: { type: "starred" },
+        selection: { type: "starred", viewOnly: false },
         entryId: "333",
         unreadOnly: false,
         contentType: "article",
@@ -252,3 +252,9 @@ describe("router", () => {
     });
   });
 });
+
+  it("should parse /starred?scope=view as the current-view starred scope", () => {
+    const result = parseRoute("/starred", "?scope=view&type=social");
+    expect(result.selection).toEqual({ type: "starred", viewOnly: true });
+    expect(result.contentType).toBe("social");
+  });

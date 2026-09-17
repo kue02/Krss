@@ -56,10 +56,13 @@ export function parseRoute(pathname: string, search: string): RouteState {
     };
   }
 
-  // /starred/:entryId?
+  // /starred/:entryId?  —— ?scope=view 表示「只显示当前视图（内容类型）的星标」
   if (segments[0] === "starred") {
     return {
-      selection: { type: "starred" },
+      selection: {
+        type: "starred",
+        viewOnly: params.get("scope") === "view",
+      },
       entryId: segments[1] || null,
       unreadOnly,
       contentType,
@@ -108,6 +111,9 @@ export function buildPath(
   const params = new URLSearchParams();
   if (unreadOnly) {
     params.set("unread", "true");
+  }
+  if (selection.type === "starred" && selection.viewOnly) {
+    params.set("scope", "view");
   }
   if (contentType) {
     params.set("type", contentType);

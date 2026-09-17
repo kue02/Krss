@@ -14,7 +14,8 @@
     "new_automation": "New automation",
     "import_success": "OPML imported",
     "import_failed": "OPML import failed",
-    "views": "Views"
+    "views": "Views",
+    "starred_view": "Starred in this view"
   },
   "content_type": {
     "article": "Articles",

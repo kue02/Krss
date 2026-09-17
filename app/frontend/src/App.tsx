@@ -270,6 +270,12 @@ function AuthenticatedApp() {
     selectStarred({ replace: true });
   }, [selectStarred, closeSidebar]);
 
+  /** 「只显示当前视图的星标」：同一入口的第二档，取数时带上当前内容类型 */
+  const handleSelectStarredView = useCallback(() => {
+    closeSidebar();
+    selectStarred({ replace: true }, true);
+  }, [selectStarred, closeSidebar]);
+
   const handleAddClick = useCallback(
     (ct: ContentType) => {
       setAddFeedContentType(ct);
@@ -392,6 +398,7 @@ function AuthenticatedApp() {
       onSelectFeed={handleSelectFeed}
       onSelectFolder={handleSelectFolder}
       onSelectStarred={handleSelectStarred}
+      onSelectStarredView={handleSelectStarredView}
       onSelectAll={handleSelectAll}
       contentType={contentType}
       appearanceSettings={appearanceSettings}

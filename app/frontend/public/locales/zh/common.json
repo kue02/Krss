@@ -14,7 +14,8 @@
     "new_automation": "新建自动化",
     "import_success": "OPML 导入完成",
     "import_failed": "OPML 导入失败",
-    "views": "视图"
+    "views": "视图",
+    "starred_view": "当前视图星标"
   },
   "content_type": {
     "article": "文章",

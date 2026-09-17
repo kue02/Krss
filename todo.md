@@ -161,7 +161,14 @@
 - [x] **10-10 新建视图：预览不出来、保存不了** —— **已解决（不是代码 bug）**：:8080 上挂的是 **15:12 起的旧 `go run` 进程**（旧代码，库里 filters 连 `kind` 列都没有）。
       2026-09-17 22:17 已杀掉旧进程、用**当前源码**在 :8080 重启：预览 → **200**、建视图 → **201**、迁移 22/23 上库（filters 有 `kind`/`last_error`，entries 有 `auto_translate`/`auto_summary`）✓
       备份：`~/Documents/Docker/gist-nextflux/data.bak-0917-2217`
-- [ ] **10-11 星标再加一档「只显示当前视图」**：即只显示在当前内容类型（视图）下的星标条目
+- [x] **10-11 星标再加一档「只显示当前视图」**（2026-09-17）：根因 —— `selectionToParams` 只对 `all` 传 `contentType`，
+      星标视图**一律不带内容类型**，所以永远全类型。做法：给星标加 `scope=view` 维度（`SelectionType.starred.viewOnly`）——
+      `router` 解析/生成该参数、`selectStarred(opts, viewOnly)`、`selectionToParams` 在这一档才带 `contentType`；
+      侧栏在「已加星标」**上面**新增一行「当前视图星标」（带当前内容类型贴纸，两档互斥点亮）。
+      实测：点它 → URL `/starred?scope=view&type=article`、只有该行 `data-active=true`；
+      接口层机制验证（你库里只有 **1 条**星标条目、属 article 类型订阅，所以界面上两档看不出差别）：
+      `starredOnly=true&includeMuted=true` → **1**；加 `&contentType=article` → **1**；加 `&contentType=social` → **0**；`picture` → **0** ✓
+      门禁：`bunx tsc -b` 干净、`bun run test` **608/608**（router 老用例补 `viewOnly:false`，新增 scope=view 用例）
 - [ ] **10-12 图片视图**：加瀑布流设置；点开图片后左右加箭头可切换上一张/下一张
 - [x] **10-13 个人资料可修改头像**（2026-09-17）：原先头像**只能是邮箱的 Gravatar**（`gravatarURL(email)`，没有可改字段）。
       后端：新增设置键 `user.avatar_url`（空 = 沿用 Gravatar，**默认行为不变**），`PUT /api/auth/profile` 收可选 `avatarUrl`
