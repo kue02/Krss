@@ -10,6 +10,8 @@ export default mergeConfig(
       environment: "jsdom",
       include: ["src/**/*.{test,spec}.{ts,tsx}"],
       exclude: ["e2e/**", "node_modules/**"],
+      // jsdom 缺 Web Animations API（涟漪点击会用到），补在 setup 里，见该文件注释
+      setupFiles: ["./src/test/setup-dom.ts"],
       coverage: {
         provider: "v8",
         reporter: ["text", "json", "html"],
