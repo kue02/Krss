@@ -6,13 +6,15 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuLabel,
   ContextMenuSeparator,
   ContextMenuSub,
   ContextMenuSubContent,
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { ChevronIcon } from "@/components/ui/icons";
+import { ChevronIcon, FolderIcon } from "@/components/ui/icons";
+import { FolderCog, Pencil, Tags, Trash2 } from "lucide-react";
 import { useContextMenu } from "@/hooks/useContextMenu";
 import { useCategoryState } from "@/hooks/useCategoryState";
 import { Ripple } from "m3-ripple";
@@ -113,19 +115,28 @@ export function FeedCategory({
           </div>
         </ContextMenuTrigger>
         <ContextMenuContent>
+        {/* 标题行：这是哪个分类的菜单（与订阅右键菜单同一套做法） */}
+        <ContextMenuLabel className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-medium text-muted-foreground">
+          <FolderIcon className="size-4 shrink-0" />
+          <span className="min-w-0 flex-1 truncate">{name}</span>
+        </ContextMenuLabel>
+        <ContextMenuSeparator />
           {onRename && (
             <ContextMenuItem onClick={() => onRename(folderId)}>
+              <Pencil className="size-4 shrink-0 text-muted-foreground" />
               {t("actions.rename")}
             </ContextMenuItem>
           )}
           {onBulkOverrides && (
             <ContextMenuItem onClick={() => onBulkOverrides(folderId)}>
+              <FolderCog className="size-4 shrink-0 text-muted-foreground" />
               {t("feeds.folder_overrides_menu")}
             </ContextMenuItem>
           )}
           {onChangeType && (
             <ContextMenuSub>
               <ContextMenuSubTrigger>
+                <Tags className="size-4 shrink-0 text-muted-foreground" />
                 {t("actions.change_type")}
               </ContextMenuSubTrigger>
               <ContextMenuSubContent>
@@ -160,6 +171,7 @@ export function FeedCategory({
                 className="text-destructive focus:text-destructive"
                 onClick={() => onDelete(folderId)}
               >
+                <Trash2 className="size-4 shrink-0" />
                 {t("actions.delete")}
               </ContextMenuItem>
             </>

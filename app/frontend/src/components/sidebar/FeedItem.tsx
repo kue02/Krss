@@ -6,6 +6,7 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuLabel,
   ContextMenuSeparator,
   ContextMenuSub,
   ContextMenuSubContent,
@@ -17,7 +18,16 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { RssIcon, ErrorIcon } from "@/components/ui/icons";
+import { BoltIcon, RssIcon, ErrorIcon } from "@/components/ui/icons";
+import { FeedAvatar } from "@/components/ui/feed-avatar";
+import {
+  Copy,
+  FolderInput,
+  Pencil,
+  RefreshCw,
+  Tags,
+  Trash2,
+} from "lucide-react";
 import { useContextMenu } from "@/hooks/useContextMenu";
 import { copyToClipboard } from "@/stores/toast-store";
 import { queryClient } from "@/lib/queryClient";
@@ -164,23 +174,34 @@ export function FeedItem({
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent>
+        {/* 标题行：说清这是「哪个订阅」的菜单 —— Nextflux 的右键菜单顶部也有这么一行，
+            这里额外带上 favicon（用户要求：弹出框要有标题、项要有图标） */}
+        <ContextMenuLabel className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-medium text-muted-foreground">
+          <FeedAvatar iconPath={iconPath} size={16} rounded="circle" />
+          <span className="min-w-0 flex-1 truncate">{name}</span>
+        </ContextMenuLabel>
+        <ContextMenuSeparator />
         {onRefresh && (
           <ContextMenuItem onClick={() => onRefresh(feedId)}>
+            <RefreshCw className="size-4 shrink-0 text-muted-foreground" />
             {t("actions.refresh")}
           </ContextMenuItem>
         )}
         {onEdit && (
           <ContextMenuItem onClick={() => onEdit(feedId)}>
+            <Pencil className="size-4 shrink-0 text-muted-foreground" />
             {t("actions.edit")}
           </ContextMenuItem>
         )}
         {onMoveToFolder && (
           <ContextMenuSub>
             <ContextMenuSubTrigger>
+              <FolderInput className="size-4 shrink-0 text-muted-foreground" />
               {t("actions.move_to_folder")}
             </ContextMenuSubTrigger>
             <ContextMenuSubContent>
               <ContextMenuItem onClick={() => onMoveToFolder(feedId, null)}>
+                <FolderInput className="size-4 shrink-0 text-muted-foreground" />
                 {t("actions.no_folder")}
               </ContextMenuItem>
               {folders.map((folder) => (
@@ -197,6 +218,7 @@ export function FeedItem({
         {onChangeType && (
           <ContextMenuSub>
             <ContextMenuSubTrigger>
+              <Tags className="size-4 shrink-0 text-muted-foreground" />
               {t("actions.change_type")}
             </ContextMenuSubTrigger>
             <ContextMenuSubContent>
@@ -223,11 +245,13 @@ export function FeedItem({
               void copyToClipboard(feedUrl, t("actions.copied_feed_url"));
             }}
           >
+            <Copy className="size-4 shrink-0 text-muted-foreground" />
             {t("actions.copy_feed_url")}
           </ContextMenuItem>
         )}
         {/* 规则入口与上面的订阅操作同组；删除是破坏性操作，仍单独分组压在下面 */}
         <ContextMenuItem onClick={handleNewRuleFromFeed}>
+          <BoltIcon className="size-4 shrink-0 text-muted-foreground" />
           {t("automation.rule_from_feed")}
         </ContextMenuItem>
         {onDelete && (
@@ -238,6 +262,7 @@ export function FeedItem({
               className="text-destructive focus:text-destructive"
               onClick={() => onDelete(feedId)}
             >
+              <Trash2 className="size-4 shrink-0" />
               {t("actions.delete")}
             </ContextMenuItem>
           </>
