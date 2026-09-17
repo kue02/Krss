@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ToggleButton,
@@ -39,6 +39,12 @@ interface FilterEditorProps {
   warnings?: string[];
   saving?: boolean;
   saveError?: string | null;
+  /**
+   * 把「这份表单现在长什么样、有没有被改过」告诉外壳（用户 11-9）：
+   * 保存成功只提示「已保存」；**有未保存改动时离开**才弹确认 —— 判断留在表单里，
+   * 因为只有它知道 kind/trim/视图清空动作这些规范化规则（buildPayload）。
+   */
+  onPayloadChange?: (payload: FilterWritePayload, dirty: boolean) => void;
   onSubmit: (payload: FilterWritePayload) => void;
   onCancel: () => void;
 }
@@ -116,6 +122,7 @@ export function FilterEditor({
   warnings = [],
   saving = false,
   saveError = null,
+  onPayloadChange,
   onSubmit,
   onCancel,
 }: FilterEditorProps) {
@@ -249,6 +256,39 @@ export function FilterEditor({
     kind: isView ? "view" : "rule",
     actions: isView ? {} : draft.actions,
   });
+
+  /**
+   * 稳定性指纹：只比「会影响保存结果」的字段，且用固定键序。
+   * 直接 stringify 原始对象是不行的 —— store 给的 draft 与规范化后的 payload 键序/多寡都不同，
+   * 会把「什么都没改」误判成脏（第一次实现就踩了，测试当场抓到）。
+   */
+  const signature = (input: FilterWritePayload) =>
+    JSON.stringify({
+      name: input.name.trim(),
+      scopeType: input.scopeType,
+      scopeId: input.scopeId ?? "",
+      conditions: (input.conditions ?? []).map((condition) => ({
+        logic: condition.logic ?? "and",
+        negate: Boolean(condition.negate),
+        field: condition.field,
+        operator: condition.operator,
+        value: condition.value ?? "",
+      })),
+      actions: Object.fromEntries(
+        Object.entries(isView ? {} : (input.actions ?? {}))
+          .filter(([, value]) => Boolean(value))
+          .sort(([a], [b]) => a.localeCompare(b)),
+      ),
+    });
+  const initialSignature = signature(initial);
+  const payload = buildPayload();
+  const payloadSignature = signature(payload);
+  const isDirty = payloadSignature !== initialSignature;
+  useEffect(() => {
+    onPayloadChange?.(payload, isDirty);
+    // payload 每次都是新对象，依赖到它的签名上避免每帧上报
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [payloadSignature, isDirty, onPayloadChange]);
 
   const handlePreview = () => {
     const error = validate(draft);

@@ -1,9 +1,11 @@
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Drawer } from "@heroui/react";
+import { AlertDialog, Button, Drawer } from "@heroui/react";
 import { FilterEditor } from "./FilterEditor";
 import { useFilterMutations } from "@/hooks/useFilters";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useFilterEditorStore } from "@/stores/filter-editor-store";
+import { showToast } from "@/stores/toast-store";
 import type { FilterWritePayload } from "@/types/filters";
 
 /**
@@ -28,6 +30,13 @@ export function FilterEditorDialog() {
   const isMobile = useIsMobile();
 
   const saving = create.isPending || update.isPending;
+  /**
+   * 用户 11-9 拍的口径：保存成功只提示「已保存」（不拦）；**有未保存改动时离开**才弹确认。
+   * 表单把「当前 payload + 是否改过」上报上来（规范化规则在表单里），这里只负责拦一下。
+   */
+  const latestPayload = useRef<FilterWritePayload | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [confirmLeave, setConfirmLeave] = useState(false);
 
   const title =
     kind === "view"
@@ -39,11 +48,26 @@ export function FilterEditorDialog() {
         : t("automation.new_rule");
 
   const handleSubmit = (payload: FilterWritePayload) => {
+    const onSuccess = () => {
+      showToast(
+        editingId ? t("automation.saved") : t("automation.created_saved"),
+      );
+      close();
+    };
     if (editingId) {
-      update.mutate({ id: editingId, payload }, { onSuccess: () => close() });
+      update.mutate({ id: editingId, payload }, { onSuccess });
       return;
     }
-    create.mutate(payload, { onSuccess: () => close() });
+    create.mutate(payload, { onSuccess });
+  };
+
+  /** 所有关闭路径（取消按钮 / Esc / 点遮罩 / 右上关闭）都先过这里 */
+  const requestClose = () => {
+    if (dirty) {
+      setConfirmLeave(true);
+      return;
+    }
+    close();
   };
 
   return (
@@ -51,7 +75,7 @@ export function FilterEditorDialog() {
       <Button className="hidden" aria-hidden />
       <Drawer.Backdrop
         isOpen={open}
-        onOpenChange={(next) => !next && close()}
+        onOpenChange={(next) => !next && requestClose()}
         isDismissable
       >
         <Drawer.Content
@@ -87,7 +111,11 @@ export function FilterEditorDialog() {
                       : null
                   }
                   onSubmit={handleSubmit}
-                  onCancel={close}
+                  onCancel={requestClose}
+                  onPayloadChange={(payload, nextDirty) => {
+                    latestPayload.current = payload;
+                    setDirty(nextDirty);
+                  }}
                 />
               )}
             </Drawer.Body>
@@ -96,6 +124,61 @@ export function FilterEditorDialog() {
           </Drawer.Dialog>
         </Drawer.Content>
       </Drawer.Backdrop>
+
+      {/* 有未保存改动时离开 → 三选一（保存并关闭 / 放弃更改 / 继续编辑） */}
+      <AlertDialog>
+        <Button className="hidden" aria-hidden />
+        <AlertDialog.Backdrop
+          isOpen={confirmLeave}
+          onOpenChange={(open) => !open && setConfirmLeave(false)}
+        >
+          <AlertDialog.Container>
+            <AlertDialog.Dialog className="max-w-md">
+              <AlertDialog.Header>
+                <AlertDialog.Heading>
+                  {t("automation.unsaved_title")}
+                </AlertDialog.Heading>
+              </AlertDialog.Header>
+              <AlertDialog.Body>
+                <div className="text-sm text-muted-foreground">
+                  {t("automation.unsaved_description")}
+                </div>
+              </AlertDialog.Body>
+              <AlertDialog.Footer>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onPress={() => setConfirmLeave(false)}
+                >
+                  {t("automation.unsaved_keep_editing")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onPress={() => {
+                    setConfirmLeave(false);
+                    setDirty(false);
+                    close();
+                  }}
+                >
+                  {t("automation.unsaved_discard")}
+                </Button>
+                <Button
+                  size="sm"
+                  onPress={() => {
+                    setConfirmLeave(false);
+                    setDirty(false);
+                    const payload = latestPayload.current;
+                    if (payload) handleSubmit(payload);
+                  }}
+                >
+                  {t("automation.unsaved_save")}
+                </Button>
+              </AlertDialog.Footer>
+            </AlertDialog.Dialog>
+          </AlertDialog.Container>
+        </AlertDialog.Backdrop>
+      </AlertDialog>
     </Drawer>
   );
 }

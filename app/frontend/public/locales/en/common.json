@@ -729,7 +729,14 @@
     "mute_blocked_by_keep_only": "\"Keep only matches\" already mutes everything else — \"Mute\" can't be combined with it",
     "action_notify": "Push to phone",
     "notify_url_placeholder": "Leave empty to use the global push URL in Settings → General",
-    "notify_hint": "Push a notification (Bark-compatible) when matched: title + source + deep link. Leave the URL empty to follow the global push URL; delivery failures show as red text on the rule row."
+    "notify_hint": "Push a notification (Bark-compatible) when matched: title + source + deep link. Leave the URL empty to follow the global push URL; delivery failures show as red text on the rule row.",
+    "saved": "Saved",
+    "created_saved": "Saved",
+    "unsaved_title": "Unsaved changes",
+    "unsaved_description": "This rule has unsaved changes. Save before leaving, or discard them?",
+    "unsaved_save": "Save and close",
+    "unsaved_discard": "Discard",
+    "unsaved_keep_editing": "Keep editing"
   },
   "search": {
     "title": "Search",

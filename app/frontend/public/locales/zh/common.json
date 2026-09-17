@@ -726,7 +726,14 @@
     "mute_blocked_by_keep_only": "「只保留匹配」已把不匹配的条目静音，不能再选「静音」",
     "action_notify": "推送到手机",
     "notify_url_placeholder": "留空 = 用「设置 → 通用」里的全局推送地址",
-    "notify_hint": "命中后推一条到手机（Bark 兼容）：标题 + 来源 + 直达链接。地址留空就跟随全局推送地址；投递失败会写在规则行的红字上。"
+    "notify_hint": "命中后推一条到手机（Bark 兼容）：标题 + 来源 + 直达链接。地址留空就跟随全局推送地址；投递失败会写在规则行的红字上。",
+    "saved": "已保存",
+    "created_saved": "已保存",
+    "unsaved_title": "有未保存的更改",
+    "unsaved_description": "这条规则还没保存。要保存了再走，还是直接放弃这次修改？",
+    "unsaved_save": "保存并关闭",
+    "unsaved_discard": "放弃更改",
+    "unsaved_keep_editing": "继续编辑"
   },
   "search": {
     "title": "搜索",

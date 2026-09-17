@@ -39,6 +39,26 @@ function draft(overrides: Partial<FilterWritePayload> = {}): FilterWritePayload 
 }
 
 describe("FilterEditor", () => {
+  it("11-9：把「有没有改过」上报给外壳（原始状态 false，改名后 true）", () => {
+    const onPayloadChange = vi.fn();
+    render(
+      <FilterEditor
+        initial={draft()}
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+        onPayloadChange={onPayloadChange}
+      />,
+    );
+
+    const lastCall = () => onPayloadChange.mock.calls.at(-1) as [unknown, boolean];
+    expect(lastCall()[1]).toBe(false);
+
+    const nameInput = screen.getByDisplayValue("屏蔽推广") as HTMLInputElement;
+    fireEvent.change(nameInput, { target: { value: "屏蔽推广 2" } });
+
+    expect(lastCall()[1]).toBe(true);
+  });
+
   it("名称为空时不提交，并给出校验提示", () => {
     const onSubmit = vi.fn();
     render(
