@@ -394,15 +394,18 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 				defer wg.Done()
 				defer func() { <-sem }() // Release semaphore
 
-				// 免 key 通道（Google / 有道）：整段纯文本丢过去，不走模型
-				if ai.IsFreeTranslateChannel(freeChannel) {
+				// 免 key 通道（Google / 有道）：只吃纯文本。
+				// 带内联标记（链接/图片/加粗/换行）的块交给模型，否则这些标记会被抹平
+				// —— 也就是「翻译破坏原文结构」那个问题
+				if ai.IsFreeTranslateChannel(freeChannel) && !ai.BlockHasInnerMarkup(b.HTML) {
 					plainText := strings.TrimSpace(ai.HTMLToText(b.HTML))
 					if plainText == "" {
 						return
 					}
 					translatedText, freeErr := ai.TranslateFreeText(ctx, s.httpClientForTranslate(ctx), freeChannel, plainText, language)
 					if freeErr == nil {
-						result := TranslateBlockResult{Index: b.Index, HTML: translatedText}
+						// 译文按原文外层标签包回去，段落结构（<p>/<h2>）不能丢
+						result := TranslateBlockResult{Index: b.Index, HTML: ai.WrapFreeTranslation(b.HTML, translatedText)}
 						resultsMu.Lock()
 						results = append(results, result)
 						resultsMu.Unlock()

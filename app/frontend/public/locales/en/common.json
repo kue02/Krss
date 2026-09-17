@@ -39,7 +39,8 @@
     "test": "Test",
     "show_sidebar": "Show Sidebar",
     "hide_sidebar": "Hide Sidebar",
-    "edit": "Edit"
+    "edit": "Edit",
+    "back": "Back"
   },
   "folders": {
     "delete": "Delete Folder",
@@ -224,8 +225,9 @@
     "select_article": "Select an article to read",
     "refresh_done": "Refresh finished",
     "original_site": "View original site",
-    "original_site_hint": "Loading the original site. If the frame is blank, the site blocks embedding — use the button on the right.",
-    "open_in_new_tab": "Open in new tab"
+    "original_site_hint": "The original site is embedded below. If it stays blank, the site refuses framing — use Open in new tab.",
+    "open_in_new_tab": "Open in new tab",
+    "original_site_loading": "Loading original site…"
   },
   "ai_settings": {
     "translate_channel": "Translation channel",

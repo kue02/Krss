@@ -101,7 +101,10 @@ export function EntryContentHeader({
             <button
               type="button"
               onClick={onBack}
-              className="no-drag-region flex size-11 shrink-0 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95 -ml-1.5"
+              // 与同排其它按钮同尺寸（36px / 图标 20px）；之前是 44px，看着比旁边一圈都大
+              title={t("actions.back")}
+              aria-label={t("actions.back")}
+              className="no-drag-region -ml-2 flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground active:scale-95"
             >
               <BackIcon className="size-5" />
             </button>
