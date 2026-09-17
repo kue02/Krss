@@ -96,6 +96,12 @@ vi.mock("@/hooks/useUISettings", async () => {
     entryFontSize: 16,
     entryLineHeight: 1.7,
     reduceMotion: false,
+    splitterVisibleByView: {
+      article: true,
+      picture: true,
+      notification: true,
+      social: true,
+    },
   };
   return {
     ...actual,

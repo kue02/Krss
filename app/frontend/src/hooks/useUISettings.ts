@@ -29,6 +29,12 @@ interface UISettings {
   fetchReadableByView: ViewFlags;
   /** 社交媒体视图里，长贴是否默认展开（不折叠） */
   expandLongByView: ViewFlags;
+  /**
+   * 第一栏（订阅栏）与第二栏之间那条分界限，在哪些视图里显示。
+   * 用户 2026-09-18 要求：可以按视图关掉（例如图片/社交媒体视图里不显示）。
+   * 默认全开 = 与改之前完全一致。
+   */
+  splitterVisibleByView: ViewFlags;
   /** 减少动态效果：涟漪、过渡、折叠动画一律压到最短（系统 prefers-reduced-motion 也会自动生效） */
   reduceMotion: boolean;
   /** 引文（引用推文）的呈现：block = 强调色竖线 + 淡底（默认，我们现在的样子）；divider = Folo 那样一条很浅的分割线 */
@@ -75,6 +81,12 @@ export const defaultUISettings: UISettings = {
     picture: false,
     notification: false,
     social: false,
+  },
+  splitterVisibleByView: {
+    article: true,
+    picture: true,
+    notification: true,
+    social: true,
   },
   reduceMotion: false,
   quoteStyle: "block",
@@ -233,6 +245,16 @@ export function useUISettingActions() {
     [setUISetting],
   );
 
+  const setSplitterVisibleForView = useCallback(
+    (view: ContentType, visible: boolean) => {
+      setUISetting("splitterVisibleByView", {
+        ...getUISettings().splitterVisibleByView,
+        [view]: visible,
+      });
+    },
+    [],
+  );
+
   const setFetchReadableForView = useCallback(
     (view: ContentType, enabled: boolean) => {
       setUISetting("fetchReadableByView", {
@@ -287,6 +309,7 @@ export function useUISettingActions() {
     setEntryLineHeight,
     setFetchReadableForView,
     setExpandLongForView,
+    setSplitterVisibleForView,
     setReduceMotion,
     setShowLineNumbers,
     setUiScale,

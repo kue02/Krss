@@ -14,6 +14,7 @@ import {
   defaultUISettings,
   useUISettingKey,
 } from "@/hooks/useUISettings";
+import { useSelection } from "@/hooks/useSelection";
 
 const FEED_COL_MIN = 256;
 const FEED_COL_MAX = 300;
@@ -157,6 +158,10 @@ export function ThreeColumnLayout({
 
   // Get stored feed column width for dynamic max calculation
   const storedFeedColWidth = useUISettingKey("feedColWidth");
+  // 第一栏的分界限是否显示，按当前内容类型决定（用户 11-7）
+  const splitterVisibleByView = useUISettingKey("splitterVisibleByView");
+  const { contentType } = useSelection();
+  const showFeedSplitter = splitterVisibleByView?.[contentType] !== false;
 
   // Calculate dynamic max for entry column
   const entryColMax = useMemo(() => {
@@ -261,7 +266,10 @@ export function ThreeColumnLayout({
             : "w-0 opacity-0 pointer-events-none duration-[var(--duration-sidebar-collapse)]",
         )}
       >
-        {showSidebar && (
+        {/* 第一栏的分界限（订阅栏 ↔ 中栏）：可以按视图关掉 —— 用户 2026-09-18 要求
+            「切到图片/社交媒体视图时就不显示」；关掉只是不画这条线/不给拖拽把手，
+            该栏宽度仍按你上次拖好的值保留。 */}
+        {showSidebar && showFeedSplitter && (
           <PanelSplitter
             isDragging={feedColResizable.isDragging}
             onPointerDown={feedColResizable.separatorProps.onPointerDown}

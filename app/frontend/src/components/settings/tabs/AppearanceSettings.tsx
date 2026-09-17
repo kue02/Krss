@@ -149,6 +149,7 @@ export function AppearanceSettings() {
   const entryFontSize = useUISettingKey("entryFontSize");
   const entryLineHeight = useUISettingKey("entryLineHeight");
   const fetchReadableByView = useUISettingKey("fetchReadableByView");
+  const splitterVisibleByView = useUISettingKey("splitterVisibleByView");
   const expandLongByView = useUISettingKey("expandLongByView");
   const reduceMotion = useUISettingKey("reduceMotion");
   const showLineNumbers = useUISettingKey("showLineNumbers");
@@ -161,6 +162,7 @@ export function AppearanceSettings() {
   const {
     setFetchReadableForView,
     setExpandLongForView,
+    setSplitterVisibleForView,
     setReduceMotion,
     setShowLineNumbers,
     setUiScale,
@@ -568,6 +570,20 @@ export function AppearanceSettings() {
                 <div className="text-xs font-semibold text-foreground">
                   {t(`content_type.${view}`)}
                 </div>
+                {/* 第一栏的分界限按视图显示（用户 11-7：图片/社交媒体里可以不显示） */}
+                <SettingRow label={t("appearance_view.show_splitter")}>
+                  <SegmentedControl
+                    className="shrink-0"
+                    value={splitterVisibleByView?.[view] === false ? "off" : "on"}
+                    onValueChange={(value) =>
+                      setSplitterVisibleForView(view, value === "on")
+                    }
+                    options={[
+                      { value: "off", label: t("appearance_view.off") },
+                      { value: "on", label: t("appearance_view.on") },
+                    ]}
+                  />
+                </SettingRow>
                 {view === "social" && (
                   <SettingRow label={t("appearance_view.expand_long")}>
                     <SegmentedControl

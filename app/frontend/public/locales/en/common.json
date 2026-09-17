@@ -554,7 +554,8 @@
     "read_timing_disabled": "Mark-as-read on scroll is off, so this has no effect",
     "picture_layout": "Picture layout",
     "picture_layout_masonry": "Masonry",
-    "picture_layout_grid": "Grid"
+    "picture_layout_grid": "Grid",
+    "show_splitter": "Show divider"
   },
   "folder": {
     "create": "New category",
