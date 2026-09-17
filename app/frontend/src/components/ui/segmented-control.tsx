@@ -7,6 +7,8 @@ interface SegmentedControlProps<T extends string> {
   onValueChange: (value: T) => void;
   options: { value: T; label: React.ReactNode }[];
   className?: string;
+  /** 个别选项禁用（如「只保留匹配」开着时不能选「静音」——那等于全静音） */
+  disabledValues?: T[];
 }
 
 export function SegmentedControl<T extends string>({
@@ -14,6 +16,7 @@ export function SegmentedControl<T extends string>({
   onValueChange,
   options,
   className,
+  disabledValues,
 }: SegmentedControlProps<T>) {
   const id = React.useId();
 
@@ -28,17 +31,25 @@ export function SegmentedControl<T extends string>({
     >
       {options.map((option) => {
         const isActive = value === option.value;
+        const isDisabled = Boolean(disabledValues?.includes(option.value));
         return (
           <button
             key={option.value}
             type="button"
             role="tab"
-            onClick={() => onValueChange(option.value)}
+            aria-disabled={isDisabled || undefined}
+            disabled={isDisabled}
+            onClick={() => {
+              if (isDisabled) return;
+              onValueChange(option.value);
+            }}
             className={cn(
               "relative flex h-6 items-center gap-1.5 rounded-full px-3 text-sm font-medium transition-colors",
               isActive
                 ? "text-foreground"
                 : "text-muted-foreground hover:text-foreground",
+              isDisabled &&
+                "cursor-not-allowed text-muted-foreground/50 hover:text-muted-foreground/50",
             )}
             data-state={isActive ? "active" : "inactive"}
           >

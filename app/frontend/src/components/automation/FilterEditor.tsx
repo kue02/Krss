@@ -59,14 +59,15 @@ const ACTION_LABEL_KEYS: Record<string, string> = {
   webhook: "action_webhook",
 };
 
-/** 动作区的按钮顺序：本地标记 → 要在打开时花 AI 的 → 出网的 → keepOnly 收尾 */
+/** 三态维度（静音 / 已读 / 星标）的行标签 */
+const DIMENSION_LABEL_KEYS: Record<string, string> = {
+  mute: "dim_mute",
+  markRead: "dim_read",
+  star: "dim_star",
+};
+
+/** 非配对动作（单独开关）：要在打开时花 AI 的 → 出网的 → keepOnly 收尾 */
 const ACTION_ORDER: ActionKey[] = [
-  "mute",
-  "unmute",
-  "markRead",
-  "markUnread",
-  "star",
-  "unstar",
   "translate",
   "summarize",
   "webhook",
@@ -108,6 +109,9 @@ export function FilterEditor({
   const isView = kind === "view";
 
   const [draft, setDraft] = useState<FilterWritePayload>(initial);
+
+  /** 「只保留匹配」与「静音」互斥：前者已把不匹配的静音，再叠静音等于全静音 */
+  const keepOnlyBlocksMute = Boolean(draft.actions.keepOnly);
   const [previewResult, setPreviewResult] =
     useState<FilterPreviewResult | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -139,6 +143,23 @@ export function FilterEditor({
     setDraft((current) => ({
       ...current,
       conditions: current.conditions.filter((_, i) => i !== index),
+    }));
+    setPreviewResult(null);
+  };
+
+  /** 三维度一律三态：none=不动 / positive=正向 / negative=反向（互斥天然成立） */
+  const setActionDimension = (
+    positive: ActionKey,
+    negative: ActionKey,
+    value: "none" | "positive" | "negative",
+  ) => {
+    setDraft((current) => ({
+      ...current,
+      actions: {
+        ...current.actions,
+        [positive]: value === "positive",
+        [negative]: value === "negative",
+      },
     }));
     setPreviewResult(null);
   };
@@ -497,6 +518,56 @@ export function FilterEditor({
             <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
               {t("automation.actions")}
             </div>
+            {/* 三个互斥维度：一行一个三态分段控件（不变 / 正向 / 反向），
+                比原来的成对复选框直观 —— 原来看不出「两个都不选 = 不变」（用户 2026-09-17 要求合并） */}
+            <div className="space-y-1.5">
+              {ACTION_PAIRS.map(({ positive, negative }) => {
+                const value = draft.actions[positive]
+                  ? "positive"
+                  : draft.actions[negative]
+                    ? "negative"
+                    : "none";
+                // 「只保留匹配」本身会把不匹配的静音，再叠「静音」等于全静音 —— 挡掉这个误操作
+                const muteBlocked = positive === "mute" && keepOnlyBlocksMute;
+                return (
+                  <div
+                    key={positive}
+                    className="flex items-center justify-between gap-3"
+                  >
+                    <span className="text-xs text-muted-foreground">
+                      {t(`automation.${DIMENSION_LABEL_KEYS[positive]}`)}
+                    </span>
+                    <SegmentedControl
+                      value={value}
+                      onValueChange={(next) =>
+                        setActionDimension(positive, negative, next)
+                      }
+                      disabledValues={muteBlocked ? ["positive"] : undefined}
+                      options={[
+                        { value: "none", label: t("automation.action_none") },
+                        {
+                          value: "positive",
+                          label: t(
+                            `automation.${ACTION_LABEL_KEYS[positive]}`,
+                          ),
+                        },
+                        {
+                          value: "negative",
+                          label: t(
+                            `automation.${ACTION_LABEL_KEYS[negative]}`,
+                          ),
+                        },
+                      ]}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            {keepOnlyBlocksMute && (
+              <div className="text-xs text-muted-foreground">
+                {t("automation.mute_blocked_by_keep_only")}
+              </div>
+            )}
             <div className="flex flex-wrap gap-1.5">
               {ACTION_ORDER.map((key) => {
                 const active = Boolean(draft.actions[key]);

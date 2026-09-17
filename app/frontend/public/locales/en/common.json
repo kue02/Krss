@@ -689,7 +689,12 @@
     "nl_failed": "Generation failed, please try again.",
     "exception_entry": "Exempt this kind of content",
     "exception_created": "Exception rule \"{{name}}\" created; this entry is back in unread",
-    "exception_failed": "Could not create the exception rule"
+    "exception_failed": "Could not create the exception rule",
+    "action_none": "No change",
+    "dim_mute": "Mute",
+    "dim_read": "Read",
+    "dim_star": "Star",
+    "mute_blocked_by_keep_only": "\"Keep only matches\" already mutes everything else — \"Mute\" can't be combined with it"
   },
   "search": {
     "title": "Search",

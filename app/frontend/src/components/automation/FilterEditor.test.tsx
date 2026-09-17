@@ -87,16 +87,41 @@ describe("FilterEditor", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it("正反动作互斥：勾了静音，取消静音按钮禁用", () => {
+  it("三个互斥维度是三态分段控件：选「静音」后「取消静音」自动落选，再选「不变」两边都清空", () => {
+    const submit = vi.fn();
     render(
-      <FilterEditor initial={draft()} onSubmit={vi.fn()} onCancel={vi.fn()} />,
+      <FilterEditor
+        initial={draft({ actions: { unmute: true } })}
+        onSubmit={submit}
+        onCancel={vi.fn()}
+      />,
     );
 
-    const unmute = screen.getByText("automation.action_unmute");
-    expect((unmute as HTMLButtonElement).disabled).toBe(true);
+    // 文本在分段控件内部的 <span> 上，按钮是它的祖先；「不变」三行都有 → 取第 0 行（静音维度）
+    const btn = (label: string) =>
+      screen.getByText(label).closest("button") as HTMLButtonElement;
+    const mute = btn("automation.action_mute");
+    const unmute = btn("automation.action_unmute");
+    const none = (
+      screen.getAllByText("automation.action_none")[0] as HTMLElement
+    ).closest("button") as HTMLButtonElement;
+
+    // 初始是反向（unmute）
+    expect(unmute.getAttribute("data-state")).toBe("active");
+    expect(mute.getAttribute("data-state")).toBe("inactive");
+
+    // 选正向 → 反向落选
+    fireEvent.click(mute);
+    expect(mute.getAttribute("data-state")).toBe("active");
+    expect(unmute.getAttribute("data-state")).toBe("inactive");
+
+    // 选「不变」→ 两边都不带
+    fireEvent.click(none);
+    expect(mute.getAttribute("data-state")).toBe("inactive");
+    expect(unmute.getAttribute("data-state")).toBe("inactive");
   });
 
-  it("勾了「只保留匹配」后「静音」被禁用（否则等于全静音）", () => {
+  it("勾了「只保留匹配」后「静音」被禁用（否则等于全静音），并给出提示", () => {
     render(
       <FilterEditor
         initial={draft({ actions: { keepOnly: true } })}
@@ -105,13 +130,15 @@ describe("FilterEditor", () => {
       />,
     );
 
-    const mute = screen.getByText("automation.action_mute");
-    expect((mute as HTMLButtonElement).disabled).toBe(true);
-    // 反动作仍然可用：「只保留匹配 + 取消静音」是合法的例外写法
-    expect(
-      (screen.getByText("automation.action_unmute") as HTMLButtonElement)
-        .disabled,
-    ).toBe(false);
+    const mute = screen.getByText("automation.action_mute").closest("button") as HTMLButtonElement;
+    expect(mute.disabled).toBe(true);
+    // 反向仍然可用：「只保留匹配 + 取消静音」是合法的例外写法
+    const unmute = screen
+      .getByText("automation.action_unmute")
+      .closest("button") as HTMLButtonElement;
+    expect(unmute.disabled).toBe(false);
+    // 并且告诉用户为什么点不动
+    expect(screen.getByText("automation.mute_blocked_by_keep_only")).toBeTruthy();
   });
 
   it("可以添加条件行", () => {

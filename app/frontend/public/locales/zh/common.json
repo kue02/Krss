@@ -686,7 +686,12 @@
     "nl_failed": "生成失败，稍后再试。",
     "exception_entry": "豁免这类内容",
     "exception_created": "已建例外规则「{{name}}」，这条已放回未读",
-    "exception_failed": "建例外规则失败"
+    "exception_failed": "建例外规则失败",
+    "action_none": "不变",
+    "dim_mute": "静音",
+    "dim_read": "已读",
+    "dim_star": "星标",
+    "mute_blocked_by_keep_only": "「只保留匹配」已把不匹配的条目静音，不能再选「静音」"
   },
   "search": {
     "title": "搜索",
