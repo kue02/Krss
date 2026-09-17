@@ -32,6 +32,8 @@ type EntryService interface {
 	MarkAsRead(ctx context.Context, id int64, read bool) error
 	MarkManyAsRead(ctx context.Context, ids []int64, read bool) error
 	MarkAsStarred(ctx context.Context, id int64, starred bool) error
+	// Unmute 取消单条条目的静音（规则写上去的标记由用户手动反悔）：清 muted/filter_id 并退回未读。
+	Unmute(ctx context.Context, id int64) error
 	MarkAllAsRead(ctx context.Context, feedID *int64, folderID *int64, contentType *string) error
 	GetUnreadCounts(ctx context.Context) (map[int64]int, error)
 	GetStarredCount(ctx context.Context) (int, error)
@@ -124,6 +126,26 @@ func (s *entryService) GetByID(ctx context.Context, id int64) (model.Entry, erro
 	}
 	logger.Debug("entry get", "module", "service", "action", "fetch", "resource", "entry", "result", "ok", "entry_id", id)
 	return entry, nil
+}
+
+// Unmute 取消单条条目的静音：清掉规则写的 muted/filter_id，并让它回到未读流里。
+func (s *entryService) Unmute(ctx context.Context, id int64) error {
+	entry, err := s.entries.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if !entry.Muted {
+		return nil
+	}
+	if _, err := s.entries.ResetFilterState(ctx, []int64{id}, true); err != nil {
+		logger.Error("entry unmute failed", "module", "service", "action", "update", "resource", "entry", "result", "failed", "entry_id", id, "error", err)
+		return err
+	}
+	logger.Info("entry unmuted", "module", "service", "action", "update", "resource", "entry", "result", "ok", "entry_id", id)
+	return nil
 }
 
 func (s *entryService) MarkAsRead(ctx context.Context, id int64, read bool) error {

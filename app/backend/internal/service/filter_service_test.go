@@ -342,6 +342,36 @@ func TestFilterService_CRUD_AndDeleteWithRevert(t *testing.T) {
 	require.ErrorIs(t, err, service.ErrFilterNotFound)
 }
 
+// 条目侧反悔：静音的条目可以被单独取消静音并回到未读流。
+func TestEntryService_Unmute_Integration(t *testing.T) {
+	fixture := newFilterFixture(t)
+	ctx := context.Background()
+
+	feed := fixture.seedFeed(t, "少数派", "article")
+	entry := fixture.seedEntry(t, feed.ID, "hash-unmute", "限时优惠：某训练营", timePtr(time.Now()))
+	fixture.create(t, service.FilterWriteParams{
+		Name:       "静音优惠",
+		ScopeType:  model.FilterScopeAll,
+		Conditions: []model.FilterCondition{{Field: model.FilterFieldTitle, Operator: model.FilterOpContains, Value: "优惠"}},
+		Actions:    model.FilterActions{Mute: true},
+	})
+
+	_, err := fixture.service.ApplyToEntries(ctx, feed, []model.Entry{entry})
+	require.NoError(t, err)
+	require.True(t, fixture.reload(t, entry.ID).Muted)
+
+	entryService := service.NewEntryService(fixture.entries, fixture.feeds, repository.NewFolderRepository(fixture.db))
+	require.NoError(t, entryService.Unmute(ctx, entry.ID))
+
+	restored := fixture.reload(t, entry.ID)
+	require.False(t, restored.Muted)
+	require.False(t, restored.Read)
+	require.Nil(t, restored.FilterID)
+
+	// 重复调用是幂等的
+	require.NoError(t, entryService.Unmute(ctx, entry.ID))
+}
+
 // 被静音的条目默认不出现在列表里，只有 mutedOnly 才单独看得到。
 func TestFilterService_MutedEntriesHiddenFromList(t *testing.T) {
 	fixture := newFilterFixture(t)

@@ -187,3 +187,17 @@ func (mr *MockEntryServiceMockRecorder) MarkManyAsRead(ctx, ids, read any) *gomo
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkManyAsRead", reflect.TypeOf((*MockEntryService)(nil).MarkManyAsRead), ctx, ids, read)
 }
+
+// Unmute mocks base method.
+func (m *MockEntryService) Unmute(ctx context.Context, id int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Unmute", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Unmute indicates an expected call of Unmute.
+func (mr *MockEntryServiceMockRecorder) Unmute(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Unmute", reflect.TypeOf((*MockEntryService)(nil).Unmute), ctx, id)
+}

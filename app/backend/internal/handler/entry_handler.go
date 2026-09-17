@@ -30,6 +30,7 @@ func (h *EntryHandler) RegisterRoutes(g *echo.Group) {
 	g.PATCH("/entries/read", h.UpdateManyReadStatus)
 	g.PATCH("/entries/:id/read", h.UpdateReadStatus)
 	g.PATCH("/entries/:id/starred", h.UpdateStarredStatus)
+	g.POST("/entries/:id/unmute", h.Unmute)
 	g.POST("/entries/:id/fetch-readable", h.FetchReadable)
 	g.POST("/entries/mark-read", h.MarkAllAsRead)
 	g.DELETE("/entries/readability-cache", h.ClearReadabilityCache)
@@ -468,6 +469,31 @@ func (h *EntryHandler) UpdateStarredStatus(c echo.Context) error {
 	}
 
 	logger.Info("entry starred status updated", "module", "handler", "action", "update", "resource", "entry", "result", "ok", "entry_id", id, "starred", req.Starred)
+	return c.NoContent(http.StatusNoContent)
+}
+
+// Unmute clears the mute mark written by a filter rule on a single entry.
+// @Summary Unmute entry
+// @Description Remove the muted flag (and the owning rule id) from an entry and put it back into the unread flow
+// @Tags entries
+// @Produce json
+// @Param id path int true "Entry ID"
+// @Success 204 "No Content"
+// @Failure 400 {object} errorResponse
+// @Failure 404 {object} errorResponse
+// @Router /entries/{id}/unmute [post]
+func (h *EntryHandler) Unmute(c echo.Context) error {
+	id, err := parseIDParam(c, "id")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid id"})
+	}
+
+	if err := h.service.Unmute(c.Request().Context(), id); err != nil {
+		logger.Error("entry unmute failed", "module", "handler", "action", "update", "resource", "entry", "result", "failed", "entry_id", id, "error", err)
+		return writeServiceError(c, err)
+	}
+
+	logger.Info("entry unmuted", "module", "handler", "action", "update", "resource", "entry", "result", "ok", "entry_id", id)
 	return c.NoContent(http.StatusNoContent)
 }
 
