@@ -56,6 +56,12 @@ interface UISettings {
   /** 已读/未读的标记样式（全局统一，见 UnreadStyle） */
   unreadStyle: UnreadStyle;
   /**
+   * 主题色（用户 11-13）：用户自选的强调色，`null` = 跟随当前主题（默认）。
+   * 落地方式：在 `<html>` 上写内联的 `--accent` / `--accent-foreground` ——
+   * 内联样式压过 `[data-theme=…]` 里各主题自带的那对值，所以明暗主题都跟着这个色走。
+   */
+  accentColor: string | null;
+  /**
    * 正文代码块是否显示行号（Nextflux 也有这个开关，但它默认关）。
    * 用户 2026-09-17 明确要「代码块显示行号」，所以这里默认开；不想要的去 外观 → 阅读 关掉。
    */
@@ -107,6 +113,7 @@ export const defaultUISettings: UISettings = {
   reduceMotion: false,
   quoteStyle: "block",
   unreadStyle: "badge",
+  accentColor: null,
   showLineNumbers: true,
   uiScale: 1,
   scrollReadTimingByView: {
@@ -255,6 +262,13 @@ export function useUISettingActions() {
     [],
   );
 
+  const setAccentColor = useCallback(
+    (color: string | null) => {
+      setUISetting("accentColor", color);
+    },
+    [setUISetting],
+  );
+
   const setUnreadStyle = useCallback(
     (style: UnreadStyle) => {
       setUISetting("unreadStyle", style);
@@ -339,6 +353,7 @@ export function useUISettingActions() {
     setUiScale,
     setQuoteStyle,
     setUnreadStyle,
+    setAccentColor,
     setScrollReadForView,
     setScrollReadTimingForView,
     resetToDefaults,
@@ -353,6 +368,46 @@ export function applyUiScaleToDocument(scale: number): void {
 }
 
 /** 把「引文样式」落到 <html data-quote-style> 上，供 CSS 统一处理（正文与时间线卡片共用） */
+/**
+ * 把用户自选的主题色写到 `<html>` 的内联样式上；`null` = 清掉，回到当前主题自带的强调色。
+ *
+ * 顺带按亮度算一个 `--accent-foreground`：主题自带的强调色都配好了前景色（多为白），
+ * 用户随手选个浅色（黄 / 淡青）时白字会糊在底上，这里按相对亮度在近黑 / 近白之间挑一个。
+ */
+const ACCENT_FOREGROUND_LIGHT = "rgb(255 255 255)";
+const ACCENT_FOREGROUND_DARK = "rgb(17 17 17)";
+
+export function accentForegroundFor(color: string): string {
+  const hex = color.trim().replace(/^#/, "");
+  const full =
+    hex.length === 3
+      ? hex
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : hex;
+  if (!/^[0-9a-fA-F]{6}$/.test(full)) return ACCENT_FOREGROUND_LIGHT;
+  const channel = (i: number) => parseInt(full.slice(i, i + 2), 16) / 255;
+  const r = channel(0);
+  const g = channel(2);
+  const b = channel(4);
+  const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  const luminance = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  return luminance > 0.5 ? ACCENT_FOREGROUND_DARK : ACCENT_FOREGROUND_LIGHT;
+}
+
+export function applyAccentColorToDocument(color: string | null): void {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  if (!color) {
+    root.style.removeProperty("--accent");
+    root.style.removeProperty("--accent-foreground");
+    return;
+  }
+  root.style.setProperty("--accent", color);
+  root.style.setProperty("--accent-foreground", accentForegroundFor(color));
+}
+
 export function applyQuoteStyleToDocument(style: QuoteStyle): void {
   if (typeof document === "undefined") return;
   document.documentElement.setAttribute("data-quote-style", style);

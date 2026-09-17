@@ -166,7 +166,10 @@
       "leaf": "Leaf",
       "dark": "Black",
       "nord-dark": "Nord Dark"
-    }
+    },
+    "accent_color": "Accent color",
+    "accent_follow": "Follow theme",
+    "accent_following": "Following theme"
   },
   "language": {
     "label": "Language",

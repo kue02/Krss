@@ -46,6 +46,7 @@ import {
   useUISettingActions,
   hasSidebarVisibilitySetting,
   setUISetting,
+  applyAccentColorToDocument,
   applyQuoteStyleToDocument,
   applyReduceMotionToDocument,
   applyUiScaleToDocument,
@@ -320,6 +321,12 @@ function AuthenticatedApp() {
   useEffect(() => {
     applyQuoteStyleToDocument(quoteStyle);
   }, [quoteStyle]);
+
+  // 主题色（设置 → 外观 → 主题 → 主题色）：null = 跟随主题
+  const accentColor = useUISettingKey("accentColor");
+  useEffect(() => {
+    applyAccentColorToDocument(accentColor ?? null);
+  }, [accentColor]);
 
   // 「界面字号」改 <html> 基准字号（界面用的都是 rem，整体跟着缩放）
   const uiScale = useUISettingKey("uiScale");

@@ -27,6 +27,7 @@ import {
   type UnreadStyle,
 } from "@/hooks/useUISettings";
 import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
+import { AccentColorPicker } from "@/components/settings/tabs/AccentColorPicker";
 import { readingFonts } from "@/lib/reading-fonts";
 import { updateAppearanceSettings } from "@/api";
 import { cn } from "@/lib/utils";
@@ -401,6 +402,11 @@ export function AppearanceSettings() {
               onSelect={(id) => setDarkTheme(id as DarkThemeId)}
             />
           </div>
+        </div>
+        <div className="mt-3 border-t border-border/60 pt-3">
+          <SettingRow label={t("theme.accent_color")}>
+            <AccentColorPicker />
+          </SettingRow>
         </div>
       </section>
 

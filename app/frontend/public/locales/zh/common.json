@@ -166,7 +166,10 @@
       "leaf": "Leaf",
       "dark": "黑色",
       "nord-dark": "深蓝"
-    }
+    },
+    "accent_color": "主题色",
+    "accent_follow": "跟随主题",
+    "accent_following": "跟随主题"
   },
   "language": {
     "label": "语言",
