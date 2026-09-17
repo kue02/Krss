@@ -521,3 +521,17 @@ export function EyeOffIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+
+/** 自动化（规则）入口用：闪电 */
+export function BoltIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M13 2.5 4.75 13.4h6.1l-1.1 8.1 8.5-11.2h-5.9l1.15-7.8z"
+      />
+    </svg>
+  );
+}

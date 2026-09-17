@@ -1,12 +1,10 @@
-import { useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import {
   AddIcon,
+  BoltIcon,
   FolderIcon,
   RssIcon,
-  UploadIcon,
 } from "@/components/ui/icons";
 import {
   DropdownMenu,
@@ -14,8 +12,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { startImportOPML } from "@/api";
-import { showToast } from "@/stores/toast-store";
+import { useFilterEditorStore } from "@/stores/filter-editor-store";
 
 // NextFlux 的 Button size="sm" variant="ghost" isIconOnly：实测 32×32 全圆，图标 16px，按压 0.97
 const actionButtonStyles = cn(
@@ -48,32 +45,8 @@ export function SidebarHeader({
   onCreateFolder,
 }: SidebarHeaderProps) {
   const { t } = useTranslation();
-  const queryClient = useQueryClient();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // 与 NextFlux 的 AddFeedButton 一致：加号菜单里直接导入 OPML
-  const handleFileChange = async (
-    event: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    try {
-      await startImportOPML(file);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["feeds"] }),
-        queryClient.invalidateQueries({ queryKey: ["folders"] }),
-      ]);
-      showToast(t("sidebar.import_success"));
-    } catch (error) {
-      showToast(
-        error instanceof Error
-          ? `${t("sidebar.import_failed")}: ${error.message}`
-          : t("sidebar.import_failed"),
-      );
-    } finally {
-      event.target.value = "";
-    }
-  };
+  // 「新建自动化」= 直接开规则编辑器抽屉（空规则），不用先跑去设置页
+  const openNewAutomation = () => useFilterEditorStore.getState().openNew();
 
   return (
     <div className="flex items-center justify-between gap-2 p-2">
@@ -85,15 +58,8 @@ export function SidebarHeader({
 
       {/* Action buttons */}
       <div className="relative flex items-center gap-1">
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".opml,.xml"
-          onChange={handleFileChange}
-          className="hidden"
-        />
-
-        {/* 加号：下拉里放「添加订阅源 / 导入 OPML / 新增分类」，与 NextFlux 的加号菜单同构 */}
+        {/* 加号：下拉里放「添加订阅源 / 新建自动化 / 新增分类」（导入 OPML 已移除：
+            低频操作，改去 设置 → 数据控制；2026-09-17 用户要求） */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -111,10 +77,10 @@ export function SidebarHeader({
             </DropdownMenuItem>
             <DropdownMenuItem
               className={menuItemStyles}
-              onSelect={() => fileInputRef.current?.click()}
+              onSelect={openNewAutomation}
             >
-              <UploadIcon className="size-4 shrink-0 text-muted-foreground" />
-              <span>{t("sidebar.import_opml")}</span>
+              <BoltIcon className="size-4 shrink-0 text-muted-foreground" />
+              <span>{t("sidebar.new_automation")}</span>
             </DropdownMenuItem>
             {onCreateFolder && (
               <DropdownMenuItem

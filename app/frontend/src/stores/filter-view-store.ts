@@ -16,15 +16,25 @@ interface FilterViewStore {
   viewName: string | null;
   /** 选中视图那一刻的列表作用域（selection + contentType）；一变就自动退出，免得带着别人的筛法看新列表 */
   scopeKey: string | null;
+  /**
+   * 「已静音」回看态：被规则静音的条目默认不出现在任何列表里，
+   * 入口从「中栏筛选胶囊」挪到了 设置 → 自动化（2026-09-17 用户要求：
+   * 既然静音了就是不想看，不该占中栏那么高的入口）。
+   * 放 store 里是为了让设置页能直接切过来 —— 它是跨面板的状态，不是 EntryList 的私事。
+   */
+  mutedOnly: boolean;
   selectView: (view: { id: string; name: string }, scopeKey: string) => void;
   clearView: () => void;
+  setMutedOnly: (value: boolean) => void;
 }
 
 export const useFilterViewStore = create<FilterViewStore>((set) => ({
   viewId: null,
   viewName: null,
   scopeKey: null,
+  mutedOnly: false,
   selectView: (view, scopeKey) =>
     set({ viewId: view.id, viewName: view.name, scopeKey }),
   clearView: () => set({ viewId: null, viewName: null, scopeKey: null }),
+  setMutedOnly: (value) => set({ mutedOnly: value }),
 }));

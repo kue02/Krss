@@ -11,6 +11,7 @@
     "starred": "已加星标",
     "uncategorized": "未分类",
     "import_opml": "导入 OPML",
+    "new_automation": "新建自动化",
     "import_success": "OPML 导入完成",
     "import_failed": "OPML 导入失败",
     "views": "视图"
@@ -527,6 +528,9 @@
     "title": "自动化",
     "subtitle": "规则在抓取入库之后执行，默认只作用于刚入库的新条目（可用「回溯历史」补跑旧条目）；命中即停，顺序即优先级。",
     "new_rule": "新建规则",
+    "muted_entries": "已静音条目",
+    "muted_entries_hint": "被规则静音的内容都收在这里；列表里默认看不到它们。",
+    "muted_entries_open": "查看已静音",
     "empty": "还没有规则",
     "empty_hint": "点「新建规则」写第一条；不确定正则会不会误伤，先点「预览影响」看清命中哪些。",
     "load_failed": "规则加载失败",

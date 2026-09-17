@@ -7,6 +7,7 @@ import {
   screen,
 } from "@testing-library/react";
 import type { Entry } from "@/types/api";
+import { useFilterViewStore } from "@/stores/filter-view-store";
 
 const {
   mockRenderedEntryListItem,
@@ -284,6 +285,7 @@ describe("EntryList translation scheduling", () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
     entryListScrollPositions.clear();
+    useFilterViewStore.getState().setMutedOnly(false);
 
     mockRenderedEntryListItem.mockReset();
     mockNeedsTranslation.mockResolvedValue(true);
@@ -1089,10 +1091,11 @@ describe("EntryList translation scheduling", () => {
     ]);
   });
 
-  it("「已静音」筛选把 mutedOnly 传给列表接口，且不叠加只看未读", () => {
+  it("「已静音」回看态（入口在 设置 → 自动化）把 mutedOnly 传给列表接口，且不叠加只看未读", () => {
     render(<EntryList {...defaultProps} unreadOnly />);
 
-    fireEvent.click(screen.getByText("entry_filter.muted"));
+    // 不再是胶囊里点出来的：状态由 filter-view-store 驱动
+    act(() => useFilterViewStore.getState().setMutedOnly(true));
 
     const lastParams = vi.mocked(useEntriesInfinite).mock.calls.at(-1)?.[0];
     expect(lastParams).toMatchObject({ mutedOnly: true, unreadOnly: false });
@@ -1109,12 +1112,11 @@ describe("EntryList translation scheduling", () => {
     expect(lastParams).not.toHaveProperty("includeMuted");
   });
 
-  it("点「已静音」只切本地状态（不导航），点其余三态才回调 onFilterChange", () => {
+  it("胶囊三态（星标 / 未读 / 全部）都走导航回调，不再有「已静音」", () => {
     const onFilterChange = vi.fn();
     render(<EntryList {...defaultProps} onFilterChange={onFilterChange} />);
 
-    fireEvent.click(screen.getByText("entry_filter.muted"));
-    expect(onFilterChange).not.toHaveBeenCalled();
+    expect(screen.queryByText("entry_filter.muted")).toBeNull();
 
     fireEvent.click(screen.getByText("entry_filter.all"));
     expect(onFilterChange).toHaveBeenCalledWith("all");
@@ -1128,7 +1130,7 @@ describe("EntryList translation scheduling", () => {
     // 所以这里只断言 EntryList 确实把「已静音」态翻译进了列表参数；标题渲染由
     // EntryListHeader.test.tsx 单独覆盖。
     render(<EntryList {...defaultProps} />);
-    fireEvent.click(screen.getByText("entry_filter.muted"));
+    act(() => useFilterViewStore.getState().setMutedOnly(true));
 
     const lastParams = vi.mocked(useEntriesInfinite).mock.calls.at(-1)?.[0];
     expect(lastParams).toMatchObject({ mutedOnly: true });
@@ -1148,20 +1150,26 @@ describe("EntryList translation scheduling", () => {
     expect(lastParams).not.toHaveProperty("mutedOnly");
   });
 
-  it("未读态下选中「已静音」时胶囊高亮切到已静音", () => {
+  it("离开当前作用域时自动退出「已静音」回看态（免得带着它看别的列表）", () => {
     render(<EntryList {...defaultProps} unreadOnly />);
-
+    act(() => useFilterViewStore.getState().setMutedOnly(true));
     expect(
-      screen.getByText("entry_filter.unread").getAttribute("aria-pressed"),
-    ).toBe("true");
+      vi.mocked(useEntriesInfinite).mock.calls.at(-1)?.[0],
+    ).toMatchObject({ mutedOnly: true });
 
-    fireEvent.click(screen.getByText("entry_filter.muted"));
+    // 切到别的订阅 / 内容类型：EntryList 的 effect 会把 mutedOnly 复位
+    cleanup();
+    render(
+      <EntryList
+        {...defaultProps}
+        selection={{ type: "feed", feedId: "feed-9" }}
+        unreadOnly
+      />,
+    );
 
+    expect(useFilterViewStore.getState().mutedOnly).toBe(false);
     expect(
-      screen.getByText("entry_filter.muted").getAttribute("aria-pressed"),
-    ).toBe("true");
-    expect(
-      screen.getByText("entry_filter.unread").getAttribute("aria-pressed"),
-    ).toBe("false");
+      vi.mocked(useEntriesInfinite).mock.calls.at(-1)?.[0],
+    ).not.toHaveProperty("mutedOnly");
   });
 });

@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
+import { useFilterViewStore } from "@/stores/filter-view-store";
+import { useSettingsModalStore } from "@/stores/settings-modal-store";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { ApiError } from "@/api";
@@ -52,6 +54,10 @@ function formatTime(value: string | undefined): string {
  * 才可能被保存（模型说了不算，见后端 /api/filters/parse）。
  */
 export function AutomationSettings() {
+  // 「已静音条目」回看入口用（2026-09-17 从中栏胶囊搬来）
+  const clearView = useFilterViewStore((state) => state.clearView);
+  const setMutedOnly = useFilterViewStore((state) => state.setMutedOnly);
+  const closeSettings = useSettingsModalStore((state) => state.close);
   const { t } = useTranslation();
   const { data: filters, isLoading, isError } = useFilters();
   const { data: feeds } = useFeeds();
@@ -230,6 +236,32 @@ export function AutomationSettings() {
             + {t("automation.new_rule")}
           </button>
         </div>
+      </div>
+
+      {/* 「已静音」回看入口 —— 2026-09-17 从「中栏筛选胶囊」搬到这里：
+          被规则静音的东西是个回看角落，不该占中栏的高位入口；
+          放在自动化页也顺手回答了「它为什么被静音」（规则都在这一页） */}
+      <div className="flex items-start justify-between gap-4 rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+        <div className="min-w-0">
+          <div className="text-sm font-medium">{t("automation.muted_entries")}</div>
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            {t("automation.muted_entries_hint")}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            clearView();
+            setMutedOnly(true);
+            closeSettings();
+          }}
+          className={cn(
+            "h-8 shrink-0 rounded-md border border-border px-3 text-sm font-medium",
+            "transition-colors hover:bg-accent",
+          )}
+        >
+          {t("automation.muted_entries_open")}
+        </button>
       </div>
 
       {isLoading && (

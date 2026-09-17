@@ -29,6 +29,7 @@ import { FeedItem } from "./FeedItem";
 import { ContentTypeSwitcher } from "./ContentTypeSwitcher";
 import { useFilters } from "@/hooks/useFilters";
 import { useFilterViewStore } from "@/stores/filter-view-store";
+import { useSettingsModalStore } from "@/stores/settings-modal-store";
 import { feedItemStyles, sidebarItemIconStyles } from "./styles";
 import { SearchIcon } from "@/components/ui/icons";
 import { SettingsModal, ProfileModal } from "@/components/settings";
@@ -115,7 +116,8 @@ export function Sidebar({
 }: SidebarProps) {
   const { t } = useTranslation();
   const { user, logout } = useAuth();
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const isSettingsOpen = useSettingsModalStore((state) => state.open);
+  const setIsSettingsOpen = useSettingsModalStore((state) => state.setOpen);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [editingFeed, setEditingFeed] = useState<Feed | null>(null);
   const [renamingFolder, setRenamingFolder] = useState<Folder | null>(null);

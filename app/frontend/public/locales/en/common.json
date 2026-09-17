@@ -11,6 +11,7 @@
     "starred": "Starred",
     "uncategorized": "Uncategorized",
     "import_opml": "Import OPML",
+    "new_automation": "New automation",
     "import_success": "OPML imported",
     "import_failed": "OPML import failed",
     "views": "Views"
@@ -530,6 +531,9 @@
     "title": "Automation",
     "subtitle": "Rules run after entries are stored and only affect newly fetched entries by default (use “Apply to history” to backfill); first match wins, order is priority.",
     "new_rule": "New rule",
+    "muted_entries": "Muted entries",
+    "muted_entries_hint": "Everything your rules muted is kept here; lists hide them by default.",
+    "muted_entries_open": "View muted",
     "empty": "No rules yet",
     "empty_hint": "Create one to start. Not sure a regex is safe? Run “Preview impact” first.",
     "load_failed": "Failed to load rules",

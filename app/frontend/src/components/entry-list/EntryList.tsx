@@ -103,7 +103,8 @@ export function EntryList({
    * 只体现在 listEntries 的 mutedOnly 参数上。切到别的订阅 / 视图 / 已读态时自动退出，
    * 免得带着 mutedOnly 去看别的列表。
    */
-  const [mutedOnly, setMutedOnly] = useState(false);
+  const mutedOnly = useFilterViewStore((state) => state.mutedOnly);
+  const setMutedOnly = useFilterViewStore((state) => state.setMutedOnly);
   /**
    * 保存筛选视图（设置 → 自动化 里建的「范围 + 条件」）：侧栏点一下就叠加到当前列表上。
    * 与「已静音」同一套本地状态的理由 —— 它不是一个导航维度，选中时若列表作用域
@@ -139,17 +140,16 @@ export function EntryList({
     clearView,
   ]);
 
-  // 当前筛选态（四者互斥）：星标 > 已静音 > 未读 > 全部
+  // 中栏胶囊的三态（星标 > 未读 > 全部）。「已静音」不再是胶囊的一态 ——
+  // 它是独立的回看入口，入口在 设置 → 自动化（2026-09-17 用户要求），状态见 mutedOnly
   const filterValue: EntryFilter =
     selection.type === "starred"
       ? "starred"
-      : mutedOnly
-        ? "muted"
-        : unreadOnly
-          ? "unread"
-          : "all";
+      : unreadOnly
+        ? "unread"
+        : "all";
   // 「已静音」是独立的回看视图，不叠加「只看未读」——否则规则静音前已读的条目就回看不到了
-  const effectiveUnreadOnly = filterValue === "muted" ? false : unreadOnly;
+  const effectiveUnreadOnly = mutedOnly ? false : unreadOnly;
 
   const containerRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
@@ -187,7 +187,7 @@ export function EntryList({
       ...(activeViewId ? { viewId: activeViewId } : {}),
       // 「已静音」才传 mutedOnly；星标视图带上静音条目（用户显式收藏的内容不该被规则藏起来）；
       // 其余状态不传 includeMuted（默认就是隐藏静音条目）
-      ...(filterValue === "muted"
+      ...(mutedOnly
         ? { mutedOnly: true }
         : filterValue === "starred"
           ? { includeMuted: true }
@@ -726,13 +726,13 @@ export function EntryList({
   // 底部筛选胶囊的当前态 filterValue 在文件上方定义（列表参数要用到它）
   // 「已静音」是回看视图：标题跟着变，并给一行说明（这条视图里看到的不是新内容，而是被规则收起来的）
   const headerTitle =
-    filterValue === "muted"
+    mutedOnly
       ? t("entry_filter.muted")
       : activeViewId && activeViewName
         ? activeViewName
         : title;
   const headerSubtitle =
-    filterValue === "muted"
+    mutedOnly
       ? t("automation.muted_view_hint")
       : activeViewId
         ? t("automation.view_active_hint")
@@ -841,12 +841,7 @@ export function EntryList({
           <EntryListFilterPill
             value={filterValue}
             onChange={(next) => {
-              // 「已静音」只切本地状态（见上方 mutedOnly 的说明）；其余三态走一次导航
-              if (next === "muted") {
-                setMutedOnly(true);
-                return;
-              }
-              setMutedOnly(false);
+              // 三态都走一次导航；「已静音」已从这里移除（入口在 设置 → 自动化）
               onFilterChange?.(next);
             }}
           />
