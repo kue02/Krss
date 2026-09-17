@@ -798,6 +798,10 @@ func ValidateFilterParams(params FilterWriteParams) error {
 	if params.Actions.Star && params.Actions.Unstar {
 		return ErrInvalidFilter
 	}
+	// keepOnly 已经把「不匹配的」全静音了，再叠 mute 等于整片静音（UI 互斥，API 也要拦）
+	if params.Actions.Mute && params.Actions.KeepOnly {
+		return ErrInvalidFilter
+	}
 	for _, condition := range params.Conditions {
 		if !containsString(model.FilterConditionFields, condition.Field) {
 			return ErrInvalidFilter

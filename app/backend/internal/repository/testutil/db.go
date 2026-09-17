@@ -147,10 +147,11 @@ func SeedEntry(t *testing.T, db *sql.DB, entry model.Entry) int64 {
 
 	_, err := db.ExecContext(
 		context.Background(),
-		`INSERT INTO entries (id, feed_id, hash, title, url, content, readable_content, thumbnail_url, author, published_at, read, starred, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO entries (id, feed_id, hash, title, url, content, readable_content, thumbnail_url, author, published_at, read, starred, muted, filter_id, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		entry.ID, entry.FeedID, entry.Hash, ptrVal(entry.Title), ptrVal(entry.URL), ptrVal(entry.Content), ptrVal(entry.ReadableContent),
-		ptrVal(entry.ThumbnailURL), ptrVal(entry.Author), timeVal(entry.PublishedAt), boolToInt(entry.Read), boolToInt(entry.Starred), now, now,
+		ptrVal(entry.ThumbnailURL), ptrVal(entry.Author), timeVal(entry.PublishedAt), boolToInt(entry.Read), boolToInt(entry.Starred),
+		boolToInt(entry.Muted), ptrVal(entry.FilterID), now, now,
 	)
 	if err != nil {
 		t.Fatalf("failed to seed entry: %v", err)

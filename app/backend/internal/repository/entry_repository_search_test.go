@@ -71,6 +71,42 @@ func TestEntryRepository_Search_EmptyKeyword(t *testing.T) {
 	require.Empty(t, results)
 }
 
+// 被规则静音的条目搜不到 —— 与列表默认隐藏同一口径（2026-09-17 拍板）
+func TestEntryRepository_Search_ExcludesMuted(t *testing.T) {
+	db := testutil.NewTestDB(t)
+	repo := repository.NewEntryRepository(db)
+	ctx := context.Background()
+
+	feedID := testutil.SeedFeed(t, db, model.Feed{Title: "Feed", URL: "https://example.com/feed-muted"})
+	filterID := int64(1234)
+
+	visibleTitle := "广告之外的正常内容"
+	visible := testutil.SeedEntry(t, db, model.Entry{FeedID: feedID, Title: &visibleTitle, URL: &visibleTitle})
+
+	mutedTitle := "SPONSOR 赞助推广"
+	muted := testutil.SeedEntry(t, db, model.Entry{
+		FeedID: feedID, Title: &mutedTitle, URL: &mutedTitle,
+		Muted: true, FilterID: &filterID,
+	})
+
+	results, err := repo.Search(ctx, "SPONSOR", 20)
+	require.NoError(t, err)
+	require.Empty(t, results, "被静音的条目不该出现在搜索结果里")
+
+	results, err = repo.Search(ctx, "内容", 20)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.Equal(t, visible, results[0].ID)
+
+	// 静音被撤销（muted = 0）后又能搜到
+	_, err = db.ExecContext(ctx, `UPDATE entries SET muted = 0, filter_id = NULL WHERE id = ?`, muted)
+	require.NoError(t, err)
+	results, err = repo.Search(ctx, "SPONSOR", 20)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.Equal(t, muted, results[0].ID)
+}
+
 // LIKE 通配符要转义：用户搜 % 或 _ 时不能变成「匹配任意」
 func TestEntryRepository_Search_SpecialCharacters(t *testing.T) {
 	db := testutil.NewTestDB(t)

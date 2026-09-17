@@ -4,6 +4,10 @@ import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import path from "path";
 
+// 后端地址：并行开工时（另一条线占着 :8080）用 GIST_DEV_BACKEND 指向自己的后端，例如
+//   GIST_DEV_BACKEND=http://localhost:8082 bun run dev
+const backendOrigin = process.env.GIST_DEV_BACKEND ?? "http://localhost:8080";
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
@@ -131,10 +135,10 @@ export default defineConfig({
   ],
   server: {
     proxy: {
-      "/api": "http://localhost:8080",
+      "/api": backendOrigin,
       // 订阅图标由后端提供；不代理的话 dev 下会落到 SPA 兜底（返回 HTML），
       // <img> 加载失败就退回默认图标（表现为「明明有图标却不显示」）
-      "/icons": "http://localhost:8080",
+      "/icons": backendOrigin,
     },
   },
   resolve: {

@@ -100,14 +100,16 @@ func (r *entryRepository) Search(ctx context.Context, keyword string, limit int)
 	}
 
 	pattern := "%" + escapeLikePattern(trimmed) + "%"
+	// muted = 0：被规则静音的条目在列表里默认隐藏，搜索口径必须一致（否则「搜得到、点开找不到」）
 	query := `
 		SELECT e.id, e.feed_id, e.hash, e.title, e.url, e.content, e.readable_content, e.thumbnail_url, e.author,
 		       e.published_at, e.read, e.starred, e.muted, e.filter_id, e.created_at, e.updated_at
 		FROM entries e
-		WHERE e.title LIKE ? ESCAPE '\'
+		WHERE e.muted = 0
+		  AND (e.title LIKE ? ESCAPE '\'
 		   OR e.content LIKE ? ESCAPE '\'
 		   OR e.author LIKE ? ESCAPE '\'
-		   OR e.url LIKE ? ESCAPE '\'
+		   OR e.url LIKE ? ESCAPE '\')
 		ORDER BY e.published_at DESC
 		LIMIT ?
 	`

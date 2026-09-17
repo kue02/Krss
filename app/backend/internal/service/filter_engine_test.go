@@ -256,4 +256,14 @@ func TestValidateFilterParams(t *testing.T) {
 		Actions:    model.FilterActions{KeepOnly: true},
 	}
 	require.NoError(t, service.ValidateFilterParams(noValueNeeded))
+
+	// mute + keepOnly 等于「整片静音」，UI 已互斥、API 也必须拦
+	muteWithKeepOnly := valid
+	muteWithKeepOnly.Actions = model.FilterActions{Mute: true, KeepOnly: true}
+	require.ErrorIs(t, service.ValidateFilterParams(muteWithKeepOnly), service.ErrInvalidFilter)
+
+	// keepOnly 配上别的动作仍然合法（它只表示「不命中的那些静音」）
+	keepOnlyWithRead := valid
+	keepOnlyWithRead.Actions = model.FilterActions{KeepOnly: true, MarkRead: true}
+	require.NoError(t, service.ValidateFilterParams(keepOnlyWithRead))
 }

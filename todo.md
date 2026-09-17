@@ -6,13 +6,12 @@
 
 ## 0. 立刻要做（已拍板 / 收尾）
 
-- [ ] **搜索排除静音条目**：`entry_repository.Search` 的 SQL 补 `muted = 0` + 一条回归测试
-      （2026-09-17 用户拍板：静音必搜不到，与列表默认隐藏一致）
-- [ ] **后端补校验**：`ValidateFilterParams` 拦掉 `mute + keepOnly`（UI 已互斥，API 未拦）
-- [ ] **文档收尾**：`docs/变更记录.md` 过滤一节里那条"已静音视图标题"陈旧条目（其实已修，代码在 `EntryList.tsx`）；
-      并把 2026-09-17 遗留在工作区的 `IDEA.md` 改动提交
-- [ ] **残留清理**：`~/Documents/Docker/gist-nextflux/data-filter`（20M 测试库副本）—— 删否
-- [ ] （可选）`vite.config.ts` dev 代理硬编码 `:8080` 改成环境变量 —— 只在并行开工时才需要
+- [x] **搜索排除静音条目**：`entry_repository.Search` 的 SQL 补 `muted = 0` + 一条回归测试
+      （2026-09-17 用户拍板：静音必搜不到，与列表默认隐藏一致；回归测试 `TestEntryRepository_Search_ExcludesMuted`）
+- [x] **后端补校验**：`ValidateFilterParams` 拦掉 `mute + keepOnly`（UI 已互斥，API 未拦；用例见 `filter_engine_test.go`）
+- [x] **文档收尾**：`docs/变更记录.md` 那条「已静音视图标题」陈旧条目已划掉；`IDEA.md` 的遗留改动已在 `9775d66` 随文档提交落库
+- [x] **残留清理**：`~/Documents/Docker/gist-nextflux/data-filter`（20M 测试库副本）已删（走废纸篓）
+- [x] `vite.config.ts` dev 代理改成 `GIST_DEV_BACKEND` 环境变量（默认 `http://localhost:8080`），并行开工不用再改文件
 
 ## 1. 过滤规则（自动化） · 细节见 `docs/自动化-过滤规则.md`
 
@@ -59,7 +58,6 @@
 - [ ] 社交视图图片偶发加载不出 / 少加载（未复现；需要"哪个订阅 + 第几张图"的样本）
 - [ ] 免费翻译"关掉兜底时只报错不兜底"缺失败样本（连打 12 次有道全部成功，没造出失败）
 - [ ] 详情页引文渲染效果人工确认（同上）
-- [ ] 想看 NextFlux 逐帧动效，需要先在 Ego 里登录 NextFlux（http://192.0.2.1:3100）再比
 
 ## 4. 待拍板
 
