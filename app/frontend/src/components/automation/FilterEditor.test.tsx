@@ -87,7 +87,7 @@ describe("FilterEditor", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it("三个互斥维度是三态分段控件：选「静音」后「取消静音」自动落选，再选「不变」两边都清空", () => {
+  it("三个互斥维度是 HeroUI 三态 radiogroup：选「静音」后「取消静音」落选，再选「不变」两边都清空", () => {
     const submit = vi.fn();
     render(
       <FilterEditor
@@ -97,28 +97,26 @@ describe("FilterEditor", () => {
       />,
     );
 
-    // 文本在分段控件内部的 <span> 上，按钮是它的祖先；「不变」三行都有 → 取第 0 行（静音维度）
-    const btn = (label: string) =>
-      screen.getByText(label).closest("button") as HTMLButtonElement;
-    const mute = btn("automation.action_mute");
-    const unmute = btn("automation.action_unmute");
-    const none = (
-      screen.getAllByText("automation.action_none")[0] as HTMLElement
-    ).closest("button") as HTMLButtonElement;
+    // HeroUI ToggleButtonGroup 渲染成 role=radiogroup，项是 role=radio，选中态走 data-selected
+    const radio = (label: string) =>
+      screen.getByText(label).closest('[role="radio"]') as HTMLElement;
+    const mute = radio("automation.action_mute");
+    const unmute = radio("automation.action_unmute");
+    const none = screen.getAllByText("automation.action_none")[0] as HTMLElement;
 
     // 初始是反向（unmute）
-    expect(unmute.getAttribute("data-state")).toBe("active");
-    expect(mute.getAttribute("data-state")).toBe("inactive");
+    expect(unmute.getAttribute("data-selected")).toBe("true");
+    expect(mute.getAttribute("data-selected")).toBeNull();
 
     // 选正向 → 反向落选
     fireEvent.click(mute);
-    expect(mute.getAttribute("data-state")).toBe("active");
-    expect(unmute.getAttribute("data-state")).toBe("inactive");
+    expect(mute.getAttribute("data-selected")).toBe("true");
+    expect(unmute.getAttribute("data-selected")).toBeNull();
 
     // 选「不变」→ 两边都不带
     fireEvent.click(none);
-    expect(mute.getAttribute("data-state")).toBe("inactive");
-    expect(unmute.getAttribute("data-state")).toBe("inactive");
+    expect(mute.getAttribute("data-selected")).toBeNull();
+    expect(unmute.getAttribute("data-selected")).toBeNull();
   });
 
   it("勾了「只保留匹配」后「静音」被禁用（否则等于全静音），并给出提示", () => {
