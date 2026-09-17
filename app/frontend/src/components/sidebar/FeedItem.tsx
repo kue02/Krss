@@ -19,6 +19,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { BoltIcon, RssIcon, ErrorIcon } from "@/components/ui/icons";
+import { CONTENT_TYPE_ORDER, contentTypeMeta } from "@/lib/content-type-meta";
 import { FeedAvatar } from "@/components/ui/feed-avatar";
 import {
   Copy,
@@ -222,20 +223,19 @@ export function FeedItem({
               {t("actions.change_type")}
             </ContextMenuSubTrigger>
             <ContextMenuSubContent>
-              <ContextMenuItem onClick={() => onChangeType(feedId, "article")}>
-                {t("content_type.article")}
-              </ContextMenuItem>
-              <ContextMenuItem onClick={() => onChangeType(feedId, "picture")}>
-                {t("content_type.picture")}
-              </ContextMenuItem>
-              <ContextMenuItem
-                onClick={() => onChangeType(feedId, "notification")}
-              >
-                {t("content_type.notification")}
-              </ContextMenuItem>
-              <ContextMenuItem onClick={() => onChangeType(feedId, "social")}>
-                {t("content_type.social")}
-              </ContextMenuItem>
+              {/* 每个类型带自己的视图图标（与中栏切换器同一套映射，11-6） */}
+              {CONTENT_TYPE_ORDER.map((type) => {
+                const { icon: Icon, labelKey } = contentTypeMeta[type];
+                return (
+                  <ContextMenuItem
+                    key={type}
+                    onClick={() => onChangeType(feedId, type)}
+                  >
+                    <Icon className="size-4 shrink-0 text-muted-foreground" />
+                    {t(labelKey)}
+                  </ContextMenuItem>
+                );
+              })}
             </ContextMenuSubContent>
           </ContextMenuSub>
         )}

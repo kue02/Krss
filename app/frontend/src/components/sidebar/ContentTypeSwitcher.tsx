@@ -1,12 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { Ripple } from "m3-ripple";
 import { cn } from "@/lib/utils";
-import {
-  FileTextIcon,
-  ImageIcon,
-  BellIcon,
-  SocialIcon,
-} from "@/components/ui/icons";
+import { contentTypeMeta } from "@/lib/content-type-meta";
 import type { ContentType } from "@/types/api";
 
 interface ContentTypeSwitcherProps {
@@ -20,16 +15,6 @@ interface ContentTypeSwitcherProps {
   onSelect: (type: ContentType) => void;
   visibleContentTypes: ContentType[];
 }
-
-const contentTypeMeta: Record<
-  ContentType,
-  { icon: typeof FileTextIcon; labelKey: string }
-> = {
-  article: { icon: FileTextIcon, labelKey: "content_type.article" },
-  picture: { icon: ImageIcon, labelKey: "content_type.picture" },
-  notification: { icon: BellIcon, labelKey: "content_type.notification" },
-  social: { icon: SocialIcon, labelKey: "content_type.social" },
-};
 
 /** 内容类型切换 —— Nextflux 风格的分段胶囊：整条浅底容器，选中项浮起成卡片 */
 export function ContentTypeSwitcher({
