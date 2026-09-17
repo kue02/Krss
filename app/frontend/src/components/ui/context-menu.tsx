@@ -96,11 +96,14 @@ const ContextMenuSubTrigger = React.forwardRef<
   <ContextMenuPrimitive.SubTrigger
     ref={ref}
     className={cn(
-      "group relative flex cursor-pointer select-none items-center rounded-lg",
-      "px-2.5 py-1 h-[28px] text-sm outline-none",
+      // 与 ContextMenuItem 严格一致（2026-09-17 用户报「有些图标有偏移」：
+      // 这里原本是 h-[28px] + px-2.5 py-1 且漏了 gap-3 —— 子菜单触发器比普通项矮 8px、
+      // 图标与文字也少 12px 间距，实测图标 cy 14 vs 其它项 18）
+      "group relative flex cursor-pointer select-none items-center gap-3",
+      "min-h-9 rounded-[12.8px] px-2.5 py-1.5 text-sm outline-none",
       "transition-colors duration-100",
-      "focus:bg-secondary/30 data-[highlighted]:bg-secondary/20",
-      "data-[state=open]:bg-secondary/30",
+      "focus:bg-default data-[highlighted]:bg-default",
+      "data-[state=open]:bg-default",
       inset && "pl-8",
       className,
     )}
