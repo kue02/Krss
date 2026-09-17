@@ -213,6 +213,29 @@ export function setOnUnauthorized(callback: () => void): void {
   onUnauthorized = callback;
 }
 
+/**
+ * 普通请求的兜底超时。
+ *
+ * 用户 2026-09-18 报的现象：推送地址坏了之后「整个软件都会卡死、刷新网页一直转圈」。
+ * 后端实测是有超时的（外部调用 10s 断），所以更可能是**前端根本没有超时** ——
+ * 只要有一个响应永不回来，界面就会一直转下去，而不是给出失败原因。
+ * 这里给普通 JSON 请求加兜底；流式路径（AI 翻译/摘要、OPML 导出、正文抓取）走各自的 fetch，不受影响。
+ */
+const REQUEST_TIMEOUT_MS = 30_000;
+
+/** 合并「调用方自己的 signal」与兜底超时（浏览器不支持就退化成调用方的 signal） */
+function withTimeout(existing?: AbortSignal | null): AbortSignal | undefined {
+  const timeout =
+    typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function"
+      ? AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+      : undefined;
+  if (!timeout) return existing ?? undefined;
+  if (!existing) return timeout;
+  return typeof AbortSignal.any === "function"
+    ? AbortSignal.any([existing, timeout])
+    : existing;
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE_URL}${path}`;
   const headers = new Headers(options.headers);
@@ -228,10 +251,23 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers,
+      signal: withTimeout(options.signal),
+    });
+  } catch (error) {
+    // 超时要给一句人能看懂的失败原因（别让界面永远转圈）
+    if (error instanceof DOMException && error.name === "TimeoutError") {
+      throw new ApiError(
+        `请求超时：${REQUEST_TIMEOUT_MS / 1000} 秒内没有响应（后端可能正卡在某个外部依赖上）`,
+        0,
+      );
+    }
+    throw error;
+  }
 
   const data = await parseResponse(response);
   if (!response.ok) {
