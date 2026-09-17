@@ -2893,6 +2893,29 @@
                 }
             }
         },
+        "gist_backend_internal_service.RefreshFeedResult": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "feedId": {
+                    "type": "integer"
+                },
+                "iconPath": {
+                    "type": "string"
+                },
+                "new": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated": {
+                    "type": "integer"
+                }
+            }
+        },
         "internal_handler.aiModelsRequest": {
             "type": "object",
             "properties": {
@@ -4065,6 +4088,13 @@
                 },
                 "lastRefreshedAt": {
                     "type": "string"
+                },
+                "results": {
+                    "description": "Results 最近一轮刷新里每个订阅的结果（新/更新条数、失败原因）—— 刷新结果弹框用（用户 11-8）",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/gist_backend_internal_service.RefreshFeedResult"
+                    }
                 },
                 "total": {
                     "description": "本次刷新进度：Total 待刷新源数、Completed 已完成数（仅刷新中有效）",
