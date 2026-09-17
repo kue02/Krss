@@ -542,6 +542,7 @@
     "empty_hint": "Create one to start. Not sure a regex is safe? Run “Preview impact” first.",
     "load_failed": "Failed to load rules",
     "order_hint": "Matched top-down; the first hit stops the chain",
+"drag_handle": "Drag to reorder",
     "rules_title": "Rules",
     "hits": "{{count}} hits",
     "failed_badge": "Failed",

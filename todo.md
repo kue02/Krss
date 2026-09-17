@@ -69,7 +69,13 @@
         开关在 外观 → 阅读 → **代码块行号**（`showLineNumbers`，默认**开** —— Nextflux 默认关，但用户明确要行号）
       - 实测（ego-browser + 截图逐项核对）：`brush: bash` 被识别 → 15 行、29 个着色 token、`data-shiki-highlighted=true`、
         头部 BASH + 复制按钮、`overflowPx=0`、行号 1–15 可见、灰底圆角边框
-- [ ] **8. 自动化顺序改拖动**（现在是 ↑↓ 按钮）：拖拽手柄 + 位移动效，落库仍用 position
+- [x] **8. 自动化顺序改拖动**：规则行左侧加**拖动把手**（`framer-motion` 的 `Reorder.Group` + `dragListener={false}` + 每行自己的
+      `useDragControls`，避免开关/名称/命中数跟拖动抢事件）；拖动后按新顺序重编号落库，**只提交位置真的变了的那些**；
+      行内不再摆 ↑↓，「上移 / 下移」降级进行尾「⋯」菜单（键盘用户与不想拖的人仍可用；disabled 用 `isDisabled` 置灰）
+      —— 实测（ego-browser 真拖 + 查库）：拖动前 DOM 顺序 `[test, ZZ-临时]` → 拖动后 `[ZZ-临时, test]`，
+      **DB 同步变成 `ZZ-临时=0 / test=1`**（真落库，不只是视觉位移）；临时规则已删、你的库只多了一条被拖动的 position 记录
+      —— 注：还原 position 时发现你线上**旧二进制**的 `PATCH /api/filters/:id` 一律回 `400 invalid request`（旧版 DTO 与新版不同），
+      只有一条规则时 position 只是排序键、无行为影响，重启容器上新版后可归位
 - [ ] **9. 细调与性能**（贯穿全批）
   - [x] 下拉框换 HeroUI 组件：新增 `src/components/ui/select.tsx`（HeroUI v3 `Select` + `ListBox`，react-aria 引擎、自带弹层动效/键盘/触摸），
         **设置页 4 处已换**（AI: provider / 摘要语言 / 翻译通道；设置弹窗移动端 tab 选择器）

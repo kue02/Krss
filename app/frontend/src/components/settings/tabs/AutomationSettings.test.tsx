@@ -147,13 +147,16 @@ describe("AutomationSettings", () => {
   });
 
   it("顺序上下移：两条规则交换 position", () => {
+    // 2026-09-17 起主交互改成拖动（行内不再摆 ↑↓），但「上移 / 下移」保留在行尾「⋯」菜单里
+    // 供键盘用户与不想拖的人使用 —— 这条测的就是那条保底路径。
     rules.current = [
       rule({ id: "rule-1", name: "第一条", position: 0 }),
       rule({ id: "rule-2", name: "第二条", position: 1 }),
     ];
     render(<AutomationSettings />);
 
-    fireEvent.click(screen.getAllByTitle("automation.move_down")[0]!);
+    openRowMenu(0);
+    fireEvent.click(screen.getByText("automation.move_down"));
 
     expect(updateMutate).toHaveBeenCalledTimes(2);
     const payloads = updateMutate.mock.calls.map(

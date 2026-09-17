@@ -539,6 +539,7 @@
     "empty_hint": "点「新建规则」写第一条；不确定正则会不会误伤，先点「预览影响」看清命中哪些。",
     "load_failed": "规则加载失败",
     "order_hint": "自上而下匹配，首个命中即停",
+"drag_handle": "拖动排序",
     "rules_title": "规则",
     "hits": "命中 {{count}}",
     "failed_badge": "执行失败",

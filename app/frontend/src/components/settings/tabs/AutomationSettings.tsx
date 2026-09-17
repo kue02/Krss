@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { Reorder, useDragControls } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import {
   AlertDialog,
@@ -8,6 +9,7 @@ import {
   Modal,
 } from "@heroui/react";
 import { MoreHorizontal } from "lucide-react";
+import { GripVerticalIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import { useFilterViewStore } from "@/stores/filter-view-store";
 import { useSettingsModalStore } from "@/stores/settings-modal-store";
@@ -86,6 +88,8 @@ function RowMenu({
     label: string;
     onSelect: () => void;
     danger?: boolean;
+    /** 置灰项（例如首行的「上移」）——react-aria 会同时给 aria-disabled */
+    disabled?: boolean;
   }[];
   label: string;
 }) {
@@ -114,6 +118,7 @@ function RowMenu({
               id={item.id}
               textValue={item.label}
               variant={item.danger ? "danger" : undefined}
+              isDisabled={item.disabled ? true : undefined}
             >
               <Label>{item.label}</Label>
             </Dropdown.Item>
@@ -121,6 +126,170 @@ function RowMenu({
         </Dropdown.Menu>
       </Dropdown.Popover>
     </Dropdown>
+  );
+}
+
+
+/**
+ * 一条规则行。
+ *
+ * 抽成组件是因为**拖动要按行持有 dragControls**（`dragListener={false}` + 把手启动拖动，
+ * 否则开关、名称、命中数这些可点区域都会跟拖动抢事件）。
+ *
+ * 顺序即优先级（首个命中即停），所以拖动结果必须落库；行尾菜单里保留「上移 / 下移」，
+ * 键盘用户与不想拖的人还能用（用户要求主交互改成拖动，所以行内不再摆 ↑↓ 两颗按钮）。
+ */
+function RuleRow({
+  rule,
+  scope,
+  index,
+  total,
+  onToggle,
+  onEdit,
+  onMove,
+  onShowMatches,
+  onApplyHistory,
+  onRevert,
+  onDelete,
+}: {
+  rule: FilterRule;
+  /** 范围文案由父组件算好传进来（订阅名 / 分类名 / 全部） */
+  scope: string;
+  index: number;
+  total: number;
+  onToggle: (checked: boolean) => void;
+  onEdit: () => void;
+  onMove: (offset: number) => void;
+  onShowMatches: () => void;
+  onApplyHistory: () => void;
+  onRevert: () => void;
+  onDelete: () => void;
+}) {
+  const { t } = useTranslation();
+  const dragControls = useDragControls();
+
+  return (
+    <Reorder.Item
+      value={rule}
+      dragListener={false}
+      dragControls={dragControls}
+      className="flex items-start gap-2 px-2 py-2.5 transition-colors hover:bg-accent/25"
+    >
+      {/* 拖动把手：拖动排序的主入口（只在把手上按下才拖，不会跟行内点击抢事件） */}
+      <button
+        type="button"
+        aria-label={t("automation.drag_handle")}
+        title={t("automation.order_hint")}
+        onPointerDown={(event) => dragControls.start(event)}
+        className={cn(
+          "mt-0.5 cursor-grab touch-none rounded p-0.5 text-muted-foreground/60",
+          "transition-colors hover:bg-accent hover:text-foreground active:cursor-grabbing",
+        )}
+      >
+        <GripVerticalIcon className="size-4" />
+      </button>
+
+      <Switch className="mt-0.5" checked={rule.enabled} onCheckedChange={onToggle} />
+
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <button
+            type="button"
+            onClick={onEdit}
+            className={cn(
+              "max-w-full truncate text-sm font-medium hover:underline",
+              !rule.enabled && "text-muted-foreground",
+            )}
+          >
+            {rule.name}
+          </button>
+          <Badge>{scope}</Badge>
+          {!rule.enabled && <Badge>{t("automation.enabled_hint")}</Badge>}
+          {rule.lastError && (
+            <Badge tone="danger" title={rule.lastError}>
+              {t("automation.failed_badge")}
+            </Badge>
+          )}
+        </div>
+
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+          <span className="max-w-full truncate font-mono">
+            {describeConditions(rule.conditions ?? [], t)}
+          </span>
+          <span className="text-border">→</span>
+          <span className="min-w-0 truncate">
+            {describeActions(rule.actions ?? {}, t)}
+          </span>
+        </div>
+
+        {rule.lastError && (
+          <div
+            title={rule.lastError}
+            className="mt-1 truncate text-[11px] text-destructive"
+          >
+            {rule.lastError}
+          </div>
+        )}
+
+        <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground/80">
+          <button
+            type="button"
+            onClick={onShowMatches}
+            title={t("automation.matches_title")}
+            className={cn(
+              "rounded px-1 tabular-nums transition-colors hover:bg-accent",
+              rule.matchCount > 0 ? "text-foreground" : "text-muted-foreground",
+            )}
+          >
+            {t("automation.hits", { count: rule.matchCount })}
+          </button>
+          <span className="text-border">·</span>
+          <span>
+            {rule.lastMatchedAt
+              ? t("automation.last_matched", {
+                  time: formatTime(rule.lastMatchedAt),
+                })
+              : t("automation.never_matched")}
+          </span>
+        </div>
+      </div>
+
+      <RowMenu
+        label={t("automation.more_actions")}
+        items={[
+          {
+            id: "move_up",
+            label: t("automation.move_up"),
+            disabled: index === 0,
+            onSelect: () => onMove(-1),
+          },
+          {
+            id: "move_down",
+            label: t("automation.move_down"),
+            disabled: index === total - 1,
+            onSelect: () => onMove(1),
+          },
+          { id: "edit", label: t("automation.edit"), onSelect: onEdit },
+          {
+            id: "matches",
+            label: t("automation.matches_title"),
+            onSelect: onShowMatches,
+          },
+          {
+            id: "apply",
+            label: t("automation.apply_history"),
+            onSelect: onApplyHistory,
+          },
+          { id: "revert", label: t("automation.revert"), onSelect: onRevert },
+          {
+            id: "delete",
+            label: t("automation.delete"),
+            danger: true,
+            onSelect: onDelete,
+          },
+        ]}
+      />
+    </Reorder.Item>
   );
 }
 
@@ -222,6 +391,23 @@ export function AutomationSettings() {
       payload: toWritePayload(target, rule.position),
     });
   };
+
+  /**
+   * 拖动排序的落库。
+   *
+   * 顺序即优先级（首个命中即停），所以拖动结果必须写回后端；按新顺序重编号 0..n-1，
+   * 但**只提交位置真的变了的那些** —— 一次拖动通常只影响其中一段，没必要整表重写。
+   * （例外规则那种 position 为负的「永远最先」是靠排到最前实现的，重编号后它仍在最前，语义不变。）
+   */
+  const handleReorder = useCallback(
+    (next: FilterRule[]) => {
+      next.forEach((rule, index) => {
+        if (rule.position === index) return;
+        update.mutate({ id: rule.id, payload: toWritePayload(rule, index) });
+      });
+    },
+    [update],
+  );
 
   const handleRevert = (rule: FilterRule) => {
     revert.mutate(rule.id, {
@@ -364,157 +550,41 @@ export function AutomationSettings() {
             </div>
           </div>
         ) : (
-          <div className="divide-y divide-border/60 rounded-md border border-border/60">
+          <Reorder.Group
+            as="div"
+            axis="y"
+            values={sorted}
+            onReorder={handleReorder}
+            className="divide-y divide-border/60 rounded-md border border-border/60"
+          >
             {sorted.map((rule, index) => (
-              <div
+              <RuleRow
                 key={rule.id}
-                className="flex items-start gap-3 px-3 py-2.5 transition-colors hover:bg-accent/25"
-              >
-                <Switch
-                  className="mt-0.5"
-                  checked={rule.enabled}
-                  onCheckedChange={(checked) =>
-                    update.mutate({
-                      id: rule.id,
-                      payload: {
-                        ...toWritePayload(rule, rule.position),
-                        enabled: checked,
-                      },
-                    })
-                  }
-                />
-
-                <div className="min-w-0 flex-1">
-                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                    <button
-                      type="button"
-                      onClick={() => openEdit(rule)}
-                      className={cn(
-                        "max-w-full truncate text-sm font-medium hover:underline",
-                        !rule.enabled && "text-muted-foreground",
-                      )}
-                    >
-                      {rule.name}
-                    </button>
-                    <Badge>{scopeLabel(rule)}</Badge>
-                    {!rule.enabled && <Badge>{t("automation.enabled_hint")}</Badge>}
-                    {rule.lastError && (
-                      <Badge tone="danger" title={rule.lastError}>
-                        {t("automation.failed_badge")}
-                      </Badge>
-                    )}
-                  </div>
-
-                  <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
-                    <span className="max-w-full truncate font-mono">
-                      {describeConditions(rule.conditions ?? [], t)}
-                    </span>
-                    <span className="text-border">→</span>
-                    <span className="min-w-0 truncate">
-                      {describeActions(rule.actions ?? {}, t)}
-                    </span>
-                  </div>
-
-                  {rule.lastError && (
-                    <div
-                      title={rule.lastError}
-                      className="mt-1 truncate text-[11px] text-destructive"
-                    >
-                      {rule.lastError}
-                    </div>
-                  )}
-
-                  <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground/80">
-                    <button
-                      type="button"
-                      onClick={() => setMatchesRule(rule)}
-                      title={t("automation.matches_title")}
-                      className={cn(
-                        "rounded px-1 tabular-nums transition-colors hover:bg-accent",
-                        rule.matchCount > 0
-                          ? "text-foreground"
-                          : "text-muted-foreground",
-                      )}
-                    >
-                      {t("automation.hits", { count: rule.matchCount })}
-                    </button>
-                    <span className="text-border">·</span>
-                    <span>
-                      {rule.lastMatchedAt
-                        ? t("automation.last_matched", {
-                            time: formatTime(rule.lastMatchedAt),
-                          })
-                        : t("automation.never_matched")}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex shrink-0 items-center gap-0.5">
-                  <button
-                    type="button"
-                    title={t("automation.move_up")}
-                    aria-label={t("automation.move_up")}
-                    disabled={index === 0}
-                    onClick={() => move(rule, -1)}
-                    className={cn(
-                      "rounded px-1 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
-                      index === 0 && "cursor-not-allowed opacity-30",
-                    )}
-                  >
-                    ↑
-                  </button>
-                  <button
-                    type="button"
-                    title={t("automation.move_down")}
-                    aria-label={t("automation.move_down")}
-                    disabled={index === sorted.length - 1}
-                    onClick={() => move(rule, 1)}
-                    className={cn(
-                      "rounded px-1 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
-                      index === sorted.length - 1 &&
-                        "cursor-not-allowed opacity-30",
-                    )}
-                  >
-                    ↓
-                  </button>
-                  <RowMenu
-                    label={t("automation.more_actions")}
-                    items={[
-                      {
-                        id: "edit",
-                        label: t("automation.edit"),
-                        onSelect: () => openEdit(rule),
-                      },
-                      {
-                        id: "matches",
-                        label: t("automation.matches_title"),
-                        onSelect: () => setMatchesRule(rule),
-                      },
-                      {
-                        id: "apply",
-                        label: t("automation.apply_history"),
-                        onSelect: () => setApplyRule(rule),
-                      },
-                      {
-                        id: "revert",
-                        label: t("automation.revert"),
-                        onSelect: () => handleRevert(rule),
-                      },
-                      {
-                        id: "delete",
-                        label: t("automation.delete"),
-                        danger: true,
-                        onSelect: () => {
-                          setDeleteWithRevert(true);
-                          setPendingDelete(rule);
-                        },
-                      },
-                    ]}
-                  />
-                </div>
-              </div>
+                rule={rule}
+                scope={scopeLabel(rule)}
+                index={index}
+                total={sorted.length}
+                onToggle={(checked) =>
+                  update.mutate({
+                    id: rule.id,
+                    payload: {
+                      ...toWritePayload(rule, rule.position),
+                      enabled: checked,
+                    },
+                  })
+                }
+                onEdit={() => openEdit(rule)}
+                onMove={(offset) => move(rule, offset)}
+                onShowMatches={() => setMatchesRule(rule)}
+                onApplyHistory={() => setApplyRule(rule)}
+                onRevert={() => handleRevert(rule)}
+                onDelete={() => {
+                  setDeleteWithRevert(true);
+                  setPendingDelete(rule);
+                }}
+              />
             ))}
-          </div>
+          </Reorder.Group>
         )}
       </section>
 
