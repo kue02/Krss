@@ -228,6 +228,7 @@
     "refresh_done": "Refresh finished",
     "original_site": "View original site",
     "original_site_hint": "The original site is embedded below. If it stays blank, the site refuses framing — use Open in new tab.",
+    "video_preview": "Video player",
     "open_in_new_tab": "Open in new tab",
     "original_site_loading": "Loading original site…",
     "auto_readability_on": "Switched to reader mode automatically",

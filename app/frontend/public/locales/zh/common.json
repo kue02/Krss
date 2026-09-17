@@ -225,6 +225,7 @@
     "refresh_done": "刷新完成",
     "original_site": "查看原文网站",
     "original_site_hint": "已在内嵌窗口加载原站；若下方空白，说明该站点禁止被内嵌，请点右侧「在新窗口打开」。",
+    "video_preview": "视频播放",
     "open_in_new_tab": "新窗口打开",
     "original_site_loading": "正在加载原站…",
     "auto_readability_on": "已自动切换到阅读模式",

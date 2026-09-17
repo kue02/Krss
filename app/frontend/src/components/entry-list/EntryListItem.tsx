@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/date-utils";
 import { stripHtml } from "@/lib/html-utils";
 import { getEntryImages } from "@/lib/extract-images";
+import { useImagePreviewStore } from "@/stores/image-preview-store";
 import { useTranslationStore } from "@/stores/translation-store";
 import { FeedIcon } from "@/components/ui/feed-icon";
 import {
@@ -271,7 +272,8 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
     );
 
     // 社交媒体视图的图片行（加载失败的直接不显示，避免破图）
-    const [failedThumbs, setFailedThumbs] = useState<Set<string>>(() => new Set());
+    const openImagePreview = useImagePreviewStore((state) => state.open);
+  const [failedThumbs, setFailedThumbs] = useState<Set<string>>(() => new Set());
     const socialImages = useMemo(
       () => getEntryImages(entry.thumbnailUrl, entry.content, entry.url),
       [entry.thumbnailUrl, entry.content, entry.url],
@@ -394,8 +396,19 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
                     <>
                       <div
                         ref={expandedBodyRef}
+                        // 卡片正文里的图片（含引文块内的）点开大图查看器。
+                        // 用捕获阶段：卡片根节点自己有点击（选中条目），子元素的处理在卡片里没生效
+                        onClickCapture={(event) => {
+                          const target = event.target as HTMLElement;
+                          if (target.tagName !== "IMG") return;
+                          event.preventDefault();
+                          event.stopPropagation();
+                          const src = target.getAttribute("src") ?? "";
+                          const index = socialImages.findIndex((url) => url === src);
+                          openImagePreview(socialImages, index >= 0 ? index : 0);
+                        }}
                         className={cn(
-                          "entry-content prose prose-sm dark:prose-invert max-w-none break-words",
+                          "entry-card entry-content prose prose-sm dark:prose-invert max-w-none break-words [&_img]:cursor-zoom-in",
                           bodyClamped && "overflow-hidden",
                         )}
                         style={{
@@ -456,17 +469,28 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
                     {socialImages
                       .slice(0, 3)
                       .filter((url) => !failedThumbs.has(url))
-                      .map((url) => (
-                        <img
+                      .map((url, index) => (
+                        <button
                           key={url}
-                          src={url}
-                          alt=""
-                          loading="lazy"
-                          className="size-28 shrink-0 rounded-lg bg-muted object-cover"
-                          onError={() =>
-                            setFailedThumbs((prev) => new Set(prev).add(url))
-                          }
-                        />
+                          type="button"
+                          // 点缩略图开大图查看器（用户要求：卡片里也要能点开看大图）
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openImagePreview(socialImages, index);
+                          }}
+                          className="shrink-0 cursor-zoom-in overflow-hidden rounded-lg bg-muted"
+                          aria-label="查看大图"
+                        >
+                          <img
+                            src={url}
+                            alt=""
+                            loading="lazy"
+                            className="size-28 object-cover transition-transform duration-200 hover:scale-[1.03]"
+                            onError={() =>
+                              setFailedThumbs((prev) => new Set(prev).add(url))
+                            }
+                          />
+                        </button>
                       ))}
                   </div>
                 )}

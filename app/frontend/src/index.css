@@ -594,7 +594,8 @@ body.mobile-document-scroll-locked {
     display: block;
     width: 40%;
     height: 1px;
-    margin-bottom: 10px;
+    /* 居中，且和引文上下都留出距离（用户：分割线居中而且和引文上下是有距离的） */
+    margin: 12px auto;
     background: color-mix(in srgb, var(--foreground) 10%, transparent);
   }
 
@@ -616,4 +617,41 @@ body.mobile-document-scroll-locked {
     margin: 1em 0;
     border-color: var(--border);
   }
+}
+
+/* ---------------------------------------------------------------------------
+ * 社交卡片（列表预览）里的引文媒体尺寸。
+ *
+ * 故意放在所有 @layer 之外：Tailwind 的 utilities 层排在 components 之后，
+ * prose 的 !h-auto / max-w-full 会把这里设的 112px 覆盖掉（实测显示成 112×168）。
+ * 未分层的规则优先级高于任何 @layer —— 这也是本项目早先踩过的同一个坑。
+ * 尺寸照 Folo 的 size-28（112px 方图）。
+ * ------------------------------------------------------------------------ */
+.entry-card .rsshub-quote img,
+.entry-card .rsshub-quote video,
+.entry-card .rsshub-quote .article-video {
+  width: 112px;
+  height: 112px;
+  object-fit: cover;
+  border-radius: 8px;
+  display: inline-block;
+  vertical-align: top;
+  margin: 6px 6px 0 0;
+}
+
+/* 卡片里的视频也压成 16:9 封面（Folo 的卡片视频就是这个比例），别整段竖屏铺开 */
+.entry-card video,
+.entry-card .article-video {
+  max-height: 320px;
+  object-fit: cover;
+}
+
+.entry-card .rsshub-quote .article-video-badge {
+  width: 32px;
+  height: 32px;
+}
+
+.entry-card .rsshub-quote .article-video-badge svg {
+  width: 14px;
+  height: 14px;
 }

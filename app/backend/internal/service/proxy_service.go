@@ -135,12 +135,25 @@ func (s *proxyService) fetchWithStandardClient(ctx context.Context, imageURL, re
 		return nil, err
 	}
 
+	statusCode := resp.StatusCode
+	contentRange := resp.Header.Get("Content-Range")
+	if statusCode == http.StatusOK && rangeHeader != "" {
+		// 上游没理 Range（很常见）：我们在代理层把片段切出来并回 206，
+		// 否则浏览器认为不可跳转，<video> 进度条一拖就弹回
+		sliced, derivedRange, derivedStatus := sliceByRange(data, rangeHeader)
+		if derivedStatus == http.StatusPartialContent {
+			data = sliced
+			contentRange = derivedRange
+			statusCode = derivedStatus
+		}
+	}
+
 	return &ProxyResult{
 		Data:         data,
 		ContentType:  contentType,
-		StatusCode:   resp.StatusCode,
-		ContentRange: resp.Header.Get("Content-Range"),
-		AcceptRanges: resp.Header.Get("Accept-Ranges"),
+		StatusCode:   statusCode,
+		ContentRange: contentRange,
+		AcceptRanges: "bytes",
 	}, nil
 }
 
