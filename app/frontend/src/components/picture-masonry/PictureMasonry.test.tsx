@@ -116,6 +116,7 @@ function makeEntry(id: string, read = false): Entry {
     thumbnailUrl: `https://example.com/${id}.jpg`,
     read,
     starred: false,
+    muted: false,
     createdAt: "2024-01-01T00:00:00Z",
     updatedAt: "2024-01-01T00:00:00Z",
   };

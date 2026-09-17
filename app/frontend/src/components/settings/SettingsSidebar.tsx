@@ -104,6 +104,25 @@ export function SettingsSidebar({
       ),
     },
     {
+      id: "automation",
+      label: t("automation.title"),
+      icon: (
+        <svg
+          className="size-[18px]"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1.5}
+            d="M12 3c-1.5 3-5 4.5-5 9a5 5 0 0010 0c0-1.5-.5-3-1.5-4M9.5 17.5l1.5 3.5h2l1.5-3.5"
+          />
+        </svg>
+      ),
+    },
+    {
       id: "data",
       label: t("settings.data"),
       icon: (

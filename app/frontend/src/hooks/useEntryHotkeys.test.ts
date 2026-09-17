@@ -19,6 +19,7 @@ function entry(id: string, read: boolean, starred = false): Entry {
     url: `https://example.com/${id}`,
     read,
     starred,
+    muted: false,
     createdAt: "2026-09-16T00:00:00Z",
     updatedAt: "2026-09-16T00:00:00Z",
   };

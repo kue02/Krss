@@ -21,6 +21,7 @@ import { ImagePreview } from "@/components/ui/image-preview";
 import { LoginPage, RegisterPage, NetworkErrorPage } from "@/components/auth";
 import { UpdateNotice } from "@/components/update-notice";
 import { Toaster } from "@/components/ui/toaster";
+import { FilterEditorDialog } from "@/components/automation/FilterEditorDialog";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { refreshAllFeeds } from "@/api";
 import { ShortcutsHelpDialog } from "@/components/shortcuts/ShortcutsHelpDialog";
@@ -671,6 +672,8 @@ function App() {
           <Router>
             <AppContent />
             <UpdateNotice />
+            {/* 规则编辑器：设置页/订阅右键/条目右键都靠 filter-editor-store 唤起它 */}
+            <FilterEditorDialog />
             <Toaster />
           </Router>
         </TooltipProvider>

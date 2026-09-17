@@ -8,6 +8,7 @@ import { DataControl } from "./tabs/DataControl";
 import { FeedsSettings } from "./tabs/FeedsSettings";
 import { FoldersSettings } from "./tabs/FoldersSettings";
 import { AISettings } from "./tabs/AISettings";
+import { AutomationSettings } from "./tabs/AutomationSettings";
 import { NetworkSettings } from "./tabs/NetworkSettings";
 import { AdvancedSettings } from "./tabs/AdvancedSettings";
 import { cn } from "@/lib/utils";
@@ -20,12 +21,13 @@ export type SettingsTab =
   | "data"
   | "feeds"
   | "folders"
+  | "automation"
   | "advanced";
 
 /**
  * 设置标签的显示顺序 —— 按「用得多少」排，不是按模块新旧：
  *   外观（主题/字体/卡片，天天调）→ 订阅/文件夹（增删订阅）→ 通用（语言、阅读行为、RSSHub 实例）
- *   → AI（模型与自动摘要翻译）→ 网络（代理）→ 高级（域名限流）→ 数据控制（导入导出/清缓存，低频且有破坏性）
+ *   → AI（模型与自动摘要翻译）→ 自动化（过滤规则）→ 网络（代理）→ 高级（域名限流）→ 数据控制（导入导出/清缓存，低频且有破坏性）
  * 侧栏与移动端下拉共用这一份顺序。
  */
 export const SETTINGS_TAB_ORDER: SettingsTab[] = [
@@ -34,6 +36,7 @@ export const SETTINGS_TAB_ORDER: SettingsTab[] = [
   "folders",
   "general",
   "ai",
+  "automation",
   "network",
   "advanced",
   "data",
@@ -48,6 +51,7 @@ export const SETTINGS_TAB_LABEL_KEYS: Record<SettingsTab, string> = {
   data: "settings.data",
   feeds: "settings.subscriptions",
   folders: "settings.folders",
+  automation: "automation.title",
   advanced: "settings.advanced",
 };
 
@@ -98,6 +102,8 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
         return <AppearanceSettings />;
       case "ai":
         return <AISettings />;
+      case "automation":
+        return <AutomationSettings />;
       case "data":
         return <DataControl />;
       case "feeds":
@@ -121,6 +127,8 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
         return t("settings.appearance");
       case "ai":
         return t("settings.ai");
+      case "automation":
+        return t("automation.title");
       case "data":
         return t("settings.data");
       case "feeds":

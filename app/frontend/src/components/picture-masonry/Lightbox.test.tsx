@@ -81,6 +81,7 @@ const mockVideoEntry: Entry = {
   publishedAt: "2024-01-15T10:00:00Z",
   read: false,
   starred: false,
+  muted: false,
   createdAt: "2024-01-15T10:00:00Z",
   updatedAt: "2024-01-15T10:00:00Z",
 };
@@ -96,6 +97,7 @@ const mockImageEntry: Entry = {
   publishedAt: "2024-01-15T10:00:00Z",
   read: false,
   starred: false,
+  muted: false,
   createdAt: "2024-01-15T10:00:00Z",
   updatedAt: "2024-01-15T10:00:00Z",
 };

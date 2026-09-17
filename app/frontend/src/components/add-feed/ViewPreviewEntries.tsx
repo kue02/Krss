@@ -31,6 +31,7 @@ function toPreviewEntry(item: FeedPreviewEntry, index: number): Entry {
     publishedAt: item.publishedAt,
     read: false,
     starred: false,
+    muted: false,
     createdAt: timestamp,
     updatedAt: timestamp,
   };

@@ -32,6 +32,7 @@ const entry: Entry = {
   content: "<p>修复了部分错误</p>",
   read: false,
   starred: false,
+  muted: false,
   createdAt: "2026-05-10T00:00:00.000Z",
   updatedAt: "2026-05-10T00:00:00.000Z",
 };
