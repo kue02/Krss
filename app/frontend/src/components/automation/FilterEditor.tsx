@@ -78,7 +78,8 @@ const ACTION_ORDER: ActionKey[] = [
 
 const inputClass = cn(
   // text-foreground：HeroUI 抽屉的 .drawer__body 默认是 muted 文字色，输入值要多一层才够黑
-  "h-8 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground",
+  // h-9（36px）：用户 11-4 说条件那里的输入框太小；抽屉里所有输入框统一到这一档
+  "h-9 w-full rounded-md border border-border bg-background px-2.5 text-sm text-foreground",
   "placeholder:text-muted-foreground/50",
   "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
 );
@@ -431,7 +432,9 @@ export function FilterEditor({
                       {t(`automation.logic_${condition.logic ?? "and"}`)}
                     </button>
                   )}
-                  <div className="flex items-center gap-1.5">
+                  {/* [&_[role=combobox]]:h-9 —— HeroUI Select 的高度长在它自己的 trigger 上，
+                      这里用后代选择器把它和 input/按钮一起抬到同一档，别让一行里三种高度 */}
+                  <div className="flex flex-wrap items-center gap-1.5 [&_[role=combobox]]:h-9 [&_[role=combobox]]:min-h-9">
                     <button
                       type="button"
                       title={t("automation.negate")}
@@ -440,7 +443,7 @@ export function FilterEditor({
                         updateCondition(index, { negate: !condition.negate })
                       }
                       className={cn(
-                        "h-8 w-8 shrink-0 rounded-md border text-sm font-medium transition-colors",
+                        "h-9 w-9 shrink-0 rounded-md border text-sm font-medium transition-colors",
                         condition.negate
                           ? "border-destructive/40 bg-destructive/10 text-destructive"
                           : "border-border text-muted-foreground hover:text-foreground",
@@ -470,7 +473,7 @@ export function FilterEditor({
                         });
                       }}
                       options={fieldOptions}
-                      className="w-28 shrink-0"
+                      className="w-32 shrink-0"
                     />
                     <Select
                       ariaLabel={t("automation.conditions")}
@@ -481,7 +484,7 @@ export function FilterEditor({
                         })
                       }
                       options={operatorOptions}
-                      className="w-24 shrink-0"
+                      className="w-28 shrink-0"
                     />
                     {needsValue ? (
                       <input
@@ -491,10 +494,12 @@ export function FilterEditor({
                           updateCondition(index, { value: event.target.value })
                         }
                         placeholder={valuePlaceholder(condition)}
-                        className={inputClass}
+                        // min-w：窄抽屉（350px）里原来会被挤成 22px 一条；
+                        // 配合上面行的 flex-wrap，空间不够时它整行落到下一行
+                        className={cn(inputClass, "min-w-[10rem] flex-1")}
                       />
                     ) : (
-                      <div className="flex h-8 flex-1 items-center px-2 text-xs text-muted-foreground">
+                      <div className="flex h-9 flex-1 items-center px-2.5 text-xs text-muted-foreground">
                         {t("automation.condition_value_empty")}
                       </div>
                     )}
@@ -502,7 +507,7 @@ export function FilterEditor({
                       type="button"
                       title={t("automation.remove_condition")}
                       onClick={() => removeCondition(index)}
-                      className="h-8 w-8 shrink-0 rounded-md border border-border text-muted-foreground transition-colors hover:text-destructive"
+                      className="h-9 w-9 shrink-0 rounded-md border border-border text-muted-foreground transition-colors hover:text-destructive"
                     >
                       ×
                     </button>

@@ -206,7 +206,16 @@ describe("AutomationSettings", () => {
 
     expect(screen.queryByText("赞助商投稿：某云厂商")).toBeNull();
 
-    fireEvent.click(screen.getByTitle("automation.matches_title"));
+    // 11-17 之后「命中 N · 最近命中 时间」整块是一个按钮（tooltip 取代了 title），
+    // 所以按可访问名找它 —— 顺便盯住「最近命中」还在这块可点区域里
+    // react-aria 的 TooltipTrigger 自己也会带 role=button，所以取里面那个真 <button>
+    const hitsButton = screen
+      .getAllByRole("button", {
+        name: /automation\.hits.*automation\.(last_matched|never_matched)/,
+      })
+      .find((node) => node.tagName === "BUTTON");
+    expect(hitsButton).toBeTruthy();
+    fireEvent.click(hitsButton!);
 
     // 弹窗里断言（表格行里也有「少数派」这个范围名，得限定在弹窗内查）
     const dialogs = screen.getAllByRole("dialog");

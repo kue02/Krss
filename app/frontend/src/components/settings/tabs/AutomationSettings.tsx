@@ -7,8 +7,11 @@ import {
   Dropdown,
   Label,
   Modal,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
 } from "@heroui/react";
-import { MoreHorizontal } from "lucide-react";
+import { ChevronRight, MoreHorizontal } from "lucide-react";
 import { GripVerticalIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import { useFilterViewStore } from "@/stores/filter-view-store";
@@ -231,26 +234,49 @@ function RuleRow({
           </div>
         )}
 
-        <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground/80">
-          <button
-            type="button"
-            onClick={onShowMatches}
-            title={t("automation.matches_title")}
-            className={cn(
-              "rounded px-1 tabular-nums transition-colors hover:bg-secondary",
-              rule.matchCount > 0 ? "text-foreground" : "text-muted-foreground",
-            )}
-          >
-            {t("automation.hits", { count: rule.matchCount })}
-          </button>
-          <span className="text-border">·</span>
-          <span>
-            {rule.lastMatchedAt
-              ? t("automation.last_matched", {
-                  time: formatTime(rule.lastMatchedAt),
-                })
-              : t("automation.never_matched")}
-          </span>
+        {/*
+          命中 / 最近命中原来是两截：只有「命中 N」是按钮、「最近命中」是死文字，
+          用户看不出整块能点（11-17）。现在整块收进一个 HeroUI Button，配 chevron 当可点信号，
+          hover 有底色，tooltip 说清点了会看到什么。
+        */}
+        <div className="mt-1.5 flex items-center text-[11px]">
+          <Tooltip>
+            <TooltipTrigger>
+              <Button
+                size="sm"
+                variant="ghost"
+                onPress={onShowMatches}
+                className="h-6 gap-1.5 px-1.5 text-[11px] font-normal tabular-nums"
+              >
+                <span
+                  className={cn(
+                    "font-medium",
+                    rule.matchCount > 0
+                      ? "text-foreground"
+                      : "text-muted-foreground",
+                  )}
+                >
+                  {t("automation.hits", { count: rule.matchCount })}
+                </span>
+                <span className="text-border">·</span>
+                <span
+                  className={
+                    rule.lastMatchedAt
+                      ? "text-foreground/80"
+                      : "text-muted-foreground"
+                  }
+                >
+                  {rule.lastMatchedAt
+                    ? t("automation.last_matched", {
+                        time: formatTime(rule.lastMatchedAt),
+                      })
+                    : t("automation.never_matched")}
+                </span>
+                <ChevronRight className="size-3.5 opacity-50" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t("automation.matches_title")}</TooltipContent>
+          </Tooltip>
         </div>
       </div>
 

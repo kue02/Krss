@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -148,6 +149,21 @@ type deletedCountResponse struct {
 	Deleted int64 `json:"deleted"`
 }
 
+// writeSettingsSaveError 把「字段值不合法」和「真出错了」分开。
+//
+// 以前保存接口一律 500：用户填了个没协议头的地址（例如 `api.day.app/xxx`）时，
+// 界面只会显示「保存失败/内部错误」，看不出到底哪里不对。校验本来就在 service 里做了
+// （返回 ErrInvalid），这里把它翻成 400 + 一句可执行的提示。
+func writeSettingsSaveError(c echo.Context, err error, action string) error {
+	if errors.Is(err, service.ErrInvalid) {
+		return c.JSON(http.StatusBadRequest, errorResponse{
+			Error: "invalid settings value: check the URL fields (must start with http:// or https://)",
+		})
+	}
+	logger.Error("settings save failed", "module", "handler", "action", action, "resource", "settings", "result", "failed", "error", err)
+	return c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to save settings"})
+}
+
 func (h *SettingsHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/settings/ai", h.GetAISettings)
 	g.PUT("/settings/ai", h.UpdateAISettings)
@@ -244,8 +260,7 @@ func (h *SettingsHandler) UpdateAISettings(c echo.Context) error {
 	}
 
 	if err := h.service.SetAISettings(c.Request().Context(), settings); err != nil {
-		logger.Error("ai settings update failed", "module", "handler", "action", "update", "resource", "settings", "result", "failed", "provider", req.Provider, "error", err)
-		return c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to save settings"})
+		return writeSettingsSaveError(c, err, "update")
 	}
 
 	logger.Info("ai settings updated", "module", "handler", "action", "update", "resource", "settings", "result", "ok", "provider", req.Provider)
@@ -386,8 +401,7 @@ func (h *SettingsHandler) UpdateGeneralSettings(c echo.Context) error {
 	}
 
 	if err := h.service.SetGeneralSettings(c.Request().Context(), settings); err != nil {
-		logger.Error("general settings update failed", "module", "handler", "action", "update", "resource", "settings", "result", "failed", "error", err)
-		return c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to save settings"})
+		return writeSettingsSaveError(c, err, "update")
 	}
 
 	logger.Info("general settings updated", "module", "handler", "action", "update", "resource", "settings", "result", "ok")
@@ -467,8 +481,7 @@ func (h *SettingsHandler) UpdateNetworkSettings(c echo.Context) error {
 	}
 
 	if err := h.service.SetNetworkSettings(c.Request().Context(), settings); err != nil {
-		logger.Error("network settings update failed", "module", "handler", "action", "update", "resource", "settings", "result", "failed", "enabled", req.Enabled, "type", req.Type, "error", err)
-		return c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to save settings"})
+		return writeSettingsSaveError(c, err, "update")
 	}
 
 	logger.Info("network settings updated", "module", "handler", "action", "update", "resource", "settings", "result", "ok", "enabled", req.Enabled, "type", req.Type)
