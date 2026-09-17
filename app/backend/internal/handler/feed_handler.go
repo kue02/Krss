@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -446,10 +447,22 @@ type refreshRequest struct {
 	FeedIDs []string `json:"feedIds"`
 }
 
+// RefreshAll 触发刷新后立刻返回。
+//
+// 之前是同步跑完才回 204：79 个源、其中几个冷缓存/被限流的要挂到 15s 超时，
+// 一轮下来 40~130s，这个 POST 就一直挂着（浏览器并发连接也被它占着），
+// 用户点完刷新再去点条目会看着像卡死。前端本来就是轮询 GET /feeds/refresh 拿
+// isRefreshing/completed 来画进度圈的，所以这里改成后台执行 —— 立刻回 204，
+// 进度与「刷完了」由状态接口报。
 func (h *FeedHandler) RefreshAll(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	// 带 feedIds 时只刷这些源（按文件夹 / 单个源 / 某个视图刷新都走这里）
+	// 已经在刷了就直说，不用排队等一轮
+	if h.refreshService.IsRefreshing() {
+		logger.Warn("feed refresh skipped", "module", "handler", "action", "refresh", "resource", "feed", "result", "skipped")
+		return c.JSON(http.StatusConflict, errorResponse{Error: "refresh already in progress"})
+	}
+
 	var req refreshRequest
 	if err := c.Bind(&req); err == nil && len(req.FeedIDs) > 0 {
 		ids := make([]int64, 0, len(req.FeedIDs))
@@ -461,22 +474,23 @@ func (h *FeedHandler) RefreshAll(c echo.Context) error {
 			ids = append(ids, id)
 		}
 
-		if err := h.refreshService.RefreshFeeds(ctx, ids); err != nil {
-			logger.Error("feed refresh failed", "module", "handler", "action", "refresh", "resource", "feed", "result", "failed", "count", len(ids), "error", err)
-			return writeServiceError(c, err)
-		}
-		logger.Info("feed refresh triggered", "module", "handler", "action", "refresh", "resource", "feed", "result", "ok", "count", len(ids))
+		// 请求一返回 ctx 就被取消，后台任务要用脱离取消的 ctx 跑完这一轮
+		bgCtx := context.WithoutCancel(ctx)
+		go func() {
+			if err := h.refreshService.RefreshFeeds(bgCtx, ids); err != nil && !errors.Is(err, service.ErrAlreadyRefreshing) {
+				logger.Error("feed refresh failed", "module", "handler", "action", "refresh", "resource", "feed", "result", "failed", "count", len(ids), "error", err)
+			}
+		}()
+		logger.Info("feed refresh triggered", "module", "handler", "action", "refresh", "resource", "feed", "result", "ok", "scope", "partial", "count", len(ids))
 		return c.NoContent(http.StatusNoContent)
 	}
 
-	if err := h.refreshService.RefreshAll(ctx); err != nil {
-		if errors.Is(err, service.ErrAlreadyRefreshing) {
-			logger.Warn("feed refresh skipped", "module", "handler", "action", "refresh", "resource", "feed", "result", "skipped")
-			return c.JSON(http.StatusConflict, errorResponse{Error: "refresh already in progress"})
+	bgCtx := context.WithoutCancel(ctx)
+	go func() {
+		if err := h.refreshService.RefreshAll(bgCtx); err != nil && !errors.Is(err, service.ErrAlreadyRefreshing) {
+			logger.Error("feed refresh failed", "module", "handler", "action", "refresh", "resource", "feed", "result", "failed", "error", err)
 		}
-		logger.Error("feed refresh failed", "module", "handler", "action", "refresh", "resource", "feed", "result", "failed", "error", err)
-		return writeServiceError(c, err)
-	}
+	}()
 	logger.Info("feed refresh triggered", "module", "handler", "action", "refresh", "resource", "feed", "result", "ok")
 	return c.NoContent(http.StatusNoContent)
 }

@@ -1,9 +1,11 @@
 package handler_test
 
 import (
+	"context"
 	"gist/backend/internal/handler"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -278,14 +280,46 @@ func TestFeedHandler_RefreshAll_Success(t *testing.T) {
 	req := newJSONRequest(http.MethodPost, "/feeds/refresh", nil)
 	c, rec := newTestContext(e, req)
 
+	// 现在刷新是后台跑的：接口立刻回 204，进度由 GET /feeds/refresh 报
+	mockRefreshService.EXPECT().IsRefreshing().Return(false)
+
+	done := make(chan struct{})
 	mockRefreshService.EXPECT().
 		RefreshAll(gomock.Any()).
-		Return(nil)
+		DoAndReturn(func(context.Context) error {
+			close(done)
+			return nil
+		})
 
 	err := h.RefreshAll(c)
 	require.NoError(t, err)
 
 	require.Equal(t, http.StatusNoContent, rec.Code)
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("后台刷新没有被触发")
+	}
+}
+
+func TestFeedHandler_RefreshAll_AlreadyRefreshing(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockFeedService(ctrl)
+	mockRefreshService := mock.NewMockRefreshService(ctrl)
+	h := handler.NewFeedHandlerHelper(mockService, mockRefreshService)
+
+	e := newTestEcho()
+	req := newJSONRequest(http.MethodPost, "/feeds/refresh", nil)
+	c, rec := newTestContext(e, req)
+
+	mockRefreshService.EXPECT().IsRefreshing().Return(true)
+
+	err := h.RefreshAll(c)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusConflict, rec.Code)
 }
 
 func TestFeedHandler_Preview_Success(t *testing.T) {

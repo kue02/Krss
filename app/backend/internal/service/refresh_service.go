@@ -22,7 +22,12 @@ import (
 	"gist/backend/pkg/network"
 )
 
-const refreshTimeout = 30 * time.Second
+// refreshTimeout 单个源的抓取上限。
+//
+// 原来 30s：实测健康源（含 NAS 上的 RSSHub）基本 1~3s 就返回，而冷缓存、被上游限流的
+// 少数源（如 bilibili 路由）会一路挂到超时。5、6 个这样的源会把整轮刷新拖到 2 分钟，
+// 所以收到 15s —— 足够放行慢但能用的源，又让坏源早点认输。
+const refreshTimeout = 15 * time.Second
 
 const (
 	// maxConcurrentRefresh limits parallel feed refreshes to avoid overwhelming
@@ -30,8 +35,9 @@ const (
 	maxConcurrentRefresh = 8
 	// maxConcurrentPerHost limits parallel requests to the same host to be polite.
 	// 原来是 1（同一主机完全串行）：自己的 RSSHub 上挂了几十个源时，全量刷新会一个一个抓，
-	// 慢到分钟级。改成 3 —— 仍有限流，但同一个主机上的订阅能并行起来。
-	maxConcurrentPerHost = 3
+	// 慢到分钟级。后来放到 6 —— 整轮耗时只由「最慢的那几个源」决定，串行排队等于
+	// 白白把它们的时间加在一起（实测 79 源：串行 >15min，3 → 25~45s，6 更快）。
+	maxConcurrentPerHost = 6
 )
 
 // hostRateLimiter manages per-host concurrency and rate limits.
@@ -328,6 +334,24 @@ func (s *refreshService) RefreshFeeds(ctx context.Context, feedIDs []int64) erro
 		return nil
 	}
 
+	// 与全量刷新共用同一把「正在刷新」闸门：范围刷新同样要占进度条、要写 lastRefreshedAt，
+	// 否则前端轮询状态时看不到这次刷新，新增条目要等下一轮 15s 轮询才冒出来。
+	s.mu.Lock()
+	if s.isRefreshing {
+		s.mu.Unlock()
+		return ErrAlreadyRefreshing
+	}
+	s.isRefreshing = true
+	s.mu.Unlock()
+
+	defer func() {
+		now := time.Now()
+		s.mu.Lock()
+		s.isRefreshing = false
+		s.lastRefreshedAt = &now
+		s.mu.Unlock()
+	}()
+
 	// Get all feeds by IDs in a single query
 	feeds, err := s.feeds.GetByIDs(ctx, feedIDs)
 	if err != nil {
@@ -341,6 +365,7 @@ func (s *refreshService) RefreshFeeds(ctx context.Context, feedIDs []int64) erro
 
 	s.resetRefreshProgress(len(feeds))
 	s.refreshFeedsWithRateLimit(ctx, feeds)
+	logger.Info("refresh completed", "module", "service", "action", "refresh", "resource", "feed", "result", "ok", "scope", "partial", "count", len(feeds))
 	return nil
 }
 
