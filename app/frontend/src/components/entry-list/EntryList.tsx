@@ -93,18 +93,23 @@ export function EntryList({
   "use no memo";
 
   const { t } = useTranslation();
-  const params = selectionToParams(selection, contentType);
-
   /**
-   * 「已静音」是本地的第四个筛选态。
+   * 「已静音」是独立于三态胶囊的回看态（2026-09-17 起入口在 设置 → 自动化）。
    *
-   * 星标 / 未读对应路由里的 selection 与 unreadOnly，切换一次导航；「已静音」没有
-   * 对应的路由维度（路由/订阅参数都不该为一个回看视图扩容），所以由这里用本地状态承载，
-   * 只体现在 listEntries 的 mutedOnly 参数上。切到别的订阅 / 视图 / 已读态时自动退出，
-   * 免得带着 mutedOnly 去看别的列表。
+   * 星标 / 未读对应路由里的 selection 与 unreadOnly，切换一次导航；「已静音」没有对应的
+   * 路由维度（路由参数不该为一个回看视图扩容），所以由 filter-view-store 承载，
+   * 只体现在 listEntries 的 mutedOnly 参数上。切到别的订阅 / 视图 / 已读态时自动退出。
    */
   const mutedOnly = useFilterViewStore((state) => state.mutedOnly);
   const setMutedOnly = useFilterViewStore((state) => state.setMutedOnly);
+
+  /**
+   * 「已静音」是**全局回看**：静音条目可能属于任何内容类型（文章 / 社交媒体 / 通知…），
+   * 中栏此刻停在哪个标签不该把它藏起来 —— 所以这一态**不带 contentType**。
+   * 实测依据：`/api/entries?mutedOnly=true` 返回 2 条，加上 `contentType=article` 返回 0 条
+   * （那 2 条属于别的内容类型），用户点「查看已静音」就会看到一片空。
+   */
+  const params = selectionToParams(selection, mutedOnly ? undefined : contentType);
   /**
    * 保存筛选视图（设置 → 自动化 里建的「范围 + 条件」）：侧栏点一下就叠加到当前列表上。
    * 与「已静音」同一套本地状态的理由 —— 它不是一个导航维度，选中时若列表作用域

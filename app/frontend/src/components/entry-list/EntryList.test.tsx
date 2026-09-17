@@ -109,6 +109,7 @@ import { EntryList } from "./EntryList";
 import { setUISetting } from "@/hooks/useUISettings";
 import { entryListScrollPositions } from "./scroll-key";
 import { useEntriesInfinite } from "@/hooks/useEntries";
+import { selectionToParams } from "@/hooks/useSelection";
 import { useAISettings } from "@/hooks/useAISettings";
 import { useGeneralSettings } from "@/hooks/useGeneralSettings";
 
@@ -1101,6 +1102,19 @@ describe("EntryList translation scheduling", () => {
     expect(lastParams).toMatchObject({ mutedOnly: true, unreadOnly: false });
     // 其余状态不传 includeMuted：默认行为就是隐藏静音条目
     expect(lastParams).not.toHaveProperty("includeMuted");
+  });
+
+  it("「已静音」回看不带 contentType（否则别的标签下的静音条目会看不见）", () => {
+    // 实测依据：/api/entries?mutedOnly=true 返回 2 条，加 contentType=article 返回 0 条 ——
+    // 那 2 条属于别的内容类型，而「查看已静音」是从设置页跳过来的，不该受当前标签限制。
+    render(<EntryList {...defaultProps} />);
+    expect(vi.mocked(selectionToParams).mock.calls.at(-1)?.[1]).toBe(
+      defaultProps.contentType,
+    );
+
+    act(() => useFilterViewStore.getState().setMutedOnly(true));
+
+    expect(vi.mocked(selectionToParams).mock.calls.at(-1)?.[1]).toBeUndefined();
   });
 
   it("星标 / 未读 / 全部三个状态都不传 mutedOnly", () => {
