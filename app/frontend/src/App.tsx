@@ -25,6 +25,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { refreshAllFeeds } from "@/api";
 import { ShortcutsHelpDialog } from "@/components/shortcuts/ShortcutsHelpDialog";
 import { SearchModal } from "@/components/search/SearchModal";
+import { VideoPreview } from "@/components/ui/video-preview";
 import { useGlobalHotkeys } from "@/hooks/useGlobalHotkeys";
 import {
   shortcutsHelp,
@@ -476,7 +477,12 @@ function AuthenticatedApp() {
         {/* Lightbox for picture mode */}
         {contentType === "picture" && <Lightbox />}
         {/* ImagePreview for article/notification mode */}
-        {contentType !== "picture" && <ImagePreview />}
+        {contentType !== "picture" && (
+          <>
+            <ImagePreview />
+            <VideoPreview />
+          </>
+        )}
         {/* Sheet rendered once to prevent animation flickering on route/mode changes */}
         <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
           {sidebarContent}
@@ -546,6 +552,7 @@ function AuthenticatedApp() {
           showSidebar={showSidebar}
         />
         <ImagePreview />
+        <VideoPreview />
         <ShortcutsHelpDialog
           open={isShortcutsOpen}
           onOpenChange={(open) => shortcutsHelp.set(open)}
@@ -606,6 +613,7 @@ function AuthenticatedApp() {
         showSidebar={showSidebar}
       />
       <ImagePreview />
+        <VideoPreview />
       <ShortcutsHelpDialog
         open={isShortcutsOpen}
         onOpenChange={(open) => shortcutsHelp.set(open)}

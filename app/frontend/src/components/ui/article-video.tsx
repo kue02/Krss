@@ -5,12 +5,12 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import { cn } from "@/lib/utils";
 import { getProxiedImageUrl } from "@/lib/image-proxy";
 import { ArticleLinkContext } from "./article-image";
+import { useVideoPreviewStore } from "@/stores/video-preview-store";
 
 /**
  * 正文里的 <video>（社交源的视频几乎都是外链，例如 video.twimg.com）。
@@ -31,11 +31,12 @@ export function ArticleVideo({
   poster,
   className,
   children,
+  controls: _ignoredControls,
   ...props
 }: ArticleVideoProps) {
   const articleUrl = useContext(ArticleLinkContext);
+  const openVideoPreview = useVideoPreviewStore((state) => state.open);
   const [hasError, setHasError] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
 
   const proxiedSrc = useMemo(
     () => (src ? (getProxiedImageUrl(src, articleUrl) ?? src) : undefined),
@@ -62,25 +63,50 @@ export function ArticleVideo({
     return child;
   });
 
+  const handleOpen = () => {
+    if (!proxiedSrc || hasError) return;
+    openVideoPreview(proxiedSrc, proxiedPoster ?? null, proxiedSrc);
+  };
+
   return (
-    <span className="my-3 block">
-      <video
-        ref={videoRef}
-        src={childNodes ? undefined : proxiedSrc}
-        poster={proxiedPoster}
-        controls
-        playsInline
-        preload="metadata"
-        onError={() => setHasError(true)}
-        className={cn(
-          "mx-auto block max-h-[70vh] w-full rounded-lg bg-black/90",
-          className,
-        )}
-        {...props}
+    <span className="my-2 block">
+      {/* 就地只放封面 + 播放键，点开由大屏播放器播（用户反馈：卡片里的小视频没法拖动进度） */}
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          handleOpen();
+        }}
+        aria-label="播放视频"
+        className="article-video group/video relative block w-full cursor-pointer overflow-hidden rounded-lg bg-black/90"
       >
-        {childNodes}
-      </video>
-      {hasError && proxiedSrc && (
+        {/* 源 HTML 常带 controls，这里丢掉：就地只当封面，点了开大屏播放器 */}
+        <video
+          src={childNodes ? undefined : proxiedSrc}
+          poster={proxiedPoster}
+          muted
+          playsInline
+          preload="metadata"
+          onError={() => setHasError(true)}
+          className={cn("pointer-events-none size-full object-cover", className)}
+          {...props}
+        >
+          {childNodes}
+        </video>
+        <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <span className="article-video-badge flex size-11 items-center justify-center rounded-full bg-black/55 backdrop-blur-sm transition-transform duration-200 group-hover/video:scale-105">
+            <svg
+              className="ml-0.5 size-5 text-white"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          </span>
+        </span>
+      </button>
+      {hasError && (
         // 播放不了的兜底出口：至少能点开原站看
         <a
           href={src}
