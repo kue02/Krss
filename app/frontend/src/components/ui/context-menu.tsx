@@ -18,11 +18,11 @@ const ContextMenuContent = React.forwardRef<
       ref={ref}
       className={cn(
         "dropdown-content dropdown-surface",
-        // 尺寸/圆角/内距照 HeroUI v3：min-width 220px、半径 min(32px,--radius-3xl)=24px、
-        // 菜单内边距 6px、max-height 320px（NextFlux 在 .dropdown__popover 上又覆盖了 max-h-80）
-        "relative z-50 min-w-[220px] max-h-80 overflow-y-auto overscroll-contain",
-        "rounded-3xl p-1.5",
-        "border border-border/60 text-popover-foreground",
+        // 尺寸/圆角/内距照 NextFlux 真机量到的值：min-width 160px(min-w-40)、半径 19.2px(=--radius 0.4rem × 3)、
+        // 菜单内边距 6px、max-height 320px、无边框（浮层外的 1px 细线由阴影第 5 层提供）
+        "relative z-50 min-w-40 max-h-80 overflow-y-auto overscroll-contain",
+        "rounded-[19.2px] p-1.5",
+        "text-popover-foreground",
         className,
       )}
       {...props}
@@ -43,9 +43,9 @@ const ContextMenuItem = React.forwardRef<
     ref={ref}
     className={cn(
       // HeroUI v3 .menu-item：min-height 36px、gap 12px、半径 calc(--radius*2)=16px、
-      // padding 6px/10px、hover 背景 --default、按压 scale(.98)
+      // padding 6px/10px、圆角 12.8px(=--radius × 2)、hover 背景 --default、按压 scale(.98)
       "group relative flex cursor-pointer select-none items-center gap-3",
-      "min-h-9 rounded-2xl px-2.5 py-1.5 text-sm outline-none",
+      "min-h-9 rounded-[12.8px] px-2.5 py-1.5 text-sm outline-none",
       "dropdown-item",
       "hover:bg-default focus:bg-default data-[highlighted]:bg-default",
       "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
@@ -131,9 +131,10 @@ const ContextMenuSubContent = React.forwardRef<
       ref={ref}
       className={cn(
         "dropdown-content dropdown-surface",
-        "relative z-50 min-w-32 overflow-hidden rounded-xl p-1",
-        "border border-border/60 bg-popover/95 text-popover-foreground",
-        "backdrop-blur-xl",
+        // 二级菜单（Sub）与浮层同参数
+        "relative z-50 min-w-40 max-h-80 overflow-y-auto overscroll-contain",
+        "rounded-[19.2px] p-1.5",
+        "text-popover-foreground",
         className,
       )}
       {...props}

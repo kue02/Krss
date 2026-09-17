@@ -17,10 +17,10 @@ import {
 import { startImportOPML } from "@/api";
 import { showToast } from "@/stores/toast-store";
 
-// HeroUI v3 的 Button size="sm" variant="ghost" isIconOnly：36px 圆形按钮，按压 0.97
+// NextFlux 的 Button size="sm" variant="ghost" isIconOnly：实测 32×32 全圆，图标 16px，按压 0.97
 const actionButtonStyles = cn(
   "dropdown-trigger inline-flex items-center justify-center",
-  "rounded-full size-9",
+  "rounded-full size-8",
   "transition-colors duration-150",
   "hover:bg-item-hover data-[state=open]:bg-item-hover",
   "disabled:cursor-not-allowed disabled:opacity-50",
