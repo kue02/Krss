@@ -138,7 +138,17 @@
     "rsshub_merge_line": "{{source}}（{{sourceEntries}} 条 / {{sourceStarred}} 星标）→ 并入 {{target}}（{{targetEntries}} 条 / {{targetStarred}} 星标）",
     "rsshub_merge_also": "另有 {{count}} 条订阅只是换地址，不受影响。",
     "rsshub_merge_confirm": "确认合并",
-    "rsshub_merge_merged": "已合并 {{merged}} 条重复订阅，另有 {{changed}} 条换了地址"
+    "rsshub_merge_merged": "已合并 {{merged}} 条重复订阅，另有 {{changed}} 条换了地址",
+    "notify_label": "推送到手机（Bark）",
+    "notify_description": "自动化规则的「推送到手机」动作没单独填地址时用这里的地址。Bark 兼容：填 https://api.day.app/<你的 key>（或你自己的 Bark 服务地址）。",
+    "notify_hint": "地址里带着设备 key，只保存在你自己的库里。规则命中后推「标题 + 来源」，点开直达条目。",
+    "notify_saved": "已保存",
+    "notify_save_failed": "保存失败",
+    "notify_test": "发送测试推送",
+    "notify_testing": "发送中…",
+    "notify_test_ok": "已发出（HTTP {{status}}），看看手机收到没",
+    "notify_test_no_url": "先填地址再测试",
+    "notify_test_failed": "发送失败：{{reason}}"
   },
   "theme": {
     "system": "跟随系统",
@@ -713,7 +723,10 @@
     "dim_mute": "静音",
     "dim_read": "已读",
     "dim_star": "星标",
-    "mute_blocked_by_keep_only": "「只保留匹配」已把不匹配的条目静音，不能再选「静音」"
+    "mute_blocked_by_keep_only": "「只保留匹配」已把不匹配的条目静音，不能再选「静音」",
+    "action_notify": "推送到手机",
+    "notify_url_placeholder": "留空 = 用「设置 → 通用」里的全局推送地址",
+    "notify_hint": "命中后推一条到手机（Bark 兼容）：标题 + 来源 + 直达链接。地址留空就跟随全局推送地址；投递失败会写在规则行的红字上。"
   },
   "search": {
     "title": "搜索",

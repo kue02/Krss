@@ -56,6 +56,8 @@ export interface GeneralSettings {
   rsshubBaseUrl: string;
   /** RSSHub 实例的 ACCESS_KEY（可选，会作为 key 参数写入地址） */
   rsshubAccessKey: string;
+  /** 推送地址（Bark 兼容，形如 https://api.day.app/<你的 key>）；留空 = 不推送 */
+  barkUrl: string;
 }
 
 export type ProxyType = "http" | "socks5";

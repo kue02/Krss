@@ -482,6 +482,26 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/notify/test": {
+            "post": {
+                "description": "Send a test push via the configured notify channel (Bark)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "settings"
+                ],
+                "summary": "Send test notification",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.notifyTestResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/proxy/image/{encoded}": {
             "get": {
                 "description": "Proxies external images to avoid triggering anti-crawling mechanisms",
@@ -3436,6 +3456,13 @@ const docTemplate = `{
                 "mute": {
                     "type": "boolean"
                 },
+                "notify": {
+                    "description": "Notify：命中后推一条到手机（Bark 兼容；地址留空 = 跟随设置里的全局推送地址）",
+                    "type": "boolean"
+                },
+                "notifyUrl": {
+                    "type": "string"
+                },
                 "star": {
                     "type": "boolean"
                 },
@@ -3785,6 +3812,9 @@ const docTemplate = `{
                 "autoReadability": {
                     "type": "boolean"
                 },
+                "barkUrl": {
+                    "type": "string"
+                },
                 "fallbackUserAgent": {
                     "type": "string"
                 },
@@ -3804,6 +3834,10 @@ const docTemplate = `{
             "properties": {
                 "autoReadability": {
                     "type": "boolean"
+                },
+                "barkUrl": {
+                    "description": "BarkURL 推送地址（自动化规则的「推送到手机」没单独填地址时用它）",
+                    "type": "string"
                 },
                 "fallbackUserAgent": {
                     "type": "string"
@@ -3963,6 +3997,14 @@ const docTemplate = `{
                 },
                 "success": {
                     "type": "boolean"
+                }
+            }
+        },
+        "internal_handler.notifyTestResponse": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "integer"
                 }
             }
         },

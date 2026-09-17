@@ -97,6 +97,8 @@ func main() {
 	// webhook 用统一的网络层（继承代理设置）出网投递（所以 aiService 得先于它建好）。
 	aiService := service.NewAIServiceWithFeedContext(aiSummaryRepo, aiTranslationRepo, aiListTranslationRepo, settingsRepo, rateLimiter, entryRepo, feedRepo, clientFactory)
 	webhookClient := clientFactory.NewHTTPClient(context.Background(), 15*time.Second)
+	// 推送通道（Bark）：与 webhook 共用同一套「POST JSON 出网」语义，只是 UA 不同便于分辨
+	notifyService := service.NewNotifyService(settingsRepo, service.NewHTTPNotifier(webhookClient))
 	filterService := service.NewFilterService(service.FilterServiceDeps{
 		Filters: filterRepo,
 		Entries: entryRepo,
@@ -104,6 +106,7 @@ func main() {
 		Folders: folderRepo,
 		AI:      aiService,
 		Webhook: service.NewHTTPWebhookSender(webhookClient),
+		Notify:  notifyService,
 	})
 	feedService := service.NewFeedService(feedRepo, folderRepo, entryRepo, iconService, settingsService, clientFactory, anubisSolver, filterService)
 	// 条目列表要能按「保存筛选视图」（filters.kind = view）筛，所以 entryService 也拿到 filterRepo

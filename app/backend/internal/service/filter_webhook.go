@@ -55,11 +55,13 @@ type FilterWebhookSender interface {
 
 type httpWebhookSender struct {
 	client *http.Client
+	// userAgent 让下游日志能分辨这条请求来自 webhook 还是推送（默认 webhook）
+	userAgent string
 }
 
 // NewHTTPWebhookSender 用给定的 http.Client（main 里由 network.ClientFactory 造，因而会走代理设置）。
 func NewHTTPWebhookSender(client *http.Client) FilterWebhookSender {
-	return &httpWebhookSender{client: client}
+	return &httpWebhookSender{client: client, userAgent: "gist-filter-webhook/1"}
 }
 
 func (s *httpWebhookSender) Send(ctx context.Context, url string, payload []byte) (int, error) {
@@ -68,7 +70,7 @@ func (s *httpWebhookSender) Send(ctx context.Context, url string, payload []byte
 		return 0, err
 	}
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("User-Agent", "gist-filter-webhook/1")
+	request.Header.Set("User-Agent", s.userAgent)
 
 	response, err := s.client.Do(request)
 	if err != nil {

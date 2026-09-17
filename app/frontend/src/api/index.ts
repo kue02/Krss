@@ -797,6 +797,16 @@ export async function listAIModels(config: {
   });
 }
 
+/**
+ * 发一条测试推送（设置 → 通用 的「发送测试推送」按钮）。
+ *
+ * 走的是与自动化规则「推送到手机」完全相同的那条通道，所以它通了就说明地址、代理、出网都对。
+ * 没配地址后端回 400，投递失败回 502 并带上下游的原话（失败要给可见原因）。
+ */
+export async function testNotify(): Promise<{ status: number }> {
+  return request<{ status: number }>("/api/notify/test", { method: "POST" });
+}
+
 export async function getGeneralSettings(): Promise<GeneralSettings> {
   return request<GeneralSettings>("/api/settings/general");
 }

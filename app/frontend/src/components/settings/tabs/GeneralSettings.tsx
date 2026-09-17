@@ -9,6 +9,7 @@ import { useGeneralSettings } from "@/hooks/useGeneralSettings";
 import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
 import { setUISetting, type ScrollReadMode } from "@/hooks/useUISettings";
 import { RSSHubSettings } from "./RSSHubSettings";
+import { NotifySettings } from "./NotifySettings";
 
 type Language = "zh" | "en";
 
@@ -128,6 +129,8 @@ export function GeneralSettings() {
   return (
     <div className="space-y-6">
       <RSSHubSettings />
+
+      <NotifySettings />
 
       {/* Language Section */}
       <section>

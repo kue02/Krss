@@ -193,6 +193,21 @@ func (mr *MockFilterServiceMockRecorder) Revert(ctx, filterID any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Revert", reflect.TypeOf((*MockFilterService)(nil).Revert), ctx, filterID)
 }
 
+// TestNotify mocks base method.
+func (m *MockFilterService) TestNotify(ctx context.Context) (int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TestNotify", ctx)
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// TestNotify indicates an expected call of TestNotify.
+func (mr *MockFilterServiceMockRecorder) TestNotify(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TestNotify", reflect.TypeOf((*MockFilterService)(nil).TestNotify), ctx)
+}
+
 // Update mocks base method.
 func (m *MockFilterService) Update(ctx context.Context, id int64, params service.FilterWriteParams) (model.Filter, error) {
 	m.ctrl.T.Helper()

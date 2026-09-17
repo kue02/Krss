@@ -138,7 +138,17 @@
     "rsshub_merge_line": "{{source}} ({{sourceEntries}} entries / {{sourceStarred}} starred) → merge into {{target}} ({{targetEntries}} entries / {{targetStarred}} starred)",
     "rsshub_merge_also": "Another {{count}} subscription(s) only change URL and are unaffected.",
     "rsshub_merge_confirm": "Merge",
-    "rsshub_merge_merged": "Merged {{merged}} duplicate subscription(s); {{changed}} changed URL"
+    "rsshub_merge_merged": "Merged {{merged}} duplicate subscription(s); {{changed}} changed URL",
+    "notify_label": "Push to phone (Bark)",
+    "notify_description": "Used by the automation action \"Push to phone\" when a rule leaves its URL empty. Bark-compatible: https://api.day.app/<your-key> (or your own Bark server).",
+    "notify_hint": "The URL contains your device key and stays in your own database. Matches push title + source, and tapping opens the entry.",
+    "notify_saved": "Saved",
+    "notify_save_failed": "Save failed",
+    "notify_test": "Send test push",
+    "notify_testing": "Sending…",
+    "notify_test_ok": "Sent (HTTP {{status}}) — check your phone",
+    "notify_test_no_url": "Enter a URL first",
+    "notify_test_failed": "Failed: {{reason}}"
   },
   "theme": {
     "system": "Follow System",
@@ -716,7 +726,10 @@
     "dim_mute": "Mute",
     "dim_read": "Read",
     "dim_star": "Star",
-    "mute_blocked_by_keep_only": "\"Keep only matches\" already mutes everything else — \"Mute\" can't be combined with it"
+    "mute_blocked_by_keep_only": "\"Keep only matches\" already mutes everything else — \"Mute\" can't be combined with it",
+    "action_notify": "Push to phone",
+    "notify_url_placeholder": "Leave empty to use the global push URL in Settings → General",
+    "notify_hint": "Push a notification (Bark-compatible) when matched: title + source + deep link. Leave the URL empty to follow the global push URL; delivery failures show as red text on the rule row."
   },
   "search": {
     "title": "Search",

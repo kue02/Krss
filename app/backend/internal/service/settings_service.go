@@ -57,6 +57,9 @@ type GeneralSettings struct {
 	// 以及把已有订阅批量换到自己的实例
 	RSSHubBaseURL   string `json:"rsshubBaseUrl"`
 	RSSHubAccessKey string `json:"rsshubAccessKey"`
+	// BarkURL 推送地址（Bark 兼容，形如 https://api.day.app/<你的 key>）。
+	// 自动化规则的「推送到手机」动作没单独填地址时就走这里。
+	BarkURL string `json:"barkUrl"`
 }
 
 // NetworkSettings holds network proxy configuration.
@@ -96,6 +99,8 @@ const (
 	keyMarkReadOnScroll  = "general.mark_read_on_scroll"
 	keyRSSHubBaseURL     = "general.rsshub_base_url"
 	keyRSSHubAccessKey   = "general.rsshub_access_key"
+	// keyNotifyBarkURL 推送地址（含 key，属凭证 —— 只存用户库里，不进仓库/日志明文）
+	keyNotifyBarkURL = "notify.bark_url"
 	keyNetworkEnabled    = "network.proxy_enabled"
 	keyNetworkType       = "network.proxy_type"
 	keyNetworkHost       = "network.proxy_host"
@@ -617,6 +622,9 @@ func (s *settingsService) GetGeneralSettings(ctx context.Context) (*GeneralSetti
 	if val, err := s.getString(ctx, keyRSSHubAccessKey); err == nil {
 		settings.RSSHubAccessKey = val
 	}
+	if val, err := s.getString(ctx, keyNotifyBarkURL); err == nil {
+		settings.BarkURL = val
+	}
 	return settings, nil
 }
 
@@ -639,12 +647,22 @@ func (s *settingsService) SetGeneralSettings(ctx context.Context, settings *Gene
 		}
 	}
 
+	// 推送地址按 URL 校验（空 = 不推送）；同样不允许留着末尾斜杠带来的歧义
+	barkURL := strings.TrimSpace(settings.BarkURL)
+	if barkURL != "" {
+		parsed, parseErr := url.Parse(barkURL)
+		if parseErr != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+			return ErrInvalid
+		}
+	}
+
 	if err := s.repo.SetMany(ctx, map[string]string{
 		keyFallbackUserAgent: settings.FallbackUserAgent,
 		keyAutoReadability:   autoReadabilityVal,
 		keyMarkReadOnScroll:  markReadOnScrollVal,
 		keyRSSHubBaseURL:     baseURL,
 		keyRSSHubAccessKey:   strings.TrimSpace(settings.RSSHubAccessKey),
+		keyNotifyBarkURL:     barkURL,
 	}); err != nil {
 		logger.Warn("general settings update failed", "module", "service", "action", "update", "resource", "settings", "result", "failed", "error", err)
 		return fmt.Errorf("set general settings: %w", err)

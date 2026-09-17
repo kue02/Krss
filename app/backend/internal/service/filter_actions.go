@@ -193,6 +193,14 @@ func (s *filterService) sanitizeDraft(ctx context.Context, draft *FilterDraft) e
 	if !actions.Webhook {
 		actions.WebhookURL = ""
 	}
+	// 推送地址**可以为空**（留空 = 跟随设置里的全局地址），所以只有「填了但不合法」才摘掉这个动作
+	if actions.Notify && strings.TrimSpace(actions.NotifyURL) != "" && !isValidWebhookURL(actions.NotifyURL) {
+		actions.NotifyURL = ""
+		draft.Warnings = append(draft.Warnings, "模型给的推送地址不合法，已改成跟随设置里的全局推送地址")
+	}
+	if !actions.Notify {
+		actions.NotifyURL = ""
+	}
 	draft.Actions = actions
 
 	if draft.Actions.IsEmpty() {

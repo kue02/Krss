@@ -448,6 +448,11 @@ definitions:
         type: boolean
       mute:
         type: boolean
+      notify:
+        description: Notify：命中后推一条到手机（Bark 兼容；地址留空 = 跟随设置里的全局推送地址）
+        type: boolean
+      notifyUrl:
+        type: string
       star:
         type: boolean
       summarize:
@@ -677,6 +682,8 @@ definitions:
     properties:
       autoReadability:
         type: boolean
+      barkUrl:
+        type: string
       fallbackUserAgent:
         type: string
       markReadOnScroll:
@@ -690,6 +697,9 @@ definitions:
     properties:
       autoReadability:
         type: boolean
+      barkUrl:
+        description: BarkURL 推送地址（自动化规则的「推送到手机」没单独填地址时用它）
+        type: string
       fallbackUserAgent:
         type: string
       markReadOnScroll:
@@ -793,6 +803,11 @@ definitions:
         type: string
       success:
         type: boolean
+    type: object
+  internal_handler.notifyTestResponse:
+    properties:
+      status:
+        type: integer
     type: object
   internal_handler.readableContentResponse:
     properties:
@@ -1274,6 +1289,19 @@ paths:
       summary: Feed merge preview
       tags:
       - feeds
+  /api/notify/test:
+    post:
+      description: Send a test push via the configured notify channel (Bark)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.notifyTestResponse'
+      summary: Send test notification
+      tags:
+      - settings
   /api/proxy/image/{encoded}:
     get:
       description: Proxies external images to avoid triggering anti-crawling mechanisms

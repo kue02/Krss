@@ -36,8 +36,8 @@ interface FilterEditorProps {
   onCancel: () => void;
 }
 
-/** 正反成对的动作（勾了正就禁用反，同一条规则里互斥）；webhookUrl 不是开关，排除在外 */
-type ActionKey = Exclude<keyof FilterActions, "webhookUrl">;
+/** 正反成对的动作（勾了正就禁用反，同一条规则里互斥）；xxxUrl 不是开关，排除在外 */
+type ActionKey = Exclude<keyof FilterActions, "webhookUrl" | "notifyUrl">;
 
 const ACTION_PAIRS: { positive: ActionKey; negative: ActionKey }[] = [
   { positive: "mute", negative: "unmute" },
@@ -57,6 +57,7 @@ const ACTION_LABEL_KEYS: Record<string, string> = {
   translate: "action_translate",
   summarize: "action_summarize",
   webhook: "action_webhook",
+  notify: "action_notify",
 };
 
 /** 三态维度（静音 / 已读 / 星标）的行标签 */
@@ -71,6 +72,7 @@ const ACTION_ORDER: ActionKey[] = [
   "translate",
   "summarize",
   "webhook",
+  "notify",
   "keepOnly",
 ];
 
@@ -634,6 +636,27 @@ export function FilterEditor({
                 />
                 <div className="text-xs text-muted-foreground">
                   {t("automation.webhook_hint")}
+                </div>
+              </div>
+            )}
+            {draft.actions.notify && (
+              <div className="space-y-1">
+                <input
+                  type="text"
+                  value={draft.actions.notifyUrl ?? ""}
+                  onChange={(event) =>
+                    update({
+                      actions: {
+                        ...draft.actions,
+                        notifyUrl: event.target.value,
+                      },
+                    })
+                  }
+                  placeholder={t("automation.notify_url_placeholder")}
+                  className={inputClass}
+                />
+                <div className="text-xs text-muted-foreground">
+                  {t("automation.notify_hint")}
                 </div>
               </div>
             )}

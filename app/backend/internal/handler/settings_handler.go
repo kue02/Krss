@@ -70,6 +70,8 @@ type generalSettingsResponse struct {
 	// RSSHub 自有实例（添加订阅时自动换域名用）——不回这两个字段的话界面每次打开都是空的
 	RSSHubBaseURL   string `json:"rsshubBaseUrl"`
 	RSSHubAccessKey string `json:"rsshubAccessKey"`
+	// BarkURL 推送地址（自动化规则的「推送到手机」没单独填地址时用它）
+	BarkURL string `json:"barkUrl"`
 }
 
 type generalSettingsRequest struct {
@@ -78,6 +80,7 @@ type generalSettingsRequest struct {
 	MarkReadOnScroll  bool   `json:"markReadOnScroll"`
 	RSSHubBaseURL     string `json:"rsshubBaseUrl"`
 	RSSHubAccessKey   string `json:"rsshubAccessKey"`
+	BarkURL           string `json:"barkUrl"`
 }
 
 type networkSettingsResponse struct {
@@ -352,6 +355,7 @@ func (h *SettingsHandler) GetGeneralSettings(c echo.Context) error {
 		MarkReadOnScroll:  settings.MarkReadOnScroll,
 		RSSHubBaseURL:     settings.RSSHubBaseURL,
 		RSSHubAccessKey:   settings.RSSHubAccessKey,
+		BarkURL:           settings.BarkURL,
 	})
 }
 
@@ -378,6 +382,7 @@ func (h *SettingsHandler) UpdateGeneralSettings(c echo.Context) error {
 		MarkReadOnScroll:  req.MarkReadOnScroll,
 		RSSHubBaseURL:     req.RSSHubBaseURL,
 		RSSHubAccessKey:   req.RSSHubAccessKey,
+		BarkURL:           req.BarkURL,
 	}
 
 	if err := h.service.SetGeneralSettings(c.Request().Context(), settings); err != nil {

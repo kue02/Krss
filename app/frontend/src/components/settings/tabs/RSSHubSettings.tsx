@@ -74,10 +74,9 @@ export function RSSHubSettings() {
 
     setIsSaving(true);
     try {
+      // 整体展开现有设置再覆盖本块字段：通用设置是整体 PUT，漏字段会把别人刚存的擦掉
       await updateGeneralSettings({
-        fallbackUserAgent: generalSettings.fallbackUserAgent,
-        autoReadability: generalSettings.autoReadability,
-        markReadOnScroll: generalSettings.markReadOnScroll,
+        ...generalSettings,
         rsshubBaseUrl: baseUrl.trim(),
         rsshubAccessKey: accessKey.trim(),
       });

@@ -91,6 +91,10 @@ export interface FilterActions {
   /** 命中后把这一条 POST 给外部地址（要出网） */
   webhook?: boolean;
   webhookUrl?: string;
+  /** 命中后推一条到手机（Bark 兼容；要出网） */
+  notify?: boolean;
+  /** 推送地址；留空 = 跟随「设置 → 通用」里的全局推送地址 */
+  notifyUrl?: string;
 }
 
 export interface FilterRule {
