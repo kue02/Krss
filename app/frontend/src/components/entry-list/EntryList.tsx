@@ -42,6 +42,12 @@ import { useUISettingKey } from "@/hooks/useUISettings";
 import { ArrowUp, Inbox } from "lucide-react";
 import type { Entry, Feed, Folder, ContentType } from "@/types/api";
 
+/** 刚点刷新时后端可能还没开始跑，这段宽限期内先别宣布「刷完了」（毫秒） */
+const REFRESH_START_GRACE_MS = 1500;
+/** 兜底：再久也不让按钮一直转（毫秒） */
+const REFRESH_MAX_WAIT_MS = 180_000;
+
+
 interface EntryListProps {
   selection: SelectionType;
   selectedEntryId: string | null;
@@ -343,41 +349,70 @@ export function EntryList({
     setIsRefreshing(true);
     setRefreshProgress({ total: localTotal, completed: 0 });
     stopRefreshPolling();
-    refreshPollRef.current = window.setInterval(() => {
+
+    /**
+     * 后端是后台刷新：POST 立刻返回 204，真正「刷完」只能看状态接口。
+     * 所以这里不能把 POST 的返回当成结束 —— 否则按钮刚转一下就停（用户看到的「点一下 49 个瞬间完成」）。
+     * 结束条件：状态接口报 isRefreshing=false（且我们已经见过它在刷）或兜底超时。
+     */
+    const startedAt = Date.now();
+    let sawRefreshing = false;
+
+    const finishRefresh = () => {
+      stopRefreshPolling();
+      setIsRefreshing(false);
+      setRefreshProgress(null);
+      queryClient.invalidateQueries({ queryKey: ["entries"] });
+      queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
+      queryClient.invalidateQueries({ queryKey: ["feeds"] });
+      showToast(t("entry.refresh_done"));
+    };
+
+    const pollRefreshStatus = () => {
       void getRefreshStatus()
         .then((status) => {
           setRefreshProgress((prev) => ({
             total: status.total || prev?.total || localTotal,
             completed: status.completed ?? prev?.completed ?? 0,
           }));
+
+          if (status.isRefreshing) {
+            sawRefreshing = true;
+            return;
+          }
+          // 还在「刚触发、后端尚未开始」的空档里就再等一会儿，别一上来就宣布刷完了
+          const settled = sawRefreshing || Date.now() - startedAt > REFRESH_START_GRACE_MS;
+          if (settled || Date.now() - startedAt > REFRESH_MAX_WAIT_MS) {
+            finishRefresh();
+          }
         })
         .catch(() => {
           // 进度只是显示用，取不到就保持上一次的值
         });
-    }, 400);
+    };
 
-    // 后端刷新是同步的（要等所有源抓完才返回），所以先给即时反馈，完成后再报结果
+    pollRefreshStatus();
+    refreshPollRef.current = window.setInterval(pollRefreshStatus, 400);
+
     showToast(
       ids.length > 0
         ? t("entry.refreshing_n_feeds", { count: ids.length })
         : t("entry.refreshing_all"),
     );
+
     try {
       if (ids.length > 0) {
         await refreshFeeds(ids);
       } else {
         await refreshAllFeeds();
       }
-      queryClient.invalidateQueries({ queryKey: ["entries"] });
-      queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
-      queryClient.invalidateQueries({ queryKey: ["feeds"] });
-      showToast(t("entry.refresh_done"));
+      // 「已在刷新中」也会走到这里：那就跟着它在跑的这一轮一起显示进度，不报错
+      pollRefreshStatus();
     } catch {
-      showToast(t("entry.refresh_failed"));
-    } finally {
       stopRefreshPolling();
       setIsRefreshing(false);
       setRefreshProgress(null);
+      showToast(t("entry.refresh_failed"));
     }
   }, [
     contentType,
