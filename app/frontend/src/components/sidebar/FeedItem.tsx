@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { Ripple } from "m3-ripple";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
@@ -23,13 +23,16 @@ import { CONTENT_TYPE_ORDER, contentTypeMeta } from "@/lib/content-type-meta";
 import { FeedAvatar } from "@/components/ui/feed-avatar";
 import {
   Copy,
+  ExternalLink,
   FolderInput,
+  Globe,
   Pencil,
   RefreshCw,
   Tags,
   Trash2,
 } from "lucide-react";
 import { useContextMenu } from "@/hooks/useContextMenu";
+import { resolveFeedSiteUrl } from "@/lib/feed-site";
 import { copyToClipboard } from "@/stores/toast-store";
 import { queryClient } from "@/lib/queryClient";
 import { openFilterEditorForFeed } from "@/stores/filter-editor-store";
@@ -41,6 +44,8 @@ interface FeedItemProps {
   feedId: string;
   /** 订阅地址，用于右键菜单里的「复制 Feed 地址」 */
   feedUrl?: string;
+  /** 订阅主页地址（RSS 元数据里的 site_url）；为空时由 feedUrl 反解（见 lib/feed-site） */
+  siteUrl?: string;
   iconPath?: string;
   unreadCount?: number;
   isActive?: boolean;
@@ -59,6 +64,7 @@ export function FeedItem({
   name,
   feedId,
   feedUrl,
+  siteUrl,
   iconPath,
   unreadCount,
   isActive = false,
@@ -73,6 +79,11 @@ export function FeedItem({
   onChangeType,
 }: FeedItemProps) {
   const { t } = useTranslation();
+  // 「前往主站 / 复制主站地址」用（11-11）：优先订阅元数据，其次从 RSSHub 路由反解；都没有就藏起这两项
+  const siteUrlResolved = useMemo(
+    () => resolveFeedSiteUrl({ siteUrl, url: feedUrl }),
+    [siteUrl, feedUrl],
+  );
   const [iconError, setIconError] = useState(false);
   const hasError = !!errorMessage;
   const triggerRef = useRef<HTMLSpanElement>(null);
@@ -248,6 +259,27 @@ export function FeedItem({
             <Copy className="size-4 shrink-0 text-muted-foreground" />
             {t("actions.copy_feed_url")}
           </ContextMenuItem>
+        )}
+        {/* 主站（用户 11-11）：能拿到主页地址才显示，拿不到就藏起来，不给假地址 */}
+        {siteUrlResolved && (
+          <>
+            <ContextMenuItem
+              onClick={() => {
+                window.open(siteUrlResolved, "_blank", "noopener,noreferrer");
+              }}
+            >
+              <ExternalLink className="size-4 shrink-0 text-muted-foreground" />
+              {t("actions.open_site")}
+            </ContextMenuItem>
+            <ContextMenuItem
+              onClick={() => {
+                void copyToClipboard(siteUrlResolved, t("actions.copied_site_url"));
+              }}
+            >
+              <Globe className="size-4 shrink-0 text-muted-foreground" />
+              {t("actions.copy_site_url")}
+            </ContextMenuItem>
+          </>
         )}
         {/* 规则入口与上面的订阅操作同组；删除是破坏性操作，仍单独分组压在下面 */}
         <ContextMenuItem onClick={handleNewRuleFromFeed}>

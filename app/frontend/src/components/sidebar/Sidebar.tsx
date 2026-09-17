@@ -602,6 +602,7 @@ export function Sidebar({
                             feedId={feed.id}
                             name={feed.title}
                             feedUrl={feed.url}
+                            siteUrl={feed.siteUrl}
                             onRefresh={handleRefreshFeed}
                             iconPath={feed.iconPath}
                             unreadCount={unreadCounts.get(feed.id) || 0}
@@ -627,6 +628,7 @@ export function Sidebar({
                     feedId={feed.id}
                     name={feed.title}
                     feedUrl={feed.url}
+                            siteUrl={feed.siteUrl}
                     onRefresh={handleRefreshFeed}
                     iconPath={feed.iconPath}
                     unreadCount={unreadCounts.get(feed.id) || 0}

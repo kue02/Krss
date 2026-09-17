@@ -45,7 +45,10 @@
     "show_sidebar": "Show Sidebar",
     "hide_sidebar": "Hide Sidebar",
     "edit": "Edit",
-    "back": "Back"
+    "back": "Back",
+    "open_site": "Open site",
+    "copy_site_url": "Copy site URL",
+    "copied_site_url": "Site URL copied"
   },
   "folders": {
     "delete": "Delete Folder",
