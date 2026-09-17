@@ -715,6 +715,18 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "type": "boolean",
+                        "description": "Include entries muted by filter rules",
+                        "name": "includeMuted",
+                        "in": "query"
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Only return entries muted by filter rules",
+                        "name": "mutedOnly",
+                        "in": "query"
+                    },
+                    {
                         "type": "integer",
                         "description": "Limit the number of entries (default 50)",
                         "name": "limit",
@@ -1051,6 +1063,44 @@ const docTemplate = `{
                 }
             }
         },
+        "/entries/{id}/unmute": {
+            "post": {
+                "description": "Remove the muted flag (and the owning rule id) from an entry and put it back into the unread flow",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "entries"
+                ],
+                "summary": "Unmute entry",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Entry ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/feeds": {
             "get": {
                 "description": "Get a list of all subscribed feeds",
@@ -1330,6 +1380,290 @@ const docTemplate = `{
                 "responses": {
                     "204": {
                         "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/filters": {
+            "get": {
+                "description": "Get all automation rules ordered by match position (first match wins)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "filters"
+                ],
+                "summary": "List filter rules",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.filterListResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Create an automation rule (scope + conditions + actions)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "filters"
+                ],
+                "summary": "Create filter rule",
+                "parameters": [
+                    {
+                        "description": "Filter rule",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.filterWriteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.filterResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/filters/preview": {
+            "post": {
+                "description": "Dry-run a rule against the most recent entries in its scope (no writes)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "filters"
+                ],
+                "summary": "Preview filter rule",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "How many recent entries to scan (default 200)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "description": "Filter rule",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.filterWriteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.filterPreviewResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/filters/{id}": {
+            "delete": {
+                "description": "Delete a rule; pass revert=true to also restore the entries it muted",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "filters"
+                ],
+                "summary": "Delete filter rule",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Filter ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Restore entries muted by this rule",
+                        "name": "revert",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.filterRevertResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "description": "Update name, scope, conditions, actions, enabled flag or match position",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "filters"
+                ],
+                "summary": "Update filter rule",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Filter ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Filter rule",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.filterWriteRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.filterResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/filters/{id}/matches": {
+            "get": {
+                "description": "Get the recent entries this rule matched (audit log for \"why is this hidden\")",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "filters"
+                ],
+                "summary": "List filter matches",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Filter ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Max records (default 50)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.filterMatchesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/filters/{id}/revert": {
+            "post": {
+                "description": "Clear the marks written by this rule (muted off, muted entries back to unread)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "filters"
+                ],
+                "summary": "Revert filter rule",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Filter ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.filterRevertResponse"
+                        }
                     },
                     "400": {
                         "description": "Bad Request",
@@ -2302,6 +2636,10 @@ const docTemplate = `{
                 "baseUrl": {
                     "type": "string"
                 },
+                "fallbackToModel": {
+                    "description": "FallbackToModel：免费通道失败时是否自动切回模型",
+                    "type": "boolean"
+                },
                 "model": {
                     "type": "string"
                 },
@@ -2347,6 +2685,10 @@ const docTemplate = `{
                 },
                 "baseUrl": {
                     "type": "string"
+                },
+                "fallbackToModel": {
+                    "description": "FallbackToModel：免费通道失败时是否自动切回模型",
+                    "type": "boolean"
                 },
                 "model": {
                     "type": "string"
@@ -2608,8 +2950,15 @@ const docTemplate = `{
                 "feedId": {
                     "type": "string"
                 },
+                "filterId": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
+                },
+                "muted": {
+                    "description": "Muted 条目是被过滤规则静音的（列表默认隐藏，可在「已静音」里回看）。",
+                    "type": "boolean"
                 },
                 "publishedAt": {
                     "type": "string"
@@ -2765,6 +3114,221 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.filterActionsPayload": {
+            "type": "object",
+            "properties": {
+                "keepOnly": {
+                    "type": "boolean"
+                },
+                "markRead": {
+                    "type": "boolean"
+                },
+                "markUnread": {
+                    "type": "boolean"
+                },
+                "mute": {
+                    "type": "boolean"
+                },
+                "star": {
+                    "type": "boolean"
+                },
+                "unmute": {
+                    "type": "boolean"
+                },
+                "unstar": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "internal_handler.filterConditionRequest": {
+            "type": "object",
+            "properties": {
+                "field": {
+                    "type": "string"
+                },
+                "logic": {
+                    "type": "string"
+                },
+                "negate": {
+                    "type": "boolean"
+                },
+                "operator": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.filterListResponse": {
+            "type": "object",
+            "properties": {
+                "filters": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_handler.filterResponse"
+                    }
+                }
+            }
+        },
+        "internal_handler.filterMatchItem": {
+            "type": "object",
+            "properties": {
+                "actions": {
+                    "$ref": "#/definitions/internal_handler.filterActionsPayload"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "entryId": {
+                    "type": "string"
+                },
+                "filterId": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.filterMatchesResponse": {
+            "type": "object",
+            "properties": {
+                "matches": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_handler.filterMatchItem"
+                    }
+                }
+            }
+        },
+        "internal_handler.filterPreviewItem": {
+            "type": "object",
+            "properties": {
+                "actions": {
+                    "$ref": "#/definitions/internal_handler.filterActionsPayload"
+                },
+                "feedTitle": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "publishedAt": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.filterPreviewResponse": {
+            "type": "object",
+            "properties": {
+                "markReadCount": {
+                    "type": "integer"
+                },
+                "matched": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_handler.filterPreviewItem"
+                    }
+                },
+                "matchedCount": {
+                    "type": "integer"
+                },
+                "muteCount": {
+                    "type": "integer"
+                },
+                "scanned": {
+                    "type": "integer"
+                },
+                "starCount": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_handler.filterResponse": {
+            "type": "object",
+            "properties": {
+                "actions": {
+                    "$ref": "#/definitions/internal_handler.filterActionsPayload"
+                },
+                "conditions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_handler.filterConditionRequest"
+                    }
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "lastMatchedAt": {
+                    "type": "string"
+                },
+                "matchCount": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "position": {
+                    "type": "integer"
+                },
+                "scopeId": {
+                    "type": "string"
+                },
+                "scopeType": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.filterRevertResponse": {
+            "type": "object",
+            "properties": {
+                "reverted": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_handler.filterWriteRequest": {
+            "type": "object",
+            "properties": {
+                "actions": {
+                    "$ref": "#/definitions/internal_handler.filterActionsPayload"
+                },
+                "conditions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_handler.filterConditionRequest"
+                    }
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "position": {
+                    "type": "integer"
+                },
+                "scopeId": {
+                    "type": "string"
+                },
+                "scopeType": {
                     "type": "string"
                 }
             }

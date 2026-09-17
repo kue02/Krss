@@ -88,6 +88,9 @@ definitions:
         type: boolean
       baseUrl:
         type: string
+      fallbackToModel:
+        description: FallbackToModel：免费通道失败时是否自动切回模型
+        type: boolean
       model:
         type: string
       provider:
@@ -119,6 +122,9 @@ definitions:
         type: boolean
       baseUrl:
         type: string
+      fallbackToModel:
+        description: FallbackToModel：免费通道失败时是否自动切回模型
+        type: boolean
       model:
         type: string
       provider:
@@ -287,8 +293,13 @@ definitions:
         type: string
       feedId:
         type: string
+      filterId:
+        type: string
       id:
         type: string
+      muted:
+        description: Muted 条目是被过滤规则静音的（列表默认隐藏，可在「已静音」里回看）。
+        type: boolean
       publishedAt:
         type: string
       read:
@@ -391,6 +402,146 @@ definitions:
       updatedAt:
         type: string
       url:
+        type: string
+    type: object
+  internal_handler.filterActionsPayload:
+    properties:
+      keepOnly:
+        type: boolean
+      markRead:
+        type: boolean
+      markUnread:
+        type: boolean
+      mute:
+        type: boolean
+      star:
+        type: boolean
+      unmute:
+        type: boolean
+      unstar:
+        type: boolean
+    type: object
+  internal_handler.filterConditionRequest:
+    properties:
+      field:
+        type: string
+      logic:
+        type: string
+      negate:
+        type: boolean
+      operator:
+        type: string
+      value:
+        type: string
+    type: object
+  internal_handler.filterListResponse:
+    properties:
+      filters:
+        items:
+          $ref: '#/definitions/internal_handler.filterResponse'
+        type: array
+    type: object
+  internal_handler.filterMatchItem:
+    properties:
+      actions:
+        $ref: '#/definitions/internal_handler.filterActionsPayload'
+      createdAt:
+        type: string
+      entryId:
+        type: string
+      filterId:
+        type: string
+      id:
+        type: string
+    type: object
+  internal_handler.filterMatchesResponse:
+    properties:
+      matches:
+        items:
+          $ref: '#/definitions/internal_handler.filterMatchItem'
+        type: array
+    type: object
+  internal_handler.filterPreviewItem:
+    properties:
+      actions:
+        $ref: '#/definitions/internal_handler.filterActionsPayload'
+      feedTitle:
+        type: string
+      id:
+        type: string
+      publishedAt:
+        type: string
+      title:
+        type: string
+    type: object
+  internal_handler.filterPreviewResponse:
+    properties:
+      markReadCount:
+        type: integer
+      matched:
+        items:
+          $ref: '#/definitions/internal_handler.filterPreviewItem'
+        type: array
+      matchedCount:
+        type: integer
+      muteCount:
+        type: integer
+      scanned:
+        type: integer
+      starCount:
+        type: integer
+    type: object
+  internal_handler.filterResponse:
+    properties:
+      actions:
+        $ref: '#/definitions/internal_handler.filterActionsPayload'
+      conditions:
+        items:
+          $ref: '#/definitions/internal_handler.filterConditionRequest'
+        type: array
+      createdAt:
+        type: string
+      enabled:
+        type: boolean
+      id:
+        type: string
+      lastMatchedAt:
+        type: string
+      matchCount:
+        type: integer
+      name:
+        type: string
+      position:
+        type: integer
+      scopeId:
+        type: string
+      scopeType:
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  internal_handler.filterRevertResponse:
+    properties:
+      reverted:
+        type: integer
+    type: object
+  internal_handler.filterWriteRequest:
+    properties:
+      actions:
+        $ref: '#/definitions/internal_handler.filterActionsPayload'
+      conditions:
+        items:
+          $ref: '#/definitions/internal_handler.filterConditionRequest'
+        type: array
+      enabled:
+        type: boolean
+      name:
+        type: string
+      position:
+        type: integer
+      scopeId:
+        type: string
+      scopeType:
         type: string
     type: object
   internal_handler.folderRequest:
@@ -1157,6 +1308,14 @@ paths:
         in: query
         name: starredOnly
         type: boolean
+      - description: Include entries muted by filter rules
+        in: query
+        name: includeMuted
+        type: boolean
+      - description: Only return entries muted by filter rules
+        in: query
+        name: mutedOnly
+        type: boolean
       - description: Limit the number of entries (default 50)
         in: query
         name: limit
@@ -1297,6 +1456,32 @@ paths:
           schema:
             $ref: '#/definitions/internal_handler.errorResponse'
       summary: Update starred status
+      tags:
+      - entries
+  /entries/{id}/unmute:
+    post:
+      description: Remove the muted flag (and the owning rule id) from an entry and
+        put it back into the unread flow
+      parameters:
+      - description: Entry ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: Unmute entry
       tags:
       - entries
   /entries/cache:
@@ -1579,6 +1764,199 @@ paths:
       summary: Get refresh status
       tags:
       - feeds
+  /filters:
+    get:
+      description: Get all automation rules ordered by match position (first match
+        wins)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.filterListResponse'
+      summary: List filter rules
+      tags:
+      - filters
+    post:
+      consumes:
+      - application/json
+      description: Create an automation rule (scope + conditions + actions)
+      parameters:
+      - description: Filter rule
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.filterWriteRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_handler.filterResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: Create filter rule
+      tags:
+      - filters
+  /filters/{id}:
+    delete:
+      description: Delete a rule; pass revert=true to also restore the entries it
+        muted
+      parameters:
+      - description: Filter ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Restore entries muted by this rule
+        in: query
+        name: revert
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.filterRevertResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: Delete filter rule
+      tags:
+      - filters
+    patch:
+      consumes:
+      - application/json
+      description: Update name, scope, conditions, actions, enabled flag or match
+        position
+      parameters:
+      - description: Filter ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Filter rule
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.filterWriteRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.filterResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: Update filter rule
+      tags:
+      - filters
+  /filters/{id}/matches:
+    get:
+      description: Get the recent entries this rule matched (audit log for "why is
+        this hidden")
+      parameters:
+      - description: Filter ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Max records (default 50)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.filterMatchesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: List filter matches
+      tags:
+      - filters
+  /filters/{id}/revert:
+    post:
+      description: Clear the marks written by this rule (muted off, muted entries
+        back to unread)
+      parameters:
+      - description: Filter ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.filterRevertResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: Revert filter rule
+      tags:
+      - filters
+  /filters/preview:
+    post:
+      consumes:
+      - application/json
+      description: Dry-run a rule against the most recent entries in its scope (no
+        writes)
+      parameters:
+      - description: How many recent entries to scan (default 200)
+        in: query
+        name: limit
+        type: integer
+      - description: Filter rule
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.filterWriteRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.filterPreviewResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: Preview filter rule
+      tags:
+      - filters
   /folders:
     delete:
       consumes:
