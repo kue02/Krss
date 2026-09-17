@@ -238,12 +238,25 @@ export function FilterEditor({
     return null;
   };
 
+  /**
+   * 交给服务端的最终 payload —— **预览与保存必须共用这一份**。
+   *
+   * 曾经的 bug（用户 11-1「新建视图预览还是失败」）：预览直接把 draft 发出去，而 draft 里没有 kind，
+   * 后端就按「规则」校验，视图没有动作 → 400 invalid filter；同一份 body 只要带上 kind:"view" 就是 200。
+   */
+  const buildPayload = (): FilterWritePayload => ({
+    ...draft,
+    name: draft.name.trim(),
+    kind: isView ? "view" : "rule",
+    actions: isView ? {} : draft.actions,
+  });
+
   const handlePreview = () => {
     const error = validate(draft);
     setValidationError(error);
     if (error) return;
     preview.mutate(
-      { payload: draft },
+      { payload: buildPayload() },
       { onSuccess: (result) => setPreviewResult(result) },
     );
   };
@@ -252,12 +265,7 @@ export function FilterEditor({
     const error = validate(draft);
     setValidationError(error);
     if (error) return;
-    onSubmit({
-      ...draft,
-      name: draft.name.trim(),
-      kind: isView ? "view" : "rule",
-      actions: isView ? {} : draft.actions,
-    });
+    onSubmit(buildPayload());
   };
 
   const valuePlaceholder = (condition: FilterCondition): string => {

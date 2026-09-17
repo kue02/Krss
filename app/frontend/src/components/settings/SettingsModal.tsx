@@ -1,3 +1,4 @@
+import * as React from "react";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -14,6 +15,7 @@ import { AdvancedSettings } from "./tabs/AdvancedSettings";
 import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/select";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { useFilterEditorStore } from "@/stores/filter-editor-store";
 
 export type SettingsTab =
   | "general"
@@ -66,6 +68,29 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   const isMobile = useIsMobile();
+  /**
+   * 从设置里打开的抽屉/弹层（目前是规则·视图编辑器）被 RootPortal 挂到 body 上，
+   * 相对 Radix Dialog 是**兄弟节点**，于是 Radix 把「点抽屉里的东西」判成「点到了外面」，
+   * 顺手把设置一起关掉 —— 用户要的是「抽屉关了，我还留在设置里」。
+   * 所以只要子浮层开着，就不让设置因外部交互而关闭（点遮罩仍会关掉子浮层本身）。
+   */
+  const childOverlayOpen = useFilterEditorStore((state) => state.open);
+  const guardOutsideDismiss = React.useCallback(
+    (event: { preventDefault: () => void }) => {
+      if (childOverlayOpen) event.preventDefault();
+    },
+    [childOverlayOpen],
+  );
+  /**
+   * 同理还有 Esc：Radix 的 Escape 处理器只认自己的浮层栈，抽屉不在里面，
+   * 于是按一次 Esc 会既关抽屉又关设置 —— 设置里打开的抽屉按 Esc 只该关抽屉。
+   */
+  const guardEscape = React.useCallback(
+    (event: KeyboardEvent) => {
+      if (childOverlayOpen) event.preventDefault();
+    },
+    [childOverlayOpen],
+  );
 
   // Reset to general when modal opens
   useEffect(() => {
@@ -133,7 +158,11 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
   if (isMobile) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="!inset-0 !translate-x-0 !translate-y-0 h-dvh w-full max-w-none max-h-none rounded-none bg-background p-0 overflow-hidden gap-0">
+        <DialogContent
+          className="!inset-0 !translate-x-0 !translate-y-0 h-dvh w-full max-w-none max-h-none rounded-none bg-background p-0 overflow-hidden gap-0"
+          onInteractOutside={guardOutsideDismiss}
+          onEscapeKeyDown={guardEscape}
+        >
           <div className="flex h-full min-h-0 flex-col bg-background safe-area-inset">
             {/* Header */}
             <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border shrink-0">
@@ -182,7 +211,11 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
   // Desktop layout
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[950px] h-[800px] max-w-[95vw] max-h-[90vh] p-0 overflow-hidden gap-0">
+      <DialogContent
+        className="w-[950px] h-[800px] max-w-[95vw] max-h-[90vh] p-0 overflow-hidden gap-0"
+        onInteractOutside={guardOutsideDismiss}
+        onEscapeKeyDown={guardEscape}
+      >
         <div className="flex h-full">
           <SettingsSidebar activeTab={activeTab} onTabChange={setActiveTab} />
 

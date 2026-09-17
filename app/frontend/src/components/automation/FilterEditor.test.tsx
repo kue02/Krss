@@ -156,6 +156,52 @@ describe("FilterEditor", () => {
     expect(document.querySelectorAll("select").length).toBeGreaterThanOrEqual(2);
   });
 
+  /**
+   * 回归（用户第十一批 11-1「新建视图预览还是失败」）：
+   * 预览曾经直接把 draft 发出去，而 draft 里没有 kind → 后端按「规则」校验，
+   * 视图没有动作 → 400 invalid filter。预览与保存必须发同一份 payload。
+   */
+  it("视图预览的 payload 必须带 kind=view（否则后端按规则校验直接 400）", () => {
+    render(
+      <FilterEditor
+        kind="view"
+        initial={draft({ actions: {} })}
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("automation.preview"));
+
+    expect(previewMutate).toHaveBeenCalledTimes(1);
+    const [variables] = previewMutate.mock.calls[0] as [
+      { payload: FilterWritePayload },
+      { onSuccess: (result: unknown) => void },
+    ];
+    expect(variables.payload.kind).toBe("view");
+    expect(variables.payload.actions).toEqual({});
+  });
+
+  it("规则的预览 payload 带 kind=rule，且动作原样送出", () => {
+    render(
+      <FilterEditor
+        kind="rule"
+        initial={draft()}
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("automation.preview"));
+
+    const [variables] = previewMutate.mock.calls[0] as [
+      { payload: FilterWritePayload },
+      { onSuccess: (result: unknown) => void },
+    ];
+    expect(variables.payload.kind).toBe("rule");
+    expect(variables.payload.actions).toMatchObject({ mute: true });
+  });
+
   it("点「预览影响」调用干跑接口，成功后展示命中摘要", async () => {
     render(
       <FilterEditor initial={draft()} onSubmit={vi.fn()} onCancel={vi.fn()} />,
