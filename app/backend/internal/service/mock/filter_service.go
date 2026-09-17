@@ -73,6 +73,21 @@ func (mr *MockFilterServiceMockRecorder) ApplyToHistory(ctx, filterID, limit any
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ApplyToHistory", reflect.TypeOf((*MockFilterService)(nil).ApplyToHistory), ctx, filterID, limit)
 }
 
+// CountViewMatches mocks base method.
+func (m *MockFilterService) CountViewMatches(ctx context.Context, contentType *string) (map[int64]int, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountViewMatches", ctx, contentType)
+	ret0, _ := ret[0].(map[int64]int)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountViewMatches indicates an expected call of CountViewMatches.
+func (mr *MockFilterServiceMockRecorder) CountViewMatches(ctx, contentType any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountViewMatches", reflect.TypeOf((*MockFilterService)(nil).CountViewMatches), ctx, contentType)
+}
+
 // Create mocks base method.
 func (m *MockFilterService) Create(ctx context.Context, params service.FilterWriteParams) (model.Filter, error) {
 	m.ctrl.T.Helper()

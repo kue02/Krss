@@ -517,3 +517,69 @@ func TestFilterService_MutedEntriesHiddenFromList(t *testing.T) {
 	}
 	require.Equal(t, 1, unread)
 }
+
+// 侧栏「收藏 / 视图」数量角标要的数：每条视图当前命中多少条。
+// 语义与「按视图取列表」对齐 —— 作用域生效、AI 条件不花钱、规则（kind=rule）不参与。
+func TestFilterService_CountViewMatches(t *testing.T) {
+	fixture := newFilterFixture(t)
+	ctx := context.Background()
+
+	articleFeed := fixture.seedFeed(t, "Solidot", "article")
+	socialFeed := fixture.seedFeed(t, "Twitter", "social")
+	fixture.seedEntry(t, articleFeed.ID, "h1", "赞助商：某云厂商", timePtr(time.Now()))
+	fixture.seedEntry(t, articleFeed.ID, "h2", "开源新闻", timePtr(time.Now()))
+	fixture.seedEntry(t, socialFeed.ID, "h3", "赞助商：社交里的", timePtr(time.Now()))
+
+	// 视图一：全库 + 标题含「赞助商」 → 2 条（跨内容类型）
+	viewAll, err := fixture.service.Create(ctx, service.FilterWriteParams{
+		Name:       "含赞助商",
+		Kind:       model.FilterKindView,
+		ScopeType:  model.FilterScopeAll,
+		Conditions: []model.FilterCondition{{Field: model.FilterFieldTitle, Operator: model.FilterOpContains, Value: "赞助商"}},
+	})
+	require.NoError(t, err)
+
+	// 视图二：只在文章那个订阅里找「开源」 → 1 条
+	viewFeed, err := fixture.service.Create(ctx, service.FilterWriteParams{
+		Name:       "订阅内找开源",
+		Kind:       model.FilterKindView,
+		ScopeType:  model.FilterScopeFeed,
+		ScopeID:    &articleFeed.ID,
+		Conditions: []model.FilterCondition{{Field: model.FilterFieldTitle, Operator: model.FilterOpContains, Value: "开源"}},
+	})
+	require.NoError(t, err)
+
+	// 同样条件的规则不该出现在计数里（侧栏只列视图）
+	_, err = fixture.service.Create(ctx, service.FilterWriteParams{
+		Name:       "一条规则",
+		Kind:       model.FilterKindRule,
+		ScopeType:  model.FilterScopeAll,
+		Conditions: []model.FilterCondition{{Field: model.FilterFieldTitle, Operator: model.FilterOpContains, Value: "赞助商"}},
+		Actions:    model.FilterActions{Mute: true},
+	})
+	require.NoError(t, err)
+
+	// 再来一条一条都命中不了的视图：它必须出现在结果里且为 0（不是「查不到这条」）
+	viewNone, err := fixture.service.Create(ctx, service.FilterWriteParams{
+		Name:       "谁也匹配不上",
+		Kind:       model.FilterKindView,
+		ScopeType:  model.FilterScopeAll,
+		Conditions: []model.FilterCondition{{Field: model.FilterFieldTitle, Operator: model.FilterOpContains, Value: "不存在的词"}},
+	})
+	require.NoError(t, err)
+
+	counts, err := fixture.service.CountViewMatches(ctx, nil)
+	require.NoError(t, err)
+	require.Len(t, counts, 3)
+	require.Equal(t, 2, counts[viewAll.ID])
+	require.Equal(t, 1, counts[viewFeed.ID])
+	require.Equal(t, 0, counts[viewNone.ID])
+
+	// 跟进当前内容类型：article 下「赞助商」只剩 1 条（社交那条不算）
+	article := "article"
+	byType, err := fixture.service.CountViewMatches(ctx, &article)
+	require.NoError(t, err)
+	require.Equal(t, 1, byType[viewAll.ID])
+	require.Equal(t, 1, byType[viewFeed.ID])
+	require.Equal(t, 0, byType[viewNone.ID])
+}

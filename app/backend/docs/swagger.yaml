@@ -972,6 +972,13 @@ definitions:
       username:
         type: string
     type: object
+  internal_handler.viewCountsResponse:
+    properties:
+      counts:
+        additionalProperties:
+          type: integer
+        type: object
+    type: object
 info:
   contact: {}
   description: This is a modern RSS reader API.
@@ -2267,6 +2274,27 @@ paths:
           schema:
             $ref: '#/definitions/internal_handler.errorResponse'
       summary: Preview filter rule
+      tags:
+      - filters
+  /filters/view-counts:
+    get:
+      parameters:
+      - description: Only count this content type (article|picture|notification|social)
+        in: query
+        name: contentType
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.viewCountsResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: Count entries matched by each saved view
       tags:
       - filters
   /folders:

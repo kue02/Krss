@@ -43,7 +43,9 @@ export function StarredItem({
           {t(`content_type.${contentType}`)}
         </span>
       )}
-      {!viewOnly && count > 0 && (
+      {/* 两档都带数量（用户 11-15）：上一档是当前内容类型下的星标数，下一档是全部星标数。
+          样式与订阅行的未读数一致（同一处观感，别再各写一套） */}
+      {count > 0 && (
         <span className="shrink-0 text-[0.7rem] font-medium tabular-nums text-muted-foreground">
           {count > 99 ? "99+" : count}
         </span>

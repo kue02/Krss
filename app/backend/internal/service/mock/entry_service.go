@@ -88,18 +88,18 @@ func (mr *MockEntryServiceMockRecorder) GetByID(ctx, id any) *gomock.Call {
 }
 
 // GetStarredCount mocks base method.
-func (m *MockEntryService) GetStarredCount(ctx context.Context) (int, error) {
+func (m *MockEntryService) GetStarredCount(ctx context.Context, contentType string) (int, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetStarredCount", ctx)
+	ret := m.ctrl.Call(m, "GetStarredCount", ctx, contentType)
 	ret0, _ := ret[0].(int)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetStarredCount indicates an expected call of GetStarredCount.
-func (mr *MockEntryServiceMockRecorder) GetStarredCount(ctx any) *gomock.Call {
+func (mr *MockEntryServiceMockRecorder) GetStarredCount(ctx, contentType any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStarredCount", reflect.TypeOf((*MockEntryService)(nil).GetStarredCount), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStarredCount", reflect.TypeOf((*MockEntryService)(nil).GetStarredCount), ctx, contentType)
 }
 
 // GetUnreadCounts mocks base method.

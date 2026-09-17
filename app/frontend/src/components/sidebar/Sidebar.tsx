@@ -27,7 +27,7 @@ import { StarredItem } from "./StarredItem";
 import { FeedCategory } from "./FeedCategory";
 import { FeedItem } from "./FeedItem";
 import { ContentTypeSwitcher } from "./ContentTypeSwitcher";
-import { useFilters } from "@/hooks/useFilters";
+import { useFilters, useViewCounts } from "@/hooks/useFilters";
 import { useFilterViewStore } from "@/stores/filter-view-store";
 import { useSettingsModalStore } from "@/stores/settings-modal-store";
 import { feedItemStyles, sidebarItemIconStyles } from "./styles";
@@ -48,7 +48,7 @@ import {
   useUpdateFeed,
   useUpdateFeedType,
 } from "@/hooks/useFeeds";
-import { useUnreadCounts } from "@/hooks/useEntries";
+import { useUnreadCounts, useStarredCount } from "@/hooks/useEntries";
 import {
   useAllCategoriesOpen,
   useCategoryActions,
@@ -103,6 +103,14 @@ interface SidebarProps {
 interface FolderWithFeeds {
   folder: Folder;
   feeds: Feed[];
+}
+
+/** 视图数量角标：数组可能还没回来（后端一次算全部视图），取不到就是 0。 */
+function viewCountOf(
+  counts: Record<string, number> | undefined,
+  viewId: string,
+): number {
+  return counts?.[viewId] ?? 0;
 }
 
 export function Sidebar({
@@ -410,6 +418,10 @@ export function Sidebar({
 
   // 保存的筛选视图：设置 → 自动化里建的「范围 + 条件」，这里只是快捷入口
   const { data: filterList } = useFilters();
+  // 数量角标（用户 11-15）：两档星标各一个数 + 每条视图的命中数，都跟进当前内容类型
+  const starredCountAll = useStarredCount().data?.count ?? 0;
+  const starredCountView = useStarredCount(contentType).data?.count ?? 0;
+  const viewCounts = useViewCounts(contentType).data?.counts;
   const savedViews = useMemo(
     () => (filterList ?? []).filter((item) => item.kind === "view"),
     [filterList],
@@ -463,10 +475,12 @@ export function Sidebar({
               <StarredItem
                 viewOnly
                 contentType={contentType}
+                count={starredCountView}
                 isActive={isStarredViewSelected}
                 onClick={onSelectStarredView}
               />
               <StarredItem
+                count={starredCountAll}
                 isActive={isStarredSelected && !isStarredViewSelected}
                 onClick={onSelectStarred}
               />
@@ -491,6 +505,13 @@ export function Sidebar({
                           <SearchIcon className="size-4 -translate-y-px text-muted-foreground" />
                         </span>
                         <span className="grow truncate">{view.name}</span>
+                        {viewCountOf(viewCounts, view.id) > 0 && (
+                          <span className="shrink-0 text-[0.7rem] font-medium tabular-nums text-muted-foreground">
+                            {viewCountOf(viewCounts, view.id) > 99
+                              ? "99+"
+                              : viewCountOf(viewCounts, view.id)}
+                          </span>
+                        )}
                       </div>
                     ))}
                   </div>

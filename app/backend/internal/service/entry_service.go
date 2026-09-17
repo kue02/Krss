@@ -42,7 +42,8 @@ type EntryService interface {
 	Unmute(ctx context.Context, id int64) error
 	MarkAllAsRead(ctx context.Context, feedID *int64, folderID *int64, contentType *string) error
 	GetUnreadCounts(ctx context.Context) (map[int64]int, error)
-	GetStarredCount(ctx context.Context) (int, error)
+	// GetStarredCount 星标数；contentType 为空串 = 全部内容类型。
+	GetStarredCount(ctx context.Context, contentType string) (int, error)
 	// ClearReadabilityCache clears all readable_content from entries
 	ClearReadabilityCache(ctx context.Context) (int64, error)
 	// ClearEntryCache deletes all unstarred entries
@@ -385,8 +386,12 @@ func (s *entryService) MarkAsStarred(ctx context.Context, id int64, starred bool
 	return nil
 }
 
-func (s *entryService) GetStarredCount(ctx context.Context) (int, error) {
-	count, err := s.entries.GetStarredCount(ctx)
+func (s *entryService) GetStarredCount(ctx context.Context, contentType string) (int, error) {
+	var scope *string
+	if trimmed := strings.TrimSpace(contentType); trimmed != "" {
+		scope = &trimmed
+	}
+	count, err := s.entries.GetStarredCount(ctx, scope)
 	if err != nil {
 		logger.Error("entry starred count failed", "module", "service", "action", "list", "resource", "entry", "result", "failed", "error", err)
 		return 0, err

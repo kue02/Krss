@@ -1727,6 +1727,39 @@ const docTemplate = `{
                 }
             }
         },
+        "/filters/view-counts": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "filters"
+                ],
+                "summary": "Count entries matched by each saved view",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Only count this content type (article|picture|notification|social)",
+                        "name": "contentType",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.viewCountsResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/filters/{id}": {
             "delete": {
                 "description": "Delete a rule; pass revert=true to also restore the entries it muted",
@@ -4258,6 +4291,17 @@ const docTemplate = `{
                 },
                 "username": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_handler.viewCountsResponse": {
+            "type": "object",
+            "properties": {
+                "counts": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer"
+                    }
                 }
             }
         }

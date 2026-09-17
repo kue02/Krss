@@ -55,7 +55,8 @@ type EntryRepository interface {
 	UpdateReadableContent(ctx context.Context, id int64, content string) error
 	MarkAllAsRead(ctx context.Context, feedID *int64, folderID *int64, contentType *string) error
 	GetAllUnreadCounts(ctx context.Context) ([]UnreadCount, error)
-	GetStarredCount(ctx context.Context) (int, error)
+	// GetStarredCount 星标总数；contentType 非 nil 时只数该内容类型（侧栏两档星标各要一个数）。
+	GetStarredCount(ctx context.Context, contentType *string) (int, error)
 	// FeedEntryStats 某个订阅的条目数与其中星标数（合并订阅时给弹框显示两边各有几条）
 	FeedEntryStats(ctx context.Context, feedID int64) (total int64, starred int64, err error)
 	// MoveFeedEntries 把 from 订阅的条目改归到 to：先删掉与目标同 hash 的重复项（保留目标那份），再改归属。
@@ -691,9 +692,15 @@ func (r *entryRepository) UpdateStarredStatus(ctx context.Context, id int64, sta
 	return err
 }
 
-func (r *entryRepository) GetStarredCount(ctx context.Context) (int, error) {
+func (r *entryRepository) GetStarredCount(ctx context.Context, contentType *string) (int, error) {
 	var count int
-	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM entries WHERE starred = 1`).Scan(&count)
+	if contentType == nil {
+		err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM entries WHERE starred = 1`).Scan(&count)
+		return count, err
+	}
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM entries e INNER JOIN feeds f ON e.feed_id = f.id WHERE e.starred = 1 AND f.type = ?`,
+		*contentType).Scan(&count)
 	return count, err
 }
 

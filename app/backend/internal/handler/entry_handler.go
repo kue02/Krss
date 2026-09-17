@@ -561,7 +561,8 @@ func (h *EntryHandler) Unmute(c echo.Context) error {
 // @Success 200 {object} starredCountResponse
 // @Router /starred-count [get]
 func (h *EntryHandler) GetStarredCount(c echo.Context) error {
-	count, err := h.service.GetStarredCount(c.Request().Context())
+	// contentType 可选：侧栏「只显示当前内容类型的星标」那一档要按类型数
+	count, err := h.service.GetStarredCount(c.Request().Context(), c.QueryParam("contentType"))
 	if err != nil {
 		logger.Error("entry starred count failed", "module", "handler", "action", "list", "resource", "entry", "result", "failed", "error", err)
 		return writeServiceError(c, err)

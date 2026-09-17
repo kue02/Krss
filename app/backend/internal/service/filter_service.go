@@ -100,6 +100,9 @@ type FilterService interface {
 	Update(ctx context.Context, id int64, params FilterWriteParams) (model.Filter, error)
 	Delete(ctx context.Context, id int64, revert bool) (int64, error)
 	Preview(ctx context.Context, params FilterWriteParams, limit int) (FilterPreviewResult, error)
+	// CountViewMatches 数每条「视图」（filters.kind = view）当前命中的条目数 —— 侧栏「收藏 / 视图」的数量角标用。
+	// contentType 非 nil 时只数该内容类型（与列表跟进当前内容类型的行为一致）。
+	CountViewMatches(ctx context.Context, contentType *string) (map[int64]int, error)
 	// ApplyToEntries 对「本次刚入库的新条目」执行规则：首个命中即停，命中即写标记 + 审计 + 计数。
 	ApplyToEntries(ctx context.Context, feed model.Feed, entries []model.Entry) (int, error)
 	// ApplyToHistory 手动回溯：把规则链补跑到某条规则作用域内的历史条目上（幂等）。
@@ -261,6 +264,68 @@ func (s *filterService) Delete(ctx context.Context, id int64, revert bool) (int6
 }
 
 // Preview 干跑：不写任何数据，只回答「这条规则会命中哪些、会影响多少条」。
+// CountViewMatches 数每条「视图」当前命中的条目数（侧栏数量角标）。
+//
+// 语义刻意与「按视图取列表」（entryService.listByView）**逐条对齐**，否则数字和点进去看到的条数会对不上：
+// 候选条目同样按内容类型过滤、默认隐藏被静音的条目、上限 viewCountScanLimit；
+// 判定同样用 ScopeMatches + MatchConditions（AI 条件不注入求值函数 = 判不成，浏览侧不花钱）。
+// 视图是个位数，所以一次把所有候选读出来再逐条对每个视图判定，比「每个视图各查一遍」省掉多次全量扫描。
+func (s *filterService) CountViewMatches(ctx context.Context, contentType *string) (map[int64]int, error) {
+	all, err := s.filters.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	views := make([]model.Filter, 0, len(all))
+	for _, filter := range all {
+		if filter.Kind == model.FilterKindView {
+			views = append(views, filter)
+		}
+	}
+	counts := make(map[int64]int, len(views))
+	for _, view := range views {
+		// 0 命中的视图也要出现在结果里：前端把它当「没有数字」渲染，
+		// 但契约上「查不到这条视图」与「命中 0 条」是两回事，别让调用方猜。
+		counts[view.ID] = 0
+	}
+	if len(views) == 0 {
+		return counts, nil
+	}
+
+	feedByID, folderNames, err := s.loadFeedContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	candidates, err := s.entries.List(ctx, repository.EntryListFilter{
+		ContentType: contentType,
+		Limit:       viewCountScanLimit,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	for _, entry := range candidates {
+		feed, ok := feedByID[entry.FeedID]
+		if !ok {
+			continue
+		}
+		entryCtx := buildEntryContext(entry, feed, folderNames)
+		for _, view := range views {
+			if !ScopeMatches(view, feed) {
+				continue
+			}
+			if MatchConditions(entryCtx, view.Conditions, now, nil) {
+				counts[view.ID]++
+			}
+		}
+	}
+
+	logger.Debug("filter view counts", "module", "service", "action", "count", "resource", "filter", "result", "ok",
+		"views", len(views), "scanned", len(candidates))
+	return counts, nil
+}
+
 func (s *filterService) Preview(ctx context.Context, params FilterWriteParams, limit int) (FilterPreviewResult, error) {
 	if err := ValidateFilterParams(params); err != nil {
 		return FilterPreviewResult{}, err
@@ -1136,6 +1201,10 @@ func newWebhookEntry(entry model.Entry, feed model.Feed) FilterWebhookEntry {
 }
 
 // scopeListFilter 预览时按作用范围取最近 N 条（包含已静音条目，便于看清规则全貌）。
+// viewCountScanLimit 数视图命中数时最多扫多少条候选（与列表的 viewScanLimit 同理，防一次拖垮实例）。
+// 超过这个数时角标显示的是「至少这么多」，不是精确值 —— 本机库（几千条）远在上面。
+const viewCountScanLimit = 5000
+
 func scopeListFilter(params FilterWriteParams, limit int) repository.EntryListFilter {
 	filter := repository.EntryListFilter{Limit: limit, IncludeMuted: true}
 	switch params.ScopeType {

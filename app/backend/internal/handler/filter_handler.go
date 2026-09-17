@@ -37,6 +37,7 @@ func (h *FilterHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/filters/:id/apply", h.ApplyToHistory)
 	g.POST("/filters/:id/revert", h.Revert)
 	g.GET("/filters/:id/matches", h.ListMatches)
+	g.GET("/filters/view-counts", h.ViewCounts)
 }
 
 type filterConditionRequest struct {
@@ -292,6 +293,35 @@ func (h *FilterHandler) Delete(c echo.Context) error {
 
 	logger.Info("filter deleted", "module", "handler", "action", "delete", "resource", "filter", "result", "ok", "filter_id", id, "reverted", reverted)
 	return c.JSON(http.StatusOK, filterRevertResponse{Reverted: reverted})
+}
+
+// ViewCounts 数每条保存视图当前命中的条目数（侧栏「收藏 / 视图」的数量角标）。
+// @Summary Count entries matched by each saved view
+// @Tags filters
+// @Produce json
+// @Param contentType query string false "Only count this content type (article|picture|notification|social)"
+// @Success 200 {object} viewCountsResponse
+// @Failure 500 {object} errorResponse
+// @Router /filters/view-counts [get]
+func (h *FilterHandler) ViewCounts(c echo.Context) error {
+	var contentType *string
+	if raw := strings.TrimSpace(c.QueryParam("contentType")); raw != "" {
+		contentType = &raw
+	}
+	counts, err := h.service.CountViewMatches(c.Request().Context(), contentType)
+	if err != nil {
+		return writeServiceError(c, err)
+	}
+	payload := make(map[string]int, len(counts))
+	for id, count := range counts {
+		payload[strconv.FormatInt(id, 10)] = count
+	}
+	return c.JSON(http.StatusOK, viewCountsResponse{Counts: payload})
+}
+
+// viewCountsResponse 视图 id（字符串化，对齐其它计数接口）→ 命中条目数。
+type viewCountsResponse struct {
+	Counts map[string]int `json:"counts"`
 }
 
 // Preview dry-runs a rule body without writing anything.

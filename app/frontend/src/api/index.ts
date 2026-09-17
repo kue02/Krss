@@ -10,6 +10,7 @@ import type {
   ImportTask,
   MarkAllReadParams,
   StarredCountResponse,
+  ViewCountsResponse,
   UnreadCountsResponse,
 } from "@/types/api";
 import type {
@@ -673,8 +674,23 @@ export async function updateEntryStarred(
   });
 }
 
-export async function getStarredCount(): Promise<StarredCountResponse> {
-  return request<StarredCountResponse>("/api/starred-count");
+export async function getStarredCount(
+  contentType?: ContentType,
+): Promise<StarredCountResponse> {
+  // contentType：侧栏「只显示当前内容类型的星标」那一档的数
+  const query = contentType ? `?contentType=${encodeURIComponent(contentType)}` : "";
+  return request<StarredCountResponse>(`/api/starred-count${query}`);
+}
+
+/**
+ * 每条保存视图当前命中的条目数（侧栏「视图」那一段的数量角标）。
+ * 后端一次扫描算出全部视图的数，所以侧栏只发一个请求。
+ */
+export async function getViewCounts(
+  contentType?: ContentType,
+): Promise<ViewCountsResponse> {
+  const query = contentType ? `?contentType=${encodeURIComponent(contentType)}` : "";
+  return request<ViewCountsResponse>(`/api/filters/view-counts${query}`);
 }
 
 /**

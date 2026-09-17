@@ -192,18 +192,18 @@ func (mr *MockEntryRepositoryMockRecorder) GetIDsByHashes(ctx, feedID, hashes an
 }
 
 // GetStarredCount mocks base method.
-func (m *MockEntryRepository) GetStarredCount(ctx context.Context) (int, error) {
+func (m *MockEntryRepository) GetStarredCount(ctx context.Context, contentType *string) (int, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetStarredCount", ctx)
+	ret := m.ctrl.Call(m, "GetStarredCount", ctx, contentType)
 	ret0, _ := ret[0].(int)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetStarredCount indicates an expected call of GetStarredCount.
-func (mr *MockEntryRepositoryMockRecorder) GetStarredCount(ctx any) *gomock.Call {
+func (mr *MockEntryRepositoryMockRecorder) GetStarredCount(ctx, contentType any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStarredCount", reflect.TypeOf((*MockEntryRepository)(nil).GetStarredCount), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStarredCount", reflect.TypeOf((*MockEntryRepository)(nil).GetStarredCount), ctx, contentType)
 }
 
 // List mocks base method.

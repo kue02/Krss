@@ -5,6 +5,7 @@ import {
   createFilterException,
   deleteFilter,
   listFilterMatches,
+  getViewCounts,
   listFilters,
   parseFilterNaturalLanguage,
   previewFilter,
@@ -12,6 +13,7 @@ import {
   unmuteEntry,
   updateFilter,
 } from "@/api";
+import type { ContentType } from "@/types/api";
 import type { FilterWritePayload } from "@/types/filters";
 
 function filtersQueryKey() {
@@ -98,6 +100,7 @@ export function useUnmuteEntry() {
       queryClient.invalidateQueries({ queryKey: ["entries"] });
       queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
       queryClient.invalidateQueries({ queryKey: ["filters"] });
+      queryClient.invalidateQueries({ queryKey: ["viewCounts"] });
     },
   });
 }
@@ -111,6 +114,7 @@ export function useApplyFilterHistory() {
       applyFilterToHistory(variables.id, variables.limit ?? 500),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["filters"] });
+      queryClient.invalidateQueries({ queryKey: ["viewCounts"] });
       queryClient.invalidateQueries({ queryKey: ["entries"] });
       queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
       queryClient.invalidateQueries({ queryKey: ["filterMatches"] });
@@ -139,9 +143,30 @@ export function useCreateFilterException() {
     mutationFn: (entryId: string) => createFilterException(entryId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["filters"] });
+      queryClient.invalidateQueries({ queryKey: ["viewCounts"] });
       queryClient.invalidateQueries({ queryKey: ["entries"] });
       queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
       queryClient.invalidateQueries({ queryKey: ["filterMatches"] });
     },
   });
+}
+
+/**
+ * 每条保存视图当前命中的条目数（侧栏「视图」那一段的数量角标）。
+ *
+ * 后端一次扫描算出全部视图的数，所以这里一个请求就够；数要跟进当前内容类型，
+ * 所以缓存键带上 contentType。条目的已读/星标、视图本身的增删改都会改变这个数，
+ * 相关 mutation 里会 invalidate 这个键（见 markAsRead / useCreateFilter 等）。
+ */
+export function useViewCounts(contentType?: ContentType) {
+  return useQuery({
+    queryKey: viewCountsQueryKey(contentType),
+    queryFn: () => getViewCounts(contentType),
+    staleTime: 30_000,
+    refetchInterval: 120_000,
+  });
+}
+
+export function viewCountsQueryKey(contentType?: ContentType) {
+  return ["viewCounts", contentType ?? "all"] as const;
 }

@@ -294,7 +294,7 @@ func TestEntryHandler_GetStarredCount_Success(t *testing.T) {
 	c, rec := newTestContext(e, req)
 
 	mockService.EXPECT().
-		GetStarredCount(gomock.Any()).
+		GetStarredCount(gomock.Any(), gomock.Any()).
 		Return(42, nil)
 
 	err := h.GetStarredCount(c)

@@ -16,7 +16,12 @@ import {
   getStarredCount,
 } from "@/api";
 import { countLoadedEntries } from "@/lib/entry-pagination";
-import type { Entry, EntryListParams, MarkAllReadParams } from "@/types/api";
+import type {
+  ContentType,
+  Entry,
+  EntryListParams,
+  MarkAllReadParams,
+} from "@/types/api";
 
 function entriesQueryKey(params: EntryListParams) {
   return ["entries", params] as const;
@@ -121,6 +126,8 @@ export function useMarkAsRead() {
     onSuccess: (_, { skipInvalidate }) => {
       // Always update unread counts immediately
       queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
+      // 已读/星标都是视图条件里会用到的字段，命中数要跟着刷新
+      queryClient.invalidateQueries({ queryKey: ["viewCounts"] });
       // Only invalidate entries if not skipped (e.g., not in lightbox/detail view)
       if (!skipInvalidate) {
         queryClient.invalidateQueries({ queryKey: ["entries"] });
@@ -200,6 +207,8 @@ export function useMarkManyAsRead() {
 
     onSuccess: (_, { skipInvalidate }) => {
       queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
+      // 已读/星标都是视图条件里会用到的字段，命中数要跟着刷新
+      queryClient.invalidateQueries({ queryKey: ["viewCounts"] });
       if (!skipInvalidate) {
         queryClient.invalidateQueries({ queryKey: ["entries"] });
       }
@@ -262,14 +271,17 @@ export function useMarkAllAsRead() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["entries"] });
       queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
+      // 已读/星标都是视图条件里会用到的字段，命中数要跟着刷新
+      queryClient.invalidateQueries({ queryKey: ["viewCounts"] });
     },
   });
 }
 
-export function useStarredCount() {
+export function useStarredCount(contentType?: ContentType) {
   return useQuery({
-    queryKey: ["starredCount"],
-    queryFn: getStarredCount,
+    // 两档星标各一个数（全部 / 只当前内容类型），缓存键要带内容类型
+    queryKey: ["starredCount", contentType ?? "all"],
+    queryFn: () => getStarredCount(contentType),
     staleTime: 30_000,
     refetchInterval: 60_000,
   });
@@ -287,6 +299,7 @@ export function useMarkAsStarred() {
         return { ...old, starred };
       });
       queryClient.invalidateQueries({ queryKey: ["starredCount"] });
+      queryClient.invalidateQueries({ queryKey: ["viewCounts"] });
       queryClient.invalidateQueries({ queryKey: ["entries"] });
     },
   });

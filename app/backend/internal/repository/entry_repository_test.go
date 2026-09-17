@@ -378,9 +378,21 @@ func TestEntryRepository_GetStarredCount(t *testing.T) {
 	testutil.SeedEntry(t, db, model.Entry{FeedID: feedID, Starred: true})
 	testutil.SeedEntry(t, db, model.Entry{FeedID: feedID, Starred: false})
 
-	count, err := repo.GetStarredCount(ctx)
+	count, err := repo.GetStarredCount(ctx, nil)
 	require.NoError(t, err)
 	require.Equal(t, 1, count)
+
+	// 按内容类型数（侧栏「只显示当前内容类型的星标」那一档）：
+	// 种子订阅默认就是 article 类型，所以这一档应数到 1；换个类型就是 0
+	article := "article"
+	onlyArticle, err := repo.GetStarredCount(ctx, &article)
+	require.NoError(t, err)
+	require.Equal(t, 1, onlyArticle)
+
+	social := "social"
+	onlySocial, err := repo.GetStarredCount(ctx, &social)
+	require.NoError(t, err)
+	require.Equal(t, 0, onlySocial)
 }
 
 func TestParseTimePtr(t *testing.T) {

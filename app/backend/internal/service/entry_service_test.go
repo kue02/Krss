@@ -597,10 +597,10 @@ func TestEntryService_GetStarredCount_Success(t *testing.T) {
 	ctx := context.Background()
 
 	mockEntries.EXPECT().
-		GetStarredCount(ctx).
+		GetStarredCount(ctx, nil).
 		Return(42, nil)
 
-	count, err := svc.GetStarredCount(ctx)
+	count, err := svc.GetStarredCount(ctx, "")
 	require.NoError(t, err)
 	require.Equal(t, 42, count)
 }
@@ -618,11 +618,35 @@ func TestEntryService_GetStarredCount_Error(t *testing.T) {
 	dbErr := errors.New("count error")
 
 	mockEntries.EXPECT().
-		GetStarredCount(ctx).
+		GetStarredCount(ctx, nil).
 		Return(0, dbErr)
 
-	_, err := svc.GetStarredCount(ctx)
+	_, err := svc.GetStarredCount(ctx, "")
 	require.ErrorIs(t, err, dbErr)
+}
+
+func TestEntryService_GetStarredCount_WithContentType(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockEntries := mock.NewMockEntryRepository(ctrl)
+	mockFeeds := mock.NewMockFeedRepository(ctrl)
+	mockFolders := mock.NewMockFolderRepository(ctrl)
+	svc := service.NewEntryService(mockEntries, mockFeeds, mockFolders, nil)
+	ctx := context.Background()
+
+	article := "article"
+	mockEntries.EXPECT().
+		GetStarredCount(ctx, gomock.Any()).
+		DoAndReturn(func(_ context.Context, contentType *string) (int, error) {
+			require.NotNil(t, contentType)
+			require.Equal(t, article, *contentType)
+			return 7, nil
+		})
+
+	count, err := svc.GetStarredCount(ctx, " article ")
+	require.NoError(t, err)
+	require.Equal(t, 7, count)
 }
 
 func TestEntryService_List_WithFilters(t *testing.T) {

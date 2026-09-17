@@ -101,6 +101,11 @@ export interface UnreadCountsResponse {
   counts: Record<string, number>;
 }
 
+/** 视图 id（字符串化）→ 该视图当前命中的条目数（GET /api/filters/view-counts）。 */
+export interface ViewCountsResponse {
+  counts: Record<string, number>;
+}
+
 export interface StarredCountResponse {
   count: number;
 }
