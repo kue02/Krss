@@ -9,6 +9,7 @@ import { useSelection } from "@/hooks/useSelection";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { SearchIcon } from "@/components/ui/icons";
 import { formatRelativeTime } from "@/lib/date-utils";
+import { FeedAvatar } from "@/components/ui/feed-avatar";
 import type { Entry } from "@/types/api";
 
 interface SearchModalProps {
@@ -34,6 +35,18 @@ export function SearchModal({ open, onOpenChange }: SearchModalProps) {
   const { selectEntry } = useSelection();
   const { data: feeds } = useFeeds();
   const { mutate: markAsRead } = useMarkAsRead();
+
+  /**
+   * 条目结果只带 feedId，而用户搜到一条要能一眼看出「这是哪个订阅的」。
+   * 订阅卡片已经有本地列表（NextFlux 也是本地过滤名称/地址），顺手建个查表。
+   */
+  const feedById = useMemo(() => {
+    const map = new Map<string, { title: string; iconPath?: string }>();
+    for (const feed of feeds ?? []) {
+      map.set(feed.id, { title: feed.title, iconPath: feed.iconPath });
+    }
+    return map;
+  }, [feeds]);
 
   const [tab, setTab] = useState<SearchTab>("articles");
   const [keyword, setKeyword] = useState("");
@@ -207,6 +220,12 @@ export function SearchModal({ open, onOpenChange }: SearchModalProps) {
                       <span className="min-w-0 flex-1 truncate">
                         {entry.title || entry.url || entry.id}
                       </span>
+                      {/* 来源名标签：条目只带 feedId，命中后要能一眼看出「来自哪个订阅」 */}
+                      {feedById.get(entry.feedId)?.title ? (
+                        <span className="shrink-0 rounded-[4px] border border-border/60 bg-muted/40 px-1.5 py-px text-[11px] font-medium leading-4 text-muted-foreground">
+                          {feedById.get(entry.feedId)?.title}
+                        </span>
+                      ) : null}
                       <span className="shrink-0 font-mono text-xs text-muted-foreground">
                         {entry.publishedAt
                           ? formatRelativeTime(entry.publishedAt, t)
@@ -224,6 +243,12 @@ export function SearchModal({ open, onOpenChange }: SearchModalProps) {
                         index === selectedIndex ? "bg-item-hover" : "hover:bg-item-hover/60",
                       )}
                     >
+                      {/* 订阅头像：有 favicon 用 favicon，没有退成通用 RSS 图标 */}
+                      <FeedAvatar
+                        iconPath={feed.iconPath}
+                        size={20}
+                        rounded="circle"
+                      />
                       {/* 只显示名称：订阅地址里带着 RSSHub 的 key，没必要摊在搜索结果里 */}
                       <span className="min-w-0 flex-1 truncate">
                         {feed.title}

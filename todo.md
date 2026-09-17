@@ -22,7 +22,12 @@
 > 账户菜单 `FeedList/components/ProfileButton.jsx`；feed/folder 右键 `FeedList/components/FeedItem.jsx` + `FeedsGroupContent.jsx`；
 > 通用菜单 `ui/ContextMenu.jsx`。**Nextflux 没有自动化页**，那部分没有可抄的形态。
 
-- [ ] **1. 搜索结果的来源标签 / 头像**：条目结果在每条后面补「订阅来源名」标签；订阅结果前面补订阅头像（复用 `feed-icon`）
+- [x] **1. 搜索结果的来源标签 / 头像**：条目行末尾补「来源名」标签（细边小贴纸），订阅行前补 favicon 头像
+      —— 新增共享组件 `src/components/ui/feed-avatar.tsx`（有 favicon 用 favicon、失败/缺失退成通用 RSS 图标，
+      并统一带上 width/height + lazy + async 解码）；`FeedIcon` 补 `style` 支持显式尺寸
+      —— 实测（ego-browser 真点）：文章档每行 tag = `Twitter @陈桂林` / `折腾啥 - Telegram Channel` 等；
+      订阅档每行 `<img src="/icons/github.com.ico">` 等
+      —— 记一笔：`/icons/${iconPath}` + 失败兜底这套逻辑在项目里已散落 5 处，新代码统一走 `FeedAvatar`，老代码按需迁移
 - [x] **2. 菜单对齐 Nextflux**
   - [x] 账户（Kue）单击弹出框：**改用 HeroUI v3 `Dropdown`**（照 Nextflux `ProfileButton` 的结构：Popover placement="top left" + Menu onAction + Item id/textValue + lucide 图标），**已去掉「已加星标」**
         —— 实测：触发器类名 `dropdown__trigger`、菜单 4 项（个人资料/设置/快捷键/退出登录）、宽 187px、无「已加星标」（ego-browser 真点）
