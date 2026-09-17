@@ -168,15 +168,6 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
     const isExpanded = isSocialView && Boolean(expandedContent);
     // 源常在正文开头重复标题，时间线里标题已单独渲染，去掉重复的首段；
     // 图片也从正文摘掉，交给下面的缩略图行（对齐 Folo 的 noMedia + MediaGallery）
-    const socialBody = useMemo(
-      () =>
-        removeContentSeparators(
-          stripContentImages(
-            stripDuplicatedTitle(expandedContent, displayTitle),
-          ),
-        ),
-      [expandedContent, displayTitle],
-    );
     // 社交帖常把正文开头当成标题：这时不单独渲染标题，避免同一句话出现两次
     const titleIsBodyPrefix = useMemo(() => {
       // 源的标题往往是「正文掐掉换行后的版本」：两边都去掉全部空白再比前缀，
@@ -188,6 +179,18 @@ export const EntryListItem = forwardRef<HTMLDivElement, EntryListItemProps>(
       if (title.length < 6 || !raw) return false;
       return raw.startsWith(title);
     }, [displayTitle, entry.content]);
+    /**
+     * 正文正文：标题重复的开头只在「标题另渲染一份」时才剥掉。
+     * 反之（标题就是正文开头、标题不渲染）必须留全文 —— 否则正文被剥掉一半，
+     * 引用推文那种条目就只剩底下的引文了（用户报的「只显示引文内容」）。
+     */
+    const socialBody = useMemo(() => {
+      const base = stripContentImages(expandedContent);
+      const withoutDuplicate = titleIsBodyPrefix
+        ? base
+        : stripDuplicatedTitle(base, displayTitle);
+      return removeContentSeparators(withoutDuplicate);
+    }, [expandedContent, displayTitle, titleIsBodyPrefix]);
 
     // 社交平台与作者（从条目链接解析，用于显示 @handle）
     const socialSource = useMemo(
