@@ -14,7 +14,9 @@ import (
 )
 
 type EntryListFilter struct {
-	FeedID       *int64
+	FeedID *int64
+	// FeedIDs 多选订阅（规则/视图的范围支持多选，用户 11-16）；非空时优先于 FeedID。
+	FeedIDs      []int64
 	FolderID     *int64
 	ContentType  *string
 	UnreadOnly   bool
@@ -176,7 +178,14 @@ func (r *entryRepository) List(ctx context.Context, filter EntryListFilter) ([]m
 		args = append(args, *filter.ContentType)
 	}
 
-	if filter.FeedID != nil {
+	if len(filter.FeedIDs) > 0 {
+		placeholders := strings.Repeat("?,", len(filter.FeedIDs))
+		placeholders = placeholders[:len(placeholders)-1]
+		conditions = append(conditions, "e.feed_id IN ("+placeholders+")")
+		for _, id := range filter.FeedIDs {
+			args = append(args, id)
+		}
+	} else if filter.FeedID != nil {
 		conditions = append(conditions, "e.feed_id = ?")
 		args = append(args, *filter.FeedID)
 	}

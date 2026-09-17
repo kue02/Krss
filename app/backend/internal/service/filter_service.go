@@ -43,8 +43,10 @@ type FilterWriteParams struct {
 	Enabled    *bool                   `json:"enabled"`
 	Position   *int                    `json:"position"`
 	Kind       string                  `json:"kind"`
-	ScopeType  string                  `json:"scopeType"`
-	ScopeID    *int64                  `json:"scopeId"`
+	ScopeType string `json:"scopeType"`
+	ScopeID   *int64 `json:"scopeId"`
+	// ScopeIDs 多选订阅（scope_type=feed；空 = 用 ScopeID 的单个）。用户 11-16：规则范围里订阅可多选。
+	ScopeIDs   []int64                 `json:"scopeIds"`
 	Conditions []model.FilterCondition `json:"conditions"`
 	Actions    model.FilterActions     `json:"actions"`
 }
@@ -171,6 +173,7 @@ func (s *filterService) Create(ctx context.Context, params FilterWriteParams) (m
 		Kind:       normalizeKind(params.Kind),
 		ScopeType:  params.ScopeType,
 		ScopeID:    params.ScopeID,
+		ScopeIDs:   normalizeScopeIDs(params.ScopeIDs),
 		Conditions: params.Conditions,
 		Actions:    effectiveActions(params.Kind, params.Actions),
 	}
@@ -212,6 +215,7 @@ func (s *filterService) Update(ctx context.Context, id int64, params FilterWrite
 		current.ScopeType = model.FilterScopeAll
 	}
 	current.ScopeID = params.ScopeID
+	current.ScopeIDs = normalizeScopeIDs(params.ScopeIDs)
 	current.Conditions = params.Conditions
 	current.Actions = effectiveActions(params.Kind, params.Actions)
 	if params.Enabled != nil {
@@ -225,6 +229,29 @@ func (s *filterService) Update(ctx context.Context, id int64, params FilterWrite
 	}
 	logger.Info("filter updated", "module", "service", "action", "update", "resource", "filter", "result", "ok", "filter_id", id)
 	return s.filters.GetByID(ctx, id)
+}
+
+// normalizeScopeIDs 多选订阅集合：去重、丢掉非法值；空集合 = 「没多选」（回落到单个 scope_id）。
+func normalizeScopeIDs(ids []int64) []int64 {
+	if len(ids) == 0 {
+		return nil
+	}
+	seen := make(map[int64]struct{}, len(ids))
+	out := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // normalizeKind 空值按 rule 处理（老数据与不带 kind 的调用都当规则）。
@@ -352,12 +379,36 @@ func (s *filterService) Preview(ctx context.Context, params FilterWriteParams, l
 
 	for _, entry := range entries {
 		feed := feedByID[entry.FeedID]
-		if !scopeMatches(params.ScopeType, params.ScopeID, feed) {
+		if !scopeMatches(params.ScopeType, params.ScopeID, params.ScopeIDs, feed) {
 			continue
 		}
 		result.Scanned++
 		entryCtx := buildEntryContext(entry, feed, folderNames)
-		effective, applies := ResolveActions(MatchConditions(entryCtx, params.Conditions, now, aiRun.verdict), params.Actions)
+		conditionsMatched := MatchConditions(entryCtx, params.Conditions, now, aiRun.verdict)
+
+		// 视图没有动作（存库前就被 effectiveActions 清空了），判定只能看条件本身 ——
+		// 否则「预览」一个视图永远显示 0 命中（实测：条件在全库命中 628 条，预览却回 matchedCount: 0）。
+		if normalizeKind(params.Kind) == model.FilterKindView {
+			if !conditionsMatched {
+				continue
+			}
+			result.MatchedCount++
+			if len(result.Matched) < 50 {
+				title := ""
+				if entry.Title != nil {
+					title = *entry.Title
+				}
+				result.Matched = append(result.Matched, FilterPreviewItem{
+					ID:          entry.ID,
+					Title:       title,
+					FeedTitle:   feed.Title,
+					PublishedAt: entry.PublishedAt,
+				})
+			}
+			continue
+		}
+
+		effective, applies := ResolveActions(conditionsMatched, params.Actions)
 		if !applies {
 			continue
 		}
@@ -467,7 +518,7 @@ func (s *filterService) ApplyToHistory(ctx context.Context, filterID int64, limi
 		scanned++
 		entryCtx := buildEntryContext(entry, feed, folderNames)
 		for _, filter := range candidates {
-			if !scopeMatches(filter.ScopeType, filter.ScopeID, feed) {
+			if !scopeMatches(filter.ScopeType, filter.ScopeID, filter.ScopeIDs, feed) {
 				continue
 			}
 			var judge AIVerdictFunc
@@ -542,7 +593,7 @@ func (s *filterService) ApplyToEntries(ctx context.Context, feed model.Feed, ent
 		if !filter.Enabled || len(filter.Conditions) == 0 && filter.Actions.IsEmpty() {
 			continue
 		}
-		if !scopeMatches(filter.ScopeType, filter.ScopeID, feed) {
+		if !scopeMatches(filter.ScopeType, filter.ScopeID, filter.ScopeIDs, feed) {
 			continue
 		}
 		candidates = append(candidates, filter)
@@ -707,12 +758,21 @@ func (s *filterService) loadFeedContext(ctx context.Context) (map[int64]model.Fe
 
 // ScopeMatches 判断规则的作用范围是否覆盖这个订阅。
 func ScopeMatches(filter model.Filter, feed model.Feed) bool {
-	return scopeMatches(filter.ScopeType, filter.ScopeID, feed)
+	return scopeMatches(filter.ScopeType, filter.ScopeID, filter.ScopeIDs, feed)
 }
 
-func scopeMatches(scopeType string, scopeID *int64, feed model.Feed) bool {
+func scopeMatches(scopeType string, scopeID *int64, scopeIDs []int64, feed model.Feed) bool {
 	switch scopeType {
 	case model.FilterScopeFeed:
+		// 多选订阅优先：集合里命中即可（用户 11-16）；没多选时沿用单个 scope_id
+		if len(scopeIDs) > 0 {
+			for _, id := range scopeIDs {
+				if id == feed.ID {
+					return true
+				}
+			}
+			return false
+		}
 		return scopeID != nil && *scopeID == feed.ID
 	case model.FilterScopeFolder:
 		return scopeID != nil && feed.FolderID != nil && *scopeID == *feed.FolderID
@@ -1209,7 +1269,11 @@ func scopeListFilter(params FilterWriteParams, limit int) repository.EntryListFi
 	filter := repository.EntryListFilter{Limit: limit, IncludeMuted: true}
 	switch params.ScopeType {
 	case model.FilterScopeFeed:
-		filter.FeedID = params.ScopeID
+		if len(params.ScopeIDs) > 0 {
+			filter.FeedIDs = params.ScopeIDs
+		} else {
+			filter.FeedID = params.ScopeID
+		}
 	case model.FilterScopeFolder:
 		filter.FolderID = params.ScopeID
 	}
@@ -1230,8 +1294,13 @@ func ValidateFilterParams(params FilterWriteParams) error {
 	}
 	switch params.ScopeType {
 	case "", model.FilterScopeAll:
-	case model.FilterScopeFolder, model.FilterScopeFeed:
+	case model.FilterScopeFolder:
 		if params.ScopeID == nil || *params.ScopeID == 0 {
+			return ErrInvalidFilter
+		}
+	case model.FilterScopeFeed:
+		// 订阅范围：单个 scope_id 或多个 scope_ids 都行，但不能一个都没有
+		if len(normalizeScopeIDs(params.ScopeIDs)) == 0 && (params.ScopeID == nil || *params.ScopeID == 0) {
 			return ErrInvalidFilter
 		}
 	default:

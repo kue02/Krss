@@ -442,6 +442,13 @@ func runMigrations(db *sql.DB) error {
 		return fmt.Errorf("create entry_ai_judgements index: %w", err)
 	}
 
+	// Migration 24: 规则/视图的「范围」支持多选订阅（用户 11-16）。
+	//   filters.scope_ids —— JSON 数组（订阅 id）；空 = 沿用 scope_id 的单个订阅/分类语义。
+	//   所以老数据不用回填：scope_type='feed' 且 scope_ids 有值时按集合判定，否则仍看 scope_id。
+	if err := addColumnIfMissing(db, "filters", "scope_ids", `ALTER TABLE filters ADD COLUMN scope_ids TEXT`); err != nil {
+		return err
+	}
+
 	return nil
 }
 

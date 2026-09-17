@@ -106,6 +106,8 @@ export interface FilterRule {
   kind?: FilterKind;
   scopeType: FilterScopeType;
   scopeId?: string;
+  /** 多选订阅（范围 = 订阅时可多选，用户 11-16）；空/缺省 = 用 scopeId 的单个 */
+  scopeIds?: string[];
   conditions: FilterCondition[];
   actions: FilterActions;
   matchCount: number;
@@ -124,6 +126,8 @@ export interface FilterWritePayload {
   kind?: FilterKind;
   scopeType: FilterScopeType;
   scopeId?: string;
+  /** 多选订阅（范围 = 订阅时可多选，用户 11-16）；空/缺省 = 用 scopeId 的单个 */
+  scopeIds?: string[];
   conditions: FilterCondition[];
   actions: FilterActions;
 }
@@ -133,6 +137,8 @@ export interface FilterDraft {
   name: string;
   scopeType: FilterScopeType;
   scopeId?: string;
+  /** 多选订阅（范围 = 订阅时可多选，用户 11-16） */
+  scopeIds?: string[];
   conditions: FilterCondition[];
   actions: FilterActions;
   /** 模型的一句话解释 */

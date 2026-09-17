@@ -177,7 +177,11 @@ func (s *entryService) listByView(ctx context.Context, viewID int64, params Entr
 	}
 	switch view.ScopeType {
 	case model.FilterScopeFeed:
-		scope.FeedID = view.ScopeID
+		if len(view.ScopeIDs) > 0 {
+			scope.FeedIDs = view.ScopeIDs
+		} else {
+			scope.FeedID = view.ScopeID
+		}
 	case model.FilterScopeFolder:
 		scope.FolderID = view.ScopeID
 	}

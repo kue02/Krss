@@ -742,7 +742,8 @@
     "unsaved_description": "这条规则还没保存。要保存了再走，还是直接放弃这次修改？",
     "unsaved_save": "保存并关闭",
     "unsaved_discard": "放弃更改",
-    "unsaved_keep_editing": "继续编辑"
+    "unsaved_keep_editing": "继续编辑",
+    "scope_feed_multi_hint": "可多选：范围会作用在选中的这几个源上"
   },
   "search": {
     "title": "搜索",

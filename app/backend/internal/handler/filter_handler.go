@@ -73,6 +73,7 @@ type filterWriteRequest struct {
 	Kind       string                   `json:"kind"`
 	ScopeType  string                   `json:"scopeType"`
 	ScopeID    *string                  `json:"scopeId"`
+	ScopeIDs   []string                 `json:"scopeIds"`
 	Conditions []filterConditionRequest `json:"conditions"`
 	Actions    filterActionsPayload     `json:"actions"`
 }
@@ -85,6 +86,7 @@ type filterResponse struct {
 	Kind          string                   `json:"kind"`
 	ScopeType     string                   `json:"scopeType"`
 	ScopeID       *string                  `json:"scopeId,omitempty"`
+	ScopeIDs      []string                 `json:"scopeIds,omitempty"`
 	Conditions    []filterConditionRequest `json:"conditions"`
 	Actions       filterActionsPayload     `json:"actions"`
 	MatchCount    int64                    `json:"matchCount"`
@@ -581,6 +583,17 @@ func bindFilterWriteRequest(c echo.Context) (service.FilterWriteParams, error) {
 		}
 		params.ScopeID = &scopeID
 	}
+	// 多选订阅（用户 11-16）：同样是 snowflake 字符串
+	for _, raw := range req.ScopeIDs {
+		if raw == "" {
+			continue
+		}
+		scopeID, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || scopeID <= 0 {
+			return service.FilterWriteParams{}, errors.New("invalid scopeIds")
+		}
+		params.ScopeIDs = append(params.ScopeIDs, scopeID)
+	}
 
 	conditions := make([]model.FilterCondition, len(req.Conditions))
 	for i, condition := range req.Conditions {
@@ -631,6 +644,13 @@ func toFilterResponse(filter model.Filter) filterResponse {
 		MatchCount: filter.MatchCount,
 		CreatedAt:  filter.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:  filter.UpdatedAt.UTC().Format(time.RFC3339),
+	}
+	// 多选订阅：id 一律以字符串出（snowflake 超出 JS 安全整数范围）
+	if len(filter.ScopeIDs) > 0 {
+		response.ScopeIDs = make([]string, 0, len(filter.ScopeIDs))
+		for _, id := range filter.ScopeIDs {
+			response.ScopeIDs = append(response.ScopeIDs, idToString(id))
+		}
 	}
 	response.Conditions = make([]filterConditionRequest, len(filter.Conditions))
 	for i, condition := range filter.Conditions {

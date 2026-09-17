@@ -745,7 +745,8 @@
     "unsaved_description": "This rule has unsaved changes. Save before leaving, or discard them?",
     "unsaved_save": "Save and close",
     "unsaved_discard": "Discard",
-    "unsaved_keep_editing": "Keep editing"
+    "unsaved_keep_editing": "Keep editing",
+    "scope_feed_multi_hint": "Multi-select: the scope covers every selected feed"
   },
   "search": {
     "title": "Search",

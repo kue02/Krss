@@ -1,3 +1,4 @@
+import type { ComponentProps } from "react";
 import { ListBox, ListBoxItem, Select as HeroSelect } from "@heroui/react";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +21,14 @@ export interface SelectOption {
 interface SelectProps {
   value: string;
   onChange: (value: string) => void;
+  /**
+   * 多选模式：给了 selectionMode="multiple" 就改用 values / onValuesChange
+   *（HeroUI 的 Select 原生支持多选，这里只是把「Set<string> ↔ string[]」这层转换包进来）。
+   * 用途：规则/视图的范围里「订阅」可以多选（用户 11-16）。
+   */
+  selectionMode?: "single" | "multiple";
+  values?: string[];
+  onValuesChange?: (values: string[]) => void;
   options: SelectOption[];
   placeholder?: string;
   disabled?: boolean;
@@ -36,14 +45,41 @@ export function Select({
   disabled = false,
   ariaLabel,
   className,
+  selectionMode = "single",
+  values,
+  onValuesChange,
 }: SelectProps) {
+  const multiple = selectionMode === "multiple";
+  /**
+   * 多选的 props 要显式补一次类型：HeroUI 的 SelectRootProps 只带出了 `selectedKey`，
+   * 而它内部直接包的是 react-aria-components 的 Select（运行时支持 `selectionMode` / `selectedKeys`，实测多选可用）。
+   */
+  const selectionProps = (multiple
+    ? { selectionMode: "multiple" as const, selectedKeys: new Set(values ?? []) }
+    : {
+        selectionMode: "single" as const,
+        selectedKey: value === "" ? null : value,
+      }) as ComponentProps<typeof HeroSelect>;
   return (
     <HeroSelect
+      {...selectionProps}
       aria-label={ariaLabel}
       placeholder={placeholder}
       isDisabled={disabled}
-      selectedKey={value === "" ? null : value}
-      onSelectionChange={(key) => onChange(key === null ? "" : String(key))}
+      onSelectionChange={(keys) => {
+        // HeroUI 这里沿用了单选 typing（Key | null），多选时运行时给的是 Set —— 按实际形状分派
+        const raw: unknown = keys;
+        if (multiple) {
+          if (raw === "all") {
+            onValuesChange?.(options.map((option) => option.value));
+            return;
+          }
+          onValuesChange?.(raw instanceof Set ? [...raw].map(String) : []);
+          return;
+        }
+        const key = raw === "all" ? null : (raw as string | null);
+        onChange(key === null ? "" : String(key));
+      }}
       className={cn("w-full", className)}
     >
       <HeroSelect.Trigger className="w-full">

@@ -22,6 +22,8 @@ export interface FilterEditorPreset {
   /** 预填的范围（订阅右键 / 条目侧用） */
   scopeType?: FilterWritePayload["scopeType"];
   scopeId?: string;
+  /** 多选订阅（用户 11-16）：范围 = 订阅时可多选多个源 */
+  scopeIds?: string[];
   conditions?: FilterCondition[];
   name?: string;
 }
@@ -104,6 +106,7 @@ export const useFilterEditorStore = create<FilterEditorStore>((set) => ({
         kind: rule.kind === "view" ? "view" : "rule",
         scopeType: rule.scopeType,
         scopeId: rule.scopeId,
+        scopeIds: rule.scopeIds,
         conditions: rule.conditions ?? [],
         actions: rule.actions ?? {},
       },
@@ -130,6 +133,7 @@ export const useFilterEditorStore = create<FilterEditorStore>((set) => ({
         name: draft.name,
         scopeType: draft.scopeType,
         scopeId: draft.scopeId,
+        scopeIds: draft.scopeIds,
         kind: "rule",
         conditions: draft.conditions ?? [],
         actions: draft.actions ?? {},

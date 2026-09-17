@@ -3747,6 +3747,12 @@
                 "scopeId": {
                     "type": "string"
                 },
+                "scopeIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "scopeType": {
                     "type": "string"
                 },
@@ -3789,6 +3795,12 @@
                 },
                 "scopeId": {
                     "type": "string"
+                },
+                "scopeIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "scopeType": {
                     "type": "string"

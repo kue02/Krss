@@ -3754,6 +3754,12 @@ const docTemplate = `{
                 "scopeId": {
                     "type": "string"
                 },
+                "scopeIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "scopeType": {
                     "type": "string"
                 },
@@ -3796,6 +3802,12 @@ const docTemplate = `{
                 },
                 "scopeId": {
                     "type": "string"
+                },
+                "scopeIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "scopeType": {
                     "type": "string"

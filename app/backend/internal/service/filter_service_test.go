@@ -583,3 +583,61 @@ func TestFilterService_CountViewMatches(t *testing.T) {
 	require.Equal(t, 1, byType[viewFeed.ID])
 	require.Equal(t, 0, byType[viewNone.ID])
 }
+
+// 用户 11-16：规则的范围里「订阅」可以多选 —— 集合里任一命中即算在范围内，
+// 候选集也要按这些订阅取（否则预览/回溯会看不到第二、第三个订阅的条目）。
+func TestFilterService_MultiFeedScope(t *testing.T) {
+	fixture := newFilterFixture(t)
+	ctx := context.Background()
+
+	feedA := fixture.seedFeed(t, "A号订阅", "article")
+	feedB := fixture.seedFeed(t, "B号订阅", "article")
+	feedC := fixture.seedFeed(t, "C号订阅", "article")
+	fixture.seedEntry(t, feedA.ID, "hA", "赞助商：A", timePtr(time.Now()))
+	fixture.seedEntry(t, feedB.ID, "hB", "赞助商：B", timePtr(time.Now()))
+	fixture.seedEntry(t, feedC.ID, "hC", "赞助商：C", timePtr(time.Now()))
+
+	view, err := fixture.service.Create(ctx, service.FilterWriteParams{
+		Name:       "A与B两个订阅",
+		Kind:       model.FilterKindView,
+		ScopeType:  model.FilterScopeFeed,
+		ScopeIDs:   []int64{feedA.ID, feedB.ID},
+		Conditions: []model.FilterCondition{{Field: model.FilterFieldTitle, Operator: model.FilterOpContains, Value: "赞助商"}},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []int64{feedA.ID, feedB.ID}, view.ScopeIDs)
+
+	// 读回来还在（走了一遍 JSON 序列化）
+	reloaded, err := fixture.service.List(ctx)
+	require.NoError(t, err)
+	require.Len(t, reloaded, 1)
+	require.Equal(t, []int64{feedA.ID, feedB.ID}, reloaded[0].ScopeIDs)
+
+	// 预览：只扫 A、B 两个订阅 → 命中 2 条，C 那条不在候选里。
+	// 视图没有动作，命中数必须按「条件成立」算 —— 否则预览一个视图永远显示 0 命中
+	//（线上实测：条件在全库命中 628 条，预览却回 matchedCount: 0）。
+	result, err := fixture.service.Preview(ctx, service.FilterWriteParams{
+		Name:       "A与B两个订阅",
+		Kind:       model.FilterKindView,
+		ScopeType:  model.FilterScopeFeed,
+		ScopeIDs:   []int64{feedA.ID, feedB.ID},
+		Conditions: []model.FilterCondition{{Field: model.FilterFieldTitle, Operator: model.FilterOpContains, Value: "赞助商"}},
+	}, 100)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, result.Scanned)
+	require.Equal(t, 2, result.MatchedCount)
+	require.Len(t, result.Matched, 2)
+
+	// 计数口同样只数这两个订阅
+	counts, err := fixture.service.CountViewMatches(ctx, nil)
+	require.NoError(t, err)
+	require.Equal(t, 2, counts[view.ID])
+
+	// 校验：订阅范围既没有 scope_id 也没有 scope_ids → 拒绝
+	_, err = fixture.service.Create(ctx, service.FilterWriteParams{
+		Name:      "空范围",
+		Kind:      model.FilterKindView,
+		ScopeType: model.FilterScopeFeed,
+	})
+	require.ErrorIs(t, err, service.ErrInvalidFilter)
+}

@@ -137,8 +137,10 @@ type Filter struct {
 	Enabled       bool
 	Position      int
 	Kind          string
-	ScopeType     string
-	ScopeID       *int64
+	ScopeType string
+	ScopeID   *int64
+	// ScopeIDs 多选订阅时的订阅 id 集合（scope_type='feed'；空 = 用 ScopeID 的单个）。
+	ScopeIDs      []int64
 	Conditions    []FilterCondition
 	Actions       FilterActions
 	MatchCount    int64

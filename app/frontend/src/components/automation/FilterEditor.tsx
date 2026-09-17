@@ -227,9 +227,14 @@ export function FilterEditor({
         return t("automation.webhook_needs_url");
       }
     }
+    if (payload.scopeType === "folder" && !payload.scopeId) {
+      return t("automation.invalid");
+    }
+    // 订阅范围：多选（scopeIds）或单选（scopeId）有一个就够
     if (
-      (payload.scopeType === "feed" || payload.scopeType === "folder") &&
-      !payload.scopeId
+      payload.scopeType === "feed" &&
+      !payload.scopeId &&
+      (payload.scopeIds ?? []).length === 0
     ) {
       return t("automation.invalid");
     }
@@ -266,7 +271,9 @@ export function FilterEditor({
     JSON.stringify({
       name: input.name.trim(),
       scopeType: input.scopeType,
+      // 多选订阅：顺序不参与比较，否则「换个点选顺序」会被当成改过
       scopeId: input.scopeId ?? "",
+      scopeIds: [...(input.scopeIds ?? [])].sort(),
       conditions: (input.conditions ?? []).map((condition) => ({
         logic: condition.logic ?? "and",
         negate: Boolean(condition.negate),
@@ -408,19 +415,31 @@ export function FilterEditor({
             />
           )}
           {draft.scopeType === "feed" && (
-            <Select
-              ariaLabel={t("automation.scope")}
-              value={draft.scopeId ?? ""}
-              onChange={(value) => update({ scopeId: value })}
-              options={[
-                { value: "", label: t("automation.scope_feed_placeholder") },
-                ...(feeds ?? []).map((feed) => ({
+            <div className="space-y-1">
+              {/* 订阅范围可多选（用户 11-16）：勾几个源，规则/视图就作用在这几个源上 */}
+              <Select
+                ariaLabel={t("automation.scope")}
+                selectionMode="multiple"
+                values={draft.scopeIds ?? (draft.scopeId ? [draft.scopeId] : [])}
+                onValuesChange={(values) =>
+                  update({
+                    scopeIds: values,
+                    // 多选后不再写单选字段，免得两个字段各说一套；清空时回落到未选
+                    scopeId: undefined,
+                  })
+                }
+                value=""
+                onChange={() => undefined}
+                options={(feeds ?? []).map((feed) => ({
                   value: feed.id,
                   label: feed.title,
-                })),
-              ]}
-              className="w-full"
-            />
+                }))}
+                className="w-full"
+              />
+              <div className="text-xs text-muted-foreground">
+                {t("automation.scope_feed_multi_hint")}
+              </div>
+            </div>
           )}
         </section>
 
