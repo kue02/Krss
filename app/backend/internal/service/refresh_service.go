@@ -136,6 +136,13 @@ func (s *refreshService) processParsedFeed(ctx context.Context, feed model.Feed,
 
 	// Save entries
 	newCount, updatedCount, newEntries := s.saveEntries(ctx, feed.ID, parsed.Items)
+	s.recordFeedResult(RefreshFeedResult{
+		FeedID:   feed.ID,
+		Title:    feed.Title,
+		IconPath: iconPathOf(feed),
+		New:      newCount,
+		Updated:  updatedCount,
+	})
 	if newCount > 0 || updatedCount > 0 {
 		logger.Info("feed refreshed", "module", "service", "action", "refresh", "resource", "feed", "result", "ok", "feed_id", feed.ID, "feed_title", feed.Title, "new", newCount, "updated", updatedCount)
 	}
@@ -231,10 +238,23 @@ type RefreshStatus struct {
 
 type RefreshService interface {
 	RefreshAll(ctx context.Context) error
+	// LastRefreshResults 最近一轮刷新里每个订阅的结果（新/更新条数、失败原因）。
+	LastRefreshResults() []RefreshFeedResult
 	RefreshFeed(ctx context.Context, feedID int64) error
 	RefreshFeeds(ctx context.Context, feedIDs []int64) error
 	IsRefreshing() bool
 	GetRefreshStatus() RefreshStatus
+}
+
+// RefreshFeedResult 单个订阅在一次刷新里的结果（用户 11-8：刷新完要能告诉用户「哪个订阅更新了多少条」）。
+// New/Updated 只有在真跑过抓取时才有意义；Error 非空表示这个源这轮失败了。
+type RefreshFeedResult struct {
+	FeedID   int64  `json:"feedId"`
+	Title    string `json:"title"`
+	IconPath string `json:"iconPath,omitempty"`
+	New      int    `json:"new"`
+	Updated  int    `json:"updated"`
+	Error    string `json:"error,omitempty"`
 }
 
 type refreshService struct {
@@ -251,6 +271,8 @@ type refreshService struct {
 	lastRefreshedAt *time.Time
 	progressTotal   int
 	progressDone    int
+	// lastResults：最近一次刷新（全量或按范围）里每个订阅的结果。前端刷新完拿它渲染结果弹框。
+	lastResults []RefreshFeedResult
 }
 
 func NewRefreshService(feeds repository.FeedRepository, entries repository.EntryRepository, settings SettingsService, icons IconService, clientFactory *network.ClientFactory, anubisSolver AnubisSolver, rateLimitSvc DomainRateLimitService, filters FilterService) RefreshService {
@@ -289,6 +311,7 @@ func (s *refreshService) RefreshAll(ctx context.Context) error {
 
 	logger.Info("refresh started", "module", "service", "action", "refresh", "resource", "feed", "result", "ok", "count", len(feeds))
 	s.resetRefreshProgress(len(feeds))
+	s.resetRefreshResults()
 	s.refreshFeedsWithRateLimit(ctx, feeds)
 	logger.Info("refresh completed", "module", "service", "action", "refresh", "resource", "feed", "result", "ok", "count", len(feeds))
 
@@ -378,9 +401,48 @@ func (s *refreshService) RefreshFeeds(ctx context.Context, feedIDs []int64) erro
 	}
 
 	s.resetRefreshProgress(len(feeds))
+	s.resetRefreshResults()
 	s.refreshFeedsWithRateLimit(ctx, feeds)
 	logger.Info("refresh completed", "module", "service", "action", "refresh", "resource", "feed", "result", "ok", "scope", "partial", "count", len(feeds))
 	return nil
+}
+
+// resetRefreshResults / recordFeedResult / LastRefreshResults：一轮刷新的每源结果
+//（并发刷新时多个 goroutine 同时写，统一走 s.mu）。
+func (s *refreshService) resetRefreshResults() {
+	s.mu.Lock()
+	s.lastResults = nil
+	s.mu.Unlock()
+}
+
+func (s *refreshService) recordFeedResult(result RefreshFeedResult) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.lastResults {
+		if s.lastResults[i].FeedID == result.FeedID {
+			// 同一个源在一轮里只会写一次；重试路径再写就覆盖（保留最新一次）
+			s.lastResults[i] = result
+			return
+		}
+	}
+	s.lastResults = append(s.lastResults, result)
+}
+
+// LastRefreshResults 最近一轮刷新的每源结果（拷贝一份出去，别让调用方拿到内部切片）。
+func (s *refreshService) LastRefreshResults() []RefreshFeedResult {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]RefreshFeedResult, len(s.lastResults))
+	copy(out, s.lastResults)
+	return out
+}
+
+// iconPathOf 结果弹框要带订阅图标；没有图标就留空（前端退化成默认 RSS 图标）。
+func iconPathOf(feed model.Feed) string {
+	if feed.IconPath == nil {
+		return ""
+	}
+	return *feed.IconPath
 }
 
 // refreshFeedsWithRateLimit refreshes multiple feeds with rate limiting and concurrency control.
@@ -428,6 +490,12 @@ func (s *refreshService) refreshFeedsWithRateLimit(ctx context.Context, feeds []
 			}
 
 			if err := s.refreshFeedInternal(ctx, feed); err != nil {
+				s.recordFeedResult(RefreshFeedResult{
+					FeedID:   feed.ID,
+					Title:    feed.Title,
+					IconPath: iconPathOf(feed),
+					Error:    err.Error(),
+				})
 				logger.Error("refresh feed failed", "module", "service", "action", "refresh", "resource", "feed", "result", "failed", "feed_id", feed.ID, "feed_title", feed.Title, "error", err)
 			}
 		}()
@@ -486,6 +554,8 @@ func (s *refreshService) refreshFeedWithCookie(ctx context.Context, feed model.F
 	if resp.StatusCode == http.StatusNotModified {
 		logger.Debug("feed not modified", "module", "service", "action", "refresh", "resource", "feed", "result", "skipped", "feed_id", feed.ID, "host", network.ExtractHost(feed.URL))
 		_ = s.feeds.UpdateErrorMessage(ctx, feed.ID, nil)
+		// 没变更也要出现在刷新明细里（0 新增 / 0 更新）—— 否则结果弹框里会「缺几个源」让人以为漏刷了
+		s.recordFeedResult(RefreshFeedResult{FeedID: feed.ID, Title: feed.Title, IconPath: iconPathOf(feed)})
 		return nil
 	}
 

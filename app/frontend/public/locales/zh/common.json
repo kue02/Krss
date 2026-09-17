@@ -761,5 +761,16 @@
     "open": "打开",
     "hint": "请输入关键词",
     "no_results": "没有找到匹配的内容"
+  },
+  "refresh_report": {
+    "title_done": "刷新完成",
+    "title_failed": "刷新有失败",
+    "summary": "共更新 {{changed}} 条（新增 {{created}} · 更新 {{updated}}）",
+    "view_details": "查看详情",
+    "item_counts": "新增 {{created}} · 更新 {{updated}}",
+    "item_failed": "失败",
+    "copy_reason": "复制原因",
+    "copied": "已复制失败原因",
+    "close": "关闭"
   }
 }

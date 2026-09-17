@@ -21,6 +21,8 @@ import { ImagePreview } from "@/components/ui/image-preview";
 import { LoginPage, RegisterPage, NetworkErrorPage } from "@/components/auth";
 import { UpdateNotice } from "@/components/update-notice";
 import { Toaster } from "@/components/ui/toaster";
+import { RefreshReportDialog } from "@/components/refresh/RefreshReportDialog";
+import { useRefreshReportWatcher } from "@/hooks/useRefreshReportWatcher";
 import { FilterEditorDialog } from "@/components/automation/FilterEditorDialog";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { refreshAllFeeds } from "@/api";
@@ -311,6 +313,9 @@ function AuthenticatedApp() {
   );
 
   // 「减少动态效果」落到 <html data-reduce-motion>，由 CSS 统一压掉动画
+  // 刷新结果弹框：盯住「刷新中 → 刷新完」的跳变（用户 11-8）
+  useRefreshReportWatcher();
+
   const reduceMotion = useUISettingKey("reduceMotion");
   useEffect(() => {
     applyReduceMotionToDocument(Boolean(reduceMotion));
@@ -728,6 +733,7 @@ function App() {
             {/* 规则编辑器：设置页/订阅右键/条目右键都靠 filter-editor-store 唤起它 */}
             <FilterEditorDialog />
             <Toaster />
+            <RefreshReportDialog />
           </Router>
         </TooltipProvider>
       </MotionConfig>

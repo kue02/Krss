@@ -69,6 +69,20 @@ func (mr *MockRefreshServiceMockRecorder) IsRefreshing() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsRefreshing", reflect.TypeOf((*MockRefreshService)(nil).IsRefreshing))
 }
 
+// LastRefreshResults mocks base method.
+func (m *MockRefreshService) LastRefreshResults() []service.RefreshFeedResult {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LastRefreshResults")
+	ret0, _ := ret[0].([]service.RefreshFeedResult)
+	return ret0
+}
+
+// LastRefreshResults indicates an expected call of LastRefreshResults.
+func (mr *MockRefreshServiceMockRecorder) LastRefreshResults() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LastRefreshResults", reflect.TypeOf((*MockRefreshService)(nil).LastRefreshResults))
+}
+
 // RefreshAll mocks base method.
 func (m *MockRefreshService) RefreshAll(ctx context.Context) error {
 	m.ctrl.T.Helper()

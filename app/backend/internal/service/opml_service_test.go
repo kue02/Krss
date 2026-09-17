@@ -237,6 +237,11 @@ type refreshServiceStub struct {
 	done chan []int64
 }
 
+// LastRefreshResults 手写 stub 要跟上接口（刷新结果弹框用，用户 11-8）
+func (s *refreshServiceStub) LastRefreshResults() []service.RefreshFeedResult {
+	return nil
+}
+
 func (s *refreshServiceStub) RefreshAll(ctx context.Context) error {
 	return nil
 }

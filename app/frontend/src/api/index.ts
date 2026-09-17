@@ -552,6 +552,21 @@ export interface RefreshStatus {
   total?: number;
   /** 本次刷新已完成数（仅刷新中返回） */
   completed?: number;
+  /**
+   * 最近一轮刷新里每个订阅的结果（用户 11-8：刷新完要告诉用户「一共更新了多少条」并能看明细）。
+   * 后端只在刷新结束后带上（刷新中不带）。
+   */
+  results?: RefreshFeedResult[];
+}
+
+/** 单个订阅在一次刷新里的结果 */
+export interface RefreshFeedResult {
+  feedId: string;
+  title: string;
+  iconPath?: string;
+  new: number;
+  updated: number;
+  error?: string;
 }
 
 export async function getRefreshStatus(): Promise<RefreshStatus> {

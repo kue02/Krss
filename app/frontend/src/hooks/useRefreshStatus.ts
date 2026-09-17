@@ -36,4 +36,8 @@ export function useRefreshStatus() {
     }
     prevTimestampRef.current = current;
   }, [data, queryClient]);
+
+  // 返回状态：刷新结果弹框（useRefreshReportWatcher）要读每源结果（用户 11-8）。
+  // 同一个 queryKey，不会因此多一次轮询。
+  return data;
 }

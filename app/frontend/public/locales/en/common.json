@@ -764,5 +764,16 @@
     "open": "open",
     "hint": "Type a keyword",
     "no_results": "No matching results"
+  },
+  "refresh_report": {
+    "title_done": "Refresh complete",
+    "title_failed": "Refresh finished with failures",
+    "summary": "{{changed}} entries changed ({{created}} new · {{updated}} updated)",
+    "view_details": "View details",
+    "item_counts": "{{created}} new · {{updated}} updated",
+    "item_failed": "Failed",
+    "copy_reason": "Copy reason",
+    "copied": "Failure reason copied",
+    "close": "Close"
   }
 }
