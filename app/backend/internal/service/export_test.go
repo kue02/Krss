@@ -70,3 +70,6 @@ func BuildAISummarizeSystemPromptForTest(s AIService, ctx context.Context, entry
 	}
 	return ""
 }
+
+// Export for testing
+var SliceByRange = sliceByRange
