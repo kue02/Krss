@@ -836,5 +836,19 @@
   },
   "common": {
     "loading": "加载中…"
+  },
+  "appearance_shape": {
+    "title": "形状",
+    "description": "按钮与订阅图标的圆角（档位照 HeroUI 官方刻度）",
+    "button_radius": "按钮圆角",
+    "icon_radius": "订阅图标圆角",
+    "radius_default": "跟随 HeroUI 默认",
+    "radius_none": "直角",
+    "radius_xs": "极小 · 2px",
+    "radius_sm": "小 · 4px",
+    "radius_md": "中 · 6px",
+    "radius_lg": "大 · 8px",
+    "radius_xl": "特大 · 12px",
+    "radius_full": "全圆"
   }
 }

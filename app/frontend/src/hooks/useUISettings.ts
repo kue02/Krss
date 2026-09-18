@@ -15,6 +15,43 @@ export type QuoteStyle = "block" | "divider" | "card";
  *   dim   = 已读变灰（原来只有其它视图有）
  * 三种都同时作用于所有视图 —— 用户原话：「需要做成可切换的全局统一样式」。
  */
+/**
+ * 12-18 圆角档位 —— 值直接照 HeroUI 官方刻度：
+ * `--radius: 0.5rem` = 8px，`xs/sm/md/lg/xl` = 0.25/0.5/0.75/1/1.5 倍 ⇒ 2/4/6/8/12px。
+ * `default` = 不动 HeroUI 自己的圆角（默认值，保证行为零变化）；`full` = 全圆。
+ */
+export type RadiusPreset =
+  | "default"
+  | "none"
+  | "xs"
+  | "sm"
+  | "md"
+  | "lg"
+  | "xl"
+  | "full";
+
+/** 档位 → CSS 值；`default` 返回 null（表示「跟随 HeroUI」，要把属性摘掉） */
+export function radiusPresetToCss(preset: RadiusPreset): string | null {
+  switch (preset) {
+    case "none":
+      return "0px";
+    case "xs":
+      return "2px";
+    case "sm":
+      return "4px";
+    case "md":
+      return "6px";
+    case "lg":
+      return "8px";
+    case "xl":
+      return "12px";
+    case "full":
+      return "9999px";
+    default:
+      return null;
+  }
+}
+
 export type UnreadStyle = "badge" | "dot" | "dim";
 /**
  * 第一栏（侧栏）订阅行的外观（用户 11-12）：
@@ -59,6 +96,10 @@ interface UISettings {
    *   card    = 卡片（描边 + 圆角 + 淡底 + 轻阴影，用户 2026-09-18 要求新增）
    */
   quoteStyle: QuoteStyle;
+  /** 12-18：按钮圆角（HeroUI 刻度档位；default = 跟随 HeroUI） */
+  buttonRadius: RadiusPreset;
+  /** 12-18：订阅图标圆角（同上，与按钮分开设置） */
+  iconRadius: RadiusPreset;
   /** 已读/未读的标记样式（全局统一，见 UnreadStyle） */
   unreadStyle: UnreadStyle;
   /** 第一栏订阅行的外观（默认只有名称；可切成「名称 + @源站」） */
@@ -121,6 +162,8 @@ export const defaultUISettings: UISettings = {
   reduceMotion: false,
   quoteStyle: "block",
   unreadStyle: "badge",
+  buttonRadius: "default",
+  iconRadius: "default",
   sidebarFeedAppearance: "default",
   accentColor: null,
   showLineNumbers: true,
@@ -292,6 +335,14 @@ export function useUISettingActions() {
     [setUISetting],
   );
 
+  const setButtonRadius = useCallback((preset: RadiusPreset) => {
+    setUISetting("buttonRadius", preset);
+  }, []);
+
+  const setIconRadius = useCallback((preset: RadiusPreset) => {
+    setUISetting("iconRadius", preset);
+  }, []);
+
   const setQuoteStyle = useCallback(
     (style: QuoteStyle) => {
       setUISetting("quoteStyle", style);
@@ -368,6 +419,8 @@ export function useUISettingActions() {
     setShowLineNumbers,
     setUiScale,
     setQuoteStyle,
+    setButtonRadius,
+    setIconRadius,
     setUnreadStyle,
     setAccentColor,
     setSidebarFeedAppearance,
@@ -428,6 +481,37 @@ export function applyAccentColorToDocument(color: string | null): void {
 export function applyQuoteStyleToDocument(style: QuoteStyle): void {
   if (typeof document === "undefined") return;
   document.documentElement.setAttribute("data-quote-style", style);
+}
+
+/**
+ * 12-18：把圆角落到 `<html>` 上 —— 属性 + 变量两件套。
+ * 属性只在**显式设置**时加（`default` 时摘掉）⇒ 默认状态完全不碰 HeroUI 自己的圆角，行为零变化。
+ * 索引里拿变量而不是写死，是为了让「按钮」「订阅图标」各自独立、又能被用户改。
+ */
+export function applyButtonRadiusToDocument(preset: RadiusPreset): void {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  const css = radiusPresetToCss(preset);
+  if (!css) {
+    root.removeAttribute("data-button-radius");
+    root.style.removeProperty("--ui-button-radius");
+    return;
+  }
+  root.setAttribute("data-button-radius", preset);
+  root.style.setProperty("--ui-button-radius", css);
+}
+
+export function applyIconRadiusToDocument(preset: RadiusPreset): void {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  const css = radiusPresetToCss(preset);
+  if (!css) {
+    root.removeAttribute("data-icon-radius");
+    root.style.removeProperty("--ui-icon-radius");
+    return;
+  }
+  root.setAttribute("data-icon-radius", preset);
+  root.style.setProperty("--ui-icon-radius", css);
 }
 
 /** 把「减少动态效果」开关落到 <html data-reduce-motion> 上，供 CSS 统一处理 */

@@ -26,6 +26,7 @@ import {
   type ScrollReadOverride,
   type SidebarFeedAppearance,
   type UnreadStyle,
+  type RadiusPreset,
 } from "@/hooks/useUISettings";
 import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
 import { AccentColorPicker } from "@/components/settings/tabs/AccentColorPicker";
@@ -33,6 +34,7 @@ import { readingFonts } from "@/lib/reading-fonts";
 import { updateAppearanceSettings } from "@/api";
 import { cn } from "@/lib/utils";
 import { SegmentedControl } from "@/components/ui/segmented-control";
+import { Select } from "@/components/ui/select";
 import {
   FileTextIcon,
   ImageIcon,
@@ -62,6 +64,8 @@ function ThemeSwatchRow({
   onSelect: (id: string) => void;
 }) {
   const { t } = useTranslation();
+
+
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -159,6 +163,8 @@ export function AppearanceSettings() {
   const showLineNumbers = useUISettingKey("showLineNumbers");
   const uiScale = useUISettingKey("uiScale");
   const quoteStyle = useUISettingKey("quoteStyle");
+  const buttonRadius = useUISettingKey("buttonRadius");
+  const iconRadius = useUISettingKey("iconRadius");
   const unreadStyle = useUISettingKey("unreadStyle");
   const sidebarFeedAppearance = useUISettingKey("sidebarFeedAppearance");
   const scrollReadByView = useUISettingKey("scrollReadByView");
@@ -173,6 +179,8 @@ export function AppearanceSettings() {
     setShowLineNumbers,
     setUiScale,
     setQuoteStyle,
+    setButtonRadius,
+    setIconRadius,
     setUnreadStyle,
     setSidebarFeedAppearance,
     setScrollReadForView,
@@ -360,6 +368,21 @@ export function AppearanceSettings() {
     }),
     [t],
   );
+
+  /**
+   * 12-18：圆角档位 —— 值直接照 HeroUI 官方刻度（`--radius`: .5rem ⇒ xs/sm/md/lg/xl = 2/4/6/8/12px）。
+   * 按钮与订阅图标分开设置（用户 2026-09-18 明确：「按钮跟 feed 图标分开设置，按照 HeroUI 里面的那个做」）。
+   */
+  const radiusOptions = [
+    { value: "default", label: t("appearance_shape.radius_default") },
+    { value: "none", label: t("appearance_shape.radius_none") },
+    { value: "xs", label: t("appearance_shape.radius_xs") },
+    { value: "sm", label: t("appearance_shape.radius_sm") },
+    { value: "md", label: t("appearance_shape.radius_md") },
+    { value: "lg", label: t("appearance_shape.radius_lg") },
+    { value: "xl", label: t("appearance_shape.radius_xl") },
+    { value: "full", label: t("appearance_shape.radius_full") },
+  ];
 
   return (
     <div className="space-y-6">
@@ -591,6 +614,39 @@ export function AppearanceSettings() {
                 { value: "off", label: t("appearance_view.off") },
                 { value: "on", label: t("appearance_view.on") },
               ]}
+            />
+          </SettingRow>
+        </div>
+      </section>
+
+      {/* 形状 —— 圆角（12-18：按钮与订阅图标分开设置，档位照 HeroUI 官方刻度） */}
+      <section>
+        <div className="mb-3">
+          <div className="text-sm font-medium">
+            {t("appearance_shape.title")}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {t("appearance_shape.description")}
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <SettingRow label={t("appearance_shape.button_radius")}>
+            <Select
+              className="w-44 shrink-0"
+              ariaLabel={t("appearance_shape.button_radius")}
+              value={buttonRadius}
+              onChange={(value) => setButtonRadius(value as RadiusPreset)}
+              options={radiusOptions}
+            />
+          </SettingRow>
+          <SettingRow label={t("appearance_shape.icon_radius")}>
+            <Select
+              className="w-44 shrink-0"
+              ariaLabel={t("appearance_shape.icon_radius")}
+              value={iconRadius}
+              onChange={(value) => setIconRadius(value as RadiusPreset)}
+              options={radiusOptions}
             />
           </SettingRow>
         </div>

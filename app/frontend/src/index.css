@@ -881,3 +881,18 @@ body.mobile-document-scroll-locked {
     animation: none;
   }
 }
+
+/* ------------------------------------------------------------------
+ * 12-18 圆角（按钮 / 订阅图标分开设置）
+ * 档位照 HeroUI 官方刻度：--radius: .5rem ⇒ xs 2 / sm 4 / md 6 / lg 8 / xl 12
+ * 只在 <html> 带上属性时才生效 ⇒ 默认状态完全不碰 HeroUI 自己的圆角。
+ * 未分层书写是故意的：HeroUI 的组件样式在 @layer components 里，未分层优先级更高。
+ * ------------------------------------------------------------------ */
+html[data-button-radius] [data-slot="button"] {
+  border-radius: var(--ui-button-radius);
+}
+
+html[data-icon-radius] [data-slot="feed-avatar"],
+html[data-icon-radius] [data-slot="feed-icon"] {
+  border-radius: var(--ui-icon-radius);
+}

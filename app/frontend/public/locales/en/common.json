@@ -839,5 +839,19 @@
   },
   "common": {
     "loading": "Loading…"
+  },
+  "appearance_shape": {
+    "title": "Shape",
+    "description": "Corner radius for buttons and feed icons (values from HeroUI's scale)",
+    "button_radius": "Button radius",
+    "icon_radius": "Feed icon radius",
+    "radius_default": "HeroUI default",
+    "radius_none": "Square",
+    "radius_xs": "XS · 2px",
+    "radius_sm": "SM · 4px",
+    "radius_md": "MD · 6px",
+    "radius_lg": "LG · 8px",
+    "radius_xl": "XL · 12px",
+    "radius_full": "Full"
   }
 }

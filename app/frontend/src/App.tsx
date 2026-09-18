@@ -50,6 +50,8 @@ import {
   setUISetting,
   applyAccentColorToDocument,
   applyQuoteStyleToDocument,
+  applyButtonRadiusToDocument,
+  applyIconRadiusToDocument,
   applyReduceMotionToDocument,
   applyUiScaleToDocument,
 } from "@/hooks/useUISettings";
@@ -337,6 +339,10 @@ function AuthenticatedApp() {
     applyQuoteStyleToDocument(quoteStyle);
   }, [quoteStyle]);
 
+  // 12-18：圆角（设置 → 外观 → 形状）
+  const buttonRadius = useUISettingKey("buttonRadius");
+  const iconRadius = useUISettingKey("iconRadius");
+
   // 主题色（设置 → 外观 → 主题 → 主题色）：null = 跟随主题
   const accentColor = useUISettingKey("accentColor");
   useEffect(() => {
@@ -348,6 +354,15 @@ function AuthenticatedApp() {
   useEffect(() => {
     applyUiScaleToDocument(uiScale);
   }, [uiScale]);
+
+  // 12-18：圆角（按钮 / 订阅图标分开设置），落 <html> 属性 + CSS 变量；default 时把属性摘掉
+  useEffect(() => {
+    applyButtonRadiusToDocument(buttonRadius);
+  }, [buttonRadius]);
+
+  useEffect(() => {
+    applyIconRadiusToDocument(iconRadius);
+  }, [iconRadius]);
 
   const visibleContentTypes = useMemo(() => {
     const current = appearanceSettings?.contentTypes;

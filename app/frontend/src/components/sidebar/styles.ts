@@ -13,8 +13,11 @@ export const sidebarItemIconStyles = cn(
   "shrink-0 size-4 flex items-center justify-center",
 );
 
-/** 订阅源 favicon 的 Nextflux 处理：略大、圆角、带极浅投影（像贴在纸上的贴纸） */
+/**
+ * 订阅源 favicon 的 Nextflux 处理：略大、圆角、带极浅投影（像贴在纸上的贴纸）。
+ * 12-18：圆角改读 `--ui-icon-radius`（外观 → 形状 →「订阅图标圆角」），默认仍是量出来的 4px。
+ */
 export const feedIconImageStyles = cn(
-  "size-4 rounded-[4px] object-cover",
+  "size-4 rounded-[var(--ui-icon-radius,4px)] object-cover",
   "shadow-[0_1px_2px_rgba(0,0,0,0.12)]",
 );

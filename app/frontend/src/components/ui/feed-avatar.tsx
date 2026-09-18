@@ -28,7 +28,12 @@ export function FeedAvatar({
   alt = "",
 }: FeedAvatarProps) {
   const [failed, setFailed] = useState(false);
-  const radius = rounded === "circle" ? "rounded-full" : "rounded-[3px]";
+  /**
+   * 12-18：小方块那档的圆角改由 `<html>` 上的 `--ui-icon-radius` 决定（外观里可配，默认 3px）。
+   * 圆形那档（社交流头像）保持 `rounded-full` 不受设置影响 —— 它是「形状」不是「圆角」。
+   */
+  const isCircle = rounded === "circle";
+  const radius = isCircle ? "rounded-full" : "";
 
   if (iconPath && !failed) {
     return (
@@ -40,8 +45,13 @@ export function FeedAvatar({
         loading="lazy"
         decoding="async"
         onError={() => setFailed(true)}
+        data-slot="feed-avatar"
         className={cn("shrink-0 object-contain", radius, className)}
-        style={{ width: size, height: size }}
+        style={{
+          width: size,
+          height: size,
+          ...(isCircle ? null : { borderRadius: "var(--ui-icon-radius, 3px)" }),
+        }}
       />
     );
   }
@@ -49,7 +59,11 @@ export function FeedAvatar({
   return (
     <FeedIcon
       className={cn("shrink-0 text-muted-foreground", radius, className)}
-      style={{ width: size, height: size }}
+      style={{
+        width: size,
+        height: size,
+        ...(isCircle ? null : { borderRadius: "var(--ui-icon-radius, 3px)" }),
+      }}
     />
   );
 }
