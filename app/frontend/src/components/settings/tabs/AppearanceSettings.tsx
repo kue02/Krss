@@ -34,6 +34,8 @@ import { UnreadBadgeCustomizer } from "@/components/settings/tabs/UnreadBadgeCus
 import { readingFonts } from "@/lib/reading-fonts";
 import { updateAppearanceSettings } from "@/api";
 import { cn } from "@/lib/utils";
+import { Button, Input } from "@heroui/react";
+import { FeedAvatar } from "@/components/ui/feed-avatar";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Select } from "@/components/ui/select";
 import {
@@ -674,6 +676,53 @@ export function AppearanceSettings() {
               options={iconRadiusOptions}
             />
           </SettingRow>
+        </div>
+
+        {/*
+          实时预览（照 HeroUI 主题页那套）：三个旋钮写的是 CSS 变量（--radius / --field-radius /
+          --ui-icon-radius），所以这里**不需要任何联动代码** —— 旋钮一改，下面这几个现成组件当场跟着变。
+          预览是只读的（不可点、不进 Tab 序），点它不会改任何设置。
+        */}
+        <div className="mt-3 rounded-2xl border border-border/60 p-3">
+          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+            <div className="text-xs font-medium">
+              {t("appearance_shape.preview_title")}
+            </div>
+            <div className="text-[11px] text-muted-foreground">
+              {t("appearance_shape.preview_hint")}
+            </div>
+          </div>
+          <div inert className="flex select-none flex-wrap items-center gap-3">
+            <Button size="sm" excludeFromTabOrder>
+              {t("appearance_shape.preview_button")}
+            </Button>
+            <Input
+              className="w-28"
+              placeholder={t("appearance_shape.preview_input")}
+              tabIndex={-1}
+              readOnly
+            />
+            <Select
+              className="w-24 shrink-0"
+              ariaLabel={t("appearance_shape.preview_select")}
+              value="preview"
+              onChange={() => {}}
+              options={[
+                { value: "preview", label: t("appearance_shape.preview_select") },
+              ]}
+            />
+            {/* 卡片照 HeroUI 自己的规则：`min(32px, var(--radius-3xl))`（card.css 就是这条），
+                所以它跟着「组件圆角」走、并且在 XL 那档封顶在 32px */}
+            <div
+              className="border border-border bg-card px-3 py-2 text-xs"
+              style={{ borderRadius: "min(32px, var(--radius-3xl))" }}
+            >
+              {t("appearance_shape.preview_card")}
+            </div>
+            <span title={t("appearance_shape.preview_icon")}>
+              <FeedAvatar size={20} />
+            </span>
+          </div>
         </div>
       </section>
 
