@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -28,6 +29,22 @@ type createFeedRequest struct {
 	FolderID *string `json:"folderId"`
 	Title    string  `json:"title"`
 	Type     string  `json:"type"`
+	// 16 批：sourceType=mcp 时走 MCP 建源（url 可空，改由 mcpConfig 描述怎么取数）。
+	SourceType string            `json:"sourceType"`
+	MCPConfig  *mcpFeedConfigReq `json:"mcpConfig"`
+}
+
+// mcpFeedConfigReq 建 MCP 订阅时带过来的配置（连接 + 工具/资源 + 参数 + 字段映射）。
+type mcpFeedConfigReq struct {
+	ServerID    string                `json:"serverId"`
+	Kind        string                `json:"kind"`
+	ToolName    string                `json:"toolName"`
+	ResourceURI string                `json:"resourceUri"`
+	Arguments   map[string]any        `json:"arguments"`
+	Limit       int                   `json:"limit"`
+	Mapping     model.MCPFieldMapping `json:"mapping"`
+	Tier        string                `json:"tier"`
+	KeyLevel    string                `json:"keyLevel"`
 }
 
 type updateTypeRequest struct {
@@ -115,6 +132,9 @@ type feedResponse struct {
 	ProxyMode string `json:"proxyMode"`
 	// ProxyConfig：本条单独指定的一套代理（密码已掩码）；缺省 = 用全局那套
 	ProxyConfig *model.ProxyOverrideConfig `json:"proxyConfig,omitempty"`
+	// 16 批：rss（默认）/ mcp；MCPConfig 只有 mcp 源才有。
+	SourceType string          `json:"sourceType"`
+	MCPConfig  json.RawMessage `json:"mcpConfig,omitempty"`
 }
 
 // feedProxyResponse PATCH /feeds/:id/proxy 的回显：订阅本体 + 这一条**实际生效**的结果
@@ -215,6 +235,44 @@ func (h *FeedHandler) Create(c echo.Context) error {
 	} else if !isValidContentType(feedType) {
 		return c.JSON(http.StatusBadRequest, errorResponse{Error: "type must be article, picture, notification, or social"})
 	}
+	// 16 批：MCP 订阅建源（建源向导最后一步）—— 同样落成一条普通 feed 行
+	if req.SourceType == model.FeedSourceMCP {
+		if req.MCPConfig == nil || strings.TrimSpace(req.MCPConfig.ServerID) == "" {
+			return c.JSON(http.StatusBadRequest, errorResponse{Error: "mcpConfig.serverId is required"})
+		}
+		serverID, err := strconv.ParseInt(strings.TrimSpace(req.MCPConfig.ServerID), 10, 64)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid mcp server ID"})
+		}
+		created, err := h.service.AddMCP(c.Request().Context(), service.MCPFeedAddInput{
+			ServerID:    serverID,
+			Kind:        req.MCPConfig.Kind,
+			ToolName:    req.MCPConfig.ToolName,
+			ResourceURI: req.MCPConfig.ResourceURI,
+			Arguments:   req.MCPConfig.Arguments,
+			Limit:       req.MCPConfig.Limit,
+			Mapping:     req.MCPConfig.Mapping,
+			Tier:        req.MCPConfig.Tier,
+			KeyLevel:    req.MCPConfig.KeyLevel,
+			Title:       req.Title,
+			FolderID:    folderID,
+			FeedType:    feedType,
+		})
+		if err != nil {
+			var conflictErr *service.FeedConflictError
+			if errors.As(err, &conflictErr) {
+				return c.JSON(http.StatusConflict, feedConflictResponse{
+					Error:        "feed_exists",
+					ExistingFeed: toFeedResponse(conflictErr.ExistingFeed),
+				})
+			}
+			logger.Error("mcp feed create failed", "module", "handler", "action", "create", "resource", "feed", "result", "failed", "mcp_server_id", serverID, "error", err)
+			return writeServiceError(c, err)
+		}
+		logger.Info("mcp feed created", "module", "handler", "action", "create", "resource", "feed", "result", "ok", "feed_id", created.ID, "mcp_server_id", serverID)
+		return c.JSON(http.StatusCreated, toFeedResponse(created))
+	}
+
 	feed, err := h.service.Add(c.Request().Context(), req.URL, folderID, req.Title, feedType)
 	if err != nil {
 		var conflictErr *service.FeedConflictError
@@ -723,7 +781,28 @@ func toFeedResponse(feed model.Feed) feedResponse {
 		AutoSummary:           feed.AutoSummary,
 		ProxyMode:             service.ProxyModeToString(feed.ProxyMode),
 		ProxyConfig:           toProxyConfigResponse(feed.ProxyConfig),
+		SourceType:            feedSourceTypeOrRSS(feed),
+		MCPConfig:             rawJSONOrNil(feed.MCPConfig),
 	}
+}
+
+// feedSourceTypeOrRSS 空值当 rss（老行没写过这一列时的语义）。
+func feedSourceTypeOrRSS(feed model.Feed) string {
+	if feed.SourceType == "" {
+		return model.FeedSourceRSS
+	}
+	return feed.SourceType
+}
+
+// rawJSONOrNil 把库里的 JSON 原样透出去（坏数据不导致整个列表 500）。
+func rawJSONOrNil(raw *string) json.RawMessage {
+	if raw == nil || strings.TrimSpace(*raw) == "" {
+		return nil
+	}
+	if !json.Valid([]byte(*raw)) {
+		return nil
+	}
+	return json.RawMessage(*raw)
 }
 
 func toFeedPreviewResponse(preview service.FeedPreview) feedPreviewResponse {

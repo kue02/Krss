@@ -16,10 +16,15 @@ type Feed struct {
 	// ReaderMode：正文打开方式，nil = 跟随全局设置；true = 阅读模式，false = 原文
 	ReaderMode *bool
 	// 代理覆盖（迁移 26）：nil = 跟随文件夹链 → 全局；ProxyConfig 空 = 用全局那套代理。
-	ProxyMode    *ProxyMode
-	ProxyConfig  *ProxyOverrideConfig
-	IconPath     *string
-	Type         string // article, picture, notification, social
+	ProxyMode   *ProxyMode
+	ProxyConfig *ProxyOverrideConfig
+	IconPath    *string
+	Type        string // article, picture, notification, social
+	// SourceType：这条订阅「怎么取数」——rss（默认）/ mcp（16 批：MCP 取到的内容当 Feed 处理）。
+	// 老数据是列默认值 'rss' ⇒ 行为零变化。
+	SourceType string
+	// MCPConfig：仅 SourceType = 'mcp' 时有值，存 mcp_config JSON（连接 id + 工具/资源 + 参数 + 字段映射）。
+	MCPConfig    *string
 	ETag         *string
 	LastModified *string
 	ErrorMessage *string
@@ -29,4 +34,15 @@ type Feed struct {
 	RefreshLastFailAt *time.Time
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
+}
+
+// 订阅的取数来源（feeds.source_type）。
+const (
+	FeedSourceRSS = "rss"
+	FeedSourceMCP = "mcp"
+)
+
+// IsMCP 这条订阅是否走 MCP 取数（抓取分叉判据）。
+func (f Feed) IsMCP() bool {
+	return f.SourceType == FeedSourceMCP
 }
