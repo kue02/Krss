@@ -648,10 +648,11 @@ export function FilterEditor({
             */}
 
             {/* ① 条目状态 */}
-            <Fieldset className="grid grid-cols-[88px_minmax(0,1fr)] items-center gap-x-3 gap-y-[7px] border-t border-border/60 pt-3.5 mt-3.5">
+            <Fieldset className="border-t border-border/60 pt-3.5 mt-3.5">
               <Fieldset.Legend className="col-span-2 text-xs font-medium text-foreground">
                 {t("automation.action_group_state")}
               </Fieldset.Legend>
+            <div className="grid grid-cols-[88px_minmax(0,1fr)] items-center gap-x-3 gap-y-[7px]">
               <Fieldset.Group className="contents">
                 {ACTION_PAIRS.map(({ positive, negative }) => {
                   const value = draft.actions[positive]
@@ -719,13 +720,15 @@ export function FilterEditor({
                   {t("automation.mute_blocked_by_keep_only")}
                 </div>
               )}
+            </div>
             </Fieldset>
 
             {/* ② 内容加工 */}
-            <Fieldset className="grid grid-cols-[88px_minmax(0,1fr)] items-center gap-x-3 gap-y-[7px] border-t border-border/60 pt-3.5 mt-3.5">
+            <Fieldset className="border-t border-border/60 pt-3.5 mt-3.5">
               <Fieldset.Legend className="col-span-2 text-xs font-medium text-foreground">
                 {t("automation.action_group_content")}
               </Fieldset.Legend>
+            <div className="grid grid-cols-[88px_minmax(0,1fr)] items-center gap-x-3 gap-y-[7px]">
               <div className="contents">
                 <span
                   className="text-xs text-muted-foreground"
@@ -754,13 +757,15 @@ export function FilterEditor({
                   }
                 />
               </div>
+            </div>
             </Fieldset>
 
             {/* ③ 对外 */}
-            <Fieldset className="grid grid-cols-[88px_minmax(0,1fr)] items-center gap-x-3 gap-y-[7px] border-t border-border/60 pt-3.5 mt-3.5">
+            <Fieldset className="border-t border-border/60 pt-3.5 mt-3.5">
               <Fieldset.Legend className="col-span-2 text-xs font-medium text-foreground">
                 {t("automation.action_group_external")}
               </Fieldset.Legend>
+            <div className="grid grid-cols-[88px_minmax(0,1fr)] items-center gap-x-3 gap-y-[7px]">
               <div className="contents">
                 <span
                   className="text-xs text-muted-foreground"
@@ -821,6 +826,7 @@ export function FilterEditor({
                   className={cn(inputClass, "col-start-2")}
                 />
               )}
+            </div>
             </Fieldset>
 
             {/* 只留一行总说明（其余都进 tooltip） */}
