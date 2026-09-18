@@ -663,9 +663,10 @@ export function FilterEditor({
                   // 「只保留匹配」本身会把不匹配的静音，再叠「静音」等于全静音 —— 挡掉这个误操作
                   const muteBlocked = positive === "mute" && keepOnlyBlocksMute;
                   return (
+                    // 13-1：行包装用 contents，让「标签 + 控件」直接成为上面那条网格的两格
                     <div
                       key={positive}
-                      className="flex items-center justify-between gap-3"
+                      className="contents"
                     >
                       <span className="text-xs text-muted-foreground">
                         {t(`automation.${DIMENSION_LABEL_KEYS[positive]}`)}
