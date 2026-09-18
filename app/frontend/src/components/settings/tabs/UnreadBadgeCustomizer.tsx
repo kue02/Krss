@@ -71,8 +71,9 @@ export function UnreadBadgeCustomizer() {
   );
 
   return (
-    <Popover isOpen={open} onOpenChange={setOpen}>
-      <Button
+    <Popover.Root isOpen={open} onOpenChange={setOpen}>
+      <Popover.Trigger>
+        <Button
         size="sm"
         variant="ghost"
         isIconOnly
@@ -80,8 +81,9 @@ export function UnreadBadgeCustomizer() {
         className="shrink-0"
         onPress={() => setOpen((v) => !v)}
       >
-        <Settings2 className="size-4" />
-      </Button>
+          <Settings2 className="size-4" />
+        </Button>
+      </Popover.Trigger>
       <Popover.Content className="w-[22rem] p-0">
         <div className="border-b border-border px-3 py-2">
           <div className="text-sm font-medium">
@@ -294,6 +296,6 @@ export function UnreadBadgeCustomizer() {
           </div>
         </div>
       </Popover.Content>
-    </Popover>
+    </Popover.Root>
   );
 }
