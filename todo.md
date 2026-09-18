@@ -192,6 +192,8 @@
 - [x] **21-7 门禁**：后端 `make test` 全绿 + `make lint` **0 issues** + `swag init` 重生成；前端 `bunx tsc -b` 干净、`bun run test` **706/706 通过（退出码 0）**；新增 5 个测试文件（`settings-storage` / `settings-sync` / `ui-lang` / `useUISettings.package` / `useCategoryState`）共 37 例。
       **注意**：跑之前先看 §3「待观察」那条 —— `:8082` 上的 PWA service worker 会拿旧 bundle 骗人（这次真的骗到我一次）。
 - 附带：`~/Documents/Docker/gist-nextflux/data` 用的后端 :8080 原来跑的是 09-18 早上构建的旧二进制（`/tmp/gist-server-1116`，没有 `/settings/ui`），**已停掉并换成当前源码构建的二进制** —— 否则你在 5173 上用前端会一直弹「设置上传失败：404」。
+      重启命令（二进制 `/tmp/gist-server-21` 是本次构建的，重启机器后要重编）：`cd app/backend && GIST_ADDR=:8080 GIST_DATA_DIR=~/Documents/Docker/gist-nextflux/data go run ./cmd/server/main.go`
+      自检：`GET /api/settings/ui` 回 `{"empty":true,...}`（你库里还没存过界面设置，打开 5173 就会自动把本地那份推上去）、`GET /api/feeds` 200。
 
 ---
 
