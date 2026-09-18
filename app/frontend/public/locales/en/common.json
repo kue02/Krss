@@ -194,7 +194,9 @@
     "dirty_label_ai": "AI",
     "dirty_label_notify": "Notifications",
     "dirty_label_rsshub": "RSSHub",
-    "dirty_label_profile": "Profile"
+    "dirty_label_profile": "Profile",
+    "sync_failed_toast": "Failed to upload settings: {{reason}}",
+    "sync_failed_unknown": "network or server error"
   },
   "theme": {
     "system": "Follow System",
@@ -422,7 +424,20 @@
     "clear_success": "Cache Cleared",
     "cleared_ai_items": "Deleted {{summaries}} summaries and {{translations}} translations",
     "cleared_count": "Deleted {{count}} records",
-    "clear_failed": "Clear Failed"
+    "clear_failed": "Clear Failed",
+    "settings_backup": "Settings",
+    "export_settings": "Export settings",
+    "export_settings_description": "Export UI and app settings as a readable JSON file (credentials such as API keys, proxy passwords and push URLs are excluded)",
+    "export_settings_failed": "Export failed",
+    "import_settings": "Import settings",
+    "import_settings_description": "Restore settings from an exported JSON file. Importing overwrites current settings and cannot be undone",
+    "import_settings_confirm_title": "Import settings?",
+    "import_settings_confirm_body": "This overwrites your current settings with {{count}} items from the file (credentials are not affected) and cannot be undone.",
+    "import_settings_confirm": "Import",
+    "import_settings_cancel": "Cancel",
+    "import_settings_invalid_file": "This is not a settings file exported by this app",
+    "import_settings_success": "Imported {{count}} settings",
+    "import_settings_failed": "Import failed"
   },
   "user": {
     "profile": "Profile",

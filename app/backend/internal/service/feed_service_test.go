@@ -662,6 +662,23 @@ func (s *settingsServiceStub) SetFetchSettings(ctx context.Context, settings *se
 	return nil
 }
 
+// 21 批：界面设置整包 / 导出导入 —— 这个 stub 只服务于 feed/refresh 的测试，返回空实现即可。
+func (s *settingsServiceStub) GetUISettings(ctx context.Context) (*service.UISettings, error) {
+	return &service.UISettings{Empty: true}, nil
+}
+
+func (s *settingsServiceStub) SetUISettings(ctx context.Context, settings *service.UISettings) error {
+	return nil
+}
+
+func (s *settingsServiceStub) ExportSettings(ctx context.Context) (*service.SettingsExport, error) {
+	return &service.SettingsExport{Version: 1}, nil
+}
+
+func (s *settingsServiceStub) ImportSettings(ctx context.Context, payload *service.SettingsExport) error {
+	return nil
+}
+
 func (s *settingsServiceStub) GetAISettings(ctx context.Context) (*service.AISettings, error) {
 	return nil, nil
 }

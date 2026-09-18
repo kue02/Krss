@@ -1,5 +1,12 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { notifySettingsSaved } from "@/lib/settings-saved";
+import { LS_KEYS, readLocalValue, writeLocalValue } from "@/lib/settings-storage";
+import {
+  currentDeviceClass,
+  registerSettingsGroup,
+  scheduleSettingsFlush,
+  type SettingsDeviceClass,
+} from "@/lib/settings-sync";
 import type { ContentType } from "@/types/api";
 import type { ScrollMarkReadTiming } from "@/components/entry-list/useScrollMarkRead";
 
@@ -179,7 +186,143 @@ interface UISettings {
   scrollReadDeferRemoval: boolean;
 }
 
-const STORAGE_KEY = "gist-ui-settings";
+/**
+ * 21 批（2026-09-18）：设置搬到服务端后，localStorage 退化成**本地缓存** ——
+ * 首屏照旧同步读它（不闪），服务端值拉回来再对账覆盖；键名同时从 `gist-*` 改成 `krss-*`
+ * （迁移见 lib/settings-storage.ts，老键会被搬过来，用户无感）。
+ */
+const STORAGE_SPEC = LS_KEYS.uiSettings;
+
+/**
+ * **尺寸/布局类**：这些按设备分套存（桌面 / 手机各一份）。
+ *
+ * 用户拍板的理由：桌面 `feedColWidth=256`、`uiScale` 这类值同步到手机上直接没法用，
+ * 所以「跨设备一致」只对共用那部分成立，尺寸类各设备自己一套。
+ */
+export const DEVICE_SCOPED_UI_KEYS = [
+  "feedColWidth",
+  "entryColWidth",
+  "uiScale",
+  "sidebarVisible",
+] as const;
+
+const DEVICE_SCOPED = new Set<string>(DEVICE_SCOPED_UI_KEYS);
+
+/** 存储/同步的整包形状（与 `types/settings.ts` 的 UISettingsPackage 同形） */
+export interface UISettingsPackageShape {
+  shared: Record<string, unknown>;
+  device: {
+    desktop: Record<string, unknown>;
+    mobile: Record<string, unknown>;
+  };
+}
+
+/** 不在 defaultUISettings 里、但允许存在（可空）的键 */
+const OPTIONAL_UI_KEYS = new Set<string>(["scrollReadMode"]);
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function emptyPackage(): UISettingsPackageShape {
+  return { shared: {}, device: { desktop: {}, mobile: {} } };
+}
+
+/**
+ * 收窄一个 bag：只留认识的键、类型对得上的值；对象型的项与默认值浅合并
+ * （防止服务端/导入回来的半份配置把组件读成 undefined）。
+ */
+function sanitizeBag(input: unknown): Record<string, unknown> {
+  if (!isPlainObject(input)) return {};
+
+  const out: Record<string, unknown> = {};
+  const defaults = defaultUISettings as unknown as Record<string, unknown>;
+
+  for (const [key, value] of Object.entries(input)) {
+    const fallback = defaults[key];
+    if (fallback !== undefined) {
+      if (typeof value !== typeof fallback) continue;
+      if (isPlainObject(fallback) && isPlainObject(value)) {
+        out[key] = { ...fallback, ...value };
+        continue;
+      }
+      out[key] = value;
+      continue;
+    }
+    if (OPTIONAL_UI_KEYS.has(key) && typeof value === "string") {
+      out[key] = value;
+    }
+  }
+
+  return out;
+}
+
+function normalizePackage(input: unknown): UISettingsPackageShape | null {
+  if (!isPlainObject(input)) return null;
+
+  const device = isPlainObject(input.device) ? input.device : {};
+  return {
+    shared: sanitizeBag(input.shared),
+    device: {
+      desktop: sanitizeBag(device.desktop),
+      mobile: sanitizeBag(device.mobile),
+    },
+  };
+}
+
+/** 老格式（扁平一坨，不分设备）→ 新格式：尺寸类落到**当前设备**那一档，其余进 shared。 */
+function packageFromLegacyFlat(flat: Record<string, unknown>): UISettingsPackageShape {
+  const pkg = emptyPackage();
+  const device = currentDeviceClass();
+
+  for (const [key, value] of Object.entries(flat)) {
+    const bag = DEVICE_SCOPED.has(key) ? pkg.device[device] : pkg.shared;
+    bag[key] = value;
+  }
+
+  return pkg;
+}
+
+function readStoredPackage(): UISettingsPackageShape {
+  if (typeof window === "undefined") return emptyPackage();
+
+  try {
+    const stored = readLocalValue(STORAGE_SPEC);
+    if (!stored) return emptyPackage();
+
+    const parsed: unknown = JSON.parse(stored);
+    if (!isPlainObject(parsed)) return emptyPackage();
+
+    // 已经是新格式（有 shared / device）就收窄一下；否则按老的扁平格式迁移
+    const isNewShape = isPlainObject(parsed.shared) || isPlainObject(parsed.device);
+    const pkg = isNewShape
+      ? (normalizePackage(parsed) ?? emptyPackage())
+      : packageFromLegacyFlat(sanitizeBag(parsed));
+
+    // 迁移是一次性的：顺手把新形状写回去（下次启动就是原生新格式）
+    persistPackage(pkg);
+    return pkg;
+  } catch {
+    return emptyPackage();
+  }
+}
+
+function persistPackage(pkg: UISettingsPackageShape): void {
+  writeLocalValue(STORAGE_SPEC, JSON.stringify(pkg));
+}
+
+function flatFromPackage(
+  pkg: UISettingsPackageShape,
+  device: SettingsDeviceClass,
+): UISettings {
+  const merged: Record<string, unknown> = {
+    ...defaultUISettings,
+    ...pkg.shared,
+    ...pkg.device[device],
+  };
+  // sanitizeBag 已经保证「键认识、类型对」，这里只是把宽类型收回到 UISettings
+  return merged as unknown as UISettings;
+}
 
 export const defaultUISettings: UISettings = {
   feedColWidth: 256,
@@ -235,20 +378,8 @@ export const defaultUISettings: UISettings = {
   scrollReadDeferRemoval: true,
 };
 
-function getStoredSettings(): UISettings {
-  if (typeof window === "undefined") return defaultUISettings;
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      return { ...defaultUISettings, ...JSON.parse(stored) };
-    }
-  } catch {
-    // ignore parse errors
-  }
-  return defaultUISettings;
-}
-
-let cachedSettings: UISettings = getStoredSettings();
+let cachedPackage: UISettingsPackageShape = readStoredPackage();
+let cachedSettings: UISettings = flatFromPackage(cachedPackage, currentDeviceClass());
 const listeners = new Set<() => void>();
 
 function emitChange() {
@@ -261,33 +392,84 @@ export function getUISettings(): UISettings {
   return cachedSettings;
 }
 
-export function hasSidebarVisibilitySetting(): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      return "sidebarVisible" in parsed;
-    }
-  } catch {
-    // ignore parse errors
+/** 当前整包（shared + 两档设备值）—— 同步模块要把它推给服务端 */
+export function readUISettingsPackage(): UISettingsPackageShape {
+  return cachedPackage;
+}
+
+/**
+ * 用服务端那份覆盖本地（**服务端为准**，只在登录后首次拉取时走）。
+ *
+ * 为什么要整包覆盖而不是逐项合并：服务端那台设备是「另一处的真相」，
+ * 逐项合并会让两台设备谁的旧值都不肯退让；这里统一由服务端说话，
+ * 本地缓存随后跟着写，下次首屏就是同一套。
+ */
+export function applyUISettingsPackageFromServer(pkg: unknown): void {
+  const next = normalizePackage(pkg);
+  if (!next) {
+    // 形状不对（或服务端没有）→ 保持本地不动，宁可不动也不要清空
+    return;
   }
-  return false;
+
+  cachedPackage = next;
+  cachedSettings = flatFromPackage(cachedPackage, currentDeviceClass());
+  persistPackage(cachedPackage);
+  emitChange();
+}
+
+/**
+ * 窗口跨过 768px 断点时重算「尺寸类那几项」。
+ *
+ * 尺寸类是按设备分套的，同一台机器把窗口拉窄（或用响应式调试）就换到了另一档，
+ * 不重算的话会看到「手机布局 + 桌面列宽」这种错位。
+ */
+export function refreshDeviceScopedSettings(): void {
+  const device = currentDeviceClass();
+  const next = flatFromPackage(cachedPackage, device);
+
+  const changed = DEVICE_SCOPED_UI_KEYS.some((key) => next[key] !== cachedSettings[key]);
+  if (!changed) return;
+
+  cachedSettings = next;
+  emitChange();
+}
+
+export function hasSidebarVisibilitySetting(): boolean {
+  return (
+    "sidebarVisible" in cachedPackage.shared ||
+    "sidebarVisible" in cachedPackage.device.desktop ||
+    "sidebarVisible" in cachedPackage.device.mobile
+  );
 }
 
 export function setUISetting<K extends keyof UISettings>(
   key: K,
   value: UISettings[K],
 ): void {
-  cachedSettings = { ...cachedSettings, [key]: value };
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(cachedSettings));
-  } catch {
-    // ignore storage errors
+  const device = currentDeviceClass();
+
+  if (DEVICE_SCOPED.has(key as string)) {
+    cachedPackage = {
+      ...cachedPackage,
+      device: {
+        ...cachedPackage.device,
+        [device]: { ...cachedPackage.device[device], [key]: value },
+      },
+    };
+  } else {
+    cachedPackage = {
+      ...cachedPackage,
+      shared: { ...cachedPackage.shared, [key]: value },
+    };
   }
+
+  cachedSettings = flatFromPackage(cachedPackage, device);
+  persistPackage(cachedPackage);
   emitChange();
   // 12-7：即时型改动给一句「已保存」（App 订阅事件、带防抖后弹 toast）
   notifySettingsSaved();
+  // 21 批：本地立即生效之外，防抖后写服务端（跨设备一致）；失败会另弹一句可见的提示
+  scheduleSettingsFlush("ui");
 }
 
 function subscribe(callback: () => void): () => void {
@@ -459,9 +641,7 @@ export function useUISettingActions() {
   }, []);
 
   const resetToDefaults = useCallback(() => {
-    for (const [key, value] of Object.entries(defaultUISettings)) {
-      setUISetting(key as keyof UISettings, value as never);
-    }
+    resetUISettingsToDefaults();
   }, []);
 
   return {
@@ -586,3 +766,43 @@ export function applyReduceMotionToDocument(enabled: boolean): void {
     enabled ? "true" : "false",
   );
 }
+
+// ---------- 21 批：整包读取 / 恢复默认 / 注册同步组 ----------
+
+/**
+ * 恢复默认：**一次写完**（旧实现在 25 个键上循环调 setUISetting，
+ * 等于弹 25 次「已保存」、发 25 次同步请求）。两档设备值一起回到默认，
+ * 免得「在手机上恢复了默认、回桌面发现列宽还是老值」。
+ */
+export function resetUISettingsToDefaults(): void {
+  const shared: Record<string, unknown> = {};
+  const desktop: Record<string, unknown> = {};
+  const mobile: Record<string, unknown> = {};
+  const defaults = defaultUISettings as unknown as Record<string, unknown>;
+
+  for (const [key, value] of Object.entries(defaults)) {
+    if (DEVICE_SCOPED.has(key)) {
+      desktop[key] = value;
+      mobile[key] = value;
+    } else {
+      shared[key] = value;
+    }
+  }
+
+  cachedPackage = { shared, device: { desktop, mobile } };
+  cachedSettings = flatFromPackage(cachedPackage, currentDeviceClass());
+  persistPackage(cachedPackage);
+  emitChange();
+  notifySettingsSaved();
+  scheduleSettingsFlush("ui");
+}
+
+/**
+ * 注册「界面设置」这个同步组：整包推给服务端 / 服务端整包覆盖本地。
+ * 与 useTheme / useCategoryState / lib/ui-lang 各自注册的那组一起，构成四组设置。
+ */
+registerSettingsGroup({
+  key: "ui",
+  read: () => cachedPackage,
+  apply: (pkg) => applyUISettingsPackageFromServer(pkg),
+});

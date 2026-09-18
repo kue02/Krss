@@ -41,6 +41,12 @@ const (
 	KeyNetworkUsername   = keyNetworkUsername
 	KeyNetworkPassword   = keyNetworkPassword
 	KeyNetworkIPStack    = keyNetworkIPStack
+	KeyFallbackUserAgent = keyFallbackUserAgent
+	// 21 批：界面设置整包（键名是对外契约，测试里钉死）
+	KeyUISettings     = keyUISettings
+	KeyUITheme        = keyUITheme
+	KeyUILang         = keyUILang
+	KeyUISidebarState = keyUISidebarState
 )
 
 var (

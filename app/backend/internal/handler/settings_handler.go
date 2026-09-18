@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/labstack/echo/v4"
 
@@ -127,6 +129,40 @@ type appearanceSettingsRequest struct {
 	ContentTypes []string `json:"contentTypes"`
 }
 
+// ---------- 21 批：界面设置整包 + 设置导出/导入 ----------
+
+// uiThemePayload 主题三件套（与前端 useTheme 的三项一一对应）。
+type uiThemePayload struct {
+	Mode       string `json:"mode"`
+	LightTheme string `json:"lightTheme"`
+	DarkTheme  string `json:"darkTheme"`
+}
+
+// uiSettingsResponse 界面设置整包。
+// ui / sidebarState 是**原样透传**的 JSON（后端不给前端字段建模，避免 DTO 少字段导致设置静默失效）。
+type uiSettingsResponse struct {
+	UI           json.RawMessage `json:"ui"`
+	Theme        uiThemePayload  `json:"theme"`
+	Lang         string          `json:"lang"`
+	SidebarState json.RawMessage `json:"sidebarState"`
+	UpdatedAt    string          `json:"updatedAt,omitempty"`
+	// Empty：服务端一条都没存过（前端据此把本地那份当基线推上来）
+	Empty bool `json:"empty"`
+}
+
+// uiSettingsRequest 只写传进来的项：theme / lang / sidebarState / ui 各自独立，缺省即不动。
+type uiSettingsRequest struct {
+	UI           json.RawMessage `json:"ui"`
+	Theme        *uiThemePayload `json:"theme"`
+	Lang         string          `json:"lang"`
+	SidebarState json.RawMessage `json:"sidebarState"`
+}
+
+// settingsImportResponse 导入结果（imported = 实际写入的键数）。
+type settingsImportResponse struct {
+	Imported int `json:"imported"`
+}
+
 type SettingsHandler struct {
 	service       service.SettingsService
 	clientFactory *network.ClientFactory
@@ -179,6 +215,12 @@ func (h *SettingsHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/settings/network/test", h.TestNetworkProxy)
 	g.GET("/settings/appearance", h.GetAppearanceSettings)
 	g.PUT("/settings/appearance", h.UpdateAppearanceSettings)
+	// 界面设置整包（21 批）：跨设备/换浏览器/清缓存都不丢
+	g.GET("/settings/ui", h.GetUISettings)
+	g.PUT("/settings/ui", h.UpdateUISettings)
+	// 设置导出/导入（21 批）：凭证类不导出，导入只认白名单键
+	g.GET("/settings/export", h.ExportSettings)
+	g.POST("/settings/import", h.ImportSettings)
 	g.DELETE("/settings/anubis-cookies", h.ClearAnubisCookies)
 }
 
@@ -651,6 +693,150 @@ func (h *SettingsHandler) TestNetworkProxy(c echo.Context) error {
 		Success: true,
 		Message: "Proxy connection successful",
 	})
+}
+
+// GetUISettings 读界面设置整包（21 批）。
+// @Summary Get UI settings
+// @Description Get the UI settings package (shared fields + per-device sizes)
+// @Tags settings
+// @Produce json
+// @Success 200 {object} uiSettingsResponse
+// @Failure 500 {object} errorResponse
+// @Router /settings/ui [get]
+func (h *SettingsHandler) GetUISettings(c echo.Context) error {
+	settings, err := h.service.GetUISettings(c.Request().Context())
+	if err != nil {
+		logger.Error("ui settings get failed", "module", "handler", "action", "list", "resource", "settings", "result", "failed", "error", err)
+		return c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to get settings"})
+	}
+
+	return c.JSON(http.StatusOK, uiSettingsToResponse(settings))
+}
+
+// UpdateUISettings 写界面设置整包（只写传进来的项）。
+// @Summary Update UI settings
+// @Description Update the UI settings package; omitted fields are left untouched
+// @Tags settings
+// @Accept json
+// @Produce json
+// @Param settings body uiSettingsRequest true "UI settings"
+// @Success 200 {object} uiSettingsResponse
+// @Failure 400 {object} errorResponse
+// @Failure 500 {object} errorResponse
+// @Router /settings/ui [put]
+func (h *SettingsHandler) UpdateUISettings(c echo.Context) error {
+	var req uiSettingsRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
+	}
+
+	payload := &service.UISettings{
+		UI:           req.UI,
+		Lang:         req.Lang,
+		SidebarState: req.SidebarState,
+	}
+	if req.Theme != nil {
+		payload.Theme = service.UIThemeSettings{
+			Mode:       req.Theme.Mode,
+			LightTheme: req.Theme.LightTheme,
+			DarkTheme:  req.Theme.DarkTheme,
+		}
+	}
+
+	if err := h.service.SetUISettings(c.Request().Context(), payload); err != nil {
+		if errors.Is(err, service.ErrInvalid) {
+			// 这里不走 writeSettingsSaveError：那句话是给「URL 字段」写的，界面设置的错因不一样
+			return c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
+		}
+		logger.Error("ui settings save failed", "module", "handler", "action", "update", "resource", "settings", "result", "failed", "error", err)
+		return c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to save settings"})
+	}
+
+	logger.Info("ui settings updated", "module", "handler", "action", "update", "resource", "settings", "result", "ok")
+	return h.GetUISettings(c)
+}
+
+// ExportSettings 导出设置（凭证类排除，排除的键名写在文件里）。
+// @Summary Export settings
+// @Description Export settings as a readable JSON file; credential keys are excluded
+// @Tags settings
+// @Produce json
+// @Success 200 {object} service.SettingsExport
+// @Failure 500 {object} errorResponse
+// @Router /settings/export [get]
+func (h *SettingsHandler) ExportSettings(c echo.Context) error {
+	payload, err := h.service.ExportSettings(c.Request().Context())
+	if err != nil {
+		logger.Error("settings export failed", "module", "handler", "action", "export", "resource", "settings", "result", "failed", "error", err)
+		return c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to export settings"})
+	}
+
+	logger.Info("settings exported", "module", "handler", "action", "export", "resource", "settings", "result", "ok", "count", len(payload.Settings))
+	// 直接命中这个地址时会存成文件（凭这个头），前端也用它做「导出文件名」
+	c.Response().Header().Set("Content-Disposition", `attachment; filename="krss-settings.json"`)
+	return c.JSON(http.StatusOK, payload)
+}
+
+// ImportSettings 导入设置：只接受白名单键，整体覆盖。
+// @Summary Import settings
+// @Description Import settings from a previously exported file; unknown keys are rejected
+// @Tags settings
+// @Accept json
+// @Produce json
+// @Param settings body service.SettingsExport true "Settings export payload"
+// @Success 200 {object} settingsImportResponse
+// @Failure 400 {object} errorResponse
+// @Failure 500 {object} errorResponse
+// @Router /settings/import [post]
+func (h *SettingsHandler) ImportSettings(c echo.Context) error {
+	var payload service.SettingsExport
+	if err := c.Bind(&payload); err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
+	}
+
+	if err := h.service.ImportSettings(c.Request().Context(), &payload); err != nil {
+		switch {
+		case errors.Is(err, service.ErrUnknownSettingKey):
+			// 把「到底哪个键不认」说出来，别让用户猜
+			return c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
+		case errors.Is(err, service.ErrInvalid):
+			return c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
+		default:
+			logger.Error("settings import failed", "module", "handler", "action", "import", "resource", "settings", "result", "failed", "error", err)
+			return c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to import settings"})
+		}
+	}
+
+	logger.Info("settings imported", "module", "handler", "action", "import", "resource", "settings", "result", "ok", "count", len(payload.Settings))
+	return c.JSON(http.StatusOK, settingsImportResponse{Imported: len(payload.Settings)})
+}
+
+func uiSettingsToResponse(settings *service.UISettings) uiSettingsResponse {
+	if settings == nil {
+		return uiSettingsResponse{UI: json.RawMessage("{}"), SidebarState: json.RawMessage("{}"), Empty: true}
+	}
+
+	resp := uiSettingsResponse{
+		UI:           settings.UI,
+		Lang:         settings.Lang,
+		SidebarState: settings.SidebarState,
+		Empty:        settings.Empty,
+		Theme: uiThemePayload{
+			Mode:       settings.Theme.Mode,
+			LightTheme: settings.Theme.LightTheme,
+			DarkTheme:  settings.Theme.DarkTheme,
+		},
+	}
+	if !settings.UpdatedAt.IsZero() {
+		resp.UpdatedAt = settings.UpdatedAt.UTC().Format(time.RFC3339)
+	}
+	if len(resp.UI) == 0 {
+		resp.UI = json.RawMessage("{}")
+	}
+	if len(resp.SidebarState) == 0 {
+		resp.SidebarState = json.RawMessage("{}")
+	}
+	return resp
 }
 
 func itoa(i int) string {

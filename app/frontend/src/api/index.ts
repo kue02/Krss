@@ -13,6 +13,12 @@ import type {
   ViewCountsResponse,
   UnreadCountsResponse,
 } from "@/types/api";
+import {
+  LS_KEYS,
+  readLocalValue,
+  writeLocalValue,
+  removeLocalValue,
+} from "@/lib/settings-storage";
 import type {
   AISettings,
   AITestRequest,
@@ -25,6 +31,10 @@ import type {
   NetworkTestRequest,
   NetworkTestResponse,
   FetchSettings,
+  UISettingsResponse,
+  UISettingsPayload,
+  SettingsExportPayload,
+  SettingsImportResponse,
 } from "@/types/settings";
 import type {
   FilterApplyHistoryResult,
@@ -38,7 +48,8 @@ import type {
 } from "@/types/filters";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? "";
-const TOKEN_KEY = "gist_auth_token";
+// 21 批：gist_auth_token → krss_auth_token（readLocalValue 会把老键的值搬过来，不掉登录）
+const TOKEN_SPEC = LS_KEYS.authToken;
 
 export class ApiError extends Error {
   status: number;
@@ -198,15 +209,15 @@ async function* readSSEEvents<T>(response: Response): AsyncGenerator<T> {
 
 // Token management
 export function getAuthToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+  return readLocalValue(TOKEN_SPEC);
 }
 
 export function setAuthToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token);
+  writeLocalValue(TOKEN_SPEC, token);
 }
 
 export function clearAuthToken(): void {
-  localStorage.removeItem(TOKEN_KEY);
+  removeLocalValue(TOKEN_SPEC);
 }
 
 // Callback for handling 401 errors (set by auth store)
@@ -1340,5 +1351,40 @@ export async function createFilterException(
   return request<FilterRule>("/api/filters/exception", {
     method: "POST",
     body: JSON.stringify({ entryId }),
+  });
+}
+
+// ---------- 21 批（2026-09-18）：界面设置整包 + 设置导出/导入 ----------
+
+/**
+ * 读界面设置整包。`empty=true` 表示服务端一条都没存过 —— 调用方据此决定
+ * 「把本地这份当基线推上去（首次迁移）」还是「以服务端为准覆盖本地」。
+ */
+export async function getUISettings(): Promise<UISettingsResponse> {
+  return request<UISettingsResponse>("/api/settings/ui");
+}
+
+/** 写界面设置整包：只写传进来的项（服务端对缺省项不动），四组由后端一次事务落库。 */
+export async function putUISettings(
+  payload: UISettingsPayload,
+): Promise<UISettingsResponse> {
+  return request<UISettingsResponse>("/api/settings/ui", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** 导出设置（凭证类不进文件，被排除的键名在 excludedKeys 里）。 */
+export async function exportSettings(): Promise<SettingsExportPayload> {
+  return request<SettingsExportPayload>("/api/settings/export");
+}
+
+/** 导入设置：只接受白名单键，出现别的键后端会 400 并把键名带回来。 */
+export async function importSettings(
+  payload: Pick<SettingsExportPayload, "version" | "settings">,
+): Promise<SettingsImportResponse> {
+  return request<SettingsImportResponse>("/api/settings/import", {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }

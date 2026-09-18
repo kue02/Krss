@@ -2628,6 +2628,32 @@ const docTemplate = `{
                 }
             }
         },
+        "/settings/export": {
+            "get": {
+                "description": "Export settings as a readable JSON file; credential keys are excluded",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "settings"
+                ],
+                "summary": "Export settings",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/gist_backend_internal_service.SettingsExport"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/settings/fetch": {
             "get": {
                 "description": "Refresh interval / concurrency / timeout. Values take effect on the next round.",
@@ -2762,6 +2788,52 @@ const docTemplate = `{
                 }
             }
         },
+        "/settings/import": {
+            "post": {
+                "description": "Import settings from a previously exported file; unknown keys are rejected",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "settings"
+                ],
+                "summary": "Import settings",
+                "parameters": [
+                    {
+                        "description": "Settings export payload",
+                        "name": "settings",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/gist_backend_internal_service.SettingsExport"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.settingsImportResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/settings/network": {
             "get": {
                 "description": "Get the network proxy configuration with masked password",
@@ -2865,6 +2937,76 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/settings/ui": {
+            "get": {
+                "description": "Get the UI settings package (shared fields + per-device sizes)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "settings"
+                ],
+                "summary": "Get UI settings",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.uiSettingsResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Update the UI settings package; omitted fields are left untouched",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "settings"
+                ],
+                "summary": "Update UI settings",
+                "parameters": [
+                    {
+                        "description": "UI settings",
+                        "name": "settings",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.uiSettingsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.uiSettingsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/internal_handler.errorResponse"
                         }
@@ -3024,6 +3166,33 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "updated": {
+                    "type": "integer"
+                }
+            }
+        },
+        "gist_backend_internal_service.SettingsExport": {
+            "type": "object",
+            "properties": {
+                "excludedKeys": {
+                    "description": "ExcludedKeys 导出时被排除的键（凭证类）——写进文件里，让用户知道漏了哪些、为什么。",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "exportedAt": {
+                    "type": "string"
+                },
+                "settings": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "version": {
                     "type": "integer"
                 }
             }
@@ -4314,6 +4483,14 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handler.settingsImportResponse": {
+            "type": "object",
+            "properties": {
+                "imported": {
+                    "type": "integer"
+                }
+            }
+        },
         "internal_handler.starredCountResponse": {
             "type": "object",
             "properties": {
@@ -4374,6 +4551,73 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "content": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.uiSettingsRequest": {
+            "type": "object",
+            "properties": {
+                "lang": {
+                    "type": "string"
+                },
+                "sidebarState": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "theme": {
+                    "$ref": "#/definitions/internal_handler.uiThemePayload"
+                },
+                "ui": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        "internal_handler.uiSettingsResponse": {
+            "type": "object",
+            "properties": {
+                "empty": {
+                    "description": "Empty：服务端一条都没存过（前端据此把本地那份当基线推上来）",
+                    "type": "boolean"
+                },
+                "lang": {
+                    "type": "string"
+                },
+                "sidebarState": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "theme": {
+                    "$ref": "#/definitions/internal_handler.uiThemePayload"
+                },
+                "ui": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.uiThemePayload": {
+            "type": "object",
+            "properties": {
+                "darkTheme": {
+                    "type": "string"
+                },
+                "lightTheme": {
+                    "type": "string"
+                },
+                "mode": {
                     "type": "string"
                 }
             }

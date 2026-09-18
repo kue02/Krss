@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { LS_KEYS, readLocalValue, writeLocalValue } from "@/lib/settings-storage";
+import { registerSettingsGroup, scheduleSettingsFlush } from "@/lib/settings-sync";
 
 /**
  * 主题系统（Nextflux 皮肤）
@@ -35,9 +37,9 @@ export const themes: { light: ThemeOption[]; dark: ThemeOption[] } = {
   ],
 };
 
-const MODE_KEY = "gist-theme";
-const LIGHT_KEY = "gist-light-theme";
-const DARK_KEY = "gist-dark-theme";
+const MODE_SPEC = LS_KEYS.theme;
+const LIGHT_SPEC = LS_KEYS.lightTheme;
+const DARK_SPEC = LS_KEYS.darkTheme;
 
 interface ThemeConfig {
   mode: Theme;
@@ -61,18 +63,16 @@ function readStored(): ThemeConfig {
     darkTheme: "dark",
   };
   if (typeof window === "undefined") return fallback;
-  try {
-    const mode = localStorage.getItem(MODE_KEY);
-    const light = localStorage.getItem(LIGHT_KEY);
-    const dark = localStorage.getItem(DARK_KEY);
-    return {
-      mode: isMode(mode) ? mode : "system",
-      lightTheme: isLightTheme(light) ? light : "light",
-      darkTheme: isDarkTheme(dark) ? dark : "dark",
-    };
-  } catch {
-    return fallback;
-  }
+
+  // 21 批：键名 gist-theme* → krss-theme*（readLocalValue 会把老键的值搬过来，用户无感）
+  const mode = readLocalValue(MODE_SPEC);
+  const light = readLocalValue(LIGHT_SPEC);
+  const dark = readLocalValue(DARK_SPEC);
+  return {
+    mode: isMode(mode) ? mode : "system",
+    lightTheme: isLightTheme(light) ? light : "light",
+    darkTheme: isDarkTheme(dark) ? dark : "dark",
+  };
 }
 
 let cached: ThemeConfig = readStored();
@@ -125,13 +125,9 @@ function applyTheme(config: ThemeConfig) {
 export { THEME_COLORS };
 
 function persist(config: ThemeConfig) {
-  try {
-    localStorage.setItem(MODE_KEY, config.mode);
-    localStorage.setItem(LIGHT_KEY, config.lightTheme);
-    localStorage.setItem(DARK_KEY, config.darkTheme);
-  } catch {
-    // ignore storage errors
-  }
+  writeLocalValue(MODE_SPEC, config.mode);
+  writeLocalValue(LIGHT_SPEC, config.lightTheme);
+  writeLocalValue(DARK_SPEC, config.darkTheme);
 }
 
 function update(patch: Partial<ThemeConfig>) {
@@ -139,6 +135,8 @@ function update(patch: Partial<ThemeConfig>) {
   persist(cached);
   applyTheme(cached);
   emitChange();
+  // 21 批：主题也进服务端（跨设备一致），防抖后写
+  scheduleSettingsFlush("ui.theme");
 }
 
 export function setTheme(mode: Theme): void {
@@ -219,3 +217,38 @@ export function useTheme() {
 if (typeof window !== "undefined") {
   applyTheme(cached);
 }
+
+// ---------- 21 批：注册「主题」同步组 ----------
+
+/**
+ * 服务端那份主题覆盖本地（只在登录后首次拉取时走）。
+ * 三档值各过一遍枚举校验：服务端/导入文件里的野值不许把界面带到「不存在的主题」上。
+ */
+export function applyThemeFromServer(value: {
+  mode: string;
+  lightTheme: string;
+  darkTheme: string;
+}): void {
+  const mode: Theme = isMode(value.mode) ? value.mode : cached.mode;
+  const lightTheme: LightThemeId = isLightTheme(value.lightTheme)
+    ? value.lightTheme
+    : cached.lightTheme;
+  const darkTheme: DarkThemeId = isDarkTheme(value.darkTheme)
+    ? value.darkTheme
+    : cached.darkTheme;
+
+  cached = { mode, lightTheme, darkTheme };
+  persist(cached);
+  applyTheme(cached);
+  emitChange();
+}
+
+registerSettingsGroup({
+  key: "ui.theme",
+  read: () => ({
+    mode: cached.mode,
+    lightTheme: cached.lightTheme,
+    darkTheme: cached.darkTheme,
+  }),
+  apply: (value) => applyThemeFromServer(value),
+});

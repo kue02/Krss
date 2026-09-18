@@ -9,6 +9,7 @@ import { SegmentedControl } from "@/components/ui/segmented-control";
 import { useGeneralSettings } from "@/hooks/useGeneralSettings";
 import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
 import { setUISetting, useUISettingKey, type ScrollReadMode } from "@/hooks/useUISettings";
+import { setUILang } from "@/lib/ui-lang";
 import { RSSHubSettings } from "./RSSHubSettings";
 import { NotifySettings } from "./NotifySettings";
 
@@ -135,9 +136,9 @@ export function GeneralSettings() {
     [t],
   );
 
+  // 21 批：改语言走 lib/ui-lang（本地立即生效 + 防抖写服务端，跨设备一致）
   const changeLanguage = (lng: Language) => {
-    i18n.changeLanguage(lng);
-    localStorage.setItem("gist-lang", lng);
+    setUILang(lng);
   };
 
   return (

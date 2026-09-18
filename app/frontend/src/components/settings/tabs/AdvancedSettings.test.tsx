@@ -41,12 +41,12 @@ const RECORD = {
 beforeEach(() => {
   cleanup();
   localStorage.clear();
-  localStorage.setItem("gist-auto-refresh-history", JSON.stringify([RECORD]));
+  localStorage.setItem("krss-auto-refresh-history", JSON.stringify([RECORD]));
 });
 
 describe("AdvancedSettings 自动刷新历史（12-19）", () => {
   it("渲染不崩：表头可排序 + 报错行有复制按钮", async () => {
-    localStorage.setItem("gist-auto-refresh-history", JSON.stringify([RECORD]));
+    localStorage.setItem("krss-auto-refresh-history", JSON.stringify([RECORD]));
     render(<AdvancedSettings />);
     await waitFor(() =>
       expect(document.body.textContent).toContain("settings.auto_refresh_history"),

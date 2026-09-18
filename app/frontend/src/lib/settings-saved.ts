@@ -11,3 +11,21 @@ export function notifySettingsSaved(): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new Event(SETTINGS_SAVED_EVENT));
 }
+
+/**
+ * 21 批（2026-09-18）：界面设置改完要写服务端（跨设备一致），写失败**必须让用户看见**。
+ *
+ * 为什么单独一个事件：本地那份（localStorage 缓存）其实已经改好了、界面也已经生效，
+ * 只有「推给服务端」这一步失败 —— 不说的话用户会以为一切都保存好了，
+ * 换台设备打开才发现少了一半。（用户明确要求：失败须给可见原因，不接受无提示失败。）
+ */
+export const SETTINGS_SYNC_FAILED_EVENT = "gist:settings-sync-failed";
+
+export function notifySettingsSyncFailed(error?: unknown): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent(SETTINGS_SYNC_FAILED_EVENT, {
+      detail: error instanceof Error ? error.message : "",
+    }),
+  );
+}

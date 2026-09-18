@@ -25,6 +25,10 @@ describe("iOS PWA metadata", () => {
 
   it("applies the stored theme palette before the app loads", () => {
     // 首屏内联脚本要能读出「亮/暗各选一套」的配色，并把 data-theme 指向具体主题
+    // 21 批：键名改 krss-*，首屏脚本新键优先、老键兜底
+    expect(indexHtml).toContain('localStorage.getItem("krss-theme")');
+    expect(indexHtml).toContain('localStorage.getItem("krss-light-theme")');
+    expect(indexHtml).toContain('localStorage.getItem("krss-dark-theme")');
     expect(indexHtml).toContain('localStorage.getItem("gist-theme")');
     expect(indexHtml).toContain('localStorage.getItem("gist-light-theme")');
     expect(indexHtml).toContain('localStorage.getItem("gist-dark-theme")');

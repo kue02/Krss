@@ -29,9 +29,12 @@
         let lightTheme = "light";
         let darkTheme = "dark";
         try {
-          mode = localStorage.getItem("gist-theme") || "system";
-          lightTheme = localStorage.getItem("gist-light-theme") || "light";
-          darkTheme = localStorage.getItem("gist-dark-theme") || "dark";
+          // 键名 krss-* 优先（21 批改名），老键 gist-* 兜底 —— 首屏要跟 useTheme 读的是同一份值
+          mode = localStorage.getItem("krss-theme") || localStorage.getItem("gist-theme") || "system";
+          lightTheme =
+            localStorage.getItem("krss-light-theme") || localStorage.getItem("gist-light-theme") || "light";
+          darkTheme =
+            localStorage.getItem("krss-dark-theme") || localStorage.getItem("gist-dark-theme") || "dark";
         } catch {
           // Use the system theme when storage is unavailable.
         }

@@ -8,7 +8,11 @@ import {
 } from "react";
 import { Router, useLocation, Redirect } from "wouter";
 import { useTranslation } from "react-i18next";
-import { SETTINGS_SAVED_EVENT } from "@/lib/settings-saved";
+import {
+  SETTINGS_SAVED_EVENT,
+  SETTINGS_SYNC_FAILED_EVENT,
+} from "@/lib/settings-saved";
+import { SETTINGS_MOBILE_BREAKPOINT, initSettingsSync } from "@/lib/settings-sync";
 import { showToast } from "@/stores/toast-store";
 import { ThreeColumnLayout } from "@/components/layout/three-column-layout";
 import { Sheet } from "@/components/ui/sheet";
@@ -56,6 +60,7 @@ import {
   applyIconRadiusToDocument,
   applyReduceMotionToDocument,
   applyUiScaleToDocument,
+  refreshDeviceScopedSettings,
 } from "@/hooks/useUISettings";
 import { useRefreshStatus } from "@/hooks/useRefreshStatus";
 import { isAddFeedPath } from "@/lib/router";
@@ -152,6 +157,29 @@ function AuthenticatedApp() {
     openSidebar,
     closeSidebar,
   } = useMobileLayout();
+
+  /**
+   * 21 批（2026-09-18）：登录后把「界面设置」与服务端对齐一次。
+   *   服务端一条没存过（首次迁移）或本地有没推上去的改动 → 以本地为准推上去；
+   *   否则**服务端为准**覆盖本地 —— 这就是「换台设备打开是同一套设置」。
+   * 放在这个组件里是因为它只在已登录时渲染，未登录时不会发这个请求。
+   */
+  useEffect(() => {
+    void initSettingsSync();
+  }, []);
+
+  /**
+   * 21 批：尺寸类（列宽 / 整体缩放 / 侧栏显隐）按设备分套存，
+   * 窗口跨过 768px 断点就换到另一套；matchMedia 的 change 只在跨断点时触发，比监听 resize 省事。
+   */
+  useEffect(() => {
+    const media = window.matchMedia(
+      `(min-width: ${SETTINGS_MOBILE_BREAKPOINT}px)`,
+    );
+    const onChange = () => refreshDeviceScopedSettings();
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
 
   const {
     selection,
@@ -378,6 +406,28 @@ function AuthenticatedApp() {
     return () => {
       if (timer) clearTimeout(timer);
       window.removeEventListener(SETTINGS_SAVED_EVENT, onSaved);
+    };
+  }, [t]);
+
+  /**
+   * 21 批：设置「写服务端」失败必须看得见 —— 本地那份（缓存）已经改好了、界面也已经生效，
+   * 只有上传这一步失败；不说的话用户会以为一切都保存好了，换台设备才发现少了一半。
+   */
+  useEffect(() => {
+    const onSyncFailed = (event: Event) => {
+      const reason =
+        event instanceof CustomEvent && typeof event.detail === "string"
+          ? event.detail
+          : "";
+      showToast(
+        t("settings.sync_failed_toast", {
+          reason: reason || t("settings.sync_failed_unknown"),
+        }),
+      );
+    };
+    window.addEventListener(SETTINGS_SYNC_FAILED_EVENT, onSyncFailed);
+    return () => {
+      window.removeEventListener(SETTINGS_SYNC_FAILED_EVENT, onSyncFailed);
     };
   }, [t]);
 

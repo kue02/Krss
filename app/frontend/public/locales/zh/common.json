@@ -194,7 +194,9 @@
     "dirty_label_ai": "AI",
     "dirty_label_notify": "通知",
     "dirty_label_rsshub": "RSSHub",
-    "dirty_label_profile": "个人资料"
+    "dirty_label_profile": "个人资料",
+    "sync_failed_toast": "设置上传失败：{{reason}}",
+    "sync_failed_unknown": "网络或服务端异常"
   },
   "theme": {
     "system": "跟随系统",
@@ -419,7 +421,20 @@
     "clear_success": "清理完成",
     "cleared_ai_items": "已删除 {{summaries}} 条摘要、{{translations}} 条翻译",
     "cleared_count": "已删除 {{count}} 条记录",
-    "clear_failed": "清理失败"
+    "clear_failed": "清理失败",
+    "settings_backup": "设置",
+    "export_settings": "导出设置",
+    "export_settings_description": "把界面设置与全部设置项导出为一份可读 JSON（不含 API Key、代理密码、推送地址等凭证）",
+    "export_settings_failed": "导出失败",
+    "import_settings": "导入设置",
+    "import_settings_description": "从导出的 JSON 文件恢复设置。导入会整体覆盖现有设置，且不可撤销",
+    "import_settings_confirm_title": "导入设置？",
+    "import_settings_confirm_body": "会用文件里的 {{count}} 项设置整体覆盖当前设置（凭证类不受影响），且无法撤销。",
+    "import_settings_confirm": "导入",
+    "import_settings_cancel": "取消",
+    "import_settings_invalid_file": "这不是本应用导出的设置文件",
+    "import_settings_success": "已导入 {{count}} 项设置",
+    "import_settings_failed": "导入失败"
   },
   "user": {
     "profile": "个人资料",

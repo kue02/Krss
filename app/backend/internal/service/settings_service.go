@@ -79,6 +79,62 @@ type AppearanceSettings struct {
 	ContentTypes []string `json:"contentTypes"`
 }
 
+// ---------- 21 批（2026-09-18）：界面设置搬到服务端，跨设备/换浏览器/清缓存都不丢 ----------
+
+// UIThemeSettings 主题三件套：明暗模式 + 明暗各自选的那套配色。
+type UIThemeSettings struct {
+	Mode       string `json:"mode"`
+	LightTheme string `json:"lightTheme"`
+	DarkTheme  string `json:"darkTheme"`
+}
+
+// UISettings 界面设置整包。
+//
+// 这里**刻意只做透传、不给前端字段建模**：UI 与 SidebarState 是原样 JSON，后端只校验
+// 「是 JSON 对象 + 不超限」。原因是有前车之鉴 —— 后端 DTO 少一个字段，前端设置会静默失效
+// 且不报错（见 docs/变更记录.md）。前端字段有 25+ 项而且还会继续长，建模等于给自己埋雷。
+//
+// UI 的形状由前端约定：`{ "shared": {...}, "device": { "desktop": {...}, "mobile": {...} } }`
+// —— 尺寸类（列宽/缩放/侧栏）按设备分套，其余共享，避免把桌面的列宽同步到手机上。
+type UISettings struct {
+	UI           json.RawMessage `json:"ui"`
+	Theme        UIThemeSettings `json:"theme"`
+	Lang         string          `json:"lang"`
+	SidebarState json.RawMessage `json:"sidebarState"`
+	UpdatedAt    time.Time       `json:"updatedAt,omitempty"`
+	// Empty = 服务端一条界面设置都没存过。前端据此判断「首次迁移：以本地为准推上去」。
+	Empty bool `json:"empty"`
+}
+
+// settingsExportVersion 导出文件格式版本（改结构时要一起改）。
+const settingsExportVersion = 1
+
+// SettingsExport 导出的设置整包（可读 JSON，导入可逆）。
+type SettingsExport struct {
+	Version    int                        `json:"version"`
+	ExportedAt time.Time                  `json:"exportedAt"`
+	Settings   map[string]json.RawMessage `json:"settings"`
+	// ExcludedKeys 导出时被排除的键（凭证类）——写进文件里，让用户知道漏了哪些、为什么。
+	ExcludedKeys []string `json:"excludedKeys"`
+}
+
+const (
+	// keyUISettings 界面设置整包（shared + 按设备分套的尺寸类）
+	keyUISettings = "ui"
+	// keyUITheme 主题（模式 + 明暗配色）
+	keyUITheme = "ui.theme"
+	// keyUILang 界面语言
+	keyUILang = "ui.lang"
+	// keyUISidebarState 侧栏分类展开态
+	keyUISidebarState = "ui.sidebar_state"
+)
+
+// 界面设置的大小上限：正常整包实测 < 4KB，256KB 是防呆（防止把别的东西塞进来当设置）。
+const (
+	maxUISettingsBytes = 256 * 1024
+	maxUIShortFieldLen = 32
+)
+
 // Setting keys
 const (
 	keyAIProvider         = "ai.provider"
@@ -176,6 +232,14 @@ type SettingsService interface {
 	GetAppearanceSettings(ctx context.Context) (*AppearanceSettings, error)
 	// SetAppearanceSettings updates appearance settings.
 	SetAppearanceSettings(ctx context.Context, settings *AppearanceSettings) error
+	// GetUISettings 读界面设置整包（21 批）；Empty=true 表示服务端还没存过（前端据此做首次迁移）。
+	GetUISettings(ctx context.Context) (*UISettings, error)
+	// SetUISettings 写界面设置整包：只写传进来的那几项，四个键一次事务落库。
+	SetUISettings(ctx context.Context, settings *UISettings) error
+	// ExportSettings 导出设置（白名单键，凭证类排除并列出）。
+	ExportSettings(ctx context.Context) (*SettingsExport, error)
+	// ImportSettings 导入设置：只接受白名单键，整体覆盖；出现白名单外的键直接报错，不静默忽略。
+	ImportSettings(ctx context.Context, payload *SettingsExport) error
 }
 
 type settingsService struct {
@@ -998,4 +1062,319 @@ func isValidAppearanceContentType(value string) bool {
 	default:
 		return false
 	}
+}
+
+// ---------- 21 批（2026-09-18）：界面设置整包 ----------
+
+// GetUISettings 读界面设置整包。四个键一个都没存过时 Empty=true ——
+// 前端拿这一个标志判断「是不是第一次（要把本地那份推上来）」，不用自己拼「有没有内容」。
+func (s *settingsService) GetUISettings(ctx context.Context) (*UISettings, error) {
+	out := &UISettings{
+		UI:           json.RawMessage("{}"),
+		SidebarState: json.RawMessage("{}"),
+		// 默认「一条都没存过」；只要读到任意一个键就翻成 false
+		Empty: true,
+	}
+
+	for _, key := range []string{keyUISettings, keyUITheme, keyUILang, keyUISidebarState} {
+		item, err := s.repo.Get(ctx, key)
+		if err != nil {
+			return nil, err
+		}
+		if item == nil || item.Value == "" {
+			continue
+		}
+
+		switch key {
+		case keyUISettings:
+			if !json.Valid([]byte(item.Value)) {
+				continue
+			}
+			out.UI = json.RawMessage(item.Value)
+		case keyUITheme:
+			var theme UIThemeSettings
+			if err := json.Unmarshal([]byte(item.Value), &theme); err != nil {
+				continue
+			}
+			out.Theme = theme
+		case keyUILang:
+			out.Lang = item.Value
+		case keyUISidebarState:
+			if !json.Valid([]byte(item.Value)) {
+				continue
+			}
+			out.SidebarState = json.RawMessage(item.Value)
+		}
+
+		out.Empty = false
+		if item.UpdatedAt.After(out.UpdatedAt) {
+			out.UpdatedAt = item.UpdatedAt
+		}
+	}
+
+	return out, nil
+}
+
+// SetUISettings 写界面设置整包。
+//
+// 只写**传进来的**那几项（不传的不动）—— 与 SetFetchSettings 同一套约定，
+// 免得「只改主题」这种调用把整包其余部分清空。四个键由 SetMany 一次事务落库。
+func (s *settingsService) SetUISettings(ctx context.Context, settings *UISettings) error {
+	if settings == nil {
+		return fmt.Errorf("%w: nil ui settings", ErrInvalid)
+	}
+
+	payload := make(map[string]string, 4)
+
+	if len(settings.UI) > 0 {
+		if err := validateJSONObjectPayload(settings.UI, maxUISettingsBytes); err != nil {
+			return err
+		}
+		payload[keyUISettings] = string(settings.UI)
+	}
+
+	if settings.Theme != (UIThemeSettings{}) {
+		if err := validateUITheme(settings.Theme); err != nil {
+			return err
+		}
+		encoded, err := json.Marshal(settings.Theme)
+		if err != nil {
+			return fmt.Errorf("marshal ui theme: %w", err)
+		}
+		payload[keyUITheme] = string(encoded)
+	}
+
+	if settings.Lang != "" {
+		if !isValidShortToken(settings.Lang) {
+			return fmt.Errorf("%w: invalid ui language", ErrInvalid)
+		}
+		payload[keyUILang] = settings.Lang
+	}
+
+	if len(settings.SidebarState) > 0 {
+		if err := validateJSONObjectPayload(settings.SidebarState, maxUISettingsBytes); err != nil {
+			return err
+		}
+		payload[keyUISidebarState] = string(settings.SidebarState)
+	}
+
+	if len(payload) == 0 {
+		return fmt.Errorf("%w: empty ui settings payload", ErrInvalid)
+	}
+
+	if err := s.repo.SetMany(ctx, payload); err != nil {
+		return fmt.Errorf("set ui settings: %w", err)
+	}
+	return nil
+}
+
+// ExportSettings 导出设置：白名单键逐个读出来，凭证类排除并列在 ExcludedKeys 里。
+func (s *settingsService) ExportSettings(ctx context.Context) (*SettingsExport, error) {
+	out := &SettingsExport{
+		Version:      settingsExportVersion,
+		ExportedAt:   time.Now().UTC(),
+		Settings:     make(map[string]json.RawMessage),
+		ExcludedKeys: excludedSettingKeys(),
+	}
+
+	for _, key := range importableSettingKeys() {
+		item, err := s.repo.Get(ctx, key)
+		if err != nil {
+			return nil, err
+		}
+		if item == nil {
+			continue
+		}
+		out.Settings[key] = storedValueToJSON(item.Value)
+	}
+
+	return out, nil
+}
+
+// ImportSettings 导入设置：整体覆盖白名单内的键；出现白名单外的键**直接报错**（不静默忽略），
+// 因为「导入了一半、另一半没进去」是最难排查的那类问题。
+func (s *settingsService) ImportSettings(ctx context.Context, payload *SettingsExport) error {
+	if payload == nil || len(payload.Settings) == 0 {
+		return fmt.Errorf("%w: empty settings payload", ErrInvalid)
+	}
+
+	allowed := make(map[string]struct{}, len(importableSettingKeys()))
+	for _, key := range importableSettingKeys() {
+		allowed[key] = struct{}{}
+	}
+
+	values := make(map[string]string, len(payload.Settings))
+	for key, raw := range payload.Settings {
+		if _, ok := allowed[key]; !ok {
+			return fmt.Errorf("%w: %s", ErrUnknownSettingKey, key)
+		}
+		if len(raw) > maxUISettingsBytes {
+			return fmt.Errorf("%w: value of %s is too large", ErrInvalid, key)
+		}
+		if err := validateImportedValue(key, raw); err != nil {
+			return err
+		}
+		values[key] = jsonValueToStored(raw)
+	}
+
+	if len(values) == 0 {
+		return fmt.Errorf("%w: empty settings payload", ErrInvalid)
+	}
+
+	if err := s.repo.SetMany(ctx, values); err != nil {
+		return fmt.Errorf("import settings: %w", err)
+	}
+	return nil
+}
+
+// importableSettingKeys 可导出/可导入的键白名单。
+//
+// **新增设置键时要往这里补一条**，否则导出会漏、导入会拒 —— 这是故意的：
+// 白名单把「导入一份手改坏的文件」挡在门外，代价是要记得维护。
+func importableSettingKeys() []string {
+	return []string{
+		// AI（api_key / providers 是凭证，不在此列）
+		keyAIProvider,
+		keyAIBaseURL,
+		keyAIModel,
+		keyAIRequestOptions,
+		keyAISummaryLanguage,
+		keyAIAutoTranslate,
+		keyAIAutoSummary,
+		keyAIRateLimit,
+		keyAITranslateChannel,
+		keyAIFallbackToModel,
+		keyAIActiveProvider,
+		// 通用与拉取
+		keyFallbackUserAgent,
+		keyAutoReadability,
+		keyMarkReadOnScroll,
+		keyRSSHubBaseURL,
+		keyRefreshIntervalMinutes,
+		keyRefreshConcurrency,
+		keyRefreshPerHostConcurrency,
+		keyRefreshTimeoutSeconds,
+		// 网络（代理密码不在此列）
+		keyNetworkEnabled,
+		keyNetworkType,
+		keyNetworkHost,
+		keyNetworkPort,
+		keyNetworkUsername,
+		keyNetworkIPStack,
+		// 外观 + 界面设置（21 批）
+		keyAppearanceContentTypes,
+		keyUISettings,
+		keyUITheme,
+		keyUILang,
+		keyUISidebarState,
+		// 资料（密码哈希 / JWT 密钥不在此列）
+		keyUserUsername,
+		keyUserNickname,
+		keyUserEmail,
+		keyUserAvatarURL,
+	}
+}
+
+// excludedSettingKeys 导出时排除的键，会原样写进导出文件里（让用户知道漏了哪些、为什么）。
+func excludedSettingKeys() []string {
+	return []string{
+		keyAIAPIKey,
+		keyAIProviders,
+		keyNotifyBarkURL,
+		keyRSSHubAccessKey,
+		keyNetworkPassword,
+		keyUserPasswordHash,
+		keyUserJWTSecret,
+		// 站点会话 cookie：按前缀整体排除（anubis.cookie.<host>）
+		"anubis.cookie.*",
+	}
+}
+
+// validateImportedValue 对导入的结构化值做一次真校验 —— 白名单只管「键认不认」，
+// 值里塞个 mode="rainbow" 的话界面会直接坏掉（主题 class 只认 light/dark/system）。
+func validateImportedValue(key string, raw json.RawMessage) error {
+	switch key {
+	case keyUITheme:
+		var theme UIThemeSettings
+		if err := json.Unmarshal(raw, &theme); err != nil {
+			return fmt.Errorf("%w: invalid ui theme", ErrInvalid)
+		}
+		return validateUITheme(theme)
+	case keyUILang:
+		if !isValidShortToken(jsonValueToStored(raw)) {
+			return fmt.Errorf("%w: invalid ui language", ErrInvalid)
+		}
+	case keyUISettings, keyUISidebarState:
+		if err := validateJSONObjectPayload(raw, maxUISettingsBytes); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// storedValueToJSON：库里的值本来就是混合形态（`true` / `zh` / 一段 JSON）。
+// 能当 JSON 解析的原样带走，否则引号包成字符串；导入端按同一规则逆着来，保证可逆。
+func storedValueToJSON(value string) json.RawMessage {
+	if json.Valid([]byte(value)) {
+		return json.RawMessage(value)
+	}
+	quoted, err := json.Marshal(value)
+	if err != nil {
+		return json.RawMessage("null")
+	}
+	return json.RawMessage(quoted)
+}
+
+// jsonValueToStored 与 storedValueToJSON 互逆：JSON 字符串取内容，其余取原文。
+func jsonValueToStored(raw json.RawMessage) string {
+	var asString string
+	if err := json.Unmarshal(raw, &asString); err == nil {
+		return asString
+	}
+	return string(raw)
+}
+
+// validateJSONObjectPayload：只要求「是 JSON 对象 + 不超上限」，字段形状不在这里管
+// （前端字段会继续长，后端跟着建模就会重蹈「DTO 少字段 → 设置静默失效」的覆辙）。
+func validateJSONObjectPayload(raw json.RawMessage, limit int) error {
+	if len(raw) > limit {
+		return fmt.Errorf("%w: settings payload too large (limit %d bytes)", ErrInvalid, limit)
+	}
+	var probe map[string]any
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return fmt.Errorf("%w: settings payload must be a JSON object", ErrInvalid)
+	}
+	return nil
+}
+
+// validateUITheme：模式是固定三档（`<html class>` 只认 light/dark/system，必须严判）；
+// 配色 id 只做「短、无空格」的松校验 —— 前端以后加主题不该被后端卡住。
+func validateUITheme(theme UIThemeSettings) error {
+	switch theme.Mode {
+	case "light", "dark", "system":
+	default:
+		return fmt.Errorf("%w: invalid theme mode", ErrInvalid)
+	}
+	if theme.LightTheme != "" && !isValidShortToken(theme.LightTheme) {
+		return fmt.Errorf("%w: invalid light theme", ErrInvalid)
+	}
+	if theme.DarkTheme != "" && !isValidShortToken(theme.DarkTheme) {
+		return fmt.Errorf("%w: invalid dark theme", ErrInvalid)
+	}
+	return nil
+}
+
+// isValidShortToken：短标识符（主题 id / 语言码）—— 长度受限、不允许空白与控制字符。
+func isValidShortToken(value string) bool {
+	if value == "" || len(value) > maxUIShortFieldLen {
+		return false
+	}
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_', r == '.':
+		default:
+			return false
+		}
+	}
+	return true
 }

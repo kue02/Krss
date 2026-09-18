@@ -1,22 +1,33 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { LS_KEYS, readLocalValue, writeLocalValue } from "@/lib/settings-storage";
+import { registerSettingsGroup, scheduleSettingsFlush } from "@/lib/settings-sync";
 
 interface CategoryState {
   [categoryName: string]: boolean;
 }
 
-const STORAGE_KEY = "gist-category-state";
+// 21 批：键名 gist-category-state → krss-category-state（老键的值会被搬过来）
+const STORAGE_SPEC = LS_KEYS.categoryState;
 
 function getStoredState(): CategoryState {
   if (typeof window === "undefined") return {};
+
+  const stored = readLocalValue(STORAGE_SPEC);
+  if (!stored) return {};
+
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      return JSON.parse(stored);
+    const parsed: unknown = JSON.parse(stored);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return {};
     }
+    const out: CategoryState = {};
+    for (const [name, open] of Object.entries(parsed)) {
+      if (typeof open === "boolean") out[name] = open;
+    }
+    return out;
   } catch {
-    // ignore parse errors
+    return {};
   }
-  return {};
 }
 
 let cachedState: CategoryState = getStoredState();
@@ -37,13 +48,41 @@ function getSnapshot(): CategoryState {
   return cachedState;
 }
 
+function persistState(): void {
+  writeLocalValue(STORAGE_SPEC, JSON.stringify(cachedState));
+}
+
 function setCategoryState(category: string, isOpen: boolean): void {
-  cachedState = { ...cachedState, [category]: isOpen };
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(cachedState));
-  } catch {
-    // ignore storage errors
+  setCategoriesState([category], isOpen);
+}
+
+/**
+ * 一次改多个分类（「全部展开 / 全部收起」）：只写一次、只发一次同步。
+ * 旧写法是在循环里挨个调 setCategoryState，10 个分类就是 10 次落盘 + 10 次通知。
+ */
+function setCategoriesState(categories: string[], isOpen: boolean): void {
+  if (categories.length === 0) return;
+
+  const next = { ...cachedState };
+  for (const category of categories) {
+    next[category] = isOpen;
   }
+  cachedState = next;
+
+  persistState();
+  emitChange();
+  scheduleSettingsFlush("ui.sidebar_state");
+}
+
+/** 21 批：服务端那份展开态覆盖本地（登录后首次拉取时走） */
+export function applyCategoryStateFromServer(state: Record<string, boolean>): void {
+  const next: CategoryState = {};
+  for (const [name, open] of Object.entries(state)) {
+    if (typeof open === "boolean") next[name] = open;
+  }
+
+  cachedState = next;
+  persistState();
   emitChange();
 }
 
@@ -86,9 +125,7 @@ export function toggleCategory(category: string): void {
 export function useCategoryActions() {
   const setAllCategories = useCallback(
     (categories: string[], isOpen: boolean) => {
-      for (const category of categories) {
-        setCategoryState(category, isOpen);
-      }
+      setCategoriesState(categories, isOpen);
     },
     [],
   );
@@ -123,3 +160,11 @@ export function useAllCategoriesOpen(categories: string[]): boolean {
     return names.length > 0 && names.every((name) => state[name] ?? false);
   }, [key, state]);
 }
+
+// ---------- 21 批：注册「侧栏分类展开态」同步组 ----------
+
+registerSettingsGroup({
+  key: "ui.sidebar_state",
+  read: () => ({ ...cachedState }),
+  apply: (value) => applyCategoryStateFromServer(value),
+});

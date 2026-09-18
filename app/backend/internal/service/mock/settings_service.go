@@ -56,6 +56,21 @@ func (mr *MockSettingsServiceMockRecorder) ClearAnubisCookies(ctx any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearAnubisCookies", reflect.TypeOf((*MockSettingsService)(nil).ClearAnubisCookies), ctx)
 }
 
+// ExportSettings mocks base method.
+func (m *MockSettingsService) ExportSettings(ctx context.Context) (*service.SettingsExport, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExportSettings", ctx)
+	ret0, _ := ret[0].(*service.SettingsExport)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ExportSettings indicates an expected call of ExportSettings.
+func (mr *MockSettingsServiceMockRecorder) ExportSettings(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExportSettings", reflect.TypeOf((*MockSettingsService)(nil).ExportSettings), ctx)
+}
+
 // GetAISettings mocks base method.
 func (m *MockSettingsService) GetAISettings(ctx context.Context) (*service.AISettings, error) {
 	m.ctrl.T.Helper()
@@ -173,6 +188,35 @@ func (mr *MockSettingsServiceMockRecorder) GetProxyURL(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetProxyURL", reflect.TypeOf((*MockSettingsService)(nil).GetProxyURL), ctx)
 }
 
+// GetUISettings mocks base method.
+func (m *MockSettingsService) GetUISettings(ctx context.Context) (*service.UISettings, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUISettings", ctx)
+	ret0, _ := ret[0].(*service.UISettings)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetUISettings indicates an expected call of GetUISettings.
+func (mr *MockSettingsServiceMockRecorder) GetUISettings(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUISettings", reflect.TypeOf((*MockSettingsService)(nil).GetUISettings), ctx)
+}
+
+// ImportSettings mocks base method.
+func (m *MockSettingsService) ImportSettings(ctx context.Context, payload *service.SettingsExport) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ImportSettings", ctx, payload)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ImportSettings indicates an expected call of ImportSettings.
+func (mr *MockSettingsServiceMockRecorder) ImportSettings(ctx, payload any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ImportSettings", reflect.TypeOf((*MockSettingsService)(nil).ImportSettings), ctx, payload)
+}
+
 // ListAIModels mocks base method.
 func (m *MockSettingsService) ListAIModels(ctx context.Context, provider, apiKey, baseURL string) ([]string, error) {
 	m.ctrl.T.Helper()
@@ -256,6 +300,20 @@ func (m *MockSettingsService) SetNetworkSettings(ctx context.Context, settings *
 func (mr *MockSettingsServiceMockRecorder) SetNetworkSettings(ctx, settings any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetNetworkSettings", reflect.TypeOf((*MockSettingsService)(nil).SetNetworkSettings), ctx, settings)
+}
+
+// SetUISettings mocks base method.
+func (m *MockSettingsService) SetUISettings(ctx context.Context, settings *service.UISettings) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetUISettings", ctx, settings)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetUISettings indicates an expected call of SetUISettings.
+func (mr *MockSettingsServiceMockRecorder) SetUISettings(ctx, settings any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetUISettings", reflect.TypeOf((*MockSettingsService)(nil).SetUISettings), ctx, settings)
 }
 
 // TestAI mocks base method.

@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
+import { AlertDialog, Button } from "@heroui/react";
 import {
   startImportOPML,
   watchImportStatus,
   cancelImportOPML,
   exportOPML,
+  exportSettings,
+  importSettings,
   clearAICache,
   clearAnubisCookies,
   clearIconCache,
@@ -14,7 +17,27 @@ import {
 } from "@/api";
 import type { ClearAICacheResponse, ClearCacheResponse } from "@/api";
 import { cn } from "@/lib/utils";
+import { pullSettingsFromServer } from "@/lib/settings-sync";
 import type { ImportResult, ImportTask } from "@/types/api";
+import type { SettingsExportPayload } from "@/types/settings";
+
+/**
+ * 21 批：导入前先确认「这确实是本应用导出的设置文件」——
+ * 后续的去重/白名单校验在后端（认不出的键会 400 并把键名带回来），
+ * 这里只挡「随手选了张图片」这种明显不对的文件，别让用户白点一次。
+ */
+function isSettingsExportPayload(value: unknown): value is SettingsExportPayload {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as {
+    version?: unknown;
+    settings?: unknown;
+  };
+  return (
+    typeof candidate.version === "number" &&
+    typeof candidate.settings === "object" &&
+    candidate.settings !== null
+  );
+}
 
 export function DataControl() {
   const { t } = useTranslation();
@@ -114,6 +137,99 @@ export function DataControl() {
       await exportOPML();
     } catch {
       // Export error handled silently
+    }
+  };
+
+  // ---------- 21 批：设置导出 / 导入 ----------
+
+  const settingsFileInputRef = useRef<HTMLInputElement>(null);
+  const [isExportingSettings, setIsExportingSettings] = useState(false);
+  const [pendingSettingsFile, setPendingSettingsFile] = useState<{
+    name: string;
+    payload: SettingsExportPayload;
+  } | null>(null);
+  const [isImportingSettings, setIsImportingSettings] = useState(false);
+  const [settingsImportCount, setSettingsImportCount] = useState<number | null>(
+    null,
+  );
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+
+  /** 导出设置：拿到 JSON 存成文件（文件名带日期，多份备份能区分开） */
+  const handleExportSettings = async () => {
+    setIsExportingSettings(true);
+    setSettingsError(null);
+
+    try {
+      const payload = await exportSettings();
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `krss-settings-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setSettingsError(
+        err instanceof Error
+          ? err.message
+          : t("data_control.export_settings_failed"),
+      );
+    } finally {
+      setIsExportingSettings(false);
+    }
+  };
+
+  /** 选中文件：先本地粗校验，再弹确认（覆盖设置不可撤销） */
+  const handlePickSettingsFile = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    setSettingsImportCount(null);
+    setSettingsError(null);
+
+    try {
+      if (!file) return;
+      const parsed: unknown = JSON.parse(await file.text());
+      if (!isSettingsExportPayload(parsed)) {
+        setSettingsError(t("data_control.import_settings_invalid_file"));
+        return;
+      }
+      setPendingSettingsFile({ name: file.name, payload: parsed });
+    } catch {
+      setSettingsError(t("data_control.import_settings_invalid_file"));
+    } finally {
+      // 允许连续选同一份文件（不清空 value 时第二次 onChange 不触发）
+      if (settingsFileInputRef.current) settingsFileInputRef.current.value = "";
+    }
+  };
+
+  const handleConfirmImportSettings = async () => {
+    if (!pendingSettingsFile) return;
+    setIsImportingSettings(true);
+
+    try {
+      const result = await importSettings({
+        version: pendingSettingsFile.payload.version,
+        settings: pendingSettingsFile.payload.settings,
+      });
+      setSettingsImportCount(result.imported);
+      setPendingSettingsFile(null);
+      // 导入改的是**服务端**那份：立刻以服务端为准刷新本地四组，并让设置表单重新取数
+      await pullSettingsFromServer();
+      await queryClient.invalidateQueries();
+    } catch (err) {
+      setSettingsError(
+        err instanceof Error
+          ? err.message
+          : t("data_control.import_settings_failed"),
+      );
+      setPendingSettingsFile(null);
+    } finally {
+      setIsImportingSettings(false);
     }
   };
 
@@ -405,6 +521,136 @@ export function DataControl() {
             <span>{t("data_control.export")}</span>
           </button>
         </div>
+      </section>
+
+      {/* 设置导出 / 导入（21 批，2026-09-18） */}
+      <section>
+        <h3 className="mb-4 text-sm font-semibold text-muted-foreground">
+          {t("data_control.settings_backup")}
+        </h3>
+
+        <div className="space-y-4">
+          {/* 导出设置 */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-sm font-medium">
+                {t("data_control.export_settings")}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {t("data_control.export_settings_description")}
+              </div>
+            </div>
+
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              isDisabled={isExportingSettings}
+              onPress={() => void handleExportSettings()}
+            >
+              {t("data_control.export")}
+            </Button>
+          </div>
+
+          {/* 导入设置 */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-sm font-medium">
+                {t("data_control.import_settings")}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {t("data_control.import_settings_description")}
+              </div>
+            </div>
+
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              isDisabled={isImportingSettings}
+              onPress={() => settingsFileInputRef.current?.click()}
+            >
+              {t("data_control.import_settings")}
+            </Button>
+
+            <input
+              ref={settingsFileInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(event) => void handlePickSettingsFile(event)}
+            />
+          </div>
+
+          {settingsImportCount !== null && (
+            <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-200">
+              {t("data_control.import_settings_success", {
+                count: settingsImportCount,
+              })}
+            </div>
+          )}
+
+          {settingsError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950">
+              <div className="font-medium text-red-800 dark:text-red-200">
+                {t("data_control.import_settings_failed")}
+              </div>
+              <div className="mt-1 break-all text-red-700 dark:text-red-300">
+                {settingsError}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 导入确认：覆盖设置不可撤销，必须问一句（AlertDialog 照 RSSHub 那处用法） */}
+        <AlertDialog>
+          <Button className="hidden" aria-hidden />
+          <AlertDialog.Backdrop
+            isOpen={pendingSettingsFile !== null}
+            onOpenChange={(open) => !open && setPendingSettingsFile(null)}
+          >
+            <AlertDialog.Container>
+              <AlertDialog.Dialog className="max-w-lg">
+                <AlertDialog.Header>
+                  <AlertDialog.Heading>
+                    {t("data_control.import_settings_confirm_title")}
+                  </AlertDialog.Heading>
+                </AlertDialog.Header>
+                <AlertDialog.Body>
+                  <div className="text-sm text-muted-foreground">
+                    {t("data_control.import_settings_confirm_body", {
+                      count: pendingSettingsFile
+                        ? Object.keys(pendingSettingsFile.payload.settings)
+                            .length
+                        : 0,
+                    })}
+                  </div>
+                  {pendingSettingsFile && (
+                    <div className="mt-2 break-all text-xs text-muted-foreground">
+                      {pendingSettingsFile.name}
+                    </div>
+                  )}
+                </AlertDialog.Body>
+                <AlertDialog.Footer>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onPress={() => setPendingSettingsFile(null)}
+                  >
+                    {t("actions.cancel")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    isDisabled={isImportingSettings}
+                    onPress={() => void handleConfirmImportSettings()}
+                  >
+                    {t("data_control.import_settings_confirm")}
+                  </Button>
+                </AlertDialog.Footer>
+              </AlertDialog.Dialog>
+            </AlertDialog.Container>
+          </AlertDialog.Backdrop>
+        </AlertDialog>
       </section>
 
       {/* Clear Cache Section */}

@@ -75,6 +75,24 @@ definitions:
       updated:
         type: integer
     type: object
+  gist_backend_internal_service.SettingsExport:
+    properties:
+      excludedKeys:
+        description: ExcludedKeys 导出时被排除的键（凭证类）——写进文件里，让用户知道漏了哪些、为什么。
+        items:
+          type: string
+        type: array
+      exportedAt:
+        type: string
+      settings:
+        additionalProperties:
+          items:
+            type: integer
+          type: array
+        type: object
+      version:
+        type: integer
+    type: object
   internal_handler.aiModelsRequest:
     properties:
       apiKey:
@@ -920,6 +938,11 @@ definitions:
       username:
         type: string
     type: object
+  internal_handler.settingsImportResponse:
+    properties:
+      imported:
+        type: integer
+    type: object
   internal_handler.starredCountResponse:
     properties:
       count:
@@ -959,6 +982,50 @@ definitions:
       cached:
         type: boolean
       content:
+        type: string
+    type: object
+  internal_handler.uiSettingsRequest:
+    properties:
+      lang:
+        type: string
+      sidebarState:
+        items:
+          type: integer
+        type: array
+      theme:
+        $ref: '#/definitions/internal_handler.uiThemePayload'
+      ui:
+        items:
+          type: integer
+        type: array
+    type: object
+  internal_handler.uiSettingsResponse:
+    properties:
+      empty:
+        description: Empty：服务端一条都没存过（前端据此把本地那份当基线推上来）
+        type: boolean
+      lang:
+        type: string
+      sidebarState:
+        items:
+          type: integer
+        type: array
+      theme:
+        $ref: '#/definitions/internal_handler.uiThemePayload'
+      ui:
+        items:
+          type: integer
+        type: array
+      updatedAt:
+        type: string
+    type: object
+  internal_handler.uiThemePayload:
+    properties:
+      darkTheme:
+        type: string
+      lightTheme:
+        type: string
+      mode:
         type: string
     type: object
   internal_handler.unreadCountsResponse:
@@ -2802,6 +2869,23 @@ paths:
       summary: Update appearance settings
       tags:
       - settings
+  /settings/export:
+    get:
+      description: Export settings as a readable JSON file; credential keys are excluded
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/gist_backend_internal_service.SettingsExport'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: Export settings
+      tags:
+      - settings
   /settings/fetch:
     get:
       description: Refresh interval / concurrency / timeout. Values take effect on
@@ -2893,6 +2977,37 @@ paths:
       summary: Update general settings
       tags:
       - settings
+  /settings/import:
+    post:
+      consumes:
+      - application/json
+      description: Import settings from a previously exported file; unknown keys are
+        rejected
+      parameters:
+      - description: Settings export payload
+        in: body
+        name: settings
+        required: true
+        schema:
+          $ref: '#/definitions/gist_backend_internal_service.SettingsExport'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.settingsImportResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: Import settings
+      tags:
+      - settings
   /settings/network:
     get:
       description: Get the network proxy configuration with masked password
@@ -2964,6 +3079,52 @@ paths:
           schema:
             $ref: '#/definitions/internal_handler.errorResponse'
       summary: Test network proxy
+      tags:
+      - settings
+  /settings/ui:
+    get:
+      description: Get the UI settings package (shared fields + per-device sizes)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.uiSettingsResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: Get UI settings
+      tags:
+      - settings
+    put:
+      consumes:
+      - application/json
+      description: Update the UI settings package; omitted fields are left untouched
+      parameters:
+      - description: UI settings
+        in: body
+        name: settings
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.uiSettingsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.uiSettingsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: Update UI settings
       tags:
       - settings
   /starred-count:

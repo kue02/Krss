@@ -122,4 +122,8 @@ func TestHandler_RegisterRoutes(t *testing.T) {
 	assertRoute(t, routes, http.MethodGet, "/settings/appearance")
 	assertRoute(t, routes, http.MethodPut, "/settings/appearance")
 	assertRoute(t, routes, http.MethodDelete, "/settings/anubis-cookies")
+	assertRoute(t, routes, http.MethodGet, "/settings/ui")
+	assertRoute(t, routes, http.MethodPut, "/settings/ui")
+	assertRoute(t, routes, http.MethodGet, "/settings/export")
+	assertRoute(t, routes, http.MethodPost, "/settings/import")
 }
