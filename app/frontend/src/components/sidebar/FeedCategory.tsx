@@ -19,8 +19,14 @@ import { useContextMenu } from "@/hooks/useContextMenu";
 import { useCategoryState } from "@/hooks/useCategoryState";
 import { Ripple } from "m3-ripple";
 import { feedItemStyles, sidebarItemIconStyles } from "./styles";
+import { contentTypeMeta } from "@/lib/content-type-meta";
 import type { ContentType } from "@/types/api";
 
+/** 12-19：文件夹右键「更改类型」子菜单的图标 —— 与中栏切换器/订阅右键共用同一份 `contentTypeMeta`（11-6 抽的） */
+function ContentTypeIcon({ type }: { type: ContentType }) {
+  const Icon = contentTypeMeta[type].icon;
+  return <Icon className="size-4 shrink-0 text-muted-foreground" />;
+}
 interface FeedCategoryProps {
   name: string;
   folderId: string;
@@ -152,21 +158,25 @@ export function FeedCategory({
                 <ContextMenuItem
                   onClick={() => onChangeType(folderId, "article")}
                 >
+                  <ContentTypeIcon type="article" />
                   {t("content_type.article")}
                 </ContextMenuItem>
                 <ContextMenuItem
                   onClick={() => onChangeType(folderId, "picture")}
                 >
+                  <ContentTypeIcon type="picture" />
                   {t("content_type.picture")}
                 </ContextMenuItem>
                 <ContextMenuItem
                   onClick={() => onChangeType(folderId, "notification")}
                 >
+                  <ContentTypeIcon type="notification" />
                   {t("content_type.notification")}
                 </ContextMenuItem>
                 <ContextMenuItem
                   onClick={() => onChangeType(folderId, "social")}
                 >
+                  <ContentTypeIcon type="social" />
                   {t("content_type.social")}
                 </ContextMenuItem>
               </ContextMenuSubContent>

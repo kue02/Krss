@@ -10,6 +10,7 @@ import {
   Star,
   Undo2,
 } from "lucide-react";
+import { BellOff, ShieldOff, Wand2 } from "lucide-react";
 import { Ripple } from "m3-ripple";
 import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/date-utils";
@@ -137,6 +138,7 @@ function EntryContextMenuContent({ entry }: { entry: Entry }) {
               })
             }
           >
+            <BellOff className="size-4 shrink-0 text-muted-foreground" />
             {t("automation.unmute_entry")}
           </ContextMenuItem>
           <ContextMenuSeparator />
@@ -152,9 +154,11 @@ function EntryContextMenuContent({ entry }: { entry: Entry }) {
           })
         }
       >
+        <ShieldOff className="size-4 shrink-0 text-muted-foreground" />
         {t("automation.exception_entry")}
       </ContextMenuItem>
       <ContextMenuItem onClick={() => openFilterEditorForEntry(entry)}>
+        <Wand2 className="size-4 shrink-0 text-muted-foreground" />
         {t("automation.rule_from_entry")}
       </ContextMenuItem>
     </ContextMenuContent>
@@ -681,7 +685,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                       height={20}
                       loading="lazy"
                       decoding="async"
-                      className="size-5 shrink-0 rounded-[3px] object-contain"
+                      className="size-5 shrink-0 rounded-[var(--ui-icon-radius,3px)] object-contain"
                       onError={() => setIconError(true)}
                     />
                   ) : (

@@ -575,7 +575,7 @@ export function Lightbox() {
                     <img
                       src={`/icons/${feed.iconPath}`}
                       alt=""
-                      className="size-4 shrink-0 rounded object-contain"
+                      className="size-4 shrink-0 rounded-[var(--ui-icon-radius,4px)] object-contain"
                       onError={() => setIconError(true)}
                     />
                   ) : (

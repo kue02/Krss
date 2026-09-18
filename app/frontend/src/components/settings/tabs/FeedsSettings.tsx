@@ -380,7 +380,7 @@ export function FeedsSettings() {
                           <img
                             src={`/icons/${feed.iconPath}`}
                             alt=""
-                            className="size-4 shrink-0 rounded object-contain"
+                            className="size-4 shrink-0 rounded-[var(--ui-icon-radius,4px)] object-contain"
                           />
                         ) : (
                           <div className="flex size-4 shrink-0 items-center justify-center rounded bg-secondary text-muted-foreground">

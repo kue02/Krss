@@ -151,7 +151,7 @@ export const PictureItem = memo(function PictureItem({
             <img
               src={`/icons/${feed.iconPath}`}
               alt=""
-              className="mr-1.5 size-4 shrink-0 rounded object-contain"
+              className="mr-1.5 size-4 shrink-0 rounded-[var(--ui-icon-radius,4px)] object-contain"
               onError={() => setIconError(true)}
             />
           ) : (
