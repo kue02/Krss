@@ -146,36 +146,37 @@ export function RevertFilterDialog({
                   {t("automation.revert_impact_empty")}
                 </div>
               )}
-              {/* 12-13：整行都要能点（用户反馈勾选框在第一行、名称在第二行，只能全选/全不选）
-                  —— flex 强制「勾选框 + 文字」同一行，文字块 min-w-0 截断 */}
+              {/* 13-2（效果图 revert-impact.html）：一条内容就一行 ——
+                  勾选框固定 16px 在左、垂直居中；整行可点；标题占弹性宽度（超长才滚，短标题不裁）；
+                  来源 + 状态是 shrink-0 的右尾，永远贴右缘，不再把标题挤成 91px（那会让跑马灯量不出距离）。
+                  行高统一 38px。 */}
               {(items ?? []).map((item) => (
                 <Checkbox
                   key={item.entryId}
                   isSelected={selected.has(item.entryId)}
                   onChange={(isSelected) => toggleOne(item.entryId, isSelected)}
-                  className="flex w-full cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-secondary/40"
+                  className="flex h-[38px] w-full cursor-pointer items-center gap-2 rounded px-2 hover:bg-secondary/40"
                 >
                   <Checkbox.Control className="shrink-0">
                     <Checkbox.Indicator />
                   </Checkbox.Control>
                   <Checkbox.Content className="min-w-0 flex-1">
-                    {/* 12-16：单行；装不下时悬浮滚动（跑马灯），不再折行把勾选框挤到上一行 */}
                     <MarqueeText
                       className="text-sm"
                       text={item.title || item.entryId}
                     />
-                    <div className="truncate text-xs text-muted-foreground">
-                      {item.feedTitle}
-                      {item.muted ? ` · ${t("automation.revert_flag_muted")}` : ""}
-                      {item.starred ? ` · ${t("automation.revert_flag_starred")}` : ""}
-                      {item.read ? "" : ` · ${t("automation.revert_flag_unread")}`}
-                    </div>
                   </Checkbox.Content>
+                  <span className="shrink-0 truncate text-xs text-muted-foreground">
+                    {item.feedTitle}
+                    {item.muted ? ` · ${t("automation.revert_flag_muted")}` : ""}
+                    {item.starred ? ` · ${t("automation.revert_flag_starred")}` : ""}
+                    {item.read ? "" : ` · ${t("automation.revert_flag_unread")}`}
+                  </span>
                 </Checkbox>
               ))}
             </div>
 
-            <label className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+            <label className="mt-3 flex h-8 items-center gap-2 text-xs text-muted-foreground">
               <Checkbox
                 isSelected={includeStarred}
                 onChange={setIncludeStarred}
