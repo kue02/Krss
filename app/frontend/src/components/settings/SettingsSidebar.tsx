@@ -226,7 +226,7 @@ export function SettingsSidebar({
             type="button"
             onClick={() => onTabChange(item.id)}
             className={cn(
-              "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm font-medium transition-colors",
+              "flex w-full items-center gap-2 rounded-[var(--radius)] px-2.5 py-1.5 text-left text-sm font-medium transition-colors",
               activeTab === item.id
                 ? "bg-item-active text-foreground"
                 : "text-muted-foreground hover:bg-item-hover hover:text-foreground",

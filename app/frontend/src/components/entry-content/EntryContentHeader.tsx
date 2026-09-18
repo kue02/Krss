@@ -305,7 +305,7 @@ export function EntryContentHeader({
               href={safeUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="no-drag-region flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-item-hover hover:text-foreground"
+              className="no-drag-region flex size-9 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors hover:bg-item-hover hover:text-foreground"
               aria-label={t("entry.open_original")}
             >
               <svg

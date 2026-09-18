@@ -164,7 +164,8 @@ export function AppearanceSettings() {
   const showLineNumbers = useUISettingKey("showLineNumbers");
   const uiScale = useUISettingKey("uiScale");
   const quoteStyle = useUISettingKey("quoteStyle");
-  const buttonRadius = useUISettingKey("buttonRadius");
+  const componentRadius = useUISettingKey("componentRadius");
+  const fieldRadius = useUISettingKey("fieldRadius");
   const iconRadius = useUISettingKey("iconRadius");
   const unreadStyle = useUISettingKey("unreadStyle");
   const sidebarFeedAppearance = useUISettingKey("sidebarFeedAppearance");
@@ -180,7 +181,8 @@ export function AppearanceSettings() {
     setShowLineNumbers,
     setUiScale,
     setQuoteStyle,
-    setButtonRadius,
+    setComponentRadius,
+    setFieldRadius,
     setIconRadius,
     setUnreadStyle,
     setSidebarFeedAppearance,
@@ -371,18 +373,30 @@ export function AppearanceSettings() {
   );
 
   /**
-   * 12-18：圆角档位 —— 值直接照 HeroUI 官方刻度（`--radius`: .5rem ⇒ xs/sm/md/lg/xl = 2/4/6/8/12px）。
-   * 按钮与订阅图标分开设置（用户 2026-09-18 明确：「按钮跟 feed 图标分开设置，按照 HeroUI 里面的那个做」）。
+   * 18 批：圆角档位 —— **三个旋钮共用同一套刻度**，值照 HeroUI 官方刻度
+   * （`--radius`: .5rem ⇒ 直角 0 / XS 2 / SM 4 / 默认 8 / LG 10 / XL 12 / 全圆）。
+   * 只有「默认档」的文案各自不同：组件圆角默认 = 出厂 8px；表单圆角默认 = 跟随组件（×1.5）；
+   * 订阅图标默认 = 跟随组件（各处既有的 3/4px，12-18 用户要求与组件分开设）。
    */
-  const radiusOptions = [
-    { value: "default", label: t("appearance_shape.radius_default") },
+  const radiusScale = [
     { value: "none", label: t("appearance_shape.radius_none") },
     { value: "xs", label: t("appearance_shape.radius_xs") },
     { value: "sm", label: t("appearance_shape.radius_sm") },
-    { value: "md", label: t("appearance_shape.radius_md") },
     { value: "lg", label: t("appearance_shape.radius_lg") },
     { value: "xl", label: t("appearance_shape.radius_xl") },
     { value: "full", label: t("appearance_shape.radius_full") },
+  ];
+  const componentRadiusOptions = [
+    { value: "default", label: t("appearance_shape.radius_default_component") },
+    ...radiusScale,
+  ];
+  const fieldRadiusOptions = [
+    { value: "default", label: t("appearance_shape.radius_default_field") },
+    ...radiusScale,
+  ];
+  const iconRadiusOptions = [
+    { value: "default", label: t("appearance_shape.radius_default_icon") },
+    ...radiusScale,
   ];
 
   return (
@@ -621,7 +635,7 @@ export function AppearanceSettings() {
         </div>
       </section>
 
-      {/* 形状 —— 圆角（12-18：按钮与订阅图标分开设置，档位照 HeroUI 官方刻度） */}
+      {/* 形状 —— 圆角（18 批：组件 / 表单 / 订阅图标 三个旋钮，档位照 HeroUI 官方刻度） */}
       <section>
         <div className="mb-3">
           <div className="text-sm font-medium">
@@ -633,22 +647,31 @@ export function AppearanceSettings() {
         </div>
 
         <div className="space-y-3">
-          <SettingRow label={t("appearance_shape.button_radius")}>
+          <SettingRow label={t("appearance_shape.component_radius")}>
             <Select
-              className="w-44 shrink-0"
-              ariaLabel={t("appearance_shape.button_radius")}
-              value={buttonRadius}
-              onChange={(value) => setButtonRadius(value as RadiusPreset)}
-              options={radiusOptions}
+              className="w-48 shrink-0"
+              ariaLabel={t("appearance_shape.component_radius")}
+              value={componentRadius}
+              onChange={(value) => setComponentRadius(value as RadiusPreset)}
+              options={componentRadiusOptions}
+            />
+          </SettingRow>
+          <SettingRow label={t("appearance_shape.field_radius")}>
+            <Select
+              className="w-48 shrink-0"
+              ariaLabel={t("appearance_shape.field_radius")}
+              value={fieldRadius}
+              onChange={(value) => setFieldRadius(value as RadiusPreset)}
+              options={fieldRadiusOptions}
             />
           </SettingRow>
           <SettingRow label={t("appearance_shape.icon_radius")}>
             <Select
-              className="w-44 shrink-0"
+              className="w-48 shrink-0"
               ariaLabel={t("appearance_shape.icon_radius")}
               value={iconRadius}
               onChange={(value) => setIconRadius(value as RadiusPreset)}
-              options={radiusOptions}
+              options={iconRadiusOptions}
             />
           </SettingRow>
         </div>
@@ -843,7 +866,7 @@ export function AppearanceSettings() {
                           handleRemoveType(type);
                         }}
                         className={cn(
-                          "ml-1 flex size-5 items-center justify-center rounded-md",
+                          "ml-1 flex size-5 items-center justify-center rounded-[var(--radius)]",
                           "text-muted-foreground/50 transition-colors",
                           "hover:bg-destructive/10 hover:text-destructive",
                         )}
@@ -873,7 +896,7 @@ export function AppearanceSettings() {
                       type="button"
                       onClick={() => handleAddType(type)}
                       className={cn(
-                        "flex items-center gap-2 rounded-lg border border-dashed border-border/50 px-3 py-2",
+                        "flex items-center gap-2 rounded-[var(--radius)] border border-dashed border-border/50 px-3 py-2",
                         "text-muted-foreground/60 transition-colors",
                         "hover:border-primary/50 hover:bg-primary/5 hover:text-foreground",
                       )}

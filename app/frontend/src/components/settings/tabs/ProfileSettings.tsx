@@ -226,7 +226,7 @@ export function ProfileSettings() {
                 onClick={() => avatarInputRef.current?.click()}
                 disabled={isLoadingAvatar}
                 className={cn(
-                  "h-8 rounded-md px-3 text-xs font-medium transition-colors",
+                  "h-8 rounded-[var(--radius)] px-3 text-xs font-medium transition-colors",
                   "bg-primary text-primary-foreground hover:bg-primary/90",
                   "disabled:cursor-not-allowed disabled:opacity-50",
                   avatarStatus === "success" && "bg-green-600 hover:bg-green-600",
@@ -255,7 +255,7 @@ export function ProfileSettings() {
                 onChange={(event) => setAvatarUrlInput(event.target.value)}
                 placeholder={t("profile.avatar_url_placeholder")}
                 className={cn(
-                  "h-8 w-44 max-w-full rounded-md border border-border bg-background px-2 text-xs",
+                  "h-8 w-44 max-w-full rounded-field border border-border bg-background px-2 text-xs",
                   "placeholder:text-muted-foreground/50",
                   "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
                 )}
@@ -265,7 +265,7 @@ export function ProfileSettings() {
                 onClick={() => void applyAvatar(avatarUrlInput.trim())}
                 disabled={isLoadingAvatar || !avatarUrlInput.trim()}
                 className={cn(
-                  "h-8 rounded-md border border-border px-2.5 text-xs font-medium transition-colors",
+                  "h-8 rounded-[var(--radius)] border border-border px-2.5 text-xs font-medium transition-colors",
                   "hover:bg-secondary/60 disabled:cursor-not-allowed disabled:opacity-40",
                 )}
               >
@@ -276,7 +276,7 @@ export function ProfileSettings() {
                 onClick={() => void applyAvatar("")}
                 disabled={isLoadingAvatar}
                 className={cn(
-                  "h-8 rounded-md px-2.5 text-xs font-medium text-muted-foreground transition-colors",
+                  "h-8 rounded-[var(--radius)] px-2.5 text-xs font-medium text-muted-foreground transition-colors",
                   "hover:bg-secondary/60 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40",
                 )}
               >
@@ -301,7 +301,7 @@ export function ProfileSettings() {
             value={username}
             disabled
             className={cn(
-              "h-9 w-48 max-w-full shrink-0 rounded-md border border-border bg-secondary px-3 text-sm",
+              "h-9 w-48 max-w-full shrink-0 rounded-field border border-border bg-secondary px-3 text-sm",
               "text-muted-foreground cursor-not-allowed",
             )}
           />
@@ -323,7 +323,7 @@ export function ProfileSettings() {
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
               className={cn(
-                "h-9 w-48 max-w-full rounded-md border border-border bg-background px-3 text-sm",
+                "h-9 w-48 max-w-full rounded-field border border-border bg-background px-3 text-sm",
                 "placeholder:text-muted-foreground/50",
                 "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
               )}
@@ -333,7 +333,7 @@ export function ProfileSettings() {
               onClick={handleSaveNickname}
               disabled={isLoadingNickname || !nickname}
               className={cn(
-                "h-9 rounded-md px-3 text-sm font-medium transition-colors shrink-0",
+                "h-9 rounded-[var(--radius)] px-3 text-sm font-medium transition-colors shrink-0",
                 "bg-primary text-primary-foreground hover:bg-primary/90",
                 "disabled:cursor-not-allowed disabled:opacity-50",
                 nicknameStatus === "success" &&
@@ -362,7 +362,7 @@ export function ProfileSettings() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className={cn(
-                "h-9 w-48 max-w-full rounded-md border border-border bg-background px-3 text-sm",
+                "h-9 w-48 max-w-full rounded-field border border-border bg-background px-3 text-sm",
                 "placeholder:text-muted-foreground/50",
                 "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
               )}
@@ -372,7 +372,7 @@ export function ProfileSettings() {
               onClick={handleSaveEmail}
               disabled={isLoadingEmail || !email}
               className={cn(
-                "h-9 rounded-md px-3 text-sm font-medium transition-colors shrink-0",
+                "h-9 rounded-[var(--radius)] px-3 text-sm font-medium transition-colors shrink-0",
                 "bg-primary text-primary-foreground hover:bg-primary/90",
                 "disabled:cursor-not-allowed disabled:opacity-50",
                 emailStatus === "success" && "bg-green-600 hover:bg-green-600",
@@ -405,7 +405,7 @@ export function ProfileSettings() {
               value={currentPassword}
               onChange={(e) => setCurrentPassword(e.target.value)}
               className={cn(
-                "h-9 w-48 max-w-full shrink-0 rounded-md border border-border bg-background px-3 text-sm",
+                "h-9 w-48 max-w-full shrink-0 rounded-field border border-border bg-background px-3 text-sm",
                 "placeholder:text-muted-foreground/50",
                 "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
               )}
@@ -421,7 +421,7 @@ export function ProfileSettings() {
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               className={cn(
-                "h-9 w-48 max-w-full shrink-0 rounded-md border border-border bg-background px-3 text-sm",
+                "h-9 w-48 max-w-full shrink-0 rounded-field border border-border bg-background px-3 text-sm",
                 "placeholder:text-muted-foreground/50",
                 "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
               )}
@@ -437,7 +437,7 @@ export function ProfileSettings() {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               className={cn(
-                "h-9 w-48 max-w-full shrink-0 rounded-md border border-border bg-background px-3 text-sm",
+                "h-9 w-48 max-w-full shrink-0 rounded-field border border-border bg-background px-3 text-sm",
                 "placeholder:text-muted-foreground/50",
                 "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
               )}
@@ -454,7 +454,7 @@ export function ProfileSettings() {
                 !confirmPassword
               }
               className={cn(
-                "h-9 rounded-md px-3 text-sm font-medium transition-colors",
+                "h-9 rounded-[var(--radius)] px-3 text-sm font-medium transition-colors",
                 "bg-primary text-primary-foreground hover:bg-primary/90",
                 "disabled:cursor-not-allowed disabled:opacity-50",
                 passwordStatus === "success" &&

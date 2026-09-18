@@ -914,15 +914,17 @@
   },
   "appearance_shape": {
     "title": "Shape",
-    "description": "Corner radius for buttons and feed icons (values from HeroUI's scale)",
-    "button_radius": "Button radius",
+    "description": "Corner radius for components, form fields and feed icons (values from HeroUI's scale, base 8px)",
+    "component_radius": "Component radius",
+    "field_radius": "Field radius",
     "icon_radius": "Feed icon radius",
-    "radius_default": "HeroUI default",
+    "radius_default_component": "Default · 8px",
+    "radius_default_field": "Follow components (×1.5 · 12px)",
+    "radius_default_icon": "Follow components",
     "radius_none": "Square",
     "radius_xs": "XS · 2px",
     "radius_sm": "SM · 4px",
-    "radius_md": "MD · 6px",
-    "radius_lg": "LG · 8px",
+    "radius_lg": "LG · 10px",
     "radius_xl": "XL · 12px",
     "radius_full": "Full"
   }

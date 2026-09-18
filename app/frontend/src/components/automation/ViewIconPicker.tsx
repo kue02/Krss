@@ -64,7 +64,7 @@ export function ViewIconPicker({
                     data-icon-key={key}
                     onClick={() => onChange(`builtin:${key}`)}
                     className={cn(
-                      "flex size-8 items-center justify-center rounded-md hover:bg-secondary",
+                      "flex size-8 items-center justify-center rounded-[var(--radius)] hover:bg-secondary",
                       parsed.kind === "builtin" && parsed.value === key && "bg-secondary",
                     )}
                   >
@@ -82,7 +82,7 @@ export function ViewIconPicker({
                     type="button"
                     onClick={() => onChange(`emoji:${emoji}`)}
                     className={cn(
-                      "flex size-7 items-center justify-center rounded-md text-base hover:bg-secondary",
+                      "flex size-7 items-center justify-center rounded-[var(--radius)] text-base hover:bg-secondary",
                       parsed.kind === "emoji" && parsed.value === emoji && "bg-secondary",
                     )}
                   >
@@ -93,7 +93,7 @@ export function ViewIconPicker({
               <div className="mt-2 flex items-center gap-2">
                 <Smile className="size-4 text-muted-foreground" />
                 <input
-                  className="h-8 w-full rounded-md border border-border bg-transparent px-2 text-sm"
+                  className="h-8 w-full rounded-field border border-border bg-transparent px-2 text-sm"
                   placeholder={t("automation.view_icon_emoji_input")}
                   aria-label={t("automation.view_icon_emoji_input")}
                   onChange={(event) => {

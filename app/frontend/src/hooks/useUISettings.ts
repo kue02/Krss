@@ -24,21 +24,20 @@ export type QuoteStyle = "block" | "divider" | "card";
  * 三种都同时作用于所有视图 —— 用户原话：「需要做成可切换的全局统一样式」。
  */
 /**
- * 12-18 圆角档位 —— 值直接照 HeroUI 官方刻度：
- * `--radius: 0.5rem` = 8px，`xs/sm/md/lg/xl` = 0.25/0.5/0.75/1/1.5 倍 ⇒ 2/4/6/8/12px。
- * `default` = 不动 HeroUI 自己的圆角（默认值，保证行为零变化）；`full` = 全圆。
+ * 18 批（圆角统一）：档位照 HeroUI 官方刻度，基准是 `--radius` 的 `.5rem`(8px) ——
+ * 直角 0 · XS 2px(×.25) · SM 4px(×.5) · 默认 8px(×1) · LG 10px(×1.25) · XL 12px(×1.5) · 全圆。
+ * `default` = **一个变量都不写**（把 `--radius` / `--field-radius` 摘掉）⇒ 回到 HeroUI 出厂值，行为零变化。
  */
 export type RadiusPreset =
   | "default"
   | "none"
   | "xs"
   | "sm"
-  | "md"
   | "lg"
   | "xl"
   | "full";
 
-/** 档位 → CSS 值；`default` 返回 null（表示「跟随 HeroUI」，要把属性摘掉） */
+/** 档位 → CSS 值；`default` 返回 null（表示「跟随组件库」，要把变量摘掉） */
 export function radiusPresetToCss(preset: RadiusPreset): string | null {
   switch (preset) {
     case "none":
@@ -47,10 +46,8 @@ export function radiusPresetToCss(preset: RadiusPreset): string | null {
       return "2px";
     case "sm":
       return "4px";
-    case "md":
-      return "6px";
     case "lg":
-      return "8px";
+      return "10px";
     case "xl":
       return "12px";
     case "full":
@@ -145,9 +142,17 @@ interface UISettings {
    *   card    = 卡片（描边 + 圆角 + 淡底 + 轻阴影，用户 2026-09-18 要求新增）
    */
   quoteStyle: QuoteStyle;
-  /** 12-18：按钮圆角（HeroUI 刻度档位；default = 跟随 HeroUI） */
-  buttonRadius: RadiusPreset;
-  /** 12-18：订阅图标圆角（同上，与按钮分开设置） */
+  /**
+   * 18 批：组件圆角 —— 直接写 HeroUI 自己的 `--radius`（按钮 / 卡片 / 浮层都读它）。
+   * default = 把变量摘掉，回出厂 `.5rem`。
+   */
+  componentRadius: RadiusPreset;
+  /**
+   * 18 批：表单圆角 —— 写 HeroUI 的 `--field-radius`（输入框 / 下拉 / 搜索框读它）。
+   * default = 跟随组件（HeroUI 出厂的 `calc(var(--radius) * 1.5)`），也就是什么都不写。
+   */
+  fieldRadius: RadiusPreset;
+  /** 12-18：订阅图标圆角（用户要求与组件分开设置）；default = 跟随组件（各处既有的 3/4px） */
   iconRadius: RadiusPreset;
   /** 已读/未读的标记样式（全局统一，见 UnreadStyle） */
   unreadStyle: UnreadStyle;
@@ -254,6 +259,12 @@ function sanitizeBag(input: unknown): Record<string, unknown> {
     }
   }
 
+  // 18 批改键名：`buttonRadius` → `componentRadius`（语义从「只改 HeroUI 的按钮」升级成「组件圆角」）。
+  // 老值原样搬过来、不丢用户设置；只在这里认一次老键，之后统一用新键。
+  if (out.componentRadius === undefined && typeof input.buttonRadius === "string") {
+    out.componentRadius = input.buttonRadius;
+  }
+
   return out;
 }
 
@@ -356,7 +367,8 @@ export const defaultUISettings: UISettings = {
   quoteStyle: "block",
   unreadStyle: "badge",
   unreadBadge: DEFAULT_UNREAD_BADGE,
-  buttonRadius: "default",
+  componentRadius: "default",
+  fieldRadius: "default",
   iconRadius: "default",
   sidebarFeedAppearance: "default",
   accentColor: null,
@@ -580,8 +592,12 @@ export function useUISettingActions() {
     });
   }, []);
 
-  const setButtonRadius = useCallback((preset: RadiusPreset) => {
-    setUISetting("buttonRadius", preset);
+  const setComponentRadius = useCallback((preset: RadiusPreset) => {
+    setUISetting("componentRadius", preset);
+  }, []);
+
+  const setFieldRadius = useCallback((preset: RadiusPreset) => {
+    setUISetting("fieldRadius", preset);
   }, []);
 
   const setIconRadius = useCallback((preset: RadiusPreset) => {
@@ -662,7 +678,8 @@ export function useUISettingActions() {
     setShowLineNumbers,
     setUiScale,
     setQuoteStyle,
-    setButtonRadius,
+    setComponentRadius,
+    setFieldRadius,
     setIconRadius,
     setUnreadBadge,
     setUnreadStyle,
@@ -728,23 +745,46 @@ export function applyQuoteStyleToDocument(style: QuoteStyle): void {
 }
 
 /**
- * 12-18：把圆角落到 `<html>` 上 —— 属性 + 变量两件套。
- * 属性只在**显式设置**时加（`default` 时摘掉）⇒ 默认状态完全不碰 HeroUI 自己的圆角，行为零变化。
- * 索引里拿变量而不是写死，是为了让「按钮」「订阅图标」各自独立、又能被用户改。
+ * 18 批：圆角落到 `<html>` 上 —— **写组件库自己的变量**，不是按 slot 覆盖。
+ *
+ * HeroUI 的圆角是两套变量：`--radius`（组件基座：按钮 / 卡片 / 浮层都读它）与
+ * `--field-radius`（表单控件单独一套，出厂 `calc(var(--radius) * 1.5)`）。
+ * 写在 `<html>` 上内联，所有读它们的组件一起变；**默认档把变量摘掉** ⇒ 回出厂值、行为零变化。
+ *
+ * `data-component-radius` 只是给 `index.css` 的一个开关：非默认时把 HeroUI `Button` 也拉到
+ * `var(--radius)`（它自己本来是 `calc(var(--radius) * 3)`，不拉就会出现「组件圆角改了、按钮没跟」）。
  */
-export function applyButtonRadiusToDocument(preset: RadiusPreset): void {
+export function applyComponentRadiusToDocument(preset: RadiusPreset): void {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
   const css = radiusPresetToCss(preset);
   if (!css) {
-    root.removeAttribute("data-button-radius");
-    root.style.removeProperty("--ui-button-radius");
+    root.removeAttribute("data-component-radius");
+    root.style.removeProperty("--radius");
     return;
   }
-  root.setAttribute("data-button-radius", preset);
-  root.style.setProperty("--ui-button-radius", css);
+  root.setAttribute("data-component-radius", preset);
+  root.style.setProperty("--radius", css);
 }
 
+/**
+ * 18 批：表单圆角 → `--field-radius`（输入框 / 下拉 / 搜索框读它）；默认档摘掉 ⇒ 跟随组件的 ×1.5。
+ * `data-field-radius` 与组件圆角那个一样，只是留个可读的落点标记，CSS 不依赖它。
+ */
+export function applyFieldRadiusToDocument(preset: RadiusPreset): void {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  const css = radiusPresetToCss(preset);
+  if (!css) {
+    root.removeAttribute("data-field-radius");
+    root.style.removeProperty("--field-radius");
+    return;
+  }
+  root.setAttribute("data-field-radius", preset);
+  root.style.setProperty("--field-radius", css);
+}
+
+/** 12-18：订阅图标圆角 → `--ui-icon-radius`（消费方是 sidebar/styles.ts 等处）；默认档摘掉 ⇒ 各处既有的 3/4px */
 export function applyIconRadiusToDocument(preset: RadiusPreset): void {
   if (typeof document === "undefined") return;
   const root = document.documentElement;

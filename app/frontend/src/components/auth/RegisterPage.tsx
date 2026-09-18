@@ -110,7 +110,7 @@ export function RegisterPage({
               }
               placeholder={t("auth.username_placeholder")}
               className={cn(
-                "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2",
+                "flex h-10 w-full rounded-field border border-input bg-background px-3 py-2",
                 "text-sm placeholder:text-muted-foreground",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 "disabled:cursor-not-allowed disabled:opacity-50",
@@ -138,7 +138,7 @@ export function RegisterPage({
               onChange={(e) => setNickname(e.target.value)}
               placeholder={t("auth.nickname_placeholder")}
               className={cn(
-                "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2",
+                "flex h-10 w-full rounded-field border border-input bg-background px-3 py-2",
                 "text-sm placeholder:text-muted-foreground",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 "disabled:cursor-not-allowed disabled:opacity-50",
@@ -165,7 +165,7 @@ export function RegisterPage({
               onChange={(e) => setEmail(e.target.value)}
               placeholder={t("auth.email_placeholder")}
               className={cn(
-                "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2",
+                "flex h-10 w-full rounded-field border border-input bg-background px-3 py-2",
                 "text-sm placeholder:text-muted-foreground",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 "disabled:cursor-not-allowed disabled:opacity-50",
@@ -189,7 +189,7 @@ export function RegisterPage({
               onChange={(e) => setPassword(e.target.value)}
               placeholder={t("auth.password_placeholder")}
               className={cn(
-                "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2",
+                "flex h-10 w-full rounded-field border border-input bg-background px-3 py-2",
                 "text-sm placeholder:text-muted-foreground",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 "disabled:cursor-not-allowed disabled:opacity-50",
@@ -216,7 +216,7 @@ export function RegisterPage({
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder={t("auth.confirm_password_placeholder")}
               className={cn(
-                "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2",
+                "flex h-10 w-full rounded-field border border-input bg-background px-3 py-2",
                 "text-sm placeholder:text-muted-foreground",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 "disabled:cursor-not-allowed disabled:opacity-50",
@@ -232,7 +232,7 @@ export function RegisterPage({
               isLoading || !username || !email || !password || !confirmPassword
             }
             className={cn(
-              "inline-flex h-10 w-full items-center justify-center rounded-md",
+              "inline-flex h-10 w-full items-center justify-center rounded-[var(--radius)]",
               "bg-primary px-4 py-2 text-sm font-medium text-primary-foreground",
               "hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2",
               "focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",

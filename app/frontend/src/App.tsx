@@ -56,7 +56,8 @@ import {
   setUISetting,
   applyAccentColorToDocument,
   applyQuoteStyleToDocument,
-  applyButtonRadiusToDocument,
+  applyComponentRadiusToDocument,
+  applyFieldRadiusToDocument,
   applyIconRadiusToDocument,
   applyReduceMotionToDocument,
   applyUiScaleToDocument,
@@ -367,8 +368,9 @@ function AuthenticatedApp() {
     applyQuoteStyleToDocument(quoteStyle);
   }, [quoteStyle]);
 
-  // 12-18：圆角（设置 → 外观 → 形状）
-  const buttonRadius = useUISettingKey("buttonRadius");
+  // 18 批：圆角（设置 → 外观 → 形状）—— 组件 / 表单 / 订阅图标 三个旋钮
+  const componentRadius = useUISettingKey("componentRadius");
+  const fieldRadius = useUISettingKey("fieldRadius");
   const iconRadius = useUISettingKey("iconRadius");
 
   // 主题色（设置 → 外观 → 主题 → 主题色）：null = 跟随主题
@@ -383,10 +385,14 @@ function AuthenticatedApp() {
     applyUiScaleToDocument(uiScale);
   }, [uiScale]);
 
-  // 12-18：圆角（按钮 / 订阅图标分开设置），落 <html> 属性 + CSS 变量；default 时把属性摘掉
+  // 18 批：圆角（组件 / 表单 / 订阅图标 三个旋钮），落 <html> 上的 CSS 变量；默认档把变量摘掉
   useEffect(() => {
-    applyButtonRadiusToDocument(buttonRadius);
-  }, [buttonRadius]);
+    applyComponentRadiusToDocument(componentRadius);
+  }, [componentRadius]);
+
+  useEffect(() => {
+    applyFieldRadiusToDocument(fieldRadius);
+  }, [fieldRadius]);
 
   useEffect(() => {
     applyIconRadiusToDocument(iconRadius);

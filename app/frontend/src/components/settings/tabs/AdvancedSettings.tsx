@@ -518,7 +518,7 @@ export function AdvancedSettings() {
               onChange={(e) => setNewHost(e.target.value)}
               placeholder="example.com"
               className={cn(
-                "h-9 min-w-[120px] flex-1 rounded-md border border-border bg-background px-3 text-sm",
+                "h-9 min-w-[120px] flex-1 rounded-field border border-border bg-background px-3 text-sm",
                 "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
               )}
             />
@@ -530,7 +530,7 @@ export function AdvancedSettings() {
                 onChange={(e) => setNewInterval(e.target.value)}
                 placeholder={t("settings.advanced_seconds")}
                 className={cn(
-                  "h-9 w-20 rounded-md border border-border bg-background px-3 text-sm",
+                  "h-9 w-20 rounded-field border border-border bg-background px-3 text-sm",
                   "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
                 )}
               />
@@ -539,7 +539,7 @@ export function AdvancedSettings() {
                 onClick={handleCreate}
                 disabled={!newHost.trim() || !isValidHostFormat(newHost)}
                 className={cn(
-                  "flex size-9 items-center justify-center rounded-md border border-border bg-secondary text-secondary-foreground transition-colors hover:bg-secondary/80",
+                  "flex size-9 items-center justify-center rounded-[var(--radius)] border border-border bg-secondary text-secondary-foreground transition-colors hover:bg-secondary/80",
                   "disabled:opacity-50 disabled:cursor-not-allowed",
                 )}
               >
@@ -582,21 +582,21 @@ export function AdvancedSettings() {
                             )
                           }
                           className={cn(
-                            "h-9 w-20 rounded-md border border-border bg-background px-3 text-sm",
+                            "h-9 w-20 rounded-field border border-border bg-background px-3 text-sm",
                             "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
                           )}
                         />
                         <button
                           type="button"
                           onClick={handleUpdate}
-                          className="flex size-9 items-center justify-center rounded-md text-primary hover:bg-primary/10"
+                          className="flex size-9 items-center justify-center rounded-[var(--radius)] text-primary hover:bg-primary/10"
                         >
                           <Check className="size-4" />
                         </button>
                         <button
                           type="button"
                           onClick={cancelEdit}
-                          className="flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary"
+                          className="flex size-9 items-center justify-center rounded-[var(--radius)] text-muted-foreground hover:bg-secondary"
                         >
                           <X className="size-4" />
                         </button>
@@ -609,14 +609,14 @@ export function AdvancedSettings() {
                         <button
                           type="button"
                           onClick={() => startEdit(item)}
-                          className="flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
+                          className="flex size-9 items-center justify-center rounded-[var(--radius)] text-muted-foreground hover:bg-secondary hover:text-foreground"
                         >
                           <Edit2 className="size-4" />
                         </button>
                         <button
                           type="button"
                           onClick={() => handleDelete(item.host)}
-                          className="flex size-9 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                          className="flex size-9 items-center justify-center rounded-[var(--radius)] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                         >
                           <Trash2 className="size-4" />
                         </button>

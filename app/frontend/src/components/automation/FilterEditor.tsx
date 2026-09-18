@@ -551,7 +551,7 @@ export function FilterEditor({
                         updateCondition(index, { negate: !condition.negate })
                       }
                       className={cn(
-                        "h-9 w-9 shrink-0 rounded-md border text-sm font-medium transition-colors",
+                        "h-9 w-9 shrink-0 rounded-[var(--radius)] border text-sm font-medium transition-colors",
                         condition.negate
                           ? "border-destructive/40 bg-destructive/10 text-destructive"
                           : "border-border text-muted-foreground hover:text-foreground",
@@ -615,7 +615,7 @@ export function FilterEditor({
                       type="button"
                       title={t("automation.remove_condition")}
                       onClick={() => removeCondition(index)}
-                      className="h-9 w-9 shrink-0 rounded-md border border-border text-muted-foreground transition-colors hover:text-destructive"
+                      className="h-9 w-9 shrink-0 rounded-[var(--radius)] border border-border text-muted-foreground transition-colors hover:text-destructive"
                     >
                       ×
                     </button>
@@ -932,7 +932,7 @@ export function FilterEditor({
           onClick={handlePreview}
           disabled={preview.isPending}
           className={cn(
-            "h-8 rounded-md border border-border px-3 text-sm font-medium transition-colors",
+            "h-8 rounded-[var(--radius)] border border-border px-3 text-sm font-medium transition-colors",
             "hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50",
           )}
         >
@@ -944,7 +944,7 @@ export function FilterEditor({
         <button
           type="button"
           onClick={onCancel}
-          className="h-8 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+          className="h-8 rounded-[var(--radius)] px-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
         >
           {t("automation.cancel")}
         </button>
@@ -953,7 +953,7 @@ export function FilterEditor({
           onClick={handleSubmit}
           disabled={saving}
           className={cn(
-            "h-8 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors",
+            "h-8 rounded-[var(--radius)] bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors",
             "hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50",
           )}
         >

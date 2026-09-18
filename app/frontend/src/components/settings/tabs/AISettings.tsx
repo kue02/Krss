@@ -451,7 +451,7 @@ export function AISettings() {
               <button
                 type="button"
                 onClick={() => handleSetActiveProvider(selectedProviderId)}
-                className="rounded-md border border-border px-2.5 py-1 text-xs text-foreground transition-colors duration-200 hover:bg-item-hover"
+                className="rounded-[var(--radius)] border border-border px-2.5 py-1 text-xs text-foreground transition-colors duration-200 hover:bg-item-hover"
               >
                 {t("ai_settings.set_active")}
               </button>
@@ -459,7 +459,7 @@ export function AISettings() {
             <button
               type="button"
               onClick={handleAddProvider}
-              className="rounded-md border border-border px-2.5 py-1 text-xs text-foreground transition-colors duration-200 hover:bg-item-hover"
+              className="rounded-[var(--radius)] border border-border px-2.5 py-1 text-xs text-foreground transition-colors duration-200 hover:bg-item-hover"
             >
               + {t("ai_settings.add_provider")}
             </button>
@@ -626,7 +626,7 @@ export function AISettings() {
             type="button"
             onClick={handleProbeModels}
             disabled={isProbing || !settings.baseUrl.trim()}
-            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-border px-3 text-xs text-foreground transition-colors duration-200 hover:bg-item-hover disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[var(--radius)] border border-border px-3 text-xs text-foreground transition-colors duration-200 hover:bg-item-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isProbing && (
               <span className="size-3 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-transparent" />
@@ -677,7 +677,7 @@ export function AISettings() {
           }}
           placeholder={JSON.stringify({ key: "value" }, null, 2)}
           className={cn(
-            "min-h-32 w-full rounded-md border bg-background px-3 py-2 font-mono text-xs focus:border-primary focus:outline-none",
+            "min-h-32 w-full rounded-field border bg-background px-3 py-2 font-mono text-xs focus:border-primary focus:outline-none",
             requestOptionsError ? "border-destructive" : "border-border",
           )}
           spellCheck={false}
@@ -814,7 +814,7 @@ export function AISettings() {
           onClick={handleTest}
           disabled={isTesting || !canSubmit}
           className={cn(
-            "flex h-8 shrink-0 items-center gap-1.5 rounded-md px-4 text-sm font-medium transition-colors",
+            "flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--radius)] px-4 text-sm font-medium transition-colors",
             "bg-secondary hover:bg-secondary/80",
             "disabled:cursor-not-allowed disabled:opacity-50",
           )}
@@ -849,7 +849,7 @@ export function AISettings() {
           onClick={handleSave}
           disabled={isSaving || !canSubmit}
           className={cn(
-            "flex h-8 shrink-0 items-center gap-1.5 rounded-md px-4 text-sm font-medium transition-colors",
+            "flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--radius)] px-4 text-sm font-medium transition-colors",
             "bg-primary text-primary-foreground hover:bg-primary/90",
             "disabled:cursor-not-allowed disabled:opacity-50",
           )}

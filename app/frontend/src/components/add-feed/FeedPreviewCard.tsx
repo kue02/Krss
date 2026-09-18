@@ -335,7 +335,7 @@ export function FeedPreviewCard({
               onChange={(e) => setCustomTitle(e.target.value)}
               placeholder={feed.title}
               className={cn(
-                "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm",
+                "w-full rounded-field border border-border bg-background px-3 py-2 text-sm",
                 "placeholder:text-muted-foreground/60",
                 "focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20",
               )}
@@ -355,7 +355,7 @@ export function FeedPreviewCard({
               onFocus={() => setShowFolderDropdown(true)}
               placeholder={t("add_feed.select_or_create_folder")}
               className={cn(
-                "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm",
+                "w-full rounded-field border border-border bg-background px-3 py-2 text-sm",
                 "placeholder:text-muted-foreground/60",
                 "focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20",
               )}
@@ -461,7 +461,7 @@ export function FeedPreviewCard({
           onClick={handleSubscribe}
           disabled={isLoading}
           className={cn(
-            "inline-flex items-center gap-2 rounded-lg px-4 py-2",
+            "inline-flex items-center gap-2 rounded-[var(--radius)] px-4 py-2",
             "bg-primary text-primary-foreground text-sm font-medium",
             "transition-all duration-200",
             "hover:bg-primary/90",

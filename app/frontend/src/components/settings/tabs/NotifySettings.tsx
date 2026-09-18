@@ -112,7 +112,7 @@ export function NotifySettings() {
         value={url}
         onChange={(event) => setUrl(event.target.value)}
         placeholder="https://api.day.app/your-key"
-        className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none transition-colors duration-200 focus:border-accent"
+        className="w-full rounded-field border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none transition-colors duration-200 focus:border-accent"
       />
 
       <div className="flex flex-wrap items-center gap-2">

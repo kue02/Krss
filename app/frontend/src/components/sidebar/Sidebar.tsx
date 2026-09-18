@@ -644,7 +644,7 @@ export function Sidebar({
                         : t("sidebar.expand_all")
                     }
                     disabled={folderNames.length === 0}
-                    className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors duration-200 hover:bg-secondary/50 hover:text-foreground disabled:opacity-40"
+                    className="flex size-6 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors duration-200 hover:bg-secondary/50 hover:text-foreground disabled:opacity-40"
                   >
                     {allFoldersOpen ? (
                       <ChevronsDownUpIcon className="size-3.5" />
@@ -654,7 +654,7 @@ export function Sidebar({
                   </button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button className="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary/50 hover:text-foreground">
+                    <button className="flex size-6 items-center justify-center rounded-[var(--radius)] text-muted-foreground hover:bg-secondary/50 hover:text-foreground">
                       {sortBy === "name" ? (
                         <ArrowDownAZIcon className="size-3.5" />
                       ) : (

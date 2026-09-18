@@ -214,7 +214,7 @@ export function NetworkSettings() {
                 }
                 placeholder="127.0.0.1"
                 className={cn(
-                  "mt-1 h-9 w-full rounded-md border border-border bg-background px-3 text-sm",
+                  "mt-1 h-9 w-full rounded-field border border-border bg-background px-3 text-sm",
                   "placeholder:text-muted-foreground/50",
                   "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
                 )}
@@ -235,7 +235,7 @@ export function NetworkSettings() {
                 }
                 placeholder="7890"
                 className={cn(
-                  "mt-1 h-9 w-full rounded-md border border-border bg-background px-3 text-sm",
+                  "mt-1 h-9 w-full rounded-field border border-border bg-background px-3 text-sm",
                   "placeholder:text-muted-foreground/50",
                   "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
                 )}
@@ -260,7 +260,7 @@ export function NetworkSettings() {
                     setSettings({ ...settings, username: e.target.value })
                   }
                   className={cn(
-                    "mt-1 h-9 w-full rounded-md border border-border bg-background px-3 text-sm",
+                    "mt-1 h-9 w-full rounded-field border border-border bg-background px-3 text-sm",
                     "placeholder:text-muted-foreground/50",
                     "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
                   )}
@@ -277,7 +277,7 @@ export function NetworkSettings() {
                     setSettings({ ...settings, password: e.target.value })
                   }
                   className={cn(
-                    "mt-1 h-9 w-full rounded-md border border-border bg-background px-3 text-sm",
+                    "mt-1 h-9 w-full rounded-field border border-border bg-background px-3 text-sm",
                     "placeholder:text-muted-foreground/50",
                     "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
                   )}
@@ -293,7 +293,7 @@ export function NetworkSettings() {
               onClick={handleTest}
               disabled={isTesting || !canTest}
               className={cn(
-                "h-9 rounded-md px-4 text-sm font-medium transition-colors shrink-0",
+                "h-9 rounded-[var(--radius)] px-4 text-sm font-medium transition-colors shrink-0",
                 "border border-border bg-background hover:bg-secondary",
                 "disabled:cursor-not-allowed disabled:opacity-50",
                 testStatus === "success" && "border-green-600 text-green-600",
@@ -309,7 +309,7 @@ export function NetworkSettings() {
               onClick={handleSave}
               disabled={isSaving}
               className={cn(
-                "h-9 rounded-md px-4 text-sm font-medium transition-colors shrink-0",
+                "h-9 rounded-[var(--radius)] px-4 text-sm font-medium transition-colors shrink-0",
                 "bg-primary text-primary-foreground hover:bg-primary/90",
                 "disabled:cursor-not-allowed disabled:opacity-50",
                 saveStatus === "success" && "bg-green-600 hover:bg-green-600",

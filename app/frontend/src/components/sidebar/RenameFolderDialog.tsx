@@ -60,7 +60,7 @@ export function RenameFolderDialog({
             value={name}
             onChange={(event) => setName(event.target.value)}
             autoFocus
-            className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none transition-colors duration-200 focus:border-accent"
+            className="w-full rounded-field border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none transition-colors duration-200 focus:border-accent"
             placeholder={t("folder.name_placeholder")}
           />
           {error && <p className="text-xs text-destructive">{error}</p>}

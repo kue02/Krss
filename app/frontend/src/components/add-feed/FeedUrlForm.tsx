@@ -63,7 +63,7 @@ export function FeedUrlForm({ onSubmit, isLoading = false }: FeedUrlFormProps) {
     <form onSubmit={handleSubmit} className="relative">
       <div
         className={cn(
-          "flex items-center gap-2 rounded-xl border border-border",
+          "flex items-center gap-2 rounded-field border border-border",
           "bg-background px-4 py-2.5",
           "transition-colors duration-200",
           "focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20",
@@ -113,7 +113,7 @@ export function FeedUrlForm({ onSubmit, isLoading = false }: FeedUrlFormProps) {
             type="button"
             onClick={handleClear}
             className={cn(
-              "shrink-0 rounded-md p-1",
+              "shrink-0 rounded-[var(--radius)] p-1",
               "text-muted-foreground hover:text-foreground",
               "transition-colors duration-200",
             )}
@@ -140,7 +140,7 @@ export function FeedUrlForm({ onSubmit, isLoading = false }: FeedUrlFormProps) {
           type="submit"
           disabled={!inputValue.trim() || isLoading}
           className={cn(
-            "shrink-0 rounded-lg px-4 py-1.5",
+            "shrink-0 rounded-[var(--radius)] px-4 py-1.5",
             "bg-primary text-primary-foreground text-sm font-medium",
             "transition-all duration-200",
             "hover:bg-primary/90",
