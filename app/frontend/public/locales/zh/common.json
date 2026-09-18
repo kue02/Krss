@@ -587,7 +587,6 @@
     "ui_scale_large": "大",
     "ui_scale_xl": "特大",
     "title": "阅读与列表",
-    "description": "仅保存在本机（换设备不影响）",
     "card_image": "列表图片",
     "card_image_none": "不显示",
     "card_image_small": "小图",

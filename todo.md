@@ -194,6 +194,10 @@
 - 附带：`~/Documents/Docker/gist-nextflux/data` 用的后端 :8080 原来跑的是 09-18 早上构建的旧二进制（`/tmp/gist-server-1116`，没有 `/settings/ui`），**已停掉并换成当前源码构建的二进制** —— 否则你在 5173 上用前端会一直弹「设置上传失败：404」。
       重启命令（二进制 `/tmp/gist-server-21` 是本次构建的，重启机器后要重编）：`cd app/backend && GIST_ADDR=:8080 GIST_DATA_DIR=~/Documents/Docker/gist-nextflux/data go run ./cmd/server/main.go`
       自检：`GET /api/settings/ui` 回 `{"empty":true,...}`（你库里还没存过界面设置，打开 5173 就会自动把本地那份推上去）、`GET /api/feeds` 200。
+- [x] **21-8 删掉「阅读与列表」下面那行误导文案**（2026-09-18 用户：「这个设置下面的内容能记住吗？能记住就把下面那行字去掉」）——
+      那行原来是 `appearance_reading.description` =「仅保存在本机（换设备不影响）」；21 批之后**这一节全部随服务端同步，只有「界面字号」（`uiScale`）按设备各存一套**，所以那行已经不成立。
+      做法：删掉 `AppearanceSettings.tsx` 里那行渲染 + 中英两份 locale 键（无测试引用）；代码注释里写清「为什么删」。
+      真机（`:5174` dev + `:8082` 库副本，没碰你的库）：展开「阅读与列表」抬头只剩标题一行、`sectionHasDeviceOnlyText=false`；同屏点「网格」→ 本地与服务端都是 `grid`、无脏标记、控制台 0 报错。`bun run test` 706/706、`tsc -b` 干净。
 
 ---
 

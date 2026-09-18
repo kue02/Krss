@@ -437,14 +437,13 @@ export function AppearanceSettings() {
         </div>
       </section>
 
-      {/* 阅读与列表 —— 本机偏好（对齐 Nextflux 的 Appearance / Readability） */}
+      {/* 阅读与列表（对齐 Nextflux 的 Appearance / Readability）
+          21 批之后这一节不再只是本机偏好：全部随服务端同步（只有「界面字号」按设备各存一套），
+          所以原来那行「仅保存在本机（换设备不影响）」已经不准，已删掉。 */}
       <section>
         <div className="mb-3">
           <div className="text-sm font-medium">
             {t("appearance_reading.title")}
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {t("appearance_reading.description")}
           </div>
         </div>
 
