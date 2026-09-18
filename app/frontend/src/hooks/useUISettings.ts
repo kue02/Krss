@@ -53,6 +53,46 @@ export function radiusPresetToCss(preset: RadiusPreset): string | null {
   }
 }
 
+/**
+ * 13-3：未读角标的可自定义项 —— **每一项都直接对应 HeroUI `Badge` 的一个官方 prop**，不自己造。
+ * 取值域从 HeroUI 的样式产物里点清：placement 四档 / color 五档（accent·danger·success·warning·default）
+ * / size sm·md·lg / variant primary·secondary·soft。
+ *
+ * 用户 2026-09-18 的裁定：「小圆点那个和角标合并，但是小圆角是设置成默认的，是一个单独的样式，不变的」
+ * —— 所以 `content: "dot"` 就是**默认档**，且它保持今天这套固定外观（8px、跟随主题色、压边 2px），
+ * 不吃面板里的位置/大小/颜色/外观（那几项只作用于「未读数 / 图标」两档，选圆点时置灰并给出提示）。
+ */
+export interface UnreadBadgeConfig {
+  /** 内容：圆点（默认，固定外观）/ 未读数 / 图标 */
+  content: "dot" | "count" | "icon";
+  /** 位置（HeroUI `placement` 四档） */
+  placement: "top-left" | "top-right" | "bottom-left" | "bottom-right";
+  /** 大小（px，6–16） */
+  size: number;
+  /** 颜色是否跟随主题色（`--accent`）；关掉才用 color / customColor */
+  followAccent: boolean;
+  /** HeroUI 官方色档 */
+  color: "accent" | "danger" | "success" | "warning" | "default";
+  /** 自定义颜色（写入 `--accent` 那种做法，仅 followAccent=false 时生效） */
+  customColor: string | null;
+  /** 外观（HeroUI `variant`） */
+  variant: "primary" | "secondary" | "soft";
+  /** 压住图标边缘的额外偏移（px，0–6；HeroUI 自带 4px，这里是叠加值） */
+  offset: number;
+}
+
+/** 默认 = 今天的样子（12-14 定的那套：左上角、8px 小圆点、跟随主题色、压边 2px） */
+export const DEFAULT_UNREAD_BADGE: UnreadBadgeConfig = {
+  content: "dot",
+  placement: "top-left",
+  size: 8,
+  followAccent: true,
+  color: "accent",
+  customColor: null,
+  variant: "primary",
+  offset: 4,
+};
+
 export type UnreadStyle = "badge" | "dot" | "dim";
 /**
  * 第一栏（侧栏）订阅行的外观（用户 11-12）：
@@ -103,6 +143,8 @@ interface UISettings {
   iconRadius: RadiusPreset;
   /** 已读/未读的标记样式（全局统一，见 UnreadStyle） */
   unreadStyle: UnreadStyle;
+  /** 13-3：未读角标的外观配置（选「角标」档时生效） */
+  unreadBadge: UnreadBadgeConfig;
   /** 第一栏订阅行的外观（默认只有名称；可切成「名称 + @源站」） */
   sidebarFeedAppearance: SidebarFeedAppearance;
   /**
@@ -163,6 +205,7 @@ export const defaultUISettings: UISettings = {
   reduceMotion: false,
   quoteStyle: "block",
   unreadStyle: "badge",
+  unreadBadge: DEFAULT_UNREAD_BADGE,
   buttonRadius: "default",
   iconRadius: "default",
   sidebarFeedAppearance: "default",
@@ -338,6 +381,14 @@ export function useUISettingActions() {
     [setUISetting],
   );
 
+  /** 13-3：只覆盖传进来的字段（面板里逐项改，不该互相踩） */
+  const setUnreadBadge = useCallback((patch: Partial<UnreadBadgeConfig>) => {
+    setUISetting("unreadBadge", {
+      ...getUISettings().unreadBadge,
+      ...patch,
+    });
+  }, []);
+
   const setButtonRadius = useCallback((preset: RadiusPreset) => {
     setUISetting("buttonRadius", preset);
   }, []);
@@ -424,6 +475,7 @@ export function useUISettingActions() {
     setQuoteStyle,
     setButtonRadius,
     setIconRadius,
+    setUnreadBadge,
     setUnreadStyle,
     setAccentColor,
     setSidebarFeedAppearance,

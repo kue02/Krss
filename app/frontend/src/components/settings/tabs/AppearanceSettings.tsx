@@ -30,6 +30,7 @@ import {
 } from "@/hooks/useUISettings";
 import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
 import { AccentColorPicker } from "@/components/settings/tabs/AccentColorPicker";
+import { UnreadBadgeCustomizer } from "@/components/settings/tabs/UnreadBadgeCustomizer";
 import { readingFonts } from "@/lib/reading-fonts";
 import { updateAppearanceSettings } from "@/api";
 import { cn } from "@/lib/utils";
@@ -559,19 +560,21 @@ export function AppearanceSettings() {
             />
           </SettingRow>
           <SettingRow label={t("appearance_reading.unread_style")}>
-            <SegmentedControl
-              className="shrink-0"
-              value={unreadStyle}
-              onValueChange={(value) => setUnreadStyle(value as UnreadStyle)}
-              options={[
-                {
-                  value: "badge",
-                  label: t("appearance_reading.unread_style_badge"),
-                },
-                { value: "dot", label: t("appearance_reading.unread_style_dot") },
-                { value: "dim", label: t("appearance_reading.unread_style_dim") },
-              ]}
-            />
+            <div className="flex shrink-0 items-center gap-2">
+              <SegmentedControl
+                value={unreadStyle === "dim" ? "dim" : "badge"}
+                onValueChange={(value) => setUnreadStyle(value as UnreadStyle)}
+                options={[
+                  {
+                    value: "badge",
+                    label: t("appearance_reading.unread_style_badge"),
+                  },
+                  { value: "dim", label: t("appearance_reading.unread_style_dim") },
+                ]}
+              />
+              {/* 13-3：选「角标」时右侧多一个「⚙ 自定义」，点开是 HeroUI Popover 配置面板 */}
+              {unreadStyle !== "dim" && <UnreadBadgeCustomizer />}
+            </div>
           </SettingRow>
           <SettingRow label={t("appearance_reading.quote_style")}>
             <SegmentedControl

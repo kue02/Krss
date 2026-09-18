@@ -49,6 +49,8 @@ import type { Entry, Feed } from "@/types/api";
 const URL_PATTERN = /\bhttps?:\/\/\S+/i;
 
 interface EntryListItemProps {
+  /** 13-3：该订阅的未读条数（未读角标选「未读数」时用；由 EntryList 从已有查询传下来，叶子组件不自己发请求） */
+  feedUnreadCount?: number;
   entry: Entry;
   feed?: Feed;
   isSelected: boolean;
@@ -170,6 +172,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     {
       entry,
       feed,
+      feedUnreadCount,
       isSelected,
       onClick,
       autoTranslate,
@@ -363,7 +366,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
 
               {/* 头像式 favicon（Folo 用 32px 的源图标当作者头像）；
                   未读标记（用户 12-2）用 HeroUI Badge 挂在它左上角 */}
-              <UnreadIndicator unread={isUnread} className="mt-1">
+              <UnreadIndicator unread={isUnread} count={feedUnreadCount} className="mt-1">
                 {showIcon ? (
                   <img
                     src={`/icons/${feed.iconPath}`}
@@ -676,7 +679,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                   isUnread ? "text-muted-foreground" : "text-muted-foreground/70",
                 )}
               >
-                <UnreadIndicator unread={isUnread}>
+                <UnreadIndicator unread={isUnread} count={feedUnreadCount}>
                   {showIcon ? (
                     <img
                       src={`/icons/${feed.iconPath}`}

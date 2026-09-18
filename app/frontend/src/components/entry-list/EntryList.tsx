@@ -897,6 +897,7 @@ export function EntryList({
               {/* pb-16：底部悬浮的「星标 / 未读 / 已静音 / 全部」胶囊会盖住内容，留白让最后一条能滚上来 */}
               {entries.map((entry, index) => (
                 <EntryListItem
+                feedUnreadCount={unreadCounts?.counts?.[entry.feedId]}
                   key={entry.id}
                   data-index={index}
                   data-entry-id={entry.id}
