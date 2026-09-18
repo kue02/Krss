@@ -110,6 +110,27 @@ vi.mock("./EntryListHeader", () => ({
   EntryListHeader: () => null,
 }));
 
+// 通知视图的时间线：单测只关心「哪个视图走哪条分支 + 设置有没有透传」，
+// 时间线内部的行为由 NotificationTimeline.test.tsx 自己覆盖。
+vi.mock("./NotificationTimeline", () => ({
+  NotificationTimeline: ({
+    entries,
+    granularity,
+    collapse,
+  }: {
+    entries: Entry[];
+    granularity: string;
+    collapse: string;
+  }) => (
+    <div
+      data-testid="notification-timeline"
+      data-granularity={granularity}
+      data-collapse={collapse}
+      data-entry-ids={entries.map((entry) => entry.id).join(",")}
+    />
+  ),
+}));
+
 import { EntryList } from "./EntryList";
 import { setUISetting } from "@/hooks/useUISettings";
 import { entryListScrollPositions } from "./scroll-key";
@@ -1220,5 +1241,100 @@ describe("EntryList translation scheduling", () => {
     expect(
       vi.mocked(useEntriesInfinite).mock.calls.at(-1)?.[0],
     ).not.toHaveProperty("mutedOnly");
+  });
+});
+
+/**
+ * 第十五批（15-1/15-5）：通知视图只有时间线这一种形态，其余视图一行不动。
+ */
+describe("EntryList · 通知视图的时间线分支", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    entryListScrollPositions.clear();
+    useFilterViewStore.getState().setMutedOnly(false);
+    vi.mocked(useEntriesInfinite).mockReturnValue({
+      data: { pages: [{ entries: allEntries, hasMore: false }] },
+      fetchNextPage: vi.fn(),
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      isLoading: false,
+    } as unknown as ReturnType<typeof useEntriesInfinite>);
+  });
+
+  afterEach(() => {
+    // 粒度/折叠是按视图的设置：用例改过就还原，别影响别的文件
+    setUISetting("timelineGranularityByView", {
+      article: "hour",
+      picture: "hour",
+      notification: "hour",
+      social: "hour",
+    });
+    setUISetting("timelineCollapseByView", {
+      article: "2",
+      picture: "2",
+      notification: "2",
+      social: "2",
+    });
+  });
+
+  it("通知视图渲染时间线（不再渲染卡片列表）", () => {
+    render(<EntryList {...defaultProps} contentType="notification" />);
+
+    expect(screen.getByTestId("notification-timeline").dataset.entryIds).toBe(
+      "1,2,3,4,5",
+    );
+    expect(mockRenderedEntryListItem).not.toHaveBeenCalled();
+  });
+
+  it("其余视图渲染卡片列表（时间线不出现）", () => {
+    render(<EntryList {...defaultProps} contentType="article" />);
+
+    expect(screen.queryByTestId("notification-timeline")).toBeNull();
+    expect(mockRenderedEntryListItem).toHaveBeenCalled();
+  });
+
+  it("两个按视图设置透传给时间线：默认每小时 / 2 行，改了就跟", () => {
+    const view = render(<EntryList {...defaultProps} contentType="notification" />);
+    const timeline = () => screen.getByTestId("notification-timeline");
+    expect(timeline().dataset.granularity).toBe("hour");
+    expect(timeline().dataset.collapse).toBe("2");
+
+    act(() => {
+      setUISetting("timelineGranularityByView", {
+        article: "hour",
+        picture: "hour",
+        notification: "day",
+        social: "hour",
+      });
+      setUISetting("timelineCollapseByView", {
+        article: "2",
+        picture: "2",
+        notification: "full",
+        social: "2",
+      });
+    });
+
+    expect(timeline().dataset.granularity).toBe("day");
+    expect(timeline().dataset.collapse).toBe("full");
+    view.unmount();
+  });
+
+  it("换粒度只影响时间线的分组，不重新请求数据（limit 与查询参数一个不变）", () => {
+    const view = render(<EntryList {...defaultProps} contentType="notification" />);
+    const before = vi.mocked(useEntriesInfinite).mock.calls.at(-1)?.[0];
+
+    act(() => {
+      setUISetting("timelineGranularityByView", {
+        article: "hour",
+        picture: "hour",
+        notification: "minute",
+        social: "hour",
+      });
+    });
+
+    const after = vi.mocked(useEntriesInfinite).mock.calls.at(-1)?.[0];
+    expect(after).toEqual(before);
+    expect(after).not.toHaveProperty("granularity");
+    view.unmount();
   });
 });

@@ -13,6 +13,14 @@ export interface EntryHotkeysOptions {
   onEscape?: () => void;
   /** 列表不可见时（例如移动端正在读文章）不要抢键 */
   enabled?: boolean;
+  /**
+   * 是否也认 ↑/↓（默认 **false**）。
+   *
+   * 15-4（通知视图 · 时间线）要的「沿轴选择」是 j/k、↑/↓ 都能在节点间吸附；
+   * 但其余视图此前并不认 ↑/↓，默认开着等于改既有行为 —— 所以由调用方显式打开，
+   * 只有时间线视图传 true。
+   */
+  arrowKeys?: boolean;
 }
 
 /**
@@ -32,6 +40,7 @@ export function useEntryHotkeys({
   onSelect,
   onEscape,
   enabled = true,
+  arrowKeys = false,
 }: EntryHotkeysOptions) {
   const markAsRead = useMarkAsRead();
   const markAsStarred = useMarkAsStarred();
@@ -65,14 +74,19 @@ export function useEntryHotkeys({
       const current = currentIndex >= 0 ? entries[currentIndex] : null;
 
       switch (event.key.toLowerCase()) {
-        case "j": {
+        // ↓ / ↑ 与 j / k 同义 —— 但只在调用方显式打开时（时间线视图，见 arrowKeys）
+        case "j":
+        case "arrowdown": {
+          if (event.key.startsWith("Arrow") && !arrowKeys) return;
           const next = entries[currentIndex + 1] ?? (currentIndex < 0 ? entries[0] : undefined);
           if (!next) return;
           event.preventDefault();
           selectAndMarkRead(next);
           break;
         }
-        case "k": {
+        case "k":
+        case "arrowup": {
+          if (event.key.startsWith("Arrow") && !arrowKeys) return;
           if (currentIndex <= 0) return;
           const previous = entries[currentIndex - 1];
           if (!previous) return;
@@ -117,6 +131,7 @@ export function useEntryHotkeys({
     selectedEntryId,
     onSelect,
     onEscape,
+    arrowKeys,
     markAsRead,
     markAsStarred,
   ]);

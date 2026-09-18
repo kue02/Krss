@@ -9,12 +9,19 @@ import {
 } from "@/lib/settings-sync";
 import type { ContentType } from "@/types/api";
 import type { ScrollMarkReadTiming } from "@/components/entry-list/useScrollMarkRead";
+import type {
+  TimelineCollapse,
+  TimelineGranularity,
+} from "@/lib/timeline-model";
 
 export type CardImageSize = "none" | "small" | "large";
 export type ScrollReadOverride = "inherit" | "on" | "off";
 export type ScrollReadMode = "off" | "on" | "perView";
 export type ViewFlags = Record<ContentType, boolean>;
 export type ViewScrollRead = Record<ContentType, ScrollReadOverride>;
+/** 第十五批：通知视图时间线的两个按视图设置（粒度 / 折叠行数） */
+export type ViewTimelineGranularity = Record<ContentType, TimelineGranularity>;
+export type ViewTimelineCollapse = Record<ContentType, TimelineCollapse>;
 export type QuoteStyle = "block" | "divider" | "card";
 /**
  * 已读/未读的全局统一标记（用户 11-14）：
@@ -184,6 +191,16 @@ interface UISettings {
    * 默认 true：推迟到「离开这个视图 / 换订阅再回来」时才摘掉；关掉就是原来的即时消失。
    */
   scrollReadDeferRemoval: boolean;
+  /**
+   * 第十五批（15-5）：通知视图时间线的**时间粒度**（只影响分组与节点标注，不重新请求数据）。
+   * 放在 ByView 家族里是为了和「按视图设置」其他项同一套存储（只有 notification 会用到）。
+   */
+  timelineGranularityByView: ViewTimelineGranularity;
+  /**
+   * 第十五批（15-3/15-5）：通知视图卡片的**折叠行数**（1/2/3/全文），默认 2 行。
+   * 注意：**没有「切回列表」这一项** —— 通知视图只有时间线这一种形态（用户定案）。
+   */
+  timelineCollapseByView: ViewTimelineCollapse;
 }
 
 /**
@@ -376,6 +393,19 @@ export const defaultUISettings: UISettings = {
   },
   // 20-3：默认「不实时消失」（离开视图/换订阅回来才摘掉）
   scrollReadDeferRemoval: true,
+  // 第十五批：通知视图时间线 —— 默认「每小时」+ 折叠 2 行（都是用户拍板的默认档）
+  timelineGranularityByView: {
+    article: "hour",
+    picture: "hour",
+    notification: "hour",
+    social: "hour",
+  },
+  timelineCollapseByView: {
+    article: "2",
+    picture: "2",
+    notification: "2",
+    social: "2",
+  },
 };
 
 let cachedPackage: UISettingsPackageShape = readStoredPackage();
@@ -635,6 +665,28 @@ export function useUISettingActions() {
     [],
   );
 
+  /** 第十五批：通知视图时间线的时间粒度（只改分组与节点标注，不重新请求数据） */
+  const setTimelineGranularityForView = useCallback(
+    (view: ContentType, granularity: TimelineGranularity) => {
+      setUISetting("timelineGranularityByView", {
+        ...getUISettings().timelineGranularityByView,
+        [view]: granularity,
+      });
+    },
+    [],
+  );
+
+  /** 第十五批：通知视图卡片的折叠行数（1/2/3/全文） */
+  const setTimelineCollapseForView = useCallback(
+    (view: ContentType, collapse: TimelineCollapse) => {
+      setUISetting("timelineCollapseByView", {
+        ...getUISettings().timelineCollapseByView,
+        [view]: collapse,
+      });
+    },
+    [],
+  );
+
   const toggleSidebarVisible = useCallback(() => {
     const current = getUISettings().sidebarVisible;
     setUISetting("sidebarVisible", !current);
@@ -670,6 +722,8 @@ export function useUISettingActions() {
     setSidebarFeedAppearance,
     setScrollReadForView,
     setScrollReadTimingForView,
+    setTimelineGranularityForView,
+    setTimelineCollapseForView,
     resetToDefaults,
   };
 }
