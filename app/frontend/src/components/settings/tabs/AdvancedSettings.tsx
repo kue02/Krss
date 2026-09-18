@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, Trash2, Edit2, Check, X, Copy, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { Plus, Trash2, Edit2, Check, X, Copy } from "lucide-react";
 import { Button, Disclosure, Label, NumberField, Table } from "@heroui/react";
 import {
   getDomainRateLimits,
@@ -22,40 +22,6 @@ import {
 } from "@/lib/auto-refresh-history";
 import type { DomainRateLimit } from "@/types/settings";
 import { cn } from "@/lib/utils";
-
-/** 表头里的排序按钮（HeroUI `Button`；点一下切升降序） */
-function SortHeader({
-  label,
-  column,
-  sort,
-  onToggle,
-}: {
-  label: string;
-  column: string;
-  sort: { column: string; direction: "ascending" | "descending" };
-  onToggle: (column: string) => void;
-}) {
-  const active = sort.column === column;
-  return (
-    <Button
-      size="sm"
-      variant="ghost"
-      onPress={() => onToggle(column)}
-      className="h-6 gap-1 px-1 text-xs font-medium"
-    >
-      {label}
-      {active ? (
-        sort.direction === "ascending" ? (
-          <ArrowUp className="size-3" />
-        ) : (
-          <ArrowDown className="size-3" />
-        )
-      ) : (
-        <ArrowUpDown className="size-3 opacity-40" />
-      )}
-    </Button>
-  );
-}
 
 export function AdvancedSettings() {
   /** 12-19：表头点击排序（HeroUI Button 自己管状态，见 SortHeader） */
@@ -341,30 +307,52 @@ export function AdvancedSettings() {
                     {/* 排序不用 RAC 的 `sortDescriptor`（HeroUI 的 Table 没声明这个 prop，
                         运行期也不保证透传）—— 表头里放 HeroUI `Button`，自己管排序状态 */}
                     <Table aria-label={t("settings.auto_refresh_history_table")}>
+                      {/* HeroUI 的 `Table` 根只是个 div 包装，真正的 RAC 表格是 `Table.Content`；
+                          少了这一层，Header/Body 会落在 RAC 表格上下文之外 → 运行期抛
+                          「cannot be rendered outside a collection」（白屏）。 */}
+                      <Table.Content>
                       <Table.Header>
                         <Table.Column id="title" isRowHeader>
-                          <SortHeader
-                            label={t("settings.auto_refresh_history_col_feed")}
-                            column="title"
-                            sort={sortDescriptor}
-                            onToggle={toggleSort}
-                          />
+                          <Table.SortableColumnHeader
+                            sortDirection={
+                              sortDescriptor.column === "title"
+                                ? sortDescriptor.direction
+                                : undefined
+                            }
+                            showIndicator={sortDescriptor.column === "title"}
+                            onClick={() => toggleSort("title")}
+                            className="cursor-pointer select-none"
+                          >
+                            {t("settings.auto_refresh_history_col_feed")}
+                          </Table.SortableColumnHeader>
                         </Table.Column>
                         <Table.Column id="new">
-                          <SortHeader
-                            label={t("settings.auto_refresh_history_col_new")}
-                            column="new"
-                            sort={sortDescriptor}
-                            onToggle={toggleSort}
-                          />
+                          <Table.SortableColumnHeader
+                            sortDirection={
+                              sortDescriptor.column === "new"
+                                ? sortDescriptor.direction
+                                : undefined
+                            }
+                            showIndicator={sortDescriptor.column === "new"}
+                            onClick={() => toggleSort("new")}
+                            className="cursor-pointer select-none"
+                          >
+                            {t("settings.auto_refresh_history_col_new")}
+                          </Table.SortableColumnHeader>
                         </Table.Column>
                         <Table.Column id="updated">
-                          <SortHeader
-                            label={t("settings.auto_refresh_history_col_updated")}
-                            column="updated"
-                            sort={sortDescriptor}
-                            onToggle={toggleSort}
-                          />
+                          <Table.SortableColumnHeader
+                            sortDirection={
+                              sortDescriptor.column === "updated"
+                                ? sortDescriptor.direction
+                                : undefined
+                            }
+                            showIndicator={sortDescriptor.column === "updated"}
+                            onClick={() => toggleSort("updated")}
+                            className="cursor-pointer select-none"
+                          >
+                            {t("settings.auto_refresh_history_col_updated")}
+                          </Table.SortableColumnHeader>
                         </Table.Column>
                         <Table.Column id="error">
                           {t("settings.auto_refresh_history_col_error")}
@@ -431,6 +419,7 @@ export function AdvancedSettings() {
                             </Table.Row>
                           ))}
                       </Table.Body>
+                      </Table.Content>
                     </Table>
                   </Disclosure.Body>
                 </Disclosure.Content>
