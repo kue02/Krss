@@ -358,6 +358,25 @@
       来源 + 状态（已静音 / 已加星）作为 **shrink-0 右尾**贴右缘；行高 38px（「同时撤销星标」那行 32px）。
       落点：`app/frontend/src/components/automation/RevertFilterDialog.tsx`（把每行从 HeroUI `Checkbox` 的默认排布里拉出来、由自己的 flex 行接管）。
 
+### 13-3（2026-09-18 追加，「角标」做成可自定义 · 用户已点头「就按照这个方案」）
+
+> 效果图：`~/Documents/test/gist-nextflux-ui/mockups/unread-badge-config.html`
+> 官方依据：HeroUI Badge 文档（https://heroui.com/cn/docs/react/components/badge）—— 每个可配项都直接落在它的一个 prop 上，不自己造。
+> 现状：设置 → 外观 → 阅读 →「未读标记」三档里选中「角标」后**没有任何可调项**；位置/大小/颜色全写死在 `components/entry-list/unread-indicator.tsx`（`placement="top-left"`、`size-2`+`min-h-0 min-w-0`、`color="accent"`）。
+
+- [ ] **13-3 选「角标」→ 右侧多一个「⚙ 自定义」，点开是配置面板**（保存后对所有列表生效，面板底部带实时预览 + 恢复默认）
+      - **位置** `placement`：左上（当前）/ 右上 / 左下 / 右下 —— 四个格子内画「图标 + 角标」的小样，选中态用主题色描边。
+      - **大小** `size` + 自定义 px：小 6 / 中 8（当前）/ 大 10 + 滑杆 6–16px，实时显示 px 值。
+        ⚠ HeroUI `sm` 自带 `min-width/min-height: 16px`（12-14 被它顶回去过），自定义尺寸必须同时写 `min-h-0 min-w-0`。
+      - **颜色**：默认**跟随主题色**（取 `--accent`，改主题色角标跟着变）；关掉该开关才出现取色器（复用 11-13 的 HeroUI `ColorPicker`）；
+        另可给 `color` 的官方档（accent / danger / success / warning / default）。
+      - **外观** `variant`：实心 primary（当前）/ 次色 secondary / 柔和 soft。
+      - **内容** `children`：圆点（空徽章，当前）/ 未读数（`Badge.Label`，>99 显示 99+）/ 图标。
+      - **压住边缘**（本项目自有偏移，HeroUI 无此 prop）：0–6px 可调，当前写死 **2px**（12-2 / 12-14 两轮都在纠「吃掉图标边缘一点点」，做成可调就不必再改代码）。
+      - 面板形式：设置行右侧的按钮点开 HeroUI `Popover`（**不新开抽屉/弹窗**，与设置页其它项一致）；网格沿用 13-1 的 `标签列 92px + 控件列 1fr`、控件左对齐。
+- [ ] **13-3 待拍板（做完上面再决定）**：另一档「小圆点」是画在**行最左侧**的绝对定位点（`EntryListItem.tsx:352`，`-left-0.5 top-8 size-2`），与角标不是同一个东西 ——
+      要不要收进这个面板（变成「位置 = 行左侧」的一档），还是两套各留各的？用户未答，动手前先问一句。
+
 ## 1. 过滤规则（自动化） · 细节见 `docs/自动化-过滤规则.md`
 
 ### 已完成（P1 全部 + P2 三项）
