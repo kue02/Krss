@@ -402,6 +402,13 @@ export function FeedItem({
             <span
               ref={triggerRef}
               className="flex w-full min-w-0 items-center justify-between gap-2"
+              /**
+               * 12-1（复现后定位）：ListBox 模式下只靠 RAC 的 `onAction` 会「第一次点击能切、
+               * 之后再点别的订阅没反应」——埋点实测：第二、三次点击 pointerdown/up/click 都落在
+               * 正确的行上，但**没有触发导航**（history.replaceState 没被调用），也就是 onAction 没再发。
+               * 这里让行内容自己也能触发选中（幂等：即使 onAction 也发了，切到同一个订阅没有副作用）。
+               */
+              onClick={onClick}
             >
               {rowContent}
             </span>
