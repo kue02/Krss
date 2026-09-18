@@ -45,6 +45,7 @@ var NewDomainRateLimitHandlerHelper = NewDomainRateLimitHandler
 var NewOPMLHandlerHelper = NewOPMLHandler
 var NewIconHandlerHelper = NewIconHandler
 var NewProxyHandlerHelper = NewProxyHandler
+var NewProxySourceHandlerHelper = NewProxySourceHandler
 var NewFilterHandlerHelper = NewFilterHandler
 
 var WriteServiceError = writeServiceError

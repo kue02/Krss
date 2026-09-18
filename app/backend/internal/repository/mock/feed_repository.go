@@ -233,6 +233,20 @@ func (mr *MockFeedRepositoryMockRecorder) UpdateIconPath(ctx, id, iconPath any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateIconPath", reflect.TypeOf((*MockFeedRepository)(nil).UpdateIconPath), ctx, id, iconPath)
 }
 
+// UpdateProxyOverride mocks base method.
+func (m *MockFeedRepository) UpdateProxyOverride(ctx context.Context, id int64, mode *model.ProxyMode, cfg *model.ProxyOverrideConfig) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateProxyOverride", ctx, id, mode, cfg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateProxyOverride indicates an expected call of UpdateProxyOverride.
+func (mr *MockFeedRepositoryMockRecorder) UpdateProxyOverride(ctx, id, mode, cfg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateProxyOverride", reflect.TypeOf((*MockFeedRepository)(nil).UpdateProxyOverride), ctx, id, mode, cfg)
+}
+
 // UpdateSiteURL mocks base method.
 func (m *MockFeedRepository) UpdateSiteURL(ctx context.Context, id int64, siteURL string) error {
 	m.ctrl.T.Helper()

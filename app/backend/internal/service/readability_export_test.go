@@ -42,30 +42,31 @@ func ParseHTMLForTest(htmlContent string, pageURL string) (string, error) {
 }
 
 // ReadabilityFetchWithChromeForTest exposes fetchWithChrome for tests.
-func ReadabilityFetchWithChromeForTest(svc ReadabilityService, ctx context.Context, targetURL, cookie string, retryCount int) ([]byte, error) {
+// feedID 传 0 = 走全局代理（老行为）；非 0 时按来源取（订阅 → 文件夹父级链 → 全局）。
+func ReadabilityFetchWithChromeForTest(svc ReadabilityService, ctx context.Context, targetURL, cookie string, retryCount int, feedID int64) ([]byte, error) {
 	impl, ok := svc.(*readabilityService)
 	if !ok {
 		return nil, ErrInvalid
 	}
-	return impl.fetchWithChrome(ctx, targetURL, cookie, retryCount)
+	return impl.fetchWithChrome(ctx, targetURL, cookie, retryCount, feedID)
 }
 
 // ReadabilityFetchWithFreshSessionForTest exposes fetchWithFreshSession for tests.
-func ReadabilityFetchWithFreshSessionForTest(svc ReadabilityService, ctx context.Context, targetURL, cookie string, retryCount int) ([]byte, error) {
+func ReadabilityFetchWithFreshSessionForTest(svc ReadabilityService, ctx context.Context, targetURL, cookie string, retryCount int, feedID int64) ([]byte, error) {
 	impl, ok := svc.(*readabilityService)
 	if !ok {
 		return nil, ErrInvalid
 	}
-	return impl.fetchWithFreshSession(ctx, targetURL, cookie, retryCount)
+	return impl.fetchWithFreshSession(ctx, targetURL, cookie, retryCount, feedID)
 }
 
 // ReadabilityDoFetchForTest exposes doFetch for tests.
-func ReadabilityDoFetchForTest(svc ReadabilityService, ctx context.Context, targetURL, cookie string, retryCount int) ([]byte, error) {
+func ReadabilityDoFetchForTest(svc ReadabilityService, ctx context.Context, targetURL, cookie string, retryCount int, feedID int64) ([]byte, error) {
 	impl, ok := svc.(*readabilityService)
 	if !ok {
 		return nil, ErrInvalid
 	}
 	session := impl.clientFactory.NewAzureSession(ctx, readabilityTimeout)
 	defer session.Close()
-	return impl.doFetch(ctx, session, targetURL, cookie, retryCount)
+	return impl.doFetch(ctx, session, targetURL, cookie, retryCount, feedID)
 }

@@ -24,6 +24,8 @@ type FeedRepository interface {
 	UpdateIconPath(ctx context.Context, id int64, iconPath string) error
 	UpdateErrorMessage(ctx context.Context, id int64, errorMessage *string) error
 	UpdateType(ctx context.Context, id int64, feedType string) error
+	// UpdateProxyOverride 只写代理覆盖两列（迁移 26）：mode nil = 跟随文件夹链 → 全局。
+	UpdateProxyOverride(ctx context.Context, id int64, mode *model.ProxyMode, cfg *model.ProxyOverrideConfig) error
 	UpdateTypeByFolderID(ctx context.Context, folderID int64, feedType string) error
 	Delete(ctx context.Context, id int64) error
 	DeleteBatch(ctx context.Context, ids []int64) (int64, error)
@@ -73,7 +75,7 @@ func (r *feedRepository) Create(ctx context.Context, feed model.Feed) (model.Fee
 }
 
 func (r *feedRepository) GetByID(ctx context.Context, id int64) (model.Feed, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode FROM feeds WHERE id = ?`, id)
+	row := r.db.QueryRowContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config FROM feeds WHERE id = ?`, id)
 	return scanFeed(row)
 }
 
@@ -86,7 +88,7 @@ func (r *feedRepository) GetByIDs(ctx context.Context, ids []int64) ([]model.Fee
 	for i, id := range ids {
 		args[i] = id
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode FROM feeds WHERE id IN (`+placeholders+`)`, args...)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config FROM feeds WHERE id IN (`+placeholders+`)`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("get feeds by ids: %w", err)
 	}
@@ -107,7 +109,7 @@ func (r *feedRepository) GetByIDs(ctx context.Context, ids []int64) ([]model.Fee
 }
 
 func (r *feedRepository) FindByURL(ctx context.Context, url string) (*model.Feed, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode FROM feeds WHERE url = ?`, url)
+	row := r.db.QueryRowContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config FROM feeds WHERE url = ?`, url)
 	feed, err := scanFeed(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -119,10 +121,10 @@ func (r *feedRepository) FindByURL(ctx context.Context, url string) (*model.Feed
 }
 
 func (r *feedRepository) List(ctx context.Context, folderID *int64) ([]model.Feed, error) {
-	query := `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode FROM feeds ORDER BY title`
+	query := `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config FROM feeds ORDER BY title`
 	args := []interface{}{}
 	if folderID != nil {
-		query = `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode FROM feeds WHERE folder_id = ? ORDER BY title`
+		query = `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config FROM feeds WHERE folder_id = ? ORDER BY title`
 		args = append(args, *folderID)
 	}
 	rows, err := r.db.QueryContext(ctx, query, args...)
@@ -147,7 +149,7 @@ func (r *feedRepository) List(ctx context.Context, folderID *int64) ([]model.Fee
 }
 
 func (r *feedRepository) ListWithoutIcon(ctx context.Context) ([]model.Feed, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode FROM feeds WHERE icon_path IS NULL OR icon_path = ''`)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config FROM feeds WHERE icon_path IS NULL OR icon_path = ''`)
 	if err != nil {
 		return nil, fmt.Errorf("list feeds without icon: %w", err)
 	}
@@ -170,9 +172,13 @@ func (r *feedRepository) ListWithoutIcon(ctx context.Context) ([]model.Feed, err
 
 func (r *feedRepository) Update(ctx context.Context, feed model.Feed) (model.Feed, error) {
 	now := time.Now().UTC()
-	_, err := r.db.ExecContext(
+	proxyConfig, err := marshalProxyConfig(feed.ProxyConfig)
+	if err != nil {
+		return model.Feed{}, fmt.Errorf("marshal feed proxy config: %w", err)
+	}
+	_, err = r.db.ExecContext(
 		ctx,
-		`UPDATE feeds SET folder_id = ?, title = ?, url = ?, site_url = ?, description = ?, summary_prompt_reminder = ?, auto_translate = ?, auto_summary = ?, reader_mode = ?, etag = ?, last_modified = ?, error_message = ?, updated_at = ? WHERE id = ?`,
+		`UPDATE feeds SET folder_id = ?, title = ?, url = ?, site_url = ?, description = ?, summary_prompt_reminder = ?, auto_translate = ?, auto_summary = ?, reader_mode = ?, proxy_mode = ?, proxy_config = ?, etag = ?, last_modified = ?, error_message = ?, updated_at = ? WHERE id = ?`,
 		nullableInt64(feed.FolderID),
 		feed.Title,
 		feed.URL,
@@ -182,6 +188,8 @@ func (r *feedRepository) Update(ctx context.Context, feed model.Feed) (model.Fee
 		nullableBool(feed.AutoTranslate),
 		nullableBool(feed.AutoSummary),
 		nullableBool(feed.ReaderMode),
+		nullableProxyMode(feed.ProxyMode),
+		proxyConfig,
 		nullableString(feed.ETag),
 		nullableString(feed.LastModified),
 		nullableString(feed.ErrorMessage),
@@ -193,6 +201,23 @@ func (r *feedRepository) Update(ctx context.Context, feed model.Feed) (model.Fee
 	}
 	feed.UpdatedAt = now
 	return feed, nil
+}
+
+// UpdateProxyOverride 只写代理覆盖两列（订阅级）：mode nil = 跟随上级，config nil = 用全局那套。
+func (r *feedRepository) UpdateProxyOverride(ctx context.Context, id int64, mode *model.ProxyMode, cfg *model.ProxyOverrideConfig) error {
+	proxyConfig, err := marshalProxyConfig(cfg)
+	if err != nil {
+		return fmt.Errorf("marshal feed proxy config: %w", err)
+	}
+	_, err = r.db.ExecContext(
+		ctx,
+		`UPDATE feeds SET proxy_mode = ?, proxy_config = ?, updated_at = ? WHERE id = ?`,
+		nullableProxyMode(mode),
+		proxyConfig,
+		formatTime(time.Now()),
+		id,
+	)
+	return err
 }
 
 func (r *feedRepository) UpdateIconPath(ctx context.Context, id int64, iconPath string) error {
@@ -308,6 +333,8 @@ func scanFeed(scanner interface {
 	var autoTranslate sql.NullBool
 	var autoSummary sql.NullBool
 	var readerMode sql.NullBool
+	var proxyMode sql.NullInt64
+	var proxyConfig sql.NullString
 	if err := scanner.Scan(
 		&feed.ID,
 		&folderID,
@@ -326,6 +353,8 @@ func scanFeed(scanner interface {
 		&autoTranslate,
 		&autoSummary,
 		&readerMode,
+		&proxyMode,
+		&proxyConfig,
 	); err != nil {
 		return model.Feed{}, err
 	}
@@ -370,6 +399,8 @@ func scanFeed(scanner interface {
 		value := readerMode.Bool
 		feed.ReaderMode = &value
 	}
+	feed.ProxyMode = parseProxyMode(proxyMode)
+	feed.ProxyConfig = parseProxyConfig(proxyConfig)
 	var err error
 	feed.CreatedAt, err = parseTime(createdAt)
 	if err != nil {

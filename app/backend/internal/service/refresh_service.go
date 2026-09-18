@@ -234,7 +234,7 @@ func (s *refreshService) processParsedFeed(ctx context.Context, feed model.Feed,
 		if feed.SiteURL != nil && *feed.SiteURL != "" {
 			siteURL = *feed.SiteURL
 		}
-		if iconPath, err := s.icons.FetchAndSaveIcon(ctx, imageURL, siteURL); err == nil && iconPath != "" {
+		if iconPath, err := s.icons.FetchAndSaveIconForFeed(ctx, feed.ID, imageURL, siteURL); err == nil && iconPath != "" {
 			_ = s.feeds.UpdateIconPath(ctx, feed.ID, iconPath)
 		}
 	}
@@ -663,7 +663,8 @@ func (s *refreshService) refreshFeedWithCookie(ctx context.Context, feed model.F
 		req.Header.Set("If-Modified-Since", *feed.LastModified)
 	}
 
-	httpClient := s.clientFactory.NewHTTPClient(ctx, s.fetchRuntime(ctx).Timeout)
+	// 抓取走这条订阅生效的代理（订阅 → 文件夹父级链 → 全局，每轮现读）
+	httpClient := s.clientFactory.NewHTTPClientForFeed(ctx, feed.ID, s.fetchRuntime(ctx).Timeout)
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		errMsg := err.Error()
@@ -749,8 +750,8 @@ func (s *refreshService) refreshFeedWithFreshClient(ctx context.Context, feed mo
 		req.Header.Set("Cookie", cookie)
 	}
 
-	// Use fresh client to avoid connection reuse
-	freshClient := s.clientFactory.NewHTTPClient(ctx, s.fetchRuntime(ctx).Timeout)
+	// Use fresh client to avoid connection reuse（仍按这条订阅生效的代理）
+	freshClient := s.clientFactory.NewHTTPClientForFeed(ctx, feed.ID, s.fetchRuntime(ctx).Timeout)
 	resp, err := freshClient.Do(req)
 	if err != nil {
 		errMsg := err.Error()

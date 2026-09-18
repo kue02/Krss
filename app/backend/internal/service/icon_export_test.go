@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/mmcdole/gofeed"
-
 	"gist/backend/internal/model"
 )
 
@@ -29,22 +27,23 @@ func DetectImageFormatExtForTest(data []byte) (string, error) {
 }
 
 // FetchIconsForFeedsForTest exposes icon fetching for feeds in tests.
-func FetchIconsForFeedsForTest(svc IconService, ctx context.Context, parser *gofeed.Parser, feeds []model.Feed) error {
+func FetchIconsForFeedsForTest(svc IconService, ctx context.Context, feeds []model.Feed) error {
 	impl, ok := svc.(*iconService)
 	if !ok {
 		return fmt.Errorf("invalid icon service")
 	}
-	impl.fetchIconsForFeeds(ctx, parser, feeds)
+	impl.fetchIconsForFeeds(ctx, feeds)
 	return nil
 }
 
 // DownloadIconWithFreshClientForTest exposes fresh-client download for tests.
-func DownloadIconWithFreshClientForTest(svc IconService, ctx context.Context, iconURL, cookie string, retryCount int) error {
+// feedID 传 0 = 走全局代理（老行为）。
+func DownloadIconWithFreshClientForTest(svc IconService, ctx context.Context, iconURL, cookie string, retryCount int, feedID int64) error {
 	impl, ok := svc.(*iconService)
 	if !ok {
 		return fmt.Errorf("invalid icon service")
 	}
-	_, err := impl.downloadIconWithFreshClient(ctx, iconURL, cookie, retryCount)
+	_, err := impl.downloadIconWithFreshClient(ctx, iconURL, cookie, retryCount, feedID)
 	return err
 }
 

@@ -23,6 +23,7 @@ func NewRouter(
 	authHandler *handler.AuthHandler,
 	domainRateLimitHandler *handler.DomainRateLimitHandler,
 	filterHandler *handler.FilterHandler,
+	proxySourceHandler *handler.ProxySourceHandler,
 	authService service.AuthService,
 	staticDir string,
 	enableSwagger bool,
@@ -57,6 +58,7 @@ func NewRouter(
 	authHandler.RegisterProtectedRoutes(api)
 	domainRateLimitHandler.RegisterRoutes(api)
 	filterHandler.RegisterRoutes(api)
+	proxySourceHandler.RegisterRoutes(api)
 
 	// Icon routes with cache recovery
 	iconHandler.RegisterRoutes(e)

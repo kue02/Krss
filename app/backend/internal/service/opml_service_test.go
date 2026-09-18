@@ -172,6 +172,11 @@ func (s *folderServiceStub) UpdateType(ctx context.Context, id int64, folderType
 	return nil
 }
 
+// UpdateProxyOverride 14 批新增的接口方法：stub 里不需要真的写库。
+func (s *folderServiceStub) UpdateProxyOverride(ctx context.Context, id int64, update service.ProxyOverrideUpdate) (model.Folder, error) {
+	return model.Folder{ID: id}, nil
+}
+
 func (s *folderServiceStub) Delete(ctx context.Context, id int64) error {
 	return nil
 }
@@ -287,6 +292,15 @@ func (s *iconServiceStub) FetchAndSaveIcon(ctx context.Context, feedImageURL, si
 	return "", nil
 }
 
+// FetchAndSaveIconForFeed / EnsureIconForFeed：14 批新增的接口方法（按来源取代理那条），stub 里不需要真抓。
+func (s *iconServiceStub) FetchAndSaveIconForFeed(ctx context.Context, feedID int64, feedImageURL, siteURL string) (string, error) {
+	return "", nil
+}
+
+func (s *iconServiceStub) EnsureIconForFeed(ctx context.Context, feedID int64, iconPath, siteURL string) error {
+	return nil
+}
+
 func (s *iconServiceStub) EnsureIcon(ctx context.Context, iconPath, siteURL string) error {
 	return nil
 }
@@ -323,4 +337,9 @@ func strPtr(value string) *string {
 
 func (s *feedServiceStub) UpdateAIOverrides(ctx context.Context, id int64, autoTranslate, autoSummary, readerMode *bool) (model.Feed, error) {
 	return model.Feed{}, nil
+}
+
+// UpdateProxyOverride 14 批新增的接口方法：stub 里不需要真的写库。
+func (s *feedServiceStub) UpdateProxyOverride(ctx context.Context, id int64, update service.ProxyOverrideUpdate) (model.Feed, error) {
+	return model.Feed{ID: id}, nil
 }

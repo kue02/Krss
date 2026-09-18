@@ -39,8 +39,12 @@ type IconService interface {
 	// FetchAndSaveIcon downloads and saves the icon locally
 	// Returns relative path like "example.com.ico" or "example.com.png" based on domain and detected format
 	FetchAndSaveIcon(ctx context.Context, feedImageURL, siteURL string) (string, error)
+	// FetchAndSaveIconForFeed 同上，但按这条订阅生效的代理出网（订阅 → 文件夹父级链 → 全局）
+	FetchAndSaveIconForFeed(ctx context.Context, feedID int64, feedImageURL, siteURL string) (string, error)
 	// EnsureIcon checks if the icon file exists, re-downloads if missing
 	EnsureIcon(ctx context.Context, iconPath, siteURL string) error
+	// EnsureIconForFeed 同上，但按这条订阅生效的代理出网
+	EnsureIconForFeed(ctx context.Context, feedID int64, iconPath, siteURL string) error
 	// EnsureIconByFeedID checks if icon exists, fetches feed's siteURL and re-downloads if missing
 	EnsureIconByFeedID(ctx context.Context, feedID int64, iconPath string) error
 	// BackfillIcons fetches icons for all feeds that don't have one
@@ -83,7 +87,14 @@ func (s *iconService) findExistingIcon(baseName string) string {
 	return ""
 }
 
+// FetchAndSaveIcon 不带来源信息（凑不齐 feed 的老调用点）：走全局代理。
 func (s *iconService) FetchAndSaveIcon(ctx context.Context, feedImageURL, siteURL string) (string, error) {
+	return s.FetchAndSaveIconForFeed(ctx, 0, feedImageURL, siteURL)
+}
+
+// FetchAndSaveIconForFeed 按来源（订阅）取代理抓图标：订阅 → 文件夹父级链 → 全局。
+// feedID <= 0 时退回全局那份（老行为）。
+func (s *iconService) FetchAndSaveIconForFeed(ctx context.Context, feedID int64, feedImageURL, siteURL string) (string, error) {
 	feedImageURL = strings.TrimSpace(feedImageURL)
 
 	// Check if icon already exists before downloading
@@ -142,7 +153,7 @@ func (s *iconService) FetchAndSaveIcon(ctx context.Context, feedImageURL, siteUR
 	var lastErr error
 
 	for _, iconURL := range urlsToTry {
-		result, lastErr = s.downloadIconWithFormat(ctx, iconURL)
+		result, lastErr = s.downloadIconWithFormat(ctx, iconURL, feedID)
 		if lastErr == nil {
 			successURL = iconURL
 			break
@@ -191,7 +202,13 @@ func (s *iconService) FetchAndSaveIcon(ctx context.Context, feedImageURL, siteUR
 	return iconPath, nil
 }
 
+// EnsureIcon 不带来源信息（凑不齐 feed 的老调用点）：走全局代理。
 func (s *iconService) EnsureIcon(ctx context.Context, iconPath, siteURL string) error {
+	return s.EnsureIconForFeed(ctx, 0, iconPath, siteURL)
+}
+
+// EnsureIconForFeed 按来源（订阅）取代理补下载图标：订阅 → 文件夹父级链 → 全局。
+func (s *iconService) EnsureIconForFeed(ctx context.Context, feedID int64, iconPath, siteURL string) error {
 	if iconPath == "" {
 		return nil
 	}
@@ -224,7 +241,7 @@ func (s *iconService) EnsureIcon(ctx context.Context, iconPath, siteURL string) 
 
 	// Try local favicon.ico first
 	if localURL := s.buildLocalFaviconURL(siteURL); localURL != "" {
-		iconData, err = s.downloadIcon(ctx, localURL)
+		iconData, err = s.downloadIcon(ctx, localURL, feedID)
 		if err != nil {
 			logger.Debug("local favicon.ico download failed", "module", "service", "action", "fetch", "resource", "icon", "result", "failed", "host", network.ExtractHost(localURL), "error", err)
 		}
@@ -236,7 +253,7 @@ func (s *iconService) EnsureIcon(ctx context.Context, iconPath, siteURL string) 
 		if googleURL == "" {
 			return nil
 		}
-		iconData, err = s.downloadIcon(ctx, googleURL)
+		iconData, err = s.downloadIcon(ctx, googleURL, feedID)
 		if err != nil {
 			return nil // Silently fail
 		}
@@ -314,7 +331,7 @@ func (s *iconService) EnsureIconByFeedID(ctx context.Context, feedID int64, icon
 		siteURL = *feed.SiteURL
 	}
 
-	return s.EnsureIcon(ctx, iconPath, siteURL)
+	return s.EnsureIconForFeed(ctx, feedID, iconPath, siteURL)
 }
 
 func (s *iconService) GetIconPath(filename string) string {
@@ -327,7 +344,6 @@ func (s *iconService) GetIconPath(filename string) string {
 }
 
 func (s *iconService) BackfillIcons(ctx context.Context) error {
-	parser := gofeed.NewParser()
 
 	// 1. Fetch icons for feeds without icon_path in DB
 	feeds, err := s.feeds.ListWithoutIcon(ctx)
@@ -338,7 +354,7 @@ func (s *iconService) BackfillIcons(ctx context.Context) error {
 	if len(feeds) > 0 {
 		logger.Info("icon backfill started", "module", "service", "action", "fetch", "resource", "icon", "result", "ok", "count", len(feeds))
 	}
-	s.fetchIconsForFeeds(ctx, parser, feeds)
+	s.fetchIconsForFeeds(ctx, feeds)
 
 	// 2. Re-download missing or stale icon files
 	allFeeds, err := s.feeds.List(ctx, nil)
@@ -381,7 +397,7 @@ func (s *iconService) BackfillIcons(ctx context.Context) error {
 		if feed.SiteURL != nil && *feed.SiteURL != "" {
 			siteURL = *feed.SiteURL
 		}
-		_ = s.EnsureIcon(ctx, *feed.IconPath, siteURL)
+		_ = s.EnsureIconForFeed(ctx, feed.ID, *feed.IconPath, siteURL)
 	}
 
 	// 3. Re-fetch hash-based icons by clearing DB and re-parsing RSS
@@ -390,7 +406,7 @@ func (s *iconService) BackfillIcons(ctx context.Context) error {
 			_ = s.feeds.UpdateIconPath(ctx, feedID, "")
 		}
 		if feedsToRefetch, err := s.feeds.ListWithoutIcon(ctx); err == nil {
-			s.fetchIconsForFeeds(ctx, parser, feedsToRefetch)
+			s.fetchIconsForFeeds(ctx, feedsToRefetch)
 		} else {
 			logger.Warn("icon backfill refetch list failed", "module", "service", "action", "list", "resource", "icon", "result", "failed", "error", err)
 		}
@@ -401,7 +417,8 @@ func (s *iconService) BackfillIcons(ctx context.Context) error {
 }
 
 // fetchIconsForFeeds parses RSS feeds to get imageURL and fetches icons concurrently
-func (s *iconService) fetchIconsForFeeds(ctx context.Context, parser *gofeed.Parser, feeds []model.Feed) {
+// （parser 在每条订阅的 goroutine 里各建一个：要把「按来源生效的代理」装进去，共享实例会被并发改 Client）
+func (s *iconService) fetchIconsForFeeds(ctx context.Context, feeds []model.Feed) {
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(maxConcurrentIcons)
 
@@ -414,12 +431,15 @@ func (s *iconService) fetchIconsForFeeds(ctx context.Context, parser *gofeed.Par
 			}
 
 			// Try to parse feed to get imageURL from RSS
+			// 这一步也是出网请求：按这条订阅生效的代理走（自己建一个 parser，避免共享实例被并发改 Client）
 			imageURL := ""
-			if parsed, err := parser.ParseURLWithContext(feed.URL, ctx); err == nil && parsed.Image != nil {
+			feedParser := gofeed.NewParser()
+			feedParser.Client = s.clientFactory.NewHTTPClientForFeed(ctx, feed.ID, iconTimeout)
+			if parsed, err := feedParser.ParseURLWithContext(feed.URL, ctx); err == nil && parsed.Image != nil {
 				imageURL = strings.TrimSpace(parsed.Image.URL)
 			}
 
-			iconPath, err := s.FetchAndSaveIcon(ctx, imageURL, siteURL)
+			iconPath, err := s.FetchAndSaveIconForFeed(ctx, feed.ID, imageURL, siteURL)
 			if err != nil || iconPath == "" {
 				if err != nil {
 					logger.Debug("icon fetch failed", "module", "service", "action", "fetch", "resource", "icon", "result", "failed", "feed_id", feed.ID, "error", err)
@@ -528,8 +548,8 @@ type iconDownloadResult struct {
 	format *iconFormat
 }
 
-func (s *iconService) downloadIcon(ctx context.Context, iconURL string) ([]byte, error) {
-	result, err := s.downloadIconWithFormat(ctx, iconURL)
+func (s *iconService) downloadIcon(ctx context.Context, iconURL string, feedID int64) ([]byte, error) {
+	result, err := s.downloadIconWithFormat(ctx, iconURL, feedID)
 	if err != nil {
 		return nil, err
 	}
@@ -537,11 +557,11 @@ func (s *iconService) downloadIcon(ctx context.Context, iconURL string) ([]byte,
 }
 
 // downloadIconWithFormat downloads icon and detects its format
-func (s *iconService) downloadIconWithFormat(ctx context.Context, iconURL string) (*iconDownloadResult, error) {
-	return s.downloadIconWithRetry(ctx, iconURL, "", 0)
+func (s *iconService) downloadIconWithFormat(ctx context.Context, iconURL string, feedID int64) (*iconDownloadResult, error) {
+	return s.downloadIconWithRetry(ctx, iconURL, "", 0, feedID)
 }
 
-func (s *iconService) downloadIconWithRetry(ctx context.Context, iconURL string, cookie string, retryCount int) (*iconDownloadResult, error) {
+func (s *iconService) downloadIconWithRetry(ctx context.Context, iconURL string, cookie string, retryCount int, feedID int64) (*iconDownloadResult, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, iconURL, nil)
 	if err != nil {
 		return nil, err
@@ -561,7 +581,7 @@ func (s *iconService) downloadIconWithRetry(ctx context.Context, iconURL string,
 		req.Header.Set("Cookie", cookie)
 	}
 
-	httpClient := s.clientFactory.NewHTTPClient(ctx, iconTimeout)
+	httpClient := s.clientFactory.NewHTTPClientForFeed(ctx, feedID, iconTimeout)
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -582,7 +602,7 @@ func (s *iconService) downloadIconWithRetry(ctx context.Context, iconURL string,
 	case anubisErr == nil:
 		logger.Debug("icon download detected anubis challenge", "module", "service", "action", "fetch", "resource", "icon", "result", "ok", "host", network.ExtractHost(iconURL))
 		// Retry with fresh client to avoid connection reuse
-		return s.downloadIconWithFreshClient(ctx, iconURL, newCookie, retryCount+1)
+		return s.downloadIconWithFreshClient(ctx, iconURL, newCookie, retryCount+1, feedID)
 	case errors.Is(anubisErr, errAnubisNotPage):
 		// Not an Anubis page; continue normal icon decoding.
 	case errors.Is(anubisErr, errAnubisRejected):
@@ -606,7 +626,7 @@ func (s *iconService) downloadIconWithRetry(ctx context.Context, iconURL string,
 }
 
 // downloadIconWithFreshClient creates a new http.Client to avoid connection reuse after Anubis
-func (s *iconService) downloadIconWithFreshClient(ctx context.Context, iconURL string, cookie string, retryCount int) (*iconDownloadResult, error) {
+func (s *iconService) downloadIconWithFreshClient(ctx context.Context, iconURL string, cookie string, retryCount int, feedID int64) (*iconDownloadResult, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, iconURL, nil)
 	if err != nil {
 		return nil, err
@@ -616,8 +636,8 @@ func (s *iconService) downloadIconWithFreshClient(ctx context.Context, iconURL s
 		req.Header.Set("Cookie", cookie)
 	}
 
-	// Use fresh client to avoid connection reuse
-	freshClient := s.clientFactory.NewHTTPClient(ctx, iconTimeout)
+	// Use fresh client to avoid connection reuse（仍按这条订阅生效的代理）
+	freshClient := s.clientFactory.NewHTTPClientForFeed(ctx, feedID, iconTimeout)
 	resp, err := freshClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -636,7 +656,7 @@ func (s *iconService) downloadIconWithFreshClient(ctx context.Context, iconURL s
 	newCookie, anubisErr := trySolveAnubisChallenge(ctx, s.anubis, data, iconURL, resp.Cookies(), req.Header.Clone(), retryCount)
 	switch {
 	case anubisErr == nil:
-		return s.downloadIconWithFreshClient(ctx, iconURL, newCookie, retryCount+1)
+		return s.downloadIconWithFreshClient(ctx, iconURL, newCookie, retryCount+1, feedID)
 	case errors.Is(anubisErr, errAnubisNotPage):
 		// Not an Anubis page; continue normal icon decoding.
 	case errors.Is(anubisErr, errAnubisRejected):

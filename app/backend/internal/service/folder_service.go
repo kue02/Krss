@@ -18,6 +18,8 @@ type FolderService interface {
 	List(ctx context.Context) ([]model.Folder, error)
 	Update(ctx context.Context, id int64, name string, parentID *int64) (model.Folder, error)
 	UpdateType(ctx context.Context, id int64, folderType string) error
+	// UpdateProxyOverride 写文件夹级代理覆盖（迁移 26）：跟随父级 / 走代理 / 直连
+	UpdateProxyOverride(ctx context.Context, id int64, update ProxyOverrideUpdate) (model.Folder, error)
 	Delete(ctx context.Context, id int64) error
 }
 
@@ -163,6 +165,32 @@ func (s *folderService) UpdateType(ctx context.Context, id int64, folderType str
 
 	logger.Info("folder type updated", "module", "service", "action", "update", "resource", "folder", "result", "ok", "folder_id", id, "type", folderType)
 	return nil
+}
+
+// UpdateProxyOverride 写文件夹级代理覆盖（迁移 26）。
+// mode：nil = 跟随父级文件夹链 → 全局；proxy = 走代理；direct = 直连。
+// config：nil = 用全局那套代理；有值 = 这一个文件夹单独指定（密码传掩码时沿用库里那份）。
+func (s *folderService) UpdateProxyOverride(ctx context.Context, id int64, update ProxyOverrideUpdate) (model.Folder, error) {
+	folder, err := s.folders.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return model.Folder{}, ErrNotFound
+		}
+		return model.Folder{}, fmt.Errorf("get folder: %w", err)
+	}
+
+	update = normalizeProxyOverrideUpdate(update, folder.ProxyConfig)
+	mode, cfg := update.Apply(folder.ProxyMode, folder.ProxyConfig)
+	if err := s.folders.UpdateProxyOverride(ctx, id, mode, cfg); err != nil {
+		logger.Error("folder proxy override update failed", "module", "service", "action", "update", "resource", "proxy", "result", "failed", "folder_id", id, "error", err)
+		return model.Folder{}, err
+	}
+
+	folder.ProxyMode = mode
+	folder.ProxyConfig = cfg
+	// 只记「档位 + 有没有单独指定」：地址与密码一律不进日志
+	logger.Info("folder proxy override updated", "module", "service", "action", "update", "resource", "proxy", "result", "ok", "folder_id", id, "mode", ProxyModeToString(mode), "custom_config", cfg.Usable())
+	return folder, nil
 }
 
 func (s *folderService) Delete(ctx context.Context, id int64) error {

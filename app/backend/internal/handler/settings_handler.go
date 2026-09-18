@@ -113,6 +113,10 @@ type networkTestRequest struct {
 	Port     int    `json:"port"`
 	Username string `json:"username"`
 	Password string `json:"password"`
+	// 14 批：按来源试 —— 传了 feedId / folderId 就忽略上面的手填配置，
+	// 改成「先解析这个来源实际生效的代理，再拿它去试连通性」。
+	FeedID   string `json:"feedId,omitempty"`
+	FolderID string `json:"folderId,omitempty"`
 }
 
 type networkTestResponse struct {
@@ -166,6 +170,8 @@ type settingsImportResponse struct {
 type SettingsHandler struct {
 	service       service.SettingsService
 	clientFactory *network.ClientFactory
+	// proxySources 解析「某个来源实际用哪套代理」（14 批）：按来源试连通性要用
+	proxySources service.ProxySourceService
 }
 
 // isFreeTranslateChannel：免 key 翻译通道（与 internal/service/ai 里的常量保持一致）
@@ -177,8 +183,12 @@ func isBaseURLRequiredForProvider(provider string) bool {
 	return provider == "openai" || provider == "compatible"
 }
 
-func NewSettingsHandler(service service.SettingsService, clientFactory *network.ClientFactory) *SettingsHandler {
-	return &SettingsHandler{service: service, clientFactory: clientFactory}
+func NewSettingsHandler(service service.SettingsService, clientFactory *network.ClientFactory, proxySources ...service.ProxySourceService) *SettingsHandler {
+	handler := &SettingsHandler{service: service, clientFactory: clientFactory}
+	if len(proxySources) > 0 {
+		handler.proxySources = proxySources[0]
+	}
+	return handler
 }
 
 type deletedCountResponse struct {
@@ -651,6 +661,12 @@ func (h *SettingsHandler) TestNetworkProxy(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
 	}
 
+	// 14 批：按来源试 —— 先解析这个来源实际生效的代理，再拿它去试。
+	// 这样测试按钮回答的是「这个订阅/文件夹现在到底走不走代理」，而不是手填的那份配置。
+	if req.FeedID != "" || req.FolderID != "" {
+		return h.testProxyForSource(c, req)
+	}
+
 	if !req.Enabled {
 		return c.JSON(http.StatusOK, networkTestResponse{
 			Success: true,
@@ -689,6 +705,54 @@ func (h *SettingsHandler) TestNetworkProxy(c echo.Context) error {
 	}
 
 	logger.Info("network proxy test ok", "module", "handler", "action", "test", "resource", "settings", "result", "ok", "type", proxyType, "host", req.Host)
+	return c.JSON(http.StatusOK, networkTestResponse{
+		Success: true,
+		Message: "Proxy connection successful",
+	})
+}
+
+// testProxyForSource 按来源试连通性（14 批）：先解析这个来源**实际生效**的代理，再拿它去试。
+// 直连的来源直接回「当前直连」——这也是用户能看到「这个订阅到底走不走代理」的入口。
+func (h *SettingsHandler) testProxyForSource(c echo.Context, req networkTestRequest) error {
+	if h.proxySources == nil {
+		return c.JSON(http.StatusInternalServerError, errorResponse{Error: "proxy resolver unavailable"})
+	}
+	ctx := c.Request().Context()
+
+	var (
+		effective service.ProxyEffective
+		sourceID  int64
+		err       error
+	)
+	if req.FeedID != "" {
+		sourceID, err = strconv.ParseInt(req.FeedID, 10, 64)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid feed id"})
+		}
+		effective = h.proxySources.ResolveForFeedID(ctx, sourceID)
+	} else {
+		sourceID, err = strconv.ParseInt(req.FolderID, 10, 64)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid folder id"})
+		}
+		effective = h.proxySources.ResolveForFolder(ctx, sourceID)
+	}
+
+	if effective.Mode != "proxy" || effective.URL == "" {
+		return c.JSON(http.StatusOK, networkTestResponse{
+			Success: true,
+			Message: "This source uses a direct connection (no proxy)",
+		})
+	}
+
+	const testURL = "https://captive.apple.com/"
+	if err := h.clientFactory.TestProxyWithConfig(ctx, effective.URL, testURL); err != nil {
+		// 只记来源与档位：代理地址可能含密码
+		logger.Warn("network proxy source test failed", "module", "handler", "action", "test", "resource", "proxy", "result", "failed", "source", effective.Source, "source_id", sourceID, "error", err)
+		return c.JSON(http.StatusOK, networkTestResponse{Success: false, Error: err.Error()})
+	}
+
+	logger.Info("network proxy source test ok", "module", "handler", "action", "test", "resource", "proxy", "result", "ok", "source", effective.Source, "source_id", sourceID)
 	return c.JSON(http.StatusOK, networkTestResponse{
 		Success: true,
 		Message: "Proxy connection successful",

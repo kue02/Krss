@@ -6,6 +6,8 @@ import {
   updateNetworkSettings,
   testNetworkProxy,
 } from "@/api";
+import { useProxySources } from "@/hooks/useProxySources";
+import { ProxyOverrideManager } from "@/components/settings/ProxyOverrideManager";
 import type {
   NetworkSettings as NetworkSettingsType,
   ProxyType,
@@ -37,6 +39,17 @@ export function NetworkSettings() {
     "idle",
   );
   const [testMessage, setTestMessage] = useState("");
+  // 按来源覆盖（14 批）：计数来自服务端一览，管理面板单独弹
+  const [managerOpen, setManagerOpen] = useState(false);
+  const { data: proxySources } = useProxySources();
+  const counts = {
+    folders: proxySources?.counts.folders ?? 0,
+    feeds: proxySources?.counts.feeds ?? 0,
+    proxiedFeeds: proxySources?.counts.proxiedFeeds ?? 0,
+    globalEnabled: proxySources?.counts.globalEnabled ?? false,
+    // 没拿到数据时不显示「全局未启用」那条警告（避免把「还没加载」显示成结论）
+    known: Boolean(proxySources),
+  };
 
   useEffect(() => {
     getNetworkSettings()
@@ -179,6 +192,45 @@ export function NetworkSettings() {
             checked={settings.enabled}
             onCheckedChange={handleEnabledChange}
           />
+        </div>
+      </section>
+
+      {/* 按来源覆盖（14 批）：订阅 / 文件夹可以各自覆盖全局代理，就近优先 */}
+      <section>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            <div className="text-sm font-medium">{t("proxy.section_title")}</div>
+            <div className="text-xs text-muted-foreground">
+              {t("proxy.section_description")}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setManagerOpen(true)}
+            className={cn(
+              "h-8 shrink-0 rounded-md px-3 text-sm font-medium transition-colors",
+              "border border-border bg-background hover:bg-secondary",
+            )}
+          >
+            {t("proxy.manage")}
+          </button>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+            {t("proxy.counts_folders", { count: counts.folders })}
+          </span>
+          <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+            {t("proxy.counts_feeds", { count: counts.feeds })}
+          </span>
+          <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+            {t("proxy.counts_proxied", { count: counts.proxiedFeeds })}
+          </span>
+          {/* 全局总开关没开：只有「单独指定」的来源能走代理，说清楚免得被当成 bug */}
+          {counts.known && !counts.globalEnabled && (
+            <span className="rounded-full border border-dashed border-border px-2 py-0.5 text-xs text-muted-foreground">
+              {t("proxy.global_disabled_warning")}
+            </span>
+          )}
         </div>
       </section>
 
@@ -336,6 +388,9 @@ export function NetworkSettings() {
           </div>
         </div>
       </section>
+
+      {/* 覆盖管理面板（弹层，与效果图一致：列表 + 单条 ⚙ 展开） */}
+      <ProxyOverrideManager open={managerOpen} onOpenChange={setManagerOpen} />
     </div>
   );
 }

@@ -45,6 +45,8 @@ type FeedService interface {
 	MergeInto(ctx context.Context, sourceID, targetID int64) (FeedMergeResult, error)
 	// UpdateAIOverrides 单独设置某个订阅的自动翻译/自动摘要（nil = 跟随全局）
 	UpdateAIOverrides(ctx context.Context, id int64, autoTranslate, autoSummary, readerMode *bool) (model.Feed, error)
+	// UpdateProxyOverride 单独设置某个订阅的代理覆盖（迁移 26）：跟随上级 / 走代理 / 直连
+	UpdateProxyOverride(ctx context.Context, id int64, update ProxyOverrideUpdate) (model.Feed, error)
 	Delete(ctx context.Context, id int64) error
 	DeleteBatch(ctx context.Context, ids []int64) error
 }
@@ -156,7 +158,7 @@ func (s *feedService) Add(ctx context.Context, feedURL string, folderID *int64, 
 		if siteURL == "" {
 			siteURL = trimmedURL // Use feed URL as fallback for favicon
 		}
-		if iconPath, err := s.icons.FetchAndSaveIcon(ctx, fetched.imageURL, siteURL); err == nil && iconPath != "" {
+		if iconPath, err := s.icons.FetchAndSaveIconForFeed(ctx, created.ID, fetched.imageURL, siteURL); err == nil && iconPath != "" {
 			_ = s.feeds.UpdateIconPath(ctx, created.ID, iconPath)
 			created.IconPath = &iconPath
 		}
@@ -360,6 +362,32 @@ func (s *feedService) Update(ctx context.Context, id int64, title string, folder
 	}
 	logger.Info("feed updated", "module", "service", "action", "update", "resource", "feed", "result", "ok", "feed_id", updated.ID, "feed_title", updated.Title)
 	return updated, nil
+}
+
+// UpdateProxyOverride 写订阅级代理覆盖（迁移 26）。
+// mode：nil = 跟随文件夹链 → 全局；proxy = 走代理；direct = 直连。
+// config：nil = 用全局那套代理；有值 = 这一条单独指定（密码传掩码时沿用库里那份）。
+func (s *feedService) UpdateProxyOverride(ctx context.Context, id int64, update ProxyOverrideUpdate) (model.Feed, error) {
+	feed, err := s.feeds.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return model.Feed{}, ErrNotFound
+		}
+		return model.Feed{}, fmt.Errorf("get feed: %w", err)
+	}
+
+	update = normalizeProxyOverrideUpdate(update, feed.ProxyConfig)
+	mode, cfg := update.Apply(feed.ProxyMode, feed.ProxyConfig)
+	if err := s.feeds.UpdateProxyOverride(ctx, id, mode, cfg); err != nil {
+		logger.Error("feed proxy override update failed", "module", "service", "action", "update", "resource", "proxy", "result", "failed", "feed_id", id, "error", err)
+		return model.Feed{}, err
+	}
+
+	feed.ProxyMode = mode
+	feed.ProxyConfig = cfg
+	// 只记「档位 + 有没有单独指定」：地址与密码一律不进日志
+	logger.Info("feed proxy override updated", "module", "service", "action", "update", "resource", "proxy", "result", "ok", "feed_id", id, "mode", ProxyModeToString(mode), "custom_config", cfg.Usable())
+	return feed, nil
 }
 
 // UpdateAIOverrides 覆盖单个订阅的自动翻译/自动摘要/正文打开方式；

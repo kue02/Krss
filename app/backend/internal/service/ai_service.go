@@ -213,11 +213,25 @@ func (s *aiService) SaveSummary(ctx context.Context, entryID int64, isReadabilit
 const freeTranslateTimeout = 20 * time.Second
 
 // httpClientForTranslate 翻译用的 HTTP 客户端：优先用带代理的工厂，没有就用默认客户端。
-func (s *aiService) httpClientForTranslate(ctx context.Context) *http.Client {
+// entryID > 0 时按「这条条目所属订阅」生效的代理（订阅 → 文件夹父级链 → 全局）；
+// 拿不到条目信息时退回全局那份，行为与改造前一致。
+func (s *aiService) httpClientForTranslate(ctx context.Context, entryID int64) *http.Client {
 	if s.clientFactory != nil {
-		return s.clientFactory.NewHTTPClient(ctx, freeTranslateTimeout)
+		return s.clientFactory.NewHTTPClientForFeed(ctx, s.feedIDForEntry(ctx, entryID), freeTranslateTimeout)
 	}
 	return &http.Client{Timeout: freeTranslateTimeout}
+}
+
+// feedIDForEntry 由条目反查订阅 id（免费翻译通道要按来源取代理）；查不到返回 0（= 走全局）。
+func (s *aiService) feedIDForEntry(ctx context.Context, entryID int64) int64 {
+	if entryID <= 0 || s.entryRepo == nil {
+		return 0
+	}
+	entry, err := s.entryRepo.GetByID(ctx, entryID)
+	if err != nil {
+		return 0
+	}
+	return entry.FeedID
 }
 
 // isModelFallbackEnabled 读「免费通道失败时是否自动切回模型」（默认开）。
@@ -380,6 +394,8 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 	// Create channels
 	resultCh := make(chan TranslateBlockResult)
 	errCh := make(chan error, len(blocks))
+	// 免 key 通道的客户端在这里建一次（按这条条目所属订阅取代理；一次翻译一个客户端，不是一次一块）
+	freeClient := s.httpClientForTranslate(ctx, entryID)
 
 	// Start parallel translation
 	go func() {
@@ -441,7 +457,7 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 					if plainText == "" {
 						return
 					}
-					translatedText, freeErr := ai.TranslateFreeText(ctx, s.httpClientForTranslate(ctx), freeChannel, plainText, language)
+					translatedText, freeErr := ai.TranslateFreeText(ctx, freeClient, freeChannel, plainText, language)
 					if freeErr == nil {
 						// 译文按原文外层标签包回去，段落结构（<p>/<h2>）不能丢
 						result := TranslateBlockResult{Index: b.Index, HTML: ai.WrapFreeTranslation(b.HTML, translatedText)}

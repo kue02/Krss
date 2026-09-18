@@ -7,8 +7,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useUpdateFeed, useUpdateFeedAI } from "@/hooks/useFeeds";
+import { useUpdateFeedProxy, useProxySources } from "@/hooks/useProxySources";
+import { TriStateControl } from "@/components/ui/tri-state-control";
+import { ProxyEffectiveLine } from "@/components/settings/ProxyEffectiveLine";
 import { cn } from "@/lib/utils";
-import type { Feed } from "@/types/api";
+import type { Feed, ProxyEffective, ProxyMode } from "@/types/api";
 
 const SUMMARY_PROMPT_REMINDER_MAX_LENGTH = 2000;
 
@@ -30,8 +33,14 @@ export function EditFeedDialog({
   const [autoTranslate, setAutoTranslate] = useState<boolean | null>(null);
   const [autoSummary, setAutoSummary] = useState<boolean | null>(null);
   const [readerMode, setReaderMode] = useState<boolean | null>(null);
+  // 14 批：代理覆盖（三态）+ 保存后回显的实际生效结果
+  const [proxyMode, setProxyMode] = useState<ProxyMode>("inherit");
+  const [effective, setEffective] = useState<ProxyEffective | null>(null);
   const updateFeed = useUpdateFeed();
   const updateFeedAI = useUpdateFeedAI();
+  const updateFeedProxy = useUpdateFeedProxy();
+  // 一览里拿这一条的实际生效结果（打开弹窗就能看到「来自：文件夹『技术』」，不用先保存一次）
+  const { data: proxySources } = useProxySources(Boolean(feed));
   const reminderLength = Array.from(summaryPromptReminder).length;
   const reminderTooLong = reminderLength > SUMMARY_PROMPT_REMINDER_MAX_LENGTH;
 
@@ -43,10 +52,18 @@ export function EditFeedDialog({
       setAutoTranslate(feed.autoTranslate ?? null);
       setAutoSummary(feed.autoSummary ?? null);
       setReaderMode(feed.readerMode ?? null);
+      setProxyMode(feed.proxyMode ?? "inherit");
+      setEffective(null);
       setError(null);
       /* eslint-enable react-hooks/set-state-in-effect */
     }
   }, [feed]);
+
+  // 没保存过就以一览里的生效结果为准（保存后由 PATCH 的回显覆盖它）
+  const shownEffective =
+    effective ??
+    proxySources?.feeds.find((item) => item.id === feed?.id)?.effective ??
+    null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,6 +83,12 @@ export function EditFeedDialog({
         autoSummary,
         readerMode,
       });
+      // 代理覆盖：只发 mode（config 不动 —— 「单独指定哪套」在设置→网络的「按来源覆盖」里管）
+      const proxyResult = await updateFeedProxy.mutateAsync({
+        id: feed.id,
+        override: { mode: proxyMode },
+      });
+      setEffective(proxyResult.effective);
       onOpenChange(false);
     } catch {
       setError(t("feeds.update_failed"));
@@ -193,6 +216,28 @@ export function EditFeedDialog({
                 offLabel={t("feeds.reader_mode_off")}
               />
             </div>
+            {/* 代理（14 批）：跟随上级（文件夹链 → 全局）/ 走代理 / 直连；下面直接显示这一条实际会怎么走 */}
+            <div className="space-y-1 pt-1">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm text-foreground">
+                  {t("proxy.override_label")}
+                </span>
+                <TriStateControl
+                  value={proxyMode === "inherit" ? null : proxyMode === "proxy"}
+                  onChange={(next) =>
+                    setProxyMode(
+                      next === null ? "inherit" : next ? "proxy" : "direct",
+                    )
+                  }
+                  inheritLabel={t("proxy.follow_parent")}
+                  onLabel={t("proxy.use_proxy")}
+                  offLabel={t("proxy.direct")}
+                />
+              </div>
+              <div className="flex justify-end">
+                <ProxyEffectiveLine effective={shownEffective} />
+              </div>
+            </div>
           </div>
 
           {/* 底部按钮区：对齐 Nextflux 的 Modal.Footer（border-t + p-4） */}
@@ -224,49 +269,5 @@ export function EditFeedDialog({
         </form>
       </DialogContent>
     </Dialog>
-  );
-}
-
-/** 三态：跟随全局 / 开 / 关 */
-function TriStateControl({
-  value,
-  onChange,
-  onLabel,
-  offLabel,
-}: {
-  value: boolean | null;
-  onChange: (value: boolean | null) => void;
-  /** true 那一档的文案，默认「开」（正文打开方式用它显示「阅读模式」） */
-  onLabel?: string;
-  offLabel?: string;
-}) {
-  const { t } = useTranslation();
-  const options: { value: boolean | null; label: string }[] = [
-    { value: null, label: t("feeds.follow_global") },
-    { value: true, label: onLabel ?? t("feeds.on") },
-    { value: false, label: offLabel ?? t("feeds.off") },
-  ];
-
-  return (
-    <div className="flex shrink-0 gap-1 rounded-full border border-border p-0.5">
-      {options.map((option) => {
-        const isActive = option.value === value;
-        return (
-          <button
-            key={String(option.value)}
-            type="button"
-            onClick={() => onChange(option.value)}
-            className={cn(
-              "rounded-full px-2.5 py-0.5 text-xs transition-colors duration-200",
-              isActive
-                ? "bg-item-active text-foreground"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {option.label}
-          </button>
-        );
-      })}
-    </div>
   );
 }

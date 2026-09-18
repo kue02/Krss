@@ -12,6 +12,7 @@ package mock
 import (
 	context "context"
 	model "gist/backend/internal/model"
+	service "gist/backend/internal/service"
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"
@@ -98,6 +99,21 @@ func (m *MockFolderService) Update(ctx context.Context, id int64, name string, p
 func (mr *MockFolderServiceMockRecorder) Update(ctx, id, name, parentID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockFolderService)(nil).Update), ctx, id, name, parentID)
+}
+
+// UpdateProxyOverride mocks base method.
+func (m *MockFolderService) UpdateProxyOverride(ctx context.Context, id int64, update service.ProxyOverrideUpdate) (model.Folder, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateProxyOverride", ctx, id, update)
+	ret0, _ := ret[0].(model.Folder)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateProxyOverride indicates an expected call of UpdateProxyOverride.
+func (mr *MockFolderServiceMockRecorder) UpdateProxyOverride(ctx, id, update any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateProxyOverride", reflect.TypeOf((*MockFolderService)(nil).UpdateProxyOverride), ctx, id, update)
 }
 
 // UpdateType mocks base method.

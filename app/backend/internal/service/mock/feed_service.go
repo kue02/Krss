@@ -191,6 +191,21 @@ func (mr *MockFeedServiceMockRecorder) UpdateAIOverrides(ctx, id, autoTranslate,
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateAIOverrides", reflect.TypeOf((*MockFeedService)(nil).UpdateAIOverrides), ctx, id, autoTranslate, autoSummary, readerMode)
 }
 
+// UpdateProxyOverride mocks base method.
+func (m *MockFeedService) UpdateProxyOverride(ctx context.Context, id int64, update service.ProxyOverrideUpdate) (model.Feed, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateProxyOverride", ctx, id, update)
+	ret0, _ := ret[0].(model.Feed)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateProxyOverride indicates an expected call of UpdateProxyOverride.
+func (mr *MockFeedServiceMockRecorder) UpdateProxyOverride(ctx, id, update any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateProxyOverride", reflect.TypeOf((*MockFeedService)(nil).UpdateProxyOverride), ctx, id, update)
+}
+
 // UpdateType mocks base method.
 func (m *MockFeedService) UpdateType(ctx context.Context, id int64, feedType string) error {
 	m.ctrl.T.Helper()

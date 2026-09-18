@@ -280,7 +280,7 @@ func TestFeedService_Add_IconFetchUpdatesPath(t *testing.T) {
 	)
 
 	mockIcons.EXPECT().
-		FetchAndSaveIcon(gomock.Any(), "https://example.com/icon.png", "https://example.com").
+		FetchAndSaveIconForFeed(gomock.Any(), int64(123), "https://example.com/icon.png", "https://example.com").
 		Return("example.com.png", nil)
 	mockFeeds.EXPECT().
 		UpdateIconPath(gomock.Any(), int64(123), "example.com.png").
@@ -1197,7 +1197,7 @@ func TestFeedService_Add_IconFetchError(t *testing.T) {
 	)
 
 	mockIcons.EXPECT().
-		FetchAndSaveIcon(gomock.Any(), "https://example.com/icon.png", "https://example.com").
+		FetchAndSaveIconForFeed(gomock.Any(), int64(123), "https://example.com/icon.png", "https://example.com").
 		Return("", errors.New("icon fetch error"))
 
 	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()

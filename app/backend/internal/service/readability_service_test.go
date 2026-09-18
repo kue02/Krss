@@ -64,21 +64,21 @@ func TestReadabilityService_Close(t *testing.T) {
 func TestReadabilityService_FetchWithChrome_InvalidURL(t *testing.T) {
 	svc := service.NewReadabilityService(nil, network.NewClientFactoryForTest(&http.Client{}), nil)
 
-	_, err := service.ReadabilityFetchWithChromeForTest(svc, context.Background(), "http://[::1", "", 0)
+	_, err := service.ReadabilityFetchWithChromeForTest(svc, context.Background(), "http://[::1", "", 0, 0)
 	require.ErrorIs(t, err, service.ErrFeedFetch)
 }
 
 func TestReadabilityService_FetchWithFreshSession_InvalidScheme(t *testing.T) {
 	svc := service.NewReadabilityService(nil, network.NewClientFactoryForTest(&http.Client{}), nil)
 
-	_, err := service.ReadabilityFetchWithFreshSessionForTest(svc, context.Background(), "file:///etc/passwd", "", 0)
+	_, err := service.ReadabilityFetchWithFreshSessionForTest(svc, context.Background(), "file:///etc/passwd", "", 0, 0)
 	require.ErrorIs(t, err, service.ErrInvalid)
 }
 
 func TestReadabilityService_DoFetch_InvalidURL(t *testing.T) {
 	svc := service.NewReadabilityService(nil, network.NewClientFactoryForTest(&http.Client{}), nil)
 
-	_, err := service.ReadabilityDoFetchForTest(svc, context.Background(), "http://[::1", "", 0)
+	_, err := service.ReadabilityDoFetchForTest(svc, context.Background(), "http://[::1", "", 0, 0)
 	require.ErrorIs(t, err, service.ErrFeedFetch)
 }
 
