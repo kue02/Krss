@@ -42,6 +42,11 @@ vi.mock("@/hooks/useEntries", () => ({
   useMarkAsStarred: vi.fn(() => ({ mutate: vi.fn() })),
 }));
 
+vi.mock("@/hooks/useRefreshStatus", () => ({
+  // 12-10：中栏刷新进度改读全局状态；单测里不接 query provider，给个空值
+  useRefreshStatus: () => undefined,
+}));
+
 vi.mock("@/hooks/useFeeds", () => ({
   useFeeds: vi.fn(() => ({ data: [] })),
 }));

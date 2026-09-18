@@ -69,6 +69,24 @@ interface FeedItemProps {
   onChangeType?: (feedId: string, type: ContentType) => void;
 }
 
+/**
+ * 12-1：让行内链接「真能点」。
+ *
+ * 两层原因（12-1 实测定位）：
+ *  ① HeroUI 的 `Description` 自带 `pointer-events: none`（集合项里的文字不抢指针事件）
+ *     → 锚点**永远点不到**，所以要给链接本身加 `pointer-events-auto`；
+ *  ② 行根是 RAC 的 `ListBox.Item`，它对 pointerdown/pointerup 做按压处理（按下即 preventDefault）
+ *     → 锚点的原生跳转会被吃掉。所以指针事件上 stopPropagation（**不是** preventDefault）：
+ *     既让 RAC 收不到这次按压，又不影响浏览器自己的跳转与中键/右键；click/keydown 一并挡住，
+ *     避免顺带切换订阅。
+ */
+const stopRowPress = {
+  onPointerDown: (event: React.PointerEvent) => event.stopPropagation(),
+  onPointerUp: (event: React.PointerEvent) => event.stopPropagation(),
+  onClick: (event: React.MouseEvent) => event.stopPropagation(),
+  onKeyDown: (event: React.KeyboardEvent) => event.stopPropagation(),
+};
+
 export function FeedItem({
   name,
   feedId,
@@ -189,8 +207,11 @@ export function FeedItem({
                       title={siteUrlResolved ?? undefined}
                       target="_blank"
                       rel="noopener noreferrer"
-                      onClick={(event) => event.stopPropagation()}
-                      className="hover:text-foreground hover:underline"
+                      {...stopRowPress}
+                      /* HeroUI 的 Description（data-slot=description）带 `pointer-events: none`
+                         —— 集合项内的文字默认不抢指针事件，锚点因此永远点不到（12-1 的真根因）。
+                         这里只给链接本身放行，不动全局 CSS。 */
+                      className="pointer-events-auto hover:text-foreground hover:underline"
                     >
                       @{siteHost}
                     </a>
@@ -206,8 +227,8 @@ export function FeedItem({
                 title={siteUrlResolved ?? undefined}
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={(event) => event.stopPropagation()}
-                className="shrink-0 truncate text-[0.7rem] text-muted-foreground/70 transition-colors hover:text-foreground hover:underline"
+                {...stopRowPress}
+                className="pointer-events-auto shrink-0 truncate text-[0.7rem] text-muted-foreground/70 transition-colors hover:text-foreground hover:underline"
               >
                 @{siteHost}
               </a>

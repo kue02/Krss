@@ -803,12 +803,30 @@ body.mobile-document-scroll-locked {
  * 未分层的规则优先级高于任何 @layer —— 这也是本项目早先踩过的同一个坑。
  * 尺寸照 Folo 的 size-28（112px 方图）。
  * ------------------------------------------------------------------------ */
+/*
+ * 12-11：引文里的媒体改成「并排 + 等比缩小」（用户原话：竖排显示、要像 Folo 那样并排；
+ * 缩放时被裁剪了、能不能等比例缩小）。
+ *
+ * 两处根因（看 RSSHub 真实输出）：
+ *  ① 图片之间是一个 `<br>`（`<img><br><img><br>…`）→ inline-block 也照样换行，所以是竖排；
+ *  ② 原来写死 `width/height:112px` + `object-fit:cover` → 3:2 / 2:3 的图被裁成正方形。
+ * 处理：把紧贴图片的 `<br>` 藏掉（不动正文里的其它换行），尺寸改成「框内等比缩放」
+ * （width/height auto + max-w/max-h）—— 等比缩小、不裁剪。
+ */
+.entry-card .rsshub-quote img + br,
+.entry-card .rsshub-quote br:has(+ img),
+.entry-card .rsshub-quote br:has(+ video) {
+  display: none;
+}
+
 .entry-card .rsshub-quote img,
 .entry-card .rsshub-quote video,
 .entry-card .rsshub-quote .article-video {
-  width: 112px;
-  height: 112px;
-  object-fit: cover;
+  width: auto;
+  height: auto;
+  max-width: 112px;
+  max-height: 112px;
+  object-fit: contain;
   border-radius: 8px;
   display: inline-block;
   vertical-align: top;

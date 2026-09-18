@@ -18,8 +18,14 @@ export function useRefreshStatus() {
   const { data } = useQuery({
     queryKey: ["refreshStatus"],
     queryFn: getRefreshStatus,
-    refetchInterval: 15_000,
-    staleTime: 10_000,
+    /**
+     * 12-10：刷新中 2 秒一次，空闲 15 秒。
+     *
+     * 原来固定 15 秒 —— 侧栏右键「刷新」是后台跑的（POST 立刻 204），
+     * 中栏进度条与「刷新完成」弹框只能等下一次轮询，用户看到的就是「点了没反应」。
+     */
+    refetchInterval: (query) => (query.state.data?.isRefreshing ? 2_000 : 15_000),
+    staleTime: 1_000,
   });
 
   useEffect(() => {

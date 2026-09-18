@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import { useEntriesInfinite, useUnreadCounts } from "@/hooks/useEntries";
 import { AlertDialog, Button } from "@heroui/react";
 import { useFeeds } from "@/hooks/useFeeds";
+import { useRefreshStatus } from "@/hooks/useRefreshStatus";
 import { queryClient } from "@/lib/queryClient";
 import { getRefreshStatus, refreshAllFeeds, refreshFeeds } from "@/api";
 import { showToast } from "@/stores/toast-store";
@@ -422,6 +423,21 @@ export function EntryList({
 
   useEffect(() => stopRefreshPolling, [stopRefreshPolling]);
 
+  /**
+   * 12-10：刷新进度以**全局状态**为准。
+   *
+   * 原来只有中栏自己点的刷新才会亮进度条 —— 侧栏 / 文件夹 / 视图右键触发的刷新
+   * （走的是同一个后端接口）在中栏一点反应都没有，用户以为「联动没生效」。
+   * 现在把轮询到的 isRefreshing/进度一起算进来（同一个 queryKey，不多一次请求）。
+   */
+  const globalRefreshStatus = useRefreshStatus();
+  const showRefreshing =
+    isRefreshing || Boolean(globalRefreshStatus?.isRefreshing);
+  const shownTotal =
+    refreshProgress?.total || globalRefreshStatus?.total || 0;
+  const shownCompleted =
+    refreshProgress?.completed || globalRefreshStatus?.completed || 0;
+
   const handleRefresh = useCallback(async (force = false, skipConfirm = false) => {
     if (isRefreshing) return;
 
@@ -776,9 +792,9 @@ export function EntryList({
           onMarkAllRead={onMarkAllRead}
           onRefresh={handleRefresh}
           onForceRefresh={() => void handleRefresh(true)}
-          isRefreshing={isRefreshing}
-          refreshTotal={refreshProgress?.total ?? 0}
-          refreshCompleted={refreshProgress?.completed ?? 0}
+          isRefreshing={showRefreshing}
+          refreshTotal={shownTotal}
+          refreshCompleted={shownCompleted}
           scrollToTopScope="entrylist"
           isMobile={isMobile}
           onMenuClick={handleMenuClick}

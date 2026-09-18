@@ -455,6 +455,8 @@ export function Sidebar({
         queryClient.invalidateQueries({ queryKey: ["entries"] });
         queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
         queryClient.invalidateQueries({ queryKey: ["feeds"] });
+        // 12-10：立刻拉一次刷新状态，中栏进度条与结果弹框不用等下一轮轮询
+        queryClient.invalidateQueries({ queryKey: ["refreshStatus"] });
         showToast(t("entry.refreshing_n_feeds", { count: 1 }));
       } catch {
         showToast(t("entry.refresh_failed"));
