@@ -101,7 +101,7 @@ func (s *Scheduler) refresh() {
 	}()
 
 	logger.Info("scheduled feed refresh started", "module", "scheduler", "action", "refresh", "resource", "feed", "result", "ok")
-	if err := s.refreshService.RefreshAll(ctx); err != nil {
+	if err := s.refreshService.RefreshAllAuto(ctx); err != nil {
 		if ctx.Err() != nil {
 			logger.Warn("scheduled refresh cancelled", "module", "scheduler", "action", "refresh", "resource", "feed", "result", "cancelled")
 			return

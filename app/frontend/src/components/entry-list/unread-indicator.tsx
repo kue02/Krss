@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { useTranslation } from "react-i18next";
 import { Badge } from "@heroui/react";
 import { useUISettingKey } from "@/hooks/useUISettings";
 import { cn } from "@/lib/utils";
@@ -12,8 +11,7 @@ import { cn } from "@/lib/utils";
  * `placement="top-left"`；官方「点状徽标」= 空内容的 Badge（`<Badge />`）。
  *
  * 三个档（设置 → 外观 → 阅读 →「未读标记」）：
- * - badge：Badge 带「未读」字样
- * - dot：空内容的 Badge（点状徽标）
+ * - badge / dot：**都是小圆点**（12-14 用户改口：不要文字，就是圆点），差别只留在设置项上
  * - dim：不在图标上挂东西，改为整行降透明度（由 `unreadRowClass()` 负责）
  */
 export function UnreadIndicator({
@@ -27,7 +25,6 @@ export function UnreadIndicator({
   className?: string;
 }) {
   const style = useUISettingKey("unreadStyle");
-  const { t } = useTranslation();
 
   if (style === "dim" || !unread || !children) {
     return <div className={cn("shrink-0", className)}>{children}</div>;
@@ -36,15 +33,20 @@ export function UnreadIndicator({
   return (
     <Badge.Anchor className={cn("relative shrink-0", className)}>
       {children}
+      {/*
+        12-14：标记一律是**小圆点**（用户：「这个不是字，也是小圆点」）。
+        用 HeroUI 的「点状徽标」= 空内容 Badge，placement=top-left 让它压在图标左上角上
+        （用户要的就是轻微吃掉一点图标边缘，而不是浮在图标外面）。
+        `-translate-x-1 -translate-y-1` 是把它再往左上挪一点，视觉上更像「角标」。
+      */}
       <Badge
         placement="top-left"
         color="accent"
         size="sm"
-        variant="soft"
+        variant="primary"
         data-unread-marker={style === "dot" ? "dot" : "badge"}
-      >
-        {style === "dot" ? null : t("entry.unread")}
-      </Badge>
+        className="-translate-x-1 -translate-y-1"
+      />
     </Badge.Anchor>
   );
 }

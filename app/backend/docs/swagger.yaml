@@ -905,6 +905,9 @@ definitions:
       total:
         description: 本次刷新进度：Total 待刷新源数、Completed 已完成数（仅刷新中有效）
         type: integer
+      trigger:
+        description: Trigger 最近一轮刷新的来源（manual / auto）—— 12-17：自动刷新不弹框，改记历史
+        type: string
     type: object
   internal_handler.registerRequest:
     properties:

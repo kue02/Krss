@@ -164,7 +164,14 @@
     "fetch_timeout_hint": "Default 15 seconds",
     "fetch_scope_hint": "Applies from the next round",
     "fetch_saved": "Saved",
-    "fetch_save_failed": "Save failed"
+    "fetch_save_failed": "Save failed",
+    "auto_refresh_history": "Auto-refresh history",
+    "auto_refresh_history_hint": "Scheduled refreshes no longer pop a dialog — they are logged here (last 20). Expand a row for per-feed details. Manual refreshes still pop the dialog.",
+    "auto_refresh_history_clear": "Clear",
+    "auto_refresh_history_empty": "No auto-refresh records yet",
+    "auto_refresh_history_summary": "{{count}} updated ({{created}} new · {{updated}} updated)",
+    "auto_refresh_history_failed": "{{count}} feeds failed",
+    "auto_refresh_history_row": "{{created}} new · {{updated}} updated"
   },
   "theme": {
     "system": "Follow System",

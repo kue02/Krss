@@ -271,7 +271,7 @@ export function ThreeColumnLayout({
             该栏宽度仍按你上次拖好的值保留。 */}
         {showSidebar && (
           <PanelSplitter
-            visible={showFeedSplitter}
+            visibility={showFeedSplitter ? "always" : "never"}
             isDragging={feedColResizable.isDragging}
             onPointerDown={feedColResizable.separatorProps.onPointerDown}
             onTouchStart={feedColResizable.separatorProps.onTouchStart}
@@ -294,7 +294,9 @@ export function ThreeColumnLayout({
           </div>
 
           {/* Second splitter */}
+          {/* 12-15：第二栏这条保持原逻辑（悬浮才显示），不跟「显示分界限」设置走 */}
           <PanelSplitter
+            visibility="hover"
             isDragging={entryColResizable.isDragging}
             onPointerDown={entryColResizable.separatorProps.onPointerDown}
             onTouchStart={entryColResizable.separatorProps.onTouchStart}

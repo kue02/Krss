@@ -164,7 +164,14 @@
     "fetch_timeout_hint": "默认 15 秒",
     "fetch_scope_hint": "下一轮刷新生效",
     "fetch_saved": "已保存",
-    "fetch_save_failed": "保存失败"
+    "fetch_save_failed": "保存失败",
+    "auto_refresh_history": "自动刷新历史",
+    "auto_refresh_history_hint": "定时刷新的结果不再弹框，都记在这里（最近 20 次）；点每条可展开看逐订阅明细。手动刷新的结果仍然弹框。",
+    "auto_refresh_history_clear": "清空",
+    "auto_refresh_history_empty": "还没有自动刷新记录",
+    "auto_refresh_history_summary": "共更新 {{count}} 条（新增 {{created}} · 更新 {{updated}}）",
+    "auto_refresh_history_failed": "{{count}} 个源失败",
+    "auto_refresh_history_row": "新增 {{created}} · 更新 {{updated}}"
   },
   "theme": {
     "system": "跟随系统",

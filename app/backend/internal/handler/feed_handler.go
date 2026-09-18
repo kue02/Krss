@@ -119,6 +119,8 @@ type refreshStatusResponse struct {
 	Completed int `json:"completed,omitempty"`
 	// Results 最近一轮刷新里每个订阅的结果（新/更新条数、失败原因）—— 刷新结果弹框用（用户 11-8）
 	Results []service.RefreshFeedResult `json:"results,omitempty"`
+	// Trigger 最近一轮刷新的来源（manual / auto）—— 12-17：自动刷新不弹框，改记历史
+	Trigger string `json:"trigger,omitempty"`
 }
 
 type feedPreviewResponse struct {
@@ -552,6 +554,7 @@ func (h *FeedHandler) RefreshStatus(c echo.Context) error {
 		IsRefreshing: status.IsRefreshing,
 		Total:        status.Total,
 		Completed:    status.Completed,
+		Trigger:      status.Trigger,
 		// 刷新已结束才带上每源结果（刷新中带着会让前端一直重渲染）
 	}
 	if !status.IsRefreshing {

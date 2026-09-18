@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Checkbox, CheckboxGroup, Popover } from "@heroui/react";
 import { ChevronDown } from "lucide-react";
+import { MarqueeText } from "@/components/ui/marquee-text";
 
 /**
  * 规则/视图的「范围 = 订阅」多选（用户 11-16 要可多选，12-3 改交互）。
@@ -56,8 +57,8 @@ export function FeedScopePicker({
                 <Checkbox.Control>
                   <Checkbox.Indicator />
                 </Checkbox.Control>
-                <Checkbox.Content className="min-w-0 truncate text-sm">
-                  {option.label}
+                <Checkbox.Content className="min-w-0 flex-1">
+                  <MarqueeText className="text-sm" text={option.label} />
                 </Checkbox.Content>
               </Checkbox>
             ))}

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Button, Checkbox, Modal } from "@heroui/react";
 import { ApiError, getFilterImpact, revertFilter } from "@/api";
 import type { FilterImpactItem, FilterRule } from "@/types/filters";
+import { MarqueeText } from "@/components/ui/marquee-text";
 import { queryClient } from "@/lib/queryClient";
 import { showToast } from "@/stores/toast-store";
 
@@ -158,9 +159,11 @@ export function RevertFilterDialog({
                     <Checkbox.Indicator />
                   </Checkbox.Control>
                   <Checkbox.Content className="min-w-0 flex-1">
-                    <div className="truncate text-sm" title={item.title}>
-                      {item.title || item.entryId}
-                    </div>
+                    {/* 12-16：单行；装不下时悬浮滚动（跑马灯），不再折行把勾选框挤到上一行 */}
+                    <MarqueeText
+                      className="text-sm"
+                      text={item.title || item.entryId}
+                    />
                     <div className="truncate text-xs text-muted-foreground">
                       {item.feedTitle}
                       {item.muted ? ` · ${t("automation.revert_flag_muted")}` : ""}

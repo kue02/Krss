@@ -292,6 +292,9 @@ type RefreshStatus struct {
 	// 仅在刷新进行中有效，空闲时均为 0。
 	Total     int
 	Completed int
+	// Trigger 最近一轮刷新是谁触发的：manual（点了刷新/强制拉取）或 auto（定时器）。
+	// 用户 12-17：自动刷新的结果不要弹框，改记进「自动刷新历史」。
+	Trigger string `json:"trigger,omitempty"`
 }
 
 type RefreshService interface {
@@ -299,6 +302,9 @@ type RefreshService interface {
 	// ForceRefreshAll 强制拉取（用户 11-19）：忽略条件请求（etag/last-modified）与
 	// 「同主机多久内不重复抓」的等待，整轮重抓。并发上限照旧（那是礼貌，不是过期判定）。
 	ForceRefreshAll(ctx context.Context) error
+	// RefreshAllAuto 定时器触发的一轮刷新（用户 12-17）：与手动的区别只在「来源」——
+	// 前端据此决定「弹结果框」还是「记进自动刷新历史」。
+	RefreshAllAuto(ctx context.Context) error
 	// ForceRefreshFeeds 强制拉取指定订阅（同样的强制语义，范围由界面决定）。
 	ForceRefreshFeeds(ctx context.Context, feedIDs []int64) error
 	// LastRefreshResults 最近一轮刷新里每个订阅的结果（新/更新条数、失败原因）。
@@ -338,6 +344,8 @@ type refreshService struct {
 	lastResults []RefreshFeedResult
 	// fetchCfg 本轮刷新的并发/超时快照（来自 设置 → 高级 → 拉取）
 	fetchCfg fetchRuntimeConfig
+	// lastTrigger 最近一轮刷新的来源（manual / auto）
+	lastTrigger string
 }
 
 func NewRefreshService(feeds repository.FeedRepository, entries repository.EntryRepository, settings SettingsService, icons IconService, clientFactory *network.ClientFactory, anubisSolver AnubisSolver, rateLimitSvc DomainRateLimitService, filters FilterService) RefreshService {
@@ -354,12 +362,25 @@ func NewRefreshService(feeds repository.FeedRepository, entries repository.Entry
 }
 
 func (s *refreshService) RefreshAll(ctx context.Context) error {
+	s.mu.Lock()
+	s.lastTrigger = "manual"
+	s.mu.Unlock()
 	return s.refreshAll(ctx, false)
 }
 
 // ForceRefreshAll 见接口注释。
 func (s *refreshService) ForceRefreshAll(ctx context.Context) error {
+	s.mu.Lock()
+	s.lastTrigger = "manual"
+	s.mu.Unlock()
 	return s.refreshAll(ctx, true)
+}
+
+func (s *refreshService) RefreshAllAuto(ctx context.Context) error {
+	s.mu.Lock()
+	s.lastTrigger = "auto"
+	s.mu.Unlock()
+	return s.refreshAll(ctx, false)
 }
 
 func (s *refreshService) refreshAll(ctx context.Context, force bool) error {
@@ -369,6 +390,9 @@ func (s *refreshService) refreshAll(ctx context.Context, force bool) error {
 		return ErrAlreadyRefreshing
 	}
 	s.isRefreshing = true
+	if s.lastTrigger == "" {
+		s.lastTrigger = "manual"
+	}
 	s.mu.Unlock()
 
 	defer func() {
@@ -426,6 +450,7 @@ func (s *refreshService) GetRefreshStatus() RefreshStatus {
 	status := RefreshStatus{
 		IsRefreshing:    s.isRefreshing,
 		LastRefreshedAt: s.lastRefreshedAt,
+		Trigger:         s.lastTrigger,
 	}
 	if s.isRefreshing {
 		status.Total = s.progressTotal
@@ -443,11 +468,17 @@ func (s *refreshService) RefreshFeed(ctx context.Context, feedID int64) error {
 }
 
 func (s *refreshService) RefreshFeeds(ctx context.Context, feedIDs []int64) error {
+	s.mu.Lock()
+	s.lastTrigger = "manual"
+	s.mu.Unlock()
 	return s.refreshFeeds(ctx, feedIDs, false)
 }
 
 // ForceRefreshFeeds 见接口注释。
 func (s *refreshService) ForceRefreshFeeds(ctx context.Context, feedIDs []int64) error {
+	s.mu.Lock()
+	s.lastTrigger = "manual"
+	s.mu.Unlock()
 	return s.refreshFeeds(ctx, feedIDs, true)
 }
 

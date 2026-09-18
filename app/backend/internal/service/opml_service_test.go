@@ -247,6 +247,10 @@ func (s *refreshServiceStub) ForceRefreshAll(ctx context.Context) error {
 	return s.RefreshAll(ctx)
 }
 
+func (s *refreshServiceStub) RefreshAllAuto(ctx context.Context) error {
+	return s.RefreshAll(ctx)
+}
+
 func (s *refreshServiceStub) ForceRefreshFeeds(ctx context.Context, feedIDs []int64) error {
 	return s.RefreshFeeds(ctx, feedIDs)
 }

@@ -4,6 +4,7 @@ import {
   buildRefreshReport,
   useRefreshReportStore,
 } from "@/stores/refresh-report-store";
+import { appendAutoRefreshHistory } from "@/lib/auto-refresh-history";
 
 /**
  * 盯住刷新状态：**完成时间（lastRefreshedAt）一变**就弹出刷新结果弹框（用户 11-8）。
@@ -31,6 +32,21 @@ export function useRefreshReportWatcher() {
     lastShownRef.current = stamp;
     const results = status.results ?? [];
     if (results.length === 0) return;
+    /**
+     * 12-17：**定时刷新不弹框**（用户：「自动刷新每次跑完之后，它也会弹框……这个自动刷新
+     * 其实不需要弹框」）—— 记进 设置 → 高级 的「自动刷新历史」，每条可下拉看逐订阅详情。
+     * 手动刷新（点刷新 / 强制拉取）仍然弹结果框。
+     */
+    if (status.trigger === "auto") {
+      appendAutoRefreshHistory({
+        at: stamp,
+        newCount: results.reduce((sum, item) => sum + (item.new ?? 0), 0),
+        updatedCount: results.reduce((sum, item) => sum + (item.updated ?? 0), 0),
+        failedCount: results.filter((item) => item.error).length,
+        results,
+      });
+      return;
+    }
     open(buildRefreshReport(results));
   }, [status, open]);
 }

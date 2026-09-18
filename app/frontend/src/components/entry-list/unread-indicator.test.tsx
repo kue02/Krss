@@ -32,13 +32,14 @@ afterEach(() => {
 });
 
 describe("已读/未读标记", () => {
-  it("角标档：未读渲染 HeroUI Badge，已读什么都不渲染", () => {
+  it("角标档：未读渲染 HeroUI Badge（圆点、无文字），已读什么都不渲染", () => {
     settings.unreadStyle = "badge";
     const { unmount } = render(<UnreadIndicator unread>{icon}</UnreadIndicator>);
     const badge = document.querySelector('[data-unread-marker="badge"]');
     expect(badge).not.toBeNull();
     expect(document.querySelector('[data-unread-marker="dot"]')).toBeNull();
-    expect(screen.getByText("entry.unread")).toBeTruthy();
+    // 12-14：标记是小圆点，不再是「未读」字样
+    expect(badge!.textContent).toBe("");
     // 挂在图标上：图标还在，外面是 HeroUI 的 Badge.Anchor
     expect(screen.getByTestId("entry-icon")).toBeTruthy();
     expect(document.querySelector('[data-slot="badge-anchor"]')).not.toBeNull();

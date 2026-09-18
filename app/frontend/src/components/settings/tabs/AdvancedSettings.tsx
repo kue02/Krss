@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Plus, Trash2, Edit2, Check, X } from "lucide-react";
-import { Button, Label, NumberField } from "@heroui/react";
+import { Button, Disclosure, Label, NumberField } from "@heroui/react";
 import {
   getDomainRateLimits,
   createDomainRateLimit,
@@ -12,6 +12,12 @@ import {
   ApiError,
 } from "@/api";
 import type { FetchSettings } from "@/types/settings";
+import {
+  clearAutoRefreshHistory,
+  loadAutoRefreshHistory,
+  subscribeAutoRefreshHistory,
+  type AutoRefreshRecord,
+} from "@/lib/auto-refresh-history";
 import type { DomainRateLimit } from "@/types/settings";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +25,12 @@ export function AdvancedSettings() {
   const { t } = useTranslation();
   const [items, setItems] = useState<DomainRateLimit[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // 自动刷新历史（用户 12-17）：定时刷新不再弹框，改成这里一份可下拉的历史
+  const [autoHistory, setAutoHistory] = useState<AutoRefreshRecord[]>(() =>
+    loadAutoRefreshHistory(),
+  );
+  useEffect(() => subscribeAutoRefreshHistory(() => setAutoHistory(loadAutoRefreshHistory())), []);
 
   // 拉取设置（用户 11-20）：定时频率 / 全局并发 / 同主机并发 / 单源超时。
   // 都是「下一轮生效」：后端每轮刷新开始时读一次，改完不用重启。
@@ -214,6 +226,91 @@ export function AdvancedSettings() {
 
   return (
     <div className="space-y-6">
+      {/* 自动刷新历史（用户 12-17）：定时刷新的结果不再弹框，来这里看 */}
+      <section>
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div>
+            <div className="text-sm font-medium">
+              {t("settings.auto_refresh_history")}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {t("settings.auto_refresh_history_hint")}
+            </div>
+          </div>
+          {autoHistory.length > 0 && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onPress={() => {
+                clearAutoRefreshHistory();
+                setAutoHistory([]);
+              }}
+            >
+              {t("settings.auto_refresh_history_clear")}
+            </Button>
+          )}
+        </div>
+
+        {autoHistory.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
+            {t("settings.auto_refresh_history_empty")}
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {autoHistory.map((record) => (
+              <Disclosure key={record.at}>
+                <Disclosure.Heading>
+                  <Disclosure.Trigger className="flex w-full items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-left text-xs">
+                    <span className="flex min-w-0 flex-wrap items-center gap-x-2">
+                      <span className="font-medium">
+                        {new Date(record.at).toLocaleString()}
+                      </span>
+                      <span className="text-muted-foreground">
+                        {t("settings.auto_refresh_history_summary", {
+                          count: record.newCount + record.updatedCount,
+                          created: record.newCount,
+                          updated: record.updatedCount,
+                        })}
+                      </span>
+                      {record.failedCount > 0 && (
+                        <span className="text-destructive">
+                          {t("settings.auto_refresh_history_failed", {
+                            count: record.failedCount,
+                          })}
+                        </span>
+                      )}
+                    </span>
+                    <Disclosure.Indicator className="size-4 shrink-0 text-muted-foreground" />
+                  </Disclosure.Trigger>
+                </Disclosure.Heading>
+                <Disclosure.Content>
+                  <Disclosure.Body className="space-y-1 border border-t-0 border-border px-3 py-2">
+                    {record.results.map((result) => (
+                      <div
+                        key={result.feedId}
+                        className="flex min-w-0 items-center justify-between gap-2 text-xs"
+                      >
+                        <span className="min-w-0 truncate text-muted-foreground">
+                          {result.title}
+                        </span>
+                        <span className="shrink-0 tabular-nums">
+                          {result.error
+                            ? result.error
+                            : t("settings.auto_refresh_history_row", {
+                                created: result.new,
+                                updated: result.updated,
+                              })}
+                        </span>
+                      </div>
+                    ))}
+                  </Disclosure.Body>
+                </Disclosure.Content>
+              </Disclosure>
+            ))}
+          </div>
+        )}
+      </section>
+
       {/* 拉取：频率与并发（用户 11-20） */}
       {fetchDraft && (
         <section>

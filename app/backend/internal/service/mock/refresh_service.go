@@ -125,6 +125,20 @@ func (mr *MockRefreshServiceMockRecorder) RefreshAll(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RefreshAll", reflect.TypeOf((*MockRefreshService)(nil).RefreshAll), ctx)
 }
 
+// RefreshAllAuto mocks base method.
+func (m *MockRefreshService) RefreshAllAuto(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RefreshAllAuto", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RefreshAllAuto indicates an expected call of RefreshAllAuto.
+func (mr *MockRefreshServiceMockRecorder) RefreshAllAuto(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RefreshAllAuto", reflect.TypeOf((*MockRefreshService)(nil).RefreshAllAuto), ctx)
+}
+
 // RefreshFeed mocks base method.
 func (m *MockRefreshService) RefreshFeed(ctx context.Context, feedID int64) error {
 	m.ctrl.T.Helper()

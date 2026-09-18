@@ -560,6 +560,8 @@ export interface RefreshStatus {
   lastRefreshedAt?: string;
   /** 本次刷新要刷的源数（仅刷新中返回） */
   total?: number;
+  /** 最近一轮刷新是谁触发的：manual（手动）/ auto（定时器）—— 12-17 */
+  trigger?: "manual" | "auto";
   /** 本次刷新已完成数（仅刷新中返回） */
   completed?: number;
   /**
