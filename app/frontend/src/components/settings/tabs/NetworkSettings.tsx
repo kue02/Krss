@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { useSettingsDirty } from "@/stores/settings-dirty-store";
 import {
   getNetworkSettings,
   updateNetworkSettings,
@@ -26,6 +27,8 @@ export function NetworkSettings() {
     ipStack: "default",
   });
   const [isSaving, setIsSaving] = useState(false);
+  /** 12-7：加载/保存成功时的快照，用来判断「有没有未保存的改动」 */
+  const [baseline, setBaseline] = useState<string | null>(null);
   const [isTesting, setIsTesting] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">(
     "idle",
@@ -39,6 +42,7 @@ export function NetworkSettings() {
     getNetworkSettings()
       .then((data) => {
         setSettings(data);
+        setBaseline(JSON.stringify(data));
       })
       .catch(() => {
         // ignore
@@ -50,6 +54,7 @@ export function NetworkSettings() {
     setSettings(newSettings);
     try {
       await updateNetworkSettings(newSettings);
+      setBaseline(JSON.stringify(newSettings));
     } catch {
       // Revert on error
       setSettings(settings);
@@ -65,6 +70,7 @@ export function NetworkSettings() {
     setSettings(newSettings);
     try {
       await updateNetworkSettings(newSettings);
+      setBaseline(JSON.stringify(newSettings));
     } catch {
       // Revert on error
       setSettings(settings);
@@ -76,6 +82,7 @@ export function NetworkSettings() {
     setSaveStatus("idle");
     try {
       await updateNetworkSettings(settings);
+      setBaseline(JSON.stringify(settings));
       setSaveStatus("success");
       setTimeout(() => setSaveStatus("idle"), 2000);
     } catch {
@@ -84,6 +91,12 @@ export function NetworkSettings() {
       setIsSaving(false);
     }
   };
+
+  const networkDirty =
+    baseline !== null && JSON.stringify(settings) !== baseline;
+  useSettingsDirty("network", networkDirty, t("settings.dirty_label_network"), () =>
+    handleSave(),
+  );
 
   const handleTest = async () => {
     setIsTesting(true);

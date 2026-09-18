@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { useSettingsDirty } from "@/stores/settings-dirty-store";
 import { useQueryClient } from "@tanstack/react-query";
 import { updateGeneralSettings } from "@/api";
 import { cn } from "@/lib/utils";
@@ -38,6 +39,17 @@ export function GeneralSettings() {
 
   // 总开关的形态由 useScrollReadSetting 统一推导（没存过会按既有数据推导，行为不变）
   const { mode: scrollReadMode } = useScrollReadSetting();
+
+  /**
+   * 12-7：本页只有「后备 UA」是要点保存的（其余开关是即时写入），
+   * 所以脏判断只盯这一格；登记后切页/关设置时会问一句。
+   */
+  const uaDirty =
+    !!generalSettings &&
+    fallbackUA !== (generalSettings.fallbackUserAgent || "");
+  useSettingsDirty("general", uaDirty, t("settings.dirty_label_general"), () =>
+    handleSaveFallbackUA(),
+  );
 
   const handleSaveFallbackUA = async () => {
     if (!generalSettings) return;
