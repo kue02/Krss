@@ -719,8 +719,14 @@ export function AppearanceSettings() {
             >
               {t("appearance_shape.preview_card")}
             </div>
-            <span title={t("appearance_shape.preview_icon")}>
-              <FeedAvatar size={20} />
+            <span
+              title={t("appearance_shape.preview_icon")}
+              className="flex items-center gap-1.5"
+            >
+              {/* 两个都是真实抓下来的 favicon（一次性从现有源里挑的样本，已打包进前端）：
+                  左边本身是圆形 logo、右边本身是方形 —— 真实图标就长这样，比兜底的 RSS 图标好认 */}
+              <FeedAvatar src="/preview-icons/feed-round.png" size={20} />
+              <FeedAvatar src="/preview-icons/feed-square.png" size={20} />
             </span>
           </div>
         </div>
