@@ -585,7 +585,8 @@
     "picture_layout": "Picture layout",
     "picture_layout_masonry": "Masonry",
     "picture_layout_grid": "Grid",
-    "show_splitter": "Show divider"
+    "show_splitter": "Show divider (always visible)",
+    "show_splitter_hint": "Turn off to stop drawing the line (the hover drag indicator is unaffected); column widths are kept"
   },
   "folder": {
     "create": "New category",
@@ -791,7 +792,9 @@
     "revert_flag_unread": "unread",
     "revert_include_starred": "Also unstar entries this rule starred ({{count}})",
     "revert_selected_action": "Revert {{count}} selected",
-    "revert_running": "Reverting…"
+    "revert_running": "Reverting…",
+    "scope_all_feeds": "All feeds",
+    "scope_selected_count": "{{count}} feeds selected"
   },
   "search": {
     "title": "Search",

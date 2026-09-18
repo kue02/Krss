@@ -145,17 +145,19 @@ export function RevertFilterDialog({
                   {t("automation.revert_impact_empty")}
                 </div>
               )}
+              {/* 12-13：整行都要能点（用户反馈勾选框在第一行、名称在第二行，只能全选/全不选）
+                  —— flex 强制「勾选框 + 文字」同一行，文字块 min-w-0 截断 */}
               {(items ?? []).map((item) => (
                 <Checkbox
                   key={item.entryId}
                   isSelected={selected.has(item.entryId)}
                   onChange={(isSelected) => toggleOne(item.entryId, isSelected)}
-                  className="w-full items-start"
+                  className="flex w-full cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-secondary/40"
                 >
-                  <Checkbox.Control>
+                  <Checkbox.Control className="shrink-0">
                     <Checkbox.Indicator />
                   </Checkbox.Control>
-                  <Checkbox.Content className="min-w-0">
+                  <Checkbox.Content className="min-w-0 flex-1">
                     <div className="truncate text-sm" title={item.title}>
                       {item.title || item.entryId}
                     </div>

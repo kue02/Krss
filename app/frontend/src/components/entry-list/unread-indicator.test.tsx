@@ -7,6 +7,9 @@ import { cleanup, render, screen } from "@testing-library/react";
  */
 const settings: Record<string, unknown> = { unreadStyle: "badge" };
 
+/** 12-2 起标记是挂在「条目图标」上的 —— 测试里给个假图标当锚点 */
+const icon = <span data-testid="entry-icon" />;
+
 vi.mock("@/hooks/useUISettings", async () => {
   const actual = await vi.importActual<typeof import("@/hooks/useUISettings")>(
     "@/hooks/useUISettings",
@@ -31,32 +34,42 @@ afterEach(() => {
 describe("已读/未读标记", () => {
   it("角标档：未读渲染 HeroUI Badge，已读什么都不渲染", () => {
     settings.unreadStyle = "badge";
-    const { unmount } = render(<UnreadIndicator unread />);
-    expect(
-      document.querySelector('[data-unread-marker="badge"]'),
-    ).not.toBeNull();
+    const { unmount } = render(<UnreadIndicator unread>{icon}</UnreadIndicator>);
+    const badge = document.querySelector('[data-unread-marker="badge"]');
+    expect(badge).not.toBeNull();
     expect(document.querySelector('[data-unread-marker="dot"]')).toBeNull();
     expect(screen.getByText("entry.unread")).toBeTruthy();
+    // 挂在图标上：图标还在，外面是 HeroUI 的 Badge.Anchor
+    expect(screen.getByTestId("entry-icon")).toBeTruthy();
+    expect(document.querySelector('[data-slot="badge-anchor"]')).not.toBeNull();
+    expect(document.querySelector('[data-slot="badge"]')).not.toBeNull();
+    // 位置：用户 12-2 明确要「图标左上角」
+    expect(badge!.className).toContain("top-left");
     unmount();
 
-    render(<UnreadIndicator unread={false} />);
+    render(<UnreadIndicator unread={false}>{icon}</UnreadIndicator>);
     expect(
       document.querySelector('[data-unread-marker="badge"]'),
     ).toBeNull();
+    expect(screen.getByTestId("entry-icon")).toBeTruthy();
   });
 
   it("小圆点档：渲染圆点、不出角标", () => {
     settings.unreadStyle = "dot";
-    render(<UnreadIndicator unread />);
-    expect(document.querySelector('[data-unread-marker="dot"]')).not.toBeNull();
+    render(<UnreadIndicator unread>{icon}</UnreadIndicator>);
+    const dot = document.querySelector('[data-unread-marker="dot"]');
+    expect(dot).not.toBeNull();
     expect(document.querySelector('[data-unread-marker="badge"]')).toBeNull();
+    // 点状徽标 = 官方「空内容 Badge」，不该有文字
+    expect(dot!.textContent).toBe("");
   });
 
   it("变灰档：组件不出任何标记（透明度交给 unreadRowClass）", () => {
     settings.unreadStyle = "dim";
-    render(<UnreadIndicator unread />);
+    render(<UnreadIndicator unread>{icon}</UnreadIndicator>);
     expect(document.querySelector('[data-unread-marker="dot"]')).toBeNull();
     expect(document.querySelector('[data-unread-marker="badge"]')).toBeNull();
+    expect(screen.getByTestId("entry-icon")).toBeTruthy();
   });
 
   it("unreadRowClass：只有「变灰」档 + 已读 + 未加星 + 未选中才降透明度", () => {

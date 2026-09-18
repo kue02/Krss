@@ -216,7 +216,9 @@ function RuleRow({
           )}
         </div>
 
-        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+        {/* 12-8：条件/动作在左列，「命中」固定在右列 —— 两行的 x 位置跨行一致，才跟上面的列对得齐 */}
+        <div className="mt-1 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
           <span className="max-w-full truncate font-mono">
             {describeConditions(rule.conditions ?? [], t)}
           </span>
@@ -240,7 +242,7 @@ function RuleRow({
           用户看不出整块能点（11-17）。现在整块收进一个 HeroUI Button，配 chevron 当可点信号，
           hover 有底色，tooltip 说清点了会看到什么。
         */}
-        <div className="mt-1.5 flex items-center text-[11px]">
+        <div className="flex items-center justify-end text-[11px]">
           <Tooltip>
             <TooltipTrigger>
               <Button
@@ -278,6 +280,7 @@ function RuleRow({
             </TooltipTrigger>
             <TooltipContent>{t("automation.matches_title")}</TooltipContent>
           </Tooltip>
+        </div>
         </div>
       </div>
 

@@ -26,7 +26,7 @@ import { SidebarAccountBar } from "./SidebarAccountBar";
 import { StarredItem } from "./StarredItem";
 import { FeedCategory } from "./FeedCategory";
 import { ListBox } from "@heroui/react";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, RefreshCw, Trash2 } from "lucide-react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -395,6 +395,58 @@ export function Sidebar({
     onAddFeed: onAddClick ? () => onAddClick(contentType) : undefined,
   });
 
+  /**
+   * 12-9：分类 / 视图的右键「刷新」。
+   * 口径与中栏刷新一致 —— 把范围里涉及到的订阅交给同一个刷新接口（后端按范围刷）。
+   */
+  const handleRefreshScope = useCallback(
+    async (ids: string[], label: string) => {
+      // 范围为空（例如视图里选的是「全部订阅」）就整轮刷新
+      try {
+        await refreshFeeds(ids, false);
+        queryClient.invalidateQueries({ queryKey: ["entries"] });
+        queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
+        queryClient.invalidateQueries({ queryKey: ["feeds"] });
+        queryClient.invalidateQueries({ queryKey: ["refreshStatus"] });
+        showToast(
+          ids.length > 0
+            ? t("entry.refreshing_n_feeds", { count: ids.length })
+            : t("entry.refreshing_all"),
+        );
+      } catch {
+        showToast(t("entry.refresh_failed"));
+      }
+      void label;
+    },
+    [queryClient, t],
+  );
+
+  const handleRefreshFolder = useCallback(
+    (folderId: string) => {
+      const ids = (feeds ?? [])
+        .filter((feed) => feed.folderId === folderId)
+        .map((feed) => feed.id);
+      void handleRefreshScope(ids, "folder");
+    },
+    [feeds, handleRefreshScope],
+  );
+
+  /** 视图的范围（scopeType=all 时返回空数组 = 整轮刷新） */
+  const handleRefreshView = useCallback(
+    (view: { scopeType?: string; scopeId?: string; scopeIds?: string[] }) => {
+      let ids: string[] = [];
+      if (view.scopeType === "feed") {
+        ids = view.scopeIds?.length ? view.scopeIds : view.scopeId ? [view.scopeId] : [];
+      } else if (view.scopeType === "folder") {
+        ids = (feeds ?? [])
+          .filter((feed) => feed.folderId === view.scopeId)
+          .map((feed) => feed.id);
+      }
+      void handleRefreshScope(ids, "view");
+    },
+    [feeds, handleRefreshScope],
+  );
+
   // 侧栏右键「刷新」：只刷这一个源
   const handleRefreshFeed = useCallback(
     async (feedId: string) => {
@@ -555,6 +607,10 @@ export function Sidebar({
                             <span className="min-w-0 flex-1 truncate">{view.name}</span>
                           </ContextMenuLabel>
                           <ContextMenuSeparator />
+                          <ContextMenuItem onClick={() => handleRefreshView(view)}>
+                            <RefreshCw className="size-4 shrink-0 text-muted-foreground" />
+                            {t("actions.refresh")}
+                          </ContextMenuItem>
                           <ContextMenuItem onClick={() => openEdit(view)}>
                             <Pencil className="size-4 shrink-0 text-muted-foreground" />
                             {t("actions.edit")}
@@ -650,6 +706,7 @@ export function Sidebar({
                         onDelete={handleDeleteFolder}
                         onChangeType={handleChangeFolderType}
                         onBulkOverrides={handleBulkOverrides}
+                        onRefresh={handleRefreshFolder}
                       >
                         {listBoxMode ? (
                           <ListBox

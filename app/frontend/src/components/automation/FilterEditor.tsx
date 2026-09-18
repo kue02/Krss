@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Select } from "@/components/ui/select";
 import { ViewIconPicker } from "@/components/automation/ViewIconPicker";
+import { FeedScopePicker } from "@/components/automation/FeedScopePicker";
 import { CONTENT_TYPE_ORDER } from "@/lib/content-type-meta";
 import type { ContentType } from "@/types/api";
 import { useFeeds } from "@/hooks/useFeeds";
@@ -420,25 +421,21 @@ export function FilterEditor({
           {draft.scopeType === "feed" && (
             <div className="space-y-1">
               {/* 订阅范围可多选（用户 11-16）：勾几个源，规则/视图就作用在这几个源上 */}
-              <ToggleButtonGroup
-                aria-label={t("automation.scope")}
-                selectionMode="multiple"
-                selectedKeys={draft.scopeIds ?? (draft.scopeId ? [draft.scopeId] : [])}
-                onSelectionChange={(keys) =>
+              <FeedScopePicker
+                ariaLabel={t("automation.scope")}
+                values={draft.scopeIds ?? (draft.scopeId ? [draft.scopeId] : [])}
+                onValuesChange={(values) =>
                   update({
-                    scopeIds: [...keys].map(String),
+                    scopeIds: values,
                     // 多选后不再写单选字段，免得两个字段各说一套
                     scopeId: undefined,
                   })
                 }
-                className="flex max-h-56 flex-wrap gap-1 overflow-y-auto rounded-md border border-border p-2"
-              >
-                {(feeds ?? []).map((feed) => (
-                  <ToggleButton key={feed.id} id={feed.id} className="text-xs">
-                    {feed.title}
-                  </ToggleButton>
-                ))}
-              </ToggleButtonGroup>
+                options={(feeds ?? []).map((feed) => ({
+                  value: feed.id,
+                  label: feed.title,
+                }))}
+              />
               <div className="text-xs text-muted-foreground">
                 {t("automation.scope_feed_multi_hint")}
               </div>

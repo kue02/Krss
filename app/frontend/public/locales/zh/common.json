@@ -582,7 +582,8 @@
     "picture_layout": "图片布局",
     "picture_layout_masonry": "瀑布流",
     "picture_layout_grid": "网格",
-    "show_splitter": "显示分界限"
+    "show_splitter": "显示分界限（平时也画这条线）",
+    "show_splitter_hint": "关掉后不再画这条竖线（悬浮时的拖拽指示线不受影响），栏宽保留"
   },
   "folder": {
     "create": "新增分类",
@@ -788,7 +789,9 @@
     "revert_flag_unread": "未读",
     "revert_include_starred": "同时撤销规则加过的星标（{{count}} 条）",
     "revert_selected_action": "撤销选中的 {{count}} 条",
-    "revert_running": "撤销中…"
+    "revert_running": "撤销中…",
+    "scope_all_feeds": "全部订阅",
+    "scope_selected_count": "已选 {{count}} 个订阅"
   },
   "search": {
     "title": "搜索",

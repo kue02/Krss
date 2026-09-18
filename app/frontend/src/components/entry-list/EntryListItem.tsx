@@ -357,20 +357,22 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                 />
               )}
 
-              {/* 头像式 favicon（Folo 用 32px 的源图标当作者头像） */}
-              {showIcon ? (
-                <img
-                  src={`/icons/${feed.iconPath}`}
-                  alt=""
-                  width={32}
-                  height={32}
-                  loading="lazy"
-                  decoding="async"
-                  className="mt-1 size-8 shrink-0 rounded-full object-cover"
-                  onError={() => setIconError(true)}
-                />
-              ) : (
-                <div className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary text-muted-foreground/70">
+              {/* 头像式 favicon（Folo 用 32px 的源图标当作者头像）；
+                  未读标记（用户 12-2）用 HeroUI Badge 挂在它左上角 */}
+              <UnreadIndicator unread={isUnread} className="mt-1">
+                {showIcon ? (
+                  <img
+                    src={`/icons/${feed.iconPath}`}
+                    alt=""
+                    width={32}
+                    height={32}
+                    loading="lazy"
+                    decoding="async"
+                    className="size-8 shrink-0 rounded-full object-cover"
+                    onError={() => setIconError(true)}
+                  />
+                ) : (
+                  <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary text-muted-foreground/70">
                   {/* 源没给图标时，社交条目按平台给字形（Folo 这里显示作者头像） */}
                   {socialSource?.platform === "x" ? (
                     <svg
@@ -388,8 +390,9 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                   ) : (
                     <FeedIcon className="size-4" />
                   )}
-                </div>
-              )}
+                  </div>
+                )}
+              </UnreadIndicator>
 
               <div className="ml-2 min-w-0 flex-1">
                 {/* 作者行：源名 · @handle · 时间（Folo 这里 select-none，拖选只作用于正文） */}
@@ -397,7 +400,6 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                   <span className="truncate text-base font-semibold text-foreground">
                     {displayFeedName}
                   </span>
-                  <UnreadIndicator unread={isUnread} />
                   {/* Folo 会在源名后面挂 @handle（可点进作者主页）；
                       源名里已经带同一 handle 时不重复显示 */}
                   {socialSource &&
@@ -670,24 +672,25 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                   isUnread ? "text-muted-foreground" : "text-muted-foreground/70",
                 )}
               >
-                {showIcon ? (
-                  <img
-                    src={`/icons/${feed.iconPath}`}
-                    alt=""
-                    width={20}
-                    height={20}
-                    loading="lazy"
-                    decoding="async"
-                    className="size-5 shrink-0 rounded-[3px] object-contain"
-                    onError={() => setIconError(true)}
-                  />
-                ) : (
-                  <FeedIcon className="size-5 shrink-0 text-muted-foreground/50" />
-                )}
+                <UnreadIndicator unread={isUnread}>
+                  {showIcon ? (
+                    <img
+                      src={`/icons/${feed.iconPath}`}
+                      alt=""
+                      width={20}
+                      height={20}
+                      loading="lazy"
+                      decoding="async"
+                      className="size-5 shrink-0 rounded-[3px] object-contain"
+                      onError={() => setIconError(true)}
+                    />
+                  ) : (
+                    <FeedIcon className="size-5 shrink-0 text-muted-foreground/50" />
+                  )}
+                </UnreadIndicator>
                 <span className="block min-w-0 truncate font-bold">
                   {displayFeedName}
                 </span>
-                <UnreadIndicator unread={isUnread} />
                 {publishedAt && (
                   <>
                     <span className="shrink-0 text-muted-foreground/40">·</span>

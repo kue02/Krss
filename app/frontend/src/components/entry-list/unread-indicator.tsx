@@ -1,51 +1,51 @@
-import { Badge } from "@heroui/react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { Badge } from "@heroui/react";
 import { useUISettingKey } from "@/hooks/useUISettings";
 import { cn } from "@/lib/utils";
 
 /**
- * 已读/未读的全局统一标记（用户 11-14）。
+ * 已读/未读标记（用户 11-14 统一，12-2 改成挂到**条目图标的左上角**）。
  *
- * 以前是两个视图各写一套：社交媒体视图在条目最左侧画一个小蓝点
- * （`absolute -left-0.5 top-8 size-2 rounded-full bg-primary`），其它视图把已读的整卡降透明度。
- * 现在样式由 设置 → 外观 → 阅读 →「未读标记」统一决定，两个渲染分支共用这一个组件 + 一个行类助手，
- * 免得再各写一套、日后漂成两个样子。
+ * 用户 12-2 原话：「未读 Badge，在左上角设置『点状徽标』」+「去看 heroui 的这个组件，
+ * 就是在条目的那个图标左上角」—— 用的就是 HeroUI Badge 官方的 `Badge.Anchor` +
+ * `placement="top-left"`；官方「点状徽标」= 空内容的 Badge（`<Badge />`）。
  *
- * - badge：HeroUI `Badge`（用户点名要用的组件，也是默认）
- * - dot：小圆点（沿用社交媒体视图原来的观感）
- * - dim：已读变灰 —— **整卡透明度不能由本组件负责**，由 `unreadRowClass()` 给行上用
+ * 三个档（设置 → 外观 → 阅读 →「未读标记」）：
+ * - badge：Badge 带「未读」字样
+ * - dot：空内容的 Badge（点状徽标）
+ * - dim：不在图标上挂东西，改为整行降透明度（由 `unreadRowClass()` 负责）
  */
 export function UnreadIndicator({
   unread,
+  children,
   className,
 }: {
   unread: boolean;
+  /** 被标记的图标（favicon / 头像）—— 徽标定位在它左上角 */
+  children?: ReactNode;
   className?: string;
 }) {
   const style = useUISettingKey("unreadStyle");
   const { t } = useTranslation();
-  if (!unread || style === "dim") return null;
 
-  if (style === "dot") {
-    return (
-      <span
-        aria-hidden="true"
-        data-unread-marker="dot"
-        className={cn("size-2 shrink-0 rounded-full bg-primary", className)}
-      />
-    );
+  if (style === "dim" || !unread || !children) {
+    return <div className={cn("shrink-0", className)}>{children}</div>;
   }
 
   return (
-    <Badge
-      color="accent"
-      size="sm"
-      variant="soft"
-      data-unread-marker="badge"
-      className={cn("shrink-0 align-middle", className)}
-    >
-      {t("entry.unread")}
-    </Badge>
+    <Badge.Anchor className={cn("relative shrink-0", className)}>
+      {children}
+      <Badge
+        placement="top-left"
+        color="accent"
+        size="sm"
+        variant="soft"
+        data-unread-marker={style === "dot" ? "dot" : "badge"}
+      >
+        {style === "dot" ? null : t("entry.unread")}
+      </Badge>
+    </Badge.Anchor>
   );
 }
 

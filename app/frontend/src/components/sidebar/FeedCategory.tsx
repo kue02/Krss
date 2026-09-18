@@ -14,7 +14,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { ChevronIcon, FolderIcon } from "@/components/ui/icons";
-import { FolderCog, Pencil, Tags, Trash2 } from "lucide-react";
+import { FolderCog, Pencil, RefreshCw, Tags, Trash2 } from "lucide-react";
 import { useContextMenu } from "@/hooks/useContextMenu";
 import { useCategoryState } from "@/hooks/useCategoryState";
 import { Ripple } from "m3-ripple";
@@ -30,6 +30,8 @@ interface FeedCategoryProps {
   isSelected?: boolean;
   onSelect?: () => void;
   onBulkOverrides?: (folderId: string) => void;
+  /** 12-9：刷新这个分类下的所有订阅 */
+  onRefresh?: (folderId: string) => void;
   onRename?: (folderId: string) => void;
   onDelete?: (folderId: string) => void;
   onChangeType?: (folderId: string, type: ContentType) => void;
@@ -44,6 +46,7 @@ export function FeedCategory({
   isSelected = false,
   onSelect,
   onBulkOverrides,
+  onRefresh,
   onRename,
   onDelete,
   onChangeType,
@@ -125,6 +128,12 @@ export function FeedCategory({
             <ContextMenuItem onClick={() => onRename(folderId)}>
               <Pencil className="size-4 shrink-0 text-muted-foreground" />
               {t("actions.rename")}
+            </ContextMenuItem>
+          )}
+          {onRefresh && (
+            <ContextMenuItem onClick={() => onRefresh(folderId)}>
+              <RefreshCw className="size-4 shrink-0 text-muted-foreground" />
+              {t("actions.refresh")}
             </ContextMenuItem>
           )}
           {onBulkOverrides && (

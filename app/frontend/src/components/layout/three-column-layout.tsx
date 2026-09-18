@@ -269,8 +269,9 @@ export function ThreeColumnLayout({
         {/* 第一栏的分界限（订阅栏 ↔ 中栏）：可以按视图关掉 —— 用户 2026-09-18 要求
             「切到图片/社交媒体视图时就不显示」；关掉只是不画这条线/不给拖拽把手，
             该栏宽度仍按你上次拖好的值保留。 */}
-        {showSidebar && showFeedSplitter && (
+        {showSidebar && (
           <PanelSplitter
+            visible={showFeedSplitter}
             isDragging={feedColResizable.isDragging}
             onPointerDown={feedColResizable.separatorProps.onPointerDown}
             onTouchStart={feedColResizable.separatorProps.onTouchStart}
