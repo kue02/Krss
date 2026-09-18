@@ -93,7 +93,7 @@ function RowMenu({
       <Dropdown.Trigger
         aria-label={label}
         className={cn(
-          "inline-flex size-7 items-center justify-center rounded-md",
+          "inline-flex size-7 items-center justify-center rounded-[var(--radius)]",
           "text-muted-foreground transition-colors",
           "hover:bg-secondary hover:text-foreground data-[pressed]:bg-secondary",
         )}
@@ -511,7 +511,7 @@ export function AutomationSettings() {
           <Button
             size="sm"
             variant="ghost"
-            className="rounded-md border border-border"
+            className="rounded-[var(--radius)] border border-border"
             onPress={() => {
               setNlError(null);
               setNlOpen(true);
@@ -537,7 +537,7 @@ export function AutomationSettings() {
         <Button
           size="sm"
           variant="ghost"
-          className="shrink-0 rounded-md border border-border"
+          className="shrink-0 rounded-[var(--radius)] border border-border"
           onPress={() => {
             clearView();
             setMutedOnly(true);
@@ -612,7 +612,7 @@ export function AutomationSettings() {
           <Button
             size="sm"
             variant="ghost"
-            className="rounded-md border border-border"
+            className="rounded-[var(--radius)] border border-border"
             onPress={openNewView}
           >
             + {t("automation.new_view")}
@@ -697,7 +697,7 @@ export function AutomationSettings() {
                   rows={3}
                   placeholder={t("automation.nl_placeholder")}
                   className={cn(
-                    "mt-2 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm",
+                    "mt-2 w-full rounded-field border border-border bg-background px-2 py-1.5 text-sm",
                     "placeholder:text-muted-foreground/50",
                     "focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20",
                   )}

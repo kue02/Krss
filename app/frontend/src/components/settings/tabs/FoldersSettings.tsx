@@ -123,7 +123,7 @@ export function FoldersSettings() {
             onClick={handleDeleteSelected}
             disabled={selectedIds.size === 0 || isDeleting}
             className={cn(
-              "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+              "flex items-center gap-1.5 rounded-[var(--radius)] px-3 py-1.5 text-sm font-medium transition-colors",
               "bg-destructive text-destructive-foreground hover:bg-destructive/90",
               "disabled:cursor-not-allowed disabled:opacity-50",
             )}

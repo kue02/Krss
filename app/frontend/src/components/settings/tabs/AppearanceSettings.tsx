@@ -34,6 +34,8 @@ import { UnreadBadgeCustomizer } from "@/components/settings/tabs/UnreadBadgeCus
 import { readingFonts } from "@/lib/reading-fonts";
 import { updateAppearanceSettings } from "@/api";
 import { cn } from "@/lib/utils";
+import { Button, Input } from "@heroui/react";
+import { FeedAvatar } from "@/components/ui/feed-avatar";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Select } from "@/components/ui/select";
 import {
@@ -164,7 +166,8 @@ export function AppearanceSettings() {
   const showLineNumbers = useUISettingKey("showLineNumbers");
   const uiScale = useUISettingKey("uiScale");
   const quoteStyle = useUISettingKey("quoteStyle");
-  const buttonRadius = useUISettingKey("buttonRadius");
+  const componentRadius = useUISettingKey("componentRadius");
+  const fieldRadius = useUISettingKey("fieldRadius");
   const iconRadius = useUISettingKey("iconRadius");
   const unreadStyle = useUISettingKey("unreadStyle");
   const sidebarFeedAppearance = useUISettingKey("sidebarFeedAppearance");
@@ -180,7 +183,8 @@ export function AppearanceSettings() {
     setShowLineNumbers,
     setUiScale,
     setQuoteStyle,
-    setButtonRadius,
+    setComponentRadius,
+    setFieldRadius,
     setIconRadius,
     setUnreadStyle,
     setSidebarFeedAppearance,
@@ -371,18 +375,30 @@ export function AppearanceSettings() {
   );
 
   /**
-   * 12-18：圆角档位 —— 值直接照 HeroUI 官方刻度（`--radius`: .5rem ⇒ xs/sm/md/lg/xl = 2/4/6/8/12px）。
-   * 按钮与订阅图标分开设置（用户 2026-09-18 明确：「按钮跟 feed 图标分开设置，按照 HeroUI 里面的那个做」）。
+   * 18 批：圆角档位 —— **三个旋钮共用同一套刻度**，值照 HeroUI 官方刻度
+   * （`--radius`: .5rem ⇒ 直角 0 / XS 2 / SM 4 / 默认 8 / LG 10 / XL 12 / 全圆）。
+   * 只有「默认档」的文案各自不同：组件圆角默认 = 出厂 8px；表单圆角默认 = 跟随组件（×1.5）；
+   * 订阅图标默认 = 跟随组件（各处既有的 3/4px，12-18 用户要求与组件分开设）。
    */
-  const radiusOptions = [
-    { value: "default", label: t("appearance_shape.radius_default") },
+  const radiusScale = [
     { value: "none", label: t("appearance_shape.radius_none") },
     { value: "xs", label: t("appearance_shape.radius_xs") },
     { value: "sm", label: t("appearance_shape.radius_sm") },
-    { value: "md", label: t("appearance_shape.radius_md") },
     { value: "lg", label: t("appearance_shape.radius_lg") },
     { value: "xl", label: t("appearance_shape.radius_xl") },
     { value: "full", label: t("appearance_shape.radius_full") },
+  ];
+  const componentRadiusOptions = [
+    { value: "default", label: t("appearance_shape.radius_default_component") },
+    ...radiusScale,
+  ];
+  const fieldRadiusOptions = [
+    { value: "default", label: t("appearance_shape.radius_default_field") },
+    ...radiusScale,
+  ];
+  const iconRadiusOptions = [
+    { value: "default", label: t("appearance_shape.radius_default_icon") },
+    ...radiusScale,
   ];
 
   return (
@@ -621,7 +637,7 @@ export function AppearanceSettings() {
         </div>
       </section>
 
-      {/* 形状 —— 圆角（12-18：按钮与订阅图标分开设置，档位照 HeroUI 官方刻度） */}
+      {/* 形状 —— 圆角（18 批：组件 / 表单 / 订阅图标 三个旋钮，档位照 HeroUI 官方刻度） */}
       <section>
         <div className="mb-3">
           <div className="text-sm font-medium">
@@ -633,24 +649,86 @@ export function AppearanceSettings() {
         </div>
 
         <div className="space-y-3">
-          <SettingRow label={t("appearance_shape.button_radius")}>
+          <SettingRow label={t("appearance_shape.component_radius")}>
             <Select
-              className="w-44 shrink-0"
-              ariaLabel={t("appearance_shape.button_radius")}
-              value={buttonRadius}
-              onChange={(value) => setButtonRadius(value as RadiusPreset)}
-              options={radiusOptions}
+              className="w-56 shrink-0"
+              ariaLabel={t("appearance_shape.component_radius")}
+              value={componentRadius}
+              onChange={(value) => setComponentRadius(value as RadiusPreset)}
+              options={componentRadiusOptions}
+            />
+          </SettingRow>
+          <SettingRow label={t("appearance_shape.field_radius")}>
+            <Select
+              className="w-56 shrink-0"
+              ariaLabel={t("appearance_shape.field_radius")}
+              value={fieldRadius}
+              onChange={(value) => setFieldRadius(value as RadiusPreset)}
+              options={fieldRadiusOptions}
             />
           </SettingRow>
           <SettingRow label={t("appearance_shape.icon_radius")}>
             <Select
-              className="w-44 shrink-0"
+              className="w-56 shrink-0"
               ariaLabel={t("appearance_shape.icon_radius")}
               value={iconRadius}
               onChange={(value) => setIconRadius(value as RadiusPreset)}
-              options={radiusOptions}
+              options={iconRadiusOptions}
             />
           </SettingRow>
+        </div>
+
+        {/*
+          实时预览（照 HeroUI 主题页那套）：三个旋钮写的是 CSS 变量（--radius / --field-radius /
+          --ui-icon-radius），所以这里**不需要任何联动代码** —— 旋钮一改，下面这几个现成组件当场跟着变。
+          预览是只读的（不可点、不进 Tab 序），点它不会改任何设置。
+        */}
+        <div className="mt-3 rounded-2xl border border-border/60 p-3">
+          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+            <div className="text-xs font-medium">
+              {t("appearance_shape.preview_title")}
+            </div>
+            <div className="text-[11px] text-muted-foreground">
+              {t("appearance_shape.preview_hint")}
+            </div>
+          </div>
+          <div inert className="flex select-none flex-wrap items-center gap-3">
+            <Button size="sm" excludeFromTabOrder>
+              {t("appearance_shape.preview_button")}
+            </Button>
+            <Input
+              className="w-28"
+              placeholder={t("appearance_shape.preview_input")}
+              tabIndex={-1}
+              readOnly
+            />
+            <Select
+              className="w-24 shrink-0"
+              ariaLabel={t("appearance_shape.preview_select")}
+              value="preview"
+              onChange={() => {}}
+              options={[
+                { value: "preview", label: t("appearance_shape.preview_select") },
+              ]}
+            />
+            {/* 卡片照 HeroUI 自己的规则：`min(32px, var(--radius-3xl))`（card.css 就是这条），
+                所以它跟着「组件圆角」走、并且在 XL 那档封顶在 32px */}
+            <div
+              className="border border-border bg-card px-3 py-2 text-xs"
+              style={{ borderRadius: "min(32px, var(--radius-3xl))" }}
+            >
+              {t("appearance_shape.preview_card")}
+            </div>
+            <span
+              title={t("appearance_shape.preview_icon")}
+              className="flex items-center gap-1.5"
+            >
+              {/* 两个都是真实抓下来的 favicon（一次性从现有源里挑的样本，已打包进前端）：
+                  左边本身是圆形 logo、右边本身是方形 —— 真实图标就长这样，比兜底的 RSS 图标好认 */}
+              <FeedAvatar src="/preview-icons/feed-round.png" size={20} />
+              <FeedAvatar src="/preview-icons/feed-square.png" size={20} />
+            </span>
+          </div>
         </div>
       </section>
 
@@ -843,7 +921,7 @@ export function AppearanceSettings() {
                           handleRemoveType(type);
                         }}
                         className={cn(
-                          "ml-1 flex size-5 items-center justify-center rounded-md",
+                          "ml-1 flex size-5 items-center justify-center rounded-[var(--radius)]",
                           "text-muted-foreground/50 transition-colors",
                           "hover:bg-destructive/10 hover:text-destructive",
                         )}
@@ -873,7 +951,7 @@ export function AppearanceSettings() {
                       type="button"
                       onClick={() => handleAddType(type)}
                       className={cn(
-                        "flex items-center gap-2 rounded-lg border border-dashed border-border/50 px-3 py-2",
+                        "flex items-center gap-2 rounded-[var(--radius)] border border-dashed border-border/50 px-3 py-2",
                         "text-muted-foreground/60 transition-colors",
                         "hover:border-primary/50 hover:bg-primary/5 hover:text-foreground",
                       )}

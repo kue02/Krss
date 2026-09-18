@@ -190,13 +190,13 @@ export function RSSHubSettings() {
           value={baseUrl}
           onChange={(event) => setBaseUrl(event.target.value)}
           placeholder="https://rsshub.example.com"
-          className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none transition-colors duration-200 focus:border-accent"
+          className="w-full rounded-field border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none transition-colors duration-200 focus:border-accent"
         />
         <input
           value={accessKey}
           onChange={(event) => setAccessKey(event.target.value)}
           placeholder={t("settings.rsshub_access_key_placeholder")}
-          className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none transition-colors duration-200 focus:border-accent sm:max-w-[220px]"
+          className="w-full rounded-field border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none transition-colors duration-200 focus:border-accent sm:max-w-[220px]"
         />
       </div>
 

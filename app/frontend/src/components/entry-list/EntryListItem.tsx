@@ -564,7 +564,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                     type="button"
                     title={entry.starred ? t("entry.remove_from_starred") : t("entry.add_to_starred")}
                     onClick={() => markAsStarred({ id: entry.id, starred: !entry.starred })}
-                    className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
+                    className="flex size-7 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
                   >
                     <Star className={cn("size-4", entry.starred && "fill-amber-500 text-amber-500")} />
                   </button>
@@ -572,7 +572,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                     type="button"
                     title={isUnread ? t("entry.mark_read") : t("entry.mark_unread")}
                     onClick={() => markAsRead({ id: entry.id, read: isUnread })}
-                    className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
+                    className="flex size-7 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
                   >
                     {isUnread ? <Check className="size-4" /> : <Undo2 className="size-4" />}
                   </button>
@@ -583,7 +583,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                         target="_blank"
                         rel="noopener noreferrer"
                         title={t("entry.open_original")}
-                        className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
+                        className="flex size-7 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
                       >
                         <ExternalLink className="size-4" />
                       </a>
@@ -593,7 +593,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                         onClick={() =>
                           void copyToClipboard(entry.url!, t("entry.copied_link"))
                         }
-                        className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
+                        className="flex size-7 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
                       >
                         <Link2 className="size-4" />
                       </button>

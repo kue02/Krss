@@ -888,13 +888,19 @@ body.mobile-document-scroll-locked {
 }
 
 /* ------------------------------------------------------------------
- * 12-18 圆角（按钮 / 订阅图标分开设置）
- * 档位照 HeroUI 官方刻度：--radius: .5rem ⇒ xs 2 / sm 4 / md 6 / lg 8 / xl 12
- * 只在 <html> 带上属性时才生效 ⇒ 默认状态完全不碰 HeroUI 自己的圆角。
+ * 18 批：圆角统一（组件 / 表单 / 订阅图标 三个旋钮）
+ *
+ * 旋钮本身写的是 **HeroUI 自己的变量**（`--radius` / `--field-radius`，落在 <html> 上），
+ * 所有读它们的组件一起变，不必逐个组件改。这里只留两条「组件内部取的不是 --radius」的收口：
+ *
+ * 1) HeroUI 的 `Button` 自己用的是 `calc(var(--radius) * 3)`（出厂 24px），
+ *    不拉齐就会出现「组件圆角改了、按钮却没跟」。属性只在**非默认档**出现 ⇒ 默认状态一个字都不碰。
+ * 2) 订阅图标（12-18 的独立档位，用户要求与组件分开设）。
+ *
  * 未分层书写是故意的：HeroUI 的组件样式在 @layer components 里，未分层优先级更高。
  * ------------------------------------------------------------------ */
-html[data-button-radius] [data-slot="button"] {
-  border-radius: var(--ui-button-radius);
+html[data-component-radius] [data-slot="button"] {
+  border-radius: var(--radius);
 }
 
 html[data-icon-radius] [data-slot="feed-avatar"],

@@ -257,7 +257,7 @@ export function GeneralSettings() {
               disabled={settingsDisabled}
               placeholder={t("settings.fallback_ua_placeholder")}
               className={cn(
-                "h-9 w-64 max-w-full rounded-md border border-border bg-background px-3 text-sm",
+                "h-9 w-64 max-w-full rounded-field border border-border bg-background px-3 text-sm",
                 "placeholder:text-muted-foreground/50",
                 "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
               )}
@@ -267,7 +267,7 @@ export function GeneralSettings() {
               onClick={handleSaveFallbackUA}
               disabled={isSaving || settingsDisabled}
               className={cn(
-                "h-9 rounded-md px-3 text-sm font-medium transition-colors shrink-0",
+                "h-9 rounded-[var(--radius)] px-3 text-sm font-medium transition-colors shrink-0",
                 "bg-primary text-primary-foreground hover:bg-primary/90",
                 "disabled:cursor-not-allowed disabled:opacity-50",
                 saveStatus === "success" && "bg-green-600 hover:bg-green-600",

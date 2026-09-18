@@ -5,6 +5,11 @@ import { FeedIcon } from "./feed-icon";
 interface FeedAvatarProps {
   /** 后端抓下来的图标文件名（`/icons/<iconPath>`）；没有就退成通用 RSS 图标 */
   iconPath?: string;
+  /**
+   * 直接给完整路径（打包进前端的示例图标，如 `/preview-icons/…`）—— 给了就优先用它，不再拼 `/icons/`。
+   * 走同一个入口是为了不散出第二套「img + 失败兜底」的实现（这套逻辑项目里已经收口在这里一次）。
+   */
+  src?: string;
   /** 边长（px）。显式给 width/height 是为了让浏览器提前知道尺寸，避免图片到时撑动布局 */
   size?: number;
   /** 圆角风格：订阅行是圆角小方块，社交流是圆形头像 */
@@ -22,6 +27,7 @@ interface FeedAvatarProps {
  */
 export function FeedAvatar({
   iconPath,
+  src,
   size = 20,
   rounded = "square",
   className,
@@ -34,11 +40,12 @@ export function FeedAvatar({
    */
   const isCircle = rounded === "circle";
   const radius = isCircle ? "rounded-full" : "";
+  const resolved = src ?? (iconPath ? `/icons/${iconPath}` : null);
 
-  if (iconPath && !failed) {
+  if (resolved && !failed) {
     return (
       <img
-        src={`/icons/${iconPath}`}
+        src={resolved}
         alt={alt}
         width={size}
         height={size}

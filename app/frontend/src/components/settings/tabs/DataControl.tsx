@@ -348,7 +348,7 @@ export function DataControl() {
               onClick={handleImportClick}
               disabled={isImporting}
               className={cn(
-                "inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 text-sm font-medium",
+                "inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-[var(--radius)] border border-border bg-background px-4 text-sm font-medium",
                 "transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50",
               )}
             >
@@ -501,7 +501,7 @@ export function DataControl() {
             type="button"
             onClick={handleExport}
             className={cn(
-              "inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-4 text-sm font-medium",
+              "inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-[var(--radius)] border border-border bg-background px-4 text-sm font-medium",
               "transition-colors hover:bg-secondary",
             )}
           >
@@ -779,7 +779,7 @@ function ClearCacheItem({
           onClick={onClear}
           disabled={isClearing}
           className={cn(
-            "inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border px-4 text-sm font-medium",
+            "inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-[var(--radius)] border px-4 text-sm font-medium",
             "transition-colors disabled:cursor-not-allowed disabled:opacity-50",
             "border-red-300 bg-red-50 text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-950 dark:text-red-400 dark:hover:bg-red-900",
           )}

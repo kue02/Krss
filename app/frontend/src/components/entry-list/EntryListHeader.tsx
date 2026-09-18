@@ -79,7 +79,7 @@ export function EntryListHeader({
           <button
             type="button"
             onClick={onMenuClick}
-            className="flex size-11 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-item-hover -ml-1.5"
+            className="flex size-11 shrink-0 items-center justify-center rounded-[var(--radius)] transition-colors hover:bg-item-hover -ml-1.5"
           >
             <MenuIcon className="size-5" />
           </button>
@@ -93,7 +93,7 @@ export function EntryListHeader({
                 ? t("actions.hide_sidebar")
                 : t("actions.show_sidebar")
             }
-            className="flex size-11 shrink-0 items-center justify-center rounded-md transition-all duration-200 ease-[var(--ease-ios)] hover:bg-item-hover active:scale-95 -ml-1.5"
+            className="flex size-11 shrink-0 items-center justify-center rounded-[var(--radius)] transition-all duration-200 ease-[var(--ease-ios)] hover:bg-item-hover active:scale-95 -ml-1.5"
           >
             <MenuIcon className="size-5" />
           </button>

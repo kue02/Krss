@@ -68,7 +68,7 @@ export function CreateFolderDialog({
             onChange={(event) => setName(event.target.value)}
             placeholder={t("folder.name_placeholder")}
             className={cn(
-              "w-full rounded-md border border-border bg-background px-3 py-2 text-sm",
+              "w-full rounded-field border border-border bg-background px-3 py-2 text-sm",
               "focus:outline-none focus:ring-2 focus:ring-primary/50",
               "placeholder:text-muted-foreground",
             )}
@@ -78,7 +78,7 @@ export function CreateFolderDialog({
             <button
               type="button"
               onClick={() => onOpenChange(false)}
-              className="rounded-md border border-border bg-background px-4 py-2 text-sm font-medium hover:bg-secondary"
+              className="rounded-[var(--radius)] border border-border bg-background px-4 py-2 text-sm font-medium hover:bg-secondary"
             >
               {t("actions.cancel")}
             </button>
@@ -86,7 +86,7 @@ export function CreateFolderDialog({
               type="submit"
               disabled={!canSubmit}
               className={cn(
-                "rounded-md px-4 py-2 text-sm font-medium transition-colors",
+                "rounded-[var(--radius)] px-4 py-2 text-sm font-medium transition-colors",
                 "bg-primary text-primary-foreground hover:bg-primary/90",
                 "disabled:cursor-not-allowed disabled:opacity-50",
               )}

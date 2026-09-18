@@ -144,7 +144,7 @@ export function FolderOverridesDialog({
             <button
               type="button"
               onClick={() => onOpenChange(false)}
-              className="rounded-md border border-border bg-background px-4 py-2 text-sm font-medium hover:bg-secondary"
+              className="rounded-[var(--radius)] border border-border bg-background px-4 py-2 text-sm font-medium hover:bg-secondary"
             >
               {t("actions.cancel")}
             </button>
@@ -152,7 +152,7 @@ export function FolderOverridesDialog({
               type="submit"
               disabled={feedIds.length === 0 || updateOverrides.isPending}
               className={cn(
-                "rounded-md px-4 py-2 text-sm font-medium transition-colors",
+                "rounded-[var(--radius)] px-4 py-2 text-sm font-medium transition-colors",
                 "bg-primary text-primary-foreground hover:bg-primary/90",
                 "disabled:cursor-not-allowed disabled:opacity-50",
               )}

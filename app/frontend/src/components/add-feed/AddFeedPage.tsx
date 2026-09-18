@@ -49,7 +49,7 @@ export function AddFeedPage({
         className={cn(
           "absolute left-4 top-4 z-10",
           "inline-flex items-center gap-1.5",
-          "rounded-lg px-3 py-1.5",
+          "rounded-[var(--radius)] px-3 py-1.5",
           "text-sm text-muted-foreground",
           "hover:bg-secondary/50 hover:text-foreground",
           "transition-colors duration-200",

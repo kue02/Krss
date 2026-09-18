@@ -46,7 +46,7 @@ export function ProfileModal({ open, onOpenChange }: ProfileModalProps) {
               <button
                 onClick={() => onOpenChange(false)}
                 className={cn(
-                  "rounded-md p-1.5 shrink-0",
+                  "rounded-[var(--radius)] p-1.5 shrink-0",
                   "text-muted-foreground hover:text-foreground hover:bg-secondary",
                   "transition-colors focus:outline-none",
                 )}
@@ -91,7 +91,7 @@ export function ProfileModal({ open, onOpenChange }: ProfileModalProps) {
             <button
               onClick={() => onOpenChange(false)}
               className={cn(
-                "rounded-md p-1.5",
+                "rounded-[var(--radius)] p-1.5",
                 "text-muted-foreground hover:text-foreground hover:bg-secondary",
                 "transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               )}

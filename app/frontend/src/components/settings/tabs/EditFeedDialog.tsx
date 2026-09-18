@@ -119,7 +119,7 @@ export function EditFeedDialog({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className={cn(
-                "w-full rounded-md border border-border bg-background px-3 py-2 text-sm",
+                "w-full rounded-field border border-border bg-background px-3 py-2 text-sm",
                 "focus:outline-none focus:ring-2 focus:ring-primary/50",
                 "placeholder:text-muted-foreground",
               )}
@@ -133,7 +133,7 @@ export function EditFeedDialog({
             </label>
             <div
               className={cn(
-                "w-full truncate rounded-md border border-border bg-secondary/50 px-3 py-2 text-sm",
+                "w-full truncate rounded-field border border-border bg-secondary/50 px-3 py-2 text-sm",
                 "text-muted-foreground",
               )}
               title={feed?.url}
@@ -169,7 +169,7 @@ export function EditFeedDialog({
               onChange={(e) => setSummaryPromptReminder(e.target.value)}
               rows={6}
               className={cn(
-                "min-h-28 w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm",
+                "min-h-28 w-full resize-y rounded-field border border-border bg-background px-3 py-2 text-sm",
                 "focus:outline-none focus:ring-2 focus:ring-primary/50",
                 "placeholder:text-muted-foreground",
               )}
@@ -246,7 +246,7 @@ export function EditFeedDialog({
               type="button"
               onClick={handleClose}
               className={cn(
-                "rounded-md px-4 py-2 text-sm font-medium transition-colors",
+                "rounded-[var(--radius)] px-4 py-2 text-sm font-medium transition-colors",
                 "border border-border bg-background hover:bg-secondary",
               )}
             >
@@ -258,7 +258,7 @@ export function EditFeedDialog({
                 !title.trim() || reminderTooLong || updateFeed.isPending
               }
               className={cn(
-                "rounded-md px-4 py-2 text-sm font-medium transition-colors",
+                "rounded-[var(--radius)] px-4 py-2 text-sm font-medium transition-colors",
                 "bg-primary text-primary-foreground hover:bg-primary/90",
                 "disabled:cursor-not-allowed disabled:opacity-50",
               )}

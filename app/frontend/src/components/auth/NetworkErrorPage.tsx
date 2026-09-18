@@ -36,7 +36,7 @@ export function NetworkErrorPage({ onRetry }: NetworkErrorPageProps) {
           type="button"
           onClick={onRetry}
           className={cn(
-            "inline-flex h-10 w-full items-center justify-center rounded-md",
+            "inline-flex h-10 w-full items-center justify-center rounded-[var(--radius)]",
             "bg-primary px-4 py-2 text-sm font-medium text-primary-foreground",
             "hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2",
             "focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
