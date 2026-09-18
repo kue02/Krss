@@ -1,16 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { Reorder, useDragControls } from "framer-motion";
 import { useTranslation } from "react-i18next";
-import {
-  AlertDialog,
-  Button,
-  Dropdown,
-  Label,
-  Modal,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@heroui/react";
+import { AlertDialog, Button, Checkbox, Dropdown, Label, Modal, Tooltip, TooltipContent, TooltipTrigger } from "@heroui/react";
 import { ChevronRight, MoreHorizontal } from "lucide-react";
 import { GripVerticalIcon } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
@@ -842,15 +833,20 @@ export function AutomationSettings() {
                     : t("automation.delete_description")}
                 </div>
                 {pendingDelete?.kind !== "view" && (
+                  /* 12-20：这里原来是原生 <input type="checkbox">（自己画的），
+                     换成 HeroUI `Checkbox` —— 与「撤销影响」弹层里那个勾选框同一套（RevertFilterDialog）。 */
                   <label className="mt-3 flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={deleteWithRevert}
-                      onChange={(event) =>
-                        setDeleteWithRevert(event.target.checked)
-                      }
-                    />
-                    {t("automation.delete_with_revert")}
+                    <Checkbox
+                      isSelected={deleteWithRevert}
+                      onChange={setDeleteWithRevert}
+                    >
+                      <Checkbox.Control>
+                        <Checkbox.Indicator />
+                      </Checkbox.Control>
+                      <Checkbox.Content>
+                        {t("automation.delete_with_revert")}
+                      </Checkbox.Content>
+                    </Checkbox>
                   </label>
                 )}
               </AlertDialog.Body>
