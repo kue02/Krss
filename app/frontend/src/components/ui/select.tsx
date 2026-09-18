@@ -16,6 +16,8 @@ export interface SelectOption {
   label: string;
   /** 选项右侧的次要说明（例如命中数），可选 */
   hint?: string;
+  /** 该选项不可选（例如「第一版不支持」的 SSE 传输）：照常显示并注明原因，别偷偷藏起来 */
+  disabled?: boolean;
 }
 
 interface SelectProps {
@@ -89,7 +91,12 @@ export function Select({
       <HeroSelect.Popover>
         <ListBox>
           {options.map((option) => (
-            <ListBoxItem key={option.value} id={option.value} textValue={option.label}>
+            <ListBoxItem
+              key={option.value}
+              id={option.value}
+              textValue={option.label}
+              isDisabled={option.disabled}
+            >
               <span className="flex w-full items-center justify-between gap-3">
                 <span className="truncate">{option.label}</span>
                 {option.hint ? (

@@ -115,3 +115,20 @@ if (typeof globalThis.ResizeObserver === "undefined") {
     });
   }
 }
+
+/**
+ * jsdom 没有 `CSS` 命名空间，而 react-aria 在**打开下拉/弹层**时会调 `CSS.escape(...)`
+ *（`react-aria/dist/private/selection/utils.mjs` 的 `getItemElement` —— 用来按 `data-key` 找项）。
+ * 缺了它，任何「点开 HeroUI Select 看选项」的测试都会以
+ * `TypeError: Cannot read properties of undefined (reading 'escape')` 收场，
+ * 而那其实是**环境缺口**、不是组件 bug（真机浏览器里 `CSS` 一直在）。
+ *
+ * 这里只补 `escape` 这一个方法：测试断言的是「选项在不在、是不是禁用」，不需要真转义。
+ */
+if (typeof globalThis.CSS === "undefined") {
+  Object.defineProperty(globalThis, "CSS", {
+    value: { escape: (value: string) => value },
+    configurable: true,
+    writable: true,
+  });
+}

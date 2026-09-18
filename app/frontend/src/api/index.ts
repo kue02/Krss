@@ -50,6 +50,17 @@ import type {
   FilterWritePayload,
   FilterImpactResult,
 } from "@/types/filters";
+import type {
+  MCPFeedCreatePayload,
+  MCPInspectRequest,
+  MCPInspectResult,
+  MCPServer,
+  MCPServerWritePayload,
+  MCPOutboundStatus,
+  MCPOutboundTokenResponse,
+  MCPTestResult,
+  MCPToolsResponse,
+} from "@/types/mcp";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? "";
 // 21 批：gist_auth_token → krss_auth_token（readLocalValue 会把老键的值搬过来，不掉登录）
@@ -1424,3 +1435,119 @@ export async function importSettings(
     body: JSON.stringify(payload),
   });
 }
+
+// ---------- MCP 入向：MCP 取到的内容当 Feed 处理 ----------
+//
+// 连接与工具清单都在服务端管，前端只拿引用（与 Folo 的连接层形状一致）。
+// 物化层（MCP 返回值 → 条目）走声明式映射 + 强制预览，见 lib/mcp.ts。
+
+/**
+ * 连接列表。
+ * 后端可能回裸数组、也可能包一层 `{servers: []}`，这里统一成数组，调用方不用猜。
+ */
+export async function listMCPServers(): Promise<MCPServer[]> {
+  const data = await request<MCPServer[] | { servers: MCPServer[] | null }>(
+    "/api/mcp/servers",
+  );
+  if (Array.isArray(data)) return data;
+  return data?.servers ?? [];
+}
+
+export async function createMCPServer(
+  payload: MCPServerWritePayload,
+): Promise<MCPServer> {
+  return request<MCPServer>("/api/mcp/servers", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** headers 里传回掩码串 = 「这一项没改」，后端自己保留原值。 */
+export async function updateMCPServer(
+  id: string,
+  payload: MCPServerWritePayload,
+): Promise<MCPServer> {
+  return request<MCPServer>(`/api/mcp/servers/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * 删除连接。还有订阅在用的时候后端回 409 + 一句「还有 N 条订阅在用这个连接」，
+ * 调用方要把 ApiError.message 原样显示出来（不许吞）。
+ */
+export async function deleteMCPServer(id: string): Promise<void> {
+  return request<void>(`/api/mcp/servers/${id}`, { method: "DELETE" });
+}
+
+/** 连通性测试。永远 200：连不上也是 `connected: false` + error，不是请求失败。 */
+export async function testMCPServer(id: string): Promise<MCPTestResult> {
+  return request<MCPTestResult>(`/api/mcp/servers/${id}/test`, {
+    method: "POST",
+  });
+}
+
+/** 拉工具 + 资源清单，给建源向导选 */
+export async function listMCPServerTools(
+  id: string,
+): Promise<MCPToolsResponse> {
+  return request<MCPToolsResponse>(`/api/mcp/servers/${id}/tools`, {
+    method: "POST",
+  });
+}
+
+/**
+ * 干跑一次调用，回样本条目（预览前 5 条）+ 自动推断出的映射。
+ * 失败也是 200 + error 字段 —— 调用方要判 `result.error`，别只看请求有没有抛。
+ */
+export async function inspectMCPServer(
+  id: string,
+  payload: MCPInspectRequest,
+): Promise<MCPInspectResult> {
+  return request<MCPInspectResult>(`/api/mcp/servers/${id}/inspect`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * 建 MCP 订阅：复用既有的 POST /api/feeds，多带 sourceType=mcp + mcpConfig。
+ * 重复源后端回 409 `{error: "feed_exists"}`（与 RSS 同款）。
+ */
+export async function createMCPFeed(
+  payload: MCPFeedCreatePayload,
+): Promise<Feed> {
+  return request<Feed>("/api/feeds", {
+    method: "POST",
+    body: JSON.stringify({ sourceType: "mcp", ...payload }),
+  });
+}
+
+// ---------- MCP 出向：Krss 自己当 MCP 服务器 ----------
+
+export async function getMCPOutbound(): Promise<MCPOutboundStatus> {
+  return request<MCPOutboundStatus>("/api/mcp/outbound");
+}
+
+export async function updateMCPOutbound(payload: {
+  enabled: boolean;
+  writeEnabled: boolean;
+}): Promise<MCPOutboundStatus> {
+  return request<MCPOutboundStatus>("/api/mcp/outbound", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** 生成长期 token。明文只在这里回一次（库里只存哈希），界面必须显示一次并给复制。 */
+export async function createMCPOutboundToken(): Promise<MCPOutboundTokenResponse> {
+  return request<MCPOutboundTokenResponse>("/api/mcp/outbound/token", {
+    method: "POST",
+  });
+}
+
+export async function revokeMCPOutboundToken(): Promise<void> {
+  return request<void>("/api/mcp/outbound/token", { method: "DELETE" });
+}
+

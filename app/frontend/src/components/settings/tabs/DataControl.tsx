@@ -17,6 +17,7 @@ import {
 } from "@/api";
 import type { ClearAICacheResponse, ClearCacheResponse } from "@/api";
 import { cn } from "@/lib/utils";
+import { MCPOutboundSection } from "@/components/settings/tabs/MCPOutboundSection";
 import { pullSettingsFromServer } from "@/lib/settings-sync";
 import type { ImportResult, ImportTask } from "@/types/api";
 import type { SettingsExportPayload } from "@/types/settings";
@@ -652,6 +653,9 @@ export function DataControl() {
           </AlertDialog.Backdrop>
         </AlertDialog>
       </section>
+
+      {/* 出向：Krss 自己当 MCP 服务器（只读 tools + resources、长期 token） */}
+      <MCPOutboundSection />
 
       {/* Clear Cache Section */}
       <section>
