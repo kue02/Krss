@@ -120,6 +120,30 @@
 - [ ] **17-3 写操作**（默认关）：`mark_read` / `star_entry`，逐连接开关 + 按 MCP 规范标 `annotations`。
 - [ ] **17-4 验收手段**：把本机 Hermes 接上这个 MCP（已配客户端），真机验一遍「总结今天未读」「搜库里某关键词」。
 
+### 2.9 第十八批 · 圆角统一（照 HeroUI 主题那套旋钮 · 已拍板，**代码一行没动**）
+
+> 草图 v2（按你的修正重画，v1 那版「填充方式 + 形状」作废）：`~/Documents/test/gist-nextflux-ui/mockups/button-radius-v2.html`
+> 你的口径：「按钮这个没这么复杂，就是 heroUI 主题页（<https://heroui.com/en/themes>）这个页面的设置」+「只调样式，不调大小」。
+
+- [ ] **18-1 现状取证（为什么现在「没统一」）**：12-18 只在 `index.css` 写了 `html[data-button-radius] [data-slot="button"]` 与 `html[data-icon-radius] [data-slot="feed-avatar"|"feed-icon"]` 两条 —— **只影响 HeroUI 的 Button 与订阅图标**（手搓按钮不跟），且**完全没碰 HeroUI 自己的 token**：实测 `--radius` 始终 `.5rem`、`--field-radius` 始终 `calc(.5rem * 1.5)` → 输入框 / 下拉 / 卡片 / 浮层一律不跟。
+- [ ] **18-2 官方依据（已读 `@heroui/styles` 源码）**：Theme Builder 面板只有 6 个旋钮 **Accent · Base · Font Family · Radius · Radius Form · Theme**；token 为 `--radius: .5rem` 与 `--field-radius: calc(var(--radius) * 1.5)`（派生 `--radius-xs` ×.25 / `-xl` ×1.5 / `-2xl` ×2 / `-3xl` ×3 / `-4xl` ×4）；工具类 `.rounded-field { border-radius: var(--field-radius, …) }`；Button 官方变体已有 `primary · secondary · tertiary · outline · ghost · danger`（**不用自己发明**）。
+- [ ] **18-3 改法**：外观 → 形状 改成三个旋钮 —— **组件圆角**（`--radius`）/ **表单圆角**（`--field-radius`，默认「跟随组件 ×1.5」）/ **订阅图标圆角**（默认「跟随组件」，保留 12-18 你要的单独档）；档位用官方刻度（直角 0 / XS / SM / 默认 / LG / XL / 全圆，基准 `.5rem`）。
+      值写到 `<html>`（`style.setProperty`），**默认档把变量摘掉** ⇒ 恢复出厂、行为零变化。
+- [ ] **18-4 手搓件收口（分两批）**：第一批只收「按钮 + 表单」→ 改用 `rounded-[var(--radius)]` / `rounded-field`；`[data-slot="button"]` 那条也改读 `--radius`（否则「组件圆角改了、按钮却没跟」）；**`rounded-[19.2px]` 那 9 处是 Nextflux 浮层圆角（已对齐参考值）不动**；第二批再谈卡片 / 浮层。
+- [ ] **18-5 明确不做**：不改任何尺寸（高度 / 字号 / 内距）；不替按钮选 `variant`。
+- [ ] **18-6 验收口径**：改一档后真机量 **4 个组件**的 `borderRadius`（Button / Select 触发器 / 输入框 / 卡片）确认同步；改回默认后四个值都回到改之前。
+
+### 2.10 第十九批 · 高级「自动刷新历史」重做（已拍板，**代码一行没动**）
+
+> 草图：`~/Documents/test/gist-nextflux-ui/mockups/auto-refresh-history.html`（含滚动区示意）
+
+- [ ] **19-1 行改拆列**：时间 / 三个数字（新增·更新·失败）/ 状态 / 展开箭头各占一列，数字用等宽（现状是 20 条 720×34 的同款描边行，全挤在一句里且数字不对齐）。
+- [ ] **19-2 失败要跳出来**：失败行加红条 + 红数字；全成功那行给「全部成功」灰标作对照。
+- [ ] **19-3 展开后失败置顶**：按失败原因分组、可复制失败原因、可直接重试那 N 个源（现状是 77 行可排序表格，失败藏在里面要自己找）。
+- [ ] **19-4 顶部加筛选**：全部 / 只看失败。
+- [ ] **19-5 列表固定最大高度、内部滚动**（你补的要求）：否则 20 条一路向下会把「高级」里它下面的设置项顶下去。
+- [ ] **19-6 三条已定细节**：保留**固定最近 20 次**（不做可配）· 清空加 HeroUI `AlertDialog` 确认 · **手动刷新不记**（仍弹框）。
+
 ---
 
 ## 3. 待观察（缺样本 / 需人看一眼）
