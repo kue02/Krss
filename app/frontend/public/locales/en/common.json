@@ -180,7 +180,19 @@
     "auto_refresh_history_col_error": "Error",
     "auto_refresh_history_copy_error": "Copy error",
     "auto_refresh_history_copied": "Error copied",
-    "auto_refresh_history_copy_failed": "Copy failed"
+    "auto_refresh_history_copy_failed": "Copy failed",
+    "unsaved_title": "Unsaved changes",
+    "unsaved_body": "\"{{pages}}\" has unsaved changes. Leaving will discard them.",
+    "unsaved_stay": "Keep editing",
+    "unsaved_discard": "Discard",
+    "unsaved_save_leave": "Save and leave",
+    "saved_toast": "Saved",
+    "dirty_label_general": "General",
+    "dirty_label_network": "Network",
+    "dirty_label_ai": "AI",
+    "dirty_label_notify": "Notifications",
+    "dirty_label_rsshub": "RSSHub",
+    "dirty_label_profile": "Profile"
   },
   "theme": {
     "system": "Follow System",

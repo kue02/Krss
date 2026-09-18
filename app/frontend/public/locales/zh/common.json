@@ -180,7 +180,19 @@
     "auto_refresh_history_col_error": "错误",
     "auto_refresh_history_copy_error": "复制错误信息",
     "auto_refresh_history_copied": "已复制错误信息",
-    "auto_refresh_history_copy_failed": "复制失败"
+    "auto_refresh_history_copy_failed": "复制失败",
+    "unsaved_title": "有未保存的改动",
+    "unsaved_body": "「{{pages}}」还有没保存的改动。离开会丢掉这些改动。",
+    "unsaved_stay": "继续编辑",
+    "unsaved_discard": "放弃更改",
+    "unsaved_save_leave": "保存并离开",
+    "saved_toast": "已保存",
+    "dirty_label_general": "通用",
+    "dirty_label_network": "网络",
+    "dirty_label_ai": "AI",
+    "dirty_label_notify": "通知",
+    "dirty_label_rsshub": "RSSHub",
+    "dirty_label_profile": "个人资料"
   },
   "theme": {
     "system": "跟随系统",

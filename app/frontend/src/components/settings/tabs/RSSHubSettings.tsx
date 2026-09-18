@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useSettingsDirty } from "@/stores/settings-dirty-store";
 import { AlertDialog, Button } from "@heroui/react";
 import {
   getFeedMergePreview,
@@ -57,6 +58,8 @@ export function RSSHubSettings() {
   const savedBaseUrl = generalSettings?.rsshubBaseUrl ?? "";
   const savedAccessKey = generalSettings?.rsshubAccessKey ?? "";
   const isDirty = baseUrl !== savedBaseUrl || accessKey !== savedAccessKey;
+  // 12-7：把「这一页有未保存改动」登记给设置弹窗（切页/关闭时问一句）
+  useSettingsDirty("rsshub", isDirty, t("settings.dirty_label_rsshub"), () => handleSave());
 
   const pending = useMemo<PendingRewrite[]>(() => {
     const target = baseUrl.trim();

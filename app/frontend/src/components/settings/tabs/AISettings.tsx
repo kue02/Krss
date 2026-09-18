@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useSettingsDirty } from "@/stores/settings-dirty-store";
 import {
   getAISettings,
   updateAISettings,
@@ -94,6 +95,8 @@ export function AISettings() {
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** 12-7：加载/保存成功时的快照，用来判断「有没有未保存的改动」 */
+  const [baseline, setBaseline] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{
     success: boolean;
@@ -124,6 +127,9 @@ export function AISettings() {
       const data = await getAISettings();
       setSettings(data);
       setRequestOptionsText(formatRequestOptions(data.requestOptions));
+      setBaseline(
+        JSON.stringify([data, formatRequestOptions(data.requestOptions)]),
+      );
 
       const list =
         data.providers && data.providers.length > 0
@@ -364,6 +370,9 @@ export function AISettings() {
       const saved = await updateAISettings(payload);
       setSettings(saved);
       setRequestOptionsText(formatRequestOptions(saved.requestOptions));
+      setBaseline(
+        JSON.stringify([saved, formatRequestOptions(saved.requestOptions)]),
+      );
       if (saved.providers && saved.providers.length > 0) {
         setProviders(saved.providers);
         const active =
@@ -384,6 +393,12 @@ export function AISettings() {
       setIsSaving(false);
     }
   };
+
+  const aiDirty =
+    baseline !== null &&
+    settings !== null &&
+    JSON.stringify([settings, requestOptionsText]) !== baseline;
+  useSettingsDirty("ai", aiDirty, t("settings.dirty_label_ai"), handleSave);
 
   if (isLoading) {
     return (

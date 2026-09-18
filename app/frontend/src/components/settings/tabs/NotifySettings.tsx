@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useSettingsDirty } from "@/stores/settings-dirty-store";
 import { ApiError, testNotify, updateGeneralSettings } from "@/api";
 import { useGeneralSettings } from "@/hooks/useGeneralSettings";
 import { queryClient } from "@/lib/queryClient";
@@ -29,6 +30,8 @@ export function NotifySettings() {
 
   const savedUrl = generalSettings?.barkUrl ?? "";
   const isDirty = url.trim() !== savedUrl;
+  // 12-7：把「这一页有未保存改动」登记给设置弹窗（切页/关闭时问一句）
+  useSettingsDirty("notify", isDirty, t("settings.dirty_label_notify"), () => handleSave());
 
   const save = useCallback(
     async (nextUrl: string) => {

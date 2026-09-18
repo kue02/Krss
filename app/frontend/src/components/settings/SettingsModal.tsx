@@ -3,6 +3,12 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { SettingsSidebar } from "./SettingsSidebar";
+import { UnsavedSettingsDialog } from "./UnsavedSettingsDialog";
+import {
+  clearDirtySettings,
+  getDirtySettings,
+  useDirtySettings,
+} from "@/stores/settings-dirty-store";
 import { GeneralSettings } from "./tabs/GeneralSettings";
 import { AppearanceSettings } from "./tabs/AppearanceSettings";
 import { DataControl } from "./tabs/DataControl";
@@ -92,6 +98,55 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
     [childOverlayOpen],
   );
 
+  /**
+   * 12-7：表单型设置页（AI / 网络 / 通知 / RSSHub / 通用里的 UA / 资料）改完是「点保存才写库」，
+   * 所以切页或关设置之前要先问一句。即时型（开关/数量）的页不登记，不受影响。
+   */
+  const dirtyEntries = useDirtySettings();
+  const [pendingLeave, setPendingLeave] = React.useState<(() => void) | null>(null);
+  const [leaving, setLeaving] = React.useState(false);
+
+  const tryLeave = React.useCallback((action: () => void) => {
+    if (getDirtySettings().length > 0) {
+      setPendingLeave(() => action);
+      return;
+    }
+    action();
+  }, []);
+
+  const handleSaveAndLeave = React.useCallback(async () => {
+    const entries = getDirtySettings();
+    setLeaving(true);
+    try {
+      await Promise.all(entries.map((entry) => entry.save?.()));
+    } finally {
+      setLeaving(false);
+      clearDirtySettings();
+      const action = pendingLeave;
+      setPendingLeave(null);
+      action?.();
+    }
+  }, [pendingLeave]);
+
+  const handleDiscard = React.useCallback(() => {
+    clearDirtySettings();
+    const action = pendingLeave;
+    setPendingLeave(null);
+    action?.();
+  }, [pendingLeave]);
+
+  const unsavedDialog = (
+    <UnsavedSettingsDialog
+      open={pendingLeave !== null}
+      labels={dirtyEntries.map((entry) => entry.label)}
+      canSave={dirtyEntries.some((entry) => !!entry.save)}
+      busy={leaving}
+      onSaveAndLeave={handleSaveAndLeave}
+      onDiscard={handleDiscard}
+      onStay={() => setPendingLeave(null)}
+    />
+  );
+
   // Reset to general when modal opens
   useEffect(() => {
     if (open) {
@@ -157,7 +212,10 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
   // Mobile layout
   if (isMobile) {
     return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog
+      open={open}
+      onOpenChange={(next) => (next ? onOpenChange(true) : tryLeave(() => onOpenChange(false)))}
+    >
         <DialogContent
           className="!inset-0 !translate-x-0 !translate-y-0 h-dvh w-full max-w-none max-h-none rounded-none bg-background p-0 overflow-hidden gap-0"
           onInteractOutside={guardOutsideDismiss}
@@ -169,12 +227,12 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
               <Select
                 ariaLabel={t("settings.title")}
                 value={activeTab}
-                onChange={(value) => setActiveTab(value as SettingsTab)}
+                onChange={(value) => tryLeave(() => setActiveTab(value as SettingsTab))}
                 options={tabs.map((tab) => ({ value: tab.id, label: tab.label }))}
                 className="flex-1"
               />
               <button
-                onClick={() => onOpenChange(false)}
+                onClick={() => tryLeave(() => onOpenChange(false))}
                 className={cn(
                   "rounded-md p-1.5 shrink-0",
                   "text-muted-foreground hover:text-foreground hover:bg-secondary",
@@ -202,6 +260,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
             <div className="min-h-0 flex-1 overflow-auto px-4 py-4">
               {renderContent()}
             </div>
+            {unsavedDialog}
           </div>
         </DialogContent>
       </Dialog>
@@ -210,14 +269,20 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
 
   // Desktop layout
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => (next ? onOpenChange(true) : tryLeave(() => onOpenChange(false)))}
+    >
       <DialogContent
         className="w-[950px] h-[800px] max-w-[95vw] max-h-[90vh] p-0 overflow-hidden gap-0"
         onInteractOutside={guardOutsideDismiss}
         onEscapeKeyDown={guardEscape}
       >
         <div className="flex h-full">
-          <SettingsSidebar activeTab={activeTab} onTabChange={setActiveTab} />
+          <SettingsSidebar
+            activeTab={activeTab}
+            onTabChange={(tab) => tryLeave(() => setActiveTab(tab))}
+          />
 
           <div className="relative flex h-full min-w-0 flex-1 flex-col bg-background">
             {/* Header */}
@@ -231,10 +296,11 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
             <div className="flex-1 overflow-auto px-6 py-4">
               {renderContent()}
             </div>
+            {unsavedDialog}
 
             {/* Close button */}
             <button
-              onClick={() => onOpenChange(false)}
+              onClick={() => tryLeave(() => onOpenChange(false))}
               className={cn(
                 "absolute right-4 top-4 rounded-md p-1.5",
                 "text-muted-foreground hover:text-foreground hover:bg-secondary",
