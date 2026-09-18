@@ -1,8 +1,8 @@
 import { useTranslation } from "react-i18next";
+import { ToggleButton } from "@heroui/react";
 import { cn } from "@/lib/utils";
 import { StarIcon } from "@/components/ui/icons";
 import { feedItemStyles, sidebarItemIconStyles } from "./styles";
-import type { ContentType } from "@/types/api";
 
 interface StarredItemProps {
   isActive?: boolean;
@@ -14,7 +14,11 @@ interface StarredItemProps {
    * 并把它标出来，免得两个入口看起来一模一样。
    */
   viewOnly?: boolean;
-  contentType?: ContentType;
+  /**
+   * 12-6：合并两档星标后，这一行的行尾放一个「当前视图」开关 ——
+   * 打开 = 只显示当前内容类型下的星标（原来单独一行的「当前视图星标」）。
+   */
+  onToggleViewOnly?: () => void;
 }
 
 export function StarredItem({
@@ -22,7 +26,7 @@ export function StarredItem({
   count = 0,
   onClick,
   viewOnly = false,
-  contentType,
+  onToggleViewOnly,
 }: StarredItemProps) {
   const { t } = useTranslation();
 
@@ -35,13 +39,18 @@ export function StarredItem({
       <span className={sidebarItemIconStyles}>
         <StarIcon className="size-4 -translate-y-px text-amber-500" />
       </span>
-      <span className="grow">
-        {t(viewOnly ? "sidebar.starred_view" : "sidebar.starred")}
-      </span>
-      {viewOnly && contentType && (
-        <span className="shrink-0 rounded-[4px] border border-border/60 bg-secondary/40 px-1.5 py-px text-[11px] font-medium leading-4 text-muted-foreground">
-          {t(`content_type.${contentType}`)}
-        </span>
+      <span className="grow truncate">{t("sidebar.starred")}</span>
+      {/* 12-6：原来「当前视图星标」是单独一行，现在合并成一个行尾开关 */}
+      {onToggleViewOnly && (
+        <ToggleButton
+          size="sm"
+          isSelected={viewOnly}
+          onChange={onToggleViewOnly}
+          aria-label={t("sidebar.starred_view")}
+          className="shrink-0 px-1.5 py-0.5 text-[11px] leading-4"
+        >
+          {t("sidebar.starred_view_short")}
+        </ToggleButton>
       )}
       {/* 两档都带数量（用户 11-15）：上一档是当前内容类型下的星标数，下一档是全部星标数。
           样式与订阅行的未读数一致（同一处观感，别再各写一套） */}

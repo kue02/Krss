@@ -15,7 +15,8 @@
     "import_success": "OPML imported",
     "import_failed": "OPML import failed",
     "views": "Views",
-    "starred_view": "Starred in this view"
+    "starred_view": "Starred in this view",
+    "starred_view_short": "This view"
   },
   "content_type": {
     "article": "Articles",

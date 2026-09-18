@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { ToggleButton } from "@heroui/react";
 import {
   CircleOutlineIcon,
   CircleFilledIcon,
@@ -27,6 +28,12 @@ interface EntryListHeaderProps {
   onRefresh?: () => void;
   /** 强制拉取当前范围（用户 11-19：忽略缓存标记整轮重抓；右键刷新图标出这个菜单） */
   onForceRefresh?: () => void;
+  /**
+   * 12-6：星标视图下多一档「只查看当前视图」（只看当前内容类型的星标）。
+   * 带了这个回调才渲染这一档 —— 星标视图以外没有意义。
+   */
+  starredViewOnly?: boolean;
+  onToggleStarredViewOnly?: () => void;
   isRefreshing?: boolean;
   /** 本次刷新待刷新的源总数 */
   refreshTotal?: number;
@@ -49,6 +56,8 @@ export function EntryListHeader({
   onMarkAllRead,
   onRefresh,
   onForceRefresh,
+  starredViewOnly,
+  onToggleStarredViewOnly,
   isRefreshing = false,
   refreshTotal = 0,
   refreshCompleted = 0,
@@ -154,6 +163,17 @@ export function EntryListHeader({
             <CircleOutlineIcon className="size-5" />
           )}
         </button>
+        {onToggleStarredViewOnly && (
+          <ToggleButton
+            size="sm"
+            isSelected={Boolean(starredViewOnly)}
+            onChange={onToggleStarredViewOnly}
+            aria-label={t("sidebar.starred_view")}
+            className="mr-1 px-2 py-1 text-[11px]"
+          >
+            {t("sidebar.starred_view_short")}
+          </ToggleButton>
+        )}
         <button
           type="button"
           onClick={onMarkAllRead}

@@ -72,6 +72,8 @@ interface EntryListProps {
    * 所以这里的回调类型不含 "muted"。
    */
   onFilterChange?: (filter: Exclude<EntryFilter, "muted">) => void;
+  /** 12-6：星标视图下的「只查看当前视图」开关（与侧栏那个是同一个语义） */
+  onToggleStarredViewOnly?: () => void;
   contentType: ContentType;
   isMobile?: boolean;
   onMenuClick?: () => void;
@@ -97,6 +99,8 @@ export function EntryList({
   onToggleSidebar,
   sidebarVisible,
   isActive = true,
+  onToggleStarredViewOnly,
+
 }: EntryListProps) {
   "use no memo";
 
@@ -792,6 +796,12 @@ export function EntryList({
           onMarkAllRead={onMarkAllRead}
           onRefresh={handleRefresh}
           onForceRefresh={() => void handleRefresh(true)}
+          starredViewOnly={
+            selection.type === "starred" ? Boolean(selection.viewOnly) : undefined
+          }
+          onToggleStarredViewOnly={
+            selection.type === "starred" ? onToggleStarredViewOnly : undefined
+          }
           isRefreshing={showRefreshing}
           refreshTotal={shownTotal}
           refreshCompleted={shownCompleted}

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Button,
@@ -36,11 +36,28 @@ export function AccentColorPicker() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [theme, lightTheme, darkTheme, accentColor]);
 
-  const current = accentColor ?? themeAccent;
+  /**
+   * 12-4（用户：选颜色时组件会抖动）：受控值**不能**从 DOM 里的 `--accent` 反推。
+   *
+   * 原来的链路是：拖动 → onChange → 写设置 → `applyAccentColorToDocument()` 改 `<html>` 的
+   * `--accent` → memo 依赖 accentColor 重算 → 从 DOM 读回的是**另一种颜色表示**（oklch / 精度不同）
+   * → 重新塞回 ColorPicker 的 value → 拖动的滑块被拉回去（看起来就是抖）。
+   *
+   * 现在拖动期间用自己的本地状态，不再读 DOM；只有「跟随主题」时才回落到主题色。
+   */
+  const [draft, setDraft] = useState<string | null>(null);
+  const current = draft ?? accentColor ?? themeAccent;
 
   return (
     <div className="flex shrink-0 items-center gap-2">
-      <ColorPicker value={current} onChange={(color) => setAccentColor(color.toString("hex"))}>
+      <ColorPicker
+        value={current}
+        onChange={(color) => {
+          const hex = color.toString("hex");
+          setDraft(hex);
+          setAccentColor(hex);
+        }}
+      >
         <ColorPicker.Trigger>
           <ColorSwatch className="size-7 rounded-full border border-border/60" />
           <Label className="text-xs text-muted-foreground">
@@ -69,7 +86,10 @@ export function AccentColorPicker() {
                   type="button"
                   title={preset}
                   aria-label={preset}
-                  onClick={() => setAccentColor(preset)}
+                  onClick={() => {
+                    setDraft(preset);
+                    setAccentColor(preset);
+                  }}
                   className="size-5 rounded-full border border-border/60"
                   style={{ backgroundColor: preset }}
                 />
@@ -78,7 +98,10 @@ export function AccentColorPicker() {
                 size="sm"
                 variant="ghost"
                 className="ml-auto"
-                onPress={() => setAccentColor(null)}
+                onPress={() => {
+                  setDraft(null);
+                  setAccentColor(null);
+                }}
               >
                 {t("theme.accent_follow")}
               </Button>

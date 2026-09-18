@@ -251,6 +251,15 @@ function AuthenticatedApp() {
 
   useTitle(title);
 
+  /**
+   * 12-6：星标视图下切换「只查看当前视图」（只看当前内容类型的星标）。
+   * 侧栏那一行行尾的开关与中栏工具栏里的开关都走这里，语义完全一致。
+   */
+  const handleToggleStarredViewOnly = useCallback(() => {
+    if (selection.type !== "starred") return;
+    selectStarred({ replace: true }, !selection.viewOnly);
+  }, [selectStarred, selection]);
+
   // Mobile-aware selection handlers (all hooks must be before any conditional returns)
   // Use replace to avoid creating history entries for sidebar navigation
   const handleSelectFeed = useCallback(
@@ -467,6 +476,7 @@ function AuthenticatedApp() {
               unreadOnly={unreadOnly}
               onToggleUnreadOnly={toggleUnreadOnly}
               onFilterChange={handleFilterChange}
+              onToggleStarredViewOnly={handleToggleStarredViewOnly}
               onCloseEntry={() => selectEntry(null)}
               contentType={contentType}
               isMobile
@@ -565,6 +575,7 @@ function AuthenticatedApp() {
                   unreadOnly={unreadOnly}
                   onToggleUnreadOnly={toggleUnreadOnly}
                   onFilterChange={handleFilterChange}
+                  onToggleStarredViewOnly={handleToggleStarredViewOnly}
                   onCloseEntry={() => selectEntry(null)}
                   contentType={contentType}
                   isActive={!selectedEntryId}
@@ -642,6 +653,7 @@ function AuthenticatedApp() {
             onToggleUnreadOnly={toggleUnreadOnly}
             onFilterChange={handleFilterChange}
             onCloseEntry={() => selectEntry(null)}
+            onToggleStarredViewOnly={handleToggleStarredViewOnly}
             contentType={contentType}
             isTablet={isTablet}
             onToggleSidebar={toggleSidebarVisible}
