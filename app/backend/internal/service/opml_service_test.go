@@ -242,6 +242,15 @@ func (s *refreshServiceStub) LastRefreshResults() []service.RefreshFeedResult {
 	return nil
 }
 
+// ForceRefreshAll / ForceRefreshFeeds 强制拉取（11-19）：OPML 导入路径用不到，按普通刷新处理即可。
+func (s *refreshServiceStub) ForceRefreshAll(ctx context.Context) error {
+	return s.RefreshAll(ctx)
+}
+
+func (s *refreshServiceStub) ForceRefreshFeeds(ctx context.Context, feedIDs []int64) error {
+	return s.RefreshFeeds(ctx, feedIDs)
+}
+
 func (s *refreshServiceStub) RefreshAll(ctx context.Context) error {
 	return nil
 }

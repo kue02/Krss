@@ -256,3 +256,21 @@ export function describeConditions(
     })
     .join("");
 }
+
+/** 撤销影响清单里的一行（用户 11-23：撤销前先看清会动哪些条目） */
+export interface FilterImpactItem {
+  entryId: string;
+  title: string;
+  feedTitle: string;
+  publishedAt: string;
+  read: boolean;
+  starred: boolean;
+  muted: boolean;
+  /** 当初这条规则对它做过什么（撤销会影响到的就是这些） */
+  actions: FilterActions;
+}
+
+export interface FilterImpactResult {
+  items: FilterImpactItem[];
+  total: number;
+}

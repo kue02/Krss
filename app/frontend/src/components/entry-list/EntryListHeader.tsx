@@ -7,6 +7,12 @@ import {
   RefreshIcon,
   RefreshSpinner,
 } from "@/components/ui/icons";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { dispatchScrollToTop } from "@/hooks/useScrollToTop";
 
 interface EntryListHeaderProps {
@@ -19,6 +25,8 @@ interface EntryListHeaderProps {
   onMarkAllRead: () => void;
   /** 刷新当前选中范围（文件夹 / 单个源 / 某个视图） */
   onRefresh?: () => void;
+  /** 强制拉取当前范围（用户 11-19：忽略缓存标记整轮重抓；右键刷新图标出这个菜单） */
+  onForceRefresh?: () => void;
   isRefreshing?: boolean;
   /** 本次刷新待刷新的源总数 */
   refreshTotal?: number;
@@ -40,6 +48,7 @@ export function EntryListHeader({
   onToggleUnreadOnly,
   onMarkAllRead,
   onRefresh,
+  onForceRefresh,
   isRefreshing = false,
   refreshTotal = 0,
   refreshCompleted = 0,
@@ -101,21 +110,37 @@ export function EntryListHeader({
 
       <div className="flex shrink-0 items-center gap-0.5">
         {onRefresh && (
-          <button
-            type="button"
-            onClick={onRefresh}
-            title={t("entry.refresh_view")}
-            aria-busy={isRefreshing}
-            className="flex size-8 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95"
-          >
-            {isRefreshing ? (
-              <RefreshSpinner
-                remaining={Math.max(0, refreshTotal - refreshCompleted)}
-              />
-            ) : (
-              <RefreshIcon className="size-4" />
-            )}
-          </button>
+          <ContextMenu>
+            <ContextMenuTrigger asChild>
+              <button
+                type="button"
+                onClick={() => onRefresh()}
+                title={t("entry.refresh_view")}
+                aria-busy={isRefreshing}
+                className="flex size-8 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95"
+              >
+                {isRefreshing ? (
+                  <RefreshSpinner
+                    remaining={Math.max(0, refreshTotal - refreshCompleted)}
+                  />
+                ) : (
+                  <RefreshIcon className="size-4" />
+                )}
+              </button>
+            </ContextMenuTrigger>
+            <ContextMenuContent>
+              <ContextMenuItem onClick={() => onRefresh()}>
+                <RefreshIcon className="size-4 shrink-0 text-muted-foreground" />
+                {t("actions.refresh")}
+              </ContextMenuItem>
+              {onForceRefresh && (
+                <ContextMenuItem onClick={() => onForceRefresh()}>
+                  <RefreshIcon className="size-4 shrink-0 text-muted-foreground" />
+                  {t("entry.force_refresh")}
+                </ContextMenuItem>
+              )}
+            </ContextMenuContent>
+          </ContextMenu>
         )}
         <button
           type="button"

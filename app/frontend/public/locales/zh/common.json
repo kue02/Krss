@@ -151,7 +151,20 @@
     "notify_testing": "发送中…",
     "notify_test_ok": "已发出（HTTP {{status}}），看看手机收到没",
     "notify_test_no_url": "先填地址再测试",
-    "notify_test_failed": "发送失败：{{reason}}"
+    "notify_test_failed": "发送失败：{{reason}}",
+    "fetch_title": "拉取",
+    "fetch_description": "定时刷新频率与并发。改完从下一轮刷新开始生效，不用重启。",
+    "fetch_interval": "定时刷新间隔（分钟）",
+    "fetch_interval_hint": "默认 15 分钟",
+    "fetch_concurrency": "全局并发上限",
+    "fetch_concurrency_hint": "同时在抓的源数，默认 8",
+    "fetch_per_host": "同主机并发上限",
+    "fetch_per_host_hint": "同一个站别一次打太多，默认 6",
+    "fetch_timeout": "单源抓取超时（秒）",
+    "fetch_timeout_hint": "默认 15 秒",
+    "fetch_scope_hint": "下一轮刷新生效",
+    "fetch_saved": "已保存",
+    "fetch_save_failed": "保存失败"
   },
   "theme": {
     "system": "跟随系统",
@@ -259,7 +272,10 @@
     "original_site_loading": "正在加载原站…",
     "auto_readability_on": "已自动切换到阅读模式",
     "auto_translate_on": "正在自动翻译…",
-    "translate_fallback_hint": "部分段落走免费通道失败，已用模型兜底译出"
+    "translate_fallback_hint": "部分段落走免费通道失败，已用模型兜底译出",
+    "force_refresh": "强制拉取",
+    "force_confirm_title": "强制拉取 {{count}} 个订阅？",
+    "force_confirm_description": "这会忽略 etag / 上次更新时间，把范围内的订阅整轮重抓一遍（同主机冷却也跳过）。范围这么大，先确认一下是不是选错了。"
   },
   "ai_settings": {
     "translate_channel": "翻译通道",
@@ -760,7 +776,19 @@
     "view_icon_emoji_input": "直接输入 emoji",
     "view_icon_pick_file": "选择图片",
     "view_icon_hint": "与头像同一套 128px 缩放",
-    "view_icon_clear": "清除图标"
+    "view_icon_clear": "清除图标",
+    "revert_impact_title": "撤销「{{name}}」的影响",
+    "revert_impact_description": "下面这些条目当前还归这条规则管；只会撤销你勾选的那些。",
+    "revert_select_all": "全选",
+    "revert_select_none": "全不选",
+    "revert_selected_count": "已选 {{selected}} / {{total}}",
+    "revert_impact_empty": "这条规则当前没有影响中的条目",
+    "revert_flag_muted": "已静音",
+    "revert_flag_starred": "已加星",
+    "revert_flag_unread": "未读",
+    "revert_include_starred": "同时撤销规则加过的星标（{{count}} 条）",
+    "revert_selected_action": "撤销选中的 {{count}} 条",
+    "revert_running": "撤销中…"
   },
   "search": {
     "title": "搜索",
@@ -783,5 +811,8 @@
     "copy_reason": "复制原因",
     "copied": "已复制失败原因",
     "close": "关闭"
+  },
+  "common": {
+    "loading": "加载中…"
   }
 }

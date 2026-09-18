@@ -1,12 +1,17 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Plus, Trash2, Edit2, Check, X } from "lucide-react";
+import { Button, Label, NumberField } from "@heroui/react";
 import {
   getDomainRateLimits,
   createDomainRateLimit,
   updateDomainRateLimit,
   deleteDomainRateLimit,
+  getFetchSettings,
+  updateFetchSettings,
+  ApiError,
 } from "@/api";
+import type { FetchSettings } from "@/types/settings";
 import type { DomainRateLimit } from "@/types/settings";
 import { cn } from "@/lib/utils";
 
@@ -14,6 +19,62 @@ export function AdvancedSettings() {
   const { t } = useTranslation();
   const [items, setItems] = useState<DomainRateLimit[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // 拉取设置（用户 11-20）：定时频率 / 全局并发 / 同主机并发 / 单源超时。
+  // 都是「下一轮生效」：后端每轮刷新开始时读一次，改完不用重启。
+  const [fetchDraft, setFetchDraft] = useState<FetchSettings | null>(null);
+  const [fetchSaving, setFetchSaving] = useState(false);
+  /**
+   * 最新草稿的 ref。
+   *
+   * HeroUI 的 NumberField（底层 react-aria）**只在失焦/回车时才提交值** ——
+   * 于是「改完直接点保存」时 state 还是旧值（按钮还是禁用态，点了没反应，最难查的那种失败）。
+   * 点保存本身会让输入框失焦、onChange 立刻触发，只是那次 setState 赶不上这次点击的闭包；
+   * 所以这里同时写一份 ref，保存时以 ref 为准。
+   */
+  const draftRef = useRef<FetchSettings | null>(null);
+  const [fetchStatus, setFetchStatus] = useState<{
+    kind: "ok" | "error";
+    text: string;
+  } | null>(null);
+
+  const loadFetchSettings = useCallback(async () => {
+    try {
+      const data = await getFetchSettings();
+      setFetchDraft(data);
+      draftRef.current = data;
+    } catch {
+      // 读不到就整块不显示，不要摆一堆 0 让人以为设置坏了
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadFetchSettings();
+  }, [loadFetchSettings]);
+
+  const handleSaveFetch = useCallback(async () => {
+    // 以 ref 为准：失焦提交的值可能还没进 state（见 draftRef 注释）
+    const draft = draftRef.current ?? fetchDraft;
+    if (!draft) return;
+    setFetchSaving(true);
+    setFetchStatus(null);
+    try {
+      const saved = await updateFetchSettings(draft);
+      setFetchDraft(saved);
+      draftRef.current = saved;
+      setFetchStatus({ kind: "ok", text: t("settings.fetch_saved") });
+    } catch (error) {
+      setFetchStatus({
+        kind: "error",
+        text:
+          error instanceof ApiError
+            ? error.message
+            : t("settings.fetch_save_failed"),
+      });
+    } finally {
+      setFetchSaving(false);
+    }
+  }, [fetchDraft, t]);
 
   // Add state
   const [newHost, setNewHost] = useState("");
@@ -114,8 +175,114 @@ export function AdvancedSettings() {
     );
   }
 
+  const fetchRows: Array<{
+    key: keyof FetchSettings;
+    label: string;
+    hint: string;
+    min: number;
+    max: number;
+  }> = [
+    {
+      key: "intervalMinutes",
+      label: t("settings.fetch_interval"),
+      hint: t("settings.fetch_interval_hint"),
+      min: 1,
+      max: 1440,
+    },
+    {
+      key: "concurrency",
+      label: t("settings.fetch_concurrency"),
+      hint: t("settings.fetch_concurrency_hint"),
+      min: 1,
+      max: 64,
+    },
+    {
+      key: "perHostConcurrency",
+      label: t("settings.fetch_per_host"),
+      hint: t("settings.fetch_per_host_hint"),
+      min: 1,
+      max: 64,
+    },
+    {
+      key: "timeoutSeconds",
+      label: t("settings.fetch_timeout"),
+      hint: t("settings.fetch_timeout_hint"),
+      min: 1,
+      max: 300,
+    },
+  ];
+
   return (
     <div className="space-y-6">
+      {/* 拉取：频率与并发（用户 11-20） */}
+      {fetchDraft && (
+        <section>
+          <div className="mb-4">
+            <div className="text-sm font-medium">
+              {t("settings.fetch_title")}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {t("settings.fetch_description")}
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            {fetchRows.map((row) => (
+              <NumberField
+                key={row.key}
+                value={fetchDraft[row.key]}
+                minValue={row.min}
+                maxValue={row.max}
+                onChange={(value) =>
+                  setFetchDraft((prev) => {
+                    if (!prev) return prev;
+                    const next = { ...prev, [row.key]: Number(value) || 0 };
+                    draftRef.current = next;
+                    return next;
+                  })
+                }
+                className="w-full"
+              >
+                <Label className="text-xs text-muted-foreground">
+                  {row.label}
+                </Label>
+                <NumberField.Group className="mt-1">
+                  <NumberField.DecrementButton>-</NumberField.DecrementButton>
+                  <NumberField.Input />
+                  <NumberField.IncrementButton>+</NumberField.IncrementButton>
+                </NumberField.Group>
+              </NumberField>
+            ))}
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <Button
+              size="sm"
+              variant="primary"
+              onPress={handleSaveFetch}
+              isDisabled={fetchSaving}
+            >
+              {t("actions.save")}
+            </Button>
+            <div className="text-xs text-muted-foreground">
+              {t("settings.fetch_scope_hint")}
+            </div>
+            {fetchStatus && (
+              <span
+                className={cn(
+                  "text-xs",
+                  fetchStatus.kind === "ok"
+                    ? "text-muted-foreground"
+                    : "text-destructive",
+                )}
+              >
+                {fetchStatus.text}
+              </span>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* Domain Rate Limits Section */}
       <section>
         <div className="mb-4">

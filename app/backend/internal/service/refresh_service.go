@@ -22,23 +22,72 @@ import (
 	"gist/backend/pkg/network"
 )
 
-// refreshTimeout 单个源的抓取上限。
-//
-// 原来 30s：实测健康源（含 NAS 上的 RSSHub）基本 1~3s 就返回，而冷缓存、被上游限流的
-// 少数源（如 bilibili 路由）会一路挂到超时。5、6 个这样的源会把整轮刷新拖到 2 分钟，
-// 所以收到 15s —— 足够放行慢但能用的源，又让坏源早点认输。
-const refreshTimeout = 15 * time.Second
+// refreshTimeout / maxConcurrentRefresh / maxConcurrentPerHost 是**默认值**，
+// 实际取值走 设置 → 高级 的「拉取」四项（每轮刷新开始时读一次，改完下一轮生效）。
+// 历史：超时 30s→15s（健康源 1~3s 就回，极少数冷缓存/被限流的源会一路挂到超时，
+// 5、6 个这样的源就把整轮拖到 2 分钟）；同主机并发 1→6（自己的 RSSHub 上挂几十个源时，
+// 串行等于把最慢几个源的耗时相加：实测 79 源串行 >15min，3 → 25~45s）。
+const refreshTimeout = DefaultRefreshTimeoutSeconds * time.Second
 
 const (
-	// maxConcurrentRefresh limits parallel feed refreshes to avoid overwhelming
-	// the network and remote servers.
-	maxConcurrentRefresh = 8
-	// maxConcurrentPerHost limits parallel requests to the same host to be polite.
-	// 原来是 1（同一主机完全串行）：自己的 RSSHub 上挂了几十个源时，全量刷新会一个一个抓，
-	// 慢到分钟级。后来放到 6 —— 整轮耗时只由「最慢的那几个源」决定，串行排队等于
-	// 白白把它们的时间加在一起（实测 79 源：串行 >15min，3 → 25~45s，6 更快）。
-	maxConcurrentPerHost = 6
+	maxConcurrentRefresh = DefaultRefreshConcurrency
+	maxConcurrentPerHost = DefaultRefreshPerHostConcurrency
 )
+
+// fetchRuntimeConfig 一轮刷新用的运行参数快照（来自设置）。
+type fetchRuntimeConfig struct {
+	Concurrency        int
+	PerHostConcurrency int
+	Timeout            time.Duration
+}
+
+// defaultFetchRuntime 设置读不到时的兜底（与编译期默认值一致）。
+func defaultFetchRuntime() fetchRuntimeConfig {
+	return fetchRuntimeConfig{
+		Concurrency:        maxConcurrentRefresh,
+		PerHostConcurrency: maxConcurrentPerHost,
+		Timeout:            refreshTimeout,
+	}
+}
+
+// loadFetchRuntime 从设置读一次运行参数；读失败就用默认值（不因为设置读失败而刷不了）。
+func (s *refreshService) loadFetchRuntime(ctx context.Context) fetchRuntimeConfig {
+	cfg := defaultFetchRuntime()
+	if s.settings == nil {
+		return cfg
+	}
+	fs, err := s.settings.GetFetchSettings(ctx)
+	if err != nil || fs == nil {
+		if err != nil {
+			logger.Warn("load fetch settings failed, using defaults", "module", "service", "action", "get", "resource", "settings", "result", "failed", "error", err)
+		}
+		return cfg
+	}
+	if fs.Concurrency > 0 {
+		cfg.Concurrency = fs.Concurrency
+	}
+	if fs.PerHostConcurrency > 0 {
+		cfg.PerHostConcurrency = fs.PerHostConcurrency
+	}
+	if fs.TimeoutSeconds > 0 {
+		cfg.Timeout = time.Duration(fs.TimeoutSeconds) * time.Second
+	}
+	s.mu.Lock()
+	s.fetchCfg = cfg
+	s.mu.Unlock()
+	return cfg
+}
+
+// fetchRuntime 取当前运行参数；从没加载过（比如单源刷新入口）就先读一次设置。
+func (s *refreshService) fetchRuntime(ctx context.Context) fetchRuntimeConfig {
+	s.mu.Lock()
+	cfg := s.fetchCfg
+	s.mu.Unlock()
+	if cfg.Concurrency == 0 || cfg.Timeout == 0 {
+		return s.loadFetchRuntime(ctx)
+	}
+	return cfg
+}
 
 // hostRateLimiter manages per-host concurrency and rate limits.
 type hostRateLimiter struct {
@@ -46,13 +95,19 @@ type hostRateLimiter struct {
 	semaphores  map[string]*semaphore.Weighted
 	lastRequest map[string]time.Time
 	getInterval func(host string) time.Duration
+	// perHost 同主机并发上限（来自设置，构造时传入）
+	perHost int
 }
 
-func newHostRateLimiter(getInterval func(host string) time.Duration) *hostRateLimiter {
+func newHostRateLimiter(getInterval func(host string) time.Duration, perHost int) *hostRateLimiter {
+	if perHost <= 0 {
+		perHost = maxConcurrentPerHost
+	}
 	return &hostRateLimiter{
 		semaphores:  make(map[string]*semaphore.Weighted),
 		lastRequest: make(map[string]time.Time),
 		getInterval: getInterval,
+		perHost:     perHost,
 	}
 }
 
@@ -62,7 +117,7 @@ func (h *hostRateLimiter) acquireSemaphore(ctx context.Context, host string) err
 	h.mu.Lock()
 	sem, ok := h.semaphores[host]
 	if !ok {
-		sem = semaphore.NewWeighted(maxConcurrentPerHost)
+		sem = semaphore.NewWeighted(int64(h.perHost))
 		h.semaphores[host] = sem
 	}
 	h.mu.Unlock()
@@ -81,7 +136,10 @@ func (h *hostRateLimiter) releaseSemaphore(host string) {
 
 // waitForInterval waits until the configured interval has passed since the last request.
 // This should be called AFTER acquiring the per-host semaphore to ensure serial waiting.
-func (h *hostRateLimiter) waitForInterval(ctx context.Context, host string) error {
+func (h *hostRateLimiter) waitForInterval(ctx context.Context, host string, force bool) error {
+	if force {
+		return nil
+	}
 	interval := h.getInterval(host)
 	if interval <= 0 {
 		return nil
@@ -238,6 +296,11 @@ type RefreshStatus struct {
 
 type RefreshService interface {
 	RefreshAll(ctx context.Context) error
+	// ForceRefreshAll 强制拉取（用户 11-19）：忽略条件请求（etag/last-modified）与
+	// 「同主机多久内不重复抓」的等待，整轮重抓。并发上限照旧（那是礼貌，不是过期判定）。
+	ForceRefreshAll(ctx context.Context) error
+	// ForceRefreshFeeds 强制拉取指定订阅（同样的强制语义，范围由界面决定）。
+	ForceRefreshFeeds(ctx context.Context, feedIDs []int64) error
 	// LastRefreshResults 最近一轮刷新里每个订阅的结果（新/更新条数、失败原因）。
 	LastRefreshResults() []RefreshFeedResult
 	RefreshFeed(ctx context.Context, feedID int64) error
@@ -273,6 +336,8 @@ type refreshService struct {
 	progressDone    int
 	// lastResults：最近一次刷新（全量或按范围）里每个订阅的结果。前端刷新完拿它渲染结果弹框。
 	lastResults []RefreshFeedResult
+	// fetchCfg 本轮刷新的并发/超时快照（来自 设置 → 高级 → 拉取）
+	fetchCfg fetchRuntimeConfig
 }
 
 func NewRefreshService(feeds repository.FeedRepository, entries repository.EntryRepository, settings SettingsService, icons IconService, clientFactory *network.ClientFactory, anubisSolver AnubisSolver, rateLimitSvc DomainRateLimitService, filters FilterService) RefreshService {
@@ -289,6 +354,15 @@ func NewRefreshService(feeds repository.FeedRepository, entries repository.Entry
 }
 
 func (s *refreshService) RefreshAll(ctx context.Context) error {
+	return s.refreshAll(ctx, false)
+}
+
+// ForceRefreshAll 见接口注释。
+func (s *refreshService) ForceRefreshAll(ctx context.Context) error {
+	return s.refreshAll(ctx, true)
+}
+
+func (s *refreshService) refreshAll(ctx context.Context, force bool) error {
 	s.mu.Lock()
 	if s.isRefreshing {
 		s.mu.Unlock()
@@ -309,10 +383,12 @@ func (s *refreshService) RefreshAll(ctx context.Context) error {
 		return err
 	}
 
-	logger.Info("refresh started", "module", "service", "action", "refresh", "resource", "feed", "result", "ok", "count", len(feeds))
+	cfg := s.loadFetchRuntime(ctx)
+	logger.Info("refresh started", "module", "service", "action", "refresh", "resource", "feed", "result", "ok", "count", len(feeds),
+		"concurrency", cfg.Concurrency, "per_host_concurrency", cfg.PerHostConcurrency, "timeout_ms", cfg.Timeout.Milliseconds())
 	s.resetRefreshProgress(len(feeds))
 	s.resetRefreshResults()
-	s.refreshFeedsWithRateLimit(ctx, feeds)
+	s.refreshFeedsWithRateLimit(ctx, feeds, force)
 	logger.Info("refresh completed", "module", "service", "action", "refresh", "resource", "feed", "result", "ok", "count", len(feeds))
 
 	now := time.Now()
@@ -363,10 +439,19 @@ func (s *refreshService) RefreshFeed(ctx context.Context, feedID int64) error {
 	if err != nil {
 		return err
 	}
-	return s.refreshFeedInternal(ctx, feed)
+	return s.refreshFeedInternal(ctx, feed, false)
 }
 
 func (s *refreshService) RefreshFeeds(ctx context.Context, feedIDs []int64) error {
+	return s.refreshFeeds(ctx, feedIDs, false)
+}
+
+// ForceRefreshFeeds 见接口注释。
+func (s *refreshService) ForceRefreshFeeds(ctx context.Context, feedIDs []int64) error {
+	return s.refreshFeeds(ctx, feedIDs, true)
+}
+
+func (s *refreshService) refreshFeeds(ctx context.Context, feedIDs []int64, force bool) error {
 	if len(feedIDs) == 0 {
 		return nil
 	}
@@ -400,10 +485,14 @@ func (s *refreshService) RefreshFeeds(ctx context.Context, feedIDs []int64) erro
 		return nil
 	}
 
+	// 按范围刷新同样「每轮重读设置」：只在全量刷新里读会让「改完下一轮生效」在
+	// 单源/分类刷新上不成立（那份快照可能来自上一轮全量，设置改了半天还没生效）。
+	cfg := s.loadFetchRuntime(ctx)
 	s.resetRefreshProgress(len(feeds))
 	s.resetRefreshResults()
-	s.refreshFeedsWithRateLimit(ctx, feeds)
-	logger.Info("refresh completed", "module", "service", "action", "refresh", "resource", "feed", "result", "ok", "scope", "partial", "count", len(feeds))
+	s.refreshFeedsWithRateLimit(ctx, feeds, force)
+	logger.Info("refresh completed", "module", "service", "action", "refresh", "resource", "feed", "result", "ok", "scope", "partial", "count", len(feeds),
+		"concurrency", cfg.Concurrency, "per_host_concurrency", cfg.PerHostConcurrency, "timeout_ms", cfg.Timeout.Milliseconds(), "force", force)
 	return nil
 }
 
@@ -446,15 +535,16 @@ func iconPathOf(feed model.Feed) string {
 }
 
 // refreshFeedsWithRateLimit refreshes multiple feeds with rate limiting and concurrency control.
-func (s *refreshService) refreshFeedsWithRateLimit(ctx context.Context, feeds []model.Feed) {
-	globalSem := semaphore.NewWeighted(maxConcurrentRefresh)
+func (s *refreshService) refreshFeedsWithRateLimit(ctx context.Context, feeds []model.Feed, force bool) {
+	cfg := s.fetchRuntime(ctx)
+	globalSem := semaphore.NewWeighted(int64(cfg.Concurrency))
 
 	hl := newHostRateLimiter(func(host string) time.Duration {
 		if s.rateLimitSvc != nil {
 			return s.rateLimitSvc.GetIntervalDuration(ctx, host)
 		}
 		return 0
-	})
+	}, cfg.PerHostConcurrency)
 
 	var wg sync.WaitGroup
 	for _, feed := range feeds {
@@ -473,7 +563,8 @@ func (s *refreshService) refreshFeedsWithRateLimit(ctx context.Context, feeds []
 				}
 				defer hl.releaseSemaphore(host)
 
-				if err := hl.waitForInterval(ctx, host); err != nil {
+				// 强制拉取时不等「同主机多久内不重复抓」——用户明确要求再来一次
+				if err := hl.waitForInterval(ctx, host, force); err != nil {
 					logger.Debug("refresh host wait cancelled", "module", "service", "action", "refresh", "resource", "feed", "result", "cancelled", "host", host, "error", err)
 					return
 				}
@@ -489,7 +580,7 @@ func (s *refreshService) refreshFeedsWithRateLimit(ctx context.Context, feeds []
 				hl.recordRequest(host)
 			}
 
-			if err := s.refreshFeedInternal(ctx, feed); err != nil {
+			if err := s.refreshFeedInternal(ctx, feed, force); err != nil {
 				s.recordFeedResult(RefreshFeedResult{
 					FeedID:   feed.ID,
 					Title:    feed.Title,
@@ -504,15 +595,15 @@ func (s *refreshService) refreshFeedsWithRateLimit(ctx context.Context, feeds []
 	wg.Wait()
 }
 
-func (s *refreshService) refreshFeedInternal(ctx context.Context, feed model.Feed) error {
-	return s.refreshFeedWithUA(ctx, feed, config.DefaultUserAgent, true)
+func (s *refreshService) refreshFeedInternal(ctx context.Context, feed model.Feed, force bool) error {
+	return s.refreshFeedWithUA(ctx, feed, config.DefaultUserAgent, true, force)
 }
 
-func (s *refreshService) refreshFeedWithUA(ctx context.Context, feed model.Feed, userAgent string, allowFallback bool) error {
-	return s.refreshFeedWithCookie(ctx, feed, userAgent, "", allowFallback, 0)
+func (s *refreshService) refreshFeedWithUA(ctx context.Context, feed model.Feed, userAgent string, allowFallback bool, force bool) error {
+	return s.refreshFeedWithCookie(ctx, feed, userAgent, "", allowFallback, 0, force)
 }
 
-func (s *refreshService) refreshFeedWithCookie(ctx context.Context, feed model.Feed, userAgent string, cookie string, allowFallback bool, retryCount int) error {
+func (s *refreshService) refreshFeedWithCookie(ctx context.Context, feed model.Feed, userAgent string, cookie string, allowFallback bool, retryCount int, force bool) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, feed.URL, nil)
 	if err != nil {
 		errMsg := err.Error()
@@ -533,15 +624,15 @@ func (s *refreshService) refreshFeedWithCookie(ctx context.Context, feed model.F
 		req.Header.Set("Cookie", cookie)
 	}
 
-	// Conditional GET
-	if feed.ETag != nil && *feed.ETag != "" {
+	// Conditional GET（强制拉取时不带 —— 要的就是重新拿一份，不是 304）
+	if !force && feed.ETag != nil && *feed.ETag != "" {
 		req.Header.Set("If-None-Match", *feed.ETag)
 	}
-	if feed.LastModified != nil && *feed.LastModified != "" {
+	if !force && feed.LastModified != nil && *feed.LastModified != "" {
 		req.Header.Set("If-Modified-Since", *feed.LastModified)
 	}
 
-	httpClient := s.clientFactory.NewHTTPClient(ctx, refreshTimeout)
+	httpClient := s.clientFactory.NewHTTPClient(ctx, s.fetchRuntime(ctx).Timeout)
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		errMsg := err.Error()
@@ -564,7 +655,7 @@ func (s *refreshService) refreshFeedWithCookie(ctx context.Context, feed model.F
 		fallbackUA := s.settings.GetFallbackUserAgent(ctx)
 		if fallbackUA != "" {
 			logger.Warn("retrying with fallback ua", "module", "service", "action", "refresh", "resource", "feed", "result", "failed", "feed_id", feed.ID, "feed_title", feed.Title, "status_code", resp.StatusCode)
-			return s.refreshFeedWithCookie(ctx, feed, fallbackUA, cookie, false, retryCount)
+			return s.refreshFeedWithCookie(ctx, feed, fallbackUA, cookie, false, retryCount, force)
 		}
 	}
 
@@ -590,7 +681,7 @@ func (s *refreshService) refreshFeedWithCookie(ctx context.Context, feed model.F
 		switch {
 		case anubisErr == nil:
 			// Retry with fresh client and same request fingerprint.
-			return s.refreshFeedWithFreshClient(ctx, feed, userAgent, newCookie, retryCount+1)
+			return s.refreshFeedWithFreshClient(ctx, feed, userAgent, newCookie, retryCount+1, force)
 		case errors.Is(anubisErr, errAnubisNotPage):
 			// Not an Anubis page; keep original parse error handling.
 		case errors.Is(anubisErr, errAnubisRejected):
@@ -615,7 +706,7 @@ func (s *refreshService) refreshFeedWithCookie(ctx context.Context, feed model.F
 }
 
 // refreshFeedWithFreshClient creates a new http.Client to avoid connection reuse after Anubis
-func (s *refreshService) refreshFeedWithFreshClient(ctx context.Context, feed model.Feed, userAgent string, cookie string, retryCount int) error {
+func (s *refreshService) refreshFeedWithFreshClient(ctx context.Context, feed model.Feed, userAgent string, cookie string, retryCount int, force bool) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, feed.URL, nil)
 	if err != nil {
 		errMsg := err.Error()
@@ -628,7 +719,7 @@ func (s *refreshService) refreshFeedWithFreshClient(ctx context.Context, feed mo
 	}
 
 	// Use fresh client to avoid connection reuse
-	freshClient := s.clientFactory.NewHTTPClient(ctx, refreshTimeout)
+	freshClient := s.clientFactory.NewHTTPClient(ctx, s.fetchRuntime(ctx).Timeout)
 	resp, err := freshClient.Do(req)
 	if err != nil {
 		errMsg := err.Error()
@@ -655,7 +746,7 @@ func (s *refreshService) refreshFeedWithFreshClient(ctx context.Context, feed mo
 	newCookie, anubisErr := trySolveAnubisChallenge(ctx, s.anubis, body, feed.URL, resp.Cookies(), req.Header.Clone(), retryCount)
 	switch {
 	case anubisErr == nil:
-		return s.refreshFeedWithFreshClient(ctx, feed, userAgent, newCookie, retryCount+1)
+		return s.refreshFeedWithFreshClient(ctx, feed, userAgent, newCookie, retryCount+1, force)
 	case errors.Is(anubisErr, errAnubisNotPage):
 		// Not an Anubis page; continue normal parsing.
 	case errors.Is(anubisErr, errAnubisRejected):

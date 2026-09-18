@@ -41,6 +41,34 @@ func (m *MockRefreshService) EXPECT() *MockRefreshServiceMockRecorder {
 	return m.recorder
 }
 
+// ForceRefreshAll mocks base method.
+func (m *MockRefreshService) ForceRefreshAll(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ForceRefreshAll", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ForceRefreshAll indicates an expected call of ForceRefreshAll.
+func (mr *MockRefreshServiceMockRecorder) ForceRefreshAll(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ForceRefreshAll", reflect.TypeOf((*MockRefreshService)(nil).ForceRefreshAll), ctx)
+}
+
+// ForceRefreshFeeds mocks base method.
+func (m *MockRefreshService) ForceRefreshFeeds(ctx context.Context, feedIDs []int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ForceRefreshFeeds", ctx, feedIDs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ForceRefreshFeeds indicates an expected call of ForceRefreshFeeds.
+func (mr *MockRefreshServiceMockRecorder) ForceRefreshFeeds(ctx, feedIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ForceRefreshFeeds", reflect.TypeOf((*MockRefreshService)(nil).ForceRefreshFeeds), ctx, feedIDs)
+}
+
 // GetRefreshStatus mocks base method.
 func (m *MockRefreshService) GetRefreshStatus() service.RefreshStatus {
 	m.ctrl.T.Helper()

@@ -453,6 +453,17 @@ definitions:
       url:
         type: string
     type: object
+  internal_handler.fetchSettingsResponse:
+    properties:
+      concurrency:
+        type: integer
+      intervalMinutes:
+        type: integer
+      perHostConcurrency:
+        type: integer
+      timeoutSeconds:
+        type: integer
+    type: object
   internal_handler.filterActionsPayload:
     properties:
       keepOnly:
@@ -536,6 +547,34 @@ definitions:
     properties:
       entryId:
         type: string
+    type: object
+  internal_handler.filterImpactItem:
+    properties:
+      actions:
+        $ref: '#/definitions/internal_handler.filterActionsPayload'
+      entryId:
+        type: string
+      feedTitle:
+        type: string
+      muted:
+        type: boolean
+      publishedAt:
+        type: string
+      read:
+        type: boolean
+      starred:
+        type: boolean
+      title:
+        type: string
+    type: object
+  internal_handler.filterImpactResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/internal_handler.filterImpactItem'
+        type: array
+      total:
+        type: integer
     type: object
   internal_handler.filterListResponse:
     properties:
@@ -2168,6 +2207,33 @@ paths:
       summary: Apply rule to history
       tags:
       - filters
+  /filters/{id}/impact:
+    get:
+      description: List the entries this rule still owns (what a revert would change)
+      parameters:
+      - description: Filter ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Max records (default 5000)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.filterImpactResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: List revert impact
+      tags:
+      - filters
   /filters/{id}/matches:
     get:
       description: Get the recent entries this rule matched (audit log for "why is
@@ -2731,6 +2797,50 @@ paths:
           schema:
             $ref: '#/definitions/internal_handler.errorResponse'
       summary: Update appearance settings
+      tags:
+      - settings
+  /settings/fetch:
+    get:
+      description: Refresh interval / concurrency / timeout. Values take effect on
+        the next round.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.fetchSettingsResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: Get fetch settings
+      tags:
+      - settings
+    put:
+      consumes:
+      - application/json
+      description: 'Partial update: only fields > 0 are written. Applies from the
+        next refresh round.'
+      parameters:
+      - description: Fetch settings
+        in: body
+        name: settings
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.fetchSettingsResponse'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.fetchSettingsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: Update fetch settings
       tags:
       - settings
   /settings/general:

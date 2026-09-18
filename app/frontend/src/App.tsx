@@ -175,7 +175,8 @@ function AuthenticatedApp() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const queryClient = useQueryClient();
   const refreshFeeds = useMutation({
-    mutationFn: refreshAllFeeds,
+    // 快捷键 r：普通刷新（强制拉取走中栏刷新图标的右键菜单，带确认）
+    mutationFn: () => refreshAllFeeds(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["entries"] });
       queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, cleanup, fireEvent, screen, within } from "@testing-library/react";
+import { render, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { AutomationSettings } from "./AutomationSettings";
 import { useFilterEditorStore } from "@/stores/filter-editor-store";
 import type { FilterRule } from "@/types/filters";
@@ -14,6 +14,11 @@ const { createMutate, updateMutate, removeMutate, revertMutate, applyHistoryMuta
     nlDraftMutate: vi.fn(),
     showToast: vi.fn(),
   }));
+
+const { getFilterImpact, revertFilter } = vi.hoisted(() => ({
+  getFilterImpact: vi.fn(),
+  revertFilter: vi.fn(),
+}));
 
 const { rules } = vi.hoisted(() => ({ rules: { current: [] as FilterRule[] } }));
 
@@ -60,6 +65,15 @@ vi.mock("@/hooks/useFolders", () => ({
   useFolders: () => ({ data: [{ id: "folder-1", name: "技术" }] }),
 }));
 
+vi.mock("@/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/api")>();
+  return {
+    ...actual,
+    getFilterImpact: (id: string) => getFilterImpact(id),
+    revertFilter: (id: string, options: unknown) => revertFilter(id, options),
+  };
+});
+
 vi.mock("@/stores/toast-store", () => ({
   showToast: (message: string) => showToast(message),
   copyToClipboard: vi.fn(),
@@ -92,6 +106,8 @@ beforeEach(() => {
   updateMutate.mockClear();
   removeMutate.mockClear();
   revertMutate.mockClear();
+  getFilterImpact.mockReset();
+  revertFilter.mockReset();
   applyHistoryMutate.mockClear();
   showToast.mockClear();
   useFilterEditorStore.getState().close();
@@ -130,20 +146,56 @@ describe("AutomationSettings", () => {
     expect(screen.getByText("automation.hits")).toBeTruthy();
   });
 
-  it("点「撤销影响」调用撤销接口，并按返回条数提示", () => {
+  it("点「撤销影响」先给影响清单，确认后按勾选项撤销", async () => {
+    // 用户 11-23：撤销前先看到会被影响的条目，只撤勾选的（不再是点一下全撤）
     rules.current = [rule()];
-    render(<AutomationSettings />);
+    getFilterImpact.mockResolvedValue({
+      items: [
+        {
+          entryId: "e1",
+          title: "赞助商投稿：某云厂商",
+          feedTitle: "少数派",
+          publishedAt: "2026-09-17T04:00:00Z",
+          read: false,
+          starred: false,
+          muted: true,
+          actions: { mute: true, markRead: false, star: false, unstar: false },
+        },
+        {
+          entryId: "e2",
+          title: "另一条推广",
+          feedTitle: "少数派",
+          publishedAt: "2026-09-16T04:00:00Z",
+          read: true,
+          starred: false,
+          muted: true,
+          actions: { mute: true, markRead: false, star: false, unstar: false },
+        },
+      ],
+      total: 2,
+    });
+    revertFilter.mockResolvedValue({ reverted: 2 });
 
+    render(<AutomationSettings />);
     openRowMenu();
     fireEvent.click(screen.getByText("automation.revert"));
 
-    expect(revertMutate).toHaveBeenCalledTimes(1);
-    const [, options] = revertMutate.mock.calls[0] as [
-      string,
-      { onSuccess: (result: { reverted: number }) => void },
-    ];
-    options.onSuccess({ reverted: 5 });
-    expect(showToast).toHaveBeenCalledWith("automation.revert_done");
+    // 打开就拉清单，默认全选
+    expect(getFilterImpact).toHaveBeenCalledWith("rule-1");
+    await screen.findByText("赞助商投稿：某云厂商");
+    expect(screen.getByText("另一条推广")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("automation.revert_selected_action"));
+
+    await waitFor(() => {
+      expect(revertFilter).toHaveBeenCalledWith("rule-1", {
+        entryIds: ["e1", "e2"],
+        includeStarred: false,
+      });
+    });
+    await waitFor(() => {
+      expect(showToast).toHaveBeenCalledWith("automation.revert_done");
+    });
   });
 
   it("顺序上下移：两条规则交换 position", () => {

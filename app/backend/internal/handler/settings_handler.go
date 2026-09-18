@@ -171,6 +171,9 @@ func (h *SettingsHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/settings/ai/models", h.ListAIModels)
 	g.GET("/settings/general", h.GetGeneralSettings)
 	g.PUT("/settings/general", h.UpdateGeneralSettings)
+	// 拉取（11-20）：定时频率 / 全局并发 / 同主机并发 / 单源超时
+	g.GET("/settings/fetch", h.GetFetchSettings)
+	g.PUT("/settings/fetch", h.UpdateFetchSettings)
 	g.GET("/settings/network", h.GetNetworkSettings)
 	g.PUT("/settings/network", h.UpdateNetworkSettings)
 	g.POST("/settings/network/test", h.TestNetworkProxy)
@@ -406,6 +409,63 @@ func (h *SettingsHandler) UpdateGeneralSettings(c echo.Context) error {
 
 	logger.Info("general settings updated", "module", "handler", "action", "update", "resource", "settings", "result", "ok")
 	return h.GetGeneralSettings(c)
+}
+
+// fetchSettingsResponse 拉取设置（11-20）。
+type fetchSettingsResponse struct {
+	IntervalMinutes    int `json:"intervalMinutes"`
+	Concurrency        int `json:"concurrency"`
+	PerHostConcurrency int `json:"perHostConcurrency"`
+	TimeoutSeconds     int `json:"timeoutSeconds"`
+}
+
+// GetFetchSettings 读拉取设置（未配置的字段为默认值）。
+// @Summary Get fetch settings
+// @Description Refresh interval / concurrency / timeout. Values take effect on the next round.
+// @Tags settings
+// @Produce json
+// @Success 200 {object} fetchSettingsResponse
+// @Failure 500 {object} errorResponse
+// @Router /settings/fetch [get]
+func (h *SettingsHandler) GetFetchSettings(c echo.Context) error {
+	settings, err := h.service.GetFetchSettings(c.Request().Context())
+	if err != nil {
+		logger.Error("fetch settings get failed", "module", "handler", "action", "list", "resource", "settings", "result", "failed", "error", err)
+		return c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to get settings"})
+	}
+	return c.JSON(http.StatusOK, fetchSettingsResponse{
+		IntervalMinutes:    settings.IntervalMinutes,
+		Concurrency:        settings.Concurrency,
+		PerHostConcurrency: settings.PerHostConcurrency,
+		TimeoutSeconds:     settings.TimeoutSeconds,
+	})
+}
+
+// UpdateFetchSettings 改拉取设置：只写传进来的字段（>0），越界会被夹到合法区间。
+// @Summary Update fetch settings
+// @Description Partial update: only fields > 0 are written. Applies from the next refresh round.
+// @Tags settings
+// @Accept json
+// @Produce json
+// @Param settings body fetchSettingsResponse true "Fetch settings"
+// @Success 200 {object} fetchSettingsResponse
+// @Failure 400 {object} errorResponse
+// @Router /settings/fetch [put]
+func (h *SettingsHandler) UpdateFetchSettings(c echo.Context) error {
+	var req fetchSettingsResponse
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
+	}
+	if err := h.service.SetFetchSettings(c.Request().Context(), &service.FetchSettings{
+		IntervalMinutes:    req.IntervalMinutes,
+		Concurrency:        req.Concurrency,
+		PerHostConcurrency: req.PerHostConcurrency,
+		TimeoutSeconds:     req.TimeoutSeconds,
+	}); err != nil {
+		return writeSettingsSaveError(c, err, "update")
+	}
+	logger.Info("fetch settings updated", "module", "handler", "action", "update", "resource", "settings", "result", "ok")
+	return h.GetFetchSettings(c)
 }
 
 // ClearAnubisCookies deletes all Anubis cookies from settings.

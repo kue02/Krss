@@ -36,6 +36,7 @@ func (h *FilterHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/filters/preview", h.Preview)
 	g.POST("/filters/:id/apply", h.ApplyToHistory)
 	g.POST("/filters/:id/revert", h.Revert)
+	g.GET("/filters/:id/impact", h.RevertImpact)
 	g.GET("/filters/:id/matches", h.ListMatches)
 	g.GET("/filters/view-counts", h.ViewCounts)
 }
@@ -130,6 +131,30 @@ type filterPreviewResponse struct {
 
 type filterRevertResponse struct {
 	Reverted int64 `json:"reverted"`
+}
+
+// filterRevertRequest 撤销的勾选（用户 11-23：可以只撤其中几条）。
+// entryIds 留空 = 全部（保持老行为）；includeStarred = 连规则加过的星一起撤。
+type filterRevertRequest struct {
+	EntryIDs       []string `json:"entryIds"`
+	IncludeStarred bool     `json:"includeStarred"`
+}
+
+// filterImpactItem 撤销影响清单里的一行（前端列表用）。
+type filterImpactItem struct {
+	EntryID     string               `json:"entryId"`
+	Title       string               `json:"title"`
+	FeedTitle   string               `json:"feedTitle"`
+	PublishedAt string               `json:"publishedAt"`
+	Read        bool                 `json:"read"`
+	Starred     bool                 `json:"starred"`
+	Muted       bool                 `json:"muted"`
+	Actions     filterActionsPayload `json:"actions"`
+}
+
+type filterImpactResponse struct {
+	Items []filterImpactItem `json:"items"`
+	Total int                `json:"total"`
 }
 
 type filterApplyHistoryResponse struct {
@@ -436,13 +461,81 @@ func (h *FilterHandler) Revert(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid id"})
 	}
 
-	reverted, err := h.service.Revert(c.Request().Context(), id)
+	// 请求体可选：不传 = 全部撤销（老行为）；传了 entryIds 就只撤这几条。
+	var req filterRevertRequest
+	_ = c.Bind(&req)
+	entryIDs := make([]int64, 0, len(req.EntryIDs))
+	for _, raw := range req.EntryIDs {
+		parsed, parseErr := strconv.ParseInt(raw, 10, 64)
+		if parseErr != nil {
+			return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid entryIds"})
+		}
+		entryIDs = append(entryIDs, parsed)
+	}
+
+	reverted, err := h.service.RevertSelected(c.Request().Context(), id, entryIDs, req.IncludeStarred)
 	if err != nil {
 		return writeFilterError(c, err)
 	}
 
-	logger.Info("filter reverted", "module", "handler", "action", "revert", "resource", "filter", "result", "ok", "filter_id", id, "reverted", reverted)
+	logger.Info("filter reverted", "module", "handler", "action", "revert", "resource", "filter", "result", "ok", "filter_id", id, "reverted", reverted, "selected", len(entryIDs), "include_starred", req.IncludeStarred)
 	return c.JSON(http.StatusOK, filterRevertResponse{Reverted: reverted})
+}
+
+// RevertImpact 撤销前的影响清单（用户 11-23：先看会动哪些条目，再勾选要撤的）。
+// @Summary List revert impact
+// @Description List the entries this rule still owns (what a revert would change)
+// @Tags filters
+// @Produce json
+// @Param id path int true "Filter ID"
+// @Param limit query int false "Max records (default 5000)"
+// @Success 200 {object} filterImpactResponse
+// @Failure 400 {object} errorResponse
+// @Router /filters/{id}/impact [get]
+func (h *FilterHandler) RevertImpact(c echo.Context) error {
+	id, err := parseIDParam(c, "id")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid id"})
+	}
+
+	limit := 5000
+	if raw := c.QueryParam("limit"); raw != "" {
+		if parsed, parseErr := strconv.Atoi(raw); parseErr == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+
+	items, err := h.service.RevertImpact(c.Request().Context(), id, limit)
+	if err != nil {
+		return writeFilterError(c, err)
+	}
+
+	response := filterImpactResponse{Items: make([]filterImpactItem, len(items)), Total: len(items)}
+	for i, item := range items {
+		response.Items[i] = filterImpactItem{
+			EntryID:     idToString(item.EntryID),
+			Title:       item.Title,
+			FeedTitle:   item.FeedTitle,
+			PublishedAt: item.PublishedAt,
+			Read:        item.Read,
+			Starred:     item.Starred,
+			Muted:       item.Muted,
+			Actions: filterActionsPayload{
+				Mute:       item.Actions.Mute,
+				Unmute:     item.Actions.Unmute,
+				MarkRead:   item.Actions.MarkRead,
+				MarkUnread: item.Actions.MarkUnread,
+				Star:       item.Actions.Star,
+				Unstar:     item.Actions.Unstar,
+				KeepOnly:   item.Actions.KeepOnly,
+				Translate:  item.Actions.Translate,
+				Summarize:  item.Actions.Summarize,
+				Webhook:    item.Actions.Webhook,
+				Notify:     item.Actions.Notify,
+			},
+		}
+	}
+	return c.JSON(http.StatusOK, response)
 }
 
 // ListMatches returns the recent match log of a rule.

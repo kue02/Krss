@@ -12,5 +12,5 @@ func RefreshFeedWithFreshClientForTest(svc RefreshService, ctx context.Context, 
 	if !ok {
 		return ErrInvalid
 	}
-	return impl.refreshFeedWithFreshClient(ctx, feed, userAgent, cookie, retryCount)
+	return impl.refreshFeedWithFreshClient(ctx, feed, userAgent, cookie, retryCount, false)
 }

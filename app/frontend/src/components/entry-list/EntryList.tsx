@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useEntriesInfinite, useUnreadCounts } from "@/hooks/useEntries";
+import { AlertDialog, Button } from "@heroui/react";
 import { useFeeds } from "@/hooks/useFeeds";
 import { queryClient } from "@/lib/queryClient";
 import { getRefreshStatus, refreshAllFeeds, refreshFeeds } from "@/api";
@@ -47,6 +48,12 @@ import type { Entry, Feed, Folder, ContentType } from "@/types/api";
 const REFRESH_START_GRACE_MS = 1500;
 /** 兜底：再久也不让按钮一直转（毫秒） */
 const REFRESH_MAX_WAIT_MS = 180_000;
+
+/**
+ * 强制拉取时，范围超过这个数就先弹确认（用户 11-19：「如果当前范围太多（有可能是误选），
+ * 要谈个确认框」）。20 是个经验值：单个源 / 小分类不会被打断，全量（几十上百个源）才拦一下。
+ */
+const FORCE_REFRESH_CONFIRM_THRESHOLD = 20;
 
 
 interface EntryListProps {
@@ -397,6 +404,8 @@ export function EntryList({
 
   // 刷新：按当前选中范围（单个源 / 文件夹内所有源 / 某个视图的所有源）
   const [isRefreshing, setIsRefreshing] = useState(false);
+  /** 强制拉取前待确认的源数（null = 没有待确认的） */
+  const [forcePending, setForcePending] = useState<number | null>(null);
   // 刷新进度（待刷新总数 / 已完成数）：后端刷新状态接口轮询得到，用于按钮里的递减计数
   const [refreshProgress, setRefreshProgress] = useState<{
     total: number;
@@ -413,7 +422,7 @@ export function EntryList({
 
   useEffect(() => stopRefreshPolling, [stopRefreshPolling]);
 
-  const handleRefresh = useCallback(async () => {
+  const handleRefresh = useCallback(async (force = false, skipConfirm = false) => {
     if (isRefreshing) return;
 
     let ids: string[] = [];
@@ -432,6 +441,12 @@ export function EntryList({
 
     // 先用本地已知的源数打底，随后由后端进度覆盖（后端只在刷新中返回进度）
     const localTotal = ids.length > 0 ? ids.length : feeds.length;
+
+    // 强制拉取且范围很大（很可能是误选）先确认一次（用户 11-19 的原话要求）
+    if (force && !skipConfirm && localTotal > FORCE_REFRESH_CONFIRM_THRESHOLD) {
+      setForcePending(localTotal);
+      return;
+    }
 
     setIsRefreshing(true);
     setRefreshProgress({ total: localTotal, completed: 0 });
@@ -489,9 +504,9 @@ export function EntryList({
 
     try {
       if (ids.length > 0) {
-        await refreshFeeds(ids);
+        await refreshFeeds(ids, force);
       } else {
-        await refreshAllFeeds();
+        await refreshAllFeeds(force);
       }
       // 「已在刷新中」也会走到这里：那就跟着它在跑的这一轮一起显示进度，不报错
       pollRefreshStatus();
@@ -760,6 +775,7 @@ export function EntryList({
           onToggleUnreadOnly={onToggleUnreadOnly}
           onMarkAllRead={onMarkAllRead}
           onRefresh={handleRefresh}
+          onForceRefresh={() => void handleRefresh(true)}
           isRefreshing={isRefreshing}
           refreshTotal={refreshProgress?.total ?? 0}
           refreshCompleted={refreshProgress?.completed ?? 0}
@@ -770,6 +786,50 @@ export function EntryList({
           onToggleSidebar={onToggleSidebar}
           sidebarVisible={sidebarVisible}
         />
+
+        {/* 强制拉取确认（范围太大时先问一句，避免误选整轮重抓） */}
+        <AlertDialog>
+          <Button className="hidden" aria-hidden />
+          <AlertDialog.Backdrop
+            isOpen={forcePending !== null}
+            onOpenChange={(open) => !open && setForcePending(null)}
+          >
+            <AlertDialog.Container>
+              <AlertDialog.Dialog className="max-w-md">
+                <AlertDialog.Header>
+                  <AlertDialog.Heading>
+                    {t("entry.force_confirm_title", { count: forcePending ?? 0 })}
+                  </AlertDialog.Heading>
+                </AlertDialog.Header>
+                <AlertDialog.Body>
+                  <div className="text-sm text-muted-foreground">
+                    {t("entry.force_confirm_description")}
+                  </div>
+                </AlertDialog.Body>
+                <AlertDialog.Footer>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onPress={() => setForcePending(null)}
+                  >
+                    {t("actions.cancel")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onPress={() => {
+                      setForcePending(null);
+                      void handleRefresh(true, true);
+                    }}
+                  >
+                    {t("entry.force_refresh")}
+                  </Button>
+                </AlertDialog.Footer>
+                <AlertDialog.CloseTrigger />
+              </AlertDialog.Dialog>
+            </AlertDialog.Container>
+          </AlertDialog.Backdrop>
+        </AlertDialog>
       </MobileDocumentHeader>
 
       {/* 「当前序号 + 回到顶部」浮标（对齐 Nextflux 的 Indicator） */}

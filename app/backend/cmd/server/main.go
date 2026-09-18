@@ -135,8 +135,14 @@ func main() {
 	router := transport.NewRouter(folderHandler, feedHandler, entryHandler, opmlHandler, iconHandler, proxyHandler, settingsHandler, aiHandler, authHandler, domainRateLimitHandler, filterHandler, authService, cfg.StaticDir, cfg.EnableSwagger)
 	pprofServer := startPprofServer(cfg.PprofAddr)
 
-	// Start background scheduler (15 minutes interval)
-	sched := scheduler.New(refreshService, 15*time.Minute)
+	// 定时刷新：间隔来自设置（设置 → 高级 → 拉取），每轮重新读一次 —— 改完下一轮生效，不用重启
+	sched := scheduler.New(refreshService, func() time.Duration {
+		fs, err := settingsService.GetFetchSettings(context.Background())
+		if err != nil || fs == nil || fs.IntervalMinutes <= 0 {
+			return 15 * time.Minute
+		}
+		return time.Duration(fs.IntervalMinutes) * time.Minute
+	})
 	sched.Start()
 
 	// Handle graceful shutdown

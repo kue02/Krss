@@ -648,6 +648,20 @@ func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
+// GetFetchSettings / SetFetchSettings：拉取设置（11-20），测试里返回默认值即可。
+func (s *settingsServiceStub) GetFetchSettings(ctx context.Context) (*service.FetchSettings, error) {
+	return &service.FetchSettings{
+		IntervalMinutes:    service.DefaultRefreshIntervalMinutes,
+		Concurrency:        service.DefaultRefreshConcurrency,
+		PerHostConcurrency: service.DefaultRefreshPerHostConcurrency,
+		TimeoutSeconds:     service.DefaultRefreshTimeoutSeconds,
+	}, nil
+}
+
+func (s *settingsServiceStub) SetFetchSettings(ctx context.Context, settings *service.FetchSettings) error {
+	return nil
+}
+
 func (s *settingsServiceStub) GetAISettings(ctx context.Context) (*service.AISettings, error) {
 	return nil, nil
 }

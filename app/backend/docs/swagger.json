@@ -1898,6 +1898,47 @@
                 }
             }
         },
+        "/filters/{id}/impact": {
+            "get": {
+                "description": "List the entries this rule still owns (what a revert would change)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "filters"
+                ],
+                "summary": "List revert impact",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Filter ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Max records (default 5000)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.filterImpactResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/filters/{id}/matches": {
             "get": {
                 "description": "Get the recent entries this rule matched (audit log for \"why is this hidden\")",
@@ -2573,6 +2614,70 @@
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/settings/fetch": {
+            "get": {
+                "description": "Refresh interval / concurrency / timeout. Values take effect on the next round.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "settings"
+                ],
+                "summary": "Get fetch settings",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.fetchSettingsResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Partial update: only fields \u003e 0 are written. Applies from the next refresh round.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "settings"
+                ],
+                "summary": "Update fetch settings",
+                "parameters": [
+                    {
+                        "description": "Fetch settings",
+                        "name": "settings",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.fetchSettingsResponse"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.fetchSettingsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/internal_handler.errorResponse"
                         }
@@ -3490,6 +3595,23 @@
                 }
             }
         },
+        "internal_handler.fetchSettingsResponse": {
+            "type": "object",
+            "properties": {
+                "concurrency": {
+                    "type": "integer"
+                },
+                "intervalMinutes": {
+                    "type": "integer"
+                },
+                "perHostConcurrency": {
+                    "type": "integer"
+                },
+                "timeoutSeconds": {
+                    "type": "integer"
+                }
+            }
+        },
         "internal_handler.filterActionsPayload": {
             "type": "object",
             "properties": {
@@ -3614,6 +3736,49 @@
             "properties": {
                 "entryId": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_handler.filterImpactItem": {
+            "type": "object",
+            "properties": {
+                "actions": {
+                    "$ref": "#/definitions/internal_handler.filterActionsPayload"
+                },
+                "entryId": {
+                    "type": "string"
+                },
+                "feedTitle": {
+                    "type": "string"
+                },
+                "muted": {
+                    "type": "boolean"
+                },
+                "publishedAt": {
+                    "type": "string"
+                },
+                "read": {
+                    "type": "boolean"
+                },
+                "starred": {
+                    "type": "boolean"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.filterImpactResponse": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_handler.filterImpactItem"
+                    }
+                },
+                "total": {
+                    "type": "integer"
                 }
             }
         },

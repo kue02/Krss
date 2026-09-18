@@ -574,6 +574,8 @@ func (h *FeedHandler) RefreshStatus(c echo.Context) error {
 // refreshRequest 可选指定要刷新的订阅；不传则刷新全部
 type refreshRequest struct {
 	FeedIDs []string `json:"feedIds"`
+	// Force 强制拉取（用户 11-19）：忽略 etag/last-modified 与「同主机多久内不重复抓」。
+	Force bool `json:"force"`
 }
 
 // RefreshAll 触发刷新后立刻返回。
@@ -605,8 +607,15 @@ func (h *FeedHandler) RefreshAll(c echo.Context) error {
 
 		// 请求一返回 ctx 就被取消，后台任务要用脱离取消的 ctx 跑完这一轮
 		bgCtx := context.WithoutCancel(ctx)
+		forceScope := req.Force || c.QueryParam("force") == "true"
 		go func() {
-			if err := h.refreshService.RefreshFeeds(bgCtx, ids); err != nil && !errors.Is(err, service.ErrAlreadyRefreshing) {
+			var refreshErr error
+			if forceScope {
+				refreshErr = h.refreshService.ForceRefreshFeeds(bgCtx, ids)
+			} else {
+				refreshErr = h.refreshService.RefreshFeeds(bgCtx, ids)
+			}
+			if err := refreshErr; err != nil && !errors.Is(err, service.ErrAlreadyRefreshing) {
 				logger.Error("feed refresh failed", "module", "handler", "action", "refresh", "resource", "feed", "result", "failed", "count", len(ids), "error", err)
 			}
 		}()
@@ -614,13 +623,21 @@ func (h *FeedHandler) RefreshAll(c echo.Context) error {
 		return c.NoContent(http.StatusNoContent)
 	}
 
+	// 强制拉取：忽略条件请求与同主机冷却（用户 11-19），走同一条后台执行路径
+	force := req.Force || c.QueryParam("force") == "true"
 	bgCtx := context.WithoutCancel(ctx)
 	go func() {
-		if err := h.refreshService.RefreshAll(bgCtx); err != nil && !errors.Is(err, service.ErrAlreadyRefreshing) {
+		var err error
+		if force {
+			err = h.refreshService.ForceRefreshAll(bgCtx)
+		} else {
+			err = h.refreshService.RefreshAll(bgCtx)
+		}
+		if err != nil && !errors.Is(err, service.ErrAlreadyRefreshing) {
 			logger.Error("feed refresh failed", "module", "handler", "action", "refresh", "resource", "feed", "result", "failed", "error", err)
 		}
 	}()
-	logger.Info("feed refresh triggered", "module", "handler", "action", "refresh", "resource", "feed", "result", "ok")
+	logger.Info("feed refresh triggered", "module", "handler", "action", "refresh", "resource", "feed", "result", "ok", "force", force)
 	return c.NoContent(http.StatusNoContent)
 }
 

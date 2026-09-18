@@ -102,3 +102,11 @@ export interface DomainRateLimitListResponse {
 export interface AppearanceSettings {
   contentTypes: ContentType[];
 }
+
+/** 拉取设置（11-20）：定时频率 / 全局并发 / 同主机并发 / 单源超时 */
+export interface FetchSettings {
+  intervalMinutes: number;
+  concurrency: number;
+  perHostConcurrency: number;
+  timeoutSeconds: number;
+}

@@ -100,6 +100,21 @@ func (mr *MockSettingsServiceMockRecorder) GetFallbackUserAgent(ctx any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFallbackUserAgent", reflect.TypeOf((*MockSettingsService)(nil).GetFallbackUserAgent), ctx)
 }
 
+// GetFetchSettings mocks base method.
+func (m *MockSettingsService) GetFetchSettings(ctx context.Context) (*service.FetchSettings, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetFetchSettings", ctx)
+	ret0, _ := ret[0].(*service.FetchSettings)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetFetchSettings indicates an expected call of GetFetchSettings.
+func (mr *MockSettingsServiceMockRecorder) GetFetchSettings(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFetchSettings", reflect.TypeOf((*MockSettingsService)(nil).GetFetchSettings), ctx)
+}
+
 // GetGeneralSettings mocks base method.
 func (m *MockSettingsService) GetGeneralSettings(ctx context.Context) (*service.GeneralSettings, error) {
 	m.ctrl.T.Helper()
@@ -199,6 +214,20 @@ func (m *MockSettingsService) SetAppearanceSettings(ctx context.Context, setting
 func (mr *MockSettingsServiceMockRecorder) SetAppearanceSettings(ctx, settings any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetAppearanceSettings", reflect.TypeOf((*MockSettingsService)(nil).SetAppearanceSettings), ctx, settings)
+}
+
+// SetFetchSettings mocks base method.
+func (m *MockSettingsService) SetFetchSettings(ctx context.Context, settings *service.FetchSettings) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetFetchSettings", ctx, settings)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetFetchSettings indicates an expected call of SetFetchSettings.
+func (mr *MockSettingsServiceMockRecorder) SetFetchSettings(ctx, settings any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetFetchSettings", reflect.TypeOf((*MockSettingsService)(nil).SetFetchSettings), ctx, settings)
 }
 
 // SetGeneralSettings mocks base method.

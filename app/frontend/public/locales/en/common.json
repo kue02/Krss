@@ -151,7 +151,20 @@
     "notify_testing": "Sending…",
     "notify_test_ok": "Sent (HTTP {{status}}) — check your phone",
     "notify_test_no_url": "Enter a URL first",
-    "notify_test_failed": "Failed: {{reason}}"
+    "notify_test_failed": "Failed: {{reason}}",
+    "fetch_title": "Fetching",
+    "fetch_description": "Scheduled refresh frequency and concurrency. Changes take effect from the next round — no restart needed.",
+    "fetch_interval": "Refresh interval (minutes)",
+    "fetch_interval_hint": "Default 15 minutes",
+    "fetch_concurrency": "Global concurrency",
+    "fetch_concurrency_hint": "Feeds fetched in parallel, default 8",
+    "fetch_per_host": "Per-host concurrency",
+    "fetch_per_host_hint": "Requests to the same host at once, default 6",
+    "fetch_timeout": "Per-feed timeout (seconds)",
+    "fetch_timeout_hint": "Default 15 seconds",
+    "fetch_scope_hint": "Applies from the next round",
+    "fetch_saved": "Saved",
+    "fetch_save_failed": "Save failed"
   },
   "theme": {
     "system": "Follow System",
@@ -262,7 +275,10 @@
     "original_site_loading": "Loading original site…",
     "auto_readability_on": "Switched to reader mode automatically",
     "auto_translate_on": "Auto-translating…",
-    "translate_fallback_hint": "Some blocks failed on the free channel and were translated by the model instead"
+    "translate_fallback_hint": "Some blocks failed on the free channel and were translated by the model instead",
+    "force_refresh": "Force refresh",
+    "force_confirm_title": "Force refresh {{count}} feeds?",
+    "force_confirm_description": "This ignores etag / last-modified and refetches every feed in scope in one go (host cooldown is skipped too). That's a lot of feeds — confirm this wasn't a mis-selection."
   },
   "ai_settings": {
     "translate_channel": "Translation channel",
@@ -763,7 +779,19 @@
     "view_icon_emoji_input": "Type an emoji",
     "view_icon_pick_file": "Pick an image",
     "view_icon_hint": "Same 128px scaling as the avatar",
-    "view_icon_clear": "Clear icon"
+    "view_icon_clear": "Clear icon",
+    "revert_impact_title": "Revert the impact of “{{name}}”",
+    "revert_impact_description": "These entries are still owned by this rule. Only the ones you check will be reverted.",
+    "revert_select_all": "Select all",
+    "revert_select_none": "Select none",
+    "revert_selected_count": "{{selected}} / {{total}} selected",
+    "revert_impact_empty": "This rule currently affects no entries",
+    "revert_flag_muted": "muted",
+    "revert_flag_starred": "starred",
+    "revert_flag_unread": "unread",
+    "revert_include_starred": "Also unstar entries this rule starred ({{count}})",
+    "revert_selected_action": "Revert {{count}} selected",
+    "revert_running": "Reverting…"
   },
   "search": {
     "title": "Search",
@@ -786,5 +814,8 @@
     "copy_reason": "Copy reason",
     "copied": "Failure reason copied",
     "close": "Close"
+  },
+  "common": {
+    "loading": "Loading…"
   }
 }

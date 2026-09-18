@@ -115,6 +115,11 @@ type FilterService interface {
 	ApplyToHistory(ctx context.Context, filterID int64, limit int) (scanned int, applied int, err error)
 	// Revert 把某条规则静音过的条目恢复（muted 清掉，被它标已读的退回未读）。
 	Revert(ctx context.Context, filterID int64) (int64, error)
+	// RevertImpact 撤销前的影响清单（用户 11-23）：列出这条规则当前还管着的条目与当初的动作。
+	RevertImpact(ctx context.Context, filterID int64, limit int) ([]repository.RevertImpactEntry, error)
+	// RevertSelected 只撤销勾选的条目（entryIDs 为空 = 全部，保持老行为）；
+	// includeStarred 决定连「规则加过的星」一起撤（11-3 的待拍板项，默认不撤）。
+	RevertSelected(ctx context.Context, filterID int64, entryIDs []int64, includeStarred bool) (int64, error)
 	ListMatches(ctx context.Context, filterID int64, limit int) ([]model.FilterMatch, error)
 	// ParseNaturalLanguage 用 AI 把一句人话翻成规则草稿（不落库；由编辑器确认后再保存）。
 	ParseNaturalLanguage(ctx context.Context, text string) (FilterDraft, error)
@@ -750,9 +755,36 @@ func (s *filterService) ApplyToEntries(ctx context.Context, feed model.Feed, ent
 
 // Revert 撤销某条规则写入的标记（只影响「当前仍归这条规则」的条目）。
 func (s *filterService) Revert(ctx context.Context, filterID int64) (int64, error) {
-	matched, err := s.filters.ListMatchedEntryIDs(ctx, filterID, 10000)
+	return s.RevertSelected(ctx, filterID, nil, false)
+}
+
+// RevertImpact 见接口注释。
+func (s *filterService) RevertImpact(ctx context.Context, filterID int64, limit int) ([]repository.RevertImpactEntry, error) {
+	return s.filters.ListRevertImpact(ctx, filterID, limit)
+}
+
+// RevertSelected 见接口注释。
+//
+// 与原来的整体撤销相比只多两件事：① 只处理勾选的条目（空 = 全部，老行为不变）；
+// ② includeStarred 时把「规则当初加的星」摘掉 —— ResetFilterState 只清 muted/filter_id/read，
+// 不碰 starred（星标是用户自己的标记，默认不该被规则撤销带走）。
+func (s *filterService) RevertSelected(ctx context.Context, filterID int64, entryIDs []int64, includeStarred bool) (int64, error) {
+	matched, err := s.filters.ListMatchedEntryIDs(ctx, filterID, 20000)
 	if err != nil {
 		return 0, err
+	}
+	if len(entryIDs) > 0 {
+		keep := make(map[int64]struct{}, len(entryIDs))
+		for _, id := range entryIDs {
+			keep[id] = struct{}{}
+		}
+		filtered := make([]repository.MatchedEntry, 0, len(entryIDs))
+		for _, item := range matched {
+			if _, ok := keep[item.EntryID]; ok {
+				filtered = append(filtered, item)
+			}
+		}
+		matched = filtered
 	}
 	if len(matched) == 0 {
 		return 0, nil
@@ -770,6 +802,7 @@ func (s *filterService) Revert(ctx context.Context, filterID int64) (int64, erro
 	}
 
 	var reverted int64
+	var unstarred int
 	if len(restoreUnread) > 0 {
 		count, err := s.entries.ResetFilterState(ctx, restoreUnread, true)
 		if err != nil {
@@ -784,7 +817,23 @@ func (s *filterService) Revert(ctx context.Context, filterID int64) (int64, erro
 		}
 		reverted += count
 	}
-	logger.Info("filter reverted", "module", "service", "action", "revert", "resource", "filter", "result", "ok", "filter_id", filterID, "reverted", reverted)
+
+	if includeStarred {
+		// 只摘「规则当初加过的星」：动作里带 unstar 的（或用户明确要撤的）才动，
+		// 用户自己另外点的星不动 —— 撤销规则 ≠ 收回我的星标。
+		for _, item := range matched {
+			if !item.Actions.Star {
+				continue
+			}
+			if err := s.entries.UpdateStarredStatus(ctx, item.EntryID, false); err != nil {
+				logger.Warn("revert unstar failed", "module", "service", "action", "revert", "resource", "entry", "result", "failed", "entry_id", item.EntryID, "error", err)
+				continue
+			}
+			unstarred++
+		}
+	}
+
+	logger.Info("filter reverted", "module", "service", "action", "revert", "resource", "filter", "result", "ok", "filter_id", filterID, "reverted", reverted, "unstarred", unstarred)
 	return reverted, nil
 }
 

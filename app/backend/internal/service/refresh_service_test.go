@@ -442,3 +442,54 @@ func TestRefreshService_RefreshFeedWithFreshClient_HTTPError(t *testing.T) {
 	err := service.RefreshFeedWithFreshClientForTest(svc, context.Background(), feed, "UA-Test", "", 0)
 	require.NoError(t, err)
 }
+
+// 用户 11-19：刷新图标右键「强制拉取」= 忽略 etag/last-modified 重新拿一份。
+// 直接看请求头：普通刷新必须带条件头，强制拉取必须不带。
+func TestRefreshService_ForceRefresh_SkipsConditionalHeaders(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockFeeds := mock.NewMockFeedRepository(ctrl)
+	mockEntries := mock.NewMockEntryRepository(ctrl)
+
+	etag := `"abc"`
+	lastModified := "Mon, 02 Jan 2006 15:04:05 GMT"
+	feed := model.Feed{ID: 7, URL: "https://example.com/rss", Title: "Feed", ETag: &etag, LastModified: &lastModified}
+
+	sawConditional := false
+	client := &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			if req.Header.Get("If-None-Match") != "" || req.Header.Get("If-Modified-Since") != "" {
+				sawConditional = true
+			}
+			return &http.Response{
+				StatusCode: http.StatusNotModified,
+				Body:       http.NoBody,
+				Header:     make(http.Header),
+				Request:    req,
+			}, nil
+		}),
+	}
+
+	mockFeeds.EXPECT().GetByID(gomock.Any(), int64(7)).Return(feed, nil)
+	mockFeeds.EXPECT().List(gomock.Any(), (*int64)(nil)).Return([]model.Feed{feed}, nil)
+	mockFeeds.EXPECT().UpdateErrorMessage(gomock.Any(), int64(7), nil).Return(nil).AnyTimes()
+
+	svc := service.NewRefreshService(
+		mockFeeds,
+		mockEntries,
+		nil,
+		nil,
+		network.NewClientFactoryForTest(client),
+		nil,
+		nil,
+		nil,
+	)
+
+	require.NoError(t, svc.RefreshFeed(context.Background(), 7))
+	require.True(t, sawConditional, "普通刷新应该带 If-None-Match / If-Modified-Since")
+
+	sawConditional = false
+	require.NoError(t, svc.ForceRefreshAll(context.Background()))
+	require.False(t, sawConditional, "强制拉取不该带条件头（否则又拿到 304）")
+}

@@ -20,7 +20,8 @@ func TestScheduler(t *testing.T) {
 	// RefreshAll should be called once immediately on Start
 	mockRefresh.EXPECT().RefreshAll(gomock.Any()).Return(nil).AnyTimes()
 
-	s := scheduler.New(mockRefresh, 100*time.Millisecond)
+	// 间隔现在是一个 getter（用户 11-20：每轮重读设置），测试里固定成 100ms
+	s := scheduler.New(mockRefresh, func() time.Duration { return 100 * time.Millisecond })
 	s.Start()
 
 	// Let it run for a bit

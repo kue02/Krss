@@ -174,7 +174,7 @@ func TestFilterHandler_Revert_Success(t *testing.T) {
 	mockService := mock.NewMockFilterService(ctrl)
 	h := handler.NewFilterHandlerHelper(mockService)
 
-	mockService.EXPECT().Revert(gomock.Any(), int64(9)).Return(int64(12), nil)
+	mockService.EXPECT().RevertSelected(gomock.Any(), int64(9), gomock.Any(), false).Return(int64(12), nil)
 
 	e := newTestEcho()
 	c, rec := newTestContext(e, newJSONRequest(http.MethodPost, "/filters/9/revert", nil))

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -110,7 +111,34 @@ const (
 	keyNetworkIPStack    = "network.ip_stack"
 
 	keyAppearanceContentTypes = "appearance.content_types"
+
+	// 拉取（11-20）：频率与并发可配置。四个值都是「下一轮生效」的读法（不缓存到进程里），
+	// 用户改完不用重启；空值一律回落默认，越界值在写入时就夹紧。
+	keyRefreshIntervalMinutes    = "general.refresh_interval_minutes"
+	keyRefreshConcurrency        = "general.refresh_concurrency"
+	keyRefreshPerHostConcurrency = "general.refresh_per_host_concurrency"
+	keyRefreshTimeoutSeconds     = "general.refresh_timeout_seconds"
 )
+
+// 拉取默认值（改这里等于改「没显式配置时」的行为）。
+const (
+	DefaultRefreshIntervalMinutes    = 15
+	DefaultRefreshConcurrency        = 8
+	DefaultRefreshPerHostConcurrency = 6
+	DefaultRefreshTimeoutSeconds     = 15
+)
+
+// FetchSettings 拉取相关设置（用户 11-20：定时频率、全局并发、同主机并发、单源超时）。
+type FetchSettings struct {
+	// IntervalMinutes 定时刷新间隔（分钟）
+	IntervalMinutes int `json:"intervalMinutes"`
+	// Concurrency 全局并发（同时在抓的源数上限）
+	Concurrency int `json:"concurrency"`
+	// PerHostConcurrency 同一主机并发上限（礼貌值：同一站别同时打太多）
+	PerHostConcurrency int `json:"perHostConcurrency"`
+	// TimeoutSeconds 单个源抓取超时（秒）
+	TimeoutSeconds int `json:"timeoutSeconds"`
+}
 
 // SettingsService provides settings management.
 type SettingsService interface {
@@ -140,6 +168,10 @@ type SettingsService interface {
 	GetProxyURL(ctx context.Context) string
 	// GetIPStack returns the IP stack preference (default, ipv4, ipv6).
 	GetIPStack(ctx context.Context) string
+	// GetFetchSettings 拉取设置（频率/并发/超时），未配置的字段返回默认值。
+	GetFetchSettings(ctx context.Context) (*FetchSettings, error)
+	// SetFetchSettings 更新拉取设置：只写传进来的字段（>0 才覆盖），写入前夹紧到合法区间。
+	SetFetchSettings(ctx context.Context, settings *FetchSettings) error
 	// GetAppearanceSettings returns appearance settings.
 	GetAppearanceSettings(ctx context.Context) (*AppearanceSettings, error)
 	// SetAppearanceSettings updates appearance settings.
@@ -626,6 +658,68 @@ func (s *settingsService) GetGeneralSettings(ctx context.Context) (*GeneralSetti
 		settings.BarkURL = val
 	}
 	return settings, nil
+}
+
+// clampInt 把值夹到 [min,max]；0 表示「没传」由调用方决定要不要用默认值。
+func clampInt(v, min, max int) int {
+	if v < min {
+		return min
+	}
+	if v > max {
+		return max
+	}
+	return v
+}
+
+// GetFetchSettings 读拉取设置；没配置过的字段返回默认值（老库升级后行为与升级前一致）。
+func (s *settingsService) GetFetchSettings(ctx context.Context) (*FetchSettings, error) {
+	out := &FetchSettings{
+		IntervalMinutes:    DefaultRefreshIntervalMinutes,
+		Concurrency:        DefaultRefreshConcurrency,
+		PerHostConcurrency: DefaultRefreshPerHostConcurrency,
+		TimeoutSeconds:     DefaultRefreshTimeoutSeconds,
+	}
+	if v, err := s.getInt(ctx, keyRefreshIntervalMinutes); err == nil && v > 0 {
+		out.IntervalMinutes = clampInt(v, 1, 24*60)
+	}
+	if v, err := s.getInt(ctx, keyRefreshConcurrency); err == nil && v > 0 {
+		out.Concurrency = clampInt(v, 1, 64)
+	}
+	if v, err := s.getInt(ctx, keyRefreshPerHostConcurrency); err == nil && v > 0 {
+		out.PerHostConcurrency = clampInt(v, 1, 64)
+	}
+	if v, err := s.getInt(ctx, keyRefreshTimeoutSeconds); err == nil && v > 0 {
+		out.TimeoutSeconds = clampInt(v, 1, 300)
+	}
+	return out, nil
+}
+
+// SetFetchSettings 只覆盖传进来的字段（>0 才写），空字段保持原值 —— 前端可以只改一项。
+func (s *settingsService) SetFetchSettings(ctx context.Context, settings *FetchSettings) error {
+	if settings == nil {
+		return ErrInvalid
+	}
+	if settings.IntervalMinutes > 0 {
+		if err := s.repo.Set(ctx, keyRefreshIntervalMinutes, strconv.Itoa(clampInt(settings.IntervalMinutes, 1, 24*60))); err != nil {
+			return fmt.Errorf("set refresh interval: %w", err)
+		}
+	}
+	if settings.Concurrency > 0 {
+		if err := s.repo.Set(ctx, keyRefreshConcurrency, strconv.Itoa(clampInt(settings.Concurrency, 1, 64))); err != nil {
+			return fmt.Errorf("set refresh concurrency: %w", err)
+		}
+	}
+	if settings.PerHostConcurrency > 0 {
+		if err := s.repo.Set(ctx, keyRefreshPerHostConcurrency, strconv.Itoa(clampInt(settings.PerHostConcurrency, 1, 64))); err != nil {
+			return fmt.Errorf("set refresh per-host concurrency: %w", err)
+		}
+	}
+	if settings.TimeoutSeconds > 0 {
+		if err := s.repo.Set(ctx, keyRefreshTimeoutSeconds, strconv.Itoa(clampInt(settings.TimeoutSeconds, 1, 300))); err != nil {
+			return fmt.Errorf("set refresh timeout: %w", err)
+		}
+	}
+	return nil
 }
 
 // SetGeneralSettings updates the general settings.

@@ -24,6 +24,7 @@ import type {
   NetworkSettings,
   NetworkTestRequest,
   NetworkTestResponse,
+  FetchSettings,
 } from "@/types/settings";
 import type {
   FilterApplyHistoryResult,
@@ -33,6 +34,7 @@ import type {
   FilterRevertResult,
   FilterRule,
   FilterWritePayload,
+  FilterImpactResult,
 } from "@/types/filters";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? "";
@@ -531,17 +533,25 @@ export async function deleteFeeds(ids: string[]): Promise<void> {
   });
 }
 
-export async function refreshAllFeeds(): Promise<void> {
+/**
+ * 刷新全部订阅。force = 强制拉取（用户 11-19）：忽略 etag/last-modified 与
+ * 「同主机多久内不重复抓」的等待，整轮重抓。
+ */
+export async function refreshAllFeeds(force = false): Promise<void> {
   return request<void>("/api/feeds/refresh", {
     method: "POST",
+    body: JSON.stringify({ force }),
   });
 }
 
 /** 只刷新指定订阅（按文件夹 / 单个源 / 某个视图刷新都用它） */
-export async function refreshFeeds(ids: (string | number)[]): Promise<void> {
+export async function refreshFeeds(
+  ids: (string | number)[],
+  force = false,
+): Promise<void> {
   return request<void>("/api/feeds/refresh", {
     method: "POST",
-    body: JSON.stringify({ feedIds: ids.map(String) }),
+    body: JSON.stringify({ feedIds: ids.map(String), force }),
   });
 }
 
@@ -1239,9 +1249,45 @@ export async function previewFilter(
   });
 }
 
-export async function revertFilter(id: string): Promise<FilterRevertResult> {
+/**
+ * 撤销规则影响。options.entryIds 为空 = 全部（老行为）；
+ * includeStarred 时连「规则当初加过的星」一起撤（用户 11-23 / 11-3）。
+ */
+export async function revertFilter(
+  id: string,
+  options: { entryIds?: string[]; includeStarred?: boolean } = {},
+): Promise<FilterRevertResult> {
   return request<FilterRevertResult>(`/api/filters/${id}/revert`, {
     method: "POST",
+    body: JSON.stringify({
+      entryIds: options.entryIds ?? [],
+      includeStarred: options.includeStarred ?? false,
+    }),
+  });
+}
+
+/** 撤销前的影响清单（列出这条规则当前还管着哪些条目）。 */
+export async function getFilterImpact(
+  id: string,
+  limit = 5000,
+): Promise<FilterImpactResult> {
+  return request<FilterImpactResult>(
+    `/api/filters/${id}/impact?limit=${limit}`,
+  );
+}
+
+/** 拉取设置（11-20）：定时频率 / 全局并发 / 同主机并发 / 单源超时 */
+export async function getFetchSettings(): Promise<FetchSettings> {
+  return request<FetchSettings>("/api/settings/fetch");
+}
+
+/** 只传要改的字段（>0 生效）；越界会被后端夹到合法区间。下一轮刷新生效。 */
+export async function updateFetchSettings(
+  payload: Partial<FetchSettings>,
+): Promise<FetchSettings> {
+  return request<FetchSettings>("/api/settings/fetch", {
+    method: "PUT",
+    body: JSON.stringify(payload),
   });
 }
 

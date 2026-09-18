@@ -27,6 +27,7 @@ import {
   useFilters,
 } from "@/hooks/useFilters";
 import { FilterMatchesDialog } from "@/components/automation/FilterMatchesDialog";
+import { RevertFilterDialog } from "@/components/automation/RevertFilterDialog";
 import { useFilterEditorStore } from "@/stores/filter-editor-store";
 import { showToast } from "@/stores/toast-store";
 import {
@@ -343,7 +344,8 @@ export function AutomationSettings() {
   const { data: filters, isLoading, isError } = useFilters();
   const { data: feeds } = useFeeds();
   const { data: folders } = useFolders();
-  const { update, remove, revert } = useFilterMutations();
+  // revert 现在由 RevertFilterDialog 自己调（要带勾选项），这里不再直接用
+  const { update, remove } = useFilterMutations();
   const applyHistory = useApplyFilterHistory();
   const nlDraft = useFilterDraft();
   const openNew = useFilterEditorStore((state) => state.openNew);
@@ -351,6 +353,7 @@ export function AutomationSettings() {
   const openEdit = useFilterEditorStore((state) => state.openEdit);
   const openWithDraft = useFilterEditorStore((state) => state.openWithDraft);
 
+  const [revertRule, setRevertRule] = useState<FilterRule | null>(null);
   const [pendingDelete, setPendingDelete] = useState<FilterRule | null>(null);
   const [deleteWithRevert, setDeleteWithRevert] = useState(true);
   const [matchesRule, setMatchesRule] = useState<FilterRule | null>(null);
@@ -435,16 +438,9 @@ export function AutomationSettings() {
     [update],
   );
 
+  // 撤销影响：先拉影响清单让人勾选（用户 11-23），不再是「一点就全撤」
   const handleRevert = (rule: FilterRule) => {
-    revert.mutate(rule.id, {
-      onSuccess: (result) => {
-        showToast(
-          result.reverted > 0
-            ? t("automation.revert_done", { count: result.reverted })
-            : t("automation.revert_none"),
-        );
-      },
-    });
+    setRevertRule(rule);
   };
 
   const confirmDelete = () => {
@@ -807,6 +803,12 @@ export function AutomationSettings() {
           </Modal.Container>
         </Modal.Backdrop>
       </Modal>
+
+      {/* 撤销影响：先给清单，勾选后只撤勾选的 */}
+      <RevertFilterDialog
+        rule={revertRule}
+        onClose={() => setRevertRule(null)}
+      />
 
       {/* 命中日志（「为什么这条看不到」的答案） */}
       <FilterMatchesDialog

@@ -18,6 +18,19 @@ type MatchedEntry struct {
 	Actions model.FilterActions
 }
 
+// RevertImpactEntry 撤销前清单里的一行。
+type RevertImpactEntry struct {
+	EntryID     int64
+	Title       string
+	FeedTitle   string
+	PublishedAt string
+	Read        bool
+	Starred     bool
+	Muted       bool
+	// Actions 当初这条规则对它做过什么（撤销会影响到的就是这些）
+	Actions model.FilterActions
+}
+
 // FilterRepository 过滤规则的存取。
 // 注意：命中计数/审计是「规则引擎」的正确性依据，因此这里不省略任何写入。
 type FilterRepository interface {
@@ -30,6 +43,9 @@ type FilterRepository interface {
 	ListMatches(ctx context.Context, filterID int64, limit int) ([]model.FilterMatch, error)
 	// ListMatchedEntryIDs 取这条规则命中过、且当前仍归它管的条目（用于撤销/反悔）。
 	ListMatchedEntryIDs(ctx context.Context, filterID int64, limit int) ([]MatchedEntry, error)
+	// ListRevertImpact 取「撤销会被影响的条目」清单（条目本身 + 来源 + 当前状态 + 当初的动作），
+	// 供撤销前让用户看清并勾选（用户 11-23）。不写库。
+	ListRevertImpact(ctx context.Context, filterID int64, limit int) ([]RevertImpactEntry, error)
 	// BumpMatchStats 刷新一批条目后，把每条规则的命中数/最近命中时间落库。
 	BumpMatchStats(ctx context.Context, stats map[int64]int64, at time.Time) error
 	// PruneMatches 只保留最近 keep 条命中记录，防止审计表无限增长。
@@ -302,6 +318,48 @@ func (r *filterRepository) SaveAIJudgement(ctx context.Context, entryID int64, q
 		ON CONFLICT(entry_id, question_hash) DO UPDATE SET verdict = excluded.verdict`,
 		snowflake.NextID(), entryID, questionHash, boolToInt(verdict), model, formatTime(at))
 	return err
+}
+
+// ListRevertImpact 撤销影响清单：与 ListMatchedEntryIDs 同一口径（最近一次命中、且条目当前仍归它管），
+// 另带条目自身状态，供前端列出「会撤销哪些条目」。
+func (r *filterRepository) ListRevertImpact(ctx context.Context, filterID int64, limit int) ([]RevertImpactEntry, error) {
+	if limit <= 0 || limit > 20000 {
+		limit = 5000
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT fm.entry_id, COALESCE(e.title, ''), COALESCE(f.title, ''), COALESCE(e.published_at, ''),
+		       e.read, e.starred, e.muted, fm.actions
+		FROM filter_matches fm
+		INNER JOIN entries e ON e.id = fm.entry_id
+		LEFT JOIN feeds f ON f.id = e.feed_id
+		WHERE fm.filter_id = ? AND e.filter_id = ?
+		  AND fm.id = (
+			SELECT MAX(fm2.id) FROM filter_matches fm2
+			WHERE fm2.entry_id = fm.entry_id AND fm2.filter_id = fm.filter_id
+		  )
+		ORDER BY e.published_at DESC, fm.entry_id DESC
+		LIMIT ?`, filterID, filterID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]RevertImpactEntry, 0, 16)
+	for rows.Next() {
+		var item RevertImpactEntry
+		var readInt, starredInt, mutedInt int
+		var rawActions string
+		if err := rows.Scan(&item.EntryID, &item.Title, &item.FeedTitle, &item.PublishedAt,
+			&readInt, &starredInt, &mutedInt, &rawActions); err != nil {
+			return nil, err
+		}
+		item.Read = readInt == 1
+		item.Starred = starredInt == 1
+		item.Muted = mutedInt == 1
+		_ = json.Unmarshal([]byte(rawActions), &item.Actions)
+		out = append(out, item)
+	}
+	return out, rows.Err()
 }
 
 func (r *filterRepository) ListMatchedEntryIDs(ctx context.Context, filterID int64, limit int) ([]MatchedEntry, error) {

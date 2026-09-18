@@ -12,6 +12,7 @@ package mock
 import (
 	context "context"
 	model "gist/backend/internal/model"
+	repository "gist/backend/internal/repository"
 	service "gist/backend/internal/service"
 	reflect "reflect"
 
@@ -206,6 +207,36 @@ func (m *MockFilterService) Revert(ctx context.Context, filterID int64) (int64, 
 func (mr *MockFilterServiceMockRecorder) Revert(ctx, filterID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Revert", reflect.TypeOf((*MockFilterService)(nil).Revert), ctx, filterID)
+}
+
+// RevertImpact mocks base method.
+func (m *MockFilterService) RevertImpact(ctx context.Context, filterID int64, limit int) ([]repository.RevertImpactEntry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RevertImpact", ctx, filterID, limit)
+	ret0, _ := ret[0].([]repository.RevertImpactEntry)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RevertImpact indicates an expected call of RevertImpact.
+func (mr *MockFilterServiceMockRecorder) RevertImpact(ctx, filterID, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevertImpact", reflect.TypeOf((*MockFilterService)(nil).RevertImpact), ctx, filterID, limit)
+}
+
+// RevertSelected mocks base method.
+func (m *MockFilterService) RevertSelected(ctx context.Context, filterID int64, entryIDs []int64, includeStarred bool) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RevertSelected", ctx, filterID, entryIDs, includeStarred)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RevertSelected indicates an expected call of RevertSelected.
+func (mr *MockFilterServiceMockRecorder) RevertSelected(ctx, filterID, entryIDs, includeStarred any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevertSelected", reflect.TypeOf((*MockFilterService)(nil).RevertSelected), ctx, filterID, entryIDs, includeStarred)
 }
 
 // TestNotify mocks base method.

@@ -176,6 +176,21 @@ func (mr *MockFilterRepositoryMockRecorder) ListMatches(ctx, filterID, limit any
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMatches", reflect.TypeOf((*MockFilterRepository)(nil).ListMatches), ctx, filterID, limit)
 }
 
+// ListRevertImpact mocks base method.
+func (m *MockFilterRepository) ListRevertImpact(ctx context.Context, filterID int64, limit int) ([]repository.RevertImpactEntry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRevertImpact", ctx, filterID, limit)
+	ret0, _ := ret[0].([]repository.RevertImpactEntry)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListRevertImpact indicates an expected call of ListRevertImpact.
+func (mr *MockFilterRepositoryMockRecorder) ListRevertImpact(ctx, filterID, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRevertImpact", reflect.TypeOf((*MockFilterRepository)(nil).ListRevertImpact), ctx, filterID, limit)
+}
+
 // PruneMatches mocks base method.
 func (m *MockFilterRepository) PruneMatches(ctx context.Context, keep int) error {
 	m.ctrl.T.Helper()
