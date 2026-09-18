@@ -30,6 +30,7 @@
 | 第十三批 13-1~13-3（重做） | 按效果图**真机复验后重做**：动作区五颗开关原本 0 高度（隐形）、撤销影响行方向被组件层顶回 column、角标面板整块点不动（弹层缺 `pointer-events`）—— 三条已修 + 真机量过（见 §2.3） |
 | 过滤规则（自动化）P1+P2+P3 | 全部完成（含 notify 动作、AI 条件、自然语言建规则） |
 | 第十九批 19-1~19-6（自动刷新历史重做） | 全部完成 + **主树合并后真机复验**（行高 49.8px；三个数字列右缘 `808.7/959.3/1110` 全行一致；滚动区 720×232、`clientH 232 / scrollH 440`；筛选 8→2→8；清空确认框可取消且不动数据）。见 §2.10 |
+| 第十四批 14-1~14-5（代理按来源生效） | 全部完成 + **主树合并后真机与接口实测**（迁移 26 在你真库跑通、`proxy_mode is not null`=0；`/proxy/sources` 77/77+14/14；密码掩码/空 body/400 全对；「按来源试」6 例含**真实出网成功**与「用订阅那套」反证；管理弹窗 880×769、91 组三态）。见 §2.4 |
 
 ### ✋ 已改完、但**我这边没验到**，需要你点一下
 
@@ -55,6 +56,7 @@
 - [ ] **文档收尾**：`docs/变更记录.md` 里那条陈旧的「已静音视图标题」；提交遗留在工作区的 `IDEA.md` 改动
 - [ ] **残留清理**：`~/Documents/Docker/gist-nextflux/data-filter`（20M 测试库副本）删否
 - [ ]（可选）`vite.config.ts` dev 代理硬编码 `:8080` 改环境变量（只在并行开工时需要）
+- [ ] **i18n 死键清理**：`en/common.json` 的 `entry.copy_feed_url` / `entry.copied_feed_url` 全仓无人引用（代码用的是 `actions.copy_feed_url` / `actions.copied_feed_url`，中英都有）⇒ 删掉这两个死键即可，零行为变化。（另：`entry.unread_count` vs `unread_count_one/_other` 是 i18next 复数形式，**不是**缺键，别动。）
 
 ### 2.2 第十二批剩余
 
@@ -87,13 +89,17 @@
       未读数盒子装不下数字（大小 + 8）、压边四角不对称（改 `calc(±100% ∓ offset)`，默认 2px 与圆点一致）。
       真机走查：内容/位置/大小/外观/恢复默认五项逐项生效，四角压边 0/2/4/6 → 实测 0/2/4/6px ✓。
 
-### 2.4 第十四批 · 代理按来源生效（已按我推荐全拍板，**代码一行没动**）
+### 2.4 第十四批 · 代理按来源生效 —— **2026-09-18 已落地并合入主树（`e056824`），真机 + 接口实测通过**
 
-- [ ] **14-1** 迁移 **26**：`feeds` / `folders` 各加 `proxy_mode`（NULL=跟随）+ `proxy_config`（JSON，空=用全局），新列全 NULL ⇒ 老数据零变化。
-- [ ] **14-2** 取用顺序 `订阅 → 文件夹（含父级链）→ 全局`，第一个非 NULL 说了算；三处知道 feed 的路径传 `feed.ID`；`ClientFactory` **不许加缓存**（否则违反「每轮重读」）。
-- [ ] **14-3** 接口 `PATCH /api/feeds/:id/proxy`、`PATCH /api/folders/:id/proxy`；测试按钮支持「按来源试」；`make gen` + `swag init`；代理密码照掩码、订阅级也要脱敏。
-- [ ] **14-4** 前端：设置→网络 加「按来源覆盖」段（计数 + 管理入口，HeroUI Popover/Modal）；单条用 `TriStateControl`（跟随上级/走代理/直连）。
-- [ ] **14-5** 验收口径：行上直接显示**生效结果**（如 `走代理 · 来自：文件夹「技术」`），真机量 + 接口回显。
+> 落点：后端 `model/proxy.go` · `service/proxy_source_service.go` · `handler/proxy_source_handler.go` · `pkg/network/client.go`；前端 `ProxyOverrideManager.tsx` / `TriStateControl` / `useProxySources.ts`。实测数字见 `docs/变更记录.md`。
+
+- [x] **14-1** 迁移 **26**：`feeds` / `folders` 各加 `proxy_mode`（NULL=跟随）+ `proxy_config`（JSON，空=用全局）—— **已完成 + 实打**。合并后在**你的真实库**上跑通迁移：两表各出现两列，`feeds` 77 条 / `entries` 2303 条原样，`proxy_mode is not null` = **0** ⇒ 老数据行为零变化（重启前已留 `.backup` 快照 `data.bak-0918-pre14/`）。
+- [x] **14-2** 取用顺序 `订阅 → 文件夹（含父级链）→ 全局` —— **已完成 + 接口实测**。`ResolveForFeed/Folder` 收在 `ProxySourceService`；`ClientFactory` 未加缓存（`WithSourceProxy` 注入、每轮现读）。实测：订阅=inherit + 文件夹=direct → 生效 `source=folder mode=direct sourceName='资讯'`。
+- [x] **14-3** 接口 `PATCH /api/feeds/:id/proxy`、`PATCH /api/folders/:id/proxy` + 测试按钮支持「按来源试」—— **已完成 + 接口实测**。密码掩码：回显 `'***-pw'`、库里存真值、回传掩码不冲掉原密码、日志 0 次明文；空 body 不改字段、非法 `mode`/`type` 回 400。
+      **「按来源试」实打 6 例**（`POST /api/settings/network/test {feedId}`，打 `https://captive.apple.com/`）：inherit→全局 **真实出网成功**；direct → 回「直连、不走代理」；订阅单独一套指向 `127.0.0.1:1` → **失败**（证明用的是这一层那套、不是全局）；文件夹链死地址 → 同样失败；文件夹=direct → 回直连；非法 id → 400。
+- [x] **14-4** 前端：设置→网络「按来源覆盖」段 + 单条 `TriStateControl` —— **已完成 + 真机实测**。计数胶囊「文件夹 0 个已覆盖 / 订阅 0 个已覆盖 / 实际走代理 77 个订阅」与接口 counts 逐项一致；「管理覆盖…」94×32 → 弹窗 **880×769**，91 组三态（跟随上级/走代理/直连）全部渲染。
+- [x] **14-5** 验收口径：行上直接显示生效结果 —— **已完成 + 真机实测**。订阅行显示「走代理 · 来自：全局」，文件夹行显示「分享文件夹 · 18 个订阅」；接口回显带 `mode/source/sourceName`。
+- 附带（**越出 14 批范围**，同病灶顺手修）：`fix(21批)` 命中日志弹窗（`FilterMatchesDialog`）换回项目自己的 `Dialog` —— 同一个「滚轮被 react-remove-scroll 吃掉」的病灶。
 
 ### 2.5 第十五批 · 通知视图改成时间线（已拍板，**代码一行没动**）
 
@@ -259,3 +265,4 @@
 - [x] 第八批（P2/P3 动作）· 第九批 1–8 · 第十批 1–14 · 第十一批 1–23 · 第十二批 1–17 + 首刀
 - [x] 第十三批重做 · 第二十批（取色面板/星标入口/滚动已读）· **第二十一批 全部设置持久化**（见 §2.12）
 - [x] **第十九批 自动刷新历史重做**（拆列/失败置顶/筛选/滚动区，子树 `feat/refresh-history` → 主树 `9064627`，见 §2.10）
+- [x] **第十四批 代理按来源生效**（迁移 26 / 三态 / 管理面板 / 按来源试，子树 `feat/proxy` → 主树 `e056824`；含 21 批命中日志弹窗同病灶修复，见 §2.4）
