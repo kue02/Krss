@@ -170,6 +170,12 @@ interface UISettings {
   scrollReadByView: ViewScrollRead;
   /** 已读判定时机：scrollPast = 滚出顶部（默认）；onVisible = 看到即已读（Folo 语义） */
   scrollReadTimingByView: Record<ContentType, ScrollMarkReadTiming>;
+  /**
+   * 20-3（用户 2026-09-18）：滚动标已读后，这些条目**不立刻**从「只看未读」列表里消失 ——
+   * 边滚边消失会把下面的条目往上顶（往回滚时体验尤其差）。
+   * 默认 true：推迟到「离开这个视图 / 换订阅再回来」时才摘掉；关掉就是原来的即时消失。
+   */
+  scrollReadDeferRemoval: boolean;
 }
 
 const STORAGE_KEY = "gist-ui-settings";
@@ -224,6 +230,8 @@ export const defaultUISettings: UISettings = {
     notification: "inherit",
     social: "inherit",
   },
+  // 20-3：默认「不实时消失」（离开视图/换订阅回来才摘掉）
+  scrollReadDeferRemoval: true,
 };
 
 function getStoredSettings(): UISettings {

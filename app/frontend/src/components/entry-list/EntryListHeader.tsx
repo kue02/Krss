@@ -1,5 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { ToggleButton } from "@heroui/react";
+import { Star } from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
   CircleOutlineIcon,
   CircleFilledIcon,
@@ -164,14 +166,26 @@ export function EntryListHeader({
           )}
         </button>
         {onToggleStarredViewOnly && (
+          /* 20-2（用户：「把这个当前视图也改成图标的那种形式，然后默认选中」）：
+             与相邻的刷新/未读/全读按钮同款 —— 32px 圆形图标按钮，选中态用组件库自带的
+             柔和强调底，图标本身也实心化（与未读那颗「实心/描边」的写法一致） */
           <ToggleButton
+            isIconOnly
             size="sm"
+            variant="ghost"
             isSelected={Boolean(starredViewOnly)}
             onChange={onToggleStarredViewOnly}
             aria-label={t("sidebar.starred_view")}
-            className="mr-1 px-2 py-1 text-[11px]"
+            /* RAC 的 ToggleButton props 类型里没有 DOM 的 title（运行时照传），
+               用 spread 绕开 excess property 检查 */
+            {...{
+              title: starredViewOnly
+                ? t("entry.starred_view_only_off")
+                : t("entry.starred_view_only_on"),
+            }}
+            className="size-8 min-w-8 shrink-0 rounded-full"
           >
-            {t("sidebar.starred_view_short")}
+            <Star className={cn("size-4", starredViewOnly && "fill-current")} />
           </ToggleButton>
         )}
         <button

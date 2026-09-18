@@ -73,10 +73,10 @@ describe("router", () => {
       });
     });
 
-    it("should parse /starred", () => {
+    it("should parse /starred（20-2 起默认就是「只当前视图」）", () => {
       const result = parseRoute("/starred", "");
       expect(result).toEqual({
-        selection: { type: "starred", viewOnly: false },
+        selection: { type: "starred", viewOnly: true },
         entryId: null,
         unreadOnly: false,
         contentType: "article",
@@ -86,7 +86,7 @@ describe("router", () => {
     it("should parse /starred/:entryId", () => {
       const result = parseRoute("/starred/333", "");
       expect(result).toEqual({
-        selection: { type: "starred", viewOnly: false },
+        selection: { type: "starred", viewOnly: true },
         entryId: "333",
         unreadOnly: false,
         contentType: "article",
@@ -143,12 +143,20 @@ describe("router", () => {
       );
     });
 
-    it("should build /starred path", () => {
-      expect(buildPath({ type: "starred" })).toBe("/starred");
+    it("should build /starred path（默认档显式写成 scope=view）", () => {
+      expect(buildPath({ type: "starred" })).toBe("/starred?scope=view");
     });
 
     it("should build /starred with entry id", () => {
-      expect(buildPath({ type: "starred" }, "333")).toBe("/starred/333");
+      expect(buildPath({ type: "starred" }, "333")).toBe(
+        "/starred/333?scope=view",
+      );
+    });
+
+    it("should build /starred?scope=all when the view-only scope is off", () => {
+      expect(buildPath({ type: "starred", viewOnly: false })).toBe(
+        "/starred?scope=all",
+      );
     });
 
     it("should add unread query parameter", () => {
@@ -257,4 +265,9 @@ describe("router", () => {
     const result = parseRoute("/starred", "?scope=view&type=social");
     expect(result.selection).toEqual({ type: "starred", viewOnly: true });
     expect(result.contentType).toBe("social");
+  });
+
+  it("should parse /starred?scope=all as the all-starred scope", () => {
+    const result = parseRoute("/starred", "?scope=all");
+    expect(result.selection).toEqual({ type: "starred", viewOnly: false });
   });

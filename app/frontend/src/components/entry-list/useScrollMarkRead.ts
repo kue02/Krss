@@ -28,6 +28,14 @@ interface UseScrollMarkReadOptions {
   resetKey: string;
   /** 滚出顶部才算读过（默认）／进入视口停留片刻就算读过（Folo 语义） */
   timing?: ScrollMarkReadTiming;
+  /**
+   * 20-3（用户 2026-09-18）：标成已读后**先不摘掉**这些条目（默认 true）。
+   *
+   * 边滚边摘会把下面的条目往上顶（往回滚时最容易看到「位置在跳」）；
+   * 推迟到「离开当前列表」时（`resetKey` 变化）一次摘掉 —— 也就是用户要的
+   * 「切换离开当前视图 / 换订阅再回来，这些已读条目才消失」。
+   */
+  deferRemoval?: boolean;
 }
 
 interface UseScrollMarkReadResult {
@@ -43,11 +51,17 @@ export function useScrollMarkRead({
   hasNextPage,
   resetKey,
   timing = "scrollPast",
+  deferRemoval = true,
 }: UseScrollMarkReadOptions): UseScrollMarkReadResult {
   const { mutate: markManyAsRead } = useMarkManyAsRead();
   const removeFromUnreadList = useRemoveFromUnreadList();
   const seenEntryIds = useRef(new Set<string>());
   const markedReadIds = useRef(new Set<string>());
+  /**
+   * 20-3：延迟摘除模式下，本段滚动标成已读、但**还没**从「只看未读」列表里摘掉的条目。
+   * 离开这个列表（`resetKey` 变化）时一次性摘掉。
+   */
+  const deferredRemovalIds = useRef(new Set<string>());
   const pendingReadEntries = useRef(new Map<string, number>());
   const dwellTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const batchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -144,6 +158,17 @@ export function useScrollMarkRead({
   }, [entriesIdentityKey, enabled, hasNextPage, measureScrollLayout]);
 
   useEffect(() => {
+    /**
+     * 20-3：离开这个列表（换订阅 / 换视图 / 换内容类型 —— `resetKey` 就是这三样的组合）时，
+     * 把上一段滚动标掉的条目**一次摘掉**：回来时它们就不在了。
+     * 这就是用户要的「切换离开当前视图、或换订阅再回来，这些已读条目才消失」——
+     * 延迟摘除模式下 flush 阶段不摘（否则条目被往上顶）。
+     */
+    if (deferredRemovalIds.current.size > 0) {
+      removeFromUnreadList(new Set(deferredRemovalIds.current));
+      deferredRemovalIds.current.clear();
+    }
+
     seenEntryIds.current.clear();
     markedReadIds.current.clear();
     pendingReadEntries.current.clear();
@@ -158,7 +183,7 @@ export function useScrollMarkRead({
       clearTimeout(graceTimer.current);
       graceTimer.current = null;
     }
-  }, [resetKey]);
+  }, [removeFromUnreadList, resetKey]);
 
   useEffect(() => {
     return () => {
@@ -236,6 +261,15 @@ export function useScrollMarkRead({
         onSuccess: () => {
           if (!unreadOnly || session.current !== currentSession) return;
 
+          /**
+           * 20-3（默认档）：**先不摘**。记账到 deferredRemovalIds，等离开这个列表时一起摘。
+           * 不摘就不会把下面的条目往上顶，也就不需要「补偿滚动」和「等用户再滚一次」那套自锁。
+           */
+          if (deferRemoval) {
+            for (const id of ids) deferredRemovalIds.current.add(id);
+            return;
+          }
+
           removeFromUnreadList(new Set(ids));
           // 别让「移除 → 顶上来 → 再标」自己转起来
           awaitingUserScroll.current = true;
@@ -255,7 +289,7 @@ export function useScrollMarkRead({
         },
       },
     );
-  }, [markManyAsRead, removeFromUnreadList, surface, unreadOnly]);
+  }, [markManyAsRead, removeFromUnreadList, surface, unreadOnly, deferRemoval]);
 
   const queueRead = useCallback(
     (entryId: string, removedHeight: number) => {

@@ -15,8 +15,7 @@
     "import_success": "OPML imported",
     "import_failed": "OPML import failed",
     "views": "Views",
-    "starred_view": "Starred in this view",
-    "starred_view_short": "This view"
+    "starred_view": "Only starred in this view"
   },
   "content_type": {
     "article": "Articles",
@@ -136,6 +135,9 @@
     "scroll_read_off": "Off",
     "scroll_read_on": "On",
     "scroll_read_per_view": "Per view",
+    "scroll_read_keep_visible": "Keep read entries in place",
+    "scroll_read_keep_visible_description": "Entries you scrolled past stay where they are (marked read, not removed yet) so the list does not jump; they disappear once you switch away or open another feed",
+    "scroll_read_keep_visible_disabled": "\"Mark read on scroll\" is off, so this has no effect",
     "scroll_read_per_view_hint": "Per-view switches live in Appearance → Per-view settings",
     "rsshub_merge_title": "Duplicate after switching URL",
     "rsshub_merge_description": "These subscriptions would end up with the same URL as an existing one. Confirming merges them into a single source: the existing subscription is kept, entries/starred/folder are carried over, and the duplicate is removed.",
@@ -213,7 +215,11 @@
     },
     "accent_color": "Accent color",
     "accent_follow": "Follow theme",
-    "accent_following": "Following theme"
+    "accent_following": "Following theme",
+    "accent_area": "Color area",
+    "accent_hue": "Hue",
+    "accent_hex": "Hex color",
+    "accent_shuffle": "Shuffle color"
   },
   "language": {
     "label": "Language",
@@ -269,6 +275,8 @@
     "unread_count_other": "{{count}} unread",
     "show_all": "Show all",
     "show_unread_only": "Show unread only",
+    "starred_view_only_on": "Only starred in this view",
+    "starred_view_only_off": "Show all starred",
     "mark_all_read": "Mark all as read",
     "copy_feed_url": "Copy feed URL",
     "copied_feed_url": "Feed URL copied",

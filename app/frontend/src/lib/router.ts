@@ -56,12 +56,13 @@ export function parseRoute(pathname: string, search: string): RouteState {
     };
   }
 
-  // /starred/:entryId?  —— ?scope=view 表示「只显示当前视图（内容类型）的星标」
+  // /starred/:entryId?  —— 20-2 起「只显示当前视图（内容类型）的星标」是**默认档**：
+  // 没有 ?scope 或 scope=view 都算它；只有显式 ?scope=all 才是「全部星标」。
   if (segments[0] === "starred") {
     return {
       selection: {
         type: "starred",
-        viewOnly: params.get("scope") === "view",
+        viewOnly: params.get("scope") !== "all",
       },
       entryId: segments[1] || null,
       unreadOnly,
@@ -112,8 +113,10 @@ export function buildPath(
   if (unreadOnly) {
     params.set("unread", "true");
   }
-  if (selection.type === "starred" && selection.viewOnly) {
-    params.set("scope", "view");
+  if (selection.type === "starred") {
+    // 20-2：默认档就是「只当前视图」，显式写出来（关掉时写 all）——
+    // 这样地址栏一眼能看出当前是哪一档，旧的 /starred（无 scope）仍按默认档解析。
+    params.set("scope", selection.viewOnly === false ? "all" : "view");
   }
   if (contentType) {
     params.set("type", contentType);

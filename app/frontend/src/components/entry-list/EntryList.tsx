@@ -249,6 +249,8 @@ export function EntryList({
   // 「滚动标已读」的开关解析已收口到 useScrollReadSetting（总开关三态 + 按视图覆盖 + 判定联动）
   const { resolveFor: resolveScrollRead } = useScrollReadSetting();
   const scrollReadTimingByView = useUISettingKey("scrollReadTimingByView");
+  /** 20-3：滚动标已读后「不实时摘掉」（默认开）——摘除推迟到离开这个列表时 */
+  const scrollReadDeferRemoval = useUISettingKey("scrollReadDeferRemoval");
   // 社交媒体是第四类内容（与文章 / 图片 / 通知并列），不是文章视图的另一种排布
   const isSocialView = contentType === "social";
   const fetchReadableByView = useUISettingKey("fetchReadableByView");
@@ -554,6 +556,7 @@ export function EntryList({
     hasNextPage: Boolean(hasNextPage),
     resetKey: `${scrollKey}\u0000${effectiveUnreadOnly}\u0000${scrollReadEnabled}`,
     timing: scrollReadTimingByView?.[contentType] ?? "scrollPast",
+    deferRemoval: scrollReadDeferRemoval !== false,
   });
 
   useEffect(() => {

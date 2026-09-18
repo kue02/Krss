@@ -8,15 +8,14 @@
     "collapse_all": "全部收起",
     "sort_name": "按名称排序",
     "sort_date": "按日期排序",
-    "starred": "已加星标",
+    "starred": "星标",
     "uncategorized": "未分类",
     "import_opml": "导入 OPML",
     "new_automation": "新建自动化",
     "import_success": "OPML 导入完成",
     "import_failed": "OPML 导入失败",
     "views": "视图",
-    "starred_view": "当前视图星标",
-    "starred_view_short": "当前视图"
+    "starred_view": "只看当前视图的星标"
   },
   "content_type": {
     "article": "文章",
@@ -136,6 +135,9 @@
     "scroll_read_off": "关",
     "scroll_read_on": "开",
     "scroll_read_per_view": "按视图单独设",
+    "scroll_read_keep_visible": "已读条目先别消失",
+    "scroll_read_keep_visible_description": "滚过的条目留在原位（标成已读但不再实时摘掉，否则会把下面的条目往上顶）；切走视图或换订阅再回来时才消失",
+    "scroll_read_keep_visible_disabled": "「滚动标已读」关着，此项不生效",
     "scroll_read_per_view_hint": "已选「按视图单独设」——各视图的开关在 外观 → 按视图设置 里",
     "rsshub_merge_title": "换链接后与已有订阅重复",
     "rsshub_merge_description": "下面这些订阅换到该实例后地址与已有订阅完全相同。确认后会合并为一个源：保留先存在的那条，把本次要改的条目、星标、分类并过去，然后删掉重复的那条。",
@@ -213,7 +215,11 @@
     },
     "accent_color": "主题色",
     "accent_follow": "跟随主题",
-    "accent_following": "跟随主题"
+    "accent_following": "跟随主题",
+    "accent_area": "取色区",
+    "accent_hue": "色相",
+    "accent_hex": "十六进制色值",
+    "accent_shuffle": "随机配色"
   },
   "language": {
     "label": "语言",
@@ -268,6 +274,8 @@
     "unread_count": "{{count}} 条未读",
     "show_all": "显示全部",
     "show_unread_only": "只显示未读",
+    "starred_view_only_on": "只显示当前视图的星标",
+    "starred_view_only_off": "显示全部星标",
     "mark_all_read": "全部标记已读",
     "add_to_starred": "加入星标",
     "remove_from_starred": "取消星标",
@@ -517,7 +525,7 @@
     "all_pictures": "全部图片",
     "all_notifications": "全部通知",
     "all_social": "全部社交媒体",
-    "starred": "已加星标",
+    "starred": "星标",
     "feed": "订阅源",
     "folder": "文件夹",
     "no_articles": "暂无文章",

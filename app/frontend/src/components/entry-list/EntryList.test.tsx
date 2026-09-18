@@ -948,7 +948,9 @@ describe("EntryList translation scheduling", () => {
     expect(mockMarkManyAsRead).not.toHaveBeenCalled();
   });
 
-  it("unreadOnly 移除已读项后会补偿 scrollTop", async () => {
+  it("unreadOnly 移除已读项后会补偿 scrollTop（关掉 20-3 的延迟摘除 = 旧行为）", async () => {
+    // 20-3 起默认「不实时摘掉」；这条测的是关掉之后的旧路径，所以要显式关掉
+    setUISetting("scrollReadDeferRemoval", false);
     vi.mocked(useGeneralSettings).mockReturnValue({
       data: { markReadOnScroll: true },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -981,6 +983,34 @@ describe("EntryList translation scheduling", () => {
     );
     expect(viewport.scrollTop).toBe(0);
     requestAnimationFrameMock.mockRestore();
+    setUISetting("scrollReadDeferRemoval", true);
+  });
+
+  it("20-3 默认档：滚动标已读后不实时摘掉，也不补偿滚动（列表不往上顶）", async () => {
+    vi.mocked(useGeneralSettings).mockReturnValue({
+      data: { markReadOnScroll: true },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    installScrollMarkObserver({ entryHeight: 40 });
+
+    render(<EntryList {...defaultProps} unreadOnly />);
+    const viewport = screen.getByTestId("entry-list-viewport");
+    Object.defineProperty(viewport, "scrollTop", {
+      configurable: true,
+      writable: true,
+      value: 200,
+    });
+
+    await flushMarkReadBatch();
+
+    const firstCallOptions = mockMarkManyAsRead.mock.calls[0]?.[1] as
+      | { onSuccess?: () => void }
+      | undefined;
+    firstCallOptions?.onSuccess?.();
+
+    // 已读还是标了，但条目留在原地：不摘、也不补偿滚动
+    expect(mockRemoveFromUnreadList).not.toHaveBeenCalled();
+    expect(viewport.scrollTop).toBe(200);
   });
 
   it("批量标记失败后允许后续重试", async () => {

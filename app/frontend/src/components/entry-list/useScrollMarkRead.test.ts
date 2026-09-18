@@ -1,4 +1,4 @@
-import { renderHook } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Entry } from "@/types/api";
 import type { ScrollSurface } from "./scroll-surface";
@@ -110,6 +110,7 @@ function renderScrollMarkRead(
       hasNextPage: true,
       resetKey: "k",
       timing: options.timing,
+      deferRemoval: options.deferRemoval,
     }),
   );
 }
@@ -199,6 +200,9 @@ describe("useScrollMarkRead 的已读判定时机", () => {
       surface,
       timing: "onVisible",
       unreadOnly: true,
+      // 这一条测的是**旧的即时摘除**路径（摘掉了才会「顶上来」，才需要「等用户再滚」的自锁）；
+      // 默认档（延迟摘除）见下面那条 20-3 用例。
+      deferRemoval: false,
       entries: [makeEntry("e1"), makeEntry("e2")],
     });
 
@@ -252,5 +256,48 @@ describe("useScrollMarkRead 的已读判定时机", () => {
 
     expect(FakeObserver.instances).toHaveLength(0);
     expect(markManyAsRead).not.toHaveBeenCalled();
+  });
+
+  it("20-3 默认档：标成已读不实时摘掉，离开列表（resetKey 变）时才摘", async () => {
+    const container = document.createElement("div");
+    const { contentRoot, card, surface } = makeHarness(container);
+    // 让标记成功后真的走 onSuccess（真实实现里那里会决定「摘 / 先不摘」）
+    markManyAsRead.mockImplementation(
+      (_payload: unknown, opts?: { onSuccess?: () => void }) =>
+        opts?.onSuccess?.(),
+    );
+
+    const contentRootRef = { current: contentRoot };
+    const { rerender } = renderHook(
+      ({ resetKey }: { resetKey: string }) =>
+        useScrollMarkRead({
+          surface,
+          contentRootRef,
+          entries: [makeEntry("e1")],
+          enabled: true,
+          unreadOnly: true,
+          hasNextPage: true,
+          resetKey,
+        }),
+      { initialProps: { resetKey: "k1" } },
+    );
+
+    const observer = FakeObserver.instances.at(-1) as FakeObserver;
+    observer.emit([{ target: card, isIntersecting: true, bottom: 200 }]);
+    observer.emit([{ target: card, isIntersecting: false, bottom: -20 }]);
+    vi.advanceTimersByTime(3000);
+
+    expect(markManyAsRead).toHaveBeenCalledTimes(1);
+    // 关键：不实时摘（否则条目被往上顶）
+    expect(removeFromUnreadList).not.toHaveBeenCalled();
+
+    // 离开这个列表（换订阅 / 换视图 / 换已读态都会让 resetKey 变）→ 这时才摘
+    // 用 act 包住，确保 resetKey 那个 effect 真的跑完
+    await act(async () => {
+      rerender({ resetKey: "k2" });
+    });
+    expect(removeFromUnreadList).toHaveBeenCalledTimes(1);
+    const [removed] = removeFromUnreadList.mock.calls;
+    expect(Array.from(removed?.[0] as Set<string>)).toEqual(["e1"]);
   });
 });

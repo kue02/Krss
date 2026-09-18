@@ -257,7 +257,7 @@ function AuthenticatedApp() {
 
   /**
    * 12-6：星标视图下切换「只查看当前视图」（只看当前内容类型的星标）。
-   * 侧栏那一行行尾的开关与中栏工具栏里的开关都走这里，语义完全一致。
+   * 侧栏那一档已按 20-2 收敛掉，现在只剩中栏列表头那个图标按钮走这里。
    */
   const handleToggleStarredViewOnly = useCallback(() => {
     if (selection.type !== "starred") return;
@@ -282,13 +282,11 @@ function AuthenticatedApp() {
     [selectFolder, closeSidebar],
   );
 
+  /**
+   * 20-2：星标入口收敛后只剩这一个入口（侧栏那一行）——**默认进「只当前视图」那一档**
+   * （用户 2026-09-18：「默认选中」）。要看全部星标就在第二栏列表头把那个图标按钮关掉。
+   */
   const handleSelectStarred = useCallback(() => {
-    closeSidebar();
-    selectStarred({ replace: true });
-  }, [selectStarred, closeSidebar]);
-
-  /** 「只显示当前视图的星标」：同一入口的第二档，取数时带上当前内容类型 */
-  const handleSelectStarredView = useCallback(() => {
     closeSidebar();
     selectStarred({ replace: true }, true);
   }, [selectStarred, closeSidebar]);
@@ -454,7 +452,6 @@ function AuthenticatedApp() {
       onSelectFeed={handleSelectFeed}
       onSelectFolder={handleSelectFolder}
       onSelectStarred={handleSelectStarred}
-      onSelectStarredView={handleSelectStarredView}
       onSelectAll={handleSelectAll}
       contentType={contentType}
       appearanceSettings={appearanceSettings}

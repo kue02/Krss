@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { useGeneralSettings } from "@/hooks/useGeneralSettings";
 import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
-import { setUISetting, type ScrollReadMode } from "@/hooks/useUISettings";
+import { setUISetting, useUISettingKey, type ScrollReadMode } from "@/hooks/useUISettings";
 import { RSSHubSettings } from "./RSSHubSettings";
 import { NotifySettings } from "./NotifySettings";
 
@@ -39,6 +39,8 @@ export function GeneralSettings() {
 
   // 总开关的形态由 useScrollReadSetting 统一推导（没存过会按既有数据推导，行为不变）
   const { mode: scrollReadMode } = useScrollReadSetting();
+  /** 20-3：滚过的条目先别消失（默认开，见 useScrollMarkRead 的 deferRemoval） */
+  const scrollReadDeferRemoval = useUISettingKey("scrollReadDeferRemoval");
 
   /**
    * 12-7：本页只有「后备 UA」是要点保存的（其余开关是即时写入），
@@ -210,6 +212,26 @@ export function GeneralSettings() {
             {t("settings.scroll_read_per_view_hint")}
           </div>
         )}
+        {/* 20-3（用户 2026-09-18）：滚过的条目先别消失 —— 边滚边消失会把下面的条目往上顶 */}
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            <div className="text-sm font-medium">
+              {t("settings.scroll_read_keep_visible")}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {scrollReadMode === "off"
+                ? t("settings.scroll_read_keep_visible_disabled")
+                : t("settings.scroll_read_keep_visible_description")}
+            </div>
+          </div>
+          <Switch
+            checked={scrollReadDeferRemoval}
+            onCheckedChange={(checked) =>
+              setUISetting("scrollReadDeferRemoval", checked)
+            }
+            disabled={settingsDisabled || scrollReadMode === "off"}
+          />
+        </div>
       </section>
 
       {/* Advanced Section */}

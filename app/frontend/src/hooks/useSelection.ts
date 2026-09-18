@@ -88,8 +88,14 @@ export function useSelection(): UseSelectionReturn {
   );
 
   const selectStarred = useCallback(
-    // viewOnly = 「只显示当前视图的星标」那一档（带 ?scope=view，取数时会上 contentType）
-    (options?: NavigateOptions, viewOnly = false) => {
+    /**
+     * viewOnly = 「只显示当前视图的星标」那一档。
+     *
+     * 20-2（用户 2026-09-18：星标入口收敛 + 默认选中）：**缺省就是 true** ——
+     * 从侧栏「星标」进来看到的是当前内容类型下的星标；要看全部星标，
+     * 在第二栏列表头把那个图标按钮关掉（传 false）。
+     */
+    (options?: NavigateOptions, viewOnly = true) => {
       navigate(
         buildPath(
           { type: "starred", viewOnly },
@@ -115,10 +121,11 @@ export function useSelection(): UseSelectionReturn {
         filter === "starred"
           ? {
               type: "starred",
+              // 20-2：进入星标视图默认「只当前视图」（已在星标里则保持当前档位）
               viewOnly:
                 routeState.selection.type === "starred"
                   ? routeState.selection.viewOnly
-                  : false,
+                  : true,
             }
           : { type: "all" };
       navigate(

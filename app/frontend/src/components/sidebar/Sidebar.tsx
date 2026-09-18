@@ -110,7 +110,6 @@ interface SidebarProps {
   onSelectFeed: (feedId: string) => void;
   onSelectFolder: (folderId: string) => void;
   onSelectStarred: () => void;
-  onSelectStarredView: () => void;
   onSelectAll?: (contentType?: ContentType) => void;
   contentType: ContentType;
   appearanceSettings?: AppearanceSettings;
@@ -135,7 +134,6 @@ export function Sidebar({
   onSelectFeed,
   onSelectFolder,
   onSelectStarred,
-  onSelectStarredView,
   onSelectAll,
   contentType,
   appearanceSettings,
@@ -558,19 +556,12 @@ export function Sidebar({
           >
             <SidebarScrollArea scrollKey={animatedContentType}>
               {/* 星标入口：原先只在账户菜单里（那颗已按用户要求去掉），改放侧栏导航顶部 —— Nextflux 也是这个位置。
-                  两档：上一档只看当前内容类型（用户 2026-09-17 要求），下一档是全部星标 */}
-              {/* 12-6（用户：把「当前视图星标」和「已加星标」合并）：只留一行，
-                  行尾一个「当前视图」开关控制是否只看当前内容类型下的星标 */}
+                  2026-09-18 收敛：只剩这一行（行尾的「当前视图」开关已删，那一档挪到第二栏列表头的图标按钮），
+                  点进来默认就是「只当前视图」那一档 */}
               <StarredItem
-                viewOnly={isStarredViewSelected}
                 count={isStarredViewSelected ? starredCountView : starredCountAll}
                 isActive={isStarredSelected}
                 onClick={onSelectStarred}
-                onToggleViewOnly={() => {
-                  // 12-6：开关「当前视图」——开着就退回全部星标，关着就切到当前视图档
-                  if (isStarredViewSelected) onSelectStarred();
-                  else onSelectStarredView();
-                }}
               />
 
               {/* 保存的筛选视图（设置 → 自动化 里维护；这里只是快捷入口，没有就不显示这一段） */}
