@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, cleanup, screen, waitFor } from "@testing-library/react";
+import { render, cleanup, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AdvancedSettings } from "./AdvancedSettings";
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (k: string) => k }) }));
@@ -21,10 +22,9 @@ vi.mock("@/api", () => ({
 
 const RECORD = {
   at: new Date().toISOString(),
-  trigger: "auto" as const,
-  created: 12,
-  updated: 760,
-  failed: 1,
+  newCount: 12,
+  updatedCount: 760,
+  failedCount: 1,
   results: [
     { feedId: "f1", title: "小众软件", new: 3, updated: 120 },
     {
@@ -32,8 +32,7 @@ const RECORD = {
       title: "即刻精选 - Telegram 频道",
       new: 0,
       updated: 0,
-      error:
-        "Get \"https://rsshub.app/telegram/channel/xxx\": dial tcp: lookup rsshub.app: no such host — 这是一条很长的错误信息用来触发跑马灯显示",
+      error: "Get \"https://rsshub.app/telegram/channel/xxx\": no such host",
     },
   ],
 };
@@ -44,26 +43,23 @@ beforeEach(() => {
   localStorage.setItem("krss-auto-refresh-history", JSON.stringify([RECORD]));
 });
 
-describe("AdvancedSettings 自动刷新历史（12-19）", () => {
-  it("渲染不崩：表头可排序 + 报错行有复制按钮", async () => {
-    localStorage.setItem("krss-auto-refresh-history", JSON.stringify([RECORD]));
-    render(<AdvancedSettings />);
+describe("AdvancedSettings（高级页外壳）", () => {
+  it("渲染不崩：自动刷新历史 + 拉取设置 + 域名限速三段都在", async () => {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <AdvancedSettings />
+      </QueryClientProvider>,
+    );
     await waitFor(() =>
       expect(document.body.textContent).toContain("settings.auto_refresh_history"),
     );
-    // 展开「自动刷新历史」那条记录
-    const trigger = [...document.querySelectorAll("button[aria-expanded]")].find((b) =>
-      /auto_refresh_history_(row|record|item|summary)/.test((b.textContent || "") + (b.getAttribute("aria-label") || "")),
-    ) ?? [...document.querySelectorAll("button[aria-expanded]")].pop();
-    expect(trigger).toBeTruthy();
-    (trigger as HTMLButtonElement).click();
-    await screen.findByText("小众软件", undefined, { timeout: 15000 });
-    expect(document.body.textContent).toContain("即刻精选");
-    // 回归：表头是 HeroUI 的 SortableColumnHeader（可点排序），错误行有复制按钮
-    expect(document.querySelectorAll('[data-slot="table-sortable-column-header"]').length).toBeGreaterThan(0);
+    // 自动刷新历史已抽成独立组件（第十九批重做），这里只确认它被挂上了
     expect(
-      document.querySelector('button[aria-label="settings.auto_refresh_history_copy_error"]'),
+      document.querySelector('[data-slot="disclosure-trigger"]'),
     ).toBeTruthy();
-    expect(document.body.textContent).toContain("no such host");
+    expect(document.body.textContent).toContain("settings.fetch_title");
+    expect(document.body.textContent).toContain(
+      "settings.advanced_domain_limits",
+    );
   });
 });

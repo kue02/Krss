@@ -83,3 +83,35 @@ if (typeof globalThis.localStorage === "undefined") {
     });
   }
 }
+
+/**
+ * 最小可用的 `ResizeObserver`。
+ *
+ * jsdom 没有它，而 HeroUI 的 `ScrollShadow`（内部 `useScrollShadow`）在挂载时**直接 new**，
+ * 不判存在性 —— 缺这一层时组件在 effect 里抛 `ReferenceError: ResizeObserver is not defined`，
+ * **整块子树渲染不出来**（第十九批实测：自动刷新历史那条用例全挂在这上面，
+ * 而报错栈指向 node_modules，看着像组件库的问题）。
+ *
+ * 这里只做到「构造成功、observe/unobserve 不抛」：测试断言的是结构与行为，不是尺寸驱动的
+ * 视觉（渐隐/跑马灯距离这些必须在真机量）。本项目自己的 `MarqueeText` 另有 `typeof` 守卫，
+ * 不依赖这个补丁。
+ */
+if (typeof globalThis.ResizeObserver === "undefined") {
+  class NoopResizeObserver implements ResizeObserver {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  }
+  Object.defineProperty(globalThis, "ResizeObserver", {
+    value: NoopResizeObserver,
+    configurable: true,
+    writable: true,
+  });
+  if (typeof window !== "undefined") {
+    Object.defineProperty(window, "ResizeObserver", {
+      value: NoopResizeObserver,
+      configurable: true,
+      writable: true,
+    });
+  }
+}

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, Trash2, Edit2, Check, X, Copy } from "lucide-react";
-import { Button, Disclosure, Label, NumberField, Table } from "@heroui/react";
+import { Plus, Trash2, Edit2, Check, X } from "lucide-react";
+import { Button, Label, NumberField } from "@heroui/react";
 import {
   getDomainRateLimits,
   createDomainRateLimit,
@@ -11,44 +11,14 @@ import {
   updateFetchSettings,
   ApiError,
 } from "@/api";
-import type { FetchSettings } from "@/types/settings";
-import { MarqueeText } from "@/components/ui/marquee-text";
-import { showToast } from "@/stores/toast-store";
-import {
-  clearAutoRefreshHistory,
-  loadAutoRefreshHistory,
-  subscribeAutoRefreshHistory,
-  type AutoRefreshRecord,
-} from "@/lib/auto-refresh-history";
-import type { DomainRateLimit } from "@/types/settings";
+import type { FetchSettings, DomainRateLimit } from "@/types/settings";
+import { AutoRefreshHistorySection } from "@/components/settings/tabs/AutoRefreshHistorySection";
 import { cn } from "@/lib/utils";
 
 export function AdvancedSettings() {
-  /** 12-19：表头点击排序（HeroUI Button 自己管状态，见 SortHeader） */
-  const [sortDescriptor, setSortDescriptor] = useState<{
-    column: string;
-    direction: "ascending" | "descending";
-  }>({ column: "updated", direction: "descending" });
-  const toggleSort = (column: string) =>
-    setSortDescriptor((prev) =>
-      prev.column === column
-        ? {
-            column,
-            direction:
-              prev.direction === "ascending" ? "descending" : "ascending",
-          }
-        : { column, direction: "descending" },
-    );
-
   const { t } = useTranslation();
   const [items, setItems] = useState<DomainRateLimit[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-
-  // 自动刷新历史（用户 12-17）：定时刷新不再弹框，改成这里一份可下拉的历史
-  const [autoHistory, setAutoHistory] = useState<AutoRefreshRecord[]>(() =>
-    loadAutoRefreshHistory(),
-  );
-  useEffect(() => subscribeAutoRefreshHistory(() => setAutoHistory(loadAutoRefreshHistory())), []);
 
   // 拉取设置（用户 11-20）：定时频率 / 全局并发 / 同主机并发 / 单源超时。
   // 都是「下一轮生效」：后端每轮刷新开始时读一次，改完不用重启。
@@ -244,190 +214,10 @@ export function AdvancedSettings() {
 
   return (
     <div className="space-y-6">
-      {/* 自动刷新历史（用户 12-17）：定时刷新的结果不再弹框，来这里看 */}
-      <section>
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div>
-            <div className="text-sm font-medium">
-              {t("settings.auto_refresh_history")}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {t("settings.auto_refresh_history_hint")}
-            </div>
-          </div>
-          {autoHistory.length > 0 && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onPress={() => {
-                clearAutoRefreshHistory();
-                setAutoHistory([]);
-              }}
-            >
-              {t("settings.auto_refresh_history_clear")}
-            </Button>
-          )}
-        </div>
-
-        {autoHistory.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
-            {t("settings.auto_refresh_history_empty")}
-          </div>
-        ) : (
-          <div className="space-y-1.5">
-            {autoHistory.map((record) => (
-              <Disclosure key={record.at}>
-                <Disclosure.Heading>
-                  <Disclosure.Trigger className="flex w-full items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-left text-xs">
-                    <span className="flex min-w-0 flex-wrap items-center gap-x-2">
-                      <span className="font-medium">
-                        {new Date(record.at).toLocaleString()}
-                      </span>
-                      <span className="text-muted-foreground">
-                        {t("settings.auto_refresh_history_summary", {
-                          count: record.newCount + record.updatedCount,
-                          created: record.newCount,
-                          updated: record.updatedCount,
-                        })}
-                      </span>
-                      {record.failedCount > 0 && (
-                        <span className="text-destructive">
-                          {t("settings.auto_refresh_history_failed", {
-                            count: record.failedCount,
-                          })}
-                        </span>
-                      )}
-                    </span>
-                    <Disclosure.Indicator className="size-4 shrink-0 text-muted-foreground" />
-                  </Disclosure.Trigger>
-                </Disclosure.Heading>
-                <Disclosure.Content>
-                  <Disclosure.Body className="border border-t-0 border-border px-3 py-2">
-                    {/* 12-19：用 HeroUI `Table`（可点表头排序）+ 跑马灯 + 复制按钮 */}
-                    {/* 排序不用 RAC 的 `sortDescriptor`（HeroUI 的 Table 没声明这个 prop，
-                        运行期也不保证透传）—— 表头里放 HeroUI `Button`，自己管排序状态 */}
-                    <Table aria-label={t("settings.auto_refresh_history_table")}>
-                      {/* HeroUI 的 `Table` 根只是个 div 包装，真正的 RAC 表格是 `Table.Content`；
-                          少了这一层，Header/Body 会落在 RAC 表格上下文之外 → 运行期抛
-                          「cannot be rendered outside a collection」（白屏）。 */}
-                      <Table.Content>
-                      <Table.Header>
-                        <Table.Column id="title" isRowHeader>
-                          <Table.SortableColumnHeader
-                            sortDirection={
-                              sortDescriptor.column === "title"
-                                ? sortDescriptor.direction
-                                : undefined
-                            }
-                            showIndicator={sortDescriptor.column === "title"}
-                            onClick={() => toggleSort("title")}
-                            className="cursor-pointer select-none"
-                          >
-                            {t("settings.auto_refresh_history_col_feed")}
-                          </Table.SortableColumnHeader>
-                        </Table.Column>
-                        <Table.Column id="new">
-                          <Table.SortableColumnHeader
-                            sortDirection={
-                              sortDescriptor.column === "new"
-                                ? sortDescriptor.direction
-                                : undefined
-                            }
-                            showIndicator={sortDescriptor.column === "new"}
-                            onClick={() => toggleSort("new")}
-                            className="cursor-pointer select-none"
-                          >
-                            {t("settings.auto_refresh_history_col_new")}
-                          </Table.SortableColumnHeader>
-                        </Table.Column>
-                        <Table.Column id="updated">
-                          <Table.SortableColumnHeader
-                            sortDirection={
-                              sortDescriptor.column === "updated"
-                                ? sortDescriptor.direction
-                                : undefined
-                            }
-                            showIndicator={sortDescriptor.column === "updated"}
-                            onClick={() => toggleSort("updated")}
-                            className="cursor-pointer select-none"
-                          >
-                            {t("settings.auto_refresh_history_col_updated")}
-                          </Table.SortableColumnHeader>
-                        </Table.Column>
-                        <Table.Column id="error">
-                          {t("settings.auto_refresh_history_col_error")}
-                        </Table.Column>
-                      </Table.Header>
-                      <Table.Body>
-                        {[...record.results]
-                          .sort((a, b) => {
-                            const dir =
-                              sortDescriptor.direction === "ascending" ? 1 : -1;
-                            if (sortDescriptor.column === "new")
-                              return (a.new - b.new) * dir;
-                            if (sortDescriptor.column === "updated")
-                              return (a.updated - b.updated) * dir;
-                            if (sortDescriptor.column === "title")
-                              return a.title.localeCompare(b.title) * dir;
-                            return 0;
-                          })
-                          .map((result) => (
-                            <Table.Row key={result.feedId} id={String(result.feedId)}>
-                              <Table.Cell className="max-w-[16rem]">
-                                <MarqueeText text={result.title} />
-                              </Table.Cell>
-                              <Table.Cell className="tabular-nums">
-                                {result.new}
-                              </Table.Cell>
-                              <Table.Cell className="tabular-nums">
-                                {result.updated}
-                              </Table.Cell>
-                              <Table.Cell className="max-w-[18rem]">
-                                {result.error ? (
-                                  <span className="flex min-w-0 items-center gap-1">
-                                    <MarqueeText
-                                      className="min-w-0 flex-1 text-destructive"
-                                      text={result.error}
-                                    />
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      isIconOnly
-                                      aria-label={t("settings.auto_refresh_history_copy_error")}
-                                      onPress={async () => {
-                                        try {
-                                          await navigator.clipboard.writeText(
-                                            result.error ?? "",
-                                          );
-                                          showToast(
-                                            t("settings.auto_refresh_history_copied"),
-                                          );
-                                        } catch {
-                                          showToast(
-                                            t("settings.auto_refresh_history_copy_failed"),
-                                          );
-                                        }
-                                      }}
-                                    >
-                                      <Copy className="size-3.5" />
-                                    </Button>
-                                  </span>
-                                ) : (
-                                  "—"
-                                )}
-                              </Table.Cell>
-                            </Table.Row>
-                          ))}
-                      </Table.Body>
-                      </Table.Content>
-                    </Table>
-                  </Disclosure.Body>
-                </Disclosure.Content>
-              </Disclosure>
-            ))}
-          </div>
-        )}
-      </section>
+      {/* 自动刷新历史（用户 12-17；第十九批重做，效果图见
+          ~/Documents/test/gist-nextflux-ui/mockups/auto-refresh-history.html）：
+          定时刷新的结果不再弹框，来这里回看。列表形态、展开明细、清空确认都在它自己的文件里。 */}
+      <AutoRefreshHistorySection />
 
       {/* 拉取：频率与并发（用户 11-20） */}
       {fetchDraft && (
