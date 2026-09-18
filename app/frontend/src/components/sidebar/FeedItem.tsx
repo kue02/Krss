@@ -83,9 +83,26 @@ interface FeedItemProps {
 const stopRowPress = {
   onPointerDown: (event: React.PointerEvent) => event.stopPropagation(),
   onPointerUp: (event: React.PointerEvent) => event.stopPropagation(),
-  onClick: (event: React.MouseEvent) => event.stopPropagation(),
   onKeyDown: (event: React.KeyboardEvent) => event.stopPropagation(),
 };
+
+/**
+ * 12-1 续（用户实测反馈）：行内链接的点击要**同时**做两件事 ——
+ * ① 打开主站（不 preventDefault，浏览器照常新标签打开）；
+ * ② 切换到这个订阅（RAC 的按压被上面的 stopPropagation 挡掉了，所以要手动补一次选中）。
+ * 只做①时，用户点 @源站 会「什么都不发生」（新标签可能被拦/被忽略，列表也不切），
+ * 实测就是这个症状。
+ */
+function makeSiteLinkHandlers(href: string | undefined, onSelect?: () => void) {
+  return {
+    ...stopRowPress,
+    onClick: (event: React.MouseEvent) => {
+      event.stopPropagation();
+      onSelect?.();
+      void href;
+    },
+  };
+}
 
 export function FeedItem({
   name,
@@ -207,7 +224,7 @@ export function FeedItem({
                       title={siteUrlResolved ?? undefined}
                       target="_blank"
                       rel="noopener noreferrer"
-                      {...stopRowPress}
+                      {...makeSiteLinkHandlers(siteUrlResolved ?? undefined, onClick)}
                       /* HeroUI 的 Description（data-slot=description）带 `pointer-events: none`
                          —— 集合项内的文字默认不抢指针事件，锚点因此永远点不到（12-1 的真根因）。
                          这里只给链接本身放行，不动全局 CSS。 */
@@ -227,7 +244,7 @@ export function FeedItem({
                 title={siteUrlResolved ?? undefined}
                 target="_blank"
                 rel="noopener noreferrer"
-                {...stopRowPress}
+                {...makeSiteLinkHandlers(siteUrlResolved ?? undefined, onClick)}
                 className="pointer-events-auto shrink-0 truncate text-[0.7rem] text-muted-foreground/70 transition-colors hover:text-foreground hover:underline"
               >
                 @{siteHost}

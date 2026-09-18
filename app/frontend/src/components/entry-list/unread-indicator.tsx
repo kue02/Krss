@@ -37,7 +37,13 @@ export function UnreadIndicator({
         12-14：标记一律是**小圆点**（用户：「这个不是字，也是小圆点」）。
         用 HeroUI 的「点状徽标」= 空内容 Badge，placement=top-left 让它压在图标左上角上
         （用户要的就是轻微吃掉一点图标边缘，而不是浮在图标外面）。
-        `-translate-x-1 -translate-y-1` 是把它再往左上挪一点，视觉上更像「角标」。
+        尺寸按「一点点」来定：HeroUI 默认 sm=16px，且带 `min-width/min-height: 16px` ——
+        实测在 20px 的源图标上水平重叠 12px（吃掉 60%），用户 12-14 的反馈就是这个「吃太多」。
+        所以：`size-2` 把圆点压到 8px，`min-w-0 min-h-0` 去掉 HeroUI 的 16px 下限
+        （只有清掉 min-* 才生效，光写 size-2 会被 min-width 顶回去 —— 实测踩过），
+        位置：HeroUI 自带 -4px，再补 `-translate-x-1 -translate-y-1` ——
+        实测 8px 圆点 + 只 4px 偏移时，有 6px 压在图标上（星星点点的「吃太多」）；
+        再往左上挪 4px 后，压在图标上的只剩 2px（用户要的「一点点吃掉边缘」），其余在图标左上角外侧。
       */}
       <Badge
         placement="top-left"
@@ -45,7 +51,7 @@ export function UnreadIndicator({
         size="sm"
         variant="primary"
         data-unread-marker={style === "dot" ? "dot" : "badge"}
-        className="-translate-x-1 -translate-y-1"
+        className="size-2 min-h-0 min-w-0 -translate-x-1 -translate-y-1 rounded-full"
       />
     </Badge.Anchor>
   );
