@@ -834,11 +834,14 @@ export function AutomationSettings() {
                 </div>
                 {pendingDelete?.kind !== "view" && (
                   /* 12-20：这里原来是原生 <input type="checkbox">（自己画的），
-                     换成 HeroUI `Checkbox` —— 与「撤销影响」弹层里那个勾选框同一套（RevertFilterDialog）。 */
+                     换成 HeroUI `Checkbox` —— 与「撤销影响」弹层里那个勾选框同一套（RevertFilterDialog）。
+                     `flex-row` 不能省：`.checkbox` 在组件层写死 flex-direction:column，
+                     不顶掉的话勾选框与文字会上下叠成两行（真机实测，13-2 同一个坑）。 */
                   <label className="mt-3 flex items-center gap-2 text-sm">
                     <Checkbox
                       isSelected={deleteWithRevert}
                       onChange={setDeleteWithRevert}
+                      className="flex flex-row items-center gap-2"
                     >
                       <Checkbox.Control>
                         <Checkbox.Indicator />

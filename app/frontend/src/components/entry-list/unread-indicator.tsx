@@ -57,19 +57,30 @@ export function UnreadIndicator({
     );
   }
 
-  /** 四档位置对应的偏移方向（HeroUI 的 placement 决定角，我们只补「压住多少」） */
-  const direction: Record<string, [number, number]> = {
-    "top-left": [-1, -1],
-    "top-right": [1, -1],
-    "bottom-left": [-1, 1],
-    "bottom-right": [1, 1],
-  };
-  const [dx, dy] = direction[config.placement] ?? [-1, -1];
-  // HeroUI 自己带 4px 偏移，这里叠加用户设的「压边」（0–6px）
-  const shift = 4 + config.offset;
+  /**
+   * 「压住边缘」= 角标**压进图标里多少 px**，四角同一套算法（真机实测修正过）：
+   *
+   * HeroUI 的 `placement` 只给 `left/right/top/bottom: 0` 加一个 `translate(±25%)`，
+   * 而我们在同一元素上写内联 `transform`，内联会把组件那条百分比位移**整个顶掉** ——
+   * 上一版按「HeroUI 自带 4px + 用户值」折算成固定 px（`shift = 4 + offset`），
+   * 结果默认档就把角标推到图标**外面**（实测 top-right 时右缘超出图标 8px、完全不压边）。
+   *
+   * 正解：直接用 `calc(±100% ∓ offset)`，`100%` 是角标自己的宽/高（数字档宽度是内容撑的，也能算对），
+   * 这样「角标内侧边缘与图标边缘的距离」恒等于用户设的 offset，四角对称、与尺寸无关。
+   */
+  const inward = `calc(-100% + ${config.offset}px)`; // 左/上：往图标里推
+  const outward = `calc(100% - ${config.offset}px)`; // 右/下：往图标里推（负方向）
+  const translateX = config.placement.includes("left") ? inward : outward;
+  const translateY = config.placement.includes("top") ? inward : outward;
   const isCount = config.content === "count";
   const label = isCount ? (count && count > 99 ? "99+" : String(count ?? "")) : "";
   const customColor = config.followAccent ? null : config.customColor;
+  /**
+   * 「未读数」档的盒子要比圆点大一圈 —— 里面要装一个数字。
+   * 效果图里圆点是 8px、未读数胶囊是 17px（≈ 大小 ×2），这里取「大小 + 8」：
+   * 默认档 8 → 16px 胶囊，拉满 16 → 24px，滑杆仍然有可见效果，且数字不会溢出盒子。
+   */
+  const boxSize = isCount ? config.size + 8 : config.size;
 
   return (
     <Badge.Anchor className={cn("relative shrink-0", className)}>
@@ -86,11 +97,11 @@ export function UnreadIndicator({
           "min-w-0 min-h-0",
         )}
         style={{
-          height: config.size,
-          width: isCount ? "auto" : config.size,
-          minWidth: config.size,
+          height: boxSize,
+          width: isCount ? "auto" : boxSize,
+          minWidth: boxSize,
           paddingInline: isCount ? 4 : 0,
-          transform: `translate(${dx * shift}px, ${dy * shift}px)`,
+          transform: `translate(${translateX}, ${translateY})`,
           ...(customColor ? { backgroundColor: customColor } : null),
         }}
       >

@@ -90,7 +90,8 @@ export const DEFAULT_UNREAD_BADGE: UnreadBadgeConfig = {
   color: "accent",
   customColor: null,
   variant: "primary",
-  offset: 4,
+  // 「压住边缘」= 角标压进图标里 2px —— 与固定档的小圆点实测到的压边一致（12-14 / 效果图都是 2px）
+  offset: 2,
 };
 
 export type UnreadStyle = "badge" | "dot" | "dim";

@@ -135,7 +135,7 @@ export function RevertFilterDialog({
               </div>
             </div>
 
-            <div className="mt-3 max-h-72 space-y-1 overflow-y-auto rounded-md border border-border p-2">
+            <div className="mt-3 max-h-72 overflow-y-auto rounded-md border border-border p-2">
               {items === null && (
                 <div className="py-6 text-center text-xs text-muted-foreground">
                   {t("common.loading")}
@@ -149,13 +149,18 @@ export function RevertFilterDialog({
               {/* 13-2（效果图 revert-impact.html）：一条内容就一行 ——
                   勾选框固定 16px 在左、垂直居中；整行可点；标题占弹性宽度（超长才滚，短标题不裁）；
                   来源 + 状态是 shrink-0 的右尾，永远贴右缘，不再把标题挤成 91px（那会让跑马灯量不出距离）。
-                  行高统一 38px。 */}
+                  行高统一 38px。
+                  **flex-row 是必须的**：HeroUI 的 `.checkbox` 在组件层写死 `flex-direction: column`
+                  （勾选框一行、内容一行），不顶掉它就会把一条内容切成上下两块 ——
+                  上一版只写 `flex` 没顶方向，真机量到「勾选框 y=416、标题 y=440、右尾 y=468」，
+                  标题仍被挤到 95px、跑马灯等于没生效。utility 层压组件层（见 index.css 的分层），
+                  但前提是这个类真的出现在源码里（Tailwind 是 JIT，运行时加类不生成）。 */}
               {(items ?? []).map((item) => (
                 <Checkbox
                   key={item.entryId}
                   isSelected={selected.has(item.entryId)}
                   onChange={(isSelected) => toggleOne(item.entryId, isSelected)}
-                  className="flex h-[38px] w-full cursor-pointer items-center gap-2 rounded px-2 hover:bg-secondary/40"
+                  className="flex h-[38px] w-full flex-row cursor-pointer items-center gap-2 rounded px-2 hover:bg-secondary/40"
                 >
                   <Checkbox.Control className="shrink-0">
                     <Checkbox.Indicator />
@@ -174,22 +179,27 @@ export function RevertFilterDialog({
                   </span>
                 </Checkbox>
               ))}
-            </div>
 
-            <label className="mt-3 flex h-8 items-center gap-2 text-xs text-muted-foreground">
-              <Checkbox
-                isSelected={includeStarred}
-                onChange={setIncludeStarred}
-                isDisabled={withStar === 0}
-              >
-                <Checkbox.Control>
-                  <Checkbox.Indicator />
-                </Checkbox.Control>
-                <Checkbox.Content>
-                  {t("automation.revert_include_starred", { count: withStar })}
-                </Checkbox.Content>
-              </Checkbox>
-            </label>
+              {/* 星标那一档跟条目列表同一块、用一条细线分组（效果图 ② 的排布），行高 32px */}
+              {(items ?? []).length > 0 && (
+                <>
+                  <div className="my-2 h-px bg-border" />
+                  <Checkbox
+                    isSelected={includeStarred}
+                    onChange={(isSelected) => setIncludeStarred(isSelected)}
+                    isDisabled={withStar === 0}
+                    className="flex h-8 w-full flex-row cursor-pointer items-center gap-2 rounded px-2 hover:bg-secondary/40"
+                  >
+                    <Checkbox.Control className="shrink-0">
+                      <Checkbox.Indicator />
+                    </Checkbox.Control>
+                    <Checkbox.Content className="min-w-0 flex-1 text-xs font-normal text-muted-foreground">
+                      {t("automation.revert_include_starred", { count: withStar })}
+                    </Checkbox.Content>
+                  </Checkbox>
+                </>
+              )}
+            </div>
 
             {error && <div className="mt-3 text-xs text-destructive">{error}</div>}
 

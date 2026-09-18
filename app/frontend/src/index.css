@@ -69,8 +69,13 @@
    react-aria 打开 Modal/Drawer 时会把 <body> 设成 pointer-events:none（点外部由 overlay 兜住关闭），
    而 HeroUI 的弹层是 portal 到 body 上的兄弟节点，于是继承了 none —— 表现就是「设置弹窗里下拉框弹出的
    选项点不动 / 规则行 ⋯ 菜单每一项都没反应」（2026-09-17 用户报）。只给「打开中的弹层」恢复点击；
-   HeroUI 自己给 [data-entering]/[data-exiting] 写了 pointer-events:none，特异性更高，动画态不受影响。 */
+   HeroUI 自己给 [data-entering]/[data-exiting] 写了 pointer-events:none，特异性更高，动画态不受影响。
+   2026-09-18 补上通用 `.popover`：设置弹窗里的「角标自定义面板」、抽屉里的「订阅多选」与「视图图标选择器」
+   全是 HeroUI `Popover`，之前整块继承 none，量到 `getComputedStyle(btn).pointerEvents === "none"`、
+   `elementFromPoint` 命中 `<html>` ⇒ **面板里的每一项都点不动**（用合成 `.click()` 验证会得到假绿：
+   它绕过 pointer-events）。 */
 :is(
+  .popover,
   .dropdown__popover,
   .select__popover,
   .autocomplete__popover,

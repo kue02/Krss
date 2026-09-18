@@ -64,6 +64,11 @@ describe("撤销影响列表（13-2）", () => {
     const row = rows[0]!;
     // 行高统一 38px（效果图「行高 38px」）
     expect(row.className).toContain("h-[38px]");
+    // **flex-row 是硬要求**：HeroUI 的 `.checkbox` 在组件层写死了 flex-direction:column，
+    // 不顶掉它就会「勾选框一行、标题一行、来源一行」三条叠起来（真机量过：勾选框 y=416、
+    // 标题 y=440、右尾 y=468，标题只剩 95px ⇒ 跑马灯失效）。jsdom 不加载样式表，
+    // 这条断言只盯「类名还在不在」，别删。
+    expect(row.className).toContain("flex-row");
 
     const content = row.querySelector('[data-slot="checkbox-content"]');
     expect(content).not.toBeNull();

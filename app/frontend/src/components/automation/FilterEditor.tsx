@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Fieldset,
-  Switch,
   ToggleButton,
   ToggleButtonGroup,
 } from "@heroui/react";
 import { cn } from "@/lib/utils";
+import { HeroSwitch } from "@/components/ui/hero-switch";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Select } from "@/components/ui/select";
 import { ViewIconPicker } from "@/components/automation/ViewIconPicker";
@@ -351,7 +351,8 @@ export function FilterEditor({
                 {t("automation.enabled_hint")}
               </div>
             </div>
-            <Switch
+            <HeroSwitch
+              aria-label={t("automation.enabled")}
               isSelected={draft.enabled ?? true}
               onChange={(checked) => update({ enabled: checked })}
             />
@@ -384,7 +385,9 @@ export function FilterEditor({
             </span>
             <div className="flex min-w-0 justify-start">
               <SegmentedControl
-                className="shrink-0"
+                // 改法 B：范围这三段与下面三个三态组同宽（控件列 250px 里的等宽三段）——
+                // 原来按内容撑（实测 80/52/52），右缘参差、与三态组的左缘也对不齐
+                className="w-full [&_button]:flex-1"
                 value={draft.scopeType}
                 onValueChange={(value) =>
                   update({
@@ -706,7 +709,8 @@ export function FilterEditor({
                 >
                   {t("automation.action_keep_only")}
                 </span>
-                <Switch
+                <HeroSwitch
+                  aria-label={t("automation.action_keep_only")}
                   isSelected={Boolean(draft.actions.keepOnly)}
                   isDisabled={Boolean(draft.actions.mute)}
                   onChange={(checked: boolean) =>
@@ -737,7 +741,8 @@ export function FilterEditor({
                 >
                   {t("automation.action_translate")}
                 </span>
-                <Switch
+                <HeroSwitch
+                  aria-label={t("automation.action_translate")}
                   isSelected={Boolean(draft.actions.translate)}
                   onChange={(checked) =>
                     update({ actions: { ...draft.actions, translate: checked } })
@@ -751,7 +756,8 @@ export function FilterEditor({
                 >
                   {t("automation.action_summarize")}
                 </span>
-                <Switch
+                <HeroSwitch
+                  aria-label={t("automation.action_summarize")}
                   isSelected={Boolean(draft.actions.summarize)}
                   onChange={(checked) =>
                     update({ actions: { ...draft.actions, summarize: checked } })
@@ -774,7 +780,8 @@ export function FilterEditor({
                 >
                   {t("automation.action_notify")}
                 </span>
-                <Switch
+                <HeroSwitch
+                  aria-label={t("automation.action_notify")}
                   isSelected={Boolean(draft.actions.notify)}
                   onChange={(checked) =>
                     update({ actions: { ...draft.actions, notify: checked } })
@@ -804,7 +811,8 @@ export function FilterEditor({
                 >
                   {t("automation.action_webhook")}
                 </span>
-                <Switch
+                <HeroSwitch
+                  aria-label={t("automation.action_webhook")}
                   isSelected={Boolean(draft.actions.webhook)}
                   onChange={(checked) =>
                     update({ actions: { ...draft.actions, webhook: checked } })

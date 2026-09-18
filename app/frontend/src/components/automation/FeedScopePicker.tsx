@@ -53,7 +53,13 @@ export function FeedScopePicker({
             className="max-h-64 overflow-y-auto"
           >
             {options.map((option) => (
-              <Checkbox key={option.value} value={option.value} className="w-full">
+              // `flex-row` 不能省：`.checkbox` 组件层写死 flex-direction:column，
+              // 不顶掉的话每个选项会「勾选框一行、订阅名一行」，77 个订阅就是 77 组两行（13-2 同一个坑）
+              <Checkbox
+                key={option.value}
+                value={option.value}
+                className="flex w-full flex-row items-center gap-2 rounded px-2 py-1 hover:bg-secondary/40"
+              >
                 <Checkbox.Control>
                   <Checkbox.Indicator />
                 </Checkbox.Control>

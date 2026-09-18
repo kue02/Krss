@@ -117,7 +117,8 @@ describe("13-3 角标可自定义（渲染器按配置走）", () => {
     expect(marker).not.toBeNull();
     expect(marker!.textContent).toContain("12");
     // 尺寸按 px（不清 min-* 会被 HeroUI sm 的 16px 顶回去 —— 12-14 踩过）
-    expect(marker!.getAttribute("style") || "").toContain("12px");
+    // 未读数档的盒子 = 大小 + 8（圆点档那个直径装不下一个数字）：12 → 20px
+    expect(marker!.getAttribute("style") || "").toContain("20px");
     expect(marker!.className).toContain("min-h-0");
     // 位置与外观来自配置
     expect(marker!.className).toContain("top-right");
