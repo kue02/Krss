@@ -37,6 +37,7 @@ export function UnreadBadgeCustomizer() {
   // 缺省兜底：老库/裸测试环境里这个键可能还不存在，用默认配置（圆点档）渲染，不崩
   const config = useUISettingKey("unreadBadge") ?? DEFAULT_UNREAD_BADGE;
   const { setUnreadBadge } = useUISettingActions();
+  // Popover 的开关交给 `Popover.Trigger` 自己管 —— 外面再写 onPress 切换会「开一下又被关一次」
   const [open, setOpen] = useState(false);
 
   const isDot = config.content === "dot";
@@ -79,7 +80,6 @@ export function UnreadBadgeCustomizer() {
         isIconOnly
         aria-label={t("appearance_reading.unread_badge_customize")}
         className="shrink-0"
-        onPress={() => setOpen((v) => !v)}
       >
           <Settings2 className="size-4" />
         </Button>
