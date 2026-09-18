@@ -375,62 +375,78 @@ export function FilterEditor({
           </section>
         )}
 
-        {/* 范围 */}
-        <section className="space-y-2 border-t border-border pt-4">
-          <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            {t("automation.scope")}
-          </div>
-          <SegmentedControl
-            value={draft.scopeType}
-            onValueChange={(value) =>
-              update({
-                scopeType: value,
-                scopeId: value === "all" ? undefined : draft.scopeId,
-              })
-            }
-            options={scopeOptions}
-          />
-          {draft.scopeType === "folder" && (
-            <Select
-              ariaLabel={t("automation.scope")}
-              value={draft.scopeId ?? ""}
-              onChange={(value) => update({ scopeId: value })}
-              options={[
-                {
-                  value: "",
-                  label: t("automation.scope_folder_placeholder"),
-                },
-                ...(folders ?? []).map((folder) => ({
-                  value: folder.id,
-                  label: folder.name,
-                })),
-              ]}
-              className="w-full"
-            />
-          )}
-          {draft.scopeType === "feed" && (
-            <div className="space-y-1">
-              {/* 订阅范围可多选（用户 11-16）：勾几个源，规则/视图就作用在这几个源上 */}
-              <FeedScopePicker
-                ariaLabel={t("automation.scope")}
-                values={draft.scopeIds ?? (draft.scopeId ? [draft.scopeId] : [])}
-                onValuesChange={(values) =>
+        {/* 范围 —— 13-1（效果图改法 B）：与下面的动作区共用同一条网格
+            （标签列 88px + 控件列 1fr，控件从控件列起点左对齐），范围收成一行 */}
+        <section className="border-t border-border pt-4">
+          <div className="grid grid-cols-[88px_minmax(0,1fr)] items-center gap-x-3 gap-y-[7px]">
+            <span className="text-xs text-muted-foreground">
+              {t("automation.scope")}
+            </span>
+            <div className="flex min-w-0 justify-start">
+              <SegmentedControl
+                className="shrink-0"
+                value={draft.scopeType}
+                onValueChange={(value) =>
                   update({
-                    scopeIds: values,
-                    // 多选后不再写单选字段，免得两个字段各说一套
-                    scopeId: undefined,
+                    scopeType: value,
+                    scopeId: value === "all" ? undefined : draft.scopeId,
                   })
                 }
-                options={(feeds ?? []).map((feed) => ({
-                  value: feed.id,
-                  label: feed.title,
-                }))}
+                options={scopeOptions}
               />
-              <div className="text-xs text-muted-foreground">
-                {t("automation.scope_feed_multi_hint")}
-              </div>
             </div>
-          )}
+            {draft.scopeType === "folder" && (
+              <>
+                <span className="text-xs text-muted-foreground">
+                  {t("automation.scope_folder")}
+                </span>
+                <Select
+                  ariaLabel={t("automation.scope")}
+                  value={draft.scopeId ?? ""}
+                  onChange={(value) => update({ scopeId: value })}
+                  options={[
+                    {
+                      value: "",
+                      label: t("automation.scope_folder_placeholder"),
+                    },
+                    ...(folders ?? []).map((folder) => ({
+                      value: folder.id,
+                      label: folder.name,
+                    })),
+                  ]}
+                  className="w-full max-w-[18rem]"
+                />
+              </>
+            )}
+            {draft.scopeType === "feed" && (
+              <>
+                <span className="text-xs text-muted-foreground">
+                  {t("automation.scope_feed")}
+                </span>
+                <div className="min-w-0 space-y-1">
+                  {/* 订阅范围可多选（用户 11-16）：勾几个源，规则/视图就作用在这几个源上 */}
+                  <FeedScopePicker
+                    ariaLabel={t("automation.scope")}
+                    values={draft.scopeIds ?? (draft.scopeId ? [draft.scopeId] : [])}
+                    onValuesChange={(values) =>
+                      update({
+                        scopeIds: values,
+                        // 多选后不再写单选字段，免得两个字段各说一套
+                        scopeId: undefined,
+                      })
+                    }
+                    options={(feeds ?? []).map((feed) => ({
+                      value: feed.id,
+                      label: feed.title,
+                    }))}
+                  />
+                  <div className="text-xs text-muted-foreground">
+                    {t("automation.scope_feed_multi_hint")}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         </section>
 
         {/* 视图专属（用户 11-5）：固定只在某些内容类型下显示 + 自定义图标 */}
