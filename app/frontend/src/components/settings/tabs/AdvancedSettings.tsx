@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, Trash2, Edit2, Check, X } from "lucide-react";
-import { Button, Disclosure, Label, NumberField } from "@heroui/react";
+import { Plus, Trash2, Edit2, Check, X, Copy, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { Button, Disclosure, Label, NumberField, Table } from "@heroui/react";
 import {
   getDomainRateLimits,
   createDomainRateLimit,
@@ -12,6 +12,8 @@ import {
   ApiError,
 } from "@/api";
 import type { FetchSettings } from "@/types/settings";
+import { MarqueeText } from "@/components/ui/marquee-text";
+import { showToast } from "@/stores/toast-store";
 import {
   clearAutoRefreshHistory,
   loadAutoRefreshHistory,
@@ -21,7 +23,57 @@ import {
 import type { DomainRateLimit } from "@/types/settings";
 import { cn } from "@/lib/utils";
 
+/** 表头里的排序按钮（HeroUI `Button`；点一下切升降序） */
+function SortHeader({
+  label,
+  column,
+  sort,
+  onToggle,
+}: {
+  label: string;
+  column: string;
+  sort: { column: string; direction: "ascending" | "descending" };
+  onToggle: (column: string) => void;
+}) {
+  const active = sort.column === column;
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      onPress={() => onToggle(column)}
+      className="h-6 gap-1 px-1 text-xs font-medium"
+    >
+      {label}
+      {active ? (
+        sort.direction === "ascending" ? (
+          <ArrowUp className="size-3" />
+        ) : (
+          <ArrowDown className="size-3" />
+        )
+      ) : (
+        <ArrowUpDown className="size-3 opacity-40" />
+      )}
+    </Button>
+  );
+}
+
 export function AdvancedSettings() {
+  /** 12-19：表头点击排序（HeroUI Button 自己管状态，见 SortHeader） */
+  const [sortDescriptor, setSortDescriptor] = useState<{
+    column: string;
+    direction: "ascending" | "descending";
+  }>({ column: "updated", direction: "descending" });
+  const toggleSort = (column: string) =>
+    setSortDescriptor((prev) =>
+      prev.column === column
+        ? {
+            column,
+            direction:
+              prev.direction === "ascending" ? "descending" : "ascending",
+          }
+        : { column, direction: "descending" },
+    );
+
   const { t } = useTranslation();
   const [items, setItems] = useState<DomainRateLimit[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -284,25 +336,102 @@ export function AdvancedSettings() {
                   </Disclosure.Trigger>
                 </Disclosure.Heading>
                 <Disclosure.Content>
-                  <Disclosure.Body className="space-y-1 border border-t-0 border-border px-3 py-2">
-                    {record.results.map((result) => (
-                      <div
-                        key={result.feedId}
-                        className="flex min-w-0 items-center justify-between gap-2 text-xs"
-                      >
-                        <span className="min-w-0 truncate text-muted-foreground">
-                          {result.title}
-                        </span>
-                        <span className="shrink-0 tabular-nums">
-                          {result.error
-                            ? result.error
-                            : t("settings.auto_refresh_history_row", {
-                                created: result.new,
-                                updated: result.updated,
-                              })}
-                        </span>
-                      </div>
-                    ))}
+                  <Disclosure.Body className="border border-t-0 border-border px-3 py-2">
+                    {/* 12-19：用 HeroUI `Table`（可点表头排序）+ 跑马灯 + 复制按钮 */}
+                    {/* 排序不用 RAC 的 `sortDescriptor`（HeroUI 的 Table 没声明这个 prop，
+                        运行期也不保证透传）—— 表头里放 HeroUI `Button`，自己管排序状态 */}
+                    <Table aria-label={t("settings.auto_refresh_history_table")}>
+                      <Table.Header>
+                        <Table.Column id="title" isRowHeader>
+                          <SortHeader
+                            label={t("settings.auto_refresh_history_col_feed")}
+                            column="title"
+                            sort={sortDescriptor}
+                            onToggle={toggleSort}
+                          />
+                        </Table.Column>
+                        <Table.Column id="new">
+                          <SortHeader
+                            label={t("settings.auto_refresh_history_col_new")}
+                            column="new"
+                            sort={sortDescriptor}
+                            onToggle={toggleSort}
+                          />
+                        </Table.Column>
+                        <Table.Column id="updated">
+                          <SortHeader
+                            label={t("settings.auto_refresh_history_col_updated")}
+                            column="updated"
+                            sort={sortDescriptor}
+                            onToggle={toggleSort}
+                          />
+                        </Table.Column>
+                        <Table.Column id="error">
+                          {t("settings.auto_refresh_history_col_error")}
+                        </Table.Column>
+                      </Table.Header>
+                      <Table.Body>
+                        {[...record.results]
+                          .sort((a, b) => {
+                            const dir =
+                              sortDescriptor.direction === "ascending" ? 1 : -1;
+                            if (sortDescriptor.column === "new")
+                              return (a.new - b.new) * dir;
+                            if (sortDescriptor.column === "updated")
+                              return (a.updated - b.updated) * dir;
+                            if (sortDescriptor.column === "title")
+                              return a.title.localeCompare(b.title) * dir;
+                            return 0;
+                          })
+                          .map((result) => (
+                            <Table.Row key={result.feedId} id={String(result.feedId)}>
+                              <Table.Cell className="max-w-[16rem]">
+                                <MarqueeText text={result.title} />
+                              </Table.Cell>
+                              <Table.Cell className="tabular-nums">
+                                {result.new}
+                              </Table.Cell>
+                              <Table.Cell className="tabular-nums">
+                                {result.updated}
+                              </Table.Cell>
+                              <Table.Cell className="max-w-[18rem]">
+                                {result.error ? (
+                                  <span className="flex min-w-0 items-center gap-1">
+                                    <MarqueeText
+                                      className="min-w-0 flex-1 text-destructive"
+                                      text={result.error}
+                                    />
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      isIconOnly
+                                      aria-label={t("settings.auto_refresh_history_copy_error")}
+                                      onPress={async () => {
+                                        try {
+                                          await navigator.clipboard.writeText(
+                                            result.error ?? "",
+                                          );
+                                          showToast(
+                                            t("settings.auto_refresh_history_copied"),
+                                          );
+                                        } catch {
+                                          showToast(
+                                            t("settings.auto_refresh_history_copy_failed"),
+                                          );
+                                        }
+                                      }}
+                                    >
+                                      <Copy className="size-3.5" />
+                                    </Button>
+                                  </span>
+                                ) : (
+                                  "—"
+                                )}
+                              </Table.Cell>
+                            </Table.Row>
+                          ))}
+                      </Table.Body>
+                    </Table>
                   </Disclosure.Body>
                 </Disclosure.Content>
               </Disclosure>

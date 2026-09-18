@@ -172,7 +172,15 @@
     "auto_refresh_history_empty": "No auto-refresh records yet",
     "auto_refresh_history_summary": "{{count}} updated ({{created}} new · {{updated}} updated)",
     "auto_refresh_history_failed": "{{count}} feeds failed",
-    "auto_refresh_history_row": "{{created}} new · {{updated}} updated"
+    "auto_refresh_history_row": "{{created}} new · {{updated}} updated",
+    "auto_refresh_history_table": "Auto-refresh details",
+    "auto_refresh_history_col_feed": "Feed",
+    "auto_refresh_history_col_new": "New",
+    "auto_refresh_history_col_updated": "Updated",
+    "auto_refresh_history_col_error": "Error",
+    "auto_refresh_history_copy_error": "Copy error",
+    "auto_refresh_history_copied": "Error copied",
+    "auto_refresh_history_copy_failed": "Copy failed"
   },
   "theme": {
     "system": "Follow System",
