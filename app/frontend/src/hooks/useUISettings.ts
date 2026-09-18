@@ -1,4 +1,5 @@
 import { useCallback, useSyncExternalStore } from "react";
+import { notifySettingsSaved } from "@/lib/settings-saved";
 import type { ContentType } from "@/types/api";
 import type { ScrollMarkReadTiming } from "@/components/entry-list/useScrollMarkRead";
 
@@ -233,6 +234,8 @@ export function setUISetting<K extends keyof UISettings>(
     // ignore storage errors
   }
   emitChange();
+  // 12-7：即时型改动给一句「已保存」（App 订阅事件、带防抖后弹 toast）
+  notifySettingsSaved();
 }
 
 function subscribe(callback: () => void): () => void {

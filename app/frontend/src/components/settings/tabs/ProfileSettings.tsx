@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { useSettingsDirty } from "@/stores/settings-dirty-store";
 import { downscaleImage } from "@/lib/downscale-image";
 import { getCurrentUser, updateProfile, setAuthToken } from "@/api";
 import { cn } from "@/lib/utils";
@@ -10,6 +11,11 @@ export function ProfileSettings() {
   const { t } = useTranslation();
   const { user, setUser } = useAuthStore();
   const [username, setUsername] = useState("");
+  /** 12-7：加载/保存成功时的快照，用来判断「昵称/邮箱有没有未保存的改动」 */
+  const [baseline, setBaseline] = useState<{
+    nickname: string;
+    email: string;
+  } | null>(null);
   const [nickname, setNickname] = useState("");
   const [email, setEmail] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -40,12 +46,14 @@ export function ProfileSettings() {
       setUsername(user.username);
       setNickname(user.nickname);
       setEmail(user.email);
+      setBaseline({ nickname: user.nickname, email: user.email });
     } else {
       getCurrentUser()
         .then((userData) => {
           setUsername(userData.username);
           setNickname(userData.nickname);
           setEmail(userData.email);
+          setBaseline({ nickname: userData.nickname, email: userData.email });
         })
         .catch(() => {
           // ignore
@@ -97,6 +105,10 @@ export function ProfileSettings() {
     try {
       const result = await updateProfile({ nickname });
       setUser(result.user);
+      setBaseline((prev) => ({
+        nickname: result.user?.nickname ?? nickname,
+        email: prev?.email ?? email,
+      }));
       setNicknameStatus("success");
       setTimeout(() => setNicknameStatus("idle"), 2000);
     } catch (err) {
@@ -116,6 +128,10 @@ export function ProfileSettings() {
     try {
       const result = await updateProfile({ email });
       setUser(result.user);
+      setBaseline((prev) => ({
+        nickname: prev?.nickname ?? nickname,
+        email: result.user?.email ?? email,
+      }));
       setEmailStatus("success");
       setTimeout(() => setEmailStatus("idle"), 2000);
     } catch (err) {
@@ -125,6 +141,19 @@ export function ProfileSettings() {
       setIsLoadingEmail(false);
     }
   };
+
+  const profileDirty =
+    baseline !== null &&
+    (nickname !== baseline.nickname || email !== baseline.email);
+  useSettingsDirty(
+    "profile",
+    profileDirty,
+    t("settings.dirty_label_profile"),
+    async () => {
+      if (baseline && nickname !== baseline.nickname) await handleSaveNickname();
+      if (baseline && email !== baseline.email) await handleSaveEmail();
+    },
+  );
 
   const handleChangePassword = async (e: FormEvent) => {
     e.preventDefault();

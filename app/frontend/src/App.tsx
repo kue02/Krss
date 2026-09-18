@@ -8,6 +8,8 @@ import {
 } from "react";
 import { Router, useLocation, Redirect } from "wouter";
 import { useTranslation } from "react-i18next";
+import { SETTINGS_SAVED_EVENT } from "@/lib/settings-saved";
+import { showToast } from "@/stores/toast-store";
 import { ThreeColumnLayout } from "@/components/layout/three-column-layout";
 import { Sheet } from "@/components/ui/sheet";
 import { MotionConfig } from "framer-motion";
@@ -363,6 +365,23 @@ function AuthenticatedApp() {
   useEffect(() => {
     applyIconRadiusToDocument(iconRadius);
   }, [iconRadius]);
+
+  /**
+   * 12-7：即时型设置项（开关 / 数量 / 下拉）改一下就落库，这里给一句「已保存」。
+   * 防抖 700ms：连续拨数字或连点开关只在停手后提示一次，避免刷屏。
+   */
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onSaved = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => showToast(t("settings.saved_toast")), 700);
+    };
+    window.addEventListener(SETTINGS_SAVED_EVENT, onSaved);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener(SETTINGS_SAVED_EVENT, onSaved);
+    };
+  }, [t]);
 
   const visibleContentTypes = useMemo(() => {
     const current = appearanceSettings?.contentTypes;
