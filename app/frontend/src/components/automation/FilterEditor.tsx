@@ -1,14 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  Fieldset,
+  Switch,
   ToggleButton,
   ToggleButtonGroup,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
 } from "@heroui/react";
 import { cn } from "@/lib/utils";
-import { Switch } from "@/components/ui/switch";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Select } from "@/components/ui/select";
 import { ViewIconPicker } from "@/components/automation/ViewIconPicker";
@@ -92,14 +90,6 @@ const ACTION_HINT_KEYS: Record<string, string> = {
   webhook: "webhook_hint",
   notify: "notify_hint",
 };
-
-const ACTION_ORDER: ActionKey[] = [
-  "translate",
-  "summarize",
-  "webhook",
-  "notify",
-  "keepOnly",
-];
 
 const inputClass = cn(
   // text-foreground：HeroUI 抽屉的 .drawer__body 默认是 muted 文字色，输入值要多一层才够黑
@@ -362,8 +352,8 @@ export function FilterEditor({
               </div>
             </div>
             <Switch
-              checked={draft.enabled ?? true}
-              onCheckedChange={(checked) => update({ enabled: checked })}
+              isSelected={draft.enabled ?? true}
+              onChange={(checked) => update({ enabled: checked })}
             />
           </div>
         </section>
@@ -632,136 +622,194 @@ export function FilterEditor({
             <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
               {t("automation.actions")}
             </div>
-            {/* 三个互斥维度：一行一个 HeroUI ToggleButtonGroup（不变 / 正向 / 反向）。
-                用组件库的三态而不是自绘分段控件（用户第十一批 18：动作区一律走 HeroUI）。 */}
-            <div className="space-y-1.5">
-              {ACTION_PAIRS.map(({ positive, negative }) => {
-                const value = draft.actions[positive]
-                  ? "positive"
-                  : draft.actions[negative]
-                    ? "negative"
-                    : "none";
-                // 「只保留匹配」本身会把不匹配的静音，再叠「静音」等于全静音 —— 挡掉这个误操作
-                const muteBlocked = positive === "mute" && keepOnlyBlocksMute;
-                return (
-                  <div
-                    key={positive}
-                    className="flex items-center justify-between gap-3"
-                  >
-                    <span className="text-xs text-muted-foreground">
-                      {t(`automation.${DIMENSION_LABEL_KEYS[positive]}`)}
-                    </span>
-                    <ToggleButtonGroup
-                      selectionMode="single"
-                      size="sm"
-                      selectedKeys={[value]}
-                      onSelectionChange={(keys) => {
-                        const next = [...keys][0];
-                        setActionDimension(
-                          positive,
-                          negative,
-                          (next ?? "none") as "none" | "positive" | "negative",
-                        );
-                      }}
-                    >
-                      <ToggleButton id="none">
-                        {t("automation.action_none")}
-                      </ToggleButton>
-                      <ToggleButton id="positive" isDisabled={muteBlocked}>
-                        {t(`automation.${ACTION_LABEL_KEYS[positive]}`)}
-                      </ToggleButton>
-                      <ToggleButton id="negative">
-                        {t(`automation.${ACTION_LABEL_KEYS[negative]}`)}
-                      </ToggleButton>
-                    </ToggleButtonGroup>
-                  </div>
-                );
-              })}
-            </div>
-            {keepOnlyBlocksMute && (
-              <div className="text-xs text-muted-foreground">
-                {t("automation.mute_blocked_by_keep_only")}
-              </div>
-            )}
+            {/*
+              12-12：动作区按用途分三组（用户选定方案）——
+              ① 条目状态（静音 / 已读 / 加星 三个互斥维度 + 只保留匹配）
+              ② 内容加工（打开时自动翻译 / 自动摘要）
+              ③ 对外（推送到手机 / Webhook，各自带地址输入）
+              成对的动作仍然用 HeroUI 三态组（不变 / 正向 / 反向）—— 一对动作做成两个开关会允许
+              「同时又静音又取消静音」这种自相矛盾的组合；单项动作一律 HeroUI Switch。
+            */}
 
-            {/* 附加动作：HeroUI ToggleButtonGroup（多选）。
-                11-18：原来是一排自绘按钮 + 4 段灰字说明把控件切碎，现在说明收进 tooltip。 */}
-            <ToggleButtonGroup
-              selectionMode="multiple"
-              size="sm"
-              className="flex-wrap"
-              selectedKeys={ACTION_ORDER.filter((key) => draft.actions[key])}
-              onSelectionChange={(keys) => {
-                const next = new Set([...keys].map(String));
-                setDraft((current) => {
-                  const actions: FilterActions = { ...current.actions };
-                  for (const key of ACTION_ORDER) {
-                    actions[key] = next.has(key);
-                  }
-                  return { ...current, actions };
-                });
-                setPreviewResult(null);
-              }}
-            >
-              {ACTION_ORDER.map((key) => (
-                <Tooltip key={key}>
-                  {/* contents：触发器不生成盒子，否则它会把按钮组的一行拆散（实测高度反而涨了 46px） */}
-                  <TooltipTrigger className="contents">
-                    <ToggleButton
-                      id={key}
-                      // 「只保留匹配」是模式开关：它开着时「静音」没意义（等价全静音）
-                      isDisabled={key === "keepOnly" && Boolean(draft.actions.mute)}
+            {/* ① 条目状态 */}
+            <Fieldset className="space-y-2">
+              <Fieldset.Legend className="text-xs font-medium text-foreground">
+                {t("automation.action_group_state")}
+              </Fieldset.Legend>
+              <Fieldset.Group className="space-y-1.5">
+                {ACTION_PAIRS.map(({ positive, negative }) => {
+                  const value = draft.actions[positive]
+                    ? "positive"
+                    : draft.actions[negative]
+                      ? "negative"
+                      : "none";
+                  // 「只保留匹配」本身会把不匹配的静音，再叠「静音」等于全静音 —— 挡掉这个误操作
+                  const muteBlocked = positive === "mute" && keepOnlyBlocksMute;
+                  return (
+                    <div
+                      key={positive}
+                      className="flex items-center justify-between gap-3"
                     >
-                      {t(`automation.${ACTION_LABEL_KEYS[key] ?? "actions"}`)}
-                    </ToggleButton>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {key === "keepOnly"
-                      ? t("automation.keep_only_hint")
-                      : t(`automation.${ACTION_HINT_KEYS[key] ?? "actions_hint"}`)}
-                  </TooltipContent>
-                </Tooltip>
-              ))}
-            </ToggleButtonGroup>
+                      <span className="text-xs text-muted-foreground">
+                        {t(`automation.${DIMENSION_LABEL_KEYS[positive]}`)}
+                      </span>
+                      <ToggleButtonGroup
+                        selectionMode="single"
+                        size="sm"
+                        selectedKeys={[value]}
+                        onSelectionChange={(keys) => {
+                          const next = [...keys][0];
+                          setActionDimension(
+                            positive,
+                            negative,
+                            (next ?? "none") as "none" | "positive" | "negative",
+                          );
+                        }}
+                      >
+                        <ToggleButton id="none">
+                          {t("automation.action_none")}
+                        </ToggleButton>
+                        <ToggleButton id="positive" isDisabled={muteBlocked}>
+                          {t(`automation.${ACTION_LABEL_KEYS[positive]}`)}
+                        </ToggleButton>
+                        <ToggleButton id="negative">
+                          {t(`automation.${ACTION_LABEL_KEYS[negative]}`)}
+                        </ToggleButton>
+                      </ToggleButtonGroup>
+                    </div>
+                  );
+                })}
+              </Fieldset.Group>
+              <div className="flex items-center justify-between gap-3">
+                <span
+                  className="text-xs text-muted-foreground"
+                  title={t("automation.keep_only_hint")}
+                >
+                  {t("automation.action_keep_only")}
+                </span>
+                <Switch
+                  isSelected={Boolean(draft.actions.keepOnly)}
+                  isDisabled={Boolean(draft.actions.mute)}
+                  onChange={(checked: boolean) =>
+                    update({
+                      actions: { ...draft.actions, keepOnly: checked },
+                    })
+                  }
+                />
+              </div>
+              {keepOnlyBlocksMute && (
+                <div className="text-xs text-muted-foreground">
+                  {t("automation.mute_blocked_by_keep_only")}
+                </div>
+              )}
+            </Fieldset>
+
+            {/* ② 内容加工 */}
+            <Fieldset className="space-y-2">
+              <Fieldset.Legend className="text-xs font-medium text-foreground">
+                {t("automation.action_group_content")}
+              </Fieldset.Legend>
+              <div className="flex items-center justify-between gap-3">
+                <span
+                  className="text-xs text-muted-foreground"
+                  title={t(`automation.${ACTION_HINT_KEYS["translate"]}`)}
+                >
+                  {t("automation.action_translate")}
+                </span>
+                <Switch
+                  isSelected={Boolean(draft.actions.translate)}
+                  onChange={(checked) =>
+                    update({ actions: { ...draft.actions, translate: checked } })
+                  }
+                />
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span
+                  className="text-xs text-muted-foreground"
+                  title={t(`automation.${ACTION_HINT_KEYS["summarize"]}`)}
+                >
+                  {t("automation.action_summarize")}
+                </span>
+                <Switch
+                  isSelected={Boolean(draft.actions.summarize)}
+                  onChange={(checked) =>
+                    update({ actions: { ...draft.actions, summarize: checked } })
+                  }
+                />
+              </div>
+            </Fieldset>
+
+            {/* ③ 对外 */}
+            <Fieldset className="space-y-2">
+              <Fieldset.Legend className="text-xs font-medium text-foreground">
+                {t("automation.action_group_external")}
+              </Fieldset.Legend>
+              <div className="flex items-center justify-between gap-3">
+                <span
+                  className="text-xs text-muted-foreground"
+                  title={t(`automation.${ACTION_HINT_KEYS["notify"]}`)}
+                >
+                  {t("automation.action_notify")}
+                </span>
+                <Switch
+                  isSelected={Boolean(draft.actions.notify)}
+                  onChange={(checked) =>
+                    update({ actions: { ...draft.actions, notify: checked } })
+                  }
+                />
+              </div>
+              {draft.actions.notify && (
+                <input
+                  type="text"
+                  value={draft.actions.notifyUrl ?? ""}
+                  onChange={(event) =>
+                    update({
+                      actions: {
+                        ...draft.actions,
+                        notifyUrl: event.target.value,
+                      },
+                    })
+                  }
+                  placeholder={t("automation.notify_url_placeholder")}
+                  className={inputClass}
+                />
+              )}
+              <div className="flex items-center justify-between gap-3">
+                <span
+                  className="text-xs text-muted-foreground"
+                  title={t(`automation.${ACTION_HINT_KEYS["webhook"]}`)}
+                >
+                  {t("automation.action_webhook")}
+                </span>
+                <Switch
+                  isSelected={Boolean(draft.actions.webhook)}
+                  onChange={(checked) =>
+                    update({ actions: { ...draft.actions, webhook: checked } })
+                  }
+                />
+              </div>
+              {draft.actions.webhook && (
+                <input
+                  type="text"
+                  value={draft.actions.webhookUrl ?? ""}
+                  onChange={(event) =>
+                    update({
+                      actions: {
+                        ...draft.actions,
+                        webhookUrl: event.target.value,
+                      },
+                    })
+                  }
+                  placeholder={t("automation.webhook_url_placeholder")}
+                  className={inputClass}
+                />
+              )}
+            </Fieldset>
 
             {/* 只留一行总说明（其余都进 tooltip） */}
             <div className="text-xs text-muted-foreground">
               {t("automation.actions_hint")}
             </div>
-
-            {/* 两个「要出网」的地址输入：紧跟在上面的开关之后，不再被说明文字隔开 */}
-            {draft.actions.webhook && (
-              <input
-                type="text"
-                value={draft.actions.webhookUrl ?? ""}
-                onChange={(event) =>
-                  update({
-                    actions: {
-                      ...draft.actions,
-                      webhookUrl: event.target.value,
-                    },
-                  })
-                }
-                placeholder={t("automation.webhook_url_placeholder")}
-                className={inputClass}
-              />
-            )}
-            {draft.actions.notify && (
-              <input
-                type="text"
-                value={draft.actions.notifyUrl ?? ""}
-                onChange={(event) =>
-                  update({
-                    actions: {
-                      ...draft.actions,
-                      notifyUrl: event.target.value,
-                    },
-                  })
-                }
-                placeholder={t("automation.notify_url_placeholder")}
-                className={inputClass}
-              />
-            )}
           </section>
         )}
 

@@ -791,7 +791,10 @@
     "revert_selected_action": "撤销选中的 {{count}} 条",
     "revert_running": "撤销中…",
     "scope_all_feeds": "全部订阅",
-    "scope_selected_count": "已选 {{count}} 个订阅"
+    "scope_selected_count": "已选 {{count}} 个订阅",
+    "action_group_state": "条目状态",
+    "action_group_content": "内容加工",
+    "action_group_external": "对外"
   },
   "search": {
     "title": "搜索",

@@ -794,7 +794,10 @@
     "revert_selected_action": "Revert {{count}} selected",
     "revert_running": "Reverting…",
     "scope_all_feeds": "All feeds",
-    "scope_selected_count": "{{count}} feeds selected"
+    "scope_selected_count": "{{count}} feeds selected",
+    "action_group_state": "Entry state",
+    "action_group_content": "Content processing",
+    "action_group_external": "Outbound"
   },
   "search": {
     "title": "Search",
