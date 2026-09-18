@@ -651,7 +651,7 @@ export function AppearanceSettings() {
         <div className="space-y-3">
           <SettingRow label={t("appearance_shape.component_radius")}>
             <Select
-              className="w-48 shrink-0"
+              className="w-56 shrink-0"
               ariaLabel={t("appearance_shape.component_radius")}
               value={componentRadius}
               onChange={(value) => setComponentRadius(value as RadiusPreset)}
@@ -660,7 +660,7 @@ export function AppearanceSettings() {
           </SettingRow>
           <SettingRow label={t("appearance_shape.field_radius")}>
             <Select
-              className="w-48 shrink-0"
+              className="w-56 shrink-0"
               ariaLabel={t("appearance_shape.field_radius")}
               value={fieldRadius}
               onChange={(value) => setFieldRadius(value as RadiusPreset)}
@@ -669,7 +669,7 @@ export function AppearanceSettings() {
           </SettingRow>
           <SettingRow label={t("appearance_shape.icon_radius")}>
             <Select
-              className="w-48 shrink-0"
+              className="w-56 shrink-0"
               ariaLabel={t("appearance_shape.icon_radius")}
               value={iconRadius}
               onChange={(value) => setIconRadius(value as RadiusPreset)}
