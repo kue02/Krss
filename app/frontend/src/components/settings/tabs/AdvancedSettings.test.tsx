@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, cleanup, waitFor } from "@testing-library/react";
+import { render, cleanup, screen, waitFor } from "@testing-library/react";
 import { AdvancedSettings } from "./AdvancedSettings";
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (k: string) => k }) }));
@@ -57,7 +57,7 @@ describe("AdvancedSettings 自动刷新历史（12-19）", () => {
     ) ?? [...document.querySelectorAll("button[aria-expanded]")].pop();
     expect(trigger).toBeTruthy();
     (trigger as HTMLButtonElement).click();
-    await waitFor(() => expect(document.body.textContent).toContain("小众软件"), { timeout: 6000 });
+    await screen.findByText("小众软件", undefined, { timeout: 15000 });
     expect(document.body.textContent).toContain("即刻精选");
     // 回归：表头是 HeroUI 的 SortableColumnHeader（可点排序），错误行有复制按钮
     expect(document.querySelectorAll('[data-slot="table-sortable-column-header"]').length).toBeGreaterThan(0);

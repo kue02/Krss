@@ -344,7 +344,7 @@ export function FilterEditor({
               className={cn(inputClass, "mt-1 h-9")}
             />
           </div>
-          <div className="flex items-center justify-between gap-3">
+          <div className="contents">
             <div className="min-w-0">
               <div className="text-sm font-medium">{t("automation.enabled")}</div>
               <div className="text-xs text-muted-foreground">
@@ -648,11 +648,11 @@ export function FilterEditor({
             */}
 
             {/* ① 条目状态 */}
-            <Fieldset className="space-y-2">
-              <Fieldset.Legend className="text-xs font-medium text-foreground">
+            <Fieldset className="grid grid-cols-[88px_minmax(0,1fr)] items-center gap-x-3 gap-y-[7px] border-t border-border/60 pt-3.5 mt-3.5">
+              <Fieldset.Legend className="col-span-2 text-xs font-medium text-foreground">
                 {t("automation.action_group_state")}
               </Fieldset.Legend>
-              <Fieldset.Group className="space-y-1.5">
+              <Fieldset.Group className="contents">
                 {ACTION_PAIRS.map(({ positive, negative }) => {
                   const value = draft.actions[positive]
                     ? "positive"
@@ -670,6 +670,7 @@ export function FilterEditor({
                         {t(`automation.${DIMENSION_LABEL_KEYS[positive]}`)}
                       </span>
                       <ToggleButtonGroup
+                        className="w-full [&_button]:flex-1"
                         selectionMode="single"
                         size="sm"
                         selectedKeys={[value]}
@@ -696,7 +697,7 @@ export function FilterEditor({
                   );
                 })}
               </Fieldset.Group>
-              <div className="flex items-center justify-between gap-3">
+              <div className="contents">
                 <span
                   className="text-xs text-muted-foreground"
                   title={t("automation.keep_only_hint")}
@@ -714,18 +715,18 @@ export function FilterEditor({
                 />
               </div>
               {keepOnlyBlocksMute && (
-                <div className="text-xs text-muted-foreground">
+                <div className="col-span-2 text-xs text-muted-foreground">
                   {t("automation.mute_blocked_by_keep_only")}
                 </div>
               )}
             </Fieldset>
 
             {/* ② 内容加工 */}
-            <Fieldset className="space-y-2">
-              <Fieldset.Legend className="text-xs font-medium text-foreground">
+            <Fieldset className="grid grid-cols-[88px_minmax(0,1fr)] items-center gap-x-3 gap-y-[7px] border-t border-border/60 pt-3.5 mt-3.5">
+              <Fieldset.Legend className="col-span-2 text-xs font-medium text-foreground">
                 {t("automation.action_group_content")}
               </Fieldset.Legend>
-              <div className="flex items-center justify-between gap-3">
+              <div className="contents">
                 <span
                   className="text-xs text-muted-foreground"
                   title={t(`automation.${ACTION_HINT_KEYS["translate"]}`)}
@@ -739,7 +740,7 @@ export function FilterEditor({
                   }
                 />
               </div>
-              <div className="flex items-center justify-between gap-3">
+              <div className="contents">
                 <span
                   className="text-xs text-muted-foreground"
                   title={t(`automation.${ACTION_HINT_KEYS["summarize"]}`)}
@@ -756,11 +757,11 @@ export function FilterEditor({
             </Fieldset>
 
             {/* ③ 对外 */}
-            <Fieldset className="space-y-2">
-              <Fieldset.Legend className="text-xs font-medium text-foreground">
+            <Fieldset className="grid grid-cols-[88px_minmax(0,1fr)] items-center gap-x-3 gap-y-[7px] border-t border-border/60 pt-3.5 mt-3.5">
+              <Fieldset.Legend className="col-span-2 text-xs font-medium text-foreground">
                 {t("automation.action_group_external")}
               </Fieldset.Legend>
-              <div className="flex items-center justify-between gap-3">
+              <div className="contents">
                 <span
                   className="text-xs text-muted-foreground"
                   title={t(`automation.${ACTION_HINT_KEYS["notify"]}`)}
@@ -787,10 +788,10 @@ export function FilterEditor({
                     })
                   }
                   placeholder={t("automation.notify_url_placeholder")}
-                  className={inputClass}
+                  className={cn(inputClass, "col-start-2")}
                 />
               )}
-              <div className="flex items-center justify-between gap-3">
+              <div className="contents">
                 <span
                   className="text-xs text-muted-foreground"
                   title={t(`automation.${ACTION_HINT_KEYS["webhook"]}`)}
@@ -817,7 +818,7 @@ export function FilterEditor({
                     })
                   }
                   placeholder={t("automation.webhook_url_placeholder")}
-                  className={inputClass}
+                  className={cn(inputClass, "col-start-2")}
                 />
               )}
             </Fieldset>
