@@ -233,6 +233,17 @@ function emptyPackage(): UISettingsPackageShape {
   return { shared: {}, device: { desktop: {}, mobile: {} } };
 }
 
+/** 认得的档位集合（用来丢弃老档位，如 18 批去掉的 `md` 6px） */
+const RADIUS_PRESETS = new Set<string>([
+  "default",
+  "none",
+  "xs",
+  "sm",
+  "lg",
+  "xl",
+  "full",
+]);
+
 /**
  * 收窄一个 bag：只留认识的键、类型对得上的值；对象型的项与默认值浅合并
  * （防止服务端/导入回来的半份配置把组件读成 undefined）。
@@ -263,6 +274,14 @@ function sanitizeBag(input: unknown): Record<string, unknown> {
   // 老值原样搬过来、不丢用户设置；只在这里认一次老键，之后统一用新键。
   if (out.componentRadius === undefined && typeof input.buttonRadius === "string") {
     out.componentRadius = input.buttonRadius;
+  }
+
+  // 18 批换刻度后（去掉 md 6px）不认得的档位直接丢掉 ⇒ 回落默认档，
+  // 免得下拉显示成「一个都不选中」那种说不清的状态。
+  for (const key of ["componentRadius", "fieldRadius", "iconRadius"]) {
+    if (typeof out[key] === "string" && !RADIUS_PRESETS.has(out[key] as string)) {
+      delete out[key];
+    }
   }
 
   return out;

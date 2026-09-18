@@ -94,4 +94,15 @@ describe("18 批 老键迁移", () => {
     });
     expect(getUISettings().componentRadius).toBe("sm");
   });
+
+  it("换刻度后不认得的档位（md 6px）丢掉 ⇒ 回落默认档，而不是卡在「没选中」", () => {
+    applyUISettingsPackageFromServer({
+      shared: { componentRadius: "md", fieldRadius: "md", iconRadius: "md" },
+      device: { desktop: {}, mobile: {} },
+    });
+    const s = getUISettings();
+    expect(s.componentRadius).toBe("default");
+    expect(s.fieldRadius).toBe("default");
+    expect(s.iconRadius).toBe("default");
+  });
 });
