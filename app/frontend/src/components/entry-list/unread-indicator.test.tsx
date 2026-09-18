@@ -92,3 +92,56 @@ describe("已读/未读标记", () => {
     expect(unreadRowClass(false, false, false, "badge")).toBe(""); // 非变灰档不降
   });
 });
+
+describe("13-3 角标可自定义（渲染器按配置走）", () => {
+  const base = {
+    content: "count" as const,
+    placement: "top-right" as const,
+    size: 12,
+    followAccent: true,
+    color: "accent" as const,
+    customColor: null,
+    variant: "soft" as const,
+    offset: 6,
+  };
+
+  it("内容=未读数：出数字角标、按 px 定尺寸、位置/外观跟着配置走", () => {
+    settings.unreadStyle = "badge";
+    settings.unreadBadge = { ...base };
+    render(
+      <UnreadIndicator unread count={12}>
+        {icon}
+      </UnreadIndicator>,
+    );
+    const marker = document.querySelector('[data-unread-marker="count"]');
+    expect(marker).not.toBeNull();
+    expect(marker!.textContent).toContain("12");
+    // 尺寸按 px（不清 min-* 会被 HeroUI sm 的 16px 顶回去 —— 12-14 踩过）
+    expect(marker!.getAttribute("style") || "").toContain("12px");
+    expect(marker!.className).toContain("min-h-0");
+    // 位置与外观来自配置
+    expect(marker!.className).toContain("top-right");
+    expect(marker!.className).toContain("soft");
+  });
+
+  it("未读数 > 99 显示 99+", () => {
+    settings.unreadBadge = { ...base };
+    render(
+      <UnreadIndicator unread count={150}>
+        {icon}
+      </UnreadIndicator>,
+    );
+    const marker = document.querySelector('[data-unread-marker="count"]');
+    expect(marker!.textContent).toContain("99+");
+  });
+
+  it("内容=图标：出 svg、不出数字", () => {
+    settings.unreadBadge = { ...base, content: "icon" as const };
+    render(<UnreadIndicator unread>{icon}</UnreadIndicator>);
+    const marker = document.querySelector('[data-unread-marker="icon"]');
+    expect(marker).not.toBeNull();
+    expect(marker!.querySelector("svg")).not.toBeNull();
+    expect(marker!.textContent).toBe("");
+  });
+});
+
