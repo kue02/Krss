@@ -64,7 +64,8 @@ func (s *readabilityService) FetchReadableContent(ctx context.Context, entryID i
 	}
 
 	// Fetch with Chrome fingerprint and Anubis support
-	body, err := s.fetchWithChrome(ctx, *entry.URL, "", 0)
+	// 正文抓取走这条条目所属订阅生效的代理（订阅 → 文件夹父级链 → 全局）
+	body, err := s.fetchWithChrome(ctx, *entry.URL, "", 0, entry.FeedID)
 	if err != nil {
 		logger.Warn("readability fetch failed", "module", "service", "action", "fetch", "resource", "entry", "result", "failed", "entry_id", entryID, "host", network.ExtractHost(*entry.URL), "error", err)
 		return "", err
@@ -120,21 +121,21 @@ func (s *readabilityService) Close() {
 }
 
 // fetchWithChrome fetches URL with Chrome TLS fingerprint and browser headers
-func (s *readabilityService) fetchWithChrome(ctx context.Context, targetURL string, cookie string, retryCount int) ([]byte, error) {
-	session := s.clientFactory.NewAzureSession(ctx, readabilityTimeout)
+func (s *readabilityService) fetchWithChrome(ctx context.Context, targetURL string, cookie string, retryCount int, feedID int64) ([]byte, error) {
+	session := s.clientFactory.NewAzureSessionForFeed(ctx, feedID, readabilityTimeout)
 	defer session.Close()
-	return s.doFetch(ctx, session, targetURL, cookie, retryCount)
+	return s.doFetch(ctx, session, targetURL, cookie, retryCount, feedID)
 }
 
 // fetchWithFreshSession creates a new azuretls session to avoid connection reuse after Anubis
-func (s *readabilityService) fetchWithFreshSession(ctx context.Context, targetURL, cookie string, retryCount int) ([]byte, error) {
-	session := s.clientFactory.NewAzureSession(ctx, readabilityTimeout)
+func (s *readabilityService) fetchWithFreshSession(ctx context.Context, targetURL, cookie string, retryCount int, feedID int64) ([]byte, error) {
+	session := s.clientFactory.NewAzureSessionForFeed(ctx, feedID, readabilityTimeout)
 	defer session.Close()
-	return s.doFetch(ctx, session, targetURL, cookie, retryCount)
+	return s.doFetch(ctx, session, targetURL, cookie, retryCount, feedID)
 }
 
 // doFetch performs the actual HTTP request with the given session
-func (s *readabilityService) doFetch(ctx context.Context, session *azuretls.Session, targetURL, cookie string, retryCount int) ([]byte, error) {
+func (s *readabilityService) doFetch(ctx context.Context, session *azuretls.Session, targetURL, cookie string, retryCount int, feedID int64) ([]byte, error) {
 	parsedURL, err := url.Parse(targetURL)
 	if err != nil {
 		return nil, ErrFeedFetch
@@ -193,7 +194,7 @@ func (s *readabilityService) doFetch(ctx context.Context, session *azuretls.Sess
 	switch {
 	case anubisErr == nil:
 		logger.Debug("readability detected anubis challenge", "module", "service", "action", "fetch", "resource", "entry", "result", "ok", "host", parsedURL.Host)
-		return s.fetchWithFreshSession(ctx, targetURL, newCookie, retryCount+1)
+		return s.fetchWithFreshSession(ctx, targetURL, newCookie, retryCount+1, feedID)
 	case errors.Is(anubisErr, errAnubisNotPage):
 		// Not an Anubis page; continue normal readability parsing.
 	case errors.Is(anubisErr, errAnubisRejected):

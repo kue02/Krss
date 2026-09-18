@@ -122,7 +122,7 @@ func TestRefreshService_RefreshFeed_Success(t *testing.T) {
 		},
 	)
 	mockFeeds.EXPECT().UpdateSiteURL(gomock.Any(), int64(10), "https://example.com").Return(nil)
-	mockIcons.EXPECT().FetchAndSaveIcon(gomock.Any(), "https://example.com/icon.png", "https://example.com").Return("example.com.png", nil)
+	mockIcons.EXPECT().FetchAndSaveIconForFeed(gomock.Any(), int64(10), "https://example.com/icon.png", "https://example.com").Return("example.com.png", nil)
 	mockFeeds.EXPECT().UpdateIconPath(gomock.Any(), int64(10), "example.com.png").Return(nil)
 
 	mockEntries.EXPECT().ExistsByHash(gomock.Any(), int64(10), hashString("https://example.com/1")).Return(false, nil)

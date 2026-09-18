@@ -14,6 +14,8 @@ import (
 
 type FolderHandler struct {
 	service service.FolderService
+	// proxySources 解析「这个文件夹实际用哪套代理」（14 批）；nil 时响应里不带 effective
+	proxySources service.ProxySourceService
 }
 
 type folderRequest struct {
@@ -37,10 +39,25 @@ type folderResponse struct {
 	Type      string  `json:"type"`
 	CreatedAt string  `json:"createdAt"`
 	UpdatedAt string  `json:"updatedAt"`
+	// 代理覆盖（14 批）：inherit = 跟随父级文件夹链 → 全局；proxy / direct 是本层自己选的
+	ProxyMode string `json:"proxyMode"`
+	// ProxyConfig：本层单独指定的一套代理（密码已掩码）；缺省 = 用全局那套
+	ProxyConfig *model.ProxyOverrideConfig `json:"proxyConfig,omitempty"`
 }
 
-func NewFolderHandler(service service.FolderService) *FolderHandler {
-	return &FolderHandler{service: service}
+// folderProxyResponse PATCH /folders/:id/proxy 的回显：文件夹本体 + 本层实际生效的结果。
+type folderProxyResponse struct {
+	Folder    folderResponse         `json:"folder"`
+	Effective service.ProxyEffective `json:"effective"`
+}
+
+// NewFolderHandler 第二个参数可选：装上「按来源取代理」的解析器后，PATCH proxy 的回显里带实际生效结果。
+func NewFolderHandler(service service.FolderService, proxySources ...service.ProxySourceService) *FolderHandler {
+	handler := &FolderHandler{service: service}
+	if len(proxySources) > 0 {
+		handler.proxySources = proxySources[0]
+	}
+	return handler
 }
 
 func (h *FolderHandler) RegisterRoutes(g *echo.Group) {
@@ -48,8 +65,47 @@ func (h *FolderHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/folders", h.List)
 	g.PUT("/folders/:id", h.Update)
 	g.PATCH("/folders/:id/type", h.UpdateType)
+	g.PATCH("/folders/:id/proxy", h.UpdateProxyOverride)
 	g.DELETE("/folders/:id", h.Delete)
 	g.DELETE("/folders", h.DeleteBatch)
+}
+
+// UpdateProxyOverride 单独设置某个文件夹的代理覆盖（14 批）：跟随父级 / 走代理 / 直连。
+// 子文件夹与它下面的订阅都跟着变（父级链就近覆盖）。
+//
+// @Summary Update folder proxy override
+// @Description Per-folder proxy override (inherit / proxy / direct) with optional dedicated proxy config
+// @Tags folders
+// @Accept json
+// @Param id path int true "Folder ID"
+// @Param request body proxyOverrideRequest true "Proxy override"
+// @Success 200 {object} folderProxyResponse
+// @Failure 400 {object} errorResponse
+// @Failure 404 {object} errorResponse
+// @Router /api/folders/{id}/proxy [patch]
+func (h *FolderHandler) UpdateProxyOverride(c echo.Context) error {
+	id, err := parseIDParam(c, "id")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
+	}
+	var req proxyOverrideRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
+	}
+	update, err := parseProxyOverrideUpdate(req)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
+	}
+
+	ctx := c.Request().Context()
+	folder, err := h.service.UpdateProxyOverride(ctx, id, update)
+	if err != nil {
+		logger.Error("folder proxy override update failed", "module", "handler", "action", "update", "resource", "proxy", "result", "failed", "folder_id", id, "error", err)
+		return writeServiceError(c, err)
+	}
+	effective := h.proxySources.ResolveForFolder(ctx, folder.ID)
+	logger.Info("folder proxy override updated", "module", "handler", "action", "update", "resource", "proxy", "result", "ok", "folder_id", folder.ID, "mode", effective.Mode, "source", effective.Source)
+	return c.JSON(http.StatusOK, folderProxyResponse{Folder: toFolderResponse(folder), Effective: effective})
 }
 
 // Create creates a new folder.
@@ -236,11 +292,13 @@ func (h *FolderHandler) DeleteBatch(c echo.Context) error {
 
 func toFolderResponse(folder model.Folder) folderResponse {
 	return folderResponse{
-		ID:        idToString(folder.ID),
-		Name:      folder.Name,
-		ParentID:  idPtrToString(folder.ParentID),
-		Type:      folder.Type,
-		CreatedAt: folder.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt: folder.UpdatedAt.UTC().Format(time.RFC3339),
+		ID:          idToString(folder.ID),
+		Name:        folder.Name,
+		ParentID:    idPtrToString(folder.ParentID),
+		Type:        folder.Type,
+		CreatedAt:   folder.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:   folder.UpdatedAt.UTC().Format(time.RFC3339),
+		ProxyMode:   service.ProxyModeToString(folder.ProxyMode),
+		ProxyConfig: toProxyConfigResponse(folder.ProxyConfig),
 	}
 }

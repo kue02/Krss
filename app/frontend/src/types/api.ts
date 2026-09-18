@@ -22,6 +22,10 @@ export interface Feed {
   autoSummary?: boolean | null;
   /** 正文打开方式：true=阅读模式 false=原文 空=跟随全局（订阅级覆盖） */
   readerMode?: boolean | null;
+  /** 代理覆盖（14 批）：inherit = 跟随文件夹链 → 全局 / proxy = 走代理 / direct = 直连 */
+  proxyMode?: ProxyMode;
+  /** 订阅单独指定的一套代理（密码是掩码）；缺省 = 用全局那套 */
+  proxyConfig?: ProxyOverrideConfig | null;
   iconPath?: string;
   type: ContentType;
   etag?: string;
@@ -29,6 +33,98 @@ export interface Feed {
   errorMessage?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+// ---------- 14 批：代理按来源生效 ----------
+
+/** 三态：跟随上级 / 走代理 / 直连 */
+export type ProxyMode = "inherit" | "proxy" | "direct";
+
+/** 某一层单独指定的一套代理（密码在接口返回里一律是掩码） */
+export interface ProxyOverrideConfig {
+  type: "http" | "socks5";
+  host: string;
+  port: number;
+  username?: string;
+  password?: string;
+}
+
+/** 实际生效结果：决定它的那一层（feed/folder/global）与档位 */
+export interface ProxyEffective {
+  mode: "proxy" | "direct";
+  source: "feed" | "folder" | "global";
+  sourceId?: string;
+  sourceName?: string;
+  /** 选了「走代理」但拿不到可用地址（全局没配/单独指定没填全）→ 实际直连 */
+  missing?: boolean;
+}
+
+export interface ProxyOverrideView {
+  mode: ProxyMode;
+  config?: ProxyOverrideConfig | null;
+}
+
+export interface ProxyFolderSource {
+  id: string;
+  parentId?: string;
+  name: string;
+  type: ContentType;
+  /** 直接挂在这个文件夹下的订阅数 */
+  feedCount: number;
+  override: ProxyOverrideView;
+  effective: ProxyEffective;
+}
+
+export interface ProxyFeedSource {
+  id: string;
+  folderId?: string;
+  title: string;
+  type: ContentType;
+  iconPath?: string;
+  override: ProxyOverrideView;
+  effective: ProxyEffective;
+}
+
+export interface ProxyGlobalConfig {
+  enabled: boolean;
+  type: "http" | "socks5";
+  host: string;
+  port: number;
+  username: string;
+  /** 掩码 */
+  password: string;
+  ipStack?: string;
+}
+
+export interface ProxySourceOverview {
+  global: ProxyGlobalConfig;
+  folders: ProxyFolderSource[];
+  feeds: ProxyFeedSource[];
+  counts: {
+    folders: number;
+    feeds: number;
+    proxiedFeeds: number;
+    globalEnabled: boolean;
+  };
+}
+
+export interface FeedProxyResponse {
+  feed: Feed;
+  effective: ProxyEffective;
+}
+
+export interface FolderProxyResponse {
+  folder: Folder & {
+    proxyMode: ProxyMode;
+    proxyConfig?: ProxyOverrideConfig | null;
+  };
+  effective: ProxyEffective;
+}
+
+export interface ProxyOverridePayload {
+  mode?: ProxyMode;
+  /** null = 清掉「单独指定」那套；不传 = 不动 */
+  config?: ProxyOverrideConfig | null;
 }
 
 export interface FeedPreviewEntry {

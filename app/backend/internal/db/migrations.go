@@ -459,6 +459,25 @@ func runMigrations(db *sql.DB) error {
 		return err
 	}
 
+	// Migration 26: 代理按来源生效（用户 14 批）—— feeds / folders 各加两列：
+	//   proxy_mode   NULL = 跟随上级（订阅 → 文件夹父级链 → 全局），1 = 走代理，0 = 直连
+	//   proxy_config JSON（可空）= 这一层单独指定的一套代理；空 = 用全局那套
+	// 新列全 NULL ⇒ 老数据行为零变化；解析顺序「订阅 → 文件夹（含父级链）→ 全局」，
+	// 第一个非 NULL 说了算（见 internal/service/proxy_source_service.go）。
+	// 注意：既有 GetProxyURL() 的语义一行没动，按来源取是另开的入口。
+	if err := addColumnIfMissing(db, "feeds", "proxy_mode", `ALTER TABLE feeds ADD COLUMN proxy_mode INTEGER`); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "feeds", "proxy_config", `ALTER TABLE feeds ADD COLUMN proxy_config TEXT`); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "folders", "proxy_mode", `ALTER TABLE folders ADD COLUMN proxy_mode INTEGER`); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "folders", "proxy_config", `ALTER TABLE folders ADD COLUMN proxy_config TEXT`); err != nil {
+		return err
+	}
+
 	return nil
 }
 

@@ -18,7 +18,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/mmcdole/gofeed"
 	"github.com/stretchr/testify/require"
 
 	"gist/backend/internal/model"
@@ -27,7 +26,11 @@ import (
 )
 
 type feedRepoStub struct {
-	mu                  sync.Mutex
+	mu sync.Mutex
+	// 14 批：代理覆盖的最后一次写入（供断言）
+	proxyFeedID         int64
+	proxyMode           *model.ProxyMode
+	proxyConfig         *model.ProxyOverrideConfig
 	listWithoutIconFn   func(context.Context) ([]model.Feed, error)
 	listFn              func(context.Context, *int64) ([]model.Feed, error)
 	updateIconPathFn    func(context.Context, int64, string) error
@@ -86,6 +89,14 @@ func (f *feedRepoStub) UpdateErrorMessage(context.Context, int64, *string) error
 
 func (f *feedRepoStub) UpdateType(context.Context, int64, string) error {
 	panic("not implemented")
+}
+
+// UpdateProxyOverride 14 批新增：stub 里只记最后一次写入，供代理用例断言。
+func (f *feedRepoStub) UpdateProxyOverride(_ context.Context, id int64, mode *model.ProxyMode, cfg *model.ProxyOverrideConfig) error {
+	f.proxyMode = mode
+	f.proxyConfig = cfg
+	f.proxyFeedID = id
+	return nil
 }
 
 func (f *feedRepoStub) UpdateTypeByFolderID(context.Context, int64, string) error {
@@ -374,7 +385,7 @@ func TestIconService_FetchIconsForFeeds(t *testing.T) {
 	svc := service.NewIconService(dataDir, repo, network.NewClientFactoryForTest(&http.Client{}), nil)
 	feeds := []model.Feed{{ID: 10, URL: server.URL + "/rss", Title: "Test"}}
 
-	err := service.FetchIconsForFeedsForTest(svc, context.Background(), gofeed.NewParser(), feeds)
+	err := service.FetchIconsForFeedsForTest(svc, context.Background(), feeds)
 	require.NoError(t, err)
 
 	repo.mu.Lock()
@@ -395,7 +406,7 @@ func TestIconService_DownloadIconWithFreshClient(t *testing.T) {
 	dataDir := t.TempDir()
 	svc := service.NewIconService(dataDir, &feedRepoStub{}, network.NewClientFactoryForTest(&http.Client{}), nil)
 
-	err := service.DownloadIconWithFreshClientForTest(svc, context.Background(), server.URL, "", 0)
+	err := service.DownloadIconWithFreshClientForTest(svc, context.Background(), server.URL, "", 0, 0)
 	require.NoError(t, err)
 }
 

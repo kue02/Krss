@@ -12,6 +12,10 @@ import type {
   StarredCountResponse,
   ViewCountsResponse,
   UnreadCountsResponse,
+  FeedProxyResponse,
+  FolderProxyResponse,
+  ProxyOverridePayload,
+  ProxySourceOverview,
 } from "@/types/api";
 import {
   LS_KEYS,
@@ -477,6 +481,36 @@ export async function updateFeedAI(
     method: "PATCH",
     body: JSON.stringify(payload),
   });
+}
+
+/** 订阅级代理覆盖（14 批）：跟随上级 / 走代理 / 直连 + 可选「单独指定一套」 */
+export async function updateFeedProxy(
+  id: string,
+  payload: ProxyOverridePayload,
+): Promise<FeedProxyResponse> {
+  return request<FeedProxyResponse>(`/api/feeds/${id}/proxy`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** 文件夹级代理覆盖（14 批）：子文件夹与该文件夹下的订阅都跟着变 */
+export async function updateFolderProxy(
+  id: string,
+  payload: ProxyOverridePayload,
+): Promise<FolderProxyResponse> {
+  return request<FolderProxyResponse>(`/api/folders/${id}/proxy`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * 代理按来源生效的一览（14 批）：全局一份 + 所有文件夹/订阅 + 各自**实际生效**的结果 + 计数。
+ * 设置 → 网络「按来源覆盖」段与管理面板都用它，行上的「走代理 · 来自：文件夹『技术』」就是 effective。
+ */
+export async function getProxySources(): Promise<ProxySourceOverview> {
+  return request<ProxySourceOverview>("/api/proxy/sources");
 }
 
 /** 合并前的一侧：这个订阅有几条、几条星标（给确认弹框显示「两边各有几条」） */

@@ -19,6 +19,8 @@ type FolderRepository interface {
 	List(ctx context.Context) ([]model.Folder, error)
 	Update(ctx context.Context, id int64, name string, parentID *int64) (model.Folder, error)
 	UpdateType(ctx context.Context, id int64, folderType string) error
+	// UpdateProxyOverride 只写代理覆盖两列（迁移 26）：mode nil = 跟随父级文件夹链 → 全局。
+	UpdateProxyOverride(ctx context.Context, id int64, mode *model.ProxyMode, cfg *model.ProxyOverrideConfig) error
 	Delete(ctx context.Context, id int64) error
 }
 
@@ -61,14 +63,16 @@ func (r *folderRepository) Create(ctx context.Context, name string, parentID *in
 }
 
 func (r *folderRepository) GetByID(ctx context.Context, id int64) (model.Folder, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id, name, parent_id, type, created_at, updated_at FROM folders WHERE id = ?`, id)
+	row := r.db.QueryRowContext(ctx, `SELECT id, name, parent_id, type, created_at, updated_at, proxy_mode, proxy_config FROM folders WHERE id = ?`, id)
 
 	var folder model.Folder
 	var parentID sql.NullInt64
 	var folderType sql.NullString
 	var createdAt string
 	var updatedAt string
-	if err := row.Scan(&folder.ID, &folder.Name, &parentID, &folderType, &createdAt, &updatedAt); err != nil {
+	var proxyMode sql.NullInt64
+	var proxyConfig sql.NullString
+	if err := row.Scan(&folder.ID, &folder.Name, &parentID, &folderType, &createdAt, &updatedAt, &proxyMode, &proxyConfig); err != nil {
 		return model.Folder{}, fmt.Errorf("get folder: %w", err)
 	}
 	if parentID.Valid {
@@ -79,6 +83,8 @@ func (r *folderRepository) GetByID(ctx context.Context, id int64) (model.Folder,
 	} else {
 		folder.Type = "article"
 	}
+	folder.ProxyMode = parseProxyMode(proxyMode)
+	folder.ProxyConfig = parseProxyConfig(proxyConfig)
 	var err error
 	folder.CreatedAt, err = parseTime(createdAt)
 	if err != nil {
@@ -93,10 +99,10 @@ func (r *folderRepository) GetByID(ctx context.Context, id int64) (model.Folder,
 }
 
 func (r *folderRepository) FindByName(ctx context.Context, name string, parentID *int64) (*model.Folder, error) {
-	query := `SELECT id, name, parent_id, type, created_at, updated_at FROM folders WHERE name = ? AND parent_id IS NULL`
+	query := `SELECT id, name, parent_id, type, created_at, updated_at, proxy_mode, proxy_config FROM folders WHERE name = ? AND parent_id IS NULL`
 	args := []interface{}{name}
 	if parentID != nil {
-		query = `SELECT id, name, parent_id, type, created_at, updated_at FROM folders WHERE name = ? AND parent_id = ?`
+		query = `SELECT id, name, parent_id, type, created_at, updated_at, proxy_mode, proxy_config FROM folders WHERE name = ? AND parent_id = ?`
 		args = []interface{}{name, *parentID}
 	}
 
@@ -106,7 +112,9 @@ func (r *folderRepository) FindByName(ctx context.Context, name string, parentID
 	var folderType sql.NullString
 	var createdAt string
 	var updatedAt string
-	if err := row.Scan(&folder.ID, &folder.Name, &parent, &folderType, &createdAt, &updatedAt); err != nil {
+	var proxyMode sql.NullInt64
+	var proxyConfig sql.NullString
+	if err := row.Scan(&folder.ID, &folder.Name, &parent, &folderType, &createdAt, &updatedAt, &proxyMode, &proxyConfig); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
@@ -120,6 +128,8 @@ func (r *folderRepository) FindByName(ctx context.Context, name string, parentID
 	} else {
 		folder.Type = "article"
 	}
+	folder.ProxyMode = parseProxyMode(proxyMode)
+	folder.ProxyConfig = parseProxyConfig(proxyConfig)
 	var err error
 	folder.CreatedAt, err = parseTime(createdAt)
 	if err != nil {
@@ -134,7 +144,7 @@ func (r *folderRepository) FindByName(ctx context.Context, name string, parentID
 }
 
 func (r *folderRepository) List(ctx context.Context) ([]model.Folder, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, name, parent_id, type, created_at, updated_at FROM folders ORDER BY name`)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, name, parent_id, type, created_at, updated_at, proxy_mode, proxy_config FROM folders ORDER BY name`)
 	if err != nil {
 		return nil, fmt.Errorf("list folders: %w", err)
 	}
@@ -147,7 +157,9 @@ func (r *folderRepository) List(ctx context.Context) ([]model.Folder, error) {
 		var folderType sql.NullString
 		var createdAt string
 		var updatedAt string
-		if err := rows.Scan(&folder.ID, &folder.Name, &parentID, &folderType, &createdAt, &updatedAt); err != nil {
+		var proxyMode sql.NullInt64
+		var proxyConfig sql.NullString
+		if err := rows.Scan(&folder.ID, &folder.Name, &parentID, &folderType, &createdAt, &updatedAt, &proxyMode, &proxyConfig); err != nil {
 			return nil, fmt.Errorf("scan folder: %w", err)
 		}
 		if parentID.Valid {
@@ -158,6 +170,8 @@ func (r *folderRepository) List(ctx context.Context) ([]model.Folder, error) {
 		} else {
 			folder.Type = "article"
 		}
+		folder.ProxyMode = parseProxyMode(proxyMode)
+		folder.ProxyConfig = parseProxyConfig(proxyConfig)
 		folder.CreatedAt, err = parseTime(createdAt)
 		if err != nil {
 			return nil, fmt.Errorf("parse folder created_at: %w", err)
@@ -197,6 +211,23 @@ func (r *folderRepository) UpdateType(ctx context.Context, id int64, folderType 
 		ctx,
 		`UPDATE folders SET type = ?, updated_at = ? WHERE id = ?`,
 		folderType,
+		formatTime(time.Now()),
+		id,
+	)
+	return err
+}
+
+// UpdateProxyOverride 只写代理覆盖两列（文件夹级）：mode nil = 跟随父级文件夹链，config nil = 用全局那套。
+func (r *folderRepository) UpdateProxyOverride(ctx context.Context, id int64, mode *model.ProxyMode, cfg *model.ProxyOverrideConfig) error {
+	proxyConfig, err := marshalProxyConfig(cfg)
+	if err != nil {
+		return fmt.Errorf("marshal folder proxy config: %w", err)
+	}
+	_, err = r.db.ExecContext(
+		ctx,
+		`UPDATE folders SET proxy_mode = ?, proxy_config = ?, updated_at = ? WHERE id = ?`,
+		nullableProxyMode(mode),
+		proxyConfig,
 		formatTime(time.Now()),
 		id,
 	)

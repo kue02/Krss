@@ -1,5 +1,18 @@
 basePath: /api
 definitions:
+  gist_backend_internal_model.ProxyOverrideConfig:
+    properties:
+      host:
+        type: string
+      password:
+        type: string
+      port:
+        type: integer
+      type:
+        type: string
+      username:
+        type: string
+    type: object
   gist_backend_internal_service.AIProviderConfig:
     properties:
       apiKey:
@@ -59,6 +72,109 @@ definitions:
         type: string
       total:
         type: integer
+    type: object
+  gist_backend_internal_service.NetworkSettings:
+    properties:
+      enabled:
+        type: boolean
+      host:
+        type: string
+      ipStack:
+        description: default, ipv4, ipv6
+        type: string
+      password:
+        type: string
+      port:
+        type: integer
+      type:
+        description: http, socks5
+        type: string
+      username:
+        type: string
+    type: object
+  gist_backend_internal_service.ProxyEffective:
+    properties:
+      missing:
+        description: Missing：这一层选了「走代理」但拿不到可用地址（全局总开关关着、或单独指定没填全）→ 实际直连
+        type: boolean
+      mode:
+        description: Mode 实际生效：proxy = 走代理，direct = 直连
+        type: string
+      source:
+        description: Source 这个结果由谁决定：feed / folder / global
+        type: string
+      sourceId:
+        description: SourceID / SourceName 决定它的那一层（folder 时是文件夹名字，界面直接显示「来自：文件夹『技术』」）
+        type: string
+      sourceName:
+        type: string
+    type: object
+  gist_backend_internal_service.ProxyFeedView:
+    properties:
+      effective:
+        $ref: '#/definitions/gist_backend_internal_service.ProxyEffective'
+      folderId:
+        type: string
+      iconPath:
+        type: string
+      id:
+        type: string
+      override:
+        $ref: '#/definitions/gist_backend_internal_service.ProxyOverrideView'
+      title:
+        type: string
+      type:
+        type: string
+    type: object
+  gist_backend_internal_service.ProxyFolderView:
+    properties:
+      effective:
+        $ref: '#/definitions/gist_backend_internal_service.ProxyEffective'
+      feedCount:
+        type: integer
+      id:
+        type: string
+      name:
+        type: string
+      override:
+        $ref: '#/definitions/gist_backend_internal_service.ProxyOverrideView'
+      parentId:
+        type: string
+      type:
+        type: string
+    type: object
+  gist_backend_internal_service.ProxyOverrideCount:
+    properties:
+      feeds:
+        type: integer
+      folders:
+        type: integer
+      globalEnabled:
+        type: boolean
+      proxiedFeeds:
+        type: integer
+    type: object
+  gist_backend_internal_service.ProxyOverrideView:
+    properties:
+      config:
+        $ref: '#/definitions/gist_backend_internal_model.ProxyOverrideConfig'
+      mode:
+        type: string
+    type: object
+  gist_backend_internal_service.ProxySourceOverview:
+    properties:
+      counts:
+        $ref: '#/definitions/gist_backend_internal_service.ProxyOverrideCount'
+      feeds:
+        items:
+          $ref: '#/definitions/gist_backend_internal_service.ProxyFeedView'
+        type: array
+      folders:
+        items:
+          $ref: '#/definitions/gist_backend_internal_service.ProxyFolderView'
+        type: array
+      global:
+        $ref: '#/definitions/gist_backend_internal_service.NetworkSettings'
     type: object
   gist_backend_internal_service.RefreshFeedResult:
     properties:
@@ -434,6 +550,13 @@ definitions:
       url:
         type: string
     type: object
+  internal_handler.feedProxyResponse:
+    properties:
+      effective:
+        $ref: '#/definitions/gist_backend_internal_service.ProxyEffective'
+      feed:
+        $ref: '#/definitions/internal_handler.feedResponse'
+    type: object
   internal_handler.feedResponse:
     properties:
       autoSummary:
@@ -455,6 +578,13 @@ definitions:
       id:
         type: string
       lastModified:
+        type: string
+      proxyConfig:
+        allOf:
+        - $ref: '#/definitions/gist_backend_internal_model.ProxyOverrideConfig'
+        description: ProxyConfig：本条单独指定的一套代理（密码已掩码）；缺省 = 用全局那套
+      proxyMode:
+        description: 代理覆盖（14 批）：inherit = 跟随文件夹链 → 全局；proxy / direct 是本条自己选的
         type: string
       readerMode:
         type: boolean
@@ -747,6 +877,13 @@ definitions:
       scopeType:
         type: string
     type: object
+  internal_handler.folderProxyResponse:
+    properties:
+      effective:
+        $ref: '#/definitions/gist_backend_internal_service.ProxyEffective'
+      folder:
+        $ref: '#/definitions/internal_handler.folderResponse'
+    type: object
   internal_handler.folderRequest:
     properties:
       name:
@@ -765,6 +902,13 @@ definitions:
       name:
         type: string
       parentId:
+        type: string
+      proxyConfig:
+        allOf:
+        - $ref: '#/definitions/gist_backend_internal_model.ProxyOverrideConfig'
+        description: ProxyConfig：本层单独指定的一套代理（密码已掩码）；缺省 = 用全局那套
+      proxyMode:
+        description: 代理覆盖（14 批）：inherit = 跟随父级文件夹链 → 全局；proxy / direct 是本层自己选的
         type: string
       type:
         type: string
@@ -877,6 +1021,13 @@ definitions:
     properties:
       enabled:
         type: boolean
+      feedId:
+        description: |-
+          14 批：按来源试 —— 传了 feedId / folderId 就忽略上面的手填配置，
+          改成「先解析这个来源实际生效的代理，再拿它去试连通性」。
+        type: string
+      folderId:
+        type: string
       host:
         type: string
       password:
@@ -901,6 +1052,15 @@ definitions:
     properties:
       status:
         type: integer
+    type: object
+  internal_handler.proxyOverrideRequest:
+    properties:
+      config:
+        items:
+          type: integer
+        type: array
+      mode:
+        type: string
     type: object
   internal_handler.readableContentResponse:
     properties:
@@ -1396,6 +1556,40 @@ paths:
       summary: Merge feed into another
       tags:
       - feeds
+  /api/feeds/{id}/proxy:
+    patch:
+      consumes:
+      - application/json
+      description: Per-feed proxy override (inherit / proxy / direct) with optional
+        dedicated proxy config
+      parameters:
+      - description: Feed ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Proxy override
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.proxyOverrideRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.feedProxyResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: Update feed proxy override
+      tags:
+      - feeds
   /api/feeds/{id}/url:
     patch:
       consumes:
@@ -1446,6 +1640,40 @@ paths:
       summary: Feed merge preview
       tags:
       - feeds
+  /api/folders/{id}/proxy:
+    patch:
+      consumes:
+      - application/json
+      description: Per-folder proxy override (inherit / proxy / direct) with optional
+        dedicated proxy config
+      parameters:
+      - description: Folder ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Proxy override
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.proxyOverrideRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.folderProxyResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: Update folder proxy override
+      tags:
+      - folders
   /api/notify/test:
     post:
       description: Send a test push via the configured notify channel (Bark)
@@ -2707,6 +2935,23 @@ paths:
       summary: Import Status
       tags:
       - opml
+  /proxy/sources:
+    get:
+      description: 代理按来源生效的一览：全局配置（密码掩码）+ 文件夹/订阅各自的覆盖与生效结果 + 计数
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/gist_backend_internal_service.ProxySourceOverview'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: List proxy sources
+      tags:
+      - proxy
   /settings/ai:
     get:
       description: Get the AI provider configuration with masked API keys

@@ -35,6 +35,20 @@ vi.mock("@/hooks/useFeeds", () => ({
   useUpdateFeedAI: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
+// 14 批：弹窗里新增了代理覆盖（三态 + 生效结果）——这些用例只关心标题/提示词/AI 三态，
+// 所以把代理那两个 hook 换成不连后端的桩。
+const { mockUpdateFeedProxy } = vi.hoisted(() => ({
+  mockUpdateFeedProxy: vi.fn(),
+}));
+
+vi.mock("@/hooks/useProxySources", () => ({
+  useProxySources: () => ({ data: undefined }),
+  useUpdateFeedProxy: () => ({
+    mutateAsync: mockUpdateFeedProxy,
+    isPending: false,
+  }),
+}));
+
 vi.mock("@/components/ui/dialog", () => ({
   Dialog: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   DialogContent: ({
@@ -74,6 +88,42 @@ describe("EditFeedDialog", () => {
     mockUseUpdateFeed.mockReturnValue({
       mutateAsync: mockMutateAsync,
       isPending: false,
+    });
+    // 代理覆盖的 PATCH：回显里带实际生效结果（弹窗保存时要读它）
+    mockUpdateFeedProxy.mockResolvedValue({
+      feed: { id: "feed-1" },
+      effective: { mode: "direct", source: "global" },
+    });
+  });
+
+  it("会带上代理三态，并在保存后回显生效结果", async () => {
+    render(
+      <EditFeedDialog
+        feed={buildFeed({ proxyMode: "direct" })}
+        open
+        onOpenChange={mockOnOpenChange}
+      />,
+    );
+
+    // 三态初始档位跟着 feed.proxyMode 走（direct → 选中「直连」那一档）
+    const directButton = screen.getByRole("button", { name: "proxy.direct" });
+    expect(directButton.className).toContain("bg-item-active");
+
+    // 切成「走代理」再保存：PATCH 收到的 mode 必须是 proxy
+    fireEvent.click(screen.getByRole("button", { name: "proxy.use_proxy" }));
+    fireEvent.click(screen.getByRole("button", { name: "actions.save" }));
+
+    await waitFor(() => {
+      expect(mockUpdateFeedProxy).toHaveBeenCalledWith({
+        id: "feed-1",
+        override: { mode: "proxy" },
+      });
+    });
+    // 服务端回显的生效结果直接显示在行上
+    await waitFor(() => {
+      expect(
+        screen.getByText("proxy.result_direct · proxy.from_global"),
+      ).not.toBeNull();
     });
   });
 

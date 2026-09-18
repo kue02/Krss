@@ -70,8 +70,12 @@ func main() {
 
 	settingsService := service.NewSettingsService(settingsRepo, rateLimiter)
 
+	// 代理按来源生效（14 批）：解析「订阅 → 文件夹父级链 → 全局」的生效代理。
+	// 先建它，再装到 ClientFactory 上 —— 抓取/图标/正文/免费翻译都按来源取。
+	proxySourceService := service.NewProxySourceService(feedRepo, folderRepo, settingsService)
+
 	// Initialize client factory for proxy and IP stack support
-	clientFactory := network.NewClientFactory(settingsService, settingsService)
+	clientFactory := network.NewClientFactory(settingsService, settingsService).WithSourceProxy(proxySourceService)
 
 	// Initialize Anubis solver for bypassing Anubis protection
 	anubisStore := anubis.NewStore(settingsRepo)
@@ -119,20 +123,21 @@ func main() {
 	proxyService := service.NewProxyService(clientFactory, anubisSolver)
 	authService := service.NewAuthService(settingsRepo)
 
-	folderHandler := handler.NewFolderHandler(folderService)
-	feedHandler := handler.NewFeedHandler(feedService, refreshService)
+	folderHandler := handler.NewFolderHandler(folderService, proxySourceService)
+	feedHandler := handler.NewFeedHandler(feedService, refreshService, proxySourceService)
 	entryHandler := handler.NewEntryHandler(entryService, readabilityService)
 	importTaskService := service.NewImportTaskService()
 	opmlHandler := handler.NewOPMLHandler(opmlService, importTaskService)
 	iconHandler := handler.NewIconHandler(iconService)
 	proxyHandler := handler.NewProxyHandler(proxyService)
-	settingsHandler := handler.NewSettingsHandler(settingsService, clientFactory)
+	settingsHandler := handler.NewSettingsHandler(settingsService, clientFactory, proxySourceService)
+	proxySourceHandler := handler.NewProxySourceHandler(proxySourceService)
 	aiHandler := handler.NewAIHandler(aiService)
 	authHandler := handler.NewAuthHandler(authService)
 	domainRateLimitHandler := handler.NewDomainRateLimitHandler(domainRateLimitService)
 	filterHandler := handler.NewFilterHandler(filterService)
 
-	router := transport.NewRouter(folderHandler, feedHandler, entryHandler, opmlHandler, iconHandler, proxyHandler, settingsHandler, aiHandler, authHandler, domainRateLimitHandler, filterHandler, authService, cfg.StaticDir, cfg.EnableSwagger)
+	router := transport.NewRouter(folderHandler, feedHandler, entryHandler, opmlHandler, iconHandler, proxyHandler, settingsHandler, aiHandler, authHandler, domainRateLimitHandler, filterHandler, proxySourceHandler, authService, cfg.StaticDir, cfg.EnableSwagger)
 	pprofServer := startPprofServer(cfg.PprofAddr)
 
 	// 定时刷新：间隔来自设置（设置 → 高级 → 拉取），每轮重新读一次 —— 改完下一轮生效，不用重启

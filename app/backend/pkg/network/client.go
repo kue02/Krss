@@ -21,6 +21,15 @@ type ProxyProvider interface {
 	GetProxyURL(ctx context.Context) string
 }
 
+// SourceProxyProvider 按来源（订阅）解析生效的代理 URL —— 代理按来源生效（用户 14 批）。
+// 由 service 层实现（内部走「订阅 → 文件夹父级链 → 全局」）；这里只声明形状，避免 pkg/network 依赖业务包。
+//
+// 第二个返回值为 false 表示解析不出来（库里查不到等），调用方应退回 GetProxyURL() 的老行为。
+// 注意：实现必须**每轮现读**，这里不做任何缓存 —— 改完设置要立刻生效。
+type SourceProxyProvider interface {
+	ProxyURLForFeed(ctx context.Context, feedID int64) (string, bool)
+}
+
 // IPStackProvider provides IP stack preference.
 type IPStackProvider interface {
 	GetIPStack(ctx context.Context) string
@@ -30,13 +39,21 @@ type IPStackProvider interface {
 type ClientFactory struct {
 	proxyProvider   ProxyProvider
 	ipStackProvider IPStackProvider
-	testTransport   http.RoundTripper // For testing only
-	testHTTPClient  *http.Client      // For testing only
+	sourceProxy     SourceProxyProvider // 按来源（订阅）取代理；nil = 老行为（只用全局那份）
+	testTransport   http.RoundTripper   // For testing only
+	testHTTPClient  *http.Client        // For testing only
 }
 
 // NewClientFactory creates a new client factory.
 func NewClientFactory(proxyProvider ProxyProvider, ipStackProvider IPStackProvider) *ClientFactory {
 	return &ClientFactory{proxyProvider: proxyProvider, ipStackProvider: ipStackProvider}
+}
+
+// WithSourceProxy 装上「按来源取代理」的解析器（链式，构造处一行搞定）。
+// 刻意不缓存：每次建客户端都问一次解析器 —— 「改完设置要立刻生效」（11-20 的规矩）。
+func (f *ClientFactory) WithSourceProxy(provider SourceProxyProvider) *ClientFactory {
+	f.sourceProxy = provider
+	return f
 }
 
 // NewClientFactoryForTest creates a client factory that uses the given http.Client for testing.
@@ -105,6 +122,49 @@ func useStandardCertificateVerification(config *tls.Config) error {
 	config.InsecureSkipVerify = false
 	config.VerifyPeerCertificate = nil
 	return nil
+}
+
+// NewHTTPClientForFeed 按来源（订阅）建客户端：先用「订阅 → 文件夹父级链 → 全局」解析出的代理，
+// 解析不出来就退回全局那份（老行为）。每次现读，无缓存。
+func (f *ClientFactory) NewHTTPClientForFeed(ctx context.Context, feedID int64, timeout time.Duration) *http.Client {
+	// For testing: return the injected client
+	if f.testHTTPClient != nil {
+		return f.testHTTPClient
+	}
+
+	client := &http.Client{Timeout: timeout}
+	if f.testTransport != nil {
+		client.Transport = f.testTransport
+		return client
+	}
+
+	client.Transport = f.newTransport(f.proxyURLForFeed(ctx, feedID), f.getIPStack(ctx))
+	return client
+}
+
+// NewAzureSessionForFeed 按来源（订阅）建 azuretls 会话（正文抓取走这条）。
+func (f *ClientFactory) NewAzureSessionForFeed(ctx context.Context, feedID int64, timeout time.Duration) *azuretls.Session {
+	session := azuretls.NewSession()
+	session.Browser = azuretls.Chrome
+	session.SetTimeout(timeout)
+	session.ModifyConfig = useStandardCertificateVerification
+
+	if proxyURL := f.proxyURLForFeed(ctx, feedID); proxyURL != "" {
+		_ = session.SetProxy(proxyURL)
+	}
+
+	return session
+}
+
+// proxyURLForFeed 按来源解析代理 URL；没有解析器 / 解析不出来 / feedID 非法 → 退回全局那份。
+func (f *ClientFactory) proxyURLForFeed(ctx context.Context, feedID int64) string {
+	if f.sourceProxy != nil && feedID > 0 {
+		if proxyURL, ok := f.sourceProxy.ProxyURLForFeed(ctx, feedID); ok {
+			// 解析成功时以解析结果为准：空串就是「这一条直连」，不能再回落到全局
+			return proxyURL
+		}
+	}
+	return f.proxyProvider.GetProxyURL(ctx)
 }
 
 // GetProxyURL returns the current proxy URL.

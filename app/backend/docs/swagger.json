@@ -437,6 +437,56 @@
                 }
             }
         },
+        "/api/feeds/{id}/proxy": {
+            "patch": {
+                "description": "Per-feed proxy override (inherit / proxy / direct) with optional dedicated proxy config",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feeds"
+                ],
+                "summary": "Update feed proxy override",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Feed ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Proxy override",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.proxyOverrideRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.feedProxyResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/feeds/{id}/url": {
             "patch": {
                 "description": "Change the source URL of a subscription (e.g. switch RSSHub instance)",
@@ -470,6 +520,56 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/internal_handler.feedResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/folders/{id}/proxy": {
+            "patch": {
+                "description": "Per-folder proxy override (inherit / proxy / direct) with optional dedicated proxy config",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "folders"
+                ],
+                "summary": "Update folder proxy override",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Folder ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Proxy override",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.proxyOverrideRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.folderProxyResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
                         }
                     }
                 }
@@ -2375,6 +2475,32 @@
                 }
             }
         },
+        "/proxy/sources": {
+            "get": {
+                "description": "代理按来源生效的一览：全局配置（密码掩码）+ 文件夹/订阅各自的覆盖与生效结果 + 计数",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "proxy"
+                ],
+                "summary": "List proxy sources",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/gist_backend_internal_service.ProxySourceOverview"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/settings/ai": {
             "get": {
                 "description": "Get the AI provider configuration with masked API keys",
@@ -3049,6 +3175,26 @@
         }
     },
     "definitions": {
+        "gist_backend_internal_model.ProxyOverrideConfig": {
+            "type": "object",
+            "properties": {
+                "host": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "integer"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
         "gist_backend_internal_service.AIProviderConfig": {
             "type": "object",
             "properties": {
@@ -3137,6 +3283,161 @@
                 },
                 "total": {
                     "type": "integer"
+                }
+            }
+        },
+        "gist_backend_internal_service.NetworkSettings": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "host": {
+                    "type": "string"
+                },
+                "ipStack": {
+                    "description": "default, ipv4, ipv6",
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "integer"
+                },
+                "type": {
+                    "description": "http, socks5",
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "gist_backend_internal_service.ProxyEffective": {
+            "type": "object",
+            "properties": {
+                "missing": {
+                    "description": "Missing：这一层选了「走代理」但拿不到可用地址（全局总开关关着、或单独指定没填全）→ 实际直连",
+                    "type": "boolean"
+                },
+                "mode": {
+                    "description": "Mode 实际生效：proxy = 走代理，direct = 直连",
+                    "type": "string"
+                },
+                "source": {
+                    "description": "Source 这个结果由谁决定：feed / folder / global",
+                    "type": "string"
+                },
+                "sourceId": {
+                    "description": "SourceID / SourceName 决定它的那一层（folder 时是文件夹名字，界面直接显示「来自：文件夹『技术』」）",
+                    "type": "string"
+                },
+                "sourceName": {
+                    "type": "string"
+                }
+            }
+        },
+        "gist_backend_internal_service.ProxyFeedView": {
+            "type": "object",
+            "properties": {
+                "effective": {
+                    "$ref": "#/definitions/gist_backend_internal_service.ProxyEffective"
+                },
+                "folderId": {
+                    "type": "string"
+                },
+                "iconPath": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "override": {
+                    "$ref": "#/definitions/gist_backend_internal_service.ProxyOverrideView"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "gist_backend_internal_service.ProxyFolderView": {
+            "type": "object",
+            "properties": {
+                "effective": {
+                    "$ref": "#/definitions/gist_backend_internal_service.ProxyEffective"
+                },
+                "feedCount": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "override": {
+                    "$ref": "#/definitions/gist_backend_internal_service.ProxyOverrideView"
+                },
+                "parentId": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "gist_backend_internal_service.ProxyOverrideCount": {
+            "type": "object",
+            "properties": {
+                "feeds": {
+                    "type": "integer"
+                },
+                "folders": {
+                    "type": "integer"
+                },
+                "globalEnabled": {
+                    "type": "boolean"
+                },
+                "proxiedFeeds": {
+                    "type": "integer"
+                }
+            }
+        },
+        "gist_backend_internal_service.ProxyOverrideView": {
+            "type": "object",
+            "properties": {
+                "config": {
+                    "$ref": "#/definitions/gist_backend_internal_model.ProxyOverrideConfig"
+                },
+                "mode": {
+                    "type": "string"
+                }
+            }
+        },
+        "gist_backend_internal_service.ProxySourceOverview": {
+            "type": "object",
+            "properties": {
+                "counts": {
+                    "$ref": "#/definitions/gist_backend_internal_service.ProxyOverrideCount"
+                },
+                "feeds": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/gist_backend_internal_service.ProxyFeedView"
+                    }
+                },
+                "folders": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/gist_backend_internal_service.ProxyFolderView"
+                    }
+                },
+                "global": {
+                    "$ref": "#/definitions/gist_backend_internal_service.NetworkSettings"
                 }
             }
         },
@@ -3708,6 +4009,17 @@
                 }
             }
         },
+        "internal_handler.feedProxyResponse": {
+            "type": "object",
+            "properties": {
+                "effective": {
+                    "$ref": "#/definitions/gist_backend_internal_service.ProxyEffective"
+                },
+                "feed": {
+                    "$ref": "#/definitions/internal_handler.feedResponse"
+                }
+            }
+        },
         "internal_handler.feedResponse": {
             "type": "object",
             "properties": {
@@ -3739,6 +4051,18 @@
                     "type": "string"
                 },
                 "lastModified": {
+                    "type": "string"
+                },
+                "proxyConfig": {
+                    "description": "ProxyConfig：本条单独指定的一套代理（密码已掩码）；缺省 = 用全局那套",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/gist_backend_internal_model.ProxyOverrideConfig"
+                        }
+                    ]
+                },
+                "proxyMode": {
+                    "description": "代理覆盖（14 批）：inherit = 跟随文件夹链 → 全局；proxy / direct 是本条自己选的",
                     "type": "string"
                 },
                 "readerMode": {
@@ -4183,6 +4507,17 @@
                 }
             }
         },
+        "internal_handler.folderProxyResponse": {
+            "type": "object",
+            "properties": {
+                "effective": {
+                    "$ref": "#/definitions/gist_backend_internal_service.ProxyEffective"
+                },
+                "folder": {
+                    "$ref": "#/definitions/internal_handler.folderResponse"
+                }
+            }
+        },
         "internal_handler.folderRequest": {
             "type": "object",
             "properties": {
@@ -4210,6 +4545,18 @@
                     "type": "string"
                 },
                 "parentId": {
+                    "type": "string"
+                },
+                "proxyConfig": {
+                    "description": "ProxyConfig：本层单独指定的一套代理（密码已掩码）；缺省 = 用全局那套",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/gist_backend_internal_model.ProxyOverrideConfig"
+                        }
+                    ]
+                },
+                "proxyMode": {
+                    "description": "代理覆盖（14 批）：inherit = 跟随父级文件夹链 → 全局；proxy / direct 是本层自己选的",
                     "type": "string"
                 },
                 "type": {
@@ -4383,6 +4730,13 @@
                 "enabled": {
                     "type": "boolean"
                 },
+                "feedId": {
+                    "description": "14 批：按来源试 —— 传了 feedId / folderId 就忽略上面的手填配置，\n改成「先解析这个来源实际生效的代理，再拿它去试连通性」。",
+                    "type": "string"
+                },
+                "folderId": {
+                    "type": "string"
+                },
                 "host": {
                     "type": "string"
                 },
@@ -4419,6 +4773,20 @@
             "properties": {
                 "status": {
                     "type": "integer"
+                }
+            }
+        },
+        "internal_handler.proxyOverrideRequest": {
+            "type": "object",
+            "properties": {
+                "config": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "mode": {
+                    "type": "string"
                 }
             }
         },

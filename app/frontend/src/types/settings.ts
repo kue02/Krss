@@ -81,6 +81,9 @@ export interface NetworkTestRequest {
   port: number;
   username: string;
   password: string;
+  /** 14 批：按来源试 —— 传了就忽略上面手填那份，改成测这个来源实际生效的代理 */
+  feedId?: string;
+  folderId?: string;
 }
 
 export interface NetworkTestResponse {

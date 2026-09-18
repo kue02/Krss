@@ -45,6 +45,7 @@ func TestNewRouter_RegistersRoutes(t *testing.T) {
 	domainRateLimitHandler := handler.NewDomainRateLimitHandler(domainRateLimitService)
 	filterService := mock.NewMockFilterService(ctrl)
 	filterHandler := handler.NewFilterHandler(filterService)
+	proxySourceHandler := handler.NewProxySourceHandler(mock.NewMockProxySourceService(ctrl))
 
 	e := gh.NewRouter(
 		folderHandler,
@@ -58,6 +59,7 @@ func TestNewRouter_RegistersRoutes(t *testing.T) {
 		authHandler,
 		domainRateLimitHandler,
 		filterHandler,
+		proxySourceHandler,
 		authService,
 		"",
 		true,
@@ -100,6 +102,7 @@ func TestNewRouter_SwaggerDisabled(t *testing.T) {
 	domainRateLimitHandler := handler.NewDomainRateLimitHandler(domainRateLimitService)
 	filterService := mock.NewMockFilterService(ctrl)
 	filterHandler := handler.NewFilterHandler(filterService)
+	proxySourceHandler := handler.NewProxySourceHandler(mock.NewMockProxySourceService(ctrl))
 
 	e := gh.NewRouter(
 		folderHandler,
@@ -113,6 +116,7 @@ func TestNewRouter_SwaggerDisabled(t *testing.T) {
 		authHandler,
 		domainRateLimitHandler,
 		filterHandler,
+		proxySourceHandler,
 		authService,
 		"",
 		false,
@@ -155,6 +159,7 @@ func TestNewRouter_LogoutRouteIsPublic(t *testing.T) {
 	domainRateLimitHandler := handler.NewDomainRateLimitHandler(domainRateLimitService)
 	filterService := mock.NewMockFilterService(ctrl)
 	filterHandler := handler.NewFilterHandler(filterService)
+	proxySourceHandler := handler.NewProxySourceHandler(mock.NewMockProxySourceService(ctrl))
 
 	e := gh.NewRouter(
 		folderHandler,
@@ -168,6 +173,7 @@ func TestNewRouter_LogoutRouteIsPublic(t *testing.T) {
 		authHandler,
 		domainRateLimitHandler,
 		filterHandler,
+		proxySourceHandler,
 		authService,
 		"",
 		false,

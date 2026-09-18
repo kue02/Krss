@@ -19,6 +19,8 @@ import (
 type FeedHandler struct {
 	service        service.FeedService
 	refreshService service.RefreshService
+	// proxySources 解析「这条订阅实际用哪套代理」（14 批）；nil 时响应里不带 effective
+	proxySources service.ProxySourceService
 }
 
 type createFeedRequest struct {
@@ -109,6 +111,17 @@ type feedResponse struct {
 	AutoTranslate         *bool   `json:"autoTranslate,omitempty"`
 	AutoSummary           *bool   `json:"autoSummary,omitempty"`
 	ReaderMode            *bool   `json:"readerMode,omitempty"`
+	// 代理覆盖（14 批）：inherit = 跟随文件夹链 → 全局；proxy / direct 是本条自己选的
+	ProxyMode string `json:"proxyMode"`
+	// ProxyConfig：本条单独指定的一套代理（密码已掩码）；缺省 = 用全局那套
+	ProxyConfig *model.ProxyOverrideConfig `json:"proxyConfig,omitempty"`
+}
+
+// feedProxyResponse PATCH /feeds/:id/proxy 的回显：订阅本体 + 这一条**实际生效**的结果
+// （mode/source/sourceName），前端行上直接显示「走代理 · 来自：文件夹「技术」」。
+type feedProxyResponse struct {
+	Feed      feedResponse           `json:"feed"`
+	Effective service.ProxyEffective `json:"effective"`
 }
 
 type refreshStatusResponse struct {
@@ -144,8 +157,14 @@ type feedPreviewEntryResponse struct {
 	PublishedAt  *string `json:"publishedAt,omitempty"`
 }
 
-func NewFeedHandler(service service.FeedService, refreshService service.RefreshService) *FeedHandler {
-	return &FeedHandler{service: service, refreshService: refreshService}
+// NewFeedHandler 第三个参数可选：装上「按来源取代理」的解析器后，PATCH proxy 的回显里带实际生效结果。
+// （用可变参数是为了不让既有调用点全部改签名，仓库里 NewAIServiceWithFeedContext 也是这个路子。）
+func NewFeedHandler(service service.FeedService, refreshService service.RefreshService, proxySources ...service.ProxySourceService) *FeedHandler {
+	handler := &FeedHandler{service: service, refreshService: refreshService}
+	if len(proxySources) > 0 {
+		handler.proxySources = proxySources[0]
+	}
+	return handler
 }
 
 func (h *FeedHandler) RegisterRoutes(g *echo.Group) {
@@ -160,6 +179,7 @@ func (h *FeedHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/feeds/merge-preview", h.MergePreview)
 	g.POST("/feeds/:id/merge", h.MergeInto)
 	g.PATCH("/feeds/:id/ai", h.UpdateAIOverrides)
+	g.PATCH("/feeds/:id/proxy", h.UpdateProxyOverride)
 	g.DELETE("/feeds/:id", h.Delete)
 	g.DELETE("/feeds", h.DeleteBatch)
 }
@@ -450,6 +470,44 @@ func (h *FeedHandler) UpdateAIOverrides(c echo.Context) error {
 	return c.JSON(http.StatusOK, toFeedResponse(feed))
 }
 
+// UpdateProxyOverride 单独设置某个订阅的代理覆盖（14 批）：跟随上级 / 走代理 / 直连。
+// 回显里带 effective（实际生效结果与来源），前端直接显示在行上。
+//
+// @Summary Update feed proxy override
+// @Description Per-feed proxy override (inherit / proxy / direct) with optional dedicated proxy config
+// @Tags feeds
+// @Accept json
+// @Param id path int true "Feed ID"
+// @Param request body proxyOverrideRequest true "Proxy override"
+// @Success 200 {object} feedProxyResponse
+// @Failure 400 {object} errorResponse
+// @Failure 404 {object} errorResponse
+// @Router /api/feeds/{id}/proxy [patch]
+func (h *FeedHandler) UpdateProxyOverride(c echo.Context) error {
+	id, err := parseIDParam(c, "id")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
+	}
+	var req proxyOverrideRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
+	}
+	update, err := parseProxyOverrideUpdate(req)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
+	}
+
+	ctx := c.Request().Context()
+	feed, err := h.service.UpdateProxyOverride(ctx, id, update)
+	if err != nil {
+		logger.Error("feed proxy override update failed", "module", "handler", "action", "update", "resource", "proxy", "result", "failed", "feed_id", id, "error", err)
+		return writeServiceError(c, err)
+	}
+	effective := h.proxySources.ResolveForFeed(ctx, feed)
+	logger.Info("feed proxy override updated", "module", "handler", "action", "update", "resource", "proxy", "result", "ok", "feed_id", feed.ID, "mode", effective.Mode, "source", effective.Source)
+	return c.JSON(http.StatusOK, feedProxyResponse{Feed: toFeedResponse(feed), Effective: effective})
+}
+
 // UpdateType updates the content type of a feed.
 // @Summary Update feed type
 // @Description Change the content type of a feed (article/picture/notification/social)
@@ -663,6 +721,8 @@ func toFeedResponse(feed model.Feed) feedResponse {
 		AutoTranslate:         feed.AutoTranslate,
 		ReaderMode:            feed.ReaderMode,
 		AutoSummary:           feed.AutoSummary,
+		ProxyMode:             service.ProxyModeToString(feed.ProxyMode),
+		ProxyConfig:           toProxyConfigResponse(feed.ProxyConfig),
 	}
 }
 
