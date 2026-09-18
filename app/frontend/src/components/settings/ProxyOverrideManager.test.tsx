@@ -43,9 +43,9 @@ vi.mock("@/api", () => ({
   testNetworkProxy: (payload: unknown) => mockTestNetworkProxy(payload),
 }));
 
-// HeroUI Modal 走 portal，jsdom 里断言不了里面的内容 —— 与 EditFeedDialog.test 同款做法，换成普通 div。
-// 注意 Modal 是「带子组件的函数」（Modal.Backdrop 等），所以这里也用 Object.assign 挂上去。
-// vi.mock 的工厂会被提升到文件顶部 → 这里只能内联写，不能引用外部变量。
+// 弹窗壳换成项目自己的 Dialog（Radix，与 SettingsModal / EditFeedDialog 同一套）——
+// 它 portal 到 body，jsdom 里能正常断言，不需要替身。只有 HeroUI 的 Button 需要打个桩
+// （HeroUI Button 走 onPress 而不是 onClick）。vi.mock 的工厂会被提升到文件顶部 → 只能内联写。
 vi.mock("@heroui/react", () => ({
   Button: ({
     children,
@@ -58,19 +58,6 @@ vi.mock("@heroui/react", () => ({
     <button type="button" onClick={onPress} {...rest}>
       {children}
     </button>
-  ),
-  Modal: Object.assign(
-    ({ children }: { children: ReactNode }) => <div>{children}</div>,
-    {
-      Backdrop: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-      Container: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-      Dialog: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-      Header: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-      Heading: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-      Body: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-      Footer: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-      CloseTrigger: () => null,
-    },
   ),
 }));
 

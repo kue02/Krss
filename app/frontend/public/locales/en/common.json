@@ -962,6 +962,7 @@
     "feed_settings_aria": "Proxy settings for feed “{{name}}”",
     "folder_collapse": "Collapse feeds under “{{name}}”",
     "folder_expand": "Expand feeds under “{{name}}”",
-    "collapsed_count": "{{count}} hidden"
+    "collapsed_count": "{{count}} hidden",
+    "dialog_subtitle": "Feed → folder chain → global — the nearest layer wins"
   }
 }

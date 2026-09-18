@@ -959,6 +959,7 @@
     "feed_settings_aria": "订阅「{{name}}」的代理设置",
     "folder_collapse": "收起「{{name}}」下的订阅",
     "folder_expand": "展开「{{name}}」下的订阅",
-    "collapsed_count": "已收起 {{count}} 条"
+    "collapsed_count": "已收起 {{count}} 条",
+    "dialog_subtitle": "订阅 → 文件夹（含父级链）→ 全局，就近的那层说了算"
   }
 }

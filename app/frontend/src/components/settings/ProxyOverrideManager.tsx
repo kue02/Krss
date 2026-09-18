@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Modal } from "@heroui/react";
+import { Button } from "@heroui/react";
 import { Settings2 } from "lucide-react";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { ChevronIcon } from "@/components/ui/icons";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { TriStateControl } from "@/components/ui/tri-state-control";
@@ -33,10 +34,15 @@ import type {
  *   · 最右是「这一条的代理设置」行内图标按钮（lucide `Settings2`，与 外观→角标自定义
  *     同一个图标、与规则行 ⋯ 同一种写法），展开这一层自己的代理设置（默认收起）。
  *
- * 滚动：弹窗给固定高度 + **普通 div 的 `overflow-y-auto`**，与 `SettingsModal` 的
- * 「Content」那层同一做法。**刻意不用 HeroUI `Modal.Body` 自带的滚动** —— 在本项目里量到
- * 它只有可编程 scrollTop 能滚，用户的滚轮/键盘都进不去（`.modal__body--scroll-inside`
- * 是同一类「弹层交互进不去」的问题，见 docs/移植笔记.md 里 13-3 那条）。
+ * 滚动：**壳必须用项目自己的 Dialog（Radix）**，不能用 HeroUI `Modal`。
+ * 真机取证（2026-09-18）：HeroUI Modal 的内容被 portal 到 `document.body`，而外面那层设置弹窗是
+ * Radix `DialogContent` —— Radix 的滚动锁 `react-remove-scroll` 在 `document` 上装了 wheel 监听，
+ * 凡是**不在它 shard（设置弹窗自己的 DOM 子树）内**的滚轮事件一律 `preventDefault()` 吃掉。
+ * 抓到的调用栈就是 `.vite/deps/Combination-*.js`（react-remove-scroll 的 `shouldPrevent`）。
+ * 所以 HeroUI Modal 里的列表（不管怎么写 overflow）滚轮都进不去 —— 症状就是「页面不能滑动」。
+ * 换成项目自己的 Dialog 后，它自己注册 shard、内容在 shard 内，滚轮正常。
+ * 骨架照抄 SettingsModal：DialogContent 固定高度 + `overflow-hidden` → flex 列 → 中间
+ * `min-h-0 flex-1 overflow-y-auto` 那层才是真滚动容器。
  *
  * 一切以服务端算出来的 effective 为准 —— 前端不自己推「到底会走哪套」，
  * 免得和 `proxy_source_service.go` 里的解析顺序漂移。
@@ -82,90 +88,88 @@ export function ProxyOverrideManager({
   }, [data]);
 
   return (
-    <Modal>
-      <Button className="hidden" aria-hidden />
-      <Modal.Backdrop
-        isOpen={open}
-        onOpenChange={(next) => !next && onOpenChange(false)}
-      >
-        <Modal.Container>
-          {/* 固定高度 + flex 列：中间那层才会成为真正能滚的容器（同 SettingsModal） */}
-          <Modal.Dialog className="flex h-[80vh] max-h-[85vh] max-w-3xl flex-col overflow-hidden p-0">
-            <Modal.Header className="shrink-0 border-b border-border px-4 py-3">
-              <Modal.Heading>{t("proxy.dialog_title")}</Modal.Heading>
-            </Modal.Header>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="h-[80vh] max-h-[85vh] w-[880px] max-w-[95vw] gap-0 overflow-hidden p-0">
+        {/* 和 SettingsModal 同一套骨架：DialogContent 固定高度 → flex 列 → 中间那层才真能滚 */}
+        <div className="flex h-full min-h-0 flex-col bg-background">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-6 py-4">
+            <DialogTitle className="text-xl font-bold">
+              {t("proxy.dialog_title")}
+            </DialogTitle>
+            <span className="text-xs text-muted-foreground">
+              {t("proxy.dialog_subtitle")}
+            </span>
+          </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4">
-              {isLoading && (
-                <div className="py-4 text-sm text-muted-foreground">
-                  {t("entry.loading")}
-                </div>
-              )}
-              {isError && (
-                <div className="py-4 text-sm text-destructive">
-                  {t("proxy.load_failed")}
-                </div>
-              )}
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4" data-slot="proxy-manager-scroll">
+            {isLoading && (
+              <div className="py-4 text-sm text-muted-foreground">
+                {t("entry.loading")}
+              </div>
+            )}
+            {isError && (
+              <div className="py-4 text-sm text-destructive">
+                {t("proxy.load_failed")}
+              </div>
+            )}
 
-              {data && (
-                <div className="space-y-3">
-                  <GlobalSummary global={data.global} />
+            {data && (
+              <div className="space-y-3">
+                <GlobalSummary global={data.global} />
 
-                  {tree.map((group) => {
-                    const folderId = group.folder?.id;
-                    const isCollapsed = folderId ? Boolean(collapsed[folderId]) : false;
-                    return (
-                      <div key={folderId ?? "__loose"} className="space-y-1">
-                        {group.folder && (
+                {tree.map((group) => {
+                  const folderId = group.folder?.id;
+                  const isCollapsed = folderId ? Boolean(collapsed[folderId]) : false;
+                  return (
+                    <div key={folderId ?? "__loose"} className="space-y-1">
+                      {group.folder && (
+                        <SourceRow
+                          kind="folder"
+                          id={group.folder.id}
+                          title={group.folder.name}
+                          subtitle={t("proxy.folder_feed_count", {
+                            count: group.folder.feedCount,
+                          })}
+                          override={group.folder.override}
+                          effective={group.folder.effective}
+                          indented={false}
+                          childCount={group.feeds.length}
+                          collapsed={isCollapsed}
+                          onToggleCollapsed={() =>
+                            setCollapsed((prev) => ({
+                              ...prev,
+                              [group.folder!.id]: !prev[group.folder!.id],
+                            }))
+                          }
+                        />
+                      )}
+                      {!isCollapsed &&
+                        group.feeds.map((feed) => (
                           <SourceRow
-                            kind="folder"
-                            id={group.folder.id}
-                            title={group.folder.name}
-                            subtitle={t("proxy.folder_feed_count", {
-                              count: group.folder.feedCount,
-                            })}
-                            override={group.folder.override}
-                            effective={group.folder.effective}
-                            indented={false}
-                            childCount={group.feeds.length}
-                            collapsed={isCollapsed}
-                            onToggleCollapsed={() =>
-                              setCollapsed((prev) => ({
-                                ...prev,
-                                [group.folder!.id]: !prev[group.folder!.id],
-                              }))
-                            }
+                            key={feed.id}
+                            kind="feed"
+                            id={feed.id}
+                            title={feed.title}
+                            override={feed.override}
+                            effective={feed.effective}
+                            indented
                           />
-                        )}
-                        {!isCollapsed &&
-                          group.feeds.map((feed) => (
-                            <SourceRow
-                              key={feed.id}
-                              kind="feed"
-                              id={feed.id}
-                              title={feed.title}
-                              override={feed.override}
-                              effective={feed.effective}
-                              indented
-                            />
-                          ))}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+                        ))}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
-            <Modal.Footer className="shrink-0 border-t border-border px-4 py-3">
-              <Button size="sm" variant="ghost" onPress={() => onOpenChange(false)}>
-                {t("actions.close")}
-              </Button>
-            </Modal.Footer>
-            <Modal.CloseTrigger />
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal.Backdrop>
-    </Modal>
+          <div className="flex shrink-0 items-center justify-end border-t border-border px-6 py-3">
+            <Button size="sm" variant="ghost" onPress={() => onOpenChange(false)}>
+              {t("actions.close")}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -330,7 +334,9 @@ function SourceRow({
               />
             </button>
           )}
-          <div className="min-w-0">
+          {/* 文件夹行有箭头槽位（20px + 4px 间隙），订阅行补上等宽内缩，
+              让子项名字落在父文件夹名字右侧 ~14px（效果图里就是这个层级感） */}
+          <div className={cn("min-w-0", indented && "pl-6")}>
             <div className="truncate text-sm text-foreground">{title}</div>
             {subtitle && (
               <div className="text-[11px] text-muted-foreground">
