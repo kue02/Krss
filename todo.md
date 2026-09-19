@@ -117,23 +117,41 @@
 - [ ] `language-detect-*.js` **454 KB(gzip)**（全站最大块）：当前只在开启翻译时走，是否压/降级待定。
 - [ ] 本机 Docker 打包部署（你已明确暂缓）、Docker 部署验收（收尾要重新 build 镜像）、移动端与 PWA 回归。
 
-### 2.7 第十六批 · MCP 订阅（MCP 取的内容当 Feed 处理 · 已拍板，**代码一行没动**）
+### 2.7 第十六批 · MCP 订阅（MCP 取的内容当 Feed 处理）
 
-> 方案全文：`docs/MCP-方案-2026-09-18.md` · 效果图：`~/Documents/test/gist-nextflux-ui/mockups/mcp-as-feed.html`
-> 取证结论：**Folo 没做这件事** —— 它的 MCP 只是「给 AI 装工具」，其 `MCPServicesSection.tsx` 里 grep `feed/entry/rss/subscription` **命中 0**；参考价值只在连接层的字段形状。
+> **界面以 `~/Documents/test/gist-nextflux-ui/mockups/mcp-v2-detailed.html` 为准（硬要求：HeroUI 组件 + 该文件的布局，不许自由发挥）**
+> 方案全文：`docs/MCP-方案-2026-09-18.md`（§六 分期已按本节口径改写）
+> 取证结论：**Folo 没做这件事** —— 它的 MCP 只是「给 AI 装工具」，`MCPServicesSection.tsx` 里 grep `feed/entry/rss/subscription` **命中 0**；参考价值只在连接层的字段形状。
 
-- [ ] **16-1 数据层（迁移 27）**：`feeds` 加 `source_type`（默认 `rss`）+ `mcp_config`（JSON：连接 id / 工具或资源 / 参数 / 字段映射）；新表 `mcp_servers`（name·transport·url·headers·enabled·is_connected·last_error·tool_count·resource_count）。新列默认值 ⇒ **老数据零变化**。
+**2026-09-19 口径变更（用户拍板）**：原「明确不做 / 留 P2」的 **SSE 传输、OAuth 授权、追历史分页、第 4 档 AI 兜底全部并进第一版**；
+新增 **粘贴 JSON、失败原因分类、JSON 格式化 + 高亮**。**唯一仍不做：MCP prompts**（不给入口、不做计数展示）。
+**复杂度收敛 7 条（用户已点头）**：① 传输默认自动识别 + **记住上次成功的那种**（可手改 / 可重新探测）② 向导 **3 屏**（连接+取什么 / 映射+预览 / 刷新+归类）
+③ 失败原因 **4 桶 + 细分文案**（含「未知」兜底）④ OAuth 回调**运行时取当前 origin**（零配置）+ 不支持 DCR 时给 `client_id`/`client_secret` 两框
+⑤ 分页单次 cursor 循环 + 上限可调 + **「拉更多」手动按钮** ⑥ AI 兜底一次调用、**必须预览确认才落库** ⑦ 只砍 prompts 计数（映射预设导入导出仍留 P2）。
+**现有分支 `feat/mcp`（2 提交）继续在原树改，不重开**：后端骨架（迁移 27 / 分叉 / 映射 / 出向）留用；
+`MCPServersSection.tsx`(862 行) 与 `MCPSubscriptionWizard.tsx`(833 行) **整体重写**（不做增量修补）；该分支的提交**先不合并**。
+
+- [ ] **16-1 数据层（迁移 27）**：`feeds` 加 `source_type`（默认 `rss`）+ `mcp_config`（JSON：连接 id / 工具或资源 / 参数 / 字段映射 / 分页配置）；新表 `mcp_servers`（name·transport·url·headers·enabled·is_connected·last_error·tool_count·resource_count·**auth 相关字段**）。新列默认值 ⇒ **老数据零变化**。
 - [ ] **16-2 抓取分叉**：按 `source_type` 分叉，**分叉点放在 `saveEntries()` 之前** —— 之后（去重 / FTS / 规则引擎 / 自动翻译标记）一行不改。**两条入库路径都要接**（刷新 + 添加订阅首批）。
-- [ ] **16-3 映射（核心）**：按返回形态分四档 ——① `resource`/`resource_link`（带 uri，几乎零映射）② 有 `outputSchema`（读 schema 自动生成）③ 有 `structuredContent` 无 schema（按常见字段名自动预填）④ 只有纯文本（先试当 JSON 解析，再退 Markdown 切分，最后人工/AI）。**自动预填 + 可手改**。
+- [ ] **16-3 映射（核心）**：按返回形态分四档 ——① `resource`/`resource_link` ② 有 `outputSchema` ③ 有 `structuredContent` 无 schema ④ 只有纯文本（先试 JSON → 再退 Markdown 切分 → 最后**人工路径输入** 或 **AI 兜底**）。
+      **AI 兜底按收敛 ⑥**：把样本 + 四个目标字段喂给 AI、一次调用要回 JSON 路径，**猜出来的映射必须预览确认后才落库**。前三档自动预填 + 可手改。
 - [ ] **16-4 去重键**：照抄既有 `computeEntryHash` 的退化顺序（`feed_service.go:766`）—— 映射键字段 → 链接 → 标题+时间；**用户不必决定**，界面只显示「用了哪一级」。
-- [ ] **16-5 接口**：`/api/mcp/servers` CRUD + `:id/test`（连通性）+ `:id/tools`（拉清单）+ `:id/inspect`（**干跑并预览前 5 条 + 自动推断映射**）；建源复用 `POST /api/feeds` 多带 `sourceType`。`make gen` + `swag init`。
-- [ ] **16-6 UI**：AI 栏加「MCP 服务」段（列表 + 预设卡片 + 建/编辑）；每连接标用途（**仅 AI 用 / 用于 Feed**，共用一份连接）；「新建 MCP 订阅」向导（选服务 → 选工具 → 映射 → **强制预览**）→ 落成**普通订阅行**。
-- [ ] **16-7 取数时机**：默认跟全局（复用并发/超时/代理）；**可按连接单独配**，单独配了就**不走全局**（有些 MCP 有次数限制）。
-- [ ] **16-8 第一版范围**：只做**无认证 + Header 认证**（OAuth 留后面）；每次取一页不追历史；凭据掩码、不进日志；映射失败**写进该源 `last_error`**（不许静默出空条目）。
+- [ ] **16-5 接口**：`/api/mcp/servers` CRUD + `:id/test`（连通性）+ `:id/tools`（拉清单）+ `:id/inspect`（**干跑并预览前 5 条 + 自动推断映射**）+ **`:id/parse-json`（粘贴 JSON 解析，或纯前端解析）** + **OAuth 三接口（discovery / start / callback）**；建源复用 `POST /api/feeds` 多带 `sourceType`。`make gen` + `swag init`。
+- [ ] **16-6 UI（按新草图，硬要求）**：① AI 栏「MCP 服务」段：**列表行钉死** `图标 22 · 名称+副行(主机·传输·能力计数) · 状态列 132 · 用途列 92 · 操作列` + 列头；用途是**标记不是开关**（开关挪进编辑对话框）；**预设卡片整段删**。② 新建/编辑连接对话框：默认页**粘贴 JSON** → 识别结果卡 → 手动填写页；认证 ToggleButtonGroup（无 / Header / OAuth）；OAuth 块（发现→DCR→PKCE→回调→已授权态含到期与重新授权/撤销）。③ 建源向导 **3 屏**（第 2 屏内嵌「预览前 5 条」门禁按钮）→ 落成**普通订阅行**。
+- [ ] **16-7 取数时机**：默认跟全局（复用并发/超时/代理）；**可按连接单独配**，单独配了就**不走全局**（有些 MCP 有次数限制，下限 15 分钟）。
+- [ ] **16-8 第一版范围（已扩大）**：认证 = 无 / Header / **OAuth**；传输 = HTTP + **SSE**；每次刷新默认取一页、**可选追历史（页数+条数双上限，默认 3 页 / 200 条）+「拉更多」按钮**；凭据掩码、不进日志；映射失败**写进该源 `last_error`**。
+- [ ] **16-9 粘贴 JSON**：认三种形状（① Claude/Cursor 的 `{"mcpServers":{…}}` 可一次建多条 ② 单条 `{type,url,headers}` ③ 只有 `url` → 探测传输）；粘完立刻出**识别结果卡**（名称/传输/地址/认证）可直接改。
+- [ ] **16-10 SSE 传输（客户端侧）**：按 MCP 旧传输实现 HTTP+SSE 连接；**默认「自动识别」传输**（按 JSON `type`、URL 特征，失败自动换另一种重试一次），**记住上次成功的传输**避免每轮重复探测，可手改可重新探测。
+- [ ] **16-11 OAuth 授权**：《按 MCP 规范》`/.well-known/oauth-protected-resource` → `/.well-known/oauth-authorization-server` → DCR（拿不到就显示 `client_id`/`client_secret` 两个输入框）→ PKCE 浏览器授权 → 回调换 token；
+      **回调地址运行时取当前访问 origin**（`<origin>/api/mcp/oauth/callback`，零配置、远程可用）；token 进库、掩码回显、自动刷新、不进日志；已授权态显示到期时间 + 重新授权/撤销。
+- [ ] **16-12 失败原因分类**：4 桶（网络 / 认证 / 协议 / 上游）+ 细分人话文案 + 一句建议 + 可复制原始返回；桶决定给什么出口按钮（认证桶 → 「去配 Header / 改用 OAuth」，传输错 → 「一键切成 SSE 重试」）；**列表行、测试按钮、向导预览三处共用同一套文案**；未分类要有「未知」兜底。
+- [ ] **16-13 JSON 格式化 + 高亮**：HeroUI **没有代码编辑器**（`Code` 只是 Typography 家族的行内 code——已查证）⇒ 编辑区用 **`TextArea`**（等宽）+ 工具条 `格式化 / 压缩 / 校验`（`Button size="sm" variant="ghost"`，校验失败给位置）；
+      只读展示区（识别结果原文 / 失败原始返回 / 客户端配置示例）用 **`Code` 包在 `ScrollShadow`** + 自写 ~30 行 JSON tokenizer 上色（四档主题色，不新造色）。**不做「边打字边高亮」**（性价比低）。
 
-### 2.8 第十七批 · Krss 作为 MCP 服务器（出向 · **B1~B5 已全部拍板**，可开工）
+### 2.8 第十七批 · Krss 作为 MCP 服务器（出向 · **B1~B5 已全部拍板**）
 
-> 方案见 `docs/MCP-方案-2026-09-18.md` §五。与 16 批**共用同一套 MCP 底座**；出向不存在「映射」问题（返回形状我们自己定）。
+> 方案见 `docs/MCP-方案-2026-09-18.md` §五；界面按 `mcp-v2-detailed.html` 的 §⑤。与 16 批**共用同一套 MCP 底座**；出向不存在「映射」问题（返回形状我们自己定）。
+> 2026-09-19 微调：**不做 prompts 计数展示**；客户端配置示例**可复制**（HTTP 与 SSE 两种写法都给）。
 
 - [ ] **17-1 只读 MCP 服务器**：`/mcp`（streamable-http）；tools `list_feeds` / `list_entries` / `search_entries` / `get_entry`，resources `krss://feed/<id>`、`krss://entry/<id>`、`krss://unread`。
 - [ ] **17-2 鉴权**：**长期 token**（不复用登录 JWT —— 那是短期的）；生成时显示一次、库里只存哈希；入口建议放 设置 → 数据控制。
