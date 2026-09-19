@@ -325,7 +325,7 @@ describe("NotificationTimeline · 与列表的契约", () => {
     expect(onCloseEntry).toHaveBeenCalledTimes(1);
   });
 
-  it("展开后跟随：展开区沉到视口下时自动补滚动（卡片顶部不动）", async () => {
+  it("展开后跟随：卡片顶部被顶出视口上方才向上拉回，否则不动", async () => {
     const scrollHeightDescriptor = Object.getOwnPropertyDescriptor(
       HTMLElement.prototype,
       "scrollHeight",
@@ -349,23 +349,23 @@ describe("NotificationTimeline · 与列表的契约", () => {
     try {
       const { container } = renderTimeline([entry("a", localIso(18, 14, 10))]);
       fireEvent.click(container.querySelector("[data-timeline-expand]")!);
-      const full = container.querySelector<HTMLElement>("[data-timeline-full='a']");
-      expect(full).not.toBeNull();
-      // 展开区很长、底部沉到视口（768px）下面
-      full!.getBoundingClientRect = () =>
+      const card = container.querySelector<HTMLElement>(
+        "[data-timeline-card][data-entry-id='a']",
+      );
+      expect(card).not.toBeNull();
+      // 卡片顶部被顶到视口上方 → 向上拉回（只拉卡片，不碰展开区底部）
+      card!.getBoundingClientRect = () =>
         ({
-          top: 100,
-          bottom: 2000,
+          top: -50,
+          bottom: 500,
           left: 0,
           right: 300,
           width: 300,
-          height: 1900,
+          height: 550,
         }) as DOMRect;
       // 跟随 effect 走 rAF，等它跑完
       await new Promise((resolve) => setTimeout(resolve, 50));
-      expect(scrollBy).toHaveBeenCalledWith({
-        top: 2000 - 768 + 12,
-      });
+      expect(scrollBy).toHaveBeenCalledWith({ top: -62 });
     } finally {
       if (scrollHeightDescriptor) {
         Object.defineProperty(HTMLElement.prototype, "scrollHeight", scrollHeightDescriptor);

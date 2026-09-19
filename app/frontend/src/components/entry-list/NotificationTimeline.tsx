@@ -33,7 +33,7 @@ import type { Entry, Feed } from "@/types/api";
  *   - 只作用于 `contentType === "notification"`，其余视图一行不动；
  *   - 中间一条竖轴，卡片左右交替；时间戳**紧贴节点**；最新在最上（数据本来就是 DESC）；
  *   - 同一个时间桶太密集时，多出来的条目吸成一个**小节点 + 计数**，点一下就地展开；
- *   - 跨天插一条日期分隔；中栏宽度 **< 385px 真退化成单侧**（左时间列 + 右卡片）；
+ *   - 跨天插一条日期分隔；容器宽度 **< 768px（移动端断点）真退化成单侧**（左时间列 + 右卡片）；
  *   - 卡片**默认折叠**（档位 1/2/3/全文由设置给），点「展开全文」**就地展开**，
  *     节点仍钉在卡片顶部 ⇒ 轴的位置不动、也不改滚动位置；
  *   - 键盘只在**轴上的卡片**之间吸附（被吸进小节点的条目不算节点），见 EntryList 的 useEntryHotkeys；
@@ -548,8 +548,10 @@ export function NotificationTimeline({
     [selectedEntryId, onCloseEntry],
   );
 
-  // 展开后跟随：新展开的那条如果沉到滚动视口下面，把滚动补上（卡片顶部不动，
-  // 只是让展开区露出来）—— 否则点视口底部的条目，展开内容全在屏外，还得手滚。
+  // 展开后跟随：展开是纯向下生长、卡片顶部本身不动，所以只处理一种情况——
+  // 卡片顶部被顶出视口上方时，把它拉回来（向上滚）；其他情况一律不动，
+  // 展开内容自然向下长，鼠标不用往上滑。（反过来往下补滚动会把卡片顶出屏，
+  // 用户反而要往上滑回来——之前那版方向写反了。）
   const expandedSignature = useMemo(() => {
     const ids = [...expandedEntries];
     if (selectedEntryId) ids.push(selectedEntryId);
@@ -566,10 +568,10 @@ export function NotificationTimeline({
       .find((id) => !prevIds.has(id));
     if (!freshId) return;
     const root = containerRef.current;
-    const full = root?.querySelector<HTMLElement>(
-      `[data-timeline-full="${freshId}"]`,
+    const card = root?.querySelector<HTMLElement>(
+      `[data-timeline-card][data-entry-id="${freshId}"], [data-entry-id="${freshId}"]`,
     );
-    if (!root || !full) return;
+    if (!root || !card) return;
     // requestAnimationFrame：等展开容器的高度落定再量
     const frame = requestAnimationFrame(() => {
       const scroller =
@@ -577,13 +579,12 @@ export function NotificationTimeline({
         root.closest<HTMLElement>(".entry-list-document");
       if (scroller) {
         const view = scroller.getBoundingClientRect();
-        const rect = full.getBoundingClientRect();
-        const overflow = rect.bottom - view.bottom;
-        if (overflow > 0) scroller.scrollTop += overflow + 12;
+        const rect = card.getBoundingClientRect();
+        // 卡片顶部在视口上方（被顶出去）才向上拉回来，对齐视口顶 + 12px
+        if (rect.top < view.top) scroller.scrollTop -= view.top - rect.top + 12;
       } else if (typeof window !== "undefined") {
-        const rect = full.getBoundingClientRect();
-        const overflow = rect.bottom - window.innerHeight;
-        if (overflow > 0) window.scrollBy({ top: overflow + 12 });
+        const rect = card.getBoundingClientRect();
+        if (rect.top < 0) window.scrollBy({ top: rect.top - 12 });
       }
     });
     return () => cancelAnimationFrame(frame);
