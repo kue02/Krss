@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -84,6 +85,14 @@ func (f *feedRepoStub) UpdateIconPath(ctx context.Context, id int64, iconPath st
 }
 
 func (f *feedRepoStub) UpdateErrorMessage(context.Context, int64, *string) error {
+	panic("not implemented")
+}
+
+func (f *feedRepoStub) RecordRefreshFailure(context.Context, int64, time.Time) error {
+	panic("not implemented")
+}
+
+func (f *feedRepoStub) ResetRefreshFailure(context.Context, int64) error {
 	panic("not implemented")
 }
 

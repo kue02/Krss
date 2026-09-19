@@ -624,6 +624,8 @@ export interface RefreshFeedResult {
   new: number;
   updated: number;
   error?: string;
+  /** 22-4：定时刷新里因连续失败退避被跳过（手动刷新不会有这一项） */
+  skipped?: boolean;
 }
 
 export async function getRefreshStatus(): Promise<RefreshStatus> {

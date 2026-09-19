@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 
+	"time"
+
 	"gist/backend/internal/model"
 )
 
@@ -13,4 +15,9 @@ func RefreshFeedWithFreshClientForTest(svc RefreshService, ctx context.Context, 
 		return ErrInvalid
 	}
 	return impl.refreshFeedWithFreshClient(ctx, feed, userAgent, cookie, retryCount, false)
+}
+
+// BackoffForFailCountForTest exposes backoffForFailCount for tests.
+func BackoffForFailCountForTest(n int) time.Duration {
+	return backoffForFailCount(n)
 }

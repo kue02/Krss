@@ -107,8 +107,21 @@ createRoot(document.getElementById("root")!).render(
   </StrictMode>,
 );
 
-requestAnimationFrame(() => {
-  requestAnimationFrame(() => {
+/**
+ * 22-1：**隐藏页面不跑 rAF**，所以「等两帧」在后台/被遮挡时会永远等不到 ——
+ * 而 index.html 的 boot guard 会把「3.5s 还没就绪」当成启动卡死并**自己整页重载**
+ * （实测：后台加载 PWA → t+3567ms 软重载 → t+12059ms 再清 SW/缓存重载一次）。
+ * 隐藏时没有一帧要等，直接算就绪；可见时照旧等两帧（这是「React 真的画出来了」的判据）。
+ */
+function markReadyAfterPaint(): void {
+  if (document.visibilityState === "hidden") {
     markBootReady();
+    return;
+  }
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(markBootReady);
   });
-});
+}
+
+markReadyAfterPaint();

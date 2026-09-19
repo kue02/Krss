@@ -199,24 +199,45 @@
           }
         };
 
-        setTimeout(async () => {
-          if (isBootReady()) return;
+        /**
+         * 22-1：**页面不可见时不重载**，改成等它可见再判。
+         *
+         * 为什么要挡：就绪标记（`main.tsx` 的 `markBootReady`）挂在 rAF 上，而隐藏/被遮挡的页面
+         * 不跑 rAF ⇒ 隐藏时「没就绪」不等于「卡死了」。老写法照刷不误，于是**后台加载的 PWA 会自己
+         * 刷自己**：实测 t+3567ms 触发软重载（`?_boot_soft=…`，整页重载一次）、
+         * t+12059ms 再触发硬恢复（注销 SW + 清空 Cache Storage，又一次整页重载）——
+         * 用户切回来看到的就是「自己刷新了一下」，而且缓存被清空后是最冷的启动（最长的英文窗口）。
+         * 重试不消耗次数（`tryIncrement` 只在真刷的时候调），所以恢复能力一条没少，
+         * 只是把「看不见的自救」推到用户能看见的时候。
+         */
+        const scheduleGuard = (delay, handler) => {
+          setTimeout(() => {
+            if (isBootReady()) return;
+            if (document.visibilityState === "hidden") {
+              scheduleGuard(delay, handler);
+              return;
+            }
+            handler();
+          }, delay);
+        };
+
+        scheduleGuard(SOFT_RELOAD_TIMEOUT_MS, async () => {
           if (!tryIncrement(SOFT_RELOAD_KEY, SOFT_PARAM, SOFT_RELOAD_LIMIT))
             return;
 
           bootWarn("startup timeout, triggering soft reload");
           await activateWaitingServiceWorker();
           replaceWithFlag(SOFT_PARAM);
-        }, SOFT_RELOAD_TIMEOUT_MS);
+        });
 
-        setTimeout(async () => {
-          if (isBootReady()) return;
+        scheduleGuard(HARD_RECOVER_TIMEOUT_MS, async () => {
           if (!tryIncrement(HARD_RECOVER_KEY, HARD_PARAM, HARD_RECOVER_LIMIT))
             return;
 
+          bootWarn("hard recovery: unregistering service workers and clearing caches");
           await clearServiceWorkerAndCaches();
           replaceWithFlag(HARD_PARAM);
-        }, HARD_RECOVER_TIMEOUT_MS);
+        });
 
         bootLog("boot guard active");
       })();

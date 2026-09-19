@@ -9,6 +9,7 @@ import {
 import { useMarkManyAsRead, useRemoveFromUnreadList } from "@/hooks/useEntries";
 import type { Entry } from "@/types/api";
 import type { ScrollSurface } from "./scroll-surface";
+import { clearDeferredRemovals, deferEntryRemoval } from "./deferred-removal";
 
 const MARK_READ_ON_SCROLL_BATCH_DELAY_MS = 200;
 const MARK_READ_ON_SCROLL_GRACE_MS = 1000;
@@ -88,6 +89,13 @@ export function useScrollMarkRead({
     () => entries.map((entry) => entry.id).join("\u0000"),
     [entries],
   );
+  /**
+   * 22-3：`flushReadQueue` 要知道「这一批 id 在列表里是第几条、条目对象长什么样」，
+   * 才能在重拉把条目换掉之后按原位插回去。回调自己不该依赖 `entries`（会跟着每页数据换引用），
+   * 所以用 latest ref 取当前值（与 EntryList 里 `scrollKeyRef` 同一套做法）。
+   */
+  const entriesRef = useRef(entries);
+  entriesRef.current = entries;
   const hasUnreadEntries = useMemo(
     () => entries.some((entry) => !entry.read),
     [entries],
@@ -168,6 +176,8 @@ export function useScrollMarkRead({
       removeFromUnreadList(new Set(deferredRemovalIds.current));
       deferredRemovalIds.current.clear();
     }
+    // 22-3：同时把「先别消失」的记账清掉 —— 这一步之后回来的列表本来就不该再有它们
+    clearDeferredRemovals();
 
     seenEntryIds.current.clear();
     markedReadIds.current.clear();
@@ -264,9 +274,24 @@ export function useScrollMarkRead({
           /**
            * 20-3（默认档）：**先不摘**。记账到 deferredRemovalIds，等离开这个列表时一起摘。
            * 不摘就不会把下面的条目往上顶，也就不需要「补偿滚动」和「等用户再滚一次」那套自锁。
+           *
+           * 22-3：光「不摘」还不够 —— 列表内容来自 `["entries"]` 查询，「刷新跑完 / 手动刷新 /
+           * 重新聚焦」引发的重拉会把这些已读条目整批换掉。所以同时把条目本体与它在列表里的
+           * 下标交给 `deferred-removal`，渲染时按原位插回去（详见那个模块的说明）。
            */
           if (deferRemoval) {
-            for (const id of ids) deferredRemovalIds.current.add(id);
+            const list = entriesRef.current;
+            const positions = new Map(
+              list.map((entry, index) => [entry.id, { entry, index }]),
+            );
+            for (const id of ids) {
+              deferredRemovalIds.current.add(id);
+              const position = positions.get(id);
+              if (position) {
+                // 这一批刚被判成已读（缓存的乐观更新也写了 read=true），记已读态那份
+                deferEntryRemoval(id, { ...position.entry, read: true }, position.index);
+              }
+            }
             return;
           }
 

@@ -80,6 +80,10 @@ export function RefreshReportDialog() {
                         <span className="shrink-0 text-destructive">
                           {t("refresh_report.item_failed")}
                         </span>
+                      ) : item.skipped ? (
+                        <span className="shrink-0 text-muted-foreground">
+                          {t("refresh_report.item_skipped")}
+                        </span>
                       ) : (
                         <span className="shrink-0 tabular-nums text-muted-foreground">
                           {t("refresh_report.item_counts", {

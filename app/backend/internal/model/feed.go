@@ -23,6 +23,10 @@ type Feed struct {
 	ETag         *string
 	LastModified *string
 	ErrorMessage *string
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	// 刷新失败退避（22-4）：连续失败次数（成功一次清零）与最近一次失败时间。
+	// 定时刷新用它们算「下次允许抓取」的时间点，连续失败的源自动降频。
+	RefreshFailCount  int
+	RefreshLastFailAt *time.Time
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }

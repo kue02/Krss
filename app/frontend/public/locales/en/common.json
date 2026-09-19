@@ -920,7 +920,8 @@
     "item_failed": "Failed",
     "copy_reason": "Copy reason",
     "copied": "Failure reason copied",
-    "close": "Close"
+    "close": "Close",
+    "item_skipped": "Skipped (backing off)"
   },
   "common": {
     "loading": "Loading…"

@@ -478,6 +478,18 @@ func runMigrations(db *sql.DB) error {
 		return err
 	}
 
+	// Migration 28: 刷新失败退避（用户 22-4：「连续失败降频」）。
+	//   feeds.refresh_fail_count —— 连续失败次数（成功一次就清零）；
+	//   feeds.refresh_last_fail_at —— 最近一次失败时间（UTC，RFC3339）。
+	//   定时刷新用这两列算「下次允许抓取」的时间点，连续失败的源自动降频，而不是每轮跟着陪跑。
+	//   注意编号：26（代理）/ 27（MCP）被并行树占用，新的从 28 起。
+	if err := addColumnIfMissing(db, "feeds", "refresh_fail_count", `ALTER TABLE feeds ADD COLUMN refresh_fail_count INTEGER NOT NULL DEFAULT 0`); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "feeds", "refresh_last_fail_at", `ALTER TABLE feeds ADD COLUMN refresh_last_fail_at TEXT`); err != nil {
+		return err
+	}
+
 	return nil
 }
 
