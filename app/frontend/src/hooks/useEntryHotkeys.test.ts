@@ -48,7 +48,11 @@ describe("useEntryHotkeys", () => {
    * selectedEntryId 由路由驱动：真实使用时按键后会重渲染并带来新的选中项，
    * 所以用例也要用 rerender 复现这一步，否则 j 会一直停在第一篇。
    */
-  function setup(initial: string | null = null, enabled = true) {
+  function setup(
+    initial: string | null = null,
+    enabled = true,
+    arrowKeys = false,
+  ) {
     return renderHook(
       ({ selectedEntryId }: { selectedEntryId: string | null }) =>
         useEntryHotkeys({
@@ -57,6 +61,7 @@ describe("useEntryHotkeys", () => {
           onSelect,
           onEscape,
           enabled,
+          arrowKeys,
         }),
       { initialProps: { selectedEntryId: initial } },
     );
@@ -159,6 +164,39 @@ describe("useEntryHotkeys", () => {
     press("m");
     press("j");
     expect(markAsRead).not.toHaveBeenCalled();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+  /**
+   * 15-4：通知视图的时间线「沿轴选择」= j/k、↑/↓ 都能在节点间吸附。
+   * ↑/↓ 默认**不认**（其余视图此前也不认，默认打开等于改既有行为）。
+   */
+  it("↑/↓ 默认不认（只有时间线视图显式打开才吸附）", () => {
+    const view = setup("a");
+    press("ArrowDown");
+    expect(onSelect).not.toHaveBeenCalled();
+
+    view.rerender({ selectedEntryId: "a" });
+    press("ArrowUp");
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("arrowKeys 打开后 ↓/↑ 与 j/k 同义（选中即已读）", () => {
+    const view = setup("a", true, true);
+    press("ArrowDown");
+    expect(onSelect).toHaveBeenLastCalledWith("b");
+
+    view.rerender({ selectedEntryId: "b" });
+    press("ArrowUp");
+    expect(onSelect).toHaveBeenLastCalledWith("a");
+
+    view.rerender({ selectedEntryId: "a" });
+    press("j");
+    expect(onSelect).toHaveBeenLastCalledWith("b");
+  });
+
+  it("arrowKeys 打开后仍不抢带修饰键的组合键", () => {
+    setup("a", true, true);
+    press("ArrowDown", { metaKey: true });
     expect(onSelect).not.toHaveBeenCalled();
   });
 });

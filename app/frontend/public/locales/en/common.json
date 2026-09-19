@@ -687,7 +687,19 @@
     "picture_layout_masonry": "Masonry",
     "picture_layout_grid": "Grid",
     "show_splitter": "Show divider (always visible)",
-    "show_splitter_hint": "Turn off to stop drawing the line (the hover drag indicator is unaffected); column widths are kept"
+    "show_splitter_hint": "Turn off to stop drawing the line (the hover drag indicator is unaffected); column widths are kept",
+    "timeline_granularity": "Time granularity",
+    "timeline_granularity_hint": "Entries in the same bucket share one node (grouping and node labels only; no refetch)",
+    "timeline_granularity_minute": "Per minute",
+    "timeline_granularity_quarter": "Every 15 min",
+    "timeline_granularity_hour": "Hourly",
+    "timeline_granularity_day": "Daily",
+    "timeline_collapse": "Collapsed lines",
+    "timeline_collapse_hint": "Cards start collapsed; “Show full text” expands in place (the timeline does not jump)",
+    "timeline_lines_1": "1 line",
+    "timeline_lines_2": "2 lines",
+    "timeline_lines_3": "3 lines",
+    "timeline_lines_full": "Full text"
   },
   "folder": {
     "create": "New category",
@@ -987,5 +999,13 @@
     "folder_expand": "Expand feeds under “{{name}}”",
     "collapsed_count": "{{count}} hidden",
     "dialog_subtitle": "Feed → folder chain → global — the nearest layer wins"
+  },
+  "timeline": {
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "entries_count": "{{count}} items",
+    "more_entries": "{{count}} more",
+    "expand": "Show full text",
+    "collapse": "Collapse"
   }
 }

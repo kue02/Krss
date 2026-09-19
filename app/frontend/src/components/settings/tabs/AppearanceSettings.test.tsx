@@ -6,6 +6,8 @@ const setExpandLongForView = vi.fn();
 const setReduceMotion = vi.fn();
 const setScrollReadForView = vi.fn();
 const setScrollReadTimingForView = vi.fn();
+const setTimelineGranularityForView = vi.fn();
+const setTimelineCollapseForView = vi.fn();
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: "zh" } }),
@@ -90,6 +92,18 @@ vi.mock("@/hooks/useUISettings", async () => {
       notification: "scrollPast",
       social: "scrollPast",
     },
+    timelineGranularityByView: {
+      article: "hour",
+      picture: "hour",
+      notification: "hour",
+      social: "hour",
+    },
+    timelineCollapseByView: {
+      article: "2",
+      picture: "2",
+      notification: "2",
+      social: "2",
+    },
     cardImageSize: "small",
     cardPreviewLines: 2,
     entryFontFamily: "system",
@@ -115,6 +129,8 @@ vi.mock("@/hooks/useUISettings", async () => {
       setReduceMotion,
       setScrollReadForView,
       setScrollReadTimingForView,
+      setTimelineGranularityForView,
+      setTimelineCollapseForView,
     }),
   };
 });
@@ -159,6 +175,8 @@ describe("AppearanceSettings 按视图设置", () => {
     setReduceMotion.mockClear();
     setScrollReadForView.mockClear();
     setScrollReadTimingForView.mockClear();
+    setTimelineGranularityForView.mockClear();
+    setTimelineCollapseForView.mockClear();
     scrollReadState.mode = "perView";
   });
 
@@ -190,6 +208,59 @@ describe("AppearanceSettings 按视图设置", () => {
     fireEvent.click(within(row).getByText("on"));
 
     expect(setReduceMotion).toHaveBeenCalledWith(true);
+  });
+
+  /**
+   * 第十五批（15-5）：通知视图 = 时间线。设置里只有**粒度**与**折叠行数**两项 ——
+   * 「通知视图只有时间线这一种模式」（用户拍板），所以**没有**「切回列表 / 形态」这一类开关。
+   */
+  it("通知视图有「时间粒度」四档，默认每小时", () => {
+    render(<AppearanceSettings />);
+
+    expect(screen.getAllByText("appearance_view.timeline_granularity")).toHaveLength(1);
+    const row = rowOf("appearance_view.timeline_granularity");
+    // 四档都在，默认选中「每小时」
+    expect(row.querySelector("[data-value]")?.getAttribute("data-value")).toBe("hour");
+    expect(within(row).getByText("minute")).not.toBeNull();
+    expect(within(row).getByText("quarter")).not.toBeNull();
+    expect(within(row).getByText("hour")).not.toBeNull();
+    expect(within(row).getByText("day")).not.toBeNull();
+
+    fireEvent.click(within(row).getByText("day"));
+    expect(setTimelineGranularityForView).toHaveBeenCalledWith("notification", "day");
+  });
+
+  it("通知视图有「折叠行数」四档，默认 2 行", () => {
+    render(<AppearanceSettings />);
+
+    const row = rowOf("appearance_view.timeline_collapse");
+    expect(row.querySelector("[data-value]")?.getAttribute("data-value")).toBe("2");
+    expect(within(row).getByText("full")).not.toBeNull();
+
+    fireEvent.click(within(row).getByText("full"));
+    expect(setTimelineCollapseForView).toHaveBeenCalledWith("notification", "full");
+  });
+
+  it("粒度与折叠行数只出现在通知视图（其余视图不显示）", () => {
+    render(<AppearanceSettings />);
+
+    // 每个视图一组「显示分界限」，通知那组里才有这两行
+    expect(screen.getAllByText("appearance_view.show_splitter")).toHaveLength(4);
+    expect(screen.getAllByText("appearance_view.timeline_granularity")).toHaveLength(1);
+    expect(screen.getAllByText("appearance_view.timeline_collapse")).toHaveLength(1);
+  });
+
+  it("没有「切回列表 / 呈现方式」这类项（通知视图只有时间线一种形态）", () => {
+    render(<AppearanceSettings />);
+
+    // 设置里任何把通知视图切回卡片列表的开关都不该存在
+    for (const key of [
+      "appearance_view.view_mode",
+      "appearance_view.timeline_mode",
+      "appearance_view.timeline_enabled",
+    ]) {
+      expect(screen.queryAllByText(key)).toHaveLength(0);
+    }
   });
 
   it("滚动标已读默认跟随通用", () => {

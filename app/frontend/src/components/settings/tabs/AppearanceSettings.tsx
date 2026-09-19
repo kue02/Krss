@@ -32,6 +32,10 @@ import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
 import { AccentColorPicker } from "@/components/settings/tabs/AccentColorPicker";
 import { UnreadBadgeCustomizer } from "@/components/settings/tabs/UnreadBadgeCustomizer";
 import { readingFonts } from "@/lib/reading-fonts";
+import type {
+  TimelineCollapse,
+  TimelineGranularity,
+} from "@/lib/timeline-model";
 import { updateAppearanceSettings } from "@/api";
 import { cn } from "@/lib/utils";
 import { Button, Input } from "@heroui/react";
@@ -175,6 +179,9 @@ export function AppearanceSettings() {
   // 「滚动标已读」总开关形态：perView 才显示下面的按视图覆盖；off 时判定项置灰
   const { mode: scrollReadMode } = useScrollReadSetting();
   const scrollReadTimingByView = useUISettingKey("scrollReadTimingByView");
+  // 第十五批：通知视图时间线的两个按视图设置（粒度 / 折叠行数）
+  const timelineGranularityByView = useUISettingKey("timelineGranularityByView");
+  const timelineCollapseByView = useUISettingKey("timelineCollapseByView");
   const {
     setFetchReadableForView,
     setExpandLongForView,
@@ -190,6 +197,8 @@ export function AppearanceSettings() {
     setSidebarFeedAppearance,
     setScrollReadForView,
     setScrollReadTimingForView,
+    setTimelineGranularityForView,
+    setTimelineCollapseForView,
     setCardImageSize,
     setCardPreviewLines,
     setEntryFontFamily,
@@ -783,6 +792,67 @@ export function AppearanceSettings() {
                       ]}
                     />
                   </SettingRow>
+                )}
+                {/* 第十五批：通知视图 = 时间线（没有「切回列表」这一项 —— 形态只有这一种），
+                    能调的只有时间粒度与卡片折叠行数，两项都只影响分组/标注与显示行数，
+                    不重新请求数据（分页仍是 limit+1） */}
+                {view === "notification" && (
+                  <>
+                    <SettingRow
+                      label={t("appearance_view.timeline_granularity")}
+                      hint={t("appearance_view.timeline_granularity_hint")}
+                    >
+                      <SegmentedControl
+                        className="shrink-0"
+                        value={timelineGranularityByView?.[view] ?? "hour"}
+                        onValueChange={(value) =>
+                          setTimelineGranularityForView(
+                            view,
+                            value as TimelineGranularity,
+                          )
+                        }
+                        options={[
+                          {
+                            value: "minute",
+                            label: t("appearance_view.timeline_granularity_minute"),
+                          },
+                          {
+                            value: "quarter",
+                            label: t("appearance_view.timeline_granularity_quarter"),
+                          },
+                          {
+                            value: "hour",
+                            label: t("appearance_view.timeline_granularity_hour"),
+                          },
+                          {
+                            value: "day",
+                            label: t("appearance_view.timeline_granularity_day"),
+                          },
+                        ]}
+                      />
+                    </SettingRow>
+                    <SettingRow
+                      label={t("appearance_view.timeline_collapse")}
+                      hint={t("appearance_view.timeline_collapse_hint")}
+                    >
+                      <SegmentedControl
+                        className="shrink-0"
+                        value={timelineCollapseByView?.[view] ?? "2"}
+                        onValueChange={(value) =>
+                          setTimelineCollapseForView(view, value as TimelineCollapse)
+                        }
+                        options={[
+                          { value: "1", label: t("appearance_view.timeline_lines_1") },
+                          { value: "2", label: t("appearance_view.timeline_lines_2") },
+                          { value: "3", label: t("appearance_view.timeline_lines_3") },
+                          {
+                            value: "full",
+                            label: t("appearance_view.timeline_lines_full"),
+                          },
+                        ]}
+                      />
+                    </SettingRow>
+                  </>
                 )}
                 {/* 「缺全文时自动抓取」只对文章类开放：社交链接抓回的是登录墙 */}
                 {view === "article" && (

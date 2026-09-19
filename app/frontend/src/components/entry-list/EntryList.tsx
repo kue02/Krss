@@ -46,6 +46,11 @@ import {
 import { useEntryListScrollSurface } from "./scroll-surface";
 import { useEntryHotkeys } from "@/hooks/useEntryHotkeys";
 import { useUISettingKey } from "@/hooks/useUISettings";
+import {
+  resolveTimelineCollapse,
+  resolveTimelineGranularity,
+} from "@/lib/timeline-model";
+import { NotificationTimeline } from "./NotificationTimeline";
 import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
 import { useFilterViewStore } from "@/stores/filter-view-store";
 import { ArrowUp, Inbox } from "lucide-react";
@@ -259,6 +264,26 @@ export function EntryList({
   const scrollReadDeferRemoval = useUISettingKey("scrollReadDeferRemoval");
   // 社交媒体是第四类内容（与文章 / 图片 / 通知并列），不是文章视图的另一种排布
   const isSocialView = contentType === "social";
+  /**
+   * 第十五批：通知视图改成**时间线**（15-1 硬边界：只作用于 notification）。
+   * 与 `isSocialView` 同一处判断 —— 别的视图一行不动。
+   * 形态只有这一种（用户定案：通知视图没有「切回卡片列表」这回事），
+   * 设置里能调的只有粒度与折叠行数（15-5）。
+   */
+  const isNotificationTimeline = contentType === "notification";
+  const timelineGranularity = resolveTimelineGranularity(
+    useUISettingKey("timelineGranularityByView")?.[contentType],
+  );
+  const timelineCollapse = resolveTimelineCollapse(
+    useUISettingKey("timelineCollapseByView")?.[contentType],
+  );
+  /**
+   * 轴上可选的条目（被吸进小节点的条目不算节点）：时间线组件回报上来，
+   * 键盘 j/k、↑/↓ 就用它做吸附顺序 —— 不会选到看不见的条目。
+   */
+  const [timelineSelectableEntries, setTimelineSelectableEntries] = useState<
+    Entry[] | null
+  >(null);
   const fetchReadableByView = useUISettingKey("fetchReadableByView");
   const expandLongByView = useUISettingKey("expandLongByView");
   // 「缺全文时自动抓取」只在文章类开放（设置里也只为文章渲染这一行）：
@@ -389,11 +414,14 @@ export function EntryList({
 
   // 键盘快捷键：j/k 上下篇（选中即已读）、m 已读、s 星标、v 打开原文、Esc 关闭
   useEntryHotkeys({
-    entries,
+    // 通知视图走时间线：吸附顺序 = 轴上的卡片（被吸进小节点的条目不算节点）
+    entries: (isNotificationTimeline ? timelineSelectableEntries : null) ?? entries,
     selectedEntryId,
     onSelect: handleSelectEntry,
     onEscape: onCloseEntry,
     enabled: isActive,
+    // 15-4：只有时间线视图额外认 ↑/↓（其余视图一行不动，行为零变化）
+    arrowKeys: isNotificationTimeline,
   });
   // 列表滚上去以后，右上角浮出「当前序号 + 回到顶部」（对齐 Nextflux 的 Indicator）
   const [firstVisibleIndex, setFirstVisibleIndex] = useState(0);
@@ -922,23 +950,38 @@ export function EntryList({
           ) : (
             <div className="w-full pb-16">
               {/* pb-16：底部悬浮的「星标 / 未读 / 已静音 / 全部」胶囊会盖住内容，留白让最后一条能滚上来 */}
-              {entries.map((entry, index) => (
-                <EntryListItem
-                feedUnreadCount={unreadCounts?.counts?.[entry.feedId]}
-                  key={entry.id}
-                  data-index={index}
-                  data-entry-id={entry.id}
-                  entry={entry}
-                  feed={feedsMap.get(entry.feedId)}
-                  isSelected={entry.id === selectedEntryId}
-                  onClick={handleSelectEntry}
+              {isNotificationTimeline ? (
+                <NotificationTimeline
+                  entries={entries}
+                  feeds={feedsMap}
+                  unreadCounts={unreadCounts?.counts}
+                  selectedEntryId={selectedEntryId}
+                  onSelectEntry={handleSelectEntry}
+                  granularity={timelineGranularity}
+                  collapse={timelineCollapse}
                   autoTranslate={autoTranslate}
                   targetLanguage={targetLanguage}
-                  social={isSocialView}
-                  fetchReadable={fetchReadableEnabled}
-                  autoExpandLong={expandLongByView?.[contentType] ?? false}
+                  onSelectableEntriesChange={setTimelineSelectableEntries}
                 />
-              ))}
+              ) : (
+                entries.map((entry, index) => (
+                  <EntryListItem
+                    feedUnreadCount={unreadCounts?.counts?.[entry.feedId]}
+                    key={entry.id}
+                    data-index={index}
+                    data-entry-id={entry.id}
+                    entry={entry}
+                    feed={feedsMap.get(entry.feedId)}
+                    isSelected={entry.id === selectedEntryId}
+                    onClick={handleSelectEntry}
+                    autoTranslate={autoTranslate}
+                    targetLanguage={targetLanguage}
+                    social={isSocialView}
+                    fetchReadable={fetchReadableEnabled}
+                    autoExpandLong={expandLongByView?.[contentType] ?? false}
+                  />
+                ))
+              )}
               {scrollReadEndPaddingHeight > 0 && (
                 <div
                   aria-hidden="true"
