@@ -6,6 +6,7 @@ import {
   Button,
   Chip,
   Dropdown,
+  Input,
   Label,
   Table,
   TextArea,
@@ -56,7 +57,6 @@ import {
 import type {
   MCPFailure,
   MCPOAuthDiscovery,
-  MCPPurpose,
   MCPServer,
   MCPTestResult,
 } from "@/types/mcp";
@@ -65,13 +65,8 @@ import { MCPSubscriptionWizard } from "./MCPSubscriptionWizard";
 import { MCPFailureBlock } from "./MCPFailureBlock";
 import { MCPJsonView } from "./MCPJsonView";
 
-const inputClass = cn(
-  "h-9 w-full rounded-md border border-border bg-background px-2.5 text-sm text-foreground",
-  "placeholder:text-muted-foreground/60",
-  "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
-);
-
-const labelClass = "text-sm font-medium text-foreground";
+/* 手搓 input 已删：表单输入一律 HeroUI Input（草图 .input h36 撑满，见 GUIDE 抄数表） */
+const labelClass = "mb-1.5 block text-[13px] font-medium text-foreground";
 
 /** 八字水印文案键（16-16 警戒区；返工验收通过即摘，整段删掉） */
 function MCPWarnZone({ children }: { children: React.ReactNode }) {
@@ -944,7 +939,7 @@ function MCPServerFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl p-0">
+      <DialogContent className="max-w-2xl p-0 /* 草图 B 宽 */">
         <DialogHeader className="p-4">
           <DialogTitle>
             {server
@@ -953,7 +948,7 @@ function MCPServerFormDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="max-h-[70vh] space-y-4 overflow-y-auto px-4 pb-4">
+        <div className="max-h-[70vh] space-y-5 overflow-y-auto px-5 pb-5">
           <ManualForm
             draft={draft}
             patch={patch}
@@ -974,7 +969,7 @@ function MCPServerFormDialog({
                     value={pasteText}
                     onChange={(event) => setPasteText(event.target.value)}
                     onBlur={() => handlePasteBlur()}
-                    rows={4}
+                    rows={5}
                     className="w-full font-mono text-xs"
                     placeholder='{"mcpServers":{...}}'
                   />
@@ -1124,8 +1119,13 @@ function MCPServerFormDialog({
           )}
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-border p-4">
-          <Button size="sm" variant="ghost" onPress={() => onOpenChange(false)}>
+        <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
+          <Button
+            size="sm"
+            variant="ghost"
+            onPress={() => onOpenChange(false)}
+            className="h-[30px] text-xs /* 草图 .btn */"
+          >
             {t("actions.cancel")}
           </Button>
           {/* 单页恒显示保存（粘贴没反填时按识别结果存，见 handleSave） */}
@@ -1133,6 +1133,7 @@ function MCPServerFormDialog({
             size="sm"
             isDisabled={isSaving}
             onPress={() => void handleSave()}
+            className="h-[30px] text-xs /* 草图 .btn primary */"
           >
             {isSaving ? t("settings.saving") : t("actions.save")}
           </Button>
@@ -1222,19 +1223,18 @@ function ManualForm({
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5 /* 草图 B 节奏 */">
       {/* 名称 */}
       <div className="space-y-1.5">
         <label htmlFor="mcp-name" className={labelClass}>
           {t("ai_settings.mcp_name")}
         </label>
-        <input
+        <Input
           id="mcp-name"
-          type="text"
           value={draft.name}
           onChange={(e) => patch({ name: e.target.value })}
           placeholder={t("ai_settings.mcp_name_placeholder")}
-          className={inputClass}
+          className="h-9 w-full /* 草图 .input */"
           autoFocus
         />
       </div>
@@ -1262,13 +1262,12 @@ function ManualForm({
         <label htmlFor="mcp-url" className={labelClass}>
           {t("ai_settings.mcp_url")}
         </label>
-        <input
+        <Input
           id="mcp-url"
-          type="text"
           value={draft.url}
           onChange={(e) => patch({ url: e.target.value })}
           placeholder="https://example.com/mcp"
-          className={cn(inputClass, "font-mono text-xs")}
+          className="h-9 w-full font-mono text-xs /* 草图 .input */"
         />
       </div>
 
@@ -1313,6 +1312,7 @@ function ManualForm({
               onPress={() =>
                 patch({ headers: [...draft.headers, { key: "", value: "" }] })
               }
+              className="h-[30px] text-xs /* 草图 .btn */"
             >
               <Plus className="size-3.5" />
               {t("ai_settings.mcp_add_header")}
@@ -1328,26 +1328,21 @@ function ManualForm({
               key={`header-${index}`}
               className="flex flex-wrap items-center gap-2"
             >
-              <input
-                type="text"
+              <Input
                 value={header.key}
                 onChange={(e) => patchHeader(index, { key: e.target.value })}
                 placeholder={t("ai_settings.mcp_header_key")}
                 aria-label={t("ai_settings.mcp_header_key")}
-                className={cn(inputClass, "min-w-[8rem] flex-1")}
+                className="h-9 min-w-[8rem] flex-1 /* 草图 .input */"
               />
-              <input
-                type="text"
+              <Input
                 value={header.value}
                 onChange={(e) =>
                   patchHeader(index, { value: e.target.value })
                 }
                 placeholder={t("ai_settings.mcp_header_value")}
                 aria-label={t("ai_settings.mcp_header_value")}
-                className={cn(
-                  inputClass,
-                  "min-w-[8rem] flex-1 font-mono text-xs",
-                )}
+                className="h-9 min-w-[8rem] flex-1 font-mono text-xs /* 草图 .input */"
               />
               <Button
                 size="sm"
@@ -1379,48 +1374,71 @@ function ManualForm({
         />
       )}
 
-      {/* 启用（开关在编辑框里，列表上只是标记 —— 16-6） */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className={labelClass}>{t("ai_settings.mcp_enabled")}</span>
-        <HeroSwitch
-          aria-label={t("ai_settings.mcp_enabled")}
-          isSelected={draft.enabled}
-          onChange={(checked: boolean) => patch({ enabled: checked })}
-        />
-      </div>
-
-      {/* 用途：同一份连接，两种用途可以并存 */}
-      <div className="space-y-1.5">
-        <span className={labelClass}>{t("ai_settings.mcp_purposes")}</span>
-        <ToggleButtonGroup
-          selectionMode="multiple"
-          size="sm"
-          selectedKeys={draft.purposes}
-          onSelectionChange={(keys) =>
-            patch({ purposes: [...keys].map(String) as MCPPurpose[] })
-          }
-        >
-          <ToggleButton id="ai">
+      {/* 用途 + 启用：三颗开关（草图 B），开关进编辑框、列表只留标记 */}
+      <div className="space-y-2">
+        <span className={labelClass}>
+          {t("ai_settings.mcp_purposes_switch_label")}
+        </span>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          <HeroSwitch
+            aria-label={t("ai_settings.mcp_purpose_ai")}
+            isSelected={draft.purposes.includes("ai")}
+            onChange={(checked: boolean) =>
+              patch({
+                purposes: checked
+                  ? [...draft.purposes, "ai"]
+                  : draft.purposes.filter((p) => p !== "ai"),
+              })
+            }
+          >
             {t("ai_settings.mcp_purpose_ai")}
-          </ToggleButton>
-          <ToggleButton id="feed">
+          </HeroSwitch>
+          <HeroSwitch
+            aria-label={t("ai_settings.mcp_purpose_feed")}
+            isSelected={draft.purposes.includes("feed")}
+            onChange={(checked: boolean) =>
+              patch({
+                purposes: checked
+                  ? [...draft.purposes, "feed"]
+                  : draft.purposes.filter((p) => p !== "feed"),
+              })
+            }
+          >
             {t("ai_settings.mcp_purpose_feed")}
-          </ToggleButton>
-        </ToggleButtonGroup>
+          </HeroSwitch>
+          <HeroSwitch
+            aria-label={t("ai_settings.mcp_enabled")}
+            isSelected={draft.enabled}
+            onChange={(checked: boolean) => patch({ enabled: checked })}
+          >
+            {t("ai_settings.mcp_enabled")}
+          </HeroSwitch>
+        </div>
         <p className="text-xs text-muted-foreground">
           {t("ai_settings.mcp_purposes_hint")}
         </p>
       </div>
 
-      {/* 取数时机 */}
-      <div className="space-y-1.5">
+      {/* 取数时机：跟随全局 / 单独配（草图 B 分段控件） */}
+      <div className="space-y-2">
         <span className={labelClass}>{t("ai_settings.mcp_fetch_timing")}</span>
-        <Select
-          ariaLabel={t("ai_settings.mcp_fetch_timing")}
-          value={draft.useGlobalFetch ? "global" : "custom"}
-          onChange={(value) => patch({ useGlobalFetch: value !== "custom" })}
-          options={fetchOptions}
-        />
+        <ToggleButtonGroup
+          selectionMode="single"
+          size="sm"
+          selectedKeys={[draft.useGlobalFetch ? "global" : "custom"]}
+          onSelectionChange={(keys) => {
+            const first = [...keys].map(String)[0];
+            if (first === "global" || first === "custom") {
+              patch({ useGlobalFetch: first !== "custom" });
+            }
+          }}
+        >
+          {fetchOptions.map((option) => (
+            <ToggleButton key={option.value} id={option.value}>
+              {option.label}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
         <p className="text-xs text-muted-foreground">
           {t("ai_settings.mcp_fetch_hint")}
         </p>
@@ -1435,7 +1453,7 @@ function ManualForm({
             >
               {t("ai_settings.mcp_timeout_seconds")}
             </label>
-            <input
+            <Input
               id="mcp-timeout"
               type="number"
               min={1}
@@ -1444,7 +1462,7 @@ function ManualForm({
               onChange={(e) =>
                 patch({ fetchTimeoutSeconds: Number(e.target.value) })
               }
-              className={inputClass}
+              className="h-9 w-full /* 草图 .input */"
             />
           </div>
           <div className="space-y-1.5">
@@ -1454,7 +1472,7 @@ function ManualForm({
             >
               {t("ai_settings.mcp_concurrency")}
             </label>
-            <input
+            <Input
               id="mcp-concurrency"
               type="number"
               min={1}
@@ -1463,7 +1481,7 @@ function ManualForm({
               onChange={(e) =>
                 patch({ fetchConcurrency: Number(e.target.value) })
               }
-              className={inputClass}
+              className="h-9 w-full /* 草图 .input */"
             />
           </div>
           <div className="space-y-1.5">
@@ -1473,7 +1491,7 @@ function ManualForm({
             >
               {t("ai_settings.mcp_refresh_interval")}
             </label>
-            <input
+            <Input
               id="mcp-interval"
               type="number"
               min={MCP_MIN_REFRESH_INTERVAL_MINUTES}
@@ -1481,7 +1499,7 @@ function ManualForm({
               onChange={(e) =>
                 patch({ refreshIntervalMinutes: Number(e.target.value) })
               }
-              className={inputClass}
+              className="h-9 w-full /* 草图 .input */"
             />
           </div>
           <p className="text-xs text-muted-foreground sm:col-span-3">
@@ -1503,6 +1521,7 @@ function ManualForm({
             variant="secondary"
             isDisabled={testing}
             onPress={() => void handleTest()}
+            className="h-[30px] text-xs /* 草图 .btn */"
           >
             <RefreshCw className={cn("size-3.5", testing && "animate-spin")} />
             {t("ai_settings.mcp_test")}
@@ -1762,12 +1781,11 @@ function OAuthBlock({ server, draft, patch, onReload }: OAuthBlockProps) {
                 >
                   {t("ai_settings.mcp_oauth_client_id")}
                 </label>
-                <input
+                <Input
                   id="mcp-oauth-client-id"
-                  type="text"
                   value={draft.oauthClientId}
                   onChange={(e) => patch({ oauthClientId: e.target.value })}
-                  className={cn(inputClass, "font-mono text-xs")}
+                  className="h-9 w-full font-mono text-xs /* 草图 .input */"
                 />
               </div>
               <div className="space-y-1.5">
@@ -1777,14 +1795,14 @@ function OAuthBlock({ server, draft, patch, onReload }: OAuthBlockProps) {
                 >
                   {t("ai_settings.mcp_oauth_client_secret")}
                 </label>
-                <input
+                <Input
                   id="mcp-oauth-client-secret"
                   type="password"
                   value={draft.oauthClientSecret}
                   onChange={(e) =>
                     patch({ oauthClientSecret: e.target.value })
                   }
-                  className={cn(inputClass, "font-mono text-xs")}
+                  className="h-9 w-full font-mono text-xs /* 草图 .input */"
                 />
               </div>
               <p className="text-[11px] text-muted-foreground">

@@ -457,6 +457,7 @@
     "mcp_header_mask_hint": "Existing values show as {{mask}}: leave them untouched to keep the stored value (the server treats the mask as \"unchanged\").",
     "mcp_enabled": "Enable this connection",
     "mcp_purposes": "Purpose",
+    "mcp_purposes_switch_label": "Purpose (pick at least one)",
     "mcp_purpose_ai": "AI only",
     "mcp_purpose_feed": "Used for feeds",
     "mcp_purposes_hint": "Both purposes can coexist on one connection; only connections marked \"Used for feeds\" show up in the feed wizard.",
