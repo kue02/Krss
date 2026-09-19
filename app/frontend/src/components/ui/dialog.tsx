@@ -18,7 +18,14 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed z-[200] bg-black/50 backdrop-blur-sm",
+      /*
+       * 23-3（用户：「背景遮罩不要那么透明，更实」）：
+       * 取值不自己编 —— 底色取组件库自己的遮罩 token `--backdrop`（HeroUI 主题里是 #00000080），
+       * 再用 color-mix 掺 40% 纯黑把它做「实」到 0.7 左右；
+       * 模糊档也照组件库 `modal__backdrop--blur` 用的 `backdrop-blur-md`（12px），
+       * 原来是 `bg-black/50 + backdrop-blur-sm`（4px，几乎看不出模糊）。
+       */
+      "fixed z-[200] bg-[color-mix(in_srgb,var(--backdrop)_60%,black_40%)] backdrop-blur-md",
       // Extend to cover safe area (notch/home indicator)
       "top-[calc(-1*env(safe-area-inset-top,0px))]",
       "bottom-[calc(-1*env(safe-area-inset-bottom,0px))]",

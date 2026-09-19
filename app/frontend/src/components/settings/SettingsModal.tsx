@@ -21,6 +21,8 @@ import { AdvancedSettings } from "./tabs/AdvancedSettings";
 import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/select";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { useDraggableDialog } from "@/hooks/useDraggableDialog";
+import { GripVertical } from "lucide-react";
 import { useFilterEditorStore } from "@/stores/filter-editor-store";
 
 export type SettingsTab =
@@ -105,6 +107,14 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
   const dirtyEntries = useDirtySettings();
   const [pendingLeave, setPendingLeave] = React.useState<(() => void) | null>(null);
   const [leaving, setLeaving] = React.useState(false);
+
+  /**
+   * 23-3：设置窗口可拖动（「边看边改」——拖开一点就能看到背后的界面）。
+   * HeroUI v3 的 `Modal` 没有原生拖动（官方 API 表里只有 backdrop 变体 / 关闭行为 / 尺寸 / 位置），
+   * 所以照组件库 `Drawer` 那套 pointer 手势自己搬一份，见 `useDraggableDialog`。
+   * 只有桌面这版是窗口（移动端是全屏 Sheet，没有可拖的余地）。
+   */
+  const drag = useDraggableDialog();
 
   const tryLeave = React.useCallback((action: () => void) => {
     if (getDirtySettings().length > 0) {
@@ -274,6 +284,9 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
       onOpenChange={(next) => (next ? onOpenChange(true) : tryLeave(() => onOpenChange(false)))}
     >
       <DialogContent
+        ref={drag.dialogRef}
+        // 拖动位移叠在 Radix 的居中位移上（`-translate-x-1/2 -translate-y-1/2`）
+        style={{ transform: drag.transform }}
         className="w-[950px] h-[800px] max-w-[95vw] max-h-[90vh] p-0 overflow-hidden gap-0"
         onInteractOutside={guardOutsideDismiss}
         onEscapeKeyDown={guardEscape}
@@ -285,8 +298,13 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
           />
 
           <div className="relative flex h-full min-w-0 flex-1 flex-col bg-background">
-            {/* Header */}
-            <div className="flex items-center gap-2 px-6 py-4 border-b border-border">
+            {/* Header —— 23-3：整条标题栏就是拖动把手（`touch-none` 挡住触控板滚动/选择，
+                交互元素在 hook 里被排除，所以点得到里面的任何控件） */}
+            <div
+              {...drag.handleProps}
+              className="flex cursor-move touch-none select-none items-center gap-2 border-b border-border px-6 py-4"
+            >
+              <GripVertical className="size-4 shrink-0 text-muted-foreground/60" />
               <DialogTitle className="text-xl font-bold">
                 {getTitle()}
               </DialogTitle>

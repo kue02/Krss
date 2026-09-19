@@ -19,6 +19,7 @@ import { HeroSwitch } from "@/components/ui/hero-switch";
 import { UnreadIndicator } from "@/components/entry-list/unread-indicator";
 import {
   DEFAULT_UNREAD_BADGE,
+  MAX_UNREAD_BADGE_OFFSET,
   useUISettingActions,
   useUISettingKey,
   type UnreadBadgeConfig,
@@ -206,7 +207,9 @@ export function UnreadBadgeCustomizer() {
               </span>
             </div>
 
-            {/* 压住边缘 —— 12-2 / 12-14 两轮都在纠的事，做成可调就不用再回来改代码 */}
+            {/* 压住边缘 —— 12-2 / 12-14 两轮都在纠的事，做成可调就不用再回来改代码。
+                23-5（用户：「现在滑杆只到 6px，要更激进」）：上限 6 → 12px。
+                四角对称的 `calc(±100% ∓ offset)` 写法与默认档 2px 都不动（见 unread-indicator.tsx）。 */}
             <span className={cn("text-xs text-muted-foreground", dim)}>
               {t("appearance_reading.unread_badge_offset")}
             </span>
@@ -214,7 +217,7 @@ export function UnreadBadgeCustomizer() {
               <Slider
                 className="min-w-[7rem] flex-1"
                 minValue={0}
-                maxValue={6}
+                maxValue={MAX_UNREAD_BADGE_OFFSET}
                 step={1}
                 value={config.offset}
                 isDisabled={isDot}

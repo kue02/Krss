@@ -65,4 +65,22 @@ describe("未读角标自定义面板（13-3）", () => {
     expect(setUnreadBadge).toHaveBeenCalled();
     expect(setUnreadBadge.mock.calls[0]?.[0]).toMatchObject({ content: "count" });
   });
+
+  it("23-5：压边滑杆上限是 12（默认 2 不变）", () => {
+    render(<UnreadBadgeCustomizer />);
+    fireEvent.click(screen.getByLabelText("appearance_reading.unread_badge_customize"));
+    // 面板是 portal 到 document.body 的，container 里查不到，只能从 document 查；
+    // RAC Slider 渲染的是原生 input[type=range]（min/max/value 与真机一致）
+    const ranges = [...document.querySelectorAll('input[type="range"]')].map(
+      (el) => el as HTMLInputElement,
+    );
+    // 大小滑杆（6–16）与压边滑杆（0–12）都在
+    const maxes = ranges.map((el) => el.max).sort();
+    expect(maxes).toContain("12");
+    expect(maxes).toContain("16");
+    // mock 的 config.offset = 4：滑杆初值跟着配置走，不是写死的 2
+    const offsetSlider = ranges.find((el) => el.max === "12");
+    expect(offsetSlider?.min).toBe("0");
+    expect(offsetSlider?.value).toBe("4");
+  });
 });
