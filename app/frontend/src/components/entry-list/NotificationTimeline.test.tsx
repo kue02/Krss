@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Entry } from "@/types/api";
 import { NotificationTimeline } from "./NotificationTimeline";
+import {
+  resetDeferredRemovals,
+  deferredRemovalIds,
+} from "./deferred-removal";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -69,6 +74,7 @@ function localIso(day: number, hour: number, minute: number) {
  */
 beforeEach(() => {
   vi.useFakeTimers({ now: new Date(2026, 8, 18, 12, 0, 0), toFake: ["Date"] });
+  resetDeferredRemovals();
 });
 
 afterEach(() => {
@@ -80,18 +86,24 @@ function renderTimeline(
   options: Partial<React.ComponentProps<typeof NotificationTimeline>> = {},
 ) {
   const onSelectEntry = vi.fn();
+  // 24-8 起时间线自己标已读（useMarkAsRead），必须包一层 QueryClientProvider
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
   const utils = render(
-    <NotificationTimeline
-      entries={entries}
-      feeds={new Map()}
-      selectedEntryId={null}
-      onSelectEntry={onSelectEntry}
-      granularity="hour"
-      collapse="2"
-      autoTranslate={false}
-      targetLanguage="zh-CN"
-      {...options}
-    />,
+    <QueryClientProvider client={queryClient}>
+      <NotificationTimeline
+        entries={entries}
+        feeds={new Map()}
+        selectedEntryId={null}
+        onSelectEntry={onSelectEntry}
+        granularity="hour"
+        collapse="2"
+        autoTranslate={false}
+        targetLanguage="zh-CN"
+        {...options}
+      />
+    </QueryClientProvider>,
   );
   return { ...utils, onSelectEntry };
 }
@@ -217,7 +229,7 @@ describe("NotificationTimeline · 折叠 / 展开（15-3）", () => {
     expect(full.container.querySelector("[data-timeline-expand]")).toBeNull();
   });
 
-  it("就地展开：摘掉 clamp，条目仍在轴上同一个节点行里（不换 DOM、不跳轴）", () => {
+  it("就地展开：正文级完整渲染进固定高度容器（默认 380px、内部滚动），轴不动", () => {
     // jsdom 不做布局（scrollHeight 恒为 0）→ 先把高度桩打上，让「被截断」这个前提成立；
     // 桩必须在 render 之前生效，否则首轮 effect 量出来是不截断、按钮不出现。
     const scrollHeightDescriptor = Object.getOwnPropertyDescriptor(
@@ -247,12 +259,33 @@ describe("NotificationTimeline · 折叠 / 展开（15-3）", () => {
 
       fireEvent.click(toggle!);
 
-      expect(body?.style.webkitLineClamp).toBe("");
+      // 24-8：展开态不再是摘 clamp，而是正文级完整渲染的固定容器
+      const full = container.querySelector<HTMLElement>("[data-timeline-full='a']");
+      expect(full).not.toBeNull();
+      expect(full?.dataset.timelineFullHeight).toBe("380");
+      expect(full?.style.height).toBe("380px");
+      expect(full?.className).toContain("overflow-y-auto");
+      // 全文按阅读区管道排版（标题/正文都在里面，不再是纯文字预览）
+      expect(full?.textContent).toContain("body a");
       // 轴上的位置没变：还是同一行、同一行的节点还在
-      expect(body!.closest("[data-timeline-row]")).toBe(rowBefore);
+      expect(full!.closest("[data-timeline-row]")).toBe(rowBefore);
       expect(rowBefore?.querySelector("[data-timeline-dot]")).not.toBeNull();
-      // 展开按钮就地变成「收起」，点击不会再选中条目（不打开详情）
-      expect(toggle!.textContent).toContain("timeline.collapse");
+      // 右下角拖拽手柄在
+      expect(
+        container.querySelector("[data-timeline-resize='a']"),
+      ).not.toBeNull();
+      // 收起回到预览态
+      const collapse = full!
+        .closest("[data-timeline-row]")!
+        .querySelector<HTMLButtonElement>("button");
+      fireEvent.click(collapse!);
+      expect(
+        container.querySelector("[data-timeline-full='a']"),
+      ).toBeNull();
+      expect(
+        container.querySelector<HTMLElement>("[data-timeline-body]")?.style
+          .webkitLineClamp,
+      ).toBe("2");
     } finally {
       if (scrollHeightDescriptor) {
         Object.defineProperty(HTMLElement.prototype, "scrollHeight", scrollHeightDescriptor);
@@ -265,10 +298,31 @@ describe("NotificationTimeline · 折叠 / 展开（15-3）", () => {
 });
 
 describe("NotificationTimeline · 与列表的契约", () => {
-  it("点卡片 = 选中该条目（详情走既有的覆盖式打开，不是替换列表）", () => {
+  it("点卡片 = 选中该条目 + 顺手标已读（记 deferred，离列表才摘）", () => {
     const { container, onSelectEntry } = renderTimeline([entry("a", localIso(18, 14, 10))]);
     fireEvent.click(container.querySelector("[data-entry-id]")!);
     expect(onSelectEntry).toHaveBeenCalledWith("a");
+    // 24-8：原来第三栏 EntryContent 干的标已读，现在点开即标（24-1 同语义）
+    expect(deferredRemovalIds()).toContain("a");
+  });
+
+  it("选中的条目在时间线内展开（桌面端没有第三栏了）+ 收起交回列表", () => {
+    const onCloseEntry = vi.fn();
+    const { container } = renderTimeline([entry("a", localIso(18, 14, 10))], {
+      selectedEntryId: "a",
+      onCloseEntry,
+    });
+    // 不用点展开按钮，选中即展开
+    expect(
+      container.querySelector("[data-timeline-full='a']"),
+    ).not.toBeNull();
+    // 收起：回到预览态 + 把选中交回列表
+    const collapse = container
+      .querySelector("[data-timeline-full='a']")!
+      .closest("[data-timeline-row]")!
+      .querySelector<HTMLButtonElement>("button")!;
+    fireEvent.click(collapse);
+    expect(onCloseEntry).toHaveBeenCalledTimes(1);
   });
 
   it("回报给父级的可选条目 = 轴上的卡片（不含被吸进小节点的）", () => {

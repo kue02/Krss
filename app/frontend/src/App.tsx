@@ -65,6 +65,7 @@ import {
 } from "@/hooks/useUISettings";
 import { useRefreshStatus } from "@/hooks/useRefreshStatus";
 import { isAddFeedPath } from "@/lib/router";
+import { initProxyImageRecovery } from "@/lib/proxy-image-recovery";
 import { cn } from "@/lib/utils";
 import type { ContentType, Feed, Folder } from "@/types/api";
 
@@ -356,6 +357,11 @@ function AuthenticatedApp() {
   // 「减少动态效果」落到 <html data-reduce-motion>，由 CSS 统一压掉动画
   // 刷新结果弹框：盯住「刷新中 → 刷新完」的跳变（用户 11-8）
   useRefreshReportWatcher();
+
+  // 24-4：代理图 401 全局兜底（续期 cookie 后重载），挂一次
+  useEffect(() => {
+    initProxyImageRecovery();
+  }, []);
 
   const reduceMotion = useUISettingKey("reduceMotion");
   useEffect(() => {
@@ -722,6 +728,45 @@ function AuthenticatedApp() {
           showSidebar={showSidebar}
         />
         <Lightbox />
+      </>
+    );
+  }
+
+  // Desktop notification mode —— 24-8：两栏（侧栏 + 时间线，参照 social/picture），
+  // 不再渲染第三栏详情；点条目只在时间线内展开（正文级完整渲染 + 固定高度容器）。
+  if (contentType === "notification") {
+    return (
+      <>
+        <ThreeColumnLayout
+          sidebar={sidebarContent}
+          list={null}
+          content={
+            <EntryList
+              selection={selection}
+              selectedEntryId={selectedEntryId}
+              onSelectEntry={selectEntry}
+              onMarkAllRead={handleMarkAllRead}
+              unreadOnly={unreadOnly}
+              onToggleUnreadOnly={toggleUnreadOnly}
+              onFilterChange={handleFilterChange}
+              onCloseEntry={() => selectEntry(null)}
+              onToggleStarredViewOnly={handleToggleStarredViewOnly}
+              contentType={contentType}
+              isTablet={isTablet}
+              onToggleSidebar={toggleSidebarVisible}
+              sidebarVisible={sidebarVisible}
+            />
+          }
+          hideList
+          showSidebar={showSidebar}
+        />
+        <ImagePreview />
+        <VideoPreview />
+        <ShortcutsHelpDialog
+          open={isShortcutsOpen}
+          onOpenChange={(open) => shortcutsHelp.set(open)}
+        />
+        <SearchModal open={isSearchOpen} onOpenChange={setIsSearchOpen} />
       </>
     );
   }

@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 
@@ -189,6 +190,12 @@ func (h *AuthHandler) GetCurrentUser(c echo.Context) error {
 	}
 
 	logger.Debug("auth me", "module", "handler", "action", "list", "resource", "auth", "result", "ok", "actor", user.Username)
+	// 24-4：带着有效 Bearer 走到这里，说明 localStorage 的 token 还活着、
+	// 只是浏览器给 <img> 用的 gist_auth cookie 掉了。顺手重写回去，
+	// 下一次代理图请求就能带上 cookie、不再 401 —— 无需重登。
+	if token := bearerToken(c); token != "" {
+		setAuthCookie(c, token)
+	}
 	return c.JSON(http.StatusOK, toUserResponse(user))
 }
 
@@ -281,6 +288,16 @@ func toUserResponse(user *service.User) *userResponse {
 		Email:     user.Email,
 		AvatarURL: user.AvatarURL,
 	}
+}
+
+// bearerToken 从 Authorization 头里取出 Bearer token（与 http.JWTAuthMiddleware 同口径）。
+// GetCurrentUser 只在中间件已验过之后才被调用，拿到的 token 一定是有效的。
+func bearerToken(c echo.Context) string {
+	parts := strings.SplitN(c.Request().Header.Get("Authorization"), " ", 2)
+	if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
+		return parts[1]
+	}
+	return ""
 }
 
 // setAuthCookie sets the authentication cookie for browser resource requests.

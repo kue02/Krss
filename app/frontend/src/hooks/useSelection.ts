@@ -17,7 +17,11 @@ interface NavigateOptions {
 interface UseSelectionReturn {
   selection: SelectionType;
   selectAll: (contentType?: ContentType, options?: NavigateOptions) => void;
-  selectFeed: (feedId: string, options?: NavigateOptions) => void;
+  selectFeed: (
+    feedId: string,
+    options?: NavigateOptions,
+    contentType?: ContentType,
+  ) => void;
   selectFolder: (folderId: string, options?: NavigateOptions) => void;
   selectStarred: (options?: NavigateOptions, viewOnly?: boolean) => void;
   /** 中栏底部筛选胶囊：一次导航切换 全部 / 未读 / 星标 */
@@ -58,13 +62,15 @@ export function useSelection(): UseSelectionReturn {
   );
 
   const selectFeed = useCallback(
-    (feedId: string, options?: NavigateOptions) => {
+    (feedId: string, options?: NavigateOptions, contentType?: ContentType) => {
       navigate(
         buildPath(
           { type: "feed", feedId },
           null,
           routeState.unreadOnly,
-          routeState.contentType,
+          // 24-3：默认跟当前 ?type=；搜索跳订阅时调用方传目标订阅实际的类型，
+          // 否则目标订阅不在当前类型下就是一片空。
+          contentType ?? routeState.contentType,
         ),
         options,
       );
@@ -113,27 +119,47 @@ export function useSelection(): UseSelectionReturn {
    * 中栏底部筛选胶囊用：在 全部 / 未读 / 星标 三者间一次导航切换。
    * 不要在调用方叠加 selectAll + toggleUnreadOnly —— 两次导航都基于旧 routeState，
    * 后者会覆盖前者（表现为「点了全部却还在星标页」）。
+   *
+   * 24-2：未读 / 全部只翻 `unreadOnly`，当前订阅 / 文件夹原样保留；
+   * 星标维持跳全局（viewOnly 按 20-2 的默认档）。
    */
   const selectFilter = useCallback(
     (filter: "all" | "unread" | "starred", options?: NavigateOptions) => {
-      const unreadOnly = filter === "unread";
-      const nextSelection: SelectionType =
-        filter === "starred"
-          ? {
+      if (filter === "starred") {
+        navigate(
+          buildPath(
+            {
               type: "starred",
               // 20-2：进入星标视图默认「只当前视图」（已在星标里则保持当前档位）
               viewOnly:
                 routeState.selection.type === "starred"
                   ? routeState.selection.viewOnly
                   : true,
-            }
-          : { type: "all" };
+            },
+            null,
+            // 星标维持旧语义：跳全局星标、不带 ?unread（24-2 只改未读/全部两档）
+            false,
+            routeState.contentType,
+          ),
+          options,
+        );
+        return;
+      }
       navigate(
-        buildPath(nextSelection, null, unreadOnly, routeState.contentType),
+        buildPath(
+          routeState.selection,
+          null,
+          filter === "unread",
+          routeState.contentType,
+        ),
         options,
       );
     },
-    [navigate, routeState.contentType, routeState.selection],
+    [
+      navigate,
+      routeState.contentType,
+      routeState.selection,
+    ],
   );
 
   const selectEntry = useCallback(

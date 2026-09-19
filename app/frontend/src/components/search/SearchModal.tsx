@@ -149,9 +149,11 @@ export function SearchModal({ open, onOpenChange }: SearchModalProps) {
       // 所以先把它的分类展开（用户 2026-09-17 要求「点订阅时第一栏也自动选中到这个订阅」）。
       const folderName = feed.folderId ? folderNameById.get(feed.folderId) : undefined;
       if (folderName) expandAll([folderName]);
-      // 用 selectFeed 而不是裸 navigate：前者会把当前的 ?type= / ?unread= 带上，
-      // 裸 navigate("/feed/<id>") 会丢掉它们（视图被重置成「文章」）。
-      selectFeed(feed.id);
+      // 用 selectFeed 而不是裸 navigate：前者会把当前的 ?unread= 带上，
+      // 裸 navigate("/feed/<id>") 会丢掉它。
+      // 24-3：?type= 带目标订阅实际的内容类型 —— 跟当前类型走的话，
+      // 目标订阅不在该类型下就是一片空列表。
+      selectFeed(feed.id, undefined, feed.type);
     },
     [
       tab,

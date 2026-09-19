@@ -4,10 +4,17 @@ import {
   useCallback,
   useContext,
   createContext,
+  useEffect,
   useMemo,
+  useRef,
 } from "react";
 import { cn } from "@/lib/utils";
 import { getProxiedImageUrl } from "@/lib/image-proxy";
+import {
+  isRecoverableProxyUrl,
+  renewProxyCookie,
+  withProxyCacheBust,
+} from "@/lib/proxy-image-recovery";
 import { ImagePreviewContext } from "./article-content";
 
 // Context for passing article URL to resolve relative URLs and set Referer
@@ -75,6 +82,16 @@ export const ArticleImage = memo(function ArticleImage({
     loadedImagesCache.has(proxiedSrc),
   );
   const [isError, setIsError] = useState(false);
+  // 24-4：cookie 掉了代理图会 401 —— 先续期再重载一次，不行才进破图占位
+  const [recoveredSrc, setRecoveredSrc] = useState<string | null>(null);
+  const recoveredRef = useRef<string | null>(null);
+
+  // 同一挂载换了 src（列表复用节点）：上一张的救济状态不能带过来
+  useEffect(() => {
+    recoveredRef.current = null;
+    setRecoveredSrc(null);
+    setIsError(false);
+  }, [proxiedSrc]);
 
   const handleLoad = useCallback(() => {
     loadedImagesCache.add(proxiedSrc);
@@ -82,8 +99,20 @@ export const ArticleImage = memo(function ArticleImage({
   }, [proxiedSrc]);
 
   const handleError = useCallback(() => {
+    const current = recoveredRef.current ?? proxiedSrc;
+    if (isRecoverableProxyUrl(current) && recoveredRef.current === null) {
+      recoveredRef.current = withProxyCacheBust(current);
+      void renewProxyCookie().finally(() => {
+        const next = recoveredRef.current;
+        if (next) {
+          loadedImagesCache.delete(next);
+          setRecoveredSrc(next);
+        }
+      });
+      return;
+    }
     setIsError(true);
-  }, []);
+  }, [proxiedSrc]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -132,7 +161,7 @@ export const ArticleImage = memo(function ArticleImage({
 
   return (
     <img
-      src={proxiedSrc}
+      src={recoveredSrc ?? proxiedSrc}
       srcSet={proxiedSrcset}
       sizes={sizes}
       alt={alt}

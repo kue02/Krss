@@ -313,6 +313,7 @@
     "copied_link": "Link copied",
     "mark_read": "Mark as read",
     "mark_unread": "Mark as unread",
+    "mark_above_read": "Mark above as read",
     "reading_progress": "Reading progress",
     "close": "Close",
     "min_read": "{{mins}} min read",
@@ -1006,6 +1007,7 @@
     "entries_count": "{{count}} items",
     "more_entries": "{{count}} more",
     "expand": "Show full text",
-    "collapse": "Collapse"
+    "collapse": "Collapse",
+    "resize_hint": "Drag to resize"
   }
 }

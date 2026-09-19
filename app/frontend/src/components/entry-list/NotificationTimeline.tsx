@@ -6,9 +6,12 @@ import { Chip } from "@heroui/react";
 import { cn } from "@/lib/utils";
 import { stripHtml } from "@/lib/html-utils";
 import { FeedIcon } from "@/components/ui/feed-icon";
+import { ArticleContent } from "@/components/ui/article-content";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { EntryContextMenuContent } from "./EntryListItem";
 import { UnreadIndicator, unreadRowClass } from "./unread-indicator";
+import { useMarkAsRead } from "@/hooks/useEntries";
+import { deferEntryRemoval } from "./deferred-removal";
 import { useUISettingKey } from "@/hooks/useUISettings";
 import { useTranslationStore } from "@/stores/translation-store";
 import {
@@ -130,8 +133,24 @@ interface TimelineCardProps {
   expanded: boolean;
   onToggleExpand: (entryId: string) => void;
   onSelect: (entryId: string) => void;
+  /** 24-5：右键「标记上方为已读」（与卡片列表同一套菜单） */
+  onMarkAbove?: () => void;
+  /** 24-8：展开的正文容器高度（默认 380，右下角手柄可拖，钳制 200~70vh） */
+  fullHeight: number;
+  onFullHeightChange: (entryId: string, height: number) => void;
+  /** 24-8：收起（选中展开时还要把选中交回列表） */
+  onCollapse: (entryId: string) => void;
   autoTranslate: boolean;
   targetLanguage: string;
+}
+
+/** 24-8：时间线内展开的正文容器默认高度 */
+export const TIMELINE_FULL_DEFAULT_HEIGHT = 380;
+/** 钳制：最小 200px，最大 70vh */
+export const TIMELINE_FULL_MIN_HEIGHT = 200;
+export function timelineFullMaxHeight(): number {
+  if (typeof window === "undefined") return 1200;
+  return Math.floor(window.innerHeight * 0.7);
 }
 
 const TimelineCard = memo(function TimelineCard({
@@ -146,6 +165,10 @@ const TimelineCard = memo(function TimelineCard({
   expanded,
   onToggleExpand,
   onSelect,
+  onMarkAbove,
+  fullHeight,
+  onFullHeightChange,
+  onCollapse,
   autoTranslate,
   targetLanguage,
 }: TimelineCardProps) {
@@ -190,6 +213,43 @@ const TimelineCard = memo(function TimelineCard({
   const canExpand = clampLines !== null;
   const showToggle = canExpand && (isClipped || expanded);
   const feedName = feed?.title || t("entry.unknown_feed");
+  // 24-8：展开态是「正文级完整渲染」而不是去掉 clamp —— 有全文才进展开容器
+  const hasFullContent = !!entry.content?.trim();
+
+  // 24-8：右下角手柄拖高度（钳制 200 ~ 70vh），每条记自己的高度
+  const handleResizeStart = useCallback(
+    (event: React.PointerEvent<HTMLSpanElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const handle = event.currentTarget;
+      const startY = event.clientY;
+      const startHeight = fullHeight;
+      try {
+        handle.setPointerCapture(event.pointerId);
+      } catch {
+        // 非指针环境（单测 / 无鼠标）可跳过捕获，move 监听照样工作
+      }
+      const onMove = (moveEvent: PointerEvent) => {
+        const next = Math.round(startHeight + (moveEvent.clientY - startY));
+        onFullHeightChange(
+          entry.id,
+          Math.min(
+            Math.max(next, TIMELINE_FULL_MIN_HEIGHT),
+            timelineFullMaxHeight(),
+          ),
+        );
+      };
+      const onUp = () => {
+        handle.removeEventListener("pointermove", onMove);
+        handle.removeEventListener("pointerup", onUp);
+        handle.removeEventListener("pointercancel", onUp);
+      };
+      handle.addEventListener("pointermove", onMove);
+      handle.addEventListener("pointerup", onUp);
+      handle.addEventListener("pointercancel", onUp);
+    },
+    [entry.id, fullHeight, onFullHeightChange],
+  );
 
   return (
     <ContextMenu>
@@ -257,52 +317,98 @@ const TimelineCard = memo(function TimelineCard({
             {displayTitle || t("entry.untitled")}
           </div>
 
-          {/* 正文预览：折叠态 clamp 到设置的行数 */}
-          {previewText && (
-            <div
-              ref={bodyRef}
-              data-timeline-body={clampLines === null ? "full" : String(clampLines)}
-              className={cn(
-                "mt-1 text-[12.5px] leading-5 text-muted-foreground wrap-anywhere",
-                !isUnread && "text-muted-foreground/70",
-              )}
-              style={
-                clampLines !== null && !expanded
-                  ? {
-                      display: "-webkit-box",
-                      WebkitBoxOrient: "vertical",
-                      WebkitLineClamp: clampLines,
-                      overflow: "hidden",
-                    }
-                  : undefined
-              }
-            >
-              {previewText}
+          {/* 24-8：展开态 = 正文级完整渲染（标题/图片/全文按阅读区管道排版），
+              居中可读宽度、固定高度容器 + 内部滚动 —— 再长的正文也不挤下面的条目 */}
+          {expanded && hasFullContent ? (
+            <div className="mt-2">
+              <div className="mx-auto w-full max-w-[clamp(45ch,60vw,65ch)]">
+                <div className="relative">
+                  <div
+                    ref={bodyRef}
+                    data-timeline-full={entry.id}
+                    data-timeline-full-height={fullHeight}
+                    onClick={(event) => event.stopPropagation()}
+                    className="entry-content reading-prose prose prose-sm dark:prose-invert max-w-none break-words overflow-y-auto overscroll-y-contain rounded-lg border border-border/60 p-3"
+                    style={{ height: fullHeight }}
+                  >
+                    <ArticleContent
+                      content={entry.content ?? ""}
+                      articleUrl={entry.url}
+                    />
+                  </div>
+                  <span
+                    data-timeline-resize={entry.id}
+                    title={t("timeline.resize_hint")}
+                    onPointerDown={handleResizeStart}
+                    onClick={(event) => event.stopPropagation()}
+                    className="absolute bottom-1.5 right-1.5 cursor-ns-resize select-none text-[12px] tracking-[-2px] text-muted-foreground transition-colors duration-200 hover:text-foreground"
+                  >
+                    ⋰
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onCollapse(entry.id);
+                  }}
+                  className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground transition-colors duration-200 hover:text-foreground"
+                >
+                  <ChevronUp className="size-3.5" />
+                  {t("timeline.collapse")}
+                </button>
+              </div>
             </div>
-          )}
-
-          {/* 展开/收起：就地展开，不跳轴（节点钉在卡片顶部，长的部分往下长） */}
-          {showToggle && (
-            <button
-              type="button"
-              data-timeline-expand={entry.id}
-              onClick={(event) => {
-                event.stopPropagation();
-                onToggleExpand(entry.id);
-              }}
-              className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground transition-colors duration-200 hover:text-foreground"
-            >
-              {expanded ? (
-                <ChevronUp className="size-3.5" />
-              ) : (
-                <ChevronDown className="size-3.5" />
+          ) : (
+            <>
+              {/* 正文预览：折叠态 clamp 到设置的行数 */}
+              {previewText && (
+                <div
+                  ref={bodyRef}
+                  data-timeline-body={clampLines === null ? "full" : String(clampLines)}
+                  className={cn(
+                    "mt-1 text-[12.5px] leading-5 text-muted-foreground wrap-anywhere",
+                    !isUnread && "text-muted-foreground/70",
+                  )}
+                  style={
+                    clampLines !== null && !expanded
+                      ? {
+                          display: "-webkit-box",
+                          WebkitBoxOrient: "vertical",
+                          WebkitLineClamp: clampLines,
+                          overflow: "hidden",
+                        }
+                      : undefined
+                  }
+                >
+                  {previewText}
+                </div>
               )}
-              {expanded ? t("timeline.collapse") : t("timeline.expand")}
-            </button>
+
+              {/* 展开/收起：就地展开，不跳轴（节点钉在卡片顶部，长的部分往下长） */}
+              {showToggle && (
+                <button
+                  type="button"
+                  data-timeline-expand={entry.id}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onToggleExpand(entry.id);
+                  }}
+                  className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground transition-colors duration-200 hover:text-foreground"
+                >
+                  {expanded ? (
+                    <ChevronUp className="size-3.5" />
+                  ) : (
+                    <ChevronDown className="size-3.5" />
+                  )}
+                  {expanded ? t("timeline.collapse") : t("timeline.expand")}
+                </button>
+              )}
+            </>
           )}
         </div>
       </ContextMenuTrigger>
-      <EntryContextMenuContent entry={entry} />
+      <EntryContextMenuContent entry={entry} onMarkAbove={onMarkAbove} />
     </ContextMenu>
   );
 });
@@ -353,6 +459,10 @@ export interface NotificationTimelineProps {
   unreadCounts?: Record<string, number>;
   selectedEntryId: string | null;
   onSelectEntry: (entryId: string) => void;
+  /** 24-5：右键「标记上方为已读」（与卡片列表同一套菜单） */
+  onMarkAboveEntry?: (entryId: string) => void;
+  /** 24-8：收起选中展开的条目（把选中交回列表） */
+  onCloseEntry?: () => void;
   granularity: TimelineGranularity;
   collapse: TimelineCollapse;
   autoTranslate: boolean;
@@ -370,6 +480,8 @@ export function NotificationTimeline({
   unreadCounts,
   selectedEntryId,
   onSelectEntry,
+  onMarkAboveEntry,
+  onCloseEntry,
   granularity,
   collapse,
   autoTranslate,
@@ -387,6 +499,50 @@ export function NotificationTimeline({
   );
   const [expandedEntries, setExpandedEntries] = useState<ReadonlySet<string>>(
     () => new Set(),
+  );
+  // 24-8：每条展开容器的高度（默认 380，右下角手柄可拖）
+  const [fullHeights, setFullHeights] = useState<Record<string, number>>({});
+  const { mutate: markAsRead } = useMarkAsRead();
+
+  const handleFullHeightChange = useCallback(
+    (entryId: string, height: number) => {
+      setFullHeights((current) =>
+        current[entryId] === height
+          ? current
+          : { ...current, [entryId]: height },
+      );
+    },
+    [],
+  );
+
+  // 24-8：桌面端通知视图没有第三栏了，点条目 = 时间线内展开。
+  // 顺手标已读（原来是第三栏的 EntryContent 干这事）：skipInvalidate + 记 deferred，
+  // 离列表才摘（24-1 同语义），滚动标已读一行不动。
+  const handleSelect = useCallback(
+    (entryId: string) => {
+      const index = entries.findIndex((item) => item.id === entryId);
+      const target = index >= 0 ? entries[index] : undefined;
+      if (target && !target.read) {
+        markAsRead({ id: entryId, read: true, skipInvalidate: true });
+        deferEntryRemoval(entryId, { ...target, read: true }, index);
+      }
+      onSelectEntry(entryId);
+    },
+    [entries, markAsRead, onSelectEntry],
+  );
+
+  // 24-8：收起 —— 手动展开的摘掉展开态；选中展开的把选中交回列表
+  const handleCollapse = useCallback(
+    (entryId: string) => {
+      setExpandedEntries((current) => {
+        if (!current.has(entryId)) return current;
+        const next = new Set(current);
+        next.delete(entryId);
+        return next;
+      });
+      if (selectedEntryId === entryId) onCloseEntry?.();
+    },
+    [selectedEntryId, onCloseEntry],
   );
 
   // 换粒度 / 换列表时收起来，免得「展开态」跟着另一批数据走
@@ -527,9 +683,21 @@ export function NotificationTimeline({
             node={row.node}
             bucketCount={row.bucketCount}
             clampLines={clampLines}
-            expanded={expandedEntries.has(entry.id)}
+            expanded={
+              expandedEntries.has(entry.id) || entry.id === selectedEntryId
+            }
             onToggleExpand={toggleEntry}
-            onSelect={onSelectEntry}
+            onSelect={handleSelect}
+            onMarkAbove={
+              onMarkAboveEntry
+                ? () => onMarkAboveEntry(entry.id)
+                : undefined
+            }
+            fullHeight={
+              fullHeights[entry.id] ?? TIMELINE_FULL_DEFAULT_HEIGHT
+            }
+            onFullHeightChange={handleFullHeightChange}
+            onCollapse={handleCollapse}
             autoTranslate={autoTranslate}
             targetLanguage={targetLanguage}
           />

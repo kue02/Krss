@@ -1,4 +1,5 @@
 import type { Entry } from "@/types/api";
+import type { QueryClient } from "@tanstack/react-query";
 
 /**
  * 20-3 / 22-3：**「先别消失」的那些已读条目要在列表刷新后继续留着**。
@@ -61,6 +62,43 @@ export function hasDeferredRemovals(): boolean {
 /** 已记下的 id（测试与调试用） */
 export function deferredRemovalIds(): string[] {
   return [...deferredEntries.keys()];
+}
+
+/**
+ * 24-1：点开条目看的那条「已读但先别摘」也走这里。
+ *
+ * 调用方是 `EntryContent` 的卸载清理：它只知道「哪些 id 被标成已读」，
+ * 条目本体与下标从 `["entries"]` 缓存里现找（只看 `unreadOnly` 的查询——
+ * 只有那些查询会把已读条目换掉）。找不到（重拉已经换掉）或此刻是未读
+ * （用户又手动切了回来）就跳过，本来就不用留。
+ */
+export function deferUnreadRemovals(
+  queryClient: QueryClient,
+  ids: Set<string>,
+): void {
+  if (ids.size === 0) return;
+  const queries = queryClient.getQueriesData<{
+    pages: { entries: Entry[] }[];
+  }>({
+    queryKey: ["entries"],
+  });
+
+  for (const [queryKey, data] of queries) {
+    const params = queryKey[1] as { unreadOnly?: boolean } | undefined;
+    if (!params?.unreadOnly || !data) continue;
+    let index = 0;
+    for (const page of data.pages) {
+      for (const entry of page.entries) {
+        if (ids.has(entry.id)) {
+          const single = queryClient.getQueryData<Entry>(["entry", entry.id]);
+          const read = single ? single.read : entry.read;
+          // 已读态那份记下来，列表上要显示成已读
+          if (read) deferEntryRemoval(entry.id, { ...(single ?? entry), read: true }, index);
+        }
+        index += 1;
+      }
+    }
+  }
 }
 
 /**

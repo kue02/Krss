@@ -93,9 +93,10 @@ export function EntryContentHeader({
   return (
     <div className="absolute inset-x-0 top-0 z-20">
       {/* Background and Border Layer */}
+      {/* 24-6：68% 底 + blur20px + 底部渐隐（与搜索弹窗同玻璃语汇，比 95%+8px 更透） */}
       <div
         className={cn(
-          "absolute inset-0 transition-opacity duration-300 ease-in-out pointer-events-none border-b border-border bg-background/95 backdrop-blur-[8px]",
+          "absolute inset-0 transition-opacity duration-300 ease-in-out pointer-events-none border-b border-border/55 bg-background/[0.68] backdrop-blur-[20px] backdrop-saturate-[1.4] [-webkit-mask-image:linear-gradient(to_bottom,#000_78%,transparent)] [mask-image:linear-gradient(to_bottom,#000_78%,transparent)]",
           isAtTop ? "opacity-0" : "opacity-100",
         )}
       />

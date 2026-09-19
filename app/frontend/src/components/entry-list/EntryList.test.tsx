@@ -702,7 +702,7 @@ describe("EntryList translation scheduling", () => {
 
       const viewport = screen.getByTestId("entry-list-viewport");
       const spacer = viewport.querySelector(
-        '[aria-hidden="true"]',
+        '[data-testid="scroll-read-end-padding"]',
       ) as HTMLElement | null;
       expect(spacer?.style.height).toBe("240px");
     } finally {
@@ -781,7 +781,9 @@ describe("EntryList translation scheduling", () => {
       });
 
       const viewport = screen.getByTestId("entry-list-viewport");
-      expect(viewport.querySelector('[aria-hidden="true"]')).toBeNull();
+      expect(
+        viewport.querySelector('[data-testid="scroll-read-end-padding"]'),
+      ).toBeNull();
     } finally {
       if (previousClientHeight) {
         Object.defineProperty(
@@ -851,7 +853,9 @@ describe("EntryList translation scheduling", () => {
       await act(async () => Promise.resolve());
 
       const viewport = screen.getByTestId("entry-list-viewport");
-      expect(viewport.querySelector('[aria-hidden="true"]')).toBeNull();
+      expect(
+        viewport.querySelector('[data-testid="scroll-read-end-padding"]'),
+      ).toBeNull();
     } finally {
       if (originalClientHeight) {
         Object.defineProperty(

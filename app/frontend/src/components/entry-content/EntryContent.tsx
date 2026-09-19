@@ -1,10 +1,10 @@
-import { useEffect, useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useEntry,
   useMarkAsRead,
   useMarkAsStarred,
-  useRemoveFromUnreadList,
 } from "@/hooks/useEntries";
 import { useAISettings } from "@/hooks/useAISettings";
 import { useFeeds } from "@/hooks/useFeeds";
@@ -19,6 +19,7 @@ import { EntryContentBody } from "./EntryContentBody";
 import { EntryToc } from "./EntryToc";
 import { OriginalSiteView } from "./OriginalSiteView";
 import { ReadingProgressBar } from "./ReadingProgressBar";
+import { deferUnreadRemovals } from "@/components/entry-list/deferred-removal";
 import { isPlainKey, isTypingTarget } from "@/lib/keyboard";
 
 interface EntryContentProps {
@@ -34,7 +35,7 @@ export function EntryContent({ entryId, isMobile, onBack }: EntryContentProps) {
   const { data: generalSettings } = useGeneralSettings();
   const { mutate: markAsRead } = useMarkAsRead();
   const { mutate: markAsStarred } = useMarkAsStarred();
-  const removeFromUnreadList = useRemoveFromUnreadList();
+  const queryClient = useQueryClient();
   const { scrollRef, isAtTop, scrollNode } = useEntryContentScroll(entryId);
   // #13 在阅读栏里直接加载原站
   const [showOriginalSite, setShowOriginalSite] = useState(false);
@@ -126,17 +127,19 @@ export function EntryContent({ entryId, isMobile, onBack }: EntryContentProps) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [entry, handleToggleReadable]);
 
-  // Remove read entries from unreadOnly list when component unmounts (switching articles)
+  // 24-1：点开看过的条目**离列表才摘** —— 卸载时只记到 deferred-removal
+  //（记本体 + 下标，`resetKey` 变才摘），不再当场 removeFromUnreadList。
+  // 滚动标已读（useScrollMarkRead）一行不动。
   // Note: EntryContent uses key={entryId} in App.tsx, so it unmounts/remounts on switch
   useEffect(() => {
     const markedAsReadSet = markedAsReadRef.current;
     return () => {
       if (markedAsReadSet.size > 0) {
-        removeFromUnreadList(markedAsReadSet);
+        deferUnreadRemovals(queryClient, markedAsReadSet);
         markedAsReadSet.clear();
       }
     };
-  }, [removeFromUnreadList]);
+  }, [queryClient]);
 
   const handleToggleStarred = useCallback(() => {
     if (entry) {
