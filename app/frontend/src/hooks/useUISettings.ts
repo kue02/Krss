@@ -81,9 +81,15 @@ export interface UnreadBadgeConfig {
   customColor: string | null;
   /** 外观（HeroUI `variant`） */
   variant: "primary" | "secondary" | "soft";
-  /** 压住图标边缘的额外偏移（px，0–6；HeroUI 自带 4px，这里是叠加值） */
+  /** 压住图标边缘的额外偏移（px，0–12；HeroUI 自带 4px，这里是叠加值） */
   offset: number;
 }
+
+/**
+ * 「压住边缘」滑杆的上限（23-5：用户要更激进，原上限 6px 太保守）。
+ * 12px 时角标已经能整块压进图标里（默认档圆点只有 8px），再大就没有可表达的差别了。
+ */
+export const MAX_UNREAD_BADGE_OFFSET = 12;
 
 /** 默认 = 今天的样子（12-14 定的那套：左上角、8px 小圆点、跟随主题色、压边 2px） */
 export const DEFAULT_UNREAD_BADGE: UnreadBadgeConfig = {

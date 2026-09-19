@@ -18,6 +18,7 @@ import { EntryContentHeader } from "./EntryContentHeader";
 import { EntryContentBody } from "./EntryContentBody";
 import { EntryToc } from "./EntryToc";
 import { OriginalSiteView } from "./OriginalSiteView";
+import { ReadingProgressBar } from "./ReadingProgressBar";
 import { isPlainKey, isTypingTarget } from "@/lib/keyboard";
 
 interface EntryContentProps {
@@ -143,6 +144,16 @@ export function EntryContent({ entryId, isMobile, onBack }: EntryContentProps) {
     }
   }, [entry, markAsStarred]);
 
+  /**
+   * 23-2：正文工具栏的「标为已读 / 标为未读」。
+   * 取值语义与条目右键菜单、社交悬停操作条一致（`readToggleAction`），
+   * 也与快捷键 `m` 一样直接写库（不带 skipInvalidate）。
+   */
+  const handleToggleRead = useCallback(() => {
+    if (!entry) return;
+    markAsRead({ id: entry.id, read: !entry.read });
+  }, [entry, markAsRead]);
+
   // Determine display content
   const displayContent = combinedTranslatedContent ?? baseContent;
   const highlightContent = combinedTranslatedContent ?? baseContent ?? "";
@@ -170,6 +181,7 @@ export function EntryContent({ entryId, isMobile, onBack }: EntryContentProps) {
         error={readableError}
         onToggleReadable={handleToggleReadable}
         onToggleStarred={handleToggleStarred}
+        onToggleRead={handleToggleRead}
         isLoadingSummary={isLoadingSummary}
         hasSummary={!!aiSummary}
         onToggleSummary={handleToggleSummary}
@@ -182,6 +194,11 @@ export function EntryContent({ entryId, isMobile, onBack }: EntryContentProps) {
         isOriginalSiteActive={showOriginalSite}
         onToggleOriginalSite={() => setShowOriginalSite((value) => !value)}
       />
+      {/* 23-4：阅读进度条锁在工具栏（h-12 = 48px）正下方。
+          跟着真实滚动容器（正文那个元素滚动）走；看原站时滚的是 iframe，进度条没有意义 */}
+      {!showOriginalSite && (
+        <ReadingProgressBar scrollNode={scrollNode} resetKey={entryId} />
+      )}
       {showOriginalSite && entry.url ? (
         <OriginalSiteView url={entry.url} />
       ) : (

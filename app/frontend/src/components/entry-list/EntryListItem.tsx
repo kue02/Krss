@@ -1,14 +1,12 @@
 import { forwardRef, memo, useEffect, useRef, useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  Check,
   ChevronDown,
   Clock,
   ExternalLink,
   Globe,
   Link2,
   Star,
-  Undo2,
 } from "lucide-react";
 import { BellOff, ShieldOff, Wand2 } from "lucide-react";
 import { Ripple } from "m3-ripple";
@@ -32,6 +30,7 @@ import {
   unreadRowClass,
 } from "@/components/entry-list/unread-indicator";
 import { useMarkAsRead, useMarkAsStarred } from "@/hooks/useEntries";
+import { readToggleAction } from "@/components/entry-list/read-toggle-action";
 import { useUnmuteEntry, useFilters, useCreateFilterException } from "@/hooks/useFilters";
 import { showToast } from "@/stores/toast-store";
 import { openFilterEditorForEntry } from "@/stores/filter-editor-store";
@@ -119,7 +118,9 @@ function MutedBadge({ filterId }: { filterId?: string }) {
 /**
  * 条目卡片的右键菜单。
  *
- * 三条：
+ * 四条（23-2 加了第一条「标为已读 / 标为未读」）：
+ *   - 「标为已读 / 标为未读」与正文工具栏、社交条目的悬停操作条**共用一份定义**
+ *     （`read-toggle-action.tsx`），图标与行为三处一致；
  *   - 「取消静音」只在条目确实被静音时出现（撤销规则写上去的 muted 标记）；
  *   - 「豁免这类内容」把误伤转成一条例外规则（顺序最前 + 反向动作）并立刻放行这一条；
  *   - 「按此条新建规则」永远可用，用作者/标题片段预填条件（见 filter-editor-store）。
@@ -128,9 +129,18 @@ function EntryContextMenuContent({ entry }: { entry: Entry }) {
   const { t } = useTranslation();
   const unmute = useUnmuteEntry();
   const exception = useCreateFilterException();
+  const { mutate: markAsRead } = useMarkAsRead();
+  const readAction = readToggleAction(!entry.read);
 
   return (
     <ContextMenuContent>
+      <ContextMenuItem
+        onClick={() => markAsRead({ id: entry.id, read: readAction.nextRead })}
+      >
+        <readAction.Icon className="size-4 shrink-0 text-muted-foreground" />
+        {t(readAction.labelKey)}
+      </ContextMenuItem>
+      <ContextMenuSeparator />
       {entry.muted && (
         <>
           <ContextMenuItem
@@ -323,6 +333,8 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     // 「长贴自动展开」开启后不做折叠（按视图设置，由 EntryList 传进来）
     const bodyClamped = isContentClipped && !bodyExpanded && !autoExpandLong;
     const isUnread = !entry.read;
+    /** 23-2：三处入口共用同一份「标为已读 / 标为未读」定义 */
+    const readAction = readToggleAction(isUnread);
     const unreadStyle = useUISettingKey("unreadStyle");
     const isLargeImage = cardImageSize === "large";
     const showThumbnail =
@@ -570,11 +582,14 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                   </button>
                   <button
                     type="button"
-                    title={isUnread ? t("entry.mark_read") : t("entry.mark_unread")}
-                    onClick={() => markAsRead({ id: entry.id, read: isUnread })}
+                    title={t(readAction.labelKey)}
+                    onClick={() =>
+                      markAsRead({ id: entry.id, read: readAction.nextRead })
+                    }
                     className="flex size-7 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
                   >
-                    {isUnread ? <Check className="size-4" /> : <Undo2 className="size-4" />}
+                    {/* 23-2：与右键菜单 / 正文工具栏同一份图标定义（描边圆 = 标未读、对勾圆 = 标已读） */}
+                    <readAction.Icon className="size-4" />
                   </button>
                   {entry.url && (
                     <>

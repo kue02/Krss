@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { isSafeUrl } from "@/lib/url";
 import { cn } from "@/lib/utils";
 import { BackIcon, GlobeIcon } from "@/components/ui/icons";
+import { readToggleAction } from "@/components/entry-list/read-toggle-action";
 import { dispatchScrollToTop } from "@/hooks/useScrollToTop";
 import type { Entry } from "@/types/api";
 
@@ -14,6 +15,8 @@ interface EntryContentHeaderProps {
   error: string | null;
   onToggleReadable: () => void;
   onToggleStarred: () => void;
+  /** 23-2：「标为已读 / 标为未读」（图标与右键菜单、社交悬停条共用一份定义） */
+  onToggleRead?: () => void;
   isLoadingSummary?: boolean;
   hasSummary?: boolean;
   onToggleSummary?: () => void;
@@ -69,6 +72,7 @@ export function EntryContentHeader({
   error,
   onToggleReadable,
   onToggleStarred,
+  onToggleRead,
   isLoadingSummary,
   hasSummary,
   onToggleSummary,
@@ -83,6 +87,8 @@ export function EntryContentHeader({
   const { t } = useTranslation();
   const safeUrl = entry.url && isSafeUrl(entry.url) ? entry.url : null;
   const title = displayTitle ?? entry.title ?? t("entry.untitled");
+  /** 23-2：「标为已读 / 标为未读」——与条目右键菜单、社交悬停操作条同一份定义 */
+  const readAction = readToggleAction(!entry.read);
 
   return (
     <div className="absolute inset-x-0 top-0 z-20">
@@ -155,6 +161,24 @@ export function EntryContentHeader({
               />
             </svg>
           </button>
+
+          {/* 23-2：正文工具栏也能把这条标回未读（用户读一半想留着以后看）。
+              图标与条目右键菜单、社交条目的悬停操作条一致：未读 = 描边圆、已读 = 对勾圆 */}
+          {onToggleRead && (
+            <button
+              type="button"
+              onClick={onToggleRead}
+              title={t(readAction.labelKey)}
+              className={cn(
+                "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95",
+                entry.read
+                  ? "text-muted-foreground hover:bg-item-hover hover:text-foreground"
+                  : "bg-item-active text-foreground",
+              )}
+            >
+              <readAction.Icon className="size-5" />
+            </button>
+          )}
 
           {onToggleSummary && (
             <button
