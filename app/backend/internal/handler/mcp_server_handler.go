@@ -15,7 +15,7 @@ import (
 
 // MCPEndpointHandler 17 批（出向）：Krss 作为 MCP 服务器。
 // 传输：streamable-http，端点 /mcp（与既有 API 同源，复用 echo 路由）。
-// 鉴权：长期 token（Bearer），库里只存哈希 —— 不复用登录 JWT（那是短期的，B3 已拍板）。
+// 鉴权：长期 token（Bearer），库里存明文、可重复查看复制（17-2 返工） —— 不复用登录 JWT（那是短期的，B3 已拍板）。
 type MCPEndpointHandler struct {
 	outbound service.MCPOutboundService
 }
