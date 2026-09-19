@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { ToggleButton } from "@heroui/react";
-import { Star } from "lucide-react";
+import { Filter } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   CircleOutlineIcon,
@@ -17,6 +17,22 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { dispatchScrollToTop } from "@/hooks/useScrollToTop";
+
+/**
+ * 23-1：星标视图那颗「只看当前视图」的图标（接 20-2）。
+ *
+ * 这颗按钮的语义是**把星标列表收窄到当前内容类型（当前视图）**，不是「星标」本身 ——
+ * 侧栏那一行已经写着「星标」，所以这里该表达的是「范围 = 当前视图」。
+ * 原来的五角星与旁边的星标概念撞脸，用户反馈有歧义（2026-09-18）。
+ *
+ * 候选（都用项目里已在用的 lucide，32px 圆钮里显示 16px；选中态给 `fill-current` 实心化，
+ * 与相邻那颗「未读」的实心/描边语汇一致）：
+ *   A. `Filter`（漏斗）—— **默认选它**：最直白的「只显示筛出来的这一部分」
+ *   B. `ListFilter`（列表 + 漏斗）—— 更强调「当前这个列表」
+ *   C. `Focus`（准星）—— 更强调「聚焦在当前视图」
+ * 换档只改这一行（效果图见 `docs/变更记录.md` 23-1 的三张真机截图）。
+ */
+const StarredViewIcon = Filter;
 
 interface EntryListHeaderProps {
   title: string;
@@ -185,7 +201,9 @@ export function EntryListHeader({
             }}
             className="size-8 min-w-8 shrink-0 rounded-full"
           >
-            <Star className={cn("size-4", starredViewOnly && "fill-current")} />
+            <StarredViewIcon
+              className={cn("size-4", starredViewOnly && "fill-current")}
+            />
           </ToggleButton>
         )}
         <button
