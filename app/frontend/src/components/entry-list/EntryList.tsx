@@ -1007,9 +1007,10 @@ export function EntryList({
                 ))
               )}
               {/* 24-5：列表尾整宽弱边框「全部标记为已读」（语义=清当前范围未读，
-                  与列表头那颗同接口 onMarkAllRead；胶囊浮在下面，pb-16 已留白） */}
+                  与列表头那颗同接口 onMarkAllRead；胶囊浮在下面，pb-16 已留白）。
+                  宽度跟时间线/社交卡片同款居中可读宽度，免得在宽栏下失控拉满。 */}
               {entries.length > 0 && (
-                <div className="mx-2 mt-1">
+                <div className="mx-auto mt-1 w-full max-w-[clamp(45ch,60vw,65ch)] px-2">
                   <button
                     type="button"
                     data-testid="mark-all-read-footer"
