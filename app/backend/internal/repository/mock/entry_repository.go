@@ -176,6 +176,21 @@ func (mr *MockEntryRepositoryMockRecorder) GetByID(ctx, id any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByID", reflect.TypeOf((*MockEntryRepository)(nil).GetByID), ctx, id)
 }
 
+// GetExistingEntry mocks base method.
+func (m *MockEntryRepository) GetExistingEntry(ctx context.Context, feedID int64, hash, rawURL string) (*model.Entry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetExistingEntry", ctx, feedID, hash, rawURL)
+	ret0, _ := ret[0].(*model.Entry)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetExistingEntry indicates an expected call of GetExistingEntry.
+func (mr *MockEntryRepositoryMockRecorder) GetExistingEntry(ctx, feedID, hash, rawURL any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetExistingEntry", reflect.TypeOf((*MockEntryRepository)(nil).GetExistingEntry), ctx, feedID, hash, rawURL)
+}
+
 // GetIDsByHashes mocks base method.
 func (m *MockEntryRepository) GetIDsByHashes(ctx context.Context, feedID int64, hashes []string) (map[string]int64, error) {
 	m.ctrl.T.Helper()

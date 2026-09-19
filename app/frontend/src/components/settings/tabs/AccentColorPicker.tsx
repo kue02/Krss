@@ -145,7 +145,23 @@ export function AccentColorPicker() {
         <ColorPicker.Trigger>
           <ColorSwatch className="size-7 rounded-full border border-border/60" />
           <Label className="text-xs text-muted-foreground">
-            {accentColor ? accentColor : t("theme.accent_following")}
+            {/*
+              22-2：**色值必须定宽渲染**。
+              触发器就是这个弹层的锚点，而 HeroUI 的 Popover 左对齐于触发器 ——
+              以前直接把 hex 渲进 Label，逐帧变化的文本宽度（`#F74904` 与 `#F704CA` 不是同宽）
+              会让触发器每帧平移，锚在它上面的整个面板跟着左右抖。真机量：拖动色相条 109 帧里
+              popover.x 取到 50 个不同值、跨度 **5.94px**（触发器宽度 88 → 93.94px），
+              这就是用户说的「一直抖动」——不是组件的问题。
+              定宽（+ tabular-nums 让数字等宽）后，宽度与色值内容无关，锚点不再动。
+              跟随主题时保持原文案：那句话长度固定，不会逐帧变。
+            */}
+            {accentColor ? (
+              <span className="inline-block w-[3.5rem] tabular-nums">
+                {accentColor}
+              </span>
+            ) : (
+              t("theme.accent_following")
+            )}
           </Label>
         </ColorPicker.Trigger>
         <ColorPicker.Popover>

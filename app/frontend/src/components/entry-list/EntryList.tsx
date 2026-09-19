@@ -5,6 +5,7 @@ import {
   useMemo,
   useCallback,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useEntriesInfinite, useUnreadCounts } from "@/hooks/useEntries";
@@ -37,6 +38,11 @@ import { useScrollToTop } from "@/hooks/useScrollToTop";
 import { MobileDocumentHeader } from "@/components/layout/MobileDocumentHeader";
 import { cn } from "@/lib/utils";
 import { useScrollMarkRead } from "./useScrollMarkRead";
+import {
+  getDeferredRemovalsVersion,
+  mergeDeferredRemovals,
+  subscribeDeferredRemovals,
+} from "./deferred-removal";
 import { useEntryListScrollSurface } from "./scroll-surface";
 import { useEntryHotkeys } from "@/hooks/useEntryHotkeys";
 import { useUISettingKey } from "@/hooks/useUISettings";
@@ -361,7 +367,25 @@ export function EntryList({
     return map;
   }, [folders]);
 
-  const entries = useMemo(() => flattenUniqueEntries(data?.pages), [data]);
+  /**
+   * 22-3：渲染前把「已读但先别消失」的条目插回来。
+   *
+   * `entries` 来自 `["entries"]` 查询，任何一次重拉（刷新跑完 / 手动刷新 / 重新聚焦）都会把它
+   * 换成「服务端此刻的未读列表」—— 那些刚被标已读、但用户还看着的条目就没了。
+   * `deferred-removal` 记着它们的本体和原下标，这里按原位插回；没缺失时**引用不变**（不白渲染）。
+   * 离开这个列表（`resetKey` 变）时 `useScrollMarkRead` 会清空记账 + 从缓存里摘掉，
+   * 于是「换订阅再回来它们才消失」这条语义不变。
+   */
+  const deferredRemovalVersion = useSyncExternalStore(
+    subscribeDeferredRemovals,
+    getDeferredRemovalsVersion,
+    () => 0,
+  );
+  const entries = useMemo(
+    () =>
+      mergeDeferredRemovals(flattenUniqueEntries(data?.pages)),
+    [data, deferredRemovalVersion],
+  );
 
   // 键盘快捷键：j/k 上下篇（选中即已读）、m 已读、s 星标、v 打开原文、Esc 关闭
   useEntryHotkeys({

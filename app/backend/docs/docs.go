@@ -3162,6 +3162,9 @@ const docTemplate = `{
                 "new": {
                     "type": "integer"
                 },
+                "skipped": {
+                    "type": "boolean"
+                },
                 "title": {
                     "type": "string"
                 },

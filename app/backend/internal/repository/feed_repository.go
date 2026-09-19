@@ -23,6 +23,10 @@ type FeedRepository interface {
 	Update(ctx context.Context, feed model.Feed) (model.Feed, error)
 	UpdateIconPath(ctx context.Context, id int64, iconPath string) error
 	UpdateErrorMessage(ctx context.Context, id int64, errorMessage *string) error
+	// RecordRefreshFailure 连续失败计数 +1 并打上失败时间（22-4 退避用；SQL 里原子加，不怕并发轮）。
+	RecordRefreshFailure(ctx context.Context, id int64, failedAt time.Time) error
+	// ResetRefreshFailure 抓取成功一次就清零（22-4）。
+	ResetRefreshFailure(ctx context.Context, id int64) error
 	UpdateType(ctx context.Context, id int64, feedType string) error
 	UpdateTypeByFolderID(ctx context.Context, folderID int64, feedType string) error
 	Delete(ctx context.Context, id int64) error
@@ -73,7 +77,7 @@ func (r *feedRepository) Create(ctx context.Context, feed model.Feed) (model.Fee
 }
 
 func (r *feedRepository) GetByID(ctx context.Context, id int64) (model.Feed, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode FROM feeds WHERE id = ?`, id)
+	row := r.db.QueryRowContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, refresh_fail_count, refresh_last_fail_at FROM feeds WHERE id = ?`, id)
 	return scanFeed(row)
 }
 
@@ -86,7 +90,7 @@ func (r *feedRepository) GetByIDs(ctx context.Context, ids []int64) ([]model.Fee
 	for i, id := range ids {
 		args[i] = id
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode FROM feeds WHERE id IN (`+placeholders+`)`, args...)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, refresh_fail_count, refresh_last_fail_at FROM feeds WHERE id IN (`+placeholders+`)`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("get feeds by ids: %w", err)
 	}
@@ -107,7 +111,7 @@ func (r *feedRepository) GetByIDs(ctx context.Context, ids []int64) ([]model.Fee
 }
 
 func (r *feedRepository) FindByURL(ctx context.Context, url string) (*model.Feed, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode FROM feeds WHERE url = ?`, url)
+	row := r.db.QueryRowContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, refresh_fail_count, refresh_last_fail_at FROM feeds WHERE url = ?`, url)
 	feed, err := scanFeed(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -119,10 +123,10 @@ func (r *feedRepository) FindByURL(ctx context.Context, url string) (*model.Feed
 }
 
 func (r *feedRepository) List(ctx context.Context, folderID *int64) ([]model.Feed, error) {
-	query := `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode FROM feeds ORDER BY title`
+	query := `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, refresh_fail_count, refresh_last_fail_at FROM feeds ORDER BY title`
 	args := []interface{}{}
 	if folderID != nil {
-		query = `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode FROM feeds WHERE folder_id = ? ORDER BY title`
+		query = `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, refresh_fail_count, refresh_last_fail_at FROM feeds WHERE folder_id = ? ORDER BY title`
 		args = append(args, *folderID)
 	}
 	rows, err := r.db.QueryContext(ctx, query, args...)
@@ -147,7 +151,7 @@ func (r *feedRepository) List(ctx context.Context, folderID *int64) ([]model.Fee
 }
 
 func (r *feedRepository) ListWithoutIcon(ctx context.Context) ([]model.Feed, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode FROM feeds WHERE icon_path IS NULL OR icon_path = ''`)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, refresh_fail_count, refresh_last_fail_at FROM feeds WHERE icon_path IS NULL OR icon_path = ''`)
 	if err != nil {
 		return nil, fmt.Errorf("list feeds without icon: %w", err)
 	}
@@ -223,6 +227,25 @@ func (r *feedRepository) UpdateErrorMessage(ctx context.Context, id int64, error
 		`UPDATE feeds SET error_message = ?, updated_at = ? WHERE id = ?`,
 		nullableString(errorMessage),
 		formatTime(time.Now()),
+		id,
+	)
+	return err
+}
+
+func (r *feedRepository) RecordRefreshFailure(ctx context.Context, id int64, failedAt time.Time) error {
+	_, err := r.db.ExecContext(
+		ctx,
+		`UPDATE feeds SET refresh_fail_count = refresh_fail_count + 1, refresh_last_fail_at = ? WHERE id = ?`,
+		formatTime(failedAt.UTC()),
+		id,
+	)
+	return err
+}
+
+func (r *feedRepository) ResetRefreshFailure(ctx context.Context, id int64) error {
+	_, err := r.db.ExecContext(
+		ctx,
+		`UPDATE feeds SET refresh_fail_count = 0, refresh_last_fail_at = NULL WHERE id = ?`,
 		id,
 	)
 	return err
@@ -308,6 +331,8 @@ func scanFeed(scanner interface {
 	var autoTranslate sql.NullBool
 	var autoSummary sql.NullBool
 	var readerMode sql.NullBool
+	var refreshFailCount int
+	var refreshLastFailAt sql.NullString
 	if err := scanner.Scan(
 		&feed.ID,
 		&folderID,
@@ -326,6 +351,8 @@ func scanFeed(scanner interface {
 		&autoTranslate,
 		&autoSummary,
 		&readerMode,
+		&refreshFailCount,
+		&refreshLastFailAt,
 	); err != nil {
 		return model.Feed{}, err
 	}
@@ -369,6 +396,10 @@ func scanFeed(scanner interface {
 	if readerMode.Valid {
 		value := readerMode.Bool
 		feed.ReaderMode = &value
+	}
+	feed.RefreshFailCount = refreshFailCount
+	if refreshLastFailAt.Valid {
+		feed.RefreshLastFailAt = parseTimePtr(refreshLastFailAt.String)
 	}
 	var err error
 	feed.CreatedAt, err = parseTime(createdAt)

@@ -75,6 +75,7 @@ func TestRefreshService_RefreshFeed_NotModified(t *testing.T) {
 	feed := model.Feed{ID: 1, URL: "https://example.com/rss", Title: "Feed"}
 	mockFeeds.EXPECT().GetByID(gomock.Any(), int64(1)).Return(feed, nil)
 	mockFeeds.EXPECT().UpdateErrorMessage(gomock.Any(), int64(1), nil).Return(nil)
+	mockFeeds.EXPECT().ResetRefreshFailure(gomock.Any(), int64(1)).Return(nil)
 
 	client := &http.Client{
 		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
@@ -125,9 +126,9 @@ func TestRefreshService_RefreshFeed_Success(t *testing.T) {
 	mockIcons.EXPECT().FetchAndSaveIcon(gomock.Any(), "https://example.com/icon.png", "https://example.com").Return("example.com.png", nil)
 	mockFeeds.EXPECT().UpdateIconPath(gomock.Any(), int64(10), "example.com.png").Return(nil)
 
-	mockEntries.EXPECT().ExistsByHash(gomock.Any(), int64(10), hashString("https://example.com/1")).Return(false, nil)
-	mockEntries.EXPECT().ExistsByLegacyURL(gomock.Any(), int64(10), "https://example.com/1", hashString("https://example.com/1")).Return(false, nil)
+	mockEntries.EXPECT().GetExistingEntry(gomock.Any(), int64(10), hashString("https://example.com/1"), "https://example.com/1").Return(nil, nil)
 	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).Return(nil)
+	mockFeeds.EXPECT().ResetRefreshFailure(gomock.Any(), int64(10)).Return(nil)
 
 	client := &http.Client{
 		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
@@ -191,9 +192,9 @@ func TestRefreshService_RefreshFeed_FallbackUserAgent(t *testing.T) {
 		}),
 	}
 
-	mockEntries.EXPECT().ExistsByHash(gomock.Any(), int64(2), hashString("https://example.com/1")).Return(false, nil)
-	mockEntries.EXPECT().ExistsByLegacyURL(gomock.Any(), int64(2), "https://example.com/1", hashString("https://example.com/1")).Return(false, nil)
+	mockEntries.EXPECT().GetExistingEntry(gomock.Any(), int64(2), hashString("https://example.com/1"), "https://example.com/1").Return(nil, nil)
 	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).Return(nil)
+	mockFeeds.EXPECT().ResetRefreshFailure(gomock.Any(), int64(2)).Return(nil)
 
 	svc := service.NewRefreshService(
 		mockFeeds,
@@ -261,6 +262,7 @@ func TestRefreshService_RefreshFeed_SameGUIDDifferentURL_SecondRefreshCountsAsUp
 	feed := model.Feed{ID: 20, URL: "https://example.com/rss", Title: "Feed"}
 	mockFeeds.EXPECT().GetByID(gomock.Any(), int64(20)).Return(feed, nil).Times(2)
 	mockFeeds.EXPECT().UpdateErrorMessage(gomock.Any(), int64(20), nil).Return(nil).Times(2)
+	mockFeeds.EXPECT().ResetRefreshFailure(gomock.Any(), int64(20)).Return(nil).Times(2)
 	mockFeeds.EXPECT().UpdateSiteURL(gomock.Any(), int64(20), "https://example.com").Return(nil).Times(2)
 
 	var call int
@@ -296,15 +298,18 @@ func TestRefreshService_RefreshFeed_SameGUIDDifferentURL_SecondRefreshCountsAsUp
 	}
 
 	seen := make(map[string]bool)
-	existsResults := make([]bool, 0, 2)
-	mockEntries.EXPECT().ExistsByHash(gomock.Any(), int64(20), hashString("v2ex-guid-1")).DoAndReturn(
-		func(_ context.Context, _ int64, hash string) (bool, error) {
-			exists := seen[hash]
-			existsResults = append(existsResults, exists)
-			return exists, nil
+	mockEntries.EXPECT().GetExistingEntry(gomock.Any(), int64(20), hashString("v2ex-guid-1"), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ int64, hash string, rawURL string) (*model.Entry, error) {
+			if !seen[hash] {
+				return nil, nil
+			}
+			// 存量行还是第一次抓到的那个链接（reply10），第二轮链接变成 reply20 ⇒ 内容变了
+			title := "Item 1"
+			oldURL := "https://www.v2ex.com/t/1193191#reply10"
+			content := "Content 1"
+			return &model.Entry{Title: &title, URL: &oldURL, Content: &content}, nil
 		},
 	).Times(2)
-	mockEntries.EXPECT().ExistsByLegacyURL(gomock.Any(), int64(20), "https://www.v2ex.com/t/1193191#reply10", hashString("v2ex-guid-1")).Return(false, nil).Times(1)
 	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, entry model.Entry) error {
 			seen[entry.Hash] = true
@@ -325,9 +330,18 @@ func TestRefreshService_RefreshFeed_SameGUIDDifferentURL_SecondRefreshCountsAsUp
 
 	err := svc.RefreshFeed(context.Background(), 20)
 	require.NoError(t, err)
+	results := svc.LastRefreshResults()
+	require.Len(t, results, 1)
+	require.Equal(t, 1, results[0].New)
+	require.Equal(t, 0, results[0].Updated)
+
 	err = svc.RefreshFeed(context.Background(), 20)
 	require.NoError(t, err)
-	require.Equal(t, []bool{false, true}, existsResults)
+	// 第二轮链接从 reply10 变成 reply20 ⇒ 内容真变了，Update 照数
+	results = svc.LastRefreshResults()
+	require.Len(t, results, 1)
+	require.Equal(t, 0, results[0].New)
+	require.Equal(t, 1, results[0].Updated)
 }
 
 type rateLimitStub struct {
@@ -374,6 +388,8 @@ func TestRefreshService_RefreshFeeds_WithRateLimit(t *testing.T) {
 	mockFeeds.EXPECT().GetByIDs(gomock.Any(), []int64{1, 2}).Return(feeds, nil)
 	mockFeeds.EXPECT().UpdateErrorMessage(gomock.Any(), int64(1), nil).Return(nil)
 	mockFeeds.EXPECT().UpdateErrorMessage(gomock.Any(), int64(2), nil).Return(nil)
+	mockFeeds.EXPECT().ResetRefreshFailure(gomock.Any(), int64(1)).Return(nil)
+	mockFeeds.EXPECT().ResetRefreshFailure(gomock.Any(), int64(2)).Return(nil)
 
 	client := &http.Client{
 		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
@@ -416,6 +432,7 @@ func TestRefreshService_RefreshFeedWithFreshClient_HTTPError(t *testing.T) {
 			return nil
 		},
 	)
+	mockFeeds.EXPECT().RecordRefreshFailure(gomock.Any(), int64(5), gomock.Any()).Return(nil)
 
 	client := &http.Client{
 		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
@@ -474,6 +491,7 @@ func TestRefreshService_ForceRefresh_SkipsConditionalHeaders(t *testing.T) {
 	mockFeeds.EXPECT().GetByID(gomock.Any(), int64(7)).Return(feed, nil)
 	mockFeeds.EXPECT().List(gomock.Any(), (*int64)(nil)).Return([]model.Feed{feed}, nil)
 	mockFeeds.EXPECT().UpdateErrorMessage(gomock.Any(), int64(7), nil).Return(nil).AnyTimes()
+	mockFeeds.EXPECT().ResetRefreshFailure(gomock.Any(), int64(7)).Return(nil).AnyTimes()
 
 	svc := service.NewRefreshService(
 		mockFeeds,

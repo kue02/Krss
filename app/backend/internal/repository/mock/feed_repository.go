@@ -13,6 +13,7 @@ import (
 	context "context"
 	model "gist/backend/internal/model"
 	reflect "reflect"
+	time "time"
 
 	gomock "go.uber.org/mock/gomock"
 )
@@ -188,6 +189,34 @@ func (m *MockFeedRepository) ListWithoutIcon(ctx context.Context) ([]model.Feed,
 func (mr *MockFeedRepositoryMockRecorder) ListWithoutIcon(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListWithoutIcon", reflect.TypeOf((*MockFeedRepository)(nil).ListWithoutIcon), ctx)
+}
+
+// RecordRefreshFailure mocks base method.
+func (m *MockFeedRepository) RecordRefreshFailure(ctx context.Context, id int64, failedAt time.Time) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RecordRefreshFailure", ctx, id, failedAt)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RecordRefreshFailure indicates an expected call of RecordRefreshFailure.
+func (mr *MockFeedRepositoryMockRecorder) RecordRefreshFailure(ctx, id, failedAt any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordRefreshFailure", reflect.TypeOf((*MockFeedRepository)(nil).RecordRefreshFailure), ctx, id, failedAt)
+}
+
+// ResetRefreshFailure mocks base method.
+func (m *MockFeedRepository) ResetRefreshFailure(ctx context.Context, id int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResetRefreshFailure", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ResetRefreshFailure indicates an expected call of ResetRefreshFailure.
+func (mr *MockFeedRepositoryMockRecorder) ResetRefreshFailure(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResetRefreshFailure", reflect.TypeOf((*MockFeedRepository)(nil).ResetRefreshFailure), ctx, id)
 }
 
 // Update mocks base method.

@@ -34,6 +34,61 @@ const (
 	maxConcurrentPerHost = DefaultRefreshPerHostConcurrency
 )
 
+// 抓取重试（22-4，用户：「要做重试」）。
+// 瞬断（EOF / 超时 / 连接重置）和对端 5xx / 429 是 RSS 抓取的常态（本机日志里 503、
+// Client.Timeout 都是成天出现的），失败一次就记一次连续失败太冤 —— 同一个源在同一轮里
+// 最多试 fetchMaxAttempts 次，相邻两次之间按 fetchRetryBackoffs 退避。
+// 注意：解析失败（parse error）不重试 —— 同一份 body 再解一遍结果一样，重试只是浪费。
+const fetchMaxAttempts = 3
+
+var fetchRetryBackoffs = []time.Duration{time.Second, 3 * time.Second}
+
+// 连续失败降频（22-4，用户：「要做连续失败降频」）。
+// backoffBase 失败 1 次后等多久再抓，每多连败一次翻一倍，顶到 backoffMax 封顶。
+// 5min 起：默认 15min 一轮 ⇒ 连败 1~2 次还每轮都试（瞬断不惩罚），第 3 次起开始跳轮。
+const (
+	backoffBase = 5 * time.Minute
+	backoffMax  = 6 * time.Hour
+)
+
+// backoffForFailCount 连败 n 次后要等多久才允许再抓（n<=0 返回 0）。
+func backoffForFailCount(n int) time.Duration {
+	if n <= 0 {
+		return 0
+	}
+	backoff := backoffBase
+	for i := 1; i < n && backoff < backoffMax; i++ {
+		backoff *= 2
+		if backoff > backoffMax {
+			backoff = backoffMax
+		}
+	}
+	return backoff
+}
+
+// shouldBackoffRefresh 这个源这轮要不要跳过（只用于定时刷新；手动刷新永远直接抓）。
+func shouldBackoffRefresh(feed model.Feed, now time.Time) bool {
+	if feed.RefreshFailCount <= 0 || feed.RefreshLastFailAt == nil {
+		return false
+	}
+	return now.Before(feed.RefreshLastFailAt.Add(backoffForFailCount(feed.RefreshFailCount)))
+}
+
+// sleepContext 退避等待：ctx 取消就提前返回 false（调用方直接收手，不记额外失败）。
+func sleepContext(ctx context.Context, d time.Duration) bool {
+	if d <= 0 {
+		return true
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
 // fetchRuntimeConfig 一轮刷新用的运行参数快照（来自设置）。
 type fetchRuntimeConfig struct {
 	Concurrency        int
@@ -239,12 +294,17 @@ func (s *refreshService) processParsedFeed(ctx context.Context, feed model.Feed,
 		}
 	}
 
+	s.recordFeedSuccess(ctx, feed.ID)
 	return nil
 }
 
 // saveEntries saves parsed feed items to the database.
 // Returns the count of new and updated entries, plus the newly created ones
 // （规则引擎只处理「刚入库的新条目」，因此把新条目一并回传）。
+//
+// 22-4：「更新」只数**内容真变了**的条目 —— 先按「入库会撞到的那一行」把旧值取出来，
+// 比标题/链接/正文/缩略图/作者五项（已读态、发布时间不算：前者刷新不写，后者 COALESCE 本来就保留旧的）。
+// 写还是照写（CreateOrUpdate 原样调，保证 legacy hash 升级与 updated_at 语义不变），变的只是计数口径。
 func (s *refreshService) saveEntries(ctx context.Context, feedID int64, items []*gofeed.Item) (newCount, updatedCount int, newEntries []model.Entry) {
 	dynamicTime := hasDynamicTime(items)
 	for _, item := range items {
@@ -253,18 +313,10 @@ func (s *refreshService) saveEntries(ctx context.Context, feedID int64, items []
 			continue
 		}
 
-		exists, err := s.entries.ExistsByHash(ctx, feedID, entry.Hash)
+		old, err := s.entries.GetExistingEntry(ctx, feedID, entry.Hash, *entry.URL)
 		if err != nil {
-			logger.Warn("check entry exists failed", "module", "service", "action", "list", "resource", "entry", "result", "failed", "error", err)
+			logger.Warn("load existing entry failed", "module", "service", "action", "get", "resource", "entry", "result", "failed", "error", err)
 			continue
-		}
-		if !exists {
-			legacyExists, err := s.entries.ExistsByLegacyURL(ctx, feedID, *entry.URL, entry.Hash)
-			if err != nil {
-				logger.Warn("check legacy entry exists failed", "module", "service", "action", "list", "resource", "entry", "result", "failed", "error", err)
-				continue
-			}
-			exists = legacyExists
 		}
 
 		if err := s.entries.CreateOrUpdate(ctx, entry); err != nil {
@@ -272,14 +324,30 @@ func (s *refreshService) saveEntries(ctx context.Context, feedID int64, items []
 			continue
 		}
 
-		if exists {
-			updatedCount++
-		} else {
+		if old == nil {
 			newCount++
 			newEntries = append(newEntries, entry)
+		} else if !entryContentEqual(*old, entry) {
+			updatedCount++
 		}
 	}
 	return
+}
+
+// entryContentEqual 刷新口径下的「内容一样」：入库会重写的五项全等就算没变。
+func entryContentEqual(oldEntry, newEntry model.Entry) bool {
+	return strPtrEq(oldEntry.Title, newEntry.Title) &&
+		strPtrEq(oldEntry.URL, newEntry.URL) &&
+		strPtrEq(oldEntry.Content, newEntry.Content) &&
+		strPtrEq(oldEntry.ThumbnailURL, newEntry.ThumbnailURL) &&
+		strPtrEq(oldEntry.Author, newEntry.Author)
+}
+
+func strPtrEq(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }
 
 var ErrAlreadyRefreshing = errors.New("refresh already in progress")
@@ -317,6 +385,8 @@ type RefreshService interface {
 
 // RefreshFeedResult 单个订阅在一次刷新里的结果（用户 11-8：刷新完要能告诉用户「哪个订阅更新了多少条」）。
 // New/Updated 只有在真跑过抓取时才有意义；Error 非空表示这个源这轮失败了。
+// 22-4 起：Updated 只数内容真变了的条目（见 saveEntries）；Skipped 表示定时刷新里
+// 因连续失败退避被跳过的源（手动刷新永远直接抓，不会有这一项）。
 type RefreshFeedResult struct {
 	FeedID   int64  `json:"feedId"`
 	Title    string `json:"title"`
@@ -324,6 +394,7 @@ type RefreshFeedResult struct {
 	New      int    `json:"new"`
 	Updated  int    `json:"updated"`
 	Error    string `json:"error,omitempty"`
+	Skipped  bool   `json:"skipped,omitempty"`
 }
 
 type refreshService struct {
@@ -365,7 +436,7 @@ func (s *refreshService) RefreshAll(ctx context.Context) error {
 	s.mu.Lock()
 	s.lastTrigger = "manual"
 	s.mu.Unlock()
-	return s.refreshAll(ctx, false)
+	return s.refreshAll(ctx, false, false)
 }
 
 // ForceRefreshAll 见接口注释。
@@ -373,17 +444,17 @@ func (s *refreshService) ForceRefreshAll(ctx context.Context) error {
 	s.mu.Lock()
 	s.lastTrigger = "manual"
 	s.mu.Unlock()
-	return s.refreshAll(ctx, true)
+	return s.refreshAll(ctx, true, false)
 }
 
 func (s *refreshService) RefreshAllAuto(ctx context.Context) error {
 	s.mu.Lock()
 	s.lastTrigger = "auto"
 	s.mu.Unlock()
-	return s.refreshAll(ctx, false)
+	return s.refreshAll(ctx, false, true)
 }
 
-func (s *refreshService) refreshAll(ctx context.Context, force bool) error {
+func (s *refreshService) refreshAll(ctx context.Context, force bool, auto bool) error {
 	s.mu.Lock()
 	if s.isRefreshing {
 		s.mu.Unlock()
@@ -412,6 +483,10 @@ func (s *refreshService) refreshAll(ctx context.Context, force bool) error {
 		"concurrency", cfg.Concurrency, "per_host_concurrency", cfg.PerHostConcurrency, "timeout_ms", cfg.Timeout.Milliseconds())
 	s.resetRefreshProgress(len(feeds))
 	s.resetRefreshResults()
+	// 22-4：只有定时刷新走退避跳过 —— 手动是用户明确要看最新的，一个都不许跳。
+	if auto {
+		feeds = s.applyRefreshBackoff(feeds)
+	}
 	s.refreshFeedsWithRateLimit(ctx, feeds, force)
 	logger.Info("refresh completed", "module", "service", "action", "refresh", "resource", "feed", "result", "ok", "count", len(feeds))
 
@@ -527,6 +602,44 @@ func (s *refreshService) refreshFeeds(ctx context.Context, feedIDs []int64, forc
 	return nil
 }
 
+// applyRefreshBackoff 定时刷新入口的退避过滤（22-4）。
+// 返回本轮真正要抓的源；被跳过的当场记一条 Skipped 结果并推进度，
+// 于是进度条总数不变、结果明细里也能看到「这个源这轮没抓」。
+func (s *refreshService) applyRefreshBackoff(feeds []model.Feed) []model.Feed {
+	now := time.Now()
+	eligible := make([]model.Feed, 0, len(feeds))
+	for _, feed := range feeds {
+		if !shouldBackoffRefresh(feed, now) {
+			eligible = append(eligible, feed)
+			continue
+		}
+		next := feed.RefreshLastFailAt.Add(backoffForFailCount(feed.RefreshFailCount))
+		logger.Info("feed refresh backed off", "module", "service", "action", "refresh", "resource", "feed", "result", "skipped",
+			"feed_id", feed.ID, "feed_title", feed.Title, "fail_count", feed.RefreshFailCount, "next_retry", next.Format(time.RFC3339))
+		s.recordFeedResult(RefreshFeedResult{
+			FeedID:   feed.ID,
+			Title:    feed.Title,
+			IconPath: iconPathOf(feed),
+			Skipped:  true,
+		})
+		s.recordRefreshedFeed()
+	}
+	return eligible
+}
+
+// recordFeedSuccess 抓取成功（拿到 200 解析入库，或 304 未变更）：清掉连续失败计数。
+func (s *refreshService) recordFeedSuccess(ctx context.Context, feedID int64) {
+	if err := s.feeds.ResetRefreshFailure(ctx, feedID); err != nil {
+		logger.Warn("reset refresh failure failed", "module", "service", "action", "update", "resource", "feed", "result", "failed", "feed_id", feedID, "error", err)
+	}
+}
+
+// recordFeedFailure 抓取失败（重试用完还是不行）：连续失败 +1 并打时间戳。
+func (s *refreshService) recordFeedFailure(ctx context.Context, feedID int64) {
+	if err := s.feeds.RecordRefreshFailure(ctx, feedID, time.Now().UTC()); err != nil {
+		logger.Warn("record refresh failure failed", "module", "service", "action", "update", "resource", "feed", "result", "failed", "feed_id", feedID, "error", err)
+	}
+}
 // resetRefreshResults / recordFeedResult / LastRefreshResults：一轮刷新的每源结果
 //（并发刷新时多个 goroutine 同时写，统一走 s.mu）。
 func (s *refreshService) resetRefreshResults() {
@@ -663,12 +776,52 @@ func (s *refreshService) refreshFeedWithCookie(ctx context.Context, feed model.F
 		req.Header.Set("If-Modified-Since", *feed.LastModified)
 	}
 
-	httpClient := s.clientFactory.NewHTTPClient(ctx, s.fetchRuntime(ctx).Timeout)
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		errMsg := err.Error()
+	// 22-4：同一轮里最多试 fetchMaxAttempts 次 —— 瞬断（transport error）与
+	// 对端过载（429 / 5xx）值得等一会儿再试一次；两次之间按 fetchRetryBackoffs 退避。
+	// GET 没有 body，重试直接复用同一个 req 就行。
+	var resp *http.Response
+	var fetchErr error
+	for attempt := 0; attempt < fetchMaxAttempts; attempt++ {
+		if attempt > 0 {
+			backoff := fetchRetryBackoffs[attempt-1]
+			if attempt-1 >= len(fetchRetryBackoffs) {
+				backoff = fetchRetryBackoffs[len(fetchRetryBackoffs)-1]
+			}
+			logger.Warn("retrying feed fetch", "module", "service", "action", "refresh", "resource", "feed", "result", "retrying",
+				"feed_id", feed.ID, "feed_title", feed.Title, "attempt", attempt+1, "backoff_ms", backoff.Milliseconds(), "last_error", fetchErr)
+			if !sleepContext(ctx, backoff) {
+				return ctx.Err()
+			}
+		}
+
+		var r *http.Response
+		var err error
+		// 每试一次拿一个新的 client：连接复用在对端半死不活时反而会连着失败
+		//（Anubis 那条路本来就是这么干的，见 refreshFeedWithFreshClient）。
+		r, err = s.clientFactory.NewHTTPClient(ctx, s.fetchRuntime(ctx).Timeout).Do(req)
+		if err != nil {
+			// 整轮被取消不算失败 —— 不然每次重启/超时都会给所有源各记一次连败
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			fetchErr = err
+			continue
+		}
+		if r.StatusCode == http.StatusTooManyRequests || r.StatusCode >= http.StatusInternalServerError {
+			_, _ = io.Copy(io.Discard, r.Body)
+			_ = r.Body.Close()
+			fetchErr = fmt.Errorf("HTTP %d", r.StatusCode)
+			continue
+		}
+		resp = r
+		fetchErr = nil
+		break
+	}
+	if fetchErr != nil || resp == nil {
+		errMsg := fetchErr.Error()
 		_ = s.feeds.UpdateErrorMessage(ctx, feed.ID, &errMsg)
-		return err
+		s.recordFeedFailure(ctx, feed.ID)
+		return fetchErr
 	}
 	defer resp.Body.Close()
 
@@ -676,6 +829,7 @@ func (s *refreshService) refreshFeedWithCookie(ctx context.Context, feed model.F
 	if resp.StatusCode == http.StatusNotModified {
 		logger.Debug("feed not modified", "module", "service", "action", "refresh", "resource", "feed", "result", "skipped", "feed_id", feed.ID, "host", network.ExtractHost(feed.URL))
 		_ = s.feeds.UpdateErrorMessage(ctx, feed.ID, nil)
+		s.recordFeedSuccess(ctx, feed.ID)
 		// 没变更也要出现在刷新明细里（0 新增 / 0 更新）—— 否则结果弹框里会「缺几个源」让人以为漏刷了
 		s.recordFeedResult(RefreshFeedResult{FeedID: feed.ID, Title: feed.Title, IconPath: iconPathOf(feed)})
 		return nil
@@ -694,6 +848,7 @@ func (s *refreshService) refreshFeedWithCookie(ctx context.Context, feed model.F
 		logger.Error("feed http error", "module", "service", "action", "refresh", "resource", "feed", "result", "failed", "feed_id", feed.ID, "feed_title", feed.Title, "status_code", resp.StatusCode)
 		errMsg := fmt.Sprintf("HTTP %d", resp.StatusCode)
 		_ = s.feeds.UpdateErrorMessage(ctx, feed.ID, &errMsg)
+		s.recordFeedFailure(ctx, feed.ID)
 		return nil
 	}
 
@@ -702,6 +857,7 @@ func (s *refreshService) refreshFeedWithCookie(ctx context.Context, feed model.F
 	if err != nil {
 		errMsg := err.Error()
 		_ = s.feeds.UpdateErrorMessage(ctx, feed.ID, &errMsg)
+		s.recordFeedFailure(ctx, feed.ID)
 		return err
 	}
 
@@ -718,18 +874,22 @@ func (s *refreshService) refreshFeedWithCookie(ctx context.Context, feed model.F
 		case errors.Is(anubisErr, errAnubisRejected):
 			errMsg := "upstream rejected"
 			_ = s.feeds.UpdateErrorMessage(ctx, feed.ID, &errMsg)
+			s.recordFeedFailure(ctx, feed.ID)
 			return errors.New(errMsg)
 		case errors.Is(anubisErr, errAnubisRetryExceeded):
 			errMsg := fmt.Sprintf("anubis challenge persists after %d retries", retryCount)
 			_ = s.feeds.UpdateErrorMessage(ctx, feed.ID, &errMsg)
+			s.recordFeedFailure(ctx, feed.ID)
 			return errors.New(errMsg)
 		default:
 			errMsg := fmt.Sprintf("anubis solve failed: %v", anubisErr)
 			_ = s.feeds.UpdateErrorMessage(ctx, feed.ID, &errMsg)
+			s.recordFeedFailure(ctx, feed.ID)
 			return anubisErr
 		}
 		errMsg := parseErr.Error()
 		_ = s.feeds.UpdateErrorMessage(ctx, feed.ID, &errMsg)
+		s.recordFeedFailure(ctx, feed.ID)
 		return parseErr
 	}
 
@@ -755,6 +915,7 @@ func (s *refreshService) refreshFeedWithFreshClient(ctx context.Context, feed mo
 	if err != nil {
 		errMsg := err.Error()
 		_ = s.feeds.UpdateErrorMessage(ctx, feed.ID, &errMsg)
+		s.recordFeedFailure(ctx, feed.ID)
 		return err
 	}
 	defer resp.Body.Close()
@@ -763,6 +924,7 @@ func (s *refreshService) refreshFeedWithFreshClient(ctx context.Context, feed mo
 		logger.Error("feed http error", "module", "service", "action", "refresh", "resource", "feed", "result", "failed", "feed_id", feed.ID, "feed_title", feed.Title, "status_code", resp.StatusCode)
 		errMsg := fmt.Sprintf("HTTP %d", resp.StatusCode)
 		_ = s.feeds.UpdateErrorMessage(ctx, feed.ID, &errMsg)
+		s.recordFeedFailure(ctx, feed.ID)
 		return nil
 	}
 
@@ -771,6 +933,7 @@ func (s *refreshService) refreshFeedWithFreshClient(ctx context.Context, feed mo
 		logger.Error("feed refresh read failed", "module", "service", "action", "refresh", "resource", "feed", "result", "failed", "feed_id", feed.ID, "feed_title", feed.Title, "error", err)
 		errMsg := err.Error()
 		_ = s.feeds.UpdateErrorMessage(ctx, feed.ID, &errMsg)
+		s.recordFeedFailure(ctx, feed.ID)
 		return err
 	}
 
@@ -783,14 +946,17 @@ func (s *refreshService) refreshFeedWithFreshClient(ctx context.Context, feed mo
 	case errors.Is(anubisErr, errAnubisRejected):
 		errMsg := "upstream rejected"
 		_ = s.feeds.UpdateErrorMessage(ctx, feed.ID, &errMsg)
+		s.recordFeedFailure(ctx, feed.ID)
 		return errors.New(errMsg)
 	case errors.Is(anubisErr, errAnubisRetryExceeded):
 		errMsg := fmt.Sprintf("anubis challenge persists after %d retries", retryCount)
 		_ = s.feeds.UpdateErrorMessage(ctx, feed.ID, &errMsg)
+		s.recordFeedFailure(ctx, feed.ID)
 		return errors.New(errMsg)
 	default:
 		errMsg := fmt.Sprintf("anubis solve failed: %v", anubisErr)
 		_ = s.feeds.UpdateErrorMessage(ctx, feed.ID, &errMsg)
+		s.recordFeedFailure(ctx, feed.ID)
 		return anubisErr
 	}
 
@@ -799,6 +965,7 @@ func (s *refreshService) refreshFeedWithFreshClient(ctx context.Context, feed mo
 	if parseErr != nil {
 		errMsg := parseErr.Error()
 		_ = s.feeds.UpdateErrorMessage(ctx, feed.ID, &errMsg)
+		s.recordFeedFailure(ctx, feed.ID)
 		return parseErr
 	}
 

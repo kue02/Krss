@@ -904,7 +904,8 @@
     "item_failed": "失败",
     "copy_reason": "复制原因",
     "copied": "已复制失败原因",
-    "close": "关闭"
+    "close": "关闭",
+    "item_skipped": "已跳过（失败退避中）"
   },
   "common": {
     "loading": "加载中…"

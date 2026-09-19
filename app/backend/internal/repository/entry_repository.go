@@ -4,6 +4,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -67,6 +68,11 @@ type EntryRepository interface {
 	CreateOrUpdate(ctx context.Context, entry model.Entry) error
 	ExistsByHash(ctx context.Context, feedID int64, hash string) (bool, error)
 	ExistsByLegacyURL(ctx context.Context, feedID int64, rawURL string, hash string) (bool, error)
+	// GetExistingEntry 取「入库时会撞到的那一行」（22-4：「更新 N 条」按内容真变计数用）。
+	// 先按 hash 精确找；找不到再按 legacy URL 兜底（与 ExistsByLegacyURL 同一谓词 ——
+	// CreateOrUpdate 的兼容分支会就地升级那一行，所以比较基准也得是它）。
+	// 都没有返回 (nil, nil)。
+	GetExistingEntry(ctx context.Context, feedID int64, hash string, rawURL string) (*model.Entry, error)
 	ClearAllReadableContent(ctx context.Context) (int64, error)
 	DeleteUnstarred(ctx context.Context) (int64, error)
 	// GetIDsByHashes 按 feed 内 hash 批量取条目 ID（规则引擎在入库后定位刚写进去的那批条目）。
@@ -644,6 +650,56 @@ func (r *entryRepository) ExistsByHash(ctx context.Context, feedID int64, hash s
 		return false, err
 	}
 	return count > 0, nil
+}
+
+func (r *entryRepository) GetExistingEntry(ctx context.Context, feedID int64, hash string, rawURL string) (*model.Entry, error) {
+	const columns = `SELECT id, feed_id, hash, title, url, content, readable_content, thumbnail_url, author, published_at, read, starred, muted, filter_id, auto_translate, auto_summary, created_at, updated_at
+	 FROM entries`
+
+	if hash != "" {
+		row := r.db.QueryRowContext(
+			ctx,
+			columns+` WHERE feed_id = ? AND hash = ? LIMIT 1`,
+			feedID,
+			hash,
+		)
+		entry, err := scanEntry(row)
+		if err == nil {
+			return &entry, nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+	}
+
+	trimmedURL := strings.TrimSpace(rawURL)
+	if trimmedURL == "" {
+		return nil, nil
+	}
+	normalizedURL := urlutil.StripFragment(trimmedURL)
+	row := r.db.QueryRowContext(
+		ctx,
+		columns+` WHERE feed_id = ?
+		   AND (hash = '' OR hash <> ?)
+		   AND (
+		     url = ?
+		     OR (CASE WHEN instr(url, '#') > 0 THEN substr(url, 1, instr(url, '#') - 1) ELSE url END) = ?
+		   )
+		 ORDER BY updated_at DESC, id DESC
+		 LIMIT 1`,
+		feedID,
+		hash,
+		trimmedURL,
+		normalizedURL,
+	)
+	entry, err := scanEntry(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &entry, nil
 }
 
 func (r *entryRepository) ExistsByLegacyURL(ctx context.Context, feedID int64, rawURL string, hash string) (bool, error) {
