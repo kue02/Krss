@@ -245,7 +245,7 @@ export function MCPServersSection() {
       <MCPWarnZone>
       {/* 段头：说明 + 入口（返工口径：「粘贴 JSON 新建」并入「新建连接」，只留两个按钮） */}
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <span className="text-sm font-medium">
             {t("ai_settings.mcp_servers")}
           </span>
@@ -254,15 +254,15 @@ export function MCPServersSection() {
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <Button
-            size="sm"
-            variant="secondary"
-            onPress={() => openCreate()}
-          >
+          <Button size="sm" onPress={() => openCreate()}>
             <Plus className="size-4" />
             {t("ai_settings.mcp_add_connection")}
           </Button>
-          <Button size="sm" onPress={() => setWizardOpen(true)}>
+          <Button
+            size="sm"
+            variant="secondary"
+            onPress={() => setWizardOpen(true)}
+          >
             <Plus className="size-4" />
             {t("ai_settings.mcp_new_subscription")}
           </Button>
@@ -568,15 +568,24 @@ function MCPServerRow({
             </div>
           </div>
         </Table.Cell>
-        {/* 状态列 132 */}
+        {/* 状态列 132：Chip（效果图 A），不断行 */}
         <Table.Cell>
-          <span className="flex items-center gap-1.5 text-xs">
-            <span className={cn("truncate", status.danger && "text-destructive")}>
-              {status.text}
-            </span>
-          </span>
+          <Chip
+            size="sm"
+            variant="tertiary"
+            color={
+              status.danger
+                ? "danger"
+                : server.isConnected
+                  ? "success"
+                  : "default"
+            }
+            className="border border-border whitespace-nowrap"
+          >
+            {status.text}
+          </Chip>
         </Table.Cell>
-        {/* 用途列 92：标记，不是开关 */}
+        {/* 用途列 92：标记，不是开关（不断行，窄列自动上下堆） */}
         <Table.Cell>
           <span className="flex flex-wrap items-center gap-1">
             {server.purposes.length === 0 && (
@@ -588,7 +597,7 @@ function MCPServerRow({
                 size="sm"
                 variant="tertiary"
                 color={purpose === "feed" ? "accent" : "default"}
-                className="border border-border"
+                className="border border-border whitespace-nowrap"
               >
                 {t(
                   purpose === "feed"
@@ -637,7 +646,7 @@ function MCPServerRow({
               <Dropdown.Trigger
                 aria-label={t("ai_settings.mcp_col_actions")}
                 className={cn(
-                  "inline-flex size-7 items-center justify-center rounded-md",
+                  "inline-flex size-8 items-center justify-center rounded-md",
                   "text-muted-foreground transition-colors",
                   "hover:bg-secondary hover:text-foreground data-[pressed]:bg-secondary",
                 )}
