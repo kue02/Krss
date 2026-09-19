@@ -697,6 +697,8 @@
     "timeline_granularity_day": "Daily",
     "timeline_collapse": "Collapsed lines",
     "timeline_collapse_hint": "Cards start collapsed; “Show full text” expands in place (the timeline does not jump)",
+    "timeline_single_side": "Collapse to single side",
+    "timeline_single_side_hint": "Automatically merge the two sides into one when narrow",
     "timeline_lines_1": "1 line",
     "timeline_lines_2": "2 lines",
     "timeline_lines_3": "3 lines",

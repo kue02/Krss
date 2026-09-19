@@ -277,6 +277,9 @@ export function EntryList({
   const timelineCollapse = resolveTimelineCollapse(
     useUISettingKey("timelineCollapseByView")?.[contentType],
   );
+  /** 窄栏自动合一栏（默认开；关掉则始终左右交替） */
+  const timelineAutoSingleSide =
+    useUISettingKey("timelineSingleSideByView")?.[contentType] !== false;
   /**
    * 轴上可选的条目（被吸进小节点的条目不算节点）：时间线组件回报上来，
    * 键盘 j/k、↑/↓ 就用它做吸附顺序 —— 不会选到看不见的条目。
@@ -978,6 +981,7 @@ export function EntryList({
                   onCloseEntry={onCloseEntry}
                   granularity={timelineGranularity}
                   collapse={timelineCollapse}
+                  autoSingleSide={timelineAutoSingleSide}
                   autoTranslate={autoTranslate}
                   targetLanguage={targetLanguage}
                   onSelectableEntriesChange={setTimelineSelectableEntries}
@@ -1010,7 +1014,7 @@ export function EntryList({
                     type="button"
                     data-testid="mark-all-read-footer"
                     onClick={onMarkAllRead}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-[10px] border border-border bg-transparent px-3 py-2.5 text-[13px] text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
+                    className="flex h-[35px] w-full items-center justify-center gap-1.5 rounded-[10px] border border-border bg-transparent px-3 text-[13px] text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
                   >
                     <Check className="size-4 shrink-0" />
                     {t("entry.mark_all_read")}

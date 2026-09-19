@@ -465,6 +465,8 @@ export interface NotificationTimelineProps {
   onCloseEntry?: () => void;
   granularity: TimelineGranularity;
   collapse: TimelineCollapse;
+  /** 窄栏自动合一栏（默认开；关掉则始终左右交替） */
+  autoSingleSide?: boolean;
   autoTranslate: boolean;
   targetLanguage: string;
   /**
@@ -484,6 +486,7 @@ export function NotificationTimeline({
   onCloseEntry,
   granularity,
   collapse,
+  autoSingleSide = true,
   autoTranslate,
   targetLanguage,
   onSelectableEntriesChange,
@@ -491,7 +494,7 @@ export function NotificationTimeline({
   const { t, i18n } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const width = useContainerWidth(containerRef);
-  const singleSide = isSingleSideWidth(width);
+  const singleSide = autoSingleSide && isSingleSideWidth(width);
   const clampLines = timelineCollapseClampLines(collapse);
 
   const [expandedClusters, setExpandedClusters] = useState<ReadonlySet<string>>(
@@ -544,6 +547,47 @@ export function NotificationTimeline({
     },
     [selectedEntryId, onCloseEntry],
   );
+
+  // 展开后跟随：新展开的那条如果沉到滚动视口下面，把滚动补上（卡片顶部不动，
+  // 只是让展开区露出来）—— 否则点视口底部的条目，展开内容全在屏外，还得手滚。
+  const expandedSignature = useMemo(() => {
+    const ids = [...expandedEntries];
+    if (selectedEntryId) ids.push(selectedEntryId);
+    return ids.sort().join(" ");
+  }, [expandedEntries, selectedEntryId]);
+  const prevExpandedSignatureRef = useRef("");
+  useEffect(() => {
+    const prev = prevExpandedSignatureRef.current;
+    prevExpandedSignatureRef.current = expandedSignature;
+    if (!expandedSignature || expandedSignature === prev) return;
+    const prevIds = new Set(prev ? prev.split(" ") : []);
+    const freshId = expandedSignature
+      .split(" ")
+      .find((id) => !prevIds.has(id));
+    if (!freshId) return;
+    const root = containerRef.current;
+    const full = root?.querySelector<HTMLElement>(
+      `[data-timeline-full="${freshId}"]`,
+    );
+    if (!root || !full) return;
+    // requestAnimationFrame：等展开容器的高度落定再量
+    const frame = requestAnimationFrame(() => {
+      const scroller =
+        root.closest<HTMLElement>('[data-testid="entry-list-viewport"]') ??
+        root.closest<HTMLElement>(".entry-list-document");
+      if (scroller) {
+        const view = scroller.getBoundingClientRect();
+        const rect = full.getBoundingClientRect();
+        const overflow = rect.bottom - view.bottom;
+        if (overflow > 0) scroller.scrollTop += overflow + 12;
+      } else if (typeof window !== "undefined") {
+        const rect = full.getBoundingClientRect();
+        const overflow = rect.bottom - window.innerHeight;
+        if (overflow > 0) window.scrollBy({ top: overflow + 12 });
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [expandedSignature]);
 
   // 换粒度 / 换列表时收起来，免得「展开态」跟着另一批数据走
   useEffect(() => {
@@ -607,7 +651,8 @@ export function NotificationTimeline({
       ref={containerRef}
       data-testid="notification-timeline"
       data-timeline-layout={singleSide ? "single" : "alternating"}
-      className="relative w-full"
+      // 收窄到社交视图同款居中可读宽度（用户反馈：之前三栏中栏窄，现在两栏太宽）
+      className="relative mx-auto w-full max-w-[clamp(45ch,60vw,65ch)]"
     >
       {/* 中轴：横跨整条时间线，1px */}
       <div

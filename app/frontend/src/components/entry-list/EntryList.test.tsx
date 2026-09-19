@@ -117,15 +117,18 @@ vi.mock("./NotificationTimeline", () => ({
     entries,
     granularity,
     collapse,
+    autoSingleSide,
   }: {
     entries: Entry[];
     granularity: string;
     collapse: string;
+    autoSingleSide?: boolean;
   }) => (
     <div
       data-testid="notification-timeline"
       data-granularity={granularity}
       data-collapse={collapse}
+      data-auto-single-side={autoSingleSide === false ? "off" : "on"}
       data-entry-ids={entries.map((entry) => entry.id).join(",")}
     />
   ),
@@ -1266,7 +1269,7 @@ describe("EntryList · 通知视图的时间线分支", () => {
   });
 
   afterEach(() => {
-    // 粒度/折叠是按视图的设置：用例改过就还原，别影响别的文件
+    // 粒度/折叠/合一栏是按视图的设置：用例改过就还原，别影响别的文件
     setUISetting("timelineGranularityByView", {
       article: "hour",
       picture: "hour",
@@ -1278,6 +1281,12 @@ describe("EntryList · 通知视图的时间线分支", () => {
       picture: "2",
       notification: "2",
       social: "2",
+    });
+    setUISetting("timelineSingleSideByView", {
+      article: true,
+      picture: true,
+      notification: true,
+      social: true,
     });
   });
 
@@ -1302,6 +1311,8 @@ describe("EntryList · 通知视图的时间线分支", () => {
     const timeline = () => screen.getByTestId("notification-timeline");
     expect(timeline().dataset.granularity).toBe("hour");
     expect(timeline().dataset.collapse).toBe("2");
+    // 窄栏合一栏默认开
+    expect(timeline().dataset.autoSingleSide).toBe("on");
 
     act(() => {
       setUISetting("timelineGranularityByView", {
@@ -1316,10 +1327,17 @@ describe("EntryList · 通知视图的时间线分支", () => {
         notification: "full",
         social: "2",
       });
+      setUISetting("timelineSingleSideByView", {
+        article: true,
+        picture: true,
+        notification: false,
+        social: true,
+      });
     });
 
     expect(timeline().dataset.granularity).toBe("day");
     expect(timeline().dataset.collapse).toBe("full");
+    expect(timeline().dataset.autoSingleSide).toBe("off");
     view.unmount();
   });
 

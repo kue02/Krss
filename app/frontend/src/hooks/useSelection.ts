@@ -147,7 +147,10 @@ export function useSelection(): UseSelectionReturn {
       }
       navigate(
         buildPath(
-          routeState.selection,
+          // 星标视图里点未读 / 全部 = 退出星标回普通列表（否则永远卡在星标里）
+          routeState.selection.type === "starred"
+            ? { type: "all" }
+            : routeState.selection,
           null,
           filter === "unread",
           routeState.contentType,

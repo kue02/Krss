@@ -212,6 +212,11 @@ interface UISettings {
    * 注意：**没有「切回列表」这一项** —— 通知视图只有时间线这一种形态（用户定案）。
    */
   timelineCollapseByView: ViewTimelineCollapse;
+  /**
+   * 窄栏自动合一栏（默认开）：时间线容器宽度 < 385px 时退化成单侧
+   * （左时间列 + 右卡片），关掉则始终左右交替。
+   */
+  timelineSingleSideByView: ViewFlags;
 }
 
 /**
@@ -455,6 +460,13 @@ export const defaultUISettings: UISettings = {
     picture: "2",
     notification: "2",
     social: "2",
+  },
+  // 窄栏自动合一栏（默认开）
+  timelineSingleSideByView: {
+    article: true,
+    picture: true,
+    notification: true,
+    social: true,
   },
 };
 
@@ -741,6 +753,17 @@ export function useUISettingActions() {
     [],
   );
 
+  /** 窄栏自动合一栏（关掉则始终左右交替） */
+  const setTimelineSingleSideForView = useCallback(
+    (view: ContentType, enabled: boolean) => {
+      setUISetting("timelineSingleSideByView", {
+        ...getUISettings().timelineSingleSideByView,
+        [view]: enabled,
+      });
+    },
+    [],
+  );
+
   const toggleSidebarVisible = useCallback(() => {
     const current = getUISettings().sidebarVisible;
     setUISetting("sidebarVisible", !current);
@@ -779,6 +802,7 @@ export function useUISettingActions() {
     setScrollReadTimingForView,
     setTimelineGranularityForView,
     setTimelineCollapseForView,
+    setTimelineSingleSideForView,
     resetToDefaults,
   };
 }

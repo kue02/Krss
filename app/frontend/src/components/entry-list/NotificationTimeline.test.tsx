@@ -325,6 +325,72 @@ describe("NotificationTimeline · 与列表的契约", () => {
     expect(onCloseEntry).toHaveBeenCalledTimes(1);
   });
 
+  it("展开后跟随：展开区沉到视口下时自动补滚动（卡片顶部不动）", async () => {
+    const scrollHeightDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollHeight",
+    );
+    const clientHeightDescriptor = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "clientHeight",
+    );
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get: () => 200,
+    });
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get: () => 40,
+    });
+    const scrollBy = vi.fn();
+    const originalScrollBy = window.scrollBy;
+    window.scrollBy = scrollBy as unknown as typeof window.scrollBy;
+
+    try {
+      const { container } = renderTimeline([entry("a", localIso(18, 14, 10))]);
+      fireEvent.click(container.querySelector("[data-timeline-expand]")!);
+      const full = container.querySelector<HTMLElement>("[data-timeline-full='a']");
+      expect(full).not.toBeNull();
+      // 展开区很长、底部沉到视口（768px）下面
+      full!.getBoundingClientRect = () =>
+        ({
+          top: 100,
+          bottom: 2000,
+          left: 0,
+          right: 300,
+          width: 300,
+          height: 1900,
+        }) as DOMRect;
+      // 跟随 effect 走 rAF，等它跑完
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(scrollBy).toHaveBeenCalledWith({
+        top: 2000 - 768 + 12,
+      });
+    } finally {
+      if (scrollHeightDescriptor) {
+        Object.defineProperty(HTMLElement.prototype, "scrollHeight", scrollHeightDescriptor);
+      }
+      if (clientHeightDescriptor) {
+        Object.defineProperty(HTMLElement.prototype, "clientHeight", clientHeightDescriptor);
+      }
+      window.scrollBy = originalScrollBy;
+    }
+  });
+
+  it("窄栏合一栏关掉则始终交替（autoSingleSide=false）", () => {
+    const { container } = renderTimeline(
+      [
+        entry("a", localIso(18, 14, 10)),
+        entry("b", localIso(18, 13, 10)),
+      ],
+      { autoSingleSide: false },
+    );
+    expect(
+      container.querySelector<HTMLElement>("div[data-testid='notification-timeline']")?.dataset
+        .timelineLayout,
+    ).toBe("alternating");
+  });
+
   it("回报给父级的可选条目 = 轴上的卡片（不含被吸进小节点的）", () => {
     const entries = ["a", "b", "c", "d", "e", "f"].map((id, index) =>
       entry(id, localIso(17, 20 - index, 0)),
