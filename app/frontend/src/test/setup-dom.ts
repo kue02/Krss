@@ -132,3 +132,24 @@ if (typeof globalThis.CSS === "undefined") {
     writable: true,
   });
 }
+
+/**
+ * jsdom 没有 `ResizeObserver`，而 HeroUI 的 `ScrollShadow`（`useScrollShadow`）
+ * 挂载即 `new ResizeObserver(...)` —— 任何渲染只读 JSON 区（MCPJsonView）的测试
+ * 都会以 `ReferenceError` 收场，而那是**环境缺口**、不是组件 bug
+ * （真机浏览器里 ResizeObserver 一直在；阴影方向测不了，但内容断言不受影响）。
+ *
+ * 这里补一个空转实现：observe/unobserve/disconnect 都收下不做事。
+ */
+if (typeof globalThis.ResizeObserver === "undefined") {
+  class NoopResizeObserver {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  }
+  Object.defineProperty(globalThis, "ResizeObserver", {
+    value: NoopResizeObserver,
+    configurable: true,
+    writable: true,
+  });
+}

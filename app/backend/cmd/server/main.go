@@ -114,7 +114,7 @@ func main() {
 		Notify:  notifyService,
 	})
 	// MCP（16 批入向 / 17 批出向）共用同一套协议底座 internal/service/mcp。
-	mcpService := service.NewMCPService(mcpServerRepo, settingsService, clientFactory)
+	mcpService := service.NewMCPService(mcpServerRepo, settingsService, clientFactory, aiService)
 	feedService := service.NewFeedService(feedRepo, folderRepo, entryRepo, iconService, settingsService, clientFactory, anubisSolver, filterService, mcpService)
 	// 条目列表要能按「保存筛选视图」（filters.kind = view）筛，所以 entryService 也拿到 filterRepo
 	entryService := service.NewEntryService(entryRepo, feedRepo, folderRepo, filterRepo)

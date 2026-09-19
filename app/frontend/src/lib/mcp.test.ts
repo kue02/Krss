@@ -1,26 +1,33 @@
 import { describe, it, expect } from "vitest";
 import {
-  applyPresetToDraft,
   buildInspectRequest,
   buildMCPClientConfigExample,
   buildMCPFeedConfig,
   buildMCPServerPayload,
+  buildOAuthCallbackURL,
   defaultMCPFeedTitle,
+  detectTransport,
   emptyMCPServerDraft,
   emptyMappingDraft,
   feedSelectableServers,
+  formatMCPJSON,
   isMCPPreviewReady,
   MAPPING_FIELD_ORDER,
   mappingDraftFromMapping,
   mappingFromDraft,
+  MCP_DEFAULT_MAX_ITEMS,
+  MCP_DEFAULT_MAX_PAGES,
   MCP_MASK,
   MCP_MIN_REFRESH_INTERVAL_MINUTES,
-  MCP_SERVER_PRESETS,
-  MCP_SUPPORTED_TRANSPORTS,
   mcpDraftFromServer,
+  mcpFailureBucketLabelKey,
+  mcpFailureExits,
   mcpInspectSignature,
   mcpKeyLevelLabelKey,
   mcpTierLabelKey,
+  minifyMCPJSON,
+  parseMCPJSON,
+  tokenizeJSON,
   validateMCPServerDraft,
   type MCPServerDraft,
 } from "./mcp";
@@ -40,7 +47,7 @@ function server(overrides: Partial<MCPServer> = {}): MCPServer {
   return {
     id: "s1",
     name: "本机 Krss",
-    transport: "streamable-http",
+    transport: "auto",
     url: "http://127.0.0.1:8080/mcp",
     authType: "none",
     enabled: true,
@@ -49,6 +56,7 @@ function server(overrides: Partial<MCPServer> = {}): MCPServer {
     resourceCount: 2,
     purposes: ["feed"],
     useGlobalFetch: true,
+    oauthAuthorized: false,
     createdAt: "2026-09-18T00:00:00Z",
     updatedAt: "2026-09-18T00:00:00Z",
     ...overrides,
@@ -60,11 +68,11 @@ describe("MCP 连接表单校验（validateMCPServerDraft）", () => {
     expect(validateMCPServerDraft(draft())).toEqual([]);
   });
 
-  it("第一版拒绝 SSE 传输", () => {
-    expect(MCP_SUPPORTED_TRANSPORTS).toEqual(["streamable-http"]);
-    expect(validateMCPServerDraft(draft({ transport: "sse" }))).toContain(
-      "transport_unsupported",
-    );
+  it("新建默认走自动识别（auto），三种传输都不拦", () => {
+    expect(emptyMCPServerDraft().transport).toBe("auto");
+    for (const transport of ["auto", "streamable-http", "sse"] as const) {
+      expect(validateMCPServerDraft(draft({ transport }))).toEqual([]);
+    }
   });
 
   it("地址必须以 http:// 或 https:// 开头", () => {
@@ -189,6 +197,14 @@ describe("MCP 连接请求体（buildMCPServerPayload）", () => {
     expect(payload.headers).toEqual({});
   });
 
+  it("OAuth 时带 client_id，secret 为空就不发（别把空串当成「改」）", () => {
+    const payload = buildMCPServerPayload(
+      draft({ authType: "oauth", oauthClientId: " cid ", oauthClientSecret: "" }),
+    );
+    expect(payload.oauthClientId).toBe("cid");
+    expect("oauthClientSecret" in payload).toBe(false);
+  });
+
   it("名称与地址去首尾空格", () => {
     const payload = buildMCPServerPayload(
       draft({ name: "  本机  ", url: "  http://127.0.0.1:8080/mcp  " }),
@@ -198,27 +214,144 @@ describe("MCP 连接请求体（buildMCPServerPayload）", () => {
   });
 });
 
-describe("预设卡片", () => {
-  it("每张卡片的名称键与地址都可用、id 不重复", () => {
-    const ids = new Set(MCP_SERVER_PRESETS.map((preset) => preset.id));
-    expect(ids.size).toBe(MCP_SERVER_PRESETS.length);
-    for (const preset of MCP_SERVER_PRESETS) {
-      expect(preset.nameKey.startsWith("ai_settings.mcp_")).toBe(true);
-      expect(preset.url).toMatch(/^https?:\/\//);
+describe("粘贴 JSON 建档（parseMCPJSON，三种形状）", () => {
+  it("① mcpServers 包（含多条，一次可建多个）", () => {
+    const result = parseMCPJSON(
+      JSON.stringify({
+        mcpServers: {
+          "nas-mcp": {
+            type: "sse",
+            url: "http://192.0.2.1:8931/sse",
+            headers: { Authorization: "Bearer sk-123" },
+          },
+          fabric: { url: "https://mcp.fabric.so/mcp" },
+        },
+      }),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.servers).toHaveLength(2);
+    expect(result.servers[0]).toMatchObject({
+      name: "nas-mcp",
+      transport: "sse",
+      url: "http://192.0.2.1:8931/sse",
+      headers: { Authorization: "Bearer sk-123" },
+    });
+    expect(result.servers[0]?.detectedFrom).toContain("sse");
+    // 没 type 的走自动识别
+    expect(result.servers[1]?.transport).toBe("auto");
+    expect(result.servers[1]?.name).toBe("fabric");
+  });
+
+  it("② 单条 {type,url,headers}", () => {
+    const result = parseMCPJSON(
+      JSON.stringify({
+        type: "http",
+        url: "https://mcp.notion.com/mcp",
+        headers: {},
+      }),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.servers).toHaveLength(1);
+    expect(result.servers[0]?.transport).toBe("streamable-http");
+    // 名称从 url 派生（主机名）
+    expect(result.servers[0]?.name).toBe("mcp.notion.com");
+  });
+
+  it("③ 只有 url：字符串与 {url} 都认，按后缀识别 SSE", () => {
+    const fromString = parseMCPJSON('"http://192.0.2.1:8931/sse"');
+    expect(fromString.ok).toBe(true);
+    if (!fromString.ok) return;
+    expect(fromString.servers[0]?.transport).toBe("sse");
+    expect(fromString.servers[0]?.detectedFrom).toContain("/sse");
+
+    const fromObject = parseMCPJSON(
+      JSON.stringify({ url: "https://example.com/mcp" }),
+    );
+    expect(fromObject.ok).toBe(true);
+    if (!fromObject.ok) return;
+    expect(fromObject.servers[0]?.transport).toBe("auto");
+  });
+
+  it("坏输入各自有明确错误码", () => {
+    expect(parseMCPJSON("")).toEqual({ ok: false, error: "not_json" });
+    expect(parseMCPJSON("{oops")).toEqual({ ok: false, error: "not_json" });
+    expect(parseMCPJSON("[1,2]")).toEqual({ ok: false, error: "not_object" });
+    expect(parseMCPJSON("{}")).toEqual({
+      ok: false,
+      error: "no_servers_found",
+    });
+    expect(parseMCPJSON(JSON.stringify({ mcpServers: {} }))).toEqual({
+      ok: false,
+      error: "no_servers_found",
+    });
+    // stdio 本地进程不认
+    expect(
+      parseMCPJSON(JSON.stringify({ command: "npx", args: ["-y", "x"] })),
+    ).toEqual({ ok: false, error: "no_servers_found" });
+    expect(parseMCPJSON(JSON.stringify({ url: "not a url" }))).toEqual({
+      ok: false,
+      error: "url_invalid",
+    });
+  });
+});
+
+describe("传输识别（detectTransport）", () => {
+  it("type 优先，大小写与变体都认", () => {
+    expect(detectTransport({ type: "SSE" }, "https://x/mcp").transport).toBe(
+      "sse",
+    );
+    expect(
+      detectTransport({ type: "streamable-http" }, "https://x/mcp").transport,
+    ).toBe("streamable-http");
+    expect(detectTransport({ type: "http" }, "https://x/mcp").transport).toBe(
+      "streamable-http",
+    );
+  });
+
+  it("未知 type 不硬猜，走 auto", () => {
+    expect(detectTransport({ type: "websocket" }, "https://x/mcp").transport).toBe(
+      "auto",
+    );
+  });
+});
+
+describe("失败出口（mcpFailureExits：桶决定按钮，三处共用）", () => {
+  it("认证桶 → 去配 Header / 改用 OAuth", () => {
+    expect(
+      mcpFailureExits({ bucket: "auth", code: "unauthorized", title: "x" }),
+    ).toEqual(["to_header", "to_oauth"]);
+  });
+
+  it("传输出错 → 切 SSE 重试 + 重新探测", () => {
+    for (const code of ["sse_endpoint", "not_found", "empty", "not_mcp"]) {
+      expect(mcpFailureExits({ bucket: "protocol", code, title: "x" })).toEqual(
+        ["to_sse", "redetect"],
+      );
     }
   });
 
-  it("点预设只填名称与地址，其余保持用户已选的东西", () => {
-    const base = draft({ purposes: ["ai"], enabled: false, useGlobalFetch: false });
-    const preset = MCP_SERVER_PRESETS[0]!;
-    const next = applyPresetToDraft(base, preset, "本机 Krss");
-    expect(next.name).toBe("本机 Krss");
-    expect(next.url).toBe(preset.url);
-    expect(next.transport).toBe("streamable-http");
-    // 其余不动
-    expect(next.purposes).toEqual(["ai"]);
-    expect(next.enabled).toBe(false);
-    expect(next.useGlobalFetch).toBe(false);
+  it("未知桶 → 重新探测；网络/上游桶没有出口按钮", () => {
+    expect(mcpFailureExits({ bucket: "unknown", code: "x", title: "y" })).toEqual(
+      ["redetect"],
+    );
+    expect(
+      mcpFailureExits({ bucket: "network", code: "refused", title: "x" }),
+    ).toEqual([]);
+    expect(
+      mcpFailureExits({ bucket: "upstream", code: "bad_gateway", title: "x" }),
+    ).toEqual([]);
+    expect(mcpFailureExits(null)).toEqual([]);
+  });
+
+  it("桶名 i18n 键有兜底", () => {
+    expect(mcpFailureBucketLabelKey("auth")).toBe(
+      "ai_settings.mcp_failure_auth",
+    );
+    expect(
+      mcpFailureBucketLabelKey("whatever" as "auth"),
+    ).toBe("ai_settings.mcp_failure_unknown");
   });
 });
 
@@ -241,9 +374,7 @@ describe("预览门禁（isMCPPreviewReady / mcpInspectSignature）", () => {
     mapping: { title: "name" },
     keyLevel: "link" as const,
     notes: [],
-    preview: [
-      { title: "第一条", key: "k1", keyLevel: "link" },
-    ],
+    preview: [{ title: "第一条", key: "k1", keyLevel: "link" }],
     total: 3,
   };
 
@@ -370,7 +501,10 @@ describe("inspect 请求与建源配置", () => {
       resourceUri: "krss://unread",
       limit: 5,
     });
-    expect(request).toEqual({ kind: "resource", resourceUri: "krss://unread" });
+    expect(request).toEqual({
+      kind: "resource",
+      resourceUri: "krss://unread",
+    });
   });
 
   it("工具请求带上参数与条数", () => {
@@ -388,7 +522,7 @@ describe("inspect 请求与建源配置", () => {
     });
   });
 
-  it("mcpConfig 按 kind 分流，并带上推断出的档位与去重键级别", () => {
+  it("mcpConfig 按 kind 分流，并带上推断出的档位、去重键级别与分页", () => {
     const config = buildMCPFeedConfig({
       serverId: "s1",
       kind: "tool",
@@ -398,6 +532,7 @@ describe("inspect 请求与建源配置", () => {
       mapping: { title: "name" },
       tier: "structured",
       keyLevel: "link",
+      pagination: { mode: "history", maxPages: 3, maxItems: 200 },
     });
     expect(config).toEqual({
       serverId: "s1",
@@ -408,6 +543,7 @@ describe("inspect 请求与建源配置", () => {
       mapping: { title: "name" },
       tier: "structured",
       keyLevel: "link",
+      pagination: { mode: "history", maxPages: 3, maxItems: 200 },
     });
 
     const resourceConfig = buildMCPFeedConfig({
@@ -422,6 +558,12 @@ describe("inspect 请求与建源配置", () => {
       resourceUri: "krss://unread",
       mapping: { title: "name" },
     });
+    expect("pagination" in resourceConfig).toBe(false);
+  });
+
+  it("分页默认值是 3 页 / 200 条", () => {
+    expect(MCP_DEFAULT_MAX_PAGES).toBe(3);
+    expect(MCP_DEFAULT_MAX_ITEMS).toBe(200);
   });
 
   it("默认订阅标题带上连接名与工具名", () => {
@@ -447,15 +589,80 @@ describe("inspect 请求与建源配置", () => {
   });
 });
 
+describe("JSON 高亮 tokenizer（tokenizeJSON）", () => {
+  it("key 与 string 分得开（冒号是判据）", () => {
+    const kinds = tokenizeJSON('{"a": "b"}').map((t) => t.kind);
+    expect(kinds).toContain("key");
+    expect(kinds).toContain("string");
+    // 回合制：原样拼回去
+    const text = '{"a": "b", "n": 12, "f": true, "z": null}';
+    expect(tokenizeJSON(text).map((t) => t.text).join("")).toBe(text);
+  });
+
+  it("数字含小数与指数", () => {
+    const numbers = tokenizeJSON("[1, -2.5, 1e10]").filter(
+      (t) => t.kind === "number",
+    );
+    expect(numbers.map((t) => t.text)).toEqual(["1", "-2.5", "1e10"]);
+  });
+
+  it("转义引号不断串", () => {
+    const tokens = tokenizeJSON('{"a": "x\\"y"}');
+    expect(tokens.map((t) => t.text).join("")).toBe('{"a": "x\\"y"}');
+    expect(tokens.some((t) => t.kind === "string")).toBe(true);
+  });
+
+  it("坏 JSON 不崩（只是部分没颜色）", () => {
+    const tokens = tokenizeJSON("{oops,");
+    expect(tokens.map((t) => t.text).join("")).toBe("{oops,");
+  });
+});
+
+describe("JSON 格式化与压缩", () => {
+  it("格式化展开两格，压缩压成一行", () => {
+    expect(formatMCPJSON('{"a":1}')).toEqual({
+      ok: true,
+      text: '{\n  "a": 1\n}',
+    });
+    expect(minifyMCPJSON('{ "a" : 1 }')).toEqual({
+      ok: true,
+      text: '{"a":1}',
+    });
+  });
+
+  it("坏 JSON 报错带原文信息", () => {
+    const formatted = formatMCPJSON("{oops");
+    expect(formatted.ok).toBe(false);
+    if (!formatted.ok) expect(formatted.message.length).toBeGreaterThan(0);
+  });
+});
+
 describe("出向客户端配置示例", () => {
   it("带 origin 时用真地址，token 一律是占位符", () => {
     const text = buildMCPClientConfigExample("http://192.0.2.5:8080");
     const parsed = JSON.parse(text) as {
-      mcpServers: { krss: { url: string; headers: { Authorization: string } } };
+      mcpServers: {
+        krss: { type: string; url: string; headers: { Authorization: string } };
+      };
     };
     expect(parsed.mcpServers.krss.url).toBe("http://192.0.2.5:8080/mcp");
-    expect(parsed.mcpServers.krss.headers.Authorization).toBe("Bearer <token>");
+    expect(parsed.mcpServers.krss.type).toBe("http");
+    expect(parsed.mcpServers.krss.headers.Authorization).toBe(
+      "Bearer <token>",
+    );
     expect(text).not.toMatch(/krss_mcp_/);
+  });
+
+  it("SSE 写法 type 是 sse（HTTP 与 SSE 两种都给）", () => {
+    const text = buildMCPClientConfigExample(
+      "http://192.0.2.5:8080",
+      "sse",
+    );
+    const parsed = JSON.parse(text) as {
+      mcpServers: { krss: { type: string; url: string } };
+    };
+    expect(parsed.mcpServers.krss.type).toBe("sse");
+    expect(parsed.mcpServers.krss.url).toBe("http://192.0.2.5:8080/mcp");
   });
 
   it("拿不到 origin 时退回 <host>:<port> 占位", () => {
@@ -468,5 +675,16 @@ describe("出向客户端配置示例", () => {
     const text = buildMCPClientConfigExample("http://localhost:8082///");
     expect(text).toContain("http://localhost:8082/mcp");
     expect(text).not.toContain("8082//mcp");
+  });
+});
+
+describe("OAuth 回调地址", () => {
+  it("运行时取当前访问 origin（零配置、远程可用）", () => {
+    expect(buildOAuthCallbackURL("http://localhost:5174")).toBe(
+      "http://localhost:5174/api/mcp/oauth/callback",
+    );
+    expect(buildOAuthCallbackURL("https://reader.example.com/")).toBe(
+      "https://reader.example.com/api/mcp/oauth/callback",
+    );
   });
 });

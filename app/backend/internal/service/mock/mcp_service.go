@@ -146,6 +146,95 @@ func (mr *MockMCPServiceMockRecorder) ListTools(ctx, id any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTools", reflect.TypeOf((*MockMCPService)(nil).ListTools), ctx, id)
 }
 
+// OAuthCallback mocks base method.
+func (m *MockMCPService) OAuthCallback(ctx context.Context, state, code string) (model.MCPServer, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "OAuthCallback", ctx, state, code)
+	ret0, _ := ret[0].(model.MCPServer)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// OAuthCallback indicates an expected call of OAuthCallback.
+func (mr *MockMCPServiceMockRecorder) OAuthCallback(ctx, state, code any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OAuthCallback", reflect.TypeOf((*MockMCPService)(nil).OAuthCallback), ctx, state, code)
+}
+
+// OAuthDiscovery mocks base method.
+func (m *MockMCPService) OAuthDiscovery(ctx context.Context, id int64) (service.OAuthDiscoveryResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "OAuthDiscovery", ctx, id)
+	ret0, _ := ret[0].(service.OAuthDiscoveryResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// OAuthDiscovery indicates an expected call of OAuthDiscovery.
+func (mr *MockMCPServiceMockRecorder) OAuthDiscovery(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OAuthDiscovery", reflect.TypeOf((*MockMCPService)(nil).OAuthDiscovery), ctx, id)
+}
+
+// OAuthRevoke mocks base method.
+func (m *MockMCPService) OAuthRevoke(ctx context.Context, id int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "OAuthRevoke", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// OAuthRevoke indicates an expected call of OAuthRevoke.
+func (mr *MockMCPServiceMockRecorder) OAuthRevoke(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OAuthRevoke", reflect.TypeOf((*MockMCPService)(nil).OAuthRevoke), ctx, id)
+}
+
+// OAuthStart mocks base method.
+func (m *MockMCPService) OAuthStart(ctx context.Context, id int64, redirectURI, scope, clientID, clientSecret string) (service.OAuthStartResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "OAuthStart", ctx, id, redirectURI, scope, clientID, clientSecret)
+	ret0, _ := ret[0].(service.OAuthStartResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// OAuthStart indicates an expected call of OAuthStart.
+func (mr *MockMCPServiceMockRecorder) OAuthStart(ctx, id, redirectURI, scope, clientID, clientSecret any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "OAuthStart", reflect.TypeOf((*MockMCPService)(nil).OAuthStart), ctx, id, redirectURI, scope, clientID, clientSecret)
+}
+
+// RedetectTransport mocks base method.
+func (m *MockMCPService) RedetectTransport(ctx context.Context, id int64) (service.MCPTestResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RedetectTransport", ctx, id)
+	ret0, _ := ret[0].(service.MCPTestResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RedetectTransport indicates an expected call of RedetectTransport.
+func (mr *MockMCPServiceMockRecorder) RedetectTransport(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RedetectTransport", reflect.TypeOf((*MockMCPService)(nil).RedetectTransport), ctx, id)
+}
+
+// SuggestMapping mocks base method.
+func (m *MockMCPService) SuggestMapping(ctx context.Context, id int64, req service.MCPSuggestRequest) (service.MCPSuggestResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SuggestMapping", ctx, id, req)
+	ret0, _ := ret[0].(service.MCPSuggestResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SuggestMapping indicates an expected call of SuggestMapping.
+func (mr *MockMCPServiceMockRecorder) SuggestMapping(ctx, id, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SuggestMapping", reflect.TypeOf((*MockMCPService)(nil).SuggestMapping), ctx, id, req)
+}
+
 // TestServer mocks base method.
 func (m *MockMCPService) TestServer(ctx context.Context, id int64) (service.MCPTestResult, error) {
 	m.ctrl.T.Helper()

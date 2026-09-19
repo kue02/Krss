@@ -530,6 +530,28 @@ func runMigrations(db *sql.DB) error {
 		return fmt.Errorf("create idx_feeds_source_type: %w", err)
 	}
 
+	// Migration 28: MCP 口径扩大（16-10 SSE / 16-11 OAuth / 16-12 失败结构化）。
+	// 27 已经在开发库副本上跑过，只许新增列，不许改 27 的任何东西。
+	//   mcp_servers.last_transport      —— 上次成功的传输（transport='auto' 时优先试它，避免每轮重复探测）
+	//   mcp_servers.oauth_*             —— OAuth token 一套（token 进库；出接口掩码；不进日志）
+	//   mcp_servers.last_failure        —— 上次失败的结构化 JSON（桶/细分/建议/原始返回，供三处共用）
+	// 全是新增可空列 ⇒ 老数据零变化。
+	if err := addColumnIfMissing(db, "mcp_servers", "last_transport", `ALTER TABLE mcp_servers ADD COLUMN last_transport TEXT`); err != nil {
+		return err
+	}
+	for _, column := range []string{
+		"oauth_client_id", "oauth_client_secret", "oauth_access_token",
+		"oauth_refresh_token", "oauth_expires_at", "oauth_token_type",
+		"oauth_scope", "oauth_auth_server",
+	} {
+		if err := addColumnIfMissing(db, "mcp_servers", column, `ALTER TABLE mcp_servers ADD COLUMN `+column+` TEXT`); err != nil {
+			return err
+		}
+	}
+	if err := addColumnIfMissing(db, "mcp_servers", "last_failure", `ALTER TABLE mcp_servers ADD COLUMN last_failure TEXT`); err != nil {
+		return err
+	}
+
 	return nil
 }
 

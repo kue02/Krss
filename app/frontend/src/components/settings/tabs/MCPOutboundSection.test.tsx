@@ -60,7 +60,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.getMCPOutbound.mockResolvedValue(status());
   mocks.updateMCPOutbound.mockImplementation(
-    async (payload: { enabled: boolean; writeEnabled: boolean }) =>
+    async (payload: { enabled: boolean; writeEnabled: boolean; baseUrl: string }) =>
       status(payload),
   );
 });
@@ -118,6 +118,7 @@ describe("出向：Krss 作为 MCP 服务器（设置 → 数据控制）", () =
       expect(mocks.updateMCPOutbound).toHaveBeenCalledWith({
         enabled: true,
         writeEnabled: false,
+        baseUrl: "",
       }),
     );
   });
@@ -147,6 +148,41 @@ describe("出向：Krss 作为 MCP 服务器（设置 → 数据控制）", () =
     expect(screen.getByText(/mcpServers/)).toBeTruthy();
     expect(document.body.textContent).not.toContain(
       "krss_mcp_plaintext_only_once",
+    );
+  });
+
+  it("对外访问地址：填了保存进库，示例用它拼地址", async () => {
+    mocks.getMCPOutbound.mockResolvedValue(status());
+    render(<MCPOutboundSection />);
+    await screen.findByText("/mcp");
+
+    const input = screen.getByLabelText(
+      "data_control.mcp_base_url",
+    ) as HTMLInputElement;
+    fireEvent.change(input, {
+      target: { value: "http://192.0.2.1:8082/" },
+    });
+    fireEvent.click(screen.getByText("actions.save"));
+
+    await waitFor(() =>
+      expect(mocks.updateMCPOutbound).toHaveBeenCalledWith({
+        enabled: false,
+        writeEnabled: false,
+        baseUrl: "http://192.0.2.1:8082/",
+      }),
+    );
+  });
+
+  it("对外访问地址：库里有值时示例优先用它，不用浏览器地址", async () => {
+    mocks.getMCPOutbound.mockResolvedValue(
+      status({ baseUrl: "http://192.0.2.1:8082" }),
+    );
+    render(<MCPOutboundSection />);
+    await screen.findByText("/mcp");
+
+    expect(document.body.textContent).toContain("http://192.0.2.1:8082/mcp");
+    expect(document.body.textContent).not.toContain(
+      `${window.location.host}/mcp`,
     );
   });
 });

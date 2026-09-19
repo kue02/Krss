@@ -35,6 +35,9 @@ const (
 	keyMCPOutboundTokenHash    = "mcp.outbound_token_hash"
 	keyMCPOutboundTokenPrefix  = "mcp.outbound_token_prefix"
 	keyMCPOutboundTokenCreated = "mcp.outbound_token_created_at"
+	// keyMCPOutboundBaseURL 对外访问地址（用户填的公网/局域网可达 origin，如 http://192.0.2.1:8082）。
+	// 客户端配置示例用它拼 /mcp 地址 —— 不能拿浏览器当前 origin 凑，开发时前后端根本不同源。
+	keyMCPOutboundBaseURL = "mcp.outbound_base_url"
 )
 
 // MCPTokenPrefix 长期 token 的字面前缀（便于识别与检索）。
@@ -49,6 +52,8 @@ type MCPOutboundStatus struct {
 	TokenSet      bool   `json:"tokenSet"`
 	TokenPrefix   string `json:"tokenPrefix,omitempty"`
 	TokenCreated  string `json:"tokenCreatedAt,omitempty"`
+	// BaseURL 对外访问地址（用户填；空 = 没填，示例里回落到浏览器当前 origin）。
+	BaseURL       string `json:"baseUrl,omitempty"`
 	Endpoint      string `json:"endpoint"`
 	ProtocolVer   string `json:"protocolVersion"`
 	ToolCount     int    `json:"toolCount"`
@@ -109,7 +114,7 @@ type MCPOutboundService interface {
 	// GenerateToken 生成长期 token：明文只在这一刻返回，库里只存哈希（B3）。
 	GenerateToken(ctx context.Context) (MCPOutboundStatus, string, error)
 	RevokeToken(ctx context.Context) error
-	UpdateOptions(ctx context.Context, enabled, writeEnabled bool) (MCPOutboundStatus, error)
+	UpdateOptions(ctx context.Context, enabled, writeEnabled bool, baseURL string) (MCPOutboundStatus, error)
 	// Authorize 校验调用方带来的 token（常量时间比较哈希）。
 	Authorize(ctx context.Context, token string) bool
 	// Dispatch 处理一条 JSON-RPC 请求；respond=false 表示这是通知（不回响应体）。
@@ -164,6 +169,7 @@ func (s *mcpOutboundService) Status(ctx context.Context) (MCPOutboundStatus, err
 		TokenSet:      hash != "",
 		TokenPrefix:   s.getString(ctx, keyMCPOutboundTokenPrefix),
 		TokenCreated:  s.getString(ctx, keyMCPOutboundTokenCreated),
+		BaseURL:       normalizeMCPBaseURL(s.getString(ctx, keyMCPOutboundBaseURL)),
 		Endpoint:      "/mcp",
 		ProtocolVer:   mcp.ProtocolVersion,
 		ToolCount:     len(tools),
@@ -200,10 +206,31 @@ func (s *mcpOutboundService) RevokeToken(ctx context.Context) error {
 	return nil
 }
 
-func (s *mcpOutboundService) UpdateOptions(ctx context.Context, enabled, writeEnabled bool) (MCPOutboundStatus, error) {
+// normalizeMCPBaseURL 把用户填的对外地址收成统一形状：去尾斜杠；不是 http(s) 的当没填。
+// 空字符串表示没填 —— 接口与示例里回落到浏览器当前 origin（生产单机部署时两者一致）。
+func normalizeMCPBaseURL(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	trimmed = strings.TrimRight(trimmed, "/")
+	if trimmed == "" {
+		return ""
+	}
+	lowered := strings.ToLower(trimmed)
+	if !strings.HasPrefix(lowered, "http://") && !strings.HasPrefix(lowered, "https://") {
+		return ""
+	}
+	return trimmed
+}
+
+func (s *mcpOutboundService) UpdateOptions(ctx context.Context, enabled, writeEnabled bool, baseURL string) (MCPOutboundStatus, error) {
+	normalized := normalizeMCPBaseURL(baseURL)
+	// 用户填了东西但形状不对 → 400 直说，不静默吞掉（handler 按 ErrMCPInvalid 映射）。
+	if strings.TrimSpace(baseURL) != "" && normalized == "" {
+		return MCPOutboundStatus{}, fmt.Errorf("%w: invalid base_url", ErrMCPInvalid)
+	}
 	values := map[string]string{
 		keyMCPOutboundEnabled:      boolToSettingValue(enabled),
 		keyMCPOutboundWriteEnabled: boolToSettingValue(writeEnabled),
+		keyMCPOutboundBaseURL:      normalized,
 	}
 	if err := s.settings.SetMany(ctx, values); err != nil {
 		return MCPOutboundStatus{}, err

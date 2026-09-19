@@ -6,11 +6,11 @@
  */
 import type { ContentType } from "@/types/api";
 
-/** 传输：第一版只支持 streamable-http（sse 在界面上禁用并注明「第一版不支持」） */
-export type MCPTransport = "streamable-http" | "sse";
+/** 传输：auto（默认，自动识别 + 记住上次成功的）/ streamable-http / sse（旧版 HTTP+SSE） */
+export type MCPTransport = "auto" | "streamable-http" | "sse";
 
-/** 认证：第一版只做无认证 / Header（OAuth 留到后面） */
-export type MCPAuthType = "none" | "header";
+/** 认证：无 / Header / OAuth（well-known 发现 → DCR → PKCE） */
+export type MCPAuthType = "none" | "header" | "oauth";
 
 /** 同一份连接的用途标记，可并存 */
 export type MCPPurpose = "ai" | "feed";
@@ -59,6 +59,16 @@ export interface MCPServer {
   fetchTimeoutSeconds?: number;
   fetchConcurrency?: number;
   refreshIntervalMinutes?: number;
+  /** 上次成功的传输（transport='auto' 时下次优先试它） */
+  lastTransport?: string;
+  /** OAuth：client_id 明文可出；secret 只出掩码 */
+  oauthClientId?: string;
+  oauthClientSecret?: string;
+  oauthAuthorized: boolean;
+  oauthExpiresAt?: string;
+  oauthAuthServer?: string;
+  /** 结构化失败（列表行/测试/预览三处共用） */
+  lastFailure?: MCPFailure | null;
   lastUsedAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -77,6 +87,26 @@ export interface MCPServerWritePayload {
   fetchTimeoutSeconds?: number;
   fetchConcurrency?: number;
   refreshIntervalMinutes?: number;
+  /** OAuth 手填凭证（不支持 DCR 的服务用；secret 传掩码 = 没改） */
+  oauthClientId?: string;
+  oauthClientSecret?: string;
+}
+
+/** 失败 4 桶 + 未知兜底（16-12：列表行 / 测试按钮 / 向导预览三处共用同一套） */
+export type MCPFailureBucket =
+  | "network"
+  | "auth"
+  | "protocol"
+  | "upstream"
+  | "unknown";
+
+/** 一次失败的结构化原因：结论一句话（人话）+ 一句建议 + 可复制的原始返回 */
+export interface MCPFailure {
+  bucket: MCPFailureBucket;
+  code: string;
+  title: string;
+  suggestion?: string;
+  raw?: string;
 }
 
 /** POST /api/mcp/servers/:id/test —— 永远 200，连接失败也在 body 里（不是请求失败） */
@@ -87,6 +117,12 @@ export interface MCPTestResult {
   toolCount: number;
   resourceCount: number;
   error?: string;
+  /** 结构化失败（成功时没有） */
+  failure?: MCPFailure | null;
+  /** 这次实际用的传输 */
+  transport?: string;
+  /** 握手耗时毫秒 */
+  latencyMs?: number;
 }
 
 /** 工具定义（tools/list）：inputSchema 必有、outputSchema 可选 */
@@ -146,6 +182,54 @@ export interface MCPInspectResult {
   total: number;
   error?: string;
   truncated?: boolean;
+  /** 结构化失败（向导预览与测试按钮共用同一套文案） */
+  failure?: MCPFailure | null;
+  /** 还有下一页时回传（向导「拉更多」把游标塞进 arguments 再 inspect） */
+  nextCursor?: string;
+  /** 游标参数名（inputSchema 里自动找到的） */
+  cursorParam?: string;
+}
+
+/** 追历史分页配置（存在 mcp_config 里，不用新迁移；默认 single 只取一页） */
+export interface MCPPagination {
+  mode?: "single" | "history";
+  maxPages?: number;
+  maxItems?: number;
+  cursorParam?: string;
+  cursorPath?: string;
+}
+
+/** POST /api/mcp/servers/:id/suggest-mapping 的请求体（第 4 档 AI 兜底，只返回不落库） */
+export interface MCPSuggestRequest {
+  kind: MCPKind;
+  toolName?: string;
+  resourceUri?: string;
+  arguments?: Record<string, unknown>;
+  limit?: number;
+}
+
+/** suggest-mapping 的响应：猜出来的映射（必须预览确认后才落库） */
+export interface MCPSuggestResult {
+  mapping: MCPEntryMapping;
+  model: string;
+  estimatedTokens: number;
+  textUsed: number;
+  raw?: string;
+}
+
+/** POST /api/mcp/servers/:id/oauth/discovery 的响应 */
+export interface MCPOAuthDiscovery {
+  authServer: string;
+  hasDCR: boolean;
+  needsManual: boolean;
+  hasClientID: boolean;
+  instructions?: string;
+}
+
+/** POST /api/mcp/servers/:id/oauth/start 的响应：前端拿 authURL 开浏览器 */
+export interface MCPOAuthStart {
+  authURL: string;
+  state: string;
 }
 
 /** 出向服务状态（GET / PUT /api/mcp/outbound） */
@@ -156,6 +240,8 @@ export interface MCPOutboundStatus {
   tokenSet: boolean;
   tokenPrefix?: string;
   tokenCreatedAt?: string;
+  /** 对外访问地址（用户填；空 = 没填，示例回落到浏览器当前 origin） */
+  baseUrl?: string;
   endpoint: string;
   protocolVersion: string;
   toolCount: number;
@@ -178,6 +264,8 @@ export interface MCPFeedConfig {
   mapping: MCPEntryMapping;
   tier?: string;
   keyLevel?: string;
+  /** 追历史分页（16-8：缺省 single 只取一页） */
+  pagination?: MCPPagination;
 }
 
 /** POST /api/feeds 建 MCP 订阅的请求体 */

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -57,16 +58,25 @@ type MCPServerInput struct {
 	FetchTimeoutSeconds    *int
 	FetchConcurrency       *int
 	RefreshIntervalMinutes *int
+	// OAuthClientID / OAuthClientSecret 手填的客户端凭证（不支持 DCR 的服务用 —— 16-11）。
+	// 传掩码 = 没改（与 Header 同一口径）。
+	OAuthClientID     string
+	OAuthClientSecret string
 }
 
 // MCPTestResult 连通性测试结果（回服务名/版本/工具与资源计数）。
 type MCPTestResult struct {
-	Connected     bool   `json:"connected"`
-	ServerName    string `json:"serverName,omitempty"`
-	ServerVersion string `json:"serverVersion,omitempty"`
-	ToolCount     int    `json:"toolCount"`
-	ResourceCount int    `json:"resourceCount"`
-	Error         string `json:"error,omitempty"`
+	Connected     bool               `json:"connected"`
+	ServerName    string             `json:"serverName,omitempty"`
+	ServerVersion string             `json:"serverVersion,omitempty"`
+	ToolCount     int                `json:"toolCount"`
+	ResourceCount int                `json:"resourceCount"`
+	Error         string             `json:"error,omitempty"`
+	// Failure 结构化失败（16-12：三处共用；成功时为 nil）。
+	Failure *model.MCPFailure `json:"failure,omitempty"`
+	// Transport 这次实际用的传输；LatencyMs 握手耗时毫秒。
+	Transport string `json:"transport,omitempty"`
+	LatencyMs int64  `json:"latencyMs,omitempty"`
 }
 
 // MCPToolListResult 工具 + 资源清单（建源向导第二步用）。
@@ -123,6 +133,12 @@ type MCPInspectResult struct {
 	Total     int                  `json:"total"`
 	Error     string               `json:"error,omitempty"`
 	Truncated bool                 `json:"truncated,omitempty"`
+	// Failure 结构化失败（16-12：向导预览与测试按钮共用同一套文案）。
+	Failure *model.MCPFailure `json:"failure,omitempty"`
+	// NextCursor 第一页之后还有页时回传（向导「拉更多」把游标塞进 arguments 再 inspect）。
+	NextCursor string `json:"nextCursor,omitempty"`
+	// CursorParam 游标参数名（inputSchema 里自动找到的；前端「拉更多」往这个参数填）。
+	CursorParam string `json:"cursorParam,omitempty"`
 }
 
 // MCPFetchResult 抓一次的结果（去重键的取值与档位一并回传，供 last_error / 调试）。
@@ -141,9 +157,18 @@ type MCPService interface {
 	DeleteServer(ctx context.Context, id int64) error
 	// TestServer 连通性测试（回工具/资源计数），并把状态写回该连接。
 	TestServer(ctx context.Context, id int64) (MCPTestResult, error)
+	// RedetectTransport 重新探测传输（清掉记住的上次成功项，再测一次 —— 16-10）。
+	RedetectTransport(ctx context.Context, id int64) (MCPTestResult, error)
 	ListTools(ctx context.Context, id int64) (MCPToolListResult, error)
 	// Inspect 干跑一次调用并预览前 5 条 + 自动推断映射（不写库、不落条目）。
 	Inspect(ctx context.Context, id int64, req MCPInspectRequest) (MCPInspectResult, error)
+	// SuggestMapping 第 4 档 AI 兜底：调一次 AI 猜映射，只返回不落库（16-3）。
+	SuggestMapping(ctx context.Context, id int64, req MCPSuggestRequest) (MCPSuggestResult, error)
+	// OAuthDiscovery / OAuthStart / OAuthCallback / OAuthRevoke 见 mcp_oauth.go（16-11）。
+	OAuthDiscovery(ctx context.Context, id int64) (OAuthDiscoveryResult, error)
+	OAuthStart(ctx context.Context, id int64, redirectURI, scope, clientID, clientSecret string) (OAuthStartResult, error)
+	OAuthCallback(ctx context.Context, state, code string) (model.MCPServer, error)
+	OAuthRevoke(ctx context.Context, id int64) error
 	// FetchFeedItems 按该订阅的映射抓一次，产出可直接进 saveEntries 的条目。
 	FetchFeedItems(ctx context.Context, feed model.Feed) (MCPFetchResult, error)
 }
@@ -152,10 +177,12 @@ type mcpService struct {
 	servers       repository.MCPServerRepository
 	settings      SettingsService
 	clientFactory *network.ClientFactory
+	// ai 第 4 档兜底用（16-3）。nil = 没配 AI，SuggestMapping 明确报错。
+	ai AIService
 }
 
-func NewMCPService(servers repository.MCPServerRepository, settings SettingsService, clientFactory *network.ClientFactory) MCPService {
-	return &mcpService{servers: servers, settings: settings, clientFactory: clientFactory}
+func NewMCPService(servers repository.MCPServerRepository, settings SettingsService, clientFactory *network.ClientFactory, ai AIService) MCPService {
+	return &mcpService{servers: servers, settings: settings, clientFactory: clientFactory, ai: ai}
 }
 
 func (s *mcpService) ListServers(ctx context.Context) ([]model.MCPServer, error) {
@@ -173,16 +200,25 @@ func (s *mcpService) GetServer(ctx context.Context, id int64) (model.MCPServer, 
 	return s.servers.GetByID(ctx, id)
 }
 
-// MaskMCPServer 出接口前把 Header 值打成掩码（凭据只存在于库里与出网那一刻）。
+// MaskMCPServer 出接口前把敏感值打成掩码（凭据只存在于库里与出网那一刻）。
+// Header 值 / client_secret / token 一律掩码；client_id 与 token 指纹可出（界面要显示状态）。
 func MaskMCPServer(server model.MCPServer) model.MCPServer {
-	if len(server.Headers) == 0 {
-		return server
+	if len(server.Headers) > 0 {
+		masked := make(map[string]string, len(server.Headers))
+		for key := range server.Headers {
+			masked[key] = MCPMaskedValue
+		}
+		server.Headers = masked
 	}
-	masked := make(map[string]string, len(server.Headers))
-	for key := range server.Headers {
-		masked[key] = MCPMaskedValue
+	if server.OAuthClientSecret != "" {
+		server.OAuthClientSecret = MCPMaskedValue
 	}
-	server.Headers = masked
+	if server.OAuthAccessToken != "" {
+		server.OAuthAccessToken = MCPMaskedValue
+	}
+	if server.OAuthRefreshToken != "" {
+		server.OAuthRefreshToken = MCPMaskedValue
+	}
 	return server
 }
 
@@ -201,19 +237,30 @@ func normalizeMCPInput(input MCPServerInput) (MCPServerInput, error) {
 		return input, fmt.Errorf("%w: 地址必须是 http(s) 开头的完整 URL", ErrMCPInvalid)
 	}
 	if input.Transport == "" {
-		input.Transport = model.MCPTransportStreamableHTTP
+		input.Transport = model.MCPTransportAuto
 	}
-	if input.Transport != model.MCPTransportStreamableHTTP {
-		return input, fmt.Errorf("%w: 第一版只支持 %s（%s 留后面）", ErrMCPUnsupported, model.MCPTransportStreamableHTTP, input.Transport)
+	switch input.Transport {
+	case model.MCPTransportAuto, model.MCPTransportStreamableHTTP, model.MCPTransportSSE:
+	default:
+		return input, fmt.Errorf("%w: 传输只能是 auto / streamable-http / sse", ErrMCPInvalid)
 	}
 	if input.AuthType == "" {
 		input.AuthType = model.MCPAuthNone
 	}
-	if input.AuthType != model.MCPAuthNone && input.AuthType != model.MCPAuthHeader {
-		return input, fmt.Errorf("%w: 第一版只做无认证 + Header 认证", ErrMCPInvalid)
+	if input.AuthType != model.MCPAuthNone && input.AuthType != model.MCPAuthHeader && input.AuthType != model.MCPAuthOAuth {
+		return input, fmt.Errorf("%w: 认证只能是 none / header / oauth", ErrMCPInvalid)
 	}
 	if input.AuthType == model.MCPAuthNone {
 		input.Headers = nil
+	}
+	if input.AuthType != model.MCPAuthOAuth {
+		input.OAuthClientID = ""
+		input.OAuthClientSecret = ""
+	}
+	input.OAuthClientID = strings.TrimSpace(input.OAuthClientID)
+	// client_secret 传掩码 = 没改（与 Header 同一口径）—— 但新建时掩码没有意义，直接清掉
+	if IsMaskedMCPValue(input.OAuthClientSecret) {
+		input.OAuthClientSecret = ""
 	}
 	if len(input.Purposes) == 0 {
 		input.Purposes = []string{model.MCPPurposeAI}
@@ -265,6 +312,8 @@ func (s *mcpService) CreateServer(ctx context.Context, input MCPServerInput) (mo
 		FetchTimeoutSeconds:    normalized.FetchTimeoutSeconds,
 		FetchConcurrency:       normalized.FetchConcurrency,
 		RefreshIntervalMinutes: normalized.RefreshIntervalMinutes,
+		OAuthClientID:          normalized.OAuthClientID,
+		OAuthClientSecret:      normalized.OAuthClientSecret,
 	}
 	created, err := s.servers.Create(ctx, server)
 	if err != nil {
@@ -296,9 +345,23 @@ func (s *mcpService) UpdateServer(ctx context.Context, id int64, input MCPServer
 	if input.AuthType != "" && input.AuthType != model.MCPAuthHeader {
 		input.Headers = nil
 	}
+	// client_secret 传掩码 = 没改（与 Header 同一口径）：先换回真值再进 normalize
+	if IsMaskedMCPValue(input.OAuthClientSecret) {
+		input.OAuthClientSecret = existing.OAuthClientSecret
+	}
+	if strings.TrimSpace(input.OAuthClientID) == "" && input.AuthType == model.MCPAuthOAuth {
+		input.OAuthClientID = existing.OAuthClientID
+	}
 	normalized, err := normalizeMCPInput(input)
 	if err != nil {
 		return model.MCPServer{}, err
+	}
+	// 认证方式切走 oauth → 旧 token 作废（不清掉会留着一把开不了的钥匙）
+	oauthKept := existing.OAuthAccessToken
+	oauthRefreshKept := existing.OAuthRefreshToken
+	oauthExpiresKept := existing.OAuthExpiresAt
+	if normalized.AuthType != model.MCPAuthOAuth {
+		oauthKept, oauthRefreshKept, oauthExpiresKept = "", "", nil
 	}
 	existing.Name = normalized.Name
 	existing.Transport = normalized.Transport
@@ -311,6 +374,11 @@ func (s *mcpService) UpdateServer(ctx context.Context, id int64, input MCPServer
 	existing.FetchTimeoutSeconds = normalized.FetchTimeoutSeconds
 	existing.FetchConcurrency = normalized.FetchConcurrency
 	existing.RefreshIntervalMinutes = normalized.RefreshIntervalMinutes
+	existing.OAuthClientID = normalized.OAuthClientID
+	existing.OAuthClientSecret = normalized.OAuthClientSecret
+	existing.OAuthAccessToken = oauthKept
+	existing.OAuthRefreshToken = oauthRefreshKept
+	existing.OAuthExpiresAt = oauthExpiresKept
 
 	updated, err := s.servers.Update(ctx, existing)
 	if err != nil {
@@ -351,32 +419,141 @@ func (s *mcpService) timeoutFor(ctx context.Context, server model.MCPServer) tim
 
 // newClient 建一个已握手的会话。出网一律走 network.ClientFactory（继承代理设置），
 // 绝不自己 http.Get。
+//
+// 传输（16-10）：显式指定就只试那一种；auto 则按「上次成功的 → streamable-http → sse」
+// 试，传输选错味的失败（404/405/非 MCP 响应/空响应）才换下一种试，其他失败直接回。
+// 成功后把这次用的传输记下来（SetLastTransport），下次优先试它。
+// 调用方必须 defer client.Close()（SSE 流要关）。
 func (s *mcpService) newClient(ctx context.Context, server model.MCPServer) (*mcp.Client, error) {
 	if !server.Enabled {
 		return nil, ErrMCPDisabled
 	}
-	if server.Transport != model.MCPTransportStreamableHTTP {
-		return nil, fmt.Errorf("%w: %s", ErrMCPUnsupported, server.Transport)
+	headers, err := s.oauthHeaders(ctx, server)
+	if err != nil {
+		return nil, err
 	}
+	candidates := transportCandidates(server)
+	var lastErr error
+	for _, transport := range candidates {
+		client, err := dialTransport(ctx, s, server, headers, transport)
+		if err == nil {
+			if server.LastTransport != transport {
+				_ = s.servers.SetLastTransport(ctx, server.ID, transport)
+			}
+			return client, nil
+		}
+		lastErr = err
+		if !isTransportMismatch(err) || transport == candidates[len(candidates)-1] {
+			return nil, err
+		}
+		// 换下一种传输前，把上一次的流关掉（SSE 的 GET 长连接不能泄漏）
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("%w: 没有可用的传输", ErrMCPUnsupported)
+	}
+	return nil, lastErr
+}
+
+// transportCandidates 试的顺序：显式一种；auto = 上次成功的 + http + sse（去重）。
+func transportCandidates(server model.MCPServer) []string {
+	if server.Transport == model.MCPTransportSSE {
+		return []string{model.MCPTransportSSE}
+	}
+	if server.Transport == model.MCPTransportStreamableHTTP {
+		return []string{model.MCPTransportStreamableHTTP}
+	}
+	ordered := []string{}
+	if server.LastTransport == model.MCPTransportStreamableHTTP || server.LastTransport == model.MCPTransportSSE {
+		ordered = append(ordered, server.LastTransport)
+	}
+	for _, transport := range []string{model.MCPTransportStreamableHTTP, model.MCPTransportSSE} {
+		duplicate := false
+		for _, existing := range ordered {
+			if existing == transport {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			ordered = append(ordered, transport)
+		}
+	}
+	return ordered
+}
+
+func dialTransport(ctx context.Context, s *mcpService, server model.MCPServer, headers map[string]string, transport string) (*mcp.Client, error) {
 	httpClient := s.clientFactory.NewHTTPClient(ctx, s.timeoutFor(ctx, server))
-	client := mcp.NewClient(httpClient, server.URL, server.Headers)
+	client := mcp.NewClientWithTransport(httpClient, server.URL, headers, transport)
 	if _, err := client.Initialize(ctx); err != nil {
+		client.Close()
 		return nil, err
 	}
 	return client, nil
 }
 
-// markStatus 回写连接状态（成功清 last_error，失败写原因）—— 失败必须可见。
-func (s *mcpService) markStatus(ctx context.Context, server model.MCPServer, connectErr error, toolCount, resourceCount int) {
-	var message *string
-	connected := connectErr == nil
-	if connectErr != nil {
-		text := connectErr.Error()
-		message = &text
+// isTransportMismatch 这错像不像「传输选错了」—— 像才值得换另一种试一次。
+// 判据：HTTP 404/405/400（端点不在/方法不对）、协议桶的非 MCP/空响应、SSE 流里没 endpoint。
+func isTransportMismatch(err error) bool {
+	var httpErr *mcp.HTTPError
+	if errors.As(err, &httpErr) {
+		return httpErr.StatusCode == http.StatusNotFound ||
+			httpErr.StatusCode == http.StatusMethodNotAllowed ||
+			httpErr.StatusCode == http.StatusBadRequest
 	}
-	if err := s.servers.UpdateStatus(ctx, server.ID, connected, message, toolCount, resourceCount); err != nil {
+	var oauthErr *oauthFailureError
+	if errors.As(err, &oauthErr) {
+		return false // 认证问题换传输没用，别试了
+	}
+	if errors.Is(err, ErrMCPDisabled) || errors.Is(err, ErrMCPUnsupported) {
+		return false
+	}
+	text := strings.ToLower(err.Error())
+	for _, hint := range []string{
+		"serverinfo", "initialize", "空响应体", "没有找到 json-rpc",
+		"不是 sse", "endpoint 事件", "不是合法 json",
+	} {
+		if strings.Contains(text, hint) {
+			return true
+		}
+	}
+	return false
+}
+
+// markStatus 回写连接状态（成功清 last_error，失败写原因）—— 失败必须可见。
+// 16-12：同时写结构化失败（last_failure JSON，三处共用）；last_error 存人话标题（兼容旧显示）。
+func (s *mcpService) markStatus(ctx context.Context, server model.MCPServer, connectErr error, toolCount, resourceCount int) {
+	failure := failureOf(connectErr, server.URL)
+	var message *string
+	if failure != nil {
+		message = &failure.Title
+	}
+	if err := s.servers.UpdateStatus(ctx, server.ID, connectErr == nil, message, toolCount, resourceCount); err != nil {
 		logger.Warn("update mcp status failed", "module", "service", "action", "update", "resource", "mcp_server", "result", "failed", "mcp_server_id", server.ID, "error", err)
 	}
+	// 结构化失败另存一列（best-effort：写不进去不影响主流程）
+	var failureJSON *string
+	if failure != nil {
+		if raw, err := json.Marshal(failure); err == nil {
+			text := string(raw)
+			failureJSON = &text
+		}
+	}
+	if err := s.servers.SetLastFailure(ctx, server.ID, failureJSON); err != nil {
+		logger.Warn("update mcp failure failed", "module", "service", "action", "update", "resource", "mcp_server", "result", "failed", "mcp_server_id", server.ID, "error", err)
+	}
+}
+
+// failureOf 把 error 收成结构化失败（nil → nil）。OAuth 预检错误自带失败体，直接用。
+func failureOf(err error, endpoint string) *model.MCPFailure {
+	if err == nil {
+		return nil
+	}
+	var oauthErr *oauthFailureError
+	if errors.As(err, &oauthErr) {
+		return &oauthErr.failure
+	}
+	failure := mcp.Classify(err, endpoint)
+	return &failure
 }
 
 func (s *mcpService) TestServer(ctx context.Context, id int64) (MCPTestResult, error) {
@@ -389,13 +566,19 @@ func (s *mcpService) TestServer(ctx context.Context, id int64) (MCPTestResult, e
 	}
 
 	result := MCPTestResult{}
+	start := time.Now()
 	client, connectErr := s.newClient(ctx, server)
 	if connectErr != nil {
+		result.Failure = failureOf(connectErr, server.URL)
+		result.Error = connectErr.Error()
 		s.markStatus(ctx, server, connectErr, 0, 0)
 		logger.Warn("mcp test failed", "module", "service", "action", "test", "resource", "mcp_server", "result", "failed",
 			"mcp_server_id", server.ID, "host", network.ExtractHost(server.URL), "error", connectErr)
 		return result, connectErr
 	}
+	defer client.Close()
+	result.LatencyMs = time.Since(start).Milliseconds()
+	result.Transport = client.Transport()
 	info := client.ServerInfo()
 	result.Connected = true
 	result.ServerName = info.Name()
@@ -418,6 +601,20 @@ func (s *mcpService) TestServer(ctx context.Context, id int64) (MCPTestResult, e
 	return result, nil
 }
 
+// RedetectTransport 重新探测传输（16-10）：忘掉上次成功的，下次 auto 从头试。
+func (s *mcpService) RedetectTransport(ctx context.Context, id int64) (MCPTestResult, error) {
+	server, err := s.servers.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return MCPTestResult{}, ErrMCPNotFound
+		}
+		return MCPTestResult{}, err
+	}
+	_ = s.servers.SetLastTransport(ctx, id, "")
+	server.LastTransport = ""
+	return s.TestServer(ctx, id)
+}
+
 func (s *mcpService) ListTools(ctx context.Context, id int64) (MCPToolListResult, error) {
 	server, err := s.servers.GetByID(ctx, id)
 	if err != nil {
@@ -431,6 +628,7 @@ func (s *mcpService) ListTools(ctx context.Context, id int64) (MCPToolListResult
 		s.markStatus(ctx, server, err, 0, 0)
 		return MCPToolListResult{}, err
 	}
+	defer client.Close()
 
 	out := MCPToolListResult{Tools: []MCPToolItem{}, Resources: []MCPResourceItem{}}
 	if tools, listErr := client.ListTools(ctx); listErr == nil {
@@ -472,8 +670,9 @@ func (s *mcpService) Inspect(ctx context.Context, id int64, req MCPInspectReques
 	client, err := s.newClient(ctx, server)
 	if err != nil {
 		s.markStatus(ctx, server, err, 0, 0)
-		return MCPInspectResult{}, err
+		return MCPInspectResult{Notes: []string{}, Failure: failureOf(err, server.URL), Error: err.Error()}, err
 	}
+	defer client.Close()
 
 	result, callErr := s.inspectWithClient(ctx, client, req)
 	// 计数沿用这条连接上一次测试的结果：取数不该把工具数刷成 0（那是「测试连接」的产出）
@@ -495,29 +694,92 @@ func (s *mcpService) inspectWithClient(ctx context.Context, client *mcp.Client, 
 	}
 	result := MCPInspectResult{Notes: []string{}}
 
+	// 用户手改过的映射优先（可手改 = 拿改后的再看一遍预览）
+	var userMapping *model.MCPFieldMapping
+	var userTier string
+	if req.Mapping != nil && !req.Mapping.Empty() {
+		userMapping = req.Mapping
+		userTier = req.Tier
+	}
+
+	if req.Kind == "tool" && strings.TrimSpace(req.ToolName) != "" {
+		return s.inspectToolPage(ctx, client, req, limit, userMapping, userTier)
+	}
+
 	payload, inference, err := s.samplePayload(ctx, client, req)
 	if err != nil {
 		result.Error = err.Error()
+		result.Failure = failureOf(err, "")
 		return result, err
 	}
+	built, buildErr := buildInspectResult(payload, inference, limit, userMapping, userTier)
+	if buildErr != nil {
+		return built, buildErr
+	}
+	return built, nil
+}
+
+// inspectToolPage 工具干跑：只取第一页（预览前 5 条），同时把 nextCursor / cursorParam
+// 回传 —— 向导「拉更多」把游标塞进 arguments 再调一次 inspect。
+func (s *mcpService) inspectToolPage(ctx context.Context, client *mcp.Client, req MCPInspectRequest, limit int, userMapping *model.MCPFieldMapping, userTier string) (MCPInspectResult, error) {
+	result := MCPInspectResult{Notes: []string{}}
+	schema := s.outputSchemaFor(ctx, client, req.ToolName)
+	inputSchema := s.inputSchemaFor(ctx, client, req.ToolName)
+	pages, cursorParam, next, pageErr := s.pagedToolCall(ctx, client, req.ToolName, req.Arguments, limit, &model.MCPPagination{Mode: model.MCPPaginationSingle}, inputSchema)
+	result.CursorParam = cursorParam
+	result.NextCursor = next
+	if pageErr != nil {
+		result.Error = pageErr.Error()
+		result.Failure = failureOf(pageErr, "")
+		return result, pageErr
+	}
+	if len(pages) == 0 {
+		err := fmt.Errorf("工具 %s 没有返回内容", req.ToolName)
+		result.Error = err.Error()
+		result.Failure = failureOf(err, "")
+		return result, err
+	}
+	inference, err := mcp.InferFromToolResult(pages[0], schema)
+	if err != nil {
+		result.Error = err.Error()
+		result.Failure = failureOf(err, "")
+		return result, err
+	}
+	payload, err := payloadFromToolResult(pages[0])
+	if err != nil {
+		result.Error = err.Error()
+		result.Failure = failureOf(err, "")
+		return result, err
+	}
+	built, buildErr := buildInspectResult(payload, inference, limit, userMapping, userTier)
+	if buildErr != nil {
+		return built, buildErr
+	}
+	// 游标是这一页取数时带出来的，build 只管映射 → 在这里合上
+	built.CursorParam = result.CursorParam
+	built.NextCursor = result.NextCursor
+	return built, nil
+}
+
+// buildInspectResult 档位 + 映射（用户改过的优先）→ 建条目 → 截前 N 条预览。
+func buildInspectResult(payload any, inference mcp.Inference, limit int, userMapping *model.MCPFieldMapping, userTier string) (MCPInspectResult, error) {
+	result := MCPInspectResult{Notes: []string{}}
 	result.Tier = inference.Tier
 	result.Mapping = inference.Mapping
 	result.Notes = append(result.Notes, inference.Notes...)
-
-	// 用户手改过的映射优先（可手改 = 拿改后的再看一遍预览）
-	if req.Mapping != nil && !req.Mapping.Empty() {
-		result.Mapping = *req.Mapping
-		if req.Tier != "" {
-			result.Tier = req.Tier
+	if userMapping != nil {
+		result.Mapping = *userMapping
+		if userTier != "" {
+			result.Tier = userTier
 		}
 	}
 	if result.Tier == "" {
 		result.Tier = inference.Tier
 	}
-
 	items, buildErr := mcp.BuildItems(payload, result.Tier, result.Mapping)
 	if buildErr != nil {
 		result.Error = buildErr.Error()
+		result.Failure = failureOf(buildErr, "")
 		return result, buildErr
 	}
 	result.Total = len(items)
@@ -611,6 +873,20 @@ func (s *mcpService) outputSchemaFor(ctx context.Context, client *mcp.Client, to
 	return nil
 }
 
+// inputSchemaFor 从 tools/list 里取该工具的 inputSchema（猜游标参数名用 —— 16-8）。
+func (s *mcpService) inputSchemaFor(ctx context.Context, client *mcp.Client, toolName string) json.RawMessage {
+	tools, err := client.ListTools(ctx)
+	if err != nil {
+		return nil
+	}
+	for _, tool := range tools {
+		if tool.Name == toolName {
+			return tool.InputSchema
+		}
+	}
+	return nil
+}
+
 // inferMappingFromPayload 供资源 JSON 分支复用「按字段名预填」。
 func inferMappingFromPayload(payload any) model.MCPFieldMapping {
 	inf, err := mcp.InferFromToolResult(mcp.CallToolResult{
@@ -689,6 +965,7 @@ func (s *mcpService) FetchFeedItems(ctx context.Context, feed model.Feed) (MCPFe
 		s.markStatus(ctx, server, err, server.ToolCount, server.ResourceCount)
 		return MCPFetchResult{}, err
 	}
+	defer client.Close()
 
 	req := MCPInspectRequest{
 		Kind:        config.Kind,
@@ -697,25 +974,86 @@ func (s *mcpService) FetchFeedItems(ctx context.Context, feed model.Feed) (MCPFe
 		Arguments:   config.Arguments,
 		Limit:       config.Limit,
 	}
-	payload, inference, err := s.samplePayload(ctx, client, req)
-	if err != nil {
-		s.markStatus(ctx, server, err, server.ToolCount, server.ResourceCount)
-		return MCPFetchResult{}, err
-	}
 
 	tier := config.Tier
 	mapping := config.Mapping
-	if mapping.Empty() {
-		tier = inference.Tier
-		mapping = inference.Mapping
-	}
-	if tier == "" {
-		tier = inference.Tier
-	}
-	items, err := mcp.BuildItems(payload, tier, mapping)
-	if err != nil {
-		s.markStatus(ctx, server, err, server.ToolCount, server.ResourceCount)
-		return MCPFetchResult{}, err
+	keyLevel := config.KeyLevel
+	var items []mcp.Item
+
+	if config.Kind == "resource" {
+		payload, inference, err := s.samplePayload(ctx, client, req)
+		if err != nil {
+			s.markStatus(ctx, server, err, server.ToolCount, server.ResourceCount)
+			return MCPFetchResult{}, err
+		}
+		if mapping.Empty() {
+			tier = inference.Tier
+			mapping = inference.Mapping
+		}
+		if tier == "" {
+			tier = inference.Tier
+		}
+		built, err := mcp.BuildItems(payload, tier, mapping)
+		if err != nil {
+			s.markStatus(ctx, server, err, server.ToolCount, server.ResourceCount)
+			return MCPFetchResult{}, err
+		}
+		items = built
+	} else {
+		// 工具：单次调用内 cursor 循环（16-8）。默认 single 只取一页。
+		limit := config.Limit
+		if limit <= 0 {
+			limit = 20
+		}
+		schema := s.outputSchemaFor(ctx, client, config.ToolName)
+		inputSchema := s.inputSchemaFor(ctx, client, config.ToolName)
+		pages, _, _ /*游标只在 inspect「拉更多」用，刷新循环内部消化*/, fetchErr := s.pagedToolCall(ctx, client, config.ToolName, config.Arguments, limit, config.Pagination, inputSchema)
+		if fetchErr != nil {
+			s.markStatus(ctx, server, fetchErr, server.ToolCount, server.ResourceCount)
+			return MCPFetchResult{}, fetchErr
+		}
+		if len(pages) == 0 {
+			err := fmt.Errorf("工具 %s 没有返回内容", config.ToolName)
+			s.markStatus(ctx, server, err, server.ToolCount, server.ResourceCount)
+			return MCPFetchResult{}, err
+		}
+		_, maxPages, maxItems := config.Pagination.Effective()
+		_ = maxPages // 上限在 pagedToolCall 里已经执行，这里只截条数
+		for pageIndex, page := range pages {
+			payload, err := payloadFromToolResult(page)
+			if err != nil {
+				if pageIndex == 0 {
+					s.markStatus(ctx, server, err, server.ToolCount, server.ResourceCount)
+					return MCPFetchResult{}, err
+				}
+				break // 后面页坏了不推翻前面已拿到的
+			}
+			if pageIndex == 0 && mapping.Empty() {
+				inference, err := mcp.InferFromToolResult(page, schema)
+				if err != nil {
+					s.markStatus(ctx, server, err, server.ToolCount, server.ResourceCount)
+					return MCPFetchResult{}, err
+				}
+				tier = inference.Tier
+				mapping = inference.Mapping
+			}
+			if tier == "" {
+				tier = config.Tier
+			}
+			built, err := mcp.BuildItems(payload, tier, mapping)
+			if err != nil {
+				if pageIndex == 0 {
+					s.markStatus(ctx, server, err, server.ToolCount, server.ResourceCount)
+					return MCPFetchResult{}, err
+				}
+				break
+			}
+			items = append(items, built...)
+			if len(items) >= maxItems {
+				items = items[:maxItems]
+				break
+			}
+		}
 	}
 
 	out := MCPFetchResult{Items: make([]*gofeed.Item, 0, len(items)), Tier: tier}
@@ -724,6 +1062,9 @@ func (s *mcpService) FetchFeedItems(ctx context.Context, feed model.Feed) (MCPFe
 		if out.KeyLevel == "" {
 			out.KeyLevel = item.KeyLevel
 		}
+	}
+	if out.KeyLevel == "" {
+		out.KeyLevel = keyLevel
 	}
 	_ = s.servers.TouchLastUsed(ctx, server.ID)
 	s.markStatus(ctx, server, nil, server.ToolCount, server.ResourceCount)
@@ -788,6 +1129,20 @@ func BuildMCPFeedConfig(config model.MCPFeedConfig) (string, error) {
 	}
 	if config.Limit <= 0 || config.Limit > 200 {
 		config.Limit = 20
+	}
+	// 分页（16-8）：只认 single / history；双上限钳住（页 1~20、条 1~2000），缺省 3 页 / 200 条。
+	if config.Pagination != nil {
+		if config.Pagination.Mode != model.MCPPaginationHistory {
+			config.Pagination.Mode = model.MCPPaginationSingle
+		}
+		if config.Pagination.MaxPages <= 0 || config.Pagination.MaxPages > 20 {
+			config.Pagination.MaxPages = model.MCPPaginationDefaultMaxPages
+		}
+		if config.Pagination.MaxItems <= 0 || config.Pagination.MaxItems > 2000 {
+			config.Pagination.MaxItems = model.MCPPaginationDefaultMaxItems
+		}
+		config.Pagination.CursorParam = strings.TrimSpace(config.Pagination.CursorParam)
+		config.Pagination.CursorPath = strings.TrimSpace(config.Pagination.CursorPath)
 	}
 	raw, err := json.Marshal(config)
 	if err != nil {

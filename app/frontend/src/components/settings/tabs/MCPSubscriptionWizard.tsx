@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Chip, Tabs } from "@heroui/react";
+import { Button, Chip, Tabs, ToggleButton, ToggleButtonGroup } from "@heroui/react";
 import { RefreshCw } from "lucide-react";
 import {
   Dialog,
@@ -15,6 +15,7 @@ import {
   createMCPFeed,
   inspectMCPServer,
   listMCPServerTools,
+  suggestMCPMapping,
 } from "@/api";
 import { useFolders } from "@/hooks/useFolders";
 import {
@@ -27,6 +28,8 @@ import {
   MAPPING_FIELD_ORDER,
   mappingDraftFromMapping,
   mappingFromDraft,
+  MCP_DEFAULT_MAX_ITEMS,
+  MCP_DEFAULT_MAX_PAGES,
   mcpErrorMessage,
   mcpInspectSignature,
   mcpKeyLevelLabelKey,
@@ -38,9 +41,12 @@ import type {
   MCPInspectResult,
   MCPKind,
   MCPServer,
+  MCPSuggestResult,
   MCPToolsResponse,
 } from "@/types/mcp";
 import { showToast } from "@/stores/toast-store";
+import { MCPFailureBlock } from "./MCPFailureBlock";
+import { MCPJsonEditor } from "./MCPJsonEditor";
 
 const inputClass = cn(
   "h-9 w-full rounded-md border border-border bg-background px-2.5 text-sm text-foreground",
@@ -60,8 +66,6 @@ const MAPPING_FIELD_KEYS: Record<keyof MCPEntryMapping, string> = {
   thumbnail: "ai_settings.mcp_mapping_thumbnail",
 };
 
-const STEP_COUNT = 5;
-
 interface MCPSubscriptionWizardProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -71,16 +75,17 @@ interface MCPSubscriptionWizardProps {
   onCreated?: () => void | Promise<void>;
   /** 从某条连接直接开向导（可选，跳过第一步） */
   presetServerId?: string;
+  /** 向导第 1 步「+ 新建连接」：回外壳开连接对话框（向导先关） */
+  onNeedConnection?: () => void;
 }
 
 /**
- * 「新建 MCP 订阅」向导（方案 §4.5 / 效果图第三步）。
+ * 「新建 MCP 订阅」向导（16-6 改 3 屏：连接+取什么 / 映射+预览 / 刷新+归类）。
  *
- * 五步：选连接 → 选工具或资源 → 映射（自动预填，可改）→ **强制预览前 5 条** → 填标题与文件夹建源。
- *
- * 硬要求：**没成功预览过就不给创建**。判据不是「点过预览按钮」，而是
- * `isMCPPreviewReady`：预览结果非空、无 error，且那次预览的「参数指纹」和现在这份一致 ——
- * 所以预览之后又改了映射（或参数）必须重新预览，改了映射直接创建这条路是走不通的。
+ * 第 2 屏内嵌「预览前 5 条」门禁：没成功预览过就不给创建。
+ * 判据不是「点过预览按钮」，而是 `isMCPPreviewReady`：预览结果非空、无 error，
+ * 且那次预览的「参数指纹」和现在这份一致 —— 所以预览之后又改了映射（或参数）
+ * 必须重新预览，改了映射直接创建这条路是走不通的。
  */
 export function MCPSubscriptionWizard({
   open,
@@ -88,17 +93,22 @@ export function MCPSubscriptionWizard({
   servers,
   onCreated,
   presetServerId,
+  onNeedConnection,
 }: MCPSubscriptionWizardProps) {
   const { t } = useTranslation();
   const { data: folders = [] } = useFolders();
 
-  const [step, setStep] = useState(0);
+  const [screen, setScreen] = useState(0);
   const [serverId, setServerId] = useState("");
   const [kind, setKind] = useState<MCPKind>("tool");
   const [toolName, setToolName] = useState("");
   const [resourceUri, setResourceUri] = useState("");
   const [argsText, setArgsText] = useState("");
   const [limit, setLimit] = useState(5);
+  // 分页（16-8）：默认只取一页；追历史给双上限
+  const [pageMode, setPageMode] = useState<"single" | "history">("single");
+  const [maxPages, setMaxPages] = useState(MCP_DEFAULT_MAX_PAGES);
+  const [maxItems, setMaxItems] = useState(MCP_DEFAULT_MAX_ITEMS);
   const [mappingDraft, setMappingDraft] =
     useState<MCPMappingDraft>(emptyMappingDraft);
 
@@ -113,6 +123,16 @@ export function MCPSubscriptionWizard({
   const [preview, setPreview] = useState<MCPInspectResult | null>(null);
   const [previewSignature, setPreviewSignature] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  /** 「拉更多」看的下一页（不碰主预览的门禁指纹） */
+  const [morePages, setMorePages] = useState<MCPInspectResult[]>([]);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  /** AI 猜映射（第 4 档）：建议只展示，点「用这个映射」才填入，填入后仍须预览 */
+  const [isSuggesting, setIsSuggesting] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+  const [aiSuggestion, setAiSuggestion] = useState<MCPSuggestResult | null>(
+    null,
+  );
 
   const [title, setTitle] = useState("");
   const [titleTouched, setTitleTouched] = useState(false);
@@ -126,16 +146,19 @@ export function MCPSubscriptionWizard({
     [selectable, serverId],
   );
 
-  /** 打开时重置（可选带 presetServerId 直接落在第一步已选好） */
+  /** 打开时重置（可选带 presetServerId 直接落在第一屏已选好） */
   useEffect(() => {
     if (!open) return;
-    setStep(0);
+    setScreen(0);
     setServerId(presetServerId ?? "");
     setKind("tool");
     setToolName("");
     setResourceUri("");
     setArgsText("");
     setLimit(5);
+    setPageMode("single");
+    setMaxPages(MCP_DEFAULT_MAX_PAGES);
+    setMaxItems(MCP_DEFAULT_MAX_ITEMS);
     setMappingDraft(emptyMappingDraft());
     setTools(null);
     setToolsError(null);
@@ -143,6 +166,10 @@ export function MCPSubscriptionWizard({
     setPreview(null);
     setPreviewSignature(null);
     setPreviewError(null);
+    setMorePages([]);
+    setIsSuggesting(false);
+    setSuggestError(null);
+    setAiSuggestion(null);
     setTitle("");
     setTitleTouched(false);
     setFolderId("");
@@ -161,7 +188,7 @@ export function MCPSubscriptionWizard({
         const data = await listMCPServerTools(serverId);
         if (cancelled) return;
         setTools(data);
-        // 默认选上第一个，用户点「下一步」就能看到映射（选错随时改）
+        // 默认选上第一个（选错随时改）
         setToolName(data.tools[0]?.name ?? "");
         setResourceUri(data.resources[0]?.uri ?? "");
       } catch (err) {
@@ -185,7 +212,11 @@ export function MCPSubscriptionWizard({
     if (!trimmed) return { ok: true, value: undefined };
     try {
       const parsed: unknown = JSON.parse(trimmed);
-      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      if (
+        parsed === null ||
+        typeof parsed !== "object" ||
+        Array.isArray(parsed)
+      ) {
         return { ok: false };
       }
       return { ok: true, value: parsed as Record<string, unknown> };
@@ -194,10 +225,7 @@ export function MCPSubscriptionWizard({
     }
   }, [argsText]);
 
-  const mapping = useMemo(
-    () => mappingFromDraft(mappingDraft),
-    [mappingDraft],
-  );
+  const mapping = useMemo(() => mappingFromDraft(mappingDraft), [mappingDraft]);
 
   /** 现在这份参数对应的 inspect 请求（干跑 / 预览共用同一个拼装函数） */
   const currentRequest = useMemo(
@@ -234,7 +262,7 @@ export function MCPSubscriptionWizard({
     ? defaultMCPFeedTitle(selectedServer.name, kind, targetName)
     : "";
 
-  /** 进第二步时自动预填映射（只跑一次，用户点「重新推断」可以再跑） */
+  /** 进第 2 屏时自动预填映射（只跑一次，用户点「重新推断」可以再跑） */
   const runSuggestion = useCallback(async () => {
     if (!selectedServer || !targetName) return;
     setIsInspecting(true);
@@ -246,7 +274,8 @@ export function MCPSubscriptionWizard({
           kind,
           toolName: kind === "tool" ? toolName : undefined,
           resourceUri: kind === "resource" ? resourceUri : undefined,
-          arguments: kind === "tool" && parsedArgs.ok ? parsedArgs.value : undefined,
+          arguments:
+            kind === "tool" && parsedArgs.ok ? parsedArgs.value : undefined,
           limit: kind === "tool" ? limit : undefined,
         }),
       );
@@ -255,7 +284,9 @@ export function MCPSubscriptionWizard({
       if (result.error) setPreviewError(result.error);
     } catch (err) {
       setPreviewError(
-        err instanceof Error ? err.message : t("ai_settings.mcp_inspect_failed"),
+        err instanceof Error
+          ? err.message
+          : t("ai_settings.mcp_inspect_failed"),
       );
     } finally {
       setIsInspecting(false);
@@ -264,10 +295,10 @@ export function MCPSubscriptionWizard({
 
   useEffect(() => {
     if (!open) return;
-    if (step !== 2) return;
+    if (screen !== 1) return;
     if (suggestion || isInspecting) return;
     void runSuggestion();
-  }, [open, step, suggestion, isInspecting, runSuggestion]);
+  }, [open, screen, suggestion, isInspecting, runSuggestion]);
 
   const handlePreview = useCallback(async () => {
     if (!selectedServer) return;
@@ -279,17 +310,82 @@ export function MCPSubscriptionWizard({
       setPreview(result);
       setPreviewSignature(signature);
       setSuggestion((prev) => prev ?? result);
+      setMorePages([]);
       if (result.error) setPreviewError(result.error);
     } catch (err) {
       setPreview(null);
       setPreviewSignature(null);
       setPreviewError(
-        err instanceof Error ? err.message : t("ai_settings.mcp_inspect_failed"),
+        err instanceof Error
+          ? err.message
+          : t("ai_settings.mcp_inspect_failed"),
       );
     } finally {
       setIsInspecting(false);
     }
   }, [selectedServer, currentRequest, t]);
+
+  /** 拉更多：用回传的游标看下一页（只追加展示，不碰主预览门禁） */
+  const handleLoadMore = useCallback(async () => {
+    if (!selectedServer || !preview?.nextCursor || !preview?.cursorParam) return;
+    setIsLoadingMore(true);
+    try {
+      const base =
+        parsedArgs.ok && parsedArgs.value ? { ...parsedArgs.value } : {};
+      base[preview.cursorParam] = preview.nextCursor;
+      const result = await inspectMCPServer(
+        selectedServer.id,
+        buildInspectRequest({
+          kind,
+          toolName: kind === "tool" ? toolName : undefined,
+          resourceUri: kind === "resource" ? resourceUri : undefined,
+          arguments: base,
+          limit: kind === "tool" ? limit : undefined,
+          mapping,
+        }),
+      );
+      setMorePages((prev) => [...prev, result]);
+    } catch (err) {
+      setPreviewError(
+        err instanceof Error
+          ? err.message
+          : t("ai_settings.mcp_inspect_failed"),
+      );
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [selectedServer, preview, parsedArgs, kind, toolName, resourceUri, limit, mapping, t]);
+
+  /** AI 猜映射（第 4 档）：一次调用，只展示，点「用这个映射」才填入 */
+  const handleSuggest = useCallback(async () => {
+    if (!selectedServer) return;
+    setIsSuggesting(true);
+    setSuggestError(null);
+    try {
+      const result = await suggestMCPMapping(selectedServer.id, {
+        kind,
+        toolName: kind === "tool" ? toolName : undefined,
+        resourceUri: kind === "resource" ? resourceUri : undefined,
+        arguments:
+          kind === "tool" && parsedArgs.ok ? parsedArgs.value : undefined,
+        limit: kind === "tool" ? limit : undefined,
+      });
+      setAiSuggestion(result);
+    } catch (err) {
+      setSuggestError(
+        err instanceof Error ? err.message : t("ai_settings.mcp_ai_failed"),
+      );
+    } finally {
+      setIsSuggesting(false);
+    }
+  }, [selectedServer, kind, toolName, resourceUri, parsedArgs, limit, t]);
+
+  /** 用 AI 的映射：填入表单（仍须预览确认后才生效，门禁指纹会变） */
+  const applyAiSuggestion = useCallback(() => {
+    if (!aiSuggestion) return;
+    setMappingDraft(mappingDraftFromMapping(aiSuggestion.mapping));
+    setAiSuggestion(null);
+  }, [aiSuggestion]);
 
   const handleCreate = useCallback(async () => {
     if (!selectedServer || !previewReady) return;
@@ -306,11 +402,20 @@ export function MCPSubscriptionWizard({
           kind,
           toolName: kind === "tool" ? toolName : undefined,
           resourceUri: kind === "resource" ? resourceUri : undefined,
-          arguments: kind === "tool" && parsedArgs.ok ? parsedArgs.value : undefined,
+          arguments:
+            kind === "tool" && parsedArgs.ok ? parsedArgs.value : undefined,
           limit: kind === "tool" ? limit : undefined,
           mapping,
           tier: preview?.tier,
           keyLevel: preview?.keyLevel,
+          pagination:
+            kind === "tool" && pageMode === "history"
+              ? {
+                  mode: "history",
+                  maxPages,
+                  maxItems,
+                }
+              : undefined,
         }),
       });
       await onCreated?.();
@@ -321,7 +426,9 @@ export function MCPSubscriptionWizard({
         setCreateError(t("ai_settings.mcp_feed_exists"));
       } else {
         setCreateError(
-          err instanceof Error ? err.message : t("ai_settings.mcp_create_failed"),
+          err instanceof Error
+            ? err.message
+            : t("ai_settings.mcp_create_failed"),
         );
       }
     } finally {
@@ -341,29 +448,32 @@ export function MCPSubscriptionWizard({
     limit,
     mapping,
     preview,
+    pageMode,
+    maxPages,
+    maxItems,
     onCreated,
     onOpenChange,
     t,
   ]);
 
-  const stepTitles = [
-    t("ai_settings.mcp_step_server"),
-    t("ai_settings.mcp_step_object"),
-    t("ai_settings.mcp_step_mapping"),
-    t("ai_settings.mcp_step_preview"),
-    t("ai_settings.mcp_step_finish"),
+  const screenTitles = [
+    t("ai_settings.mcp_screen_1"),
+    t("ai_settings.mcp_screen_2"),
+    t("ai_settings.mcp_screen_3"),
   ];
 
   const canGoNext =
-    (step === 0 && Boolean(serverId)) ||
-    (step === 1 && Boolean(targetName) && parsedArgs.ok) ||
-    (step === 2 && Boolean(targetName)) ||
-    (step === 3 && previewReady) ||
-    step === 4;
+    (screen === 0 &&
+      Boolean(serverId) &&
+      Boolean(targetName) &&
+      parsedArgs.ok) ||
+    (screen === 1 && previewReady);
 
   const canCreate = previewReady && Boolean(
     (titleTouched ? title : defaultTitle).trim(),
   );
+
+  const isTextTier = (suggestion?.tier ?? preview?.tier) === "text";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -373,16 +483,16 @@ export function MCPSubscriptionWizard({
         </DialogHeader>
 
         <div className="max-h-[72vh] space-y-4 overflow-y-auto px-4 pb-4">
-          {/* 步骤条：序号 + 当前步文案（组件库没有 stepper，这里只做序号指示） */}
+          {/* 步骤条：3 屏 */}
           <ol className="flex flex-wrap items-center gap-2">
-            {stepTitles.map((label, index) => (
+            {screenTitles.map((label, index) => (
               <li key={label} className="flex items-center gap-2">
                 <span
                   className={cn(
                     "flex size-6 items-center justify-center rounded-full text-xs tabular-nums",
-                    index === step
+                    index === screen
                       ? "bg-primary text-primary-foreground"
-                      : index < step
+                      : index < screen
                         ? "bg-secondary text-foreground"
                         : "bg-secondary/60 text-muted-foreground",
                   )}
@@ -392,50 +502,61 @@ export function MCPSubscriptionWizard({
                 <span
                   className={cn(
                     "text-xs",
-                    index === step ? "text-foreground" : "text-muted-foreground",
+                    index === screen
+                      ? "text-foreground"
+                      : "text-muted-foreground",
                   )}
                 >
                   {label}
                 </span>
-                {index < stepTitles.length - 1 && (
+                {index < screenTitles.length - 1 && (
                   <span className="text-xs text-muted-foreground">→</span>
                 )}
               </li>
             ))}
           </ol>
 
-          {/* ① 选连接 */}
-          {step === 0 && (
-            <div className="space-y-2">
-              <span className="text-sm font-medium">
-                {t("ai_settings.mcp_step_server")}
-              </span>
-              {selectable.length === 0 ? (
-                <p className="rounded-md bg-secondary/60 px-3 py-2 text-xs text-muted-foreground">
-                  {t("ai_settings.mcp_no_servers_for_feed")}
-                </p>
-              ) : (
-                <Select
-                  ariaLabel={t("ai_settings.mcp_step_server")}
-                  value={serverId}
-                  onChange={setServerId}
-                  placeholder={t("ai_settings.mcp_choose_server")}
-                  options={selectable.map((server) => ({
-                    value: server.id,
-                    label: server.name,
-                    hint: server.url,
-                  }))}
-                />
-              )}
-              <p className="text-xs text-muted-foreground">
-                {t("ai_settings.mcp_step_server_hint")}
-              </p>
-            </div>
-          )}
-
-          {/* ② 选工具或资源 */}
-          {step === 1 && (
+          {/* 第 1 屏 · 连接 + 取什么（工具/资源 + 参数 + 分页） */}
+          {screen === 0 && (
             <div className="space-y-3">
+              <div className="space-y-2">
+                <span className="text-sm font-medium">
+                  {t("ai_settings.mcp_step_server")}
+                </span>
+                {selectable.length === 0 ? (
+                  <p className="rounded-md bg-secondary/60 px-3 py-2 text-xs text-muted-foreground">
+                    {t("ai_settings.mcp_no_servers_for_feed")}
+                  </p>
+                ) : (
+                  <Select
+                    ariaLabel={t("ai_settings.mcp_step_server")}
+                    value={serverId}
+                    onChange={(value) => {
+                      if (value === "__new__") {
+                        onNeedConnection?.();
+                        return;
+                      }
+                      setServerId(value);
+                    }}
+                    placeholder={t("ai_settings.mcp_choose_server")}
+                    options={[
+                      ...selectable.map((server) => ({
+                        value: server.id,
+                        label: server.name,
+                        hint: server.url,
+                      })),
+                      {
+                        value: "__new__",
+                        label: t("ai_settings.mcp_wizard_new_connection"),
+                      },
+                    ]}
+                  />
+                )}
+                <p className="text-xs text-muted-foreground">
+                  {t("ai_settings.mcp_step_server_hint")}
+                </p>
+              </div>
+
               <Tabs.Root
                 selectedKey={kind}
                 onSelectionChange={(key) => setKind(String(key) as MCPKind)}
@@ -448,6 +569,9 @@ export function MCPSubscriptionWizard({
                     {t("ai_settings.mcp_kind_resource")}
                   </Tabs.Tab>
                 </Tabs.List>
+                <p className="pt-1 text-[11px] text-muted-foreground">
+                  {t("ai_settings.mcp_prompts_note")}
+                </p>
 
                 <Tabs.Panel id="tool" className="space-y-3 pt-3">
                   {isLoadingTools && (
@@ -482,24 +606,14 @@ export function MCPSubscriptionWizard({
                         </p>
                       )}
                       <div className="space-y-1.5">
-                        <label
-                          htmlFor="mcp-args"
-                          className="text-xs text-muted-foreground"
-                        >
+                        <span className="text-xs text-muted-foreground">
                           {t("ai_settings.mcp_arguments")}
-                        </label>
-                        <textarea
-                          id="mcp-args"
+                        </span>
+                        <MCPJsonEditor
                           value={argsText}
-                          onChange={(e) => setArgsText(e.target.value)}
+                          onChange={setArgsText}
+                          ariaLabel={t("ai_settings.mcp_arguments")}
                           rows={3}
-                          placeholder={'{"query": "关键词"}'}
-                          className={cn(
-                            "min-h-20 w-full resize-y rounded-md border bg-background px-2.5 py-2 font-mono text-xs text-foreground",
-                            parsedArgs.ok ? "border-border" : "border-destructive",
-                            "focus:outline-none focus:ring-2 focus:ring-primary/20",
-                          )}
-                          spellCheck={false}
                         />
                         {!parsedArgs.ok && (
                           <p className="text-xs text-destructive">
@@ -518,13 +632,70 @@ export function MCPSubscriptionWizard({
                           id="mcp-limit"
                           type="number"
                           min={1}
-                          max={50}
+                          max={200}
                           value={limit}
                           onChange={(e) => setLimit(Number(e.target.value))}
                           className={cn(inputClass, "w-24")}
                         />
                         <p className="text-xs text-muted-foreground">
                           {t("ai_settings.mcp_limit_hint")}
+                        </p>
+                      </div>
+                      {/* 分页（16-8）：默认一页，可选追历史 + 双上限 */}
+                      <div className="space-y-1.5">
+                        <span className="text-xs text-muted-foreground">
+                          {t("ai_settings.mcp_page_mode")}
+                        </span>
+                        <ToggleButtonGroup
+                          selectionMode="single"
+                          size="sm"
+                          selectedKeys={new Set([pageMode])}
+                          onSelectionChange={(keys) => {
+                            const first = [...keys].map(String)[0];
+                            if (first === "single" || first === "history") {
+                              setPageMode(first);
+                            }
+                          }}
+                        >
+                          <ToggleButton id="single">
+                            {t("ai_settings.mcp_page_single")}
+                          </ToggleButton>
+                          <ToggleButton id="history">
+                            {t("ai_settings.mcp_page_history")}
+                          </ToggleButton>
+                        </ToggleButtonGroup>
+                        {pageMode === "history" && (
+                          <div className="flex flex-wrap items-center gap-3">
+                            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                              {t("ai_settings.mcp_page_max_pages")}
+                              <input
+                                type="number"
+                                min={1}
+                                max={20}
+                                value={maxPages}
+                                onChange={(e) =>
+                                  setMaxPages(Number(e.target.value))
+                                }
+                                className={cn(inputClass, "h-8 w-20")}
+                              />
+                            </label>
+                            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                              {t("ai_settings.mcp_page_max_items")}
+                              <input
+                                type="number"
+                                min={1}
+                                max={2000}
+                                value={maxItems}
+                                onChange={(e) =>
+                                  setMaxItems(Number(e.target.value))
+                                }
+                                className={cn(inputClass, "h-8 w-24")}
+                              />
+                            </label>
+                          </div>
+                        )}
+                        <p className="text-xs text-muted-foreground">
+                          {t("ai_settings.mcp_page_history_hint")}
                         </p>
                       </div>
                     </>
@@ -573,8 +744,8 @@ export function MCPSubscriptionWizard({
             </div>
           )}
 
-          {/* ③ 映射（自动预填，可改） */}
-          {step === 2 && (
+          {/* 第 2 屏 · 映射 + 预览（门禁内嵌） */}
+          {screen === 1 && (
             <div className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-sm font-medium">
@@ -582,7 +753,7 @@ export function MCPSubscriptionWizard({
                 </span>
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="secondary"
                   isDisabled={isInspecting || !targetName}
                   onPress={() => void runSuggestion()}
                 >
@@ -596,10 +767,18 @@ export function MCPSubscriptionWizard({
 
               {suggestion && (
                 <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <Chip size="sm" variant="tertiary" className="border border-border">
+                  <Chip
+                    size="sm"
+                    variant="tertiary"
+                    className="border border-border"
+                  >
                     {t(mcpTierLabelKey(suggestion.tier))}
                   </Chip>
-                  <Chip size="sm" variant="tertiary" className="border border-border">
+                  <Chip
+                    size="sm"
+                    variant="tertiary"
+                    className="border border-border"
+                  >
                     {t("ai_settings.mcp_key_level", {
                       level: t(mcpKeyLevelLabelKey(suggestion.keyLevel)),
                     })}
@@ -646,100 +825,160 @@ export function MCPSubscriptionWizard({
               <p className="text-xs text-muted-foreground">
                 {t("ai_settings.mcp_mapping_key_hint")}
               </p>
-            </div>
-          )}
 
-          {/* ④ 强制预览前 5 条 */}
-          {step === 3 && (
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-sm font-medium">
-                  {t("ai_settings.mcp_step_preview")}
-                </span>
-                <Button
-                  size="sm"
-                  isDisabled={!canPreview}
-                  onPress={() => void handlePreview()}
-                >
-                  {isInspecting ? (
-                    <>
-                      <RefreshCw className="size-3.5 animate-spin" />
-                      {t("ai_settings.mcp_previewing")}
-                    </>
-                  ) : (
-                    t("ai_settings.mcp_preview")
+              {/* 第 4 档黄条：纯文本 → 手动或 AI 兜底 */}
+              {isTextTier && (
+                <div className="space-y-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2">
+                  <p className="text-xs text-muted-foreground">
+                    {t("ai_settings.mcp_text_tier_hint")}
+                  </p>
+                  {!aiSuggestion && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      isDisabled={isSuggesting || !canPreview}
+                      onPress={() => void handleSuggest()}
+                    >
+                      {isSuggesting ? (
+                        <>
+                          <RefreshCw className="size-3.5 animate-spin" />
+                          {t("ai_settings.mcp_ai_suggesting")}
+                        </>
+                      ) : (
+                        t("ai_settings.mcp_ai_suggest")
+                      )}
+                    </Button>
                   )}
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {t("ai_settings.mcp_preview_hint")}
-              </p>
-
-              {previewError && (
-                <div className="break-all rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                  {previewError}
+                  {suggestError && (
+                    <p className="break-all text-xs text-destructive">
+                      {suggestError}
+                    </p>
+                  )}
+                  {aiSuggestion && (
+                    <div className="space-y-1.5">
+                      <p className="text-xs text-muted-foreground">
+                        {t("ai_settings.mcp_ai_suggested", {
+                          model: aiSuggestion.model || "?",
+                          tokens: aiSuggestion.estimatedTokens,
+                        })}
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onPress={applyAiSuggestion}
+                      >
+                        {t("ai_settings.mcp_ai_apply")}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {!previewReady && (
-                <p className="rounded-md bg-secondary/60 px-3 py-2 text-xs text-muted-foreground">
-                  {t("ai_settings.mcp_preview_required")}
-                </p>
-              )}
-
-              {preview && preview.preview.length > 0 && (
-                <div className="space-y-2">
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <Chip size="sm" variant="tertiary" className="border border-border">
-                      {t("ai_settings.mcp_preview_total", {
-                        count: preview.total,
-                      })}
-                    </Chip>
-                    <Chip size="sm" variant="tertiary" className="border border-border">
-                      {t("ai_settings.mcp_key_level", {
-                        level: t(mcpKeyLevelLabelKey(preview.keyLevel)),
-                      })}
-                    </Chip>
-                    {preview.truncated && (
-                      <span>{t("ai_settings.mcp_preview_truncated")}</span>
+              {/* 预览前 5 条（门禁，不给跳过） */}
+              <div className="space-y-2 border-t border-border pt-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm font-medium">
+                    {t("ai_settings.mcp_preview")}
+                  </span>
+                  <Button
+                    size="sm"
+                    isDisabled={!canPreview}
+                    onPress={() => void handlePreview()}
+                  >
+                    {isInspecting ? (
+                      <>
+                        <RefreshCw className="size-3.5 animate-spin" />
+                        {t("ai_settings.mcp_previewing")}
+                      </>
+                    ) : (
+                      t("ai_settings.mcp_preview")
                     )}
-                  </div>
-                  <div className="divide-y divide-border rounded-lg border border-border">
-                    {preview.preview.slice(0, 5).map((item, index) => (
-                      <div key={`${item.key}-${index}`} className="space-y-0.5 px-3 py-2">
-                        <div className="truncate text-sm text-foreground">
-                          {item.title || t("ai_settings.mcp_preview_untitled")}
-                        </div>
-                        {item.url && (
-                          <div
-                            className="truncate font-mono text-xs text-muted-foreground"
-                            title={item.url}
-                          >
-                            {item.url}
-                          </div>
-                        )}
-                        <div
-                          className="truncate font-mono text-xs text-muted-foreground"
-                          title={item.key}
-                        >
-                          {t("ai_settings.mcp_preview_key", {
-                            key: item.key,
-                            level: t(mcpKeyLevelLabelKey(item.keyLevel)),
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  </Button>
                 </div>
-              )}
+                <p className="text-xs text-muted-foreground">
+                  {t("ai_settings.mcp_preview_hint")}
+                </p>
+
+                {previewError && !preview?.failure && (
+                  <div className="break-all rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                    {previewError}
+                  </div>
+                )}
+                {preview?.failure && (
+                  <MCPFailureBlock failure={preview.failure} />
+                )}
+
+                {!previewReady && (
+                  <p className="rounded-md bg-secondary/60 px-3 py-2 text-xs text-muted-foreground">
+                    {t("ai_settings.mcp_preview_required")}
+                  </p>
+                )}
+
+                {preview && preview.preview.length > 0 && (
+                  <PreviewTable preview={preview} />
+                )}
+
+                {/* 拉更多：下一页追加展示 */}
+                {morePages.map((page, index) => (
+                  <PreviewTable
+                    key={`more-${index}`}
+                    preview={page}
+                    moreIndex={index}
+                  />
+                ))}
+                {preview?.nextCursor && preview.cursorParam && (
+                  <div className="space-y-1.5">
+                    <p className="text-xs text-muted-foreground">
+                      {t("ai_settings.mcp_load_more_hint")}
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      isDisabled={isLoadingMore || !canPreview}
+                      onPress={() => void handleLoadMore()}
+                    >
+                      {isLoadingMore ? (
+                        <>
+                          <RefreshCw className="size-3.5 animate-spin" />
+                          {t("ai_settings.mcp_previewing")}
+                        </>
+                      ) : (
+                        t("ai_settings.mcp_load_more")
+                      )}
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
-          {/* ⑤ 标题 + 文件夹 → 创建 */}
-          {step === 4 && (
+          {/* 第 3 屏 · 刷新 + 归类 → 创建 */}
+          {screen === 2 && (
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <label htmlFor="mcp-feed-title" className="text-sm font-medium">
+                <span className="text-sm font-medium">
+                  {t("ai_settings.mcp_fetch_timing")}
+                </span>
+                {/* 只读展示连接的取数时机（改去连接编辑框，不在这里另起一套） */}
+                <p className="rounded-md bg-secondary/60 px-3 py-2 text-xs text-muted-foreground">
+                  {selectedServer?.useGlobalFetch
+                    ? t("ai_settings.mcp_fetch_global")
+                    : t("ai_settings.mcp_refresh_interval_hint", {
+                        min: 15,
+                        timeout:
+                          selectedServer?.fetchTimeoutSeconds ?? 15,
+                        concurrency:
+                          selectedServer?.fetchConcurrency ?? 4,
+                        interval:
+                          selectedServer?.refreshIntervalMinutes ?? 15,
+                      })}
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="mcp-feed-title"
+                  className="text-sm font-medium"
+                >
                   {t("ai_settings.mcp_feed_title")}
                 </label>
                 <input
@@ -794,8 +1033,8 @@ export function MCPSubscriptionWizard({
           <Button
             size="sm"
             variant="ghost"
-            isDisabled={step === 0}
-            onPress={() => setStep((prev) => Math.max(0, prev - 1))}
+            isDisabled={screen === 0}
+            onPress={() => setScreen((prev) => Math.max(0, prev - 1))}
           >
             {t("ai_settings.mcp_prev")}
           </Button>
@@ -807,27 +1046,88 @@ export function MCPSubscriptionWizard({
             >
               {t("actions.cancel")}
             </Button>
-            {step < STEP_COUNT - 1 && (
+            {screen < 2 && (
               <Button
                 size="sm"
                 isDisabled={!canGoNext}
-                onPress={() => setStep((prev) => Math.min(STEP_COUNT - 1, prev + 1))}
+                onPress={() => setScreen((prev) => Math.min(2, prev + 1))}
               >
                 {t("ai_settings.mcp_next")}
               </Button>
             )}
-            {step === STEP_COUNT - 1 && (
+            {screen === 2 && (
               <Button
                 size="sm"
                 isDisabled={!canCreate || isCreating}
                 onPress={() => void handleCreate()}
               >
-                {isCreating ? t("settings.saving") : t("ai_settings.mcp_create")}
+                {isCreating
+                  ? t("settings.saving")
+                  : t("ai_settings.mcp_create")}
               </Button>
             )}
           </div>
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** 预览表：标题 / 时间 / 去重键（改了映射或参数必须重新预览，门禁指纹卡） */
+function PreviewTable({
+  preview,
+  moreIndex,
+}: {
+  preview: MCPInspectResult;
+  moreIndex?: number;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        {moreIndex === undefined && (
+          <Chip size="sm" variant="tertiary" className="border border-border">
+            {t("ai_settings.mcp_preview_total", { count: preview.total })}
+          </Chip>
+        )}
+        {moreIndex !== undefined && (
+          <Chip size="sm" variant="tertiary" className="border border-border">
+            {t("ai_settings.mcp_load_more")} {moreIndex + 1}
+          </Chip>
+        )}
+        <Chip size="sm" variant="tertiary" className="border border-border">
+          {t("ai_settings.mcp_key_level", {
+            level: t(mcpKeyLevelLabelKey(preview.keyLevel)),
+          })}
+        </Chip>
+        {preview.truncated && (
+          <span>{t("ai_settings.mcp_preview_truncated")}</span>
+        )}
+      </div>
+      <div className="divide-y divide-border rounded-lg border border-border">
+        {preview.preview.slice(0, 5).map((item, index) => (
+          <div
+            key={`${item.key}-${index}`}
+            className="grid grid-cols-[minmax(0,1fr)_150px_170px] gap-2 px-3 py-2"
+          >
+            <div className="truncate text-sm text-foreground">
+              {item.title || t("ai_settings.mcp_preview_untitled")}
+            </div>
+            <div className="truncate font-mono text-xs text-muted-foreground">
+              {item.publishedAt || "—"}
+            </div>
+            <div
+              className="truncate font-mono text-xs text-muted-foreground"
+              title={item.key}
+            >
+              {t("ai_settings.mcp_preview_key", {
+                key: item.key,
+                level: t(mcpKeyLevelLabelKey(item.keyLevel)),
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

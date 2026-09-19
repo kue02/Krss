@@ -54,10 +54,14 @@ import type {
   MCPFeedCreatePayload,
   MCPInspectRequest,
   MCPInspectResult,
+  MCPOAuthDiscovery,
+  MCPOAuthStart,
   MCPServer,
   MCPServerWritePayload,
   MCPOutboundStatus,
   MCPOutboundTokenResponse,
+  MCPSuggestRequest,
+  MCPSuggestResult,
   MCPTestResult,
   MCPToolsResponse,
 } from "@/types/mcp";
@@ -1481,9 +1485,21 @@ export async function deleteMCPServer(id: string): Promise<void> {
   return request<void>(`/api/mcp/servers/${id}`, { method: "DELETE" });
 }
 
-/** 连通性测试。永远 200：连不上也是 `connected: false` + error，不是请求失败。 */
+/** 连通性测试。永远 200：连不上也是 `connected: false` + error + failure，不是请求失败。 */
 export async function testMCPServer(id: string): Promise<MCPTestResult> {
   return request<MCPTestResult>(`/api/mcp/servers/${id}/test`, {
+    method: "POST",
+  });
+}
+
+/**
+ * 重新探测传输（16-10）：忘掉上次成功的再测一次，回这次实际用的传输。
+ * 失败同样 200 + connected=false + failure。
+ */
+export async function redetectMCPTransport(
+  id: string,
+): Promise<MCPTestResult> {
+  return request<MCPTestResult>(`/api/mcp/servers/${id}/redetect`, {
     method: "POST",
   });
 }
@@ -1512,6 +1528,55 @@ export async function inspectMCPServer(
 }
 
 /**
+ * 第 4 档 AI 兜底（16-3）：调一次 AI 猜映射，只返回不落库。
+ * 猜出来的映射必须预览确认后才落库 —— 这里不写任何东西。
+ */
+export async function suggestMCPMapping(
+  id: string,
+  payload: MCPSuggestRequest,
+): Promise<MCPSuggestResult> {
+  return request<MCPSuggestResult>(`/api/mcp/servers/${id}/suggest-mapping`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** OAuth 发现（16-11）：找授权服务器，不写库；needsManual 时界面给手填框 */
+export async function discoverMCPOAuth(
+  id: string,
+): Promise<MCPOAuthDiscovery> {
+  return request<MCPOAuthDiscovery>(`/api/mcp/servers/${id}/oauth/discovery`, {
+    method: "POST",
+  });
+}
+
+/**
+ * OAuth 开始授权：回浏览器授权地址，前端开浏览器。
+ * redirectUri 必须由前端按当前访问 origin 拼（零配置、远程可用），后端不拼不存。
+ */
+export async function startMCPOAuth(
+  id: string,
+  payload: {
+    redirectUri: string;
+    scope?: string;
+    clientId?: string;
+    clientSecret?: string;
+  },
+): Promise<MCPOAuthStart> {
+  return request<MCPOAuthStart>(`/api/mcp/servers/${id}/oauth/start`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** OAuth 撤销授权（清 token 与 secret） */
+export async function revokeMCPOAuth(id: string): Promise<void> {
+  return request<void>(`/api/mcp/servers/${id}/oauth/revoke`, {
+    method: "POST",
+  });
+}
+
+/**
  * 建 MCP 订阅：复用既有的 POST /api/feeds，多带 sourceType=mcp + mcpConfig。
  * 重复源后端回 409 `{error: "feed_exists"}`（与 RSS 同款）。
  */
@@ -1533,6 +1598,7 @@ export async function getMCPOutbound(): Promise<MCPOutboundStatus> {
 export async function updateMCPOutbound(payload: {
   enabled: boolean;
   writeEnabled: boolean;
+  baseUrl: string;
 }): Promise<MCPOutboundStatus> {
   return request<MCPOutboundStatus>("/api/mcp/outbound", {
     method: "PUT",

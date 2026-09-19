@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertDialog, Button } from "@heroui/react";
+import { AlertDialog, Button, Tabs } from "@heroui/react";
 import { Copy, RefreshCw } from "lucide-react";
 import { HeroSwitch } from "@/components/ui/hero-switch";
 import { cn } from "@/lib/utils";
@@ -13,6 +13,7 @@ import {
 import { buildMCPClientConfigExample, mcpErrorMessage } from "@/lib/mcp";
 import type { MCPOutboundStatus } from "@/types/mcp";
 import { copyToClipboard } from "@/stores/toast-store";
+import { MCPJsonView } from "./MCPJsonView";
 
 /**
  * 设置 → 数据控制里的出向段：「Krss 作为 MCP 服务器」（方案 §五 / B4 拍板放这个页）。
@@ -33,6 +34,12 @@ export function MCPOutboundSection() {
   const [isRevoking, setIsRevoking] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirmRevoke, setConfirmRevoke] = useState(false);
+  /** 客户端配置示例的写法：HTTP 与 SSE 两种都给（17-x 微调），可复制 */
+  const [exampleTransport, setExampleTransport] = useState<"http" | "sse">(
+    "http",
+  );
+  /** 对外访问地址的本地草稿（文本框要显式保存，不跟开关一样即时落） */
+  const [baseUrlDraft, setBaseUrlDraft] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -51,16 +58,21 @@ export function MCPOutboundSection() {
     void load();
   }, [load]);
 
-  const clientConfig = useMemo(
-    () =>
-      buildMCPClientConfigExample(
-        typeof window === "undefined" ? undefined : window.location.origin,
-      ),
-    [],
-  );
+  const clientConfig = useMemo(() => {
+    // 对外地址优先用用户填的 baseUrl；没填才回落到浏览器当前 origin
+    // （生产单机部署时两者一致；开发时前后端不同源，必须填）。
+    const origin =
+      status?.baseUrl?.trim() ||
+      (typeof window === "undefined" ? undefined : window.location.origin);
+    return buildMCPClientConfigExample(origin, exampleTransport);
+  }, [exampleTransport, status?.baseUrl]);
 
   const saveConfig = useCallback(
-    async (changes: Partial<Pick<MCPOutboundStatus, "enabled" | "writeEnabled">>) => {
+    async (
+      changes: Partial<
+        Pick<MCPOutboundStatus, "enabled" | "writeEnabled" | "baseUrl">
+      >,
+    ) => {
       if (!status) return;
       const next = { ...status, ...changes };
       // 开关是即时型（本项目设置页的惯例）：先落本地让开关跟手，失败再退回来并报错
@@ -72,6 +84,7 @@ export function MCPOutboundSection() {
           await updateMCPOutbound({
             enabled: next.enabled,
             writeEnabled: next.writeEnabled,
+            baseUrl: next.baseUrl ?? "",
           }),
         );
       } catch (err) {
@@ -220,6 +233,48 @@ export function MCPOutboundSection() {
               />
             </div>
 
+            {/* 对外访问地址：客户端配置示例用它拼 /mcp（不拿浏览器 origin 凑） */}
+            <div className="space-y-1.5">
+              <div className="text-sm font-medium">
+                {t("data_control.mcp_base_url")}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {t("data_control.mcp_base_url_hint")}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="url"
+                  aria-label={t("data_control.mcp_base_url")}
+                  value={baseUrlDraft ?? status.baseUrl ?? ""}
+                  onChange={(event) => setBaseUrlDraft(event.target.value)}
+                  placeholder="http://192.0.2.1:8082"
+                  className={cn(
+                    "h-9 min-w-[12rem] flex-1 rounded-md border border-border bg-background px-2.5 font-mono text-xs text-foreground",
+                    "placeholder:text-muted-foreground/60",
+                    "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
+                  )}
+                />
+                <Button
+                  size="sm"
+                  isDisabled={
+                    isSaving ||
+                    (baseUrlDraft ?? status.baseUrl ?? "") ===
+                      (status.baseUrl ?? "")
+                  }
+                  onPress={() =>
+                    void (async () => {
+                      await saveConfig({
+                        baseUrl: (baseUrlDraft ?? "").trim(),
+                      });
+                      setBaseUrlDraft(null);
+                    })()
+                  }
+                >
+                  {t("actions.save")}
+                </Button>
+              </div>
+            </div>
+
             {/* 长期 token */}
             <div className="space-y-2 rounded-lg border border-border px-3 py-3">
               <div className="text-sm font-medium">
@@ -317,7 +372,7 @@ export function MCPOutboundSection() {
               </div>
             )}
 
-            {/* 客户端配置示例（token 用占位符） */}
+            {/* 客户端配置示例（token 用占位符；HTTP 与 SSE 两种写法都给，可复制） */}
             <div className="space-y-1.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="min-w-0">
@@ -330,7 +385,7 @@ export function MCPOutboundSection() {
                 </div>
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="secondary"
                   onPress={() =>
                     void copyToClipboard(
                       clientConfig,
@@ -342,9 +397,27 @@ export function MCPOutboundSection() {
                   {t("data_control.mcp_token_copy")}
                 </Button>
               </div>
-              <pre className="overflow-x-auto rounded-md bg-secondary px-3 py-2 font-mono text-xs text-foreground">
-                {clientConfig}
-              </pre>
+              <Tabs.Root
+                selectedKey={exampleTransport}
+                onSelectionChange={(key) =>
+                  setExampleTransport(key as "http" | "sse")
+                }
+              >
+                <Tabs.List>
+                  <Tabs.Tab id="http">
+                    {t("data_control.mcp_client_config_http")}
+                  </Tabs.Tab>
+                  <Tabs.Tab id="sse">
+                    {t("data_control.mcp_client_config_sse")}
+                  </Tabs.Tab>
+                </Tabs.List>
+                <Tabs.Panel id="http" className="pt-2">
+                  <MCPJsonView code={clientConfig} maxHeight="220px" />
+                </Tabs.Panel>
+                <Tabs.Panel id="sse" className="pt-2">
+                  <MCPJsonView code={clientConfig} maxHeight="220px" />
+                </Tabs.Panel>
+              </Tabs.Root>
             </div>
           </>
         )}

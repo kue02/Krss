@@ -177,16 +177,16 @@ func (mr *MockMCPOutboundServiceMockRecorder) Tools(ctx any) *gomock.Call {
 }
 
 // UpdateOptions mocks base method.
-func (m *MockMCPOutboundService) UpdateOptions(ctx context.Context, enabled, writeEnabled bool) (service.MCPOutboundStatus, error) {
+func (m *MockMCPOutboundService) UpdateOptions(ctx context.Context, enabled, writeEnabled bool, baseURL string) (service.MCPOutboundStatus, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateOptions", ctx, enabled, writeEnabled)
+	ret := m.ctrl.Call(m, "UpdateOptions", ctx, enabled, writeEnabled, baseURL)
 	ret0, _ := ret[0].(service.MCPOutboundStatus)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // UpdateOptions indicates an expected call of UpdateOptions.
-func (mr *MockMCPOutboundServiceMockRecorder) UpdateOptions(ctx, enabled, writeEnabled any) *gomock.Call {
+func (mr *MockMCPOutboundServiceMockRecorder) UpdateOptions(ctx, enabled, writeEnabled, baseURL any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateOptions", reflect.TypeOf((*MockMCPOutboundService)(nil).UpdateOptions), ctx, enabled, writeEnabled)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateOptions", reflect.TypeOf((*MockMCPOutboundService)(nil).UpdateOptions), ctx, enabled, writeEnabled, baseURL)
 }

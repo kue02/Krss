@@ -27,6 +27,14 @@ type MCPServerRepository interface {
 	TouchLastUsed(ctx context.Context, id int64) error
 	// CountFeedsUsing 有多少条订阅在用这个连接（删连接前要拦一下）。
 	CountFeedsUsing(ctx context.Context, id int64) (int, error)
+	// SetLastTransport 记住这次成功的传输（16-10：transport='auto' 下次优先试它）。
+	SetLastTransport(ctx context.Context, id int64, transport string) error
+	// SetLastFailure 写结构化失败（16-12）；ok 时传 nil 清掉。
+	SetLastFailure(ctx context.Context, id int64, failureJSON *string) error
+	// UpdateOAuthTokens 换回来的 token 进库（16-11：只写 token 相关列，不动配置）。
+	UpdateOAuthTokens(ctx context.Context, id int64, server model.MCPServer) error
+	// ClearOAuth 撤销授权：清掉 token 与 client 秘密。
+	ClearOAuth(ctx context.Context, id int64) error
 }
 
 type mcpServerRepository struct {
@@ -39,7 +47,9 @@ func NewMCPServerRepository(db dbtx) MCPServerRepository {
 
 const mcpServerColumns = `id, name, transport, url, headers, auth_type, enabled, is_connected, last_error,
 	tool_count, resource_count, purposes, use_global_fetch, fetch_timeout_seconds, fetch_concurrency,
-	refresh_interval_minutes, last_used_at, created_at, updated_at`
+	refresh_interval_minutes, last_used_at, created_at, updated_at,
+	last_transport, oauth_client_id, oauth_client_secret, oauth_access_token, oauth_refresh_token,
+	oauth_expires_at, oauth_token_type, oauth_scope, oauth_auth_server, last_failure`
 
 func (r *mcpServerRepository) List(ctx context.Context) ([]model.MCPServer, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT `+mcpServerColumns+` FROM mcp_servers ORDER BY name`)
@@ -80,8 +90,9 @@ func (r *mcpServerRepository) Create(ctx context.Context, server model.MCPServer
 		ctx,
 		`INSERT INTO mcp_servers (id, name, transport, url, headers, auth_type, enabled, is_connected, last_error,
 			tool_count, resource_count, purposes, use_global_fetch, fetch_timeout_seconds, fetch_concurrency,
-			refresh_interval_minutes, last_used_at, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			refresh_interval_minutes, last_used_at, created_at, updated_at,
+			last_transport, oauth_client_id, oauth_client_secret)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		server.ID,
 		server.Name,
 		server.Transport,
@@ -101,6 +112,9 @@ func (r *mcpServerRepository) Create(ctx context.Context, server model.MCPServer
 		nullableTime(server.LastUsedAt),
 		formatTime(now),
 		formatTime(now),
+		nullableString(stringPtrOrNil(server.LastTransport)),
+		nullableString(stringPtrOrNil(server.OAuthClientID)),
+		nullableString(stringPtrOrNil(server.OAuthClientSecret)),
 	)
 	if err != nil {
 		return model.MCPServer{}, fmt.Errorf("create mcp server: %w", err)
@@ -116,7 +130,7 @@ func (r *mcpServerRepository) Update(ctx context.Context, server model.MCPServer
 		ctx,
 		`UPDATE mcp_servers SET name = ?, transport = ?, url = ?, headers = ?, auth_type = ?, enabled = ?,
 			purposes = ?, use_global_fetch = ?, fetch_timeout_seconds = ?, fetch_concurrency = ?,
-			refresh_interval_minutes = ?, updated_at = ? WHERE id = ?`,
+			refresh_interval_minutes = ?, oauth_client_id = ?, oauth_client_secret = ?, updated_at = ? WHERE id = ?`,
 		server.Name,
 		server.Transport,
 		server.URL,
@@ -128,6 +142,8 @@ func (r *mcpServerRepository) Update(ctx context.Context, server model.MCPServer
 		nullableIntPtr(server.FetchTimeoutSeconds),
 		nullableIntPtr(server.FetchConcurrency),
 		nullableIntPtr(server.RefreshIntervalMinutes),
+		nullableString(stringPtrOrNil(server.OAuthClientID)),
+		nullableString(stringPtrOrNil(server.OAuthClientSecret)),
 		formatTime(now),
 		server.ID,
 	)
@@ -170,6 +186,84 @@ func (r *mcpServerRepository) TouchLastUsed(ctx context.Context, id int64) error
 		id,
 	)
 	return err
+}
+
+// SetLastTransport 记住这次成功的传输（16-10）。
+func (r *mcpServerRepository) SetLastTransport(ctx context.Context, id int64, transport string) error {
+	_, err := r.db.ExecContext(
+		ctx,
+		`UPDATE mcp_servers SET last_transport = ?, updated_at = ? WHERE id = ?`,
+		nullableString(stringPtrOrNil(transport)),
+		formatTime(time.Now()),
+		id,
+	)
+	if err != nil {
+		return fmt.Errorf("update mcp last transport: %w", err)
+	}
+	return nil
+}
+
+// SetLastFailure 写结构化失败 JSON（16-12）；failureJSON=nil 时清掉。
+func (r *mcpServerRepository) SetLastFailure(ctx context.Context, id int64, failureJSON *string) error {
+	_, err := r.db.ExecContext(
+		ctx,
+		`UPDATE mcp_servers SET last_failure = ?, updated_at = ? WHERE id = ?`,
+		nullableString(failureJSON),
+		formatTime(time.Now()),
+		id,
+	)
+	if err != nil {
+		return fmt.Errorf("update mcp last failure: %w", err)
+	}
+	return nil
+}
+
+// UpdateOAuthTokens 换回来的 token 进库（16-11：只写 token 相关列，不动配置）。
+func (r *mcpServerRepository) UpdateOAuthTokens(ctx context.Context, id int64, server model.MCPServer) error {
+	_, err := r.db.ExecContext(
+		ctx,
+		`UPDATE mcp_servers SET oauth_client_id = ?, oauth_client_secret = ?, oauth_access_token = ?,
+			oauth_refresh_token = ?, oauth_expires_at = ?, oauth_token_type = ?, oauth_scope = ?,
+			oauth_auth_server = ?, updated_at = ? WHERE id = ?`,
+		nullableString(stringPtrOrNil(server.OAuthClientID)),
+		nullableString(stringPtrOrNil(server.OAuthClientSecret)),
+		nullableString(stringPtrOrNil(server.OAuthAccessToken)),
+		nullableString(stringPtrOrNil(server.OAuthRefreshToken)),
+		nullableTime(server.OAuthExpiresAt),
+		nullableString(stringPtrOrNil(server.OAuthTokenType)),
+		nullableString(stringPtrOrNil(server.OAuthScope)),
+		nullableString(stringPtrOrNil(server.OAuthAuthServer)),
+		formatTime(time.Now()),
+		id,
+	)
+	if err != nil {
+		return fmt.Errorf("update mcp oauth tokens: %w", err)
+	}
+	return nil
+}
+
+// ClearOAuth 撤销授权：清掉 token 与 client 秘密（client_id 留着，下次授权还能用）。
+func (r *mcpServerRepository) ClearOAuth(ctx context.Context, id int64) error {
+	_, err := r.db.ExecContext(
+		ctx,
+		`UPDATE mcp_servers SET oauth_access_token = NULL, oauth_refresh_token = NULL,
+			oauth_expires_at = NULL, oauth_token_type = NULL, oauth_scope = NULL,
+			oauth_client_secret = NULL, is_connected = 0, updated_at = ? WHERE id = ?`,
+		formatTime(time.Now()),
+		id,
+	)
+	if err != nil {
+		return fmt.Errorf("clear mcp oauth: %w", err)
+	}
+	return nil
+}
+
+// stringPtrOrNil 空串存 NULL（读出来就是零值，不用区分「空」与「没配」）。
+func stringPtrOrNil(value string) *string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return &value
 }
 
 func (r *mcpServerRepository) CountFeedsUsing(ctx context.Context, id int64) (int, error) {
@@ -222,6 +316,11 @@ func scanMCPServer(scanner interface {
 	var timeout, concurrency, interval sql.NullInt64
 	var lastUsedAt sql.NullString
 	var createdAt, updatedAt string
+	var lastTransport sql.NullString
+	var oauthClientID, oauthClientSecret, oauthAccessToken, oauthRefreshToken sql.NullString
+	var oauthExpiresAt sql.NullString
+	var oauthTokenType, oauthScope, oauthAuthServer sql.NullString
+	var lastFailure sql.NullString
 	if err := scanner.Scan(
 		&server.ID,
 		&server.Name,
@@ -242,6 +341,16 @@ func scanMCPServer(scanner interface {
 		&lastUsedAt,
 		&createdAt,
 		&updatedAt,
+		&lastTransport,
+		&oauthClientID,
+		&oauthClientSecret,
+		&oauthAccessToken,
+		&oauthRefreshToken,
+		&oauthExpiresAt,
+		&oauthTokenType,
+		&oauthScope,
+		&oauthAuthServer,
+		&lastFailure,
 	); err != nil {
 		return model.MCPServer{}, err
 	}
@@ -272,6 +381,38 @@ func scanMCPServer(scanner interface {
 		if t, err := parseTime(lastUsedAt.String); err == nil {
 			server.LastUsedAt = &t
 		}
+	}
+	if lastTransport.Valid {
+		server.LastTransport = lastTransport.String
+	}
+	if oauthClientID.Valid {
+		server.OAuthClientID = oauthClientID.String
+	}
+	if oauthClientSecret.Valid {
+		server.OAuthClientSecret = oauthClientSecret.String
+	}
+	if oauthAccessToken.Valid {
+		server.OAuthAccessToken = oauthAccessToken.String
+	}
+	if oauthRefreshToken.Valid {
+		server.OAuthRefreshToken = oauthRefreshToken.String
+	}
+	if oauthExpiresAt.Valid && oauthExpiresAt.String != "" {
+		if t, err := parseTime(oauthExpiresAt.String); err == nil {
+			server.OAuthExpiresAt = &t
+		}
+	}
+	if oauthTokenType.Valid {
+		server.OAuthTokenType = oauthTokenType.String
+	}
+	if oauthScope.Valid {
+		server.OAuthScope = oauthScope.String
+	}
+	if oauthAuthServer.Valid {
+		server.OAuthAuthServer = oauthAuthServer.String
+	}
+	if lastFailure.Valid {
+		server.LastFailure = &lastFailure.String
 	}
 	var err error
 	if server.CreatedAt, err = parseTime(createdAt); err != nil {

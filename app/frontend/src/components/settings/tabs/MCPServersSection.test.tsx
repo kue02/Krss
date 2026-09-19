@@ -16,9 +16,13 @@ const mocks = vi.hoisted(() => ({
   updateMCPServer: vi.fn(),
   deleteMCPServer: vi.fn(),
   testMCPServer: vi.fn(),
+  redetectMCPTransport: vi.fn(),
   listMCPServerTools: vi.fn(),
   inspectMCPServer: vi.fn(),
   createMCPFeed: vi.fn(),
+  discoverMCPOAuth: vi.fn(),
+  startMCPOAuth: vi.fn(),
+  revokeMCPOAuth: vi.fn(),
 }));
 
 vi.mock("react-i18next", () => ({
@@ -52,16 +56,20 @@ vi.mock("@/api", () => ({
   updateMCPServer: mocks.updateMCPServer,
   deleteMCPServer: mocks.deleteMCPServer,
   testMCPServer: mocks.testMCPServer,
+  redetectMCPTransport: mocks.redetectMCPTransport,
   listMCPServerTools: mocks.listMCPServerTools,
   inspectMCPServer: mocks.inspectMCPServer,
   createMCPFeed: mocks.createMCPFeed,
+  discoverMCPOAuth: mocks.discoverMCPOAuth,
+  startMCPOAuth: mocks.startMCPOAuth,
+  revokeMCPOAuth: mocks.revokeMCPOAuth,
 }));
 
 function server(overrides: Partial<MCPServer> = {}): MCPServer {
   return {
     id: "s1",
     name: "Fabric",
-    transport: "streamable-http",
+    transport: "auto",
     url: "https://mcp.fabric.so/mcp",
     authType: "none",
     enabled: true,
@@ -70,6 +78,7 @@ function server(overrides: Partial<MCPServer> = {}): MCPServer {
     resourceCount: 3,
     purposes: ["feed"],
     useGlobalFetch: true,
+    oauthAuthorized: false,
     createdAt: "2026-09-18T00:00:00Z",
     updatedAt: "2026-09-18T00:00:00Z",
     ...overrides,
@@ -90,69 +99,139 @@ beforeEach(() => {
   mocks.listMCPServers.mockResolvedValue([]);
 });
 
-describe("MCP 服务段（AI 栏）", () => {
-  it("列表显示连接状态、工具数与用途标记，未连接时把 lastError 用红字带出来", async () => {
+describe("MCP 服务段（16-6 硬布局）", () => {
+  it("列表行：列头 + 图标/名称副行/状态/用途/操作；预设卡片整段没了", async () => {
     mocks.listMCPServers.mockResolvedValue([
       server({ id: "s1", name: "Fabric", purposes: ["feed"] }),
       server({
         id: "s2",
-        name: "GitHub MCP",
-        purposes: ["ai"],
+        name: "Notion",
+        authType: "oauth",
+        oauthAuthorized: false,
         isConnected: false,
         toolCount: 0,
         resourceCount: 0,
-        lastError: "dial tcp 127.0.0.1:3000: connect: connection refused",
+        purposes: ["ai"],
       }),
     ]);
 
     render(<MCPServersSection />);
 
-    expect(await screen.findByText("Fabric")).toBeTruthy();
-    expect(screen.getByText("ai_settings.mcp_connected_tools(count=12)")).toBeTruthy();
-    expect(screen.getByText("ai_settings.mcp_disconnected")).toBeTruthy();
-    expect(
-      screen.getByText("dial tcp 127.0.0.1:3000: connect: connection refused"),
-    ).toBeTruthy();
+    // 列头
+    expect(await screen.findByText("ai_settings.mcp_col_name")).toBeTruthy();
+    expect(screen.getByText("ai_settings.mcp_col_status")).toBeTruthy();
+    expect(screen.getByText("ai_settings.mcp_col_purpose")).toBeTruthy();
+    expect(screen.getByText("ai_settings.mcp_col_actions")).toBeTruthy();
+    // 行：名称 + 副行（主机 · 传输 · 能力计数）
+    expect(screen.getByText("Fabric")).toBeTruthy();
+    expect(screen.getByText("ai_settings.mcp_status_connected")).toBeTruthy();
+    expect(screen.getByText("ai_settings.mcp_status_auth_needed")).toBeTruthy();
+    // 用途是标记（两处都在）
     expect(screen.getByText("ai_settings.mcp_purpose_feed")).toBeTruthy();
     expect(screen.getByText("ai_settings.mcp_purpose_ai")).toBeTruthy();
+    // 预设卡片整段删掉：入口与文案都不该出现
+    expect(screen.queryByText("ai_settings.mcp_presets")).toBeNull();
+    expect(screen.queryByText("ai_settings.mcp_preset_fabric")).toBeNull();
+    // 新入口在
+    expect(screen.getByText("ai_settings.mcp_paste_json")).toBeTruthy();
+    // 表头与行共用同一套钉死的栅格（132/92/140；末列不许 auto，否则各自按内容算就对不齐）
+    const grids = [...document.querySelectorAll(".grid")].filter((el) =>
+      el.className.includes("132px"),
+    );
+    expect(grids.length).toBeGreaterThanOrEqual(2);
+    for (const grid of grids) {
+      expect(grid.className).toContain("22px_minmax(0,1fr)_132px_92px_140px");
+      expect(grid.className).not.toContain("_auto]");
+    }
   });
 
-  it("点预设卡片把名称与地址填进新建表单，保存时送出草稿转好的 payload", async () => {
+  it("粘贴 JSON → 识别结果卡 → 填入表单 → 保存（transport/headers/purposes 落位）", async () => {
     mocks.createMCPServer.mockResolvedValue(server({ id: "s3" }));
 
     render(<MCPServersSection />);
     await screen.findByText("ai_settings.mcp_empty");
 
-    fireEvent.click(screen.getByLabelText("ai_settings.mcp_preset_krss"));
+    fireEvent.click(screen.getByText("ai_settings.mcp_paste_json"));
+    // 默认页就是粘贴（Tabs 双面板都挂载，非 active 的带 hidden，按这个过滤；
+    // 注意 Panel 的 DIV 也会被 label 命中，只收 TEXTAREA）
+    const visibleEditor = () =>
+      screen
+        .getAllByLabelText("ai_settings.mcp_tab_paste")
+        .filter(
+          (el) => el.tagName === "TEXTAREA" && !el.closest("[hidden]"),
+        )
+        .at(0) as HTMLTextAreaElement;
+    const editor = await waitFor(() => {
+      const el = visibleEditor();
+      expect(el).toBeTruthy();
+      return el;
+    });
+    fireEvent.change(
+      editor,
+      {
+        target: {
+          value: JSON.stringify({
+            mcpServers: {
+              "nas-mcp": {
+                type: "sse",
+                url: "http://192.0.2.1:8931/sse",
+                headers: { Authorization: "Bearer sk-123" },
+              },
+            },
+          }),
+        },
+      },
+    );
 
+    // 识别结果卡：名称/传输/地址/认证
+    expect(await screen.findByText("ai_settings.mcp_recognized")).toBeTruthy();
+    expect(screen.getByText("nas-mcp")).toBeTruthy();
+    expect(screen.getByText("http://192.0.2.1:8931/sse")).toBeTruthy();
+
+    // 填入表单 → 切到手动页，草稿落位
+    fireEvent.click(
+      screen.getByText(`${"ai_settings.mcp_tab_manual"} →`),
+    );
     const nameInput = (await screen.findByLabelText(
       "ai_settings.mcp_name",
     )) as HTMLInputElement;
-    const urlInput = screen.getByLabelText("ai_settings.mcp_url") as HTMLInputElement;
-    expect(nameInput.value).toBe("ai_settings.mcp_preset_krss");
-    expect(urlInput.value).toBe("http://127.0.0.1:8080/mcp");
+    expect(nameInput.value).toBe("nas-mcp");
 
-    fireEvent.click(screen.getByText("ai_settings.mcp_purpose_feed"));
     fireEvent.click(screen.getByText("actions.save"));
-
     await waitFor(() => expect(mocks.createMCPServer).toHaveBeenCalledTimes(1));
     const payload = lastCallArg<Record<string, unknown>>(mocks.createMCPServer);
-    expect(payload).toEqual({
-      name: "ai_settings.mcp_preset_krss",
-      transport: "streamable-http",
-      url: "http://127.0.0.1:8080/mcp",
-      authType: "none",
-      headers: {},
+    expect(payload).toMatchObject({
+      name: "nas-mcp",
+      transport: "sse",
+      url: "http://192.0.2.1:8931/sse",
+      authType: "header",
+      headers: { Authorization: "Bearer sk-123" },
       enabled: true,
-      purposes: ["feed"],
+      purposes: ["ai", "feed"],
       useGlobalFetch: true,
     });
-    // 跟全局时不带那三个数字字段（带了会被后端当成「单独配」）
+    // 跟全局时不带那三个数字字段
     expect("fetchTimeoutSeconds" in payload).toBe(false);
-    expect("refreshIntervalMinutes" in payload).toBe(false);
+  });
 
-    // 保存后刷新列表
-    await waitFor(() => expect(mocks.listMCPServers).toHaveBeenCalledTimes(2));
+  it("粘贴坏 JSON 给明确错误码，不发请求", async () => {
+    render(<MCPServersSection />);
+    await screen.findByText("ai_settings.mcp_empty");
+
+    fireEvent.click(screen.getByText("ai_settings.mcp_paste_json"));
+    const badEditor = await waitFor(() => {
+      const el = screen
+        .getAllByLabelText("ai_settings.mcp_tab_paste")
+        .filter((node) => node.tagName === "TEXTAREA" && !node.closest("[hidden]"))
+        .at(0) as HTMLTextAreaElement;
+      expect(el).toBeTruthy();
+      return el;
+    });
+    fireEvent.change(badEditor, { target: { value: "{oops" } });
+    expect(
+      await screen.findByText("ai_settings.mcp_parse_not_json"),
+    ).toBeTruthy();
+    expect(mocks.createMCPServer).not.toHaveBeenCalled();
   });
 
   it("名称为空 / 地址不合法时不发请求，并把校验提示显示出来", async () => {
@@ -160,7 +239,8 @@ describe("MCP 服务段（AI 栏）", () => {
     await screen.findByText("ai_settings.mcp_empty");
 
     fireEvent.click(screen.getByText("ai_settings.mcp_add_connection"));
-    fireEvent.click(await screen.findByText("ai_settings.mcp_purpose_feed"));
+    // 新建连接直接落在手动页（编辑态共用同一页）
+    fireEvent.click(await screen.findByText("ai_settings.mcp_tab_manual"));
     fireEvent.click(screen.getByText("actions.save"));
 
     expect(
@@ -184,7 +264,7 @@ describe("MCP 服务段（AI 栏）", () => {
     render(<MCPServersSection />);
     await screen.findByText("内部笔记");
 
-    fireEvent.click(screen.getByLabelText("ai_settings.mcp_edit"));
+    fireEvent.click(screen.getByLabelText("ai_settings.mcp_menu_edit"));
     const valueInput = (await screen.findByLabelText(
       "ai_settings.mcp_header_value",
     )) as HTMLInputElement;
@@ -201,13 +281,20 @@ describe("MCP 服务段（AI 栏）", () => {
     expect(payload.headers).toEqual({ Authorization: "••••••••" });
   });
 
-  it("连通性测试失败不当成请求失败：直接把后端给的 error 显示出来", async () => {
+  it("测试失败走结构化失败块：人话标题 + 认证桶出口（去配 Header / 改用 OAuth）", async () => {
     mocks.listMCPServers.mockResolvedValue([server({ id: "s1" })]);
     mocks.testMCPServer.mockResolvedValue({
       connected: false,
       toolCount: 0,
       resourceCount: 0,
-      error: "401 Unauthorized: token 无效",
+      error: "HTTP 401: unauthorized",
+      failure: {
+        bucket: "auth",
+        code: "unauthorized",
+        title: "需要授权（401）",
+        suggestion: "这个服务要授权 —— 可以填 Header，或改用 OAuth 授权",
+        raw: "401 Unauthorized",
+      },
     });
 
     render(<MCPServersSection />);
@@ -215,8 +302,33 @@ describe("MCP 服务段（AI 栏）", () => {
 
     fireEvent.click(screen.getByLabelText("ai_settings.mcp_test"));
 
-    expect(await screen.findByText("401 Unauthorized: token 无效")).toBeTruthy();
+    // 人话标题 + 建议 + 出口按钮（三处共用同一套）
+    expect(await screen.findByText("需要授权（401）")).toBeTruthy();
+    expect(screen.getByText("ai_settings.mcp_exit_to_header")).toBeTruthy();
+    expect(screen.getByText("ai_settings.mcp_exit_to_oauth")).toBeTruthy();
     expect(mocks.testMCPServer).toHaveBeenCalledWith("s1");
+  });
+
+  it("库里的失败也走同一套组件（compact 可展开）", async () => {
+    mocks.listMCPServers.mockResolvedValue([
+      server({
+        id: "s2",
+        name: "老失败",
+        isConnected: false,
+        lastError: "连不上服务（连接被拒绝）",
+        lastFailure: {
+          bucket: "network",
+          code: "refused",
+          title: "连不上服务（连接被拒绝）",
+          suggestion: "确认服务已启动",
+          raw: "dial tcp: connect: connection refused",
+        },
+      }),
+    ]);
+
+    render(<MCPServersSection />);
+    expect(await screen.findByText("连不上服务（连接被拒绝）")).toBeTruthy();
+    expect(screen.getByText("ai_settings.mcp_status_failed")).toBeTruthy();
   });
 
   it("「+ 新建 MCP 订阅」直接开建源向导（入口在 MCP 服务段里）", async () => {
@@ -225,36 +337,17 @@ describe("MCP 服务段（AI 栏）", () => {
 
     fireEvent.click(screen.getByText("ai_settings.mcp_new_subscription"));
 
-    // 向导第一步：选连接（这一段没有连接，所以给的是「还没有可用于 Feed 的连接」）
-    expect(
-      (await screen.findAllByText("ai_settings.mcp_step_server")).length,
-    ).toBeGreaterThan(0);
+    // 向导第 1 屏：连接与取数（这一段没有连接，所以给的是空提示）
+    expect(await screen.findByText("ai_settings.mcp_screen_1")).toBeTruthy();
     expect(
       screen.getByText("ai_settings.mcp_no_servers_for_feed"),
     ).toBeTruthy();
   });
 
-  it("传输说明里明确写了只支持 streamable-http，且 SSE 选项确实传给了下拉（带 isDisabled）", async () => {
-    render(<MCPServersSection />);
-    await screen.findByText("ai_settings.mcp_empty");
-
-    fireEvent.click(screen.getByText("ai_settings.mcp_add_connection"));
-    await screen.findByLabelText("ai_settings.mcp_transport");
-
-    // 说明文案就在下拉下面，用户不必点开也能看到「SSE 还没做」
-    expect(screen.getByText("ai_settings.mcp_transport_hint")).toBeTruthy();
-
-    // 选项照常渲染、不是偷偷藏起来（jsdom 里 HeroUI Select 的弹层不落地，
-    // 所以只能验到「这一项确实存在于 Select 的集合里」，禁用态由
-    // validateMCPServerDraft 的 transport_unsupported 兜住）
-    const sseOptions = [...document.querySelectorAll("option")].filter(
-      (option) => option.value === "sse",
-    );
-    expect(sseOptions.length).toBeGreaterThan(0);
-  });
-
   it("删除撞上「还有订阅在用」时，把后端 409 的原话显示出来", async () => {
-    mocks.listMCPServers.mockResolvedValue([server({ id: "s1", name: "Fabric" })]);
+    mocks.listMCPServers.mockResolvedValue([
+      server({ id: "s1", name: "Fabric" }),
+    ]);
     mocks.deleteMCPServer.mockRejectedValue(
       new ApiError("还有 2 条订阅在用这个连接，先删掉它们再删连接", 409),
     );
@@ -262,7 +355,9 @@ describe("MCP 服务段（AI 栏）", () => {
     render(<MCPServersSection />);
     await screen.findByText("Fabric");
 
-    fireEvent.click(screen.getByLabelText("ai_settings.mcp_delete"));
+    // 操作列的 ⋯ 菜单 → 删除
+    fireEvent.click(screen.getByLabelText("ai_settings.mcp_col_actions"));
+    fireEvent.click(await screen.findByText("ai_settings.mcp_menu_delete"));
     fireEvent.click(await screen.findByText("actions.delete"));
 
     expect(

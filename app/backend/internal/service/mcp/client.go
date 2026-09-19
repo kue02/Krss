@@ -153,6 +153,9 @@ type Client struct {
 	httpClient *http.Client
 	endpoint   string
 	headers    map[string]string
+	transport  string
+
+	sse *sseSession
 
 	mu         sync.Mutex
 	nextID     int
@@ -161,9 +164,34 @@ type Client struct {
 	ready      bool
 }
 
-// NewClient 建一个会话。headers 是 Header 认证的那份（敏感：调用方负责不把它写进日志）。
+// NewClient 建一个会话（默认 streamable-http）。headers 是 Header 认证的那份
+// （敏感：调用方负责不把它写进日志）。
 func NewClient(httpClient *http.Client, endpoint string, headers map[string]string) *Client {
-	return &Client{httpClient: httpClient, endpoint: endpoint, headers: headers}
+	return NewClientWithTransport(httpClient, endpoint, headers, "streamable-http")
+}
+
+// NewClientWithTransport 指定传输建会话（sse = 旧版 HTTP+SSE 传输 —— 16-10）。
+func NewClientWithTransport(httpClient *http.Client, endpoint string, headers map[string]string, transport string) *Client {
+	client := &Client{httpClient: httpClient, endpoint: endpoint, headers: headers, transport: transport}
+	if transport == "sse" {
+		client.sse = newSSESession(httpClient, endpoint, headers)
+	}
+	return client
+}
+
+// Transport 当前用的传输（探测成功后调用方回写 last_transport 用）。
+func (c *Client) Transport() string {
+	if c.transport == "" {
+		return "streamable-http"
+	}
+	return c.transport
+}
+
+// Close 关 SSE 流（streamable-http 无状态，不用管）。service 层 defer 调。
+func (c *Client) Close() {
+	if c.sse != nil {
+		c.sse.Close()
+	}
 }
 
 // ServerInfo 最近一次 initialize 的结果（用于「测试连通性」回显服务名与版本）。
@@ -285,6 +313,9 @@ func (c *Client) notify(ctx context.Context, method string, params any) error {
 	if err != nil {
 		return err
 	}
+	if c.sse != nil {
+		return c.sse.notify(ctx, body)
+	}
 	_, err = c.post(ctx, body)
 	return err
 }
@@ -305,6 +336,9 @@ func (c *Client) call(ctx context.Context, method string, params any, ensureInit
 	body, err := json.Marshal(rpcRequest{JSONRPC: "2.0", ID: &id, Method: method, Params: params})
 	if err != nil {
 		return nil, err
+	}
+	if c.sse != nil {
+		return c.sse.call(ctx, id, body)
 	}
 	respBody, err := c.post(ctx, body)
 	if err != nil {

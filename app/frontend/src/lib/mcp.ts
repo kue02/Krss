@@ -1,17 +1,21 @@
 /**
- * MCP 功能的纯逻辑（无 React、无网络）——表单草稿、校验、请求体拼装、预设。
+ * MCP 功能的纯逻辑（无 React、无网络）——表单草稿、校验、请求体拼装、粘贴 JSON 解析、
+ * 失败出口、JSON 高亮 tokenizer、分页默认值。
  *
  * 抽出来的原因有两个：① 这些规则要能被单测直接钉住（开关不受全局、间隔下限 15 分钟、
- * 映射改动后必须重新预览）；② 表单组件里只留渲染，别把判据散在 JSX 里。
+ * 映射改动后必须重新预览、三形状 JSON 解析）；② 表单组件里只留渲染，别把判据散在 JSX 里。
  */
 import type {
   MCPAuthType,
   MCPEntryMapping,
+  MCPFailure,
+  MCPFailureBucket,
   MCPFeedConfig,
   MCPInspectRequest,
   MCPInspectResult,
   MCPKind,
   MCPKeyLevel,
+  MCPPagination,
   MCPServer,
   MCPServerWritePayload,
   MCPTransport,
@@ -28,8 +32,9 @@ export const MCP_DEFAULT_TIMEOUT_SECONDS = 15;
 export const MCP_DEFAULT_CONCURRENCY = 4;
 export const MCP_DEFAULT_REFRESH_INTERVAL_MINUTES = 15;
 
-/** 第一版支持的传输（sse 在界面上禁用并注明「第一版不支持」） */
-export const MCP_SUPPORTED_TRANSPORTS: MCPTransport[] = ["streamable-http"];
+/** 追历史分页的默认值（16-8 口径：3 页 / 200 条） */
+export const MCP_DEFAULT_MAX_PAGES = 3;
+export const MCP_DEFAULT_MAX_ITEMS = 200;
 
 /** 表单里的一行 Header（编辑已有连接时 value 是掩码串） */
 export interface MCPHeaderDraft {
@@ -50,12 +55,13 @@ export interface MCPServerDraft {
   fetchTimeoutSeconds: number;
   fetchConcurrency: number;
   refreshIntervalMinutes: number;
+  oauthClientId: string;
+  oauthClientSecret: string;
 }
 
 /** 校验错误码（组件翻成 `ai_settings.mcp_err_<code>`，这样判据能脱离 i18n 被单测） */
 export type MCPDraftError =
   | "name_required"
-  | "transport_unsupported"
   | "url_invalid"
   | "headers_incomplete"
   | "purposes_required"
@@ -66,45 +72,13 @@ export type MCPDraftError =
 /** MCP 客户端配置示例里的 token 占位符（真实 token 绝不进这段文本） */
 export const MCP_TOKEN_PLACEHOLDER = "<token>";
 
-/** 预设卡片：名字走 i18n，URL 是占位提示，点一下把两者填进新建表单 */
-export interface MCPServerPreset {
-  id: string;
-  nameKey: string;
-  hintKey: string;
-  url: string;
-}
-
-export const MCP_SERVER_PRESETS: MCPServerPreset[] = [
-  {
-    id: "krss-local",
-    nameKey: "ai_settings.mcp_preset_krss",
-    hintKey: "ai_settings.mcp_preset_krss_hint",
-    url: "http://127.0.0.1:8080/mcp",
-  },
-  {
-    id: "fabric",
-    nameKey: "ai_settings.mcp_preset_fabric",
-    hintKey: "ai_settings.mcp_preset_fabric_hint",
-    url: "https://mcp.fabric.so/mcp",
-  },
-  {
-    id: "notion",
-    nameKey: "ai_settings.mcp_preset_notion",
-    hintKey: "ai_settings.mcp_preset_notion_hint",
-    url: "https://mcp.notion.com/mcp",
-  },
-  {
-    id: "github",
-    nameKey: "ai_settings.mcp_preset_github",
-    hintKey: "ai_settings.mcp_preset_github_hint",
-    url: "https://api.githubcopilot.com/mcp/",
-  },
-];
+/** 预设卡片已删（16-6 口径：以后要「一键加」做成新建对话框里的下拉，不占列表空间）。
+ * 这里故意不留 MCP_SERVER_PRESETS / applyPresetToDraft —— 死代码不进仓。 */
 
 export function emptyMCPServerDraft(): MCPServerDraft {
   return {
     name: "",
-    transport: "streamable-http",
+    transport: "auto",
     url: "",
     authType: "none",
     headers: [],
@@ -114,6 +88,8 @@ export function emptyMCPServerDraft(): MCPServerDraft {
     fetchTimeoutSeconds: MCP_DEFAULT_TIMEOUT_SECONDS,
     fetchConcurrency: MCP_DEFAULT_CONCURRENCY,
     refreshIntervalMinutes: MCP_DEFAULT_REFRESH_INTERVAL_MINUTES,
+    oauthClientId: "",
+    oauthClientSecret: "",
   };
 }
 
@@ -136,20 +112,8 @@ export function mcpDraftFromServer(server: MCPServer): MCPServerDraft {
     fetchConcurrency: server.fetchConcurrency ?? MCP_DEFAULT_CONCURRENCY,
     refreshIntervalMinutes:
       server.refreshIntervalMinutes ?? MCP_DEFAULT_REFRESH_INTERVAL_MINUTES,
-  };
-}
-
-/** 点预设卡片：只填名称与地址（其余保持用户已经选好的东西） */
-export function applyPresetToDraft(
-  draft: MCPServerDraft,
-  preset: MCPServerPreset,
-  displayName: string,
-): MCPServerDraft {
-  return {
-    ...draft,
-    name: displayName,
-    url: preset.url,
-    transport: "streamable-http",
+    oauthClientId: server.oauthClientId ?? "",
+    oauthClientSecret: server.oauthClientSecret ?? "",
   };
 }
 
@@ -169,9 +133,6 @@ export function validateMCPServerDraft(draft: MCPServerDraft): MCPDraftError[] {
   const errors: MCPDraftError[] = [];
 
   if (!draft.name.trim()) errors.push("name_required");
-  if (!MCP_SUPPORTED_TRANSPORTS.includes(draft.transport)) {
-    errors.push("transport_unsupported");
-  }
   if (!isHttpUrl(draft.url)) errors.push("url_invalid");
   if (draft.purposes.length === 0) errors.push("purposes_required");
 
@@ -222,7 +183,206 @@ export function buildMCPServerPayload(
     payload.refreshIntervalMinutes = draft.refreshIntervalMinutes;
   }
 
+  if (draft.authType === "oauth") {
+    payload.oauthClientId = draft.oauthClientId.trim();
+    // 掩码原样送回 = 没改（后端换回真值）；空串 = 清掉
+    if (draft.oauthClientSecret !== "") {
+      payload.oauthClientSecret = draft.oauthClientSecret;
+    }
+  }
+
   return payload;
+}
+
+// ---------------------------------------------------------------------------
+// 16-9：粘贴 JSON 建档（三种形状）
+// ---------------------------------------------------------------------------
+
+/** 粘贴解析出的一条连接（含来源说明，界面拼识别结果卡用） */
+export interface MCPParsedServer {
+  name: string;
+  transport: MCPTransport;
+  /** "auto" 在这里表示「没看出来，按自动识别走」 */
+  url: string;
+  headers: Record<string, string>;
+  /** 识别依据（`由 "type":"sse" 识别` 这类文案拼装用） */
+  detectedFrom: string;
+}
+
+/** 粘贴解析结果：ok 若干条，或一段失败原因 */
+export type MCPParseResult =
+  | { ok: true; servers: MCPParsedServer[] }
+  | { ok: false; error: MCPParseError };
+
+export type MCPParseError =
+  | "not_json"
+  | "not_object"
+  | "no_servers_found"
+  | "url_invalid";
+
+/**
+ * 认三种形状：
+ * ① Claude/Cursor 的 `{"mcpServers":{name: {type,url,headers,…}}}`（可一次多条）
+ * ② 单条 `{type,url,headers}`（type 多种写法都认）
+ * ③ 只有 url（字符串或 `{url}`）→ 按 URL 特征 + 自动识别兜底
+ */
+export function parseMCPJSON(raw: string): MCPParseResult {
+  const text = raw.trim();
+  if (!text) return { ok: false, error: "not_json" };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { ok: false, error: "not_json" };
+  }
+  // ③-a：纯字符串就是一个 url
+  if (typeof parsed === "string") {
+    return singleFromUrl(parsed);
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { ok: false, error: "not_object" };
+  }
+  const obj = parsed as Record<string, unknown>;
+  // ①：{"mcpServers": {...}}
+  const bundle = obj["mcpServers"];
+  if (bundle !== undefined) {
+    if (
+      bundle === null ||
+      typeof bundle !== "object" ||
+      Array.isArray(bundle)
+    ) {
+      return { ok: false, error: "no_servers_found" };
+    }
+    const entries = Object.entries(bundle as Record<string, unknown>);
+    if (entries.length === 0) return { ok: false, error: "no_servers_found" };
+    const servers: MCPParsedServer[] = [];
+    for (const [name, item] of entries) {
+      const one = parseSingleServer(name, item);
+      if (one === null) return { ok: false, error: "url_invalid" };
+      servers.push(one);
+    }
+    return { ok: true, servers };
+  }
+  // ②/③-b：单条（{type,url,headers} 或 {url}；command 本地进程不认）
+  const one = parseSingleServer("", obj);
+  if (one === null) {
+    if (!hasAnyUrl(obj)) return { ok: false, error: "no_servers_found" };
+    return { ok: false, error: "url_invalid" };
+  }
+  return { ok: true, servers: [one] };
+}
+
+function hasAnyUrl(obj: Record<string, unknown>): boolean {
+  return (
+    typeof obj["url"] === "string" ||
+    typeof obj["serverUrl"] === "string" ||
+    typeof obj["server_url"] === "string"
+  );
+}
+
+/** 单条解析：name 为 "" 时从 url 派生默认名 */
+function parseSingleServer(name: string, item: unknown): MCPParsedServer | null {
+  if (item === null || typeof item !== "object" || Array.isArray(item)) {
+    return null;
+  }
+  const obj = item as Record<string, unknown>;
+  // command+args（stdio 本地进程）：没有 url，不认 —— 明确返回 null 让界面说清
+  if (typeof obj["command"] === "string" && obj["url"] === undefined) {
+    return null;
+  }
+  const url =
+    asString(obj["url"]) ??
+    asString(obj["serverUrl"]) ??
+    asString(obj["server_url"]) ??
+    "";
+  if (!isHttpUrl(url)) return null;
+  const headers = asHeaders(obj["headers"]);
+  const { transport, detectedFrom } = detectTransport(obj, url);
+  return {
+    name: name.trim() || defaultNameFromUrl(url),
+    transport,
+    url: url.trim(),
+    headers,
+    detectedFrom,
+  };
+}
+
+function singleFromUrl(url: string): MCPParseResult {
+  if (!isHttpUrl(url)) return { ok: false, error: "url_invalid" };
+  const { transport, detectedFrom } = detectTransport({}, url.trim());
+  return {
+    ok: true,
+    servers: [
+      {
+        name: defaultNameFromUrl(url.trim()),
+        transport,
+        url: url.trim(),
+        headers: {},
+        detectedFrom,
+      },
+    ],
+  };
+}
+
+/**
+ * 传输识别：JSON 的 type 优先（sse/http/streamable-http 都认）；
+ * 没有 type 就看 URL（…/sse 结尾像 SSE 端点）；
+ * 都看不出 → auto（后端按「试 HTTP，失败自动试 SSE」走）。
+ */
+export function detectTransport(
+  obj: Record<string, unknown>,
+  url: string,
+): { transport: MCPTransport; detectedFrom: string } {
+  const rawType = asString(obj["type"]) ?? asString(obj["transport"]) ?? "";
+  const normalized = rawType.trim().toLowerCase();
+  if (normalized === "sse") {
+    return { transport: "sse", detectedFrom: '由 "type":"sse" 识别' };
+  }
+  if (
+    normalized === "http" ||
+    normalized === "streamable-http" ||
+    normalized === "streamablehttp"
+  ) {
+    return {
+      transport: "streamable-http",
+      detectedFrom: `由 "type":"${rawType.trim()}" 识别`,
+    };
+  }
+  if (normalized !== "") {
+    // 未知的 type：不硬猜，走自动识别
+    return { transport: "auto", detectedFrom: "type 未知，按自动识别" };
+  }
+  if (/\/sse\/?(\?.*)?$/i.test(url.trim())) {
+    return { transport: "sse", detectedFrom: "由地址后缀 /sse 识别" };
+  }
+  return {
+    transport: "auto",
+    detectedFrom: "未指定，按自动识别（先 HTTP，失败自动试 SSE）",
+  };
+}
+
+function defaultNameFromUrl(url: string): string {
+  try {
+    const parsed = new URL(url.trim());
+    return parsed.hostname || url.trim();
+  } catch {
+    return url.trim();
+  }
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function asHeaders(value: unknown): Record<string, string> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  const out: Record<string, string> = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof item === "string") out[key] = item;
+  }
+  return out;
 }
 
 /**
@@ -350,6 +510,7 @@ export function buildMCPFeedConfig(input: {
   mapping: MCPEntryMapping;
   tier?: string;
   keyLevel?: string;
+  pagination?: MCPPagination;
 }): MCPFeedConfig {
   const config: MCPFeedConfig = {
     serverId: input.serverId,
@@ -365,6 +526,7 @@ export function buildMCPFeedConfig(input: {
   }
   if (input.tier) config.tier = input.tier;
   if (input.keyLevel) config.keyLevel = input.keyLevel;
+  if (input.pagination) config.pagination = input.pagination;
   return config;
 }
 
@@ -408,17 +570,69 @@ export function mcpTierLabelKey(tier: string): string {
   }
 }
 
+/** 失败桶 → i18n 键（标题/建议由后端的人话文案直接给，这里只给桶名与出口按钮） */
+export function mcpFailureBucketLabelKey(bucket: MCPFailureBucket): string {
+  switch (bucket) {
+    case "network":
+      return "ai_settings.mcp_failure_network";
+    case "auth":
+      return "ai_settings.mcp_failure_auth";
+    case "protocol":
+      return "ai_settings.mcp_failure_protocol";
+    case "upstream":
+      return "ai_settings.mcp_failure_upstream";
+    default:
+      return "ai_settings.mcp_failure_unknown";
+  }
+}
+
+/**
+ * 桶 → 出口按钮（16-12 口径，写死在这里，三处共用）：
+ * 认证桶 →「去配 Header / 改用 OAuth」；传输出错（sse_endpoint/not_found/empty/not_mcp）
+ * →「切 SSE 重试 + 重新探测」；未知桶 →「重新探测」。
+ */
+export type MCPFailureExit =
+  | "to_header"
+  | "to_oauth"
+  | "to_sse"
+  | "redetect"
+  | "none";
+
+export function mcpFailureExits(
+  failure: MCPFailure | null | undefined,
+): MCPFailureExit[] {
+  if (!failure) return [];
+  if (failure.bucket === "auth") return ["to_header", "to_oauth"];
+  if (
+    failure.bucket === "protocol" &&
+    (failure.code === "sse_endpoint" ||
+      failure.code === "not_found" ||
+      failure.code === "empty" ||
+      failure.code === "not_mcp")
+  ) {
+    return ["to_sse", "redetect"];
+  }
+  if (failure.bucket === "unknown") return ["redetect"];
+  return [];
+}
+
 /**
  * 出向：给一段可直接复制的 MCP 客户端配置。
  * token 一律用占位符 —— 这段文本会被复制到别处，绝不能把真实 token 带出去。
+ * HTTP 与 SSE 两种写法都给（17-x 微调）。
  */
-export function buildMCPClientConfigExample(origin?: string): string {
+export function buildMCPClientConfigExample(
+  origin?: string,
+  transport?: "http" | "sse",
+): string {
   const base = (origin ?? "").trim().replace(/\/+$/, "");
   const endpoint = base ? `${base}/mcp` : "http://<host>:<port>/mcp";
+  const type = transport === "sse" ? "sse" : "http";
   return JSON.stringify(
     {
       mcpServers: {
         krss: {
+          type,
           url: endpoint,
           headers: { Authorization: `Bearer ${MCP_TOKEN_PLACEHOLDER}` },
         },
@@ -427,6 +641,125 @@ export function buildMCPClientConfigExample(origin?: string): string {
     null,
     2,
   );
+}
+
+/** OAuth 回调地址：运行时取当前访问 origin（零配置、远程可用） */
+export function buildOAuthCallbackURL(origin: string): string {
+  return `${origin.replace(/\/+$/, "")}/api/mcp/oauth/callback`;
+}
+
+// ---------------------------------------------------------------------------
+// 16-13：JSON 高亮（小 tokenizer，只读区上色用；不做边打字边高亮）
+// ---------------------------------------------------------------------------
+
+/** JSON token 种类 → 四色（用现有主题 token，不新造色） */
+export type MCPJsonTokenKind = "key" | "string" | "number" | "literal" | "punct";
+
+export interface MCPJsonToken {
+  kind: MCPJsonTokenKind;
+  text: string;
+}
+
+/**
+ * 最小 JSON tokenizer：字符串（含转义）/ 数字 / true·false·null / 标点。
+ * 坏 JSON 也不会崩（只是部分没颜色），空白原样保留（<pre> 里靠它对齐）。
+ */
+export function tokenizeJSON(input: string): MCPJsonToken[] {
+  const tokens: MCPJsonToken[] = [];
+  const isSpace = (ch: string): boolean =>
+    ch === " " || ch === "\t" || ch === "\n" || ch === "\r";
+  // 注：不用 input[i] 下标 —— 本仓开了 noUncheckedIndexedAccess，下标类型是 string|undefined
+  const at = (index: number): string =>
+    index < input.length ? (input.charAt(index) as string) : "";
+  let i = 0;
+  while (i < input.length) {
+    const ch = at(i);
+    if (isSpace(ch)) {
+      let j = i + 1;
+      while (j < input.length && isSpace(at(j))) j++;
+      tokens.push({ kind: "punct", text: input.slice(i, j) });
+      i = j;
+      continue;
+    }
+    if (ch === '"') {
+      let j = i + 1;
+      while (j < input.length) {
+        if (at(j) === "\\") {
+          j += 2;
+          continue;
+        }
+        if (at(j) === '"') {
+          j++;
+          break;
+        }
+        j++;
+      }
+      const text = input.slice(i, j);
+      // key 判定：后面（跳过空白）紧跟冒号
+      let k = j;
+      while (k < input.length && /\s/.test(at(k))) k++;
+      tokens.push({ kind: at(k) === ":" ? "key" : "string", text });
+      i = j;
+      continue;
+    }
+    if (ch === "-" || (ch >= "0" && ch <= "9")) {
+      const match = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/.exec(
+        input.slice(i),
+      );
+      if (match?.[0]) {
+        tokens.push({ kind: "number", text: match[0] });
+        i += match[0].length;
+        continue;
+      }
+    }
+    let literal = "";
+    for (const candidate of ["true", "false", "null"]) {
+      if (input.startsWith(candidate, i)) {
+        literal = candidate;
+        break;
+      }
+    }
+    if (literal) {
+      tokens.push({ kind: "literal", text: literal });
+      i += literal.length;
+      continue;
+    }
+    tokens.push({ kind: "punct", text: ch });
+    i++;
+  }
+  return tokens;
+}
+
+/** JSON 格式化（含校验）：失败带原文错误信息，工具条「校验」按钮用 */
+export function formatMCPJSON(
+  raw: string,
+):
+  | { ok: true; text: string }
+  | { ok: false; message: string } {
+  try {
+    return { ok: true, text: JSON.stringify(JSON.parse(raw), null, 2) };
+  } catch (err) {
+    return {
+      ok: false,
+      message: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/** JSON 压缩（一行，塞 arguments 那种场景用） */
+export function minifyMCPJSON(
+  raw: string,
+):
+  | { ok: true; text: string }
+  | { ok: false; message: string } {
+  try {
+    return { ok: true, text: JSON.stringify(JSON.parse(raw)) };
+  } catch (err) {
+    return {
+      ok: false,
+      message: err instanceof Error ? err.message : String(err),
+    };
+  }
 }
 
 /**

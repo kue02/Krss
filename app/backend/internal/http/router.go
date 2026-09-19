@@ -67,6 +67,10 @@ func NewRouter(
 	// MCP 出向端点 /mcp：**不走 JWT** —— 它用长期 token（MCP 客户端只会带这个）
 	mcpEndpointHandler.RegisterRoutes(e)
 
+	// MCP OAuth 回调：**不走 JWT** —— 浏览器从授权服务器跳回来带不了 JWT，
+	// 安全靠 state（256 位随机、单次有效、10 分钟过期），见 MCPHandler.RegisterPublicRoutes
+	mcpHandler.RegisterPublicRoutes(e)
+
 	// Icon routes with cache recovery
 	iconHandler.RegisterRoutes(e)
 

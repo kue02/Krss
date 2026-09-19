@@ -90,9 +90,26 @@ func TestOutbound_DisabledBlocksAuth(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, outbound.Authorize(ctx, token))
 
-	_, err = outbound.UpdateOptions(ctx, false, false)
+	_, err = outbound.UpdateOptions(ctx, false, false, "")
 	require.NoError(t, err)
 	require.False(t, outbound.Authorize(ctx, token), "关掉出向之后任何 token 都不该放行")
+}
+
+func TestOutbound_BaseURLNormalizeAndReject(t *testing.T) {
+	outbound, _ := newOutboundFixture(t)
+	ctx := context.Background()
+
+	// 尾斜杠去掉、非法形状 400（ErrMCPInvalid）、清空回空
+	status, err := outbound.UpdateOptions(ctx, true, false, "http://192.0.2.1:8082/")
+	require.NoError(t, err)
+	require.Equal(t, "http://192.0.2.1:8082", status.BaseURL)
+
+	_, err = outbound.UpdateOptions(ctx, true, false, "ftp://x/y")
+	require.ErrorIs(t, err, service.ErrMCPInvalid)
+
+	status, err = outbound.UpdateOptions(ctx, true, false, "")
+	require.NoError(t, err)
+	require.Empty(t, status.BaseURL)
 }
 
 func TestOutbound_DispatchReadOnlyTools(t *testing.T) {
@@ -194,7 +211,7 @@ func TestOutbound_WriteToolsGated(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "写操作未开启")
 
-	_, err = outbound.UpdateOptions(ctx, true, true)
+	_, err = outbound.UpdateOptions(ctx, true, true, "")
 	require.NoError(t, err)
 	names := toolNames(outbound.Tools(ctx))
 	require.Contains(t, names, "mark_read")

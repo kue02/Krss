@@ -41,6 +41,20 @@ func (m *MockMCPServerRepository) EXPECT() *MockMCPServerRepositoryMockRecorder 
 	return m.recorder
 }
 
+// ClearOAuth mocks base method.
+func (m *MockMCPServerRepository) ClearOAuth(ctx context.Context, id int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClearOAuth", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ClearOAuth indicates an expected call of ClearOAuth.
+func (mr *MockMCPServerRepositoryMockRecorder) ClearOAuth(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearOAuth", reflect.TypeOf((*MockMCPServerRepository)(nil).ClearOAuth), ctx, id)
+}
+
 // CountFeedsUsing mocks base method.
 func (m *MockMCPServerRepository) CountFeedsUsing(ctx context.Context, id int64) (int, error) {
 	m.ctrl.T.Helper()
@@ -115,6 +129,34 @@ func (mr *MockMCPServerRepositoryMockRecorder) List(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockMCPServerRepository)(nil).List), ctx)
 }
 
+// SetLastFailure mocks base method.
+func (m *MockMCPServerRepository) SetLastFailure(ctx context.Context, id int64, failureJSON *string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLastFailure", ctx, id, failureJSON)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLastFailure indicates an expected call of SetLastFailure.
+func (mr *MockMCPServerRepositoryMockRecorder) SetLastFailure(ctx, id, failureJSON any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLastFailure", reflect.TypeOf((*MockMCPServerRepository)(nil).SetLastFailure), ctx, id, failureJSON)
+}
+
+// SetLastTransport mocks base method.
+func (m *MockMCPServerRepository) SetLastTransport(ctx context.Context, id int64, transport string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLastTransport", ctx, id, transport)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLastTransport indicates an expected call of SetLastTransport.
+func (mr *MockMCPServerRepositoryMockRecorder) SetLastTransport(ctx, id, transport any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLastTransport", reflect.TypeOf((*MockMCPServerRepository)(nil).SetLastTransport), ctx, id, transport)
+}
+
 // TouchLastUsed mocks base method.
 func (m *MockMCPServerRepository) TouchLastUsed(ctx context.Context, id int64) error {
 	m.ctrl.T.Helper()
@@ -142,6 +184,20 @@ func (m *MockMCPServerRepository) Update(ctx context.Context, server model.MCPSe
 func (mr *MockMCPServerRepositoryMockRecorder) Update(ctx, server any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockMCPServerRepository)(nil).Update), ctx, server)
+}
+
+// UpdateOAuthTokens mocks base method.
+func (m *MockMCPServerRepository) UpdateOAuthTokens(ctx context.Context, id int64, server model.MCPServer) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateOAuthTokens", ctx, id, server)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateOAuthTokens indicates an expected call of UpdateOAuthTokens.
+func (mr *MockMCPServerRepositoryMockRecorder) UpdateOAuthTokens(ctx, id, server any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateOAuthTokens", reflect.TypeOf((*MockMCPServerRepository)(nil).UpdateOAuthTokens), ctx, id, server)
 }
 
 // UpdateStatus mocks base method.

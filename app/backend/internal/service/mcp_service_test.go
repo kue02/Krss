@@ -150,17 +150,19 @@ func newMCPService(t *testing.T) (service.MCPService, repository.MCPServerReposi
 	servers := repository.NewMCPServerRepository(conn)
 	feeds := repository.NewFeedRepository(conn)
 	clientFactory := network.NewClientFactoryForTest(&http.Client{})
-	return service.NewMCPService(servers, nil, clientFactory), servers, feeds
+	return service.NewMCPService(servers, nil, clientFactory, nil), servers, feeds
 }
 
 func TestMCPService_CreateValidation(t *testing.T) {
 	svc, _, _ := newMCPService(t)
 	ctx := context.Background()
 
-	// 第一版只支持无认证 + Header：sse 要明确被拒
-	_, err := svc.CreateServer(ctx, service.MCPServerInput{Name: "x", URL: "http://127.0.0.1:1/mcp", Transport: "sse"})
+	// 16-10：sse 与 auto 都是合法传输（默认 auto）；瞎写才被拒
+	createdSSE, err := svc.CreateServer(ctx, service.MCPServerInput{Name: "x", URL: "http://127.0.0.1:1/mcp", Transport: "sse"})
+	require.NoError(t, err)
+	require.Equal(t, model.MCPTransportSSE, createdSSE.Transport)
+	_, err = svc.CreateServer(ctx, service.MCPServerInput{Name: "x", URL: "http://127.0.0.1:1/mcp", Transport: "websocket"})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "streamable-http")
 
 	// 单连接刷新间隔下限 15 分钟（A3 已拍板）
 	interval := 5
@@ -170,7 +172,7 @@ func TestMCPService_CreateValidation(t *testing.T) {
 
 	created, err := svc.CreateServer(ctx, service.MCPServerInput{Name: "本机 MCP", URL: "http://127.0.0.1:1/mcp", Enabled: true, UseGlobalFetch: true, Purposes: []string{model.MCPPurposeAI, model.MCPPurposeFeed}})
 	require.NoError(t, err)
-	require.Equal(t, model.MCPTransportStreamableHTTP, created.Transport)
+	require.Equal(t, model.MCPTransportAuto, created.Transport)
 	require.True(t, created.UseGlobalFetch)
 }
 
