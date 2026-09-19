@@ -54,8 +54,8 @@ func (r *feedRepository) Create(ctx context.Context, feed model.Feed) (model.Fee
 	}
 	_, err := r.db.ExecContext(
 		ctx,
-		`INSERT INTO feeds (id, folder_id, title, url, site_url, description, summary_prompt_reminder, type, etag, last_modified, error_message, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO feeds (id, folder_id, title, url, site_url, description, summary_prompt_reminder, type, etag, last_modified, error_message, created_at, updated_at, source_type, mcp_config)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		feed.ID,
 		nullableInt64(feed.FolderID),
 		feed.Title,
@@ -69,6 +69,8 @@ func (r *feedRepository) Create(ctx context.Context, feed model.Feed) (model.Fee
 		nullableString(feed.ErrorMessage),
 		formatTime(now),
 		formatTime(now),
+		feedSourceTypeOrDefault(feed),
+		nullableString(feed.MCPConfig),
 	)
 	if err != nil {
 		return model.Feed{}, fmt.Errorf("create feed: %w", err)
@@ -79,7 +81,7 @@ func (r *feedRepository) Create(ctx context.Context, feed model.Feed) (model.Fee
 }
 
 func (r *feedRepository) GetByID(ctx context.Context, id int64) (model.Feed, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config, refresh_fail_count, refresh_last_fail_at FROM feeds WHERE id = ?`, id)
+	row := r.db.QueryRowContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config, refresh_fail_count, refresh_last_fail_at, source_type, mcp_config FROM feeds WHERE id = ?`, id)
 	return scanFeed(row)
 }
 
@@ -92,7 +94,7 @@ func (r *feedRepository) GetByIDs(ctx context.Context, ids []int64) ([]model.Fee
 	for i, id := range ids {
 		args[i] = id
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config, refresh_fail_count, refresh_last_fail_at FROM feeds WHERE id IN (`+placeholders+`)`, args...)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config, refresh_fail_count, refresh_last_fail_at, source_type, mcp_config FROM feeds WHERE id IN (`+placeholders+`)`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("get feeds by ids: %w", err)
 	}
@@ -113,7 +115,7 @@ func (r *feedRepository) GetByIDs(ctx context.Context, ids []int64) ([]model.Fee
 }
 
 func (r *feedRepository) FindByURL(ctx context.Context, url string) (*model.Feed, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config, refresh_fail_count, refresh_last_fail_at FROM feeds WHERE url = ?`, url)
+	row := r.db.QueryRowContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config, refresh_fail_count, refresh_last_fail_at, source_type, mcp_config FROM feeds WHERE url = ?`, url)
 	feed, err := scanFeed(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -125,10 +127,10 @@ func (r *feedRepository) FindByURL(ctx context.Context, url string) (*model.Feed
 }
 
 func (r *feedRepository) List(ctx context.Context, folderID *int64) ([]model.Feed, error) {
-	query := `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config, refresh_fail_count, refresh_last_fail_at FROM feeds ORDER BY title`
+	query := `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config, refresh_fail_count, refresh_last_fail_at, source_type, mcp_config FROM feeds ORDER BY title`
 	args := []interface{}{}
 	if folderID != nil {
-		query = `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config, refresh_fail_count, refresh_last_fail_at FROM feeds WHERE folder_id = ? ORDER BY title`
+		query = `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config, refresh_fail_count, refresh_last_fail_at, source_type, mcp_config FROM feeds WHERE folder_id = ? ORDER BY title`
 		args = append(args, *folderID)
 	}
 	rows, err := r.db.QueryContext(ctx, query, args...)
@@ -153,7 +155,7 @@ func (r *feedRepository) List(ctx context.Context, folderID *int64) ([]model.Fee
 }
 
 func (r *feedRepository) ListWithoutIcon(ctx context.Context) ([]model.Feed, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config, refresh_fail_count, refresh_last_fail_at FROM feeds WHERE icon_path IS NULL OR icon_path = ''`)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config, refresh_fail_count, refresh_last_fail_at, source_type, mcp_config FROM feeds WHERE icon_path IS NULL OR icon_path = ''`)
 	if err != nil {
 		return nil, fmt.Errorf("list feeds without icon: %w", err)
 	}
@@ -182,7 +184,7 @@ func (r *feedRepository) Update(ctx context.Context, feed model.Feed) (model.Fee
 	}
 	_, err = r.db.ExecContext(
 		ctx,
-		`UPDATE feeds SET folder_id = ?, title = ?, url = ?, site_url = ?, description = ?, summary_prompt_reminder = ?, auto_translate = ?, auto_summary = ?, reader_mode = ?, proxy_mode = ?, proxy_config = ?, etag = ?, last_modified = ?, error_message = ?, updated_at = ? WHERE id = ?`,
+		`UPDATE feeds SET folder_id = ?, title = ?, url = ?, site_url = ?, description = ?, summary_prompt_reminder = ?, auto_translate = ?, auto_summary = ?, reader_mode = ?, proxy_mode = ?, proxy_config = ?, etag = ?, last_modified = ?, error_message = ?, source_type = COALESCE(NULLIF(?, ''), source_type), mcp_config = COALESCE(?, mcp_config), updated_at = ? WHERE id = ?`,
 		nullableInt64(feed.FolderID),
 		feed.Title,
 		feed.URL,
@@ -197,6 +199,8 @@ func (r *feedRepository) Update(ctx context.Context, feed model.Feed) (model.Fee
 		nullableString(feed.ETag),
 		nullableString(feed.LastModified),
 		nullableString(feed.ErrorMessage),
+		feedSourceType(feed),
+		nullableString(feed.MCPConfig),
 		formatTime(now),
 		feed.ID,
 	)
@@ -338,6 +342,23 @@ func (r *feedRepository) ClearAllConditionalGet(ctx context.Context) (int64, err
 	return result.RowsAffected()
 }
 
+// feedSourceTypeOrDefault 新建行时用：空串落成 rss（列本身 NOT NULL DEFAULT 'rss'，不能显式写 NULL）。
+func feedSourceTypeOrDefault(feed model.Feed) interface{} {
+	if feed.SourceType == "" {
+		return model.FeedSourceRSS
+	}
+	return feed.SourceType
+}
+
+// feedSourceType 更新行时用：空串返回 nil，配合 SQL 里的 COALESCE 保持原值 ——
+// 避免老调用方（改名 / 改分类）构造的 Feed 把 MCP 订阅写回 rss。
+func feedSourceType(feed model.Feed) interface{} {
+	if feed.SourceType == "" {
+		return nil
+	}
+	return feed.SourceType
+}
+
 func scanFeed(scanner interface {
 	Scan(dest ...interface{}) error
 }) (model.Feed, error) {
@@ -360,6 +381,8 @@ func scanFeed(scanner interface {
 	var proxyConfig sql.NullString
 	var refreshFailCount int
 	var refreshLastFailAt sql.NullString
+	var sourceType sql.NullString
+	var mcpConfig sql.NullString
 	if err := scanner.Scan(
 		&feed.ID,
 		&folderID,
@@ -382,6 +405,8 @@ func scanFeed(scanner interface {
 		&proxyConfig,
 		&refreshFailCount,
 		&refreshLastFailAt,
+		&sourceType,
+		&mcpConfig,
 	); err != nil {
 		return model.Feed{}, err
 	}
@@ -431,6 +456,15 @@ func scanFeed(scanner interface {
 	feed.RefreshFailCount = refreshFailCount
 	if refreshLastFailAt.Valid {
 		feed.RefreshLastFailAt = parseTimePtr(refreshLastFailAt.String)
+	}
+	if sourceType.Valid && sourceType.String != "" {
+		feed.SourceType = sourceType.String
+	} else {
+		// 老行（迁移前建的）没有值 —— 语义就是 rss
+		feed.SourceType = model.FeedSourceRSS
+	}
+	if mcpConfig.Valid {
+		feed.MCPConfig = &mcpConfig.String
 	}
 	var err error
 	feed.CreatedAt, err = parseTime(createdAt)

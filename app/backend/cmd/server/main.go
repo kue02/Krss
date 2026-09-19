@@ -56,6 +56,7 @@ func main() {
 	aiListTranslationRepo := repository.NewAIListTranslationRepository(dbConn)
 	domainRateLimitRepo := repository.NewDomainRateLimitRepository(dbConn)
 	filterRepo := repository.NewFilterRepository(dbConn)
+	mcpServerRepo := repository.NewMCPServerRepository(dbConn)
 
 	// Initialize rate limiter with stored setting
 	initialRateLimit := ai.DefaultRateLimit
@@ -112,12 +113,14 @@ func main() {
 		Webhook: service.NewHTTPWebhookSender(webhookClient),
 		Notify:  notifyService,
 	})
-	feedService := service.NewFeedService(feedRepo, folderRepo, entryRepo, iconService, settingsService, clientFactory, anubisSolver, filterService)
+	// MCP（16 批入向 / 17 批出向）共用同一套协议底座 internal/service/mcp。
+	mcpService := service.NewMCPService(mcpServerRepo, settingsService, clientFactory, aiService)
+	feedService := service.NewFeedService(feedRepo, folderRepo, entryRepo, iconService, settingsService, clientFactory, anubisSolver, filterService, mcpService)
 	// 条目列表要能按「保存筛选视图」（filters.kind = view）筛，所以 entryService 也拿到 filterRepo
 	entryService := service.NewEntryService(entryRepo, feedRepo, folderRepo, filterRepo)
 	readabilityService := service.NewReadabilityService(entryRepo, clientFactory, anubisSolver)
 	domainRateLimitService := service.NewDomainRateLimitService(domainRateLimitRepo)
-	refreshService := service.NewRefreshService(feedRepo, entryRepo, settingsService, iconService, clientFactory, anubisSolver, domainRateLimitService, filterService)
+	refreshService := service.NewRefreshService(feedRepo, entryRepo, settingsService, iconService, clientFactory, anubisSolver, domainRateLimitService, filterService, mcpService)
 	opmlService := service.NewOPMLService(folderService, feedService, refreshService, iconService, folderRepo, feedRepo)
 
 	proxyService := service.NewProxyService(clientFactory, anubisSolver)
@@ -136,8 +139,11 @@ func main() {
 	authHandler := handler.NewAuthHandler(authService)
 	domainRateLimitHandler := handler.NewDomainRateLimitHandler(domainRateLimitService)
 	filterHandler := handler.NewFilterHandler(filterService)
+	mcpOutboundService := service.NewMCPOutboundService(settingsRepo, entryService, feedRepo, folderRepo)
+	mcpHandler := handler.NewMCPHandler(mcpService, mcpOutboundService)
+	mcpEndpointHandler := handler.NewMCPEndpointHandler(mcpOutboundService)
 
-	router := transport.NewRouter(folderHandler, feedHandler, entryHandler, opmlHandler, iconHandler, proxyHandler, settingsHandler, aiHandler, authHandler, domainRateLimitHandler, filterHandler, proxySourceHandler, authService, cfg.StaticDir, cfg.EnableSwagger)
+	router := transport.NewRouter(folderHandler, feedHandler, entryHandler, opmlHandler, iconHandler, proxyHandler, settingsHandler, aiHandler, authHandler, domainRateLimitHandler, filterHandler, proxySourceHandler, mcpHandler, mcpEndpointHandler, authService, cfg.StaticDir, cfg.EnableSwagger)
 	pprofServer := startPprofServer(cfg.PprofAddr)
 
 	// 定时刷新：间隔来自设置（设置 → 高级 → 拉取），每轮重新读一次 —— 改完下一轮生效，不用重启

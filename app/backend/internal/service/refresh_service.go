@@ -247,8 +247,20 @@ func (s *refreshService) processParsedFeed(ctx context.Context, feed model.Feed,
 		}
 	}
 
-	// Save entries
-	newCount, updatedCount, newEntries := s.saveEntries(ctx, feed.ID, parsed.Items)
+	imageURL := ""
+	if parsed.Image != nil {
+		imageURL = strings.TrimSpace(parsed.Image.URL)
+	}
+	s.saveAndPostProcess(ctx, feed, parsed.Items, parsed.Link, imageURL)
+	return nil
+}
+
+// saveAndPostProcess 是「抓取分叉点之后」的那一段共用管道：
+// saveEntries（去重 / FTS / 未读）→ 刷新结果记账 → 规则引擎 → siteURL 回填 → 图标。
+// RSS 与 MCP（16 批）两条取数路径最终都汇到这里 —— 所以分叉点在 saveEntries() **之前**，
+// 之后的一切一行没改。
+func (s *refreshService) saveAndPostProcess(ctx context.Context, feed model.Feed, items []*gofeed.Item, siteURL string, imageURL string) {
+	newCount, updatedCount, newEntries := s.saveEntries(ctx, feed.ID, items)
 	s.recordFeedResult(RefreshFeedResult{
 		FeedID:   feed.ID,
 		Title:    feed.Title,
@@ -271,8 +283,8 @@ func (s *refreshService) processParsedFeed(ctx context.Context, feed model.Feed,
 	}
 
 	// Backfill siteURL if empty (for feeds added before siteURL was implemented)
-	if (feed.SiteURL == nil || *feed.SiteURL == "") && parsed.Link != "" {
-		newSiteURL := strings.TrimSpace(parsed.Link)
+	if (feed.SiteURL == nil || *feed.SiteURL == "") && siteURL != "" {
+		newSiteURL := strings.TrimSpace(siteURL)
 		if newSiteURL != "" {
 			_ = s.feeds.UpdateSiteURL(ctx, feed.ID, newSiteURL)
 			feed.SiteURL = &newSiteURL
@@ -281,20 +293,39 @@ func (s *refreshService) processParsedFeed(ctx context.Context, feed model.Feed,
 
 	// Fetch icon if feed doesn't have one
 	if s.icons != nil && (feed.IconPath == nil || *feed.IconPath == "") {
-		imageURL := ""
-		if parsed.Image != nil {
-			imageURL = strings.TrimSpace(parsed.Image.URL)
-		}
-		siteURL := feed.URL
-		if feed.SiteURL != nil && *feed.SiteURL != "" {
-			siteURL = *feed.SiteURL
-		}
 		if iconPath, err := s.icons.FetchAndSaveIconForFeed(ctx, feed.ID, imageURL, siteURL); err == nil && iconPath != "" {
 			_ = s.feeds.UpdateIconPath(ctx, feed.ID, iconPath)
 		}
 	}
-
 	s.recordFeedSuccess(ctx, feed.ID)
+}
+
+// refreshMCPFeed 是 16 批的取数分叉：MCP 订阅不拉 HTTP、不解析 RSS，
+// 而是「连服务 → 调工具/读资源 → 按映射生成条目」，然后走同一条入库管道。
+// 取数/映射失败一律写进该源的 error_message（界面上的行内红字），**不许静默出空条目**。
+func (s *refreshService) refreshMCPFeed(ctx context.Context, feed model.Feed) error {
+	if s.mcp == nil {
+		errMsg := "MCP 服务未初始化"
+		_ = s.feeds.UpdateErrorMessage(ctx, feed.ID, &errMsg)
+		s.recordFeedFailure(ctx, feed.ID)
+		return errors.New(errMsg)
+	}
+	result, err := s.mcp.FetchFeedItems(ctx, feed)
+	if err != nil {
+		errMsg := err.Error()
+		_ = s.feeds.UpdateErrorMessage(ctx, feed.ID, &errMsg)
+		s.recordFeedFailure(ctx, feed.ID)
+		logger.Warn("mcp feed refreshed failed", "module", "service", "action", "refresh", "resource", "feed", "result", "failed", "feed_id", feed.ID, "error", err)
+		return err
+	}
+
+	// 成功：清掉上次的错误，再走共用管道（去重 / FTS / 规则引擎 / 翻译标记一行不改）
+	_ = s.feeds.UpdateErrorMessage(ctx, feed.ID, nil)
+	feed.ErrorMessage = nil
+	// MCP 没有条件请求、也没有站点图标：siteURL / imageURL 留空。
+	s.saveAndPostProcess(ctx, feed, result.Items, "", "")
+	logger.Info("mcp feed refreshed", "module", "service", "action", "refresh", "resource", "feed", "result", "ok",
+		"feed_id", feed.ID, "feed_title", feed.Title, "items", len(result.Items), "tier", result.Tier, "key_level", result.KeyLevel)
 	return nil
 }
 
@@ -398,14 +429,16 @@ type RefreshFeedResult struct {
 }
 
 type refreshService struct {
-	feeds           repository.FeedRepository
-	entries         repository.EntryRepository
-	settings        SettingsService
-	icons           IconService
-	clientFactory   *network.ClientFactory
-	anubis          AnubisSolver
-	rateLimitSvc    DomainRateLimitService
-	filters         FilterService
+	feeds         repository.FeedRepository
+	entries       repository.EntryRepository
+	settings      SettingsService
+	icons         IconService
+	clientFactory *network.ClientFactory
+	anubis        AnubisSolver
+	rateLimitSvc  DomainRateLimitService
+	filters       FilterService
+	// mcp 16 批（入向 MCP 订阅）：可选依赖 —— 没接 MCP 服务时 RSS 路径完全不受影响。
+	mcp             MCPService
 	mu              sync.Mutex
 	isRefreshing    bool
 	lastRefreshedAt *time.Time
@@ -419,8 +452,10 @@ type refreshService struct {
 	lastTrigger string
 }
 
-func NewRefreshService(feeds repository.FeedRepository, entries repository.EntryRepository, settings SettingsService, icons IconService, clientFactory *network.ClientFactory, anubisSolver AnubisSolver, rateLimitSvc DomainRateLimitService, filters FilterService) RefreshService {
-	return &refreshService{
+// NewRefreshService 建刷新服务。mcp 是可选依赖（变参）：16 批加进来的 MCP 取数分叉用，
+// 不传就是纯 RSS（既有调用点与测试不用改）。
+func NewRefreshService(feeds repository.FeedRepository, entries repository.EntryRepository, settings SettingsService, icons IconService, clientFactory *network.ClientFactory, anubisSolver AnubisSolver, rateLimitSvc DomainRateLimitService, filters FilterService, mcpService ...MCPService) RefreshService {
+	svc := &refreshService{
 		feeds:         feeds,
 		entries:       entries,
 		settings:      settings,
@@ -430,6 +465,10 @@ func NewRefreshService(feeds repository.FeedRepository, entries repository.Entry
 		rateLimitSvc:  rateLimitSvc,
 		filters:       filters,
 	}
+	for _, m := range mcpService {
+		svc.mcp = m
+	}
+	return svc
 }
 
 func (s *refreshService) RefreshAll(ctx context.Context) error {
@@ -741,6 +780,11 @@ func (s *refreshService) refreshFeedsWithRateLimit(ctx context.Context, feeds []
 }
 
 func (s *refreshService) refreshFeedInternal(ctx context.Context, feed model.Feed, force bool) error {
+	// 16 批的抓取分叉点：按 feeds.source_type 分流。
+	// MCP 分支没有条件请求（etag/last-modified 与 force 都不适用），取数与 RSS 完全无关。
+	if feed.IsMCP() {
+		return s.refreshMCPFeed(ctx, feed)
+	}
 	return s.refreshFeedWithUA(ctx, feed, config.DefaultUserAgent, true, force)
 }
 

@@ -46,6 +46,10 @@ func TestNewRouter_RegistersRoutes(t *testing.T) {
 	filterService := mock.NewMockFilterService(ctrl)
 	filterHandler := handler.NewFilterHandler(filterService)
 	proxySourceHandler := handler.NewProxySourceHandler(mock.NewMockProxySourceService(ctrl))
+	mcpService := mock.NewMockMCPService(ctrl)
+	mcpOutboundService := mock.NewMockMCPOutboundService(ctrl)
+	mcpHandler := handler.NewMCPHandler(mcpService, mcpOutboundService)
+	mcpEndpointHandler := handler.NewMCPEndpointHandler(mcpOutboundService)
 
 	e := gh.NewRouter(
 		folderHandler,
@@ -60,6 +64,8 @@ func TestNewRouter_RegistersRoutes(t *testing.T) {
 		domainRateLimitHandler,
 		filterHandler,
 		proxySourceHandler,
+		mcpHandler,
+		mcpEndpointHandler,
 		authService,
 		"",
 		true,
@@ -70,6 +76,11 @@ func TestNewRouter_RegistersRoutes(t *testing.T) {
 	require.True(t, hasRoute(e, http.MethodGet, "/api/feeds"))
 	require.True(t, hasRoute(e, http.MethodGet, "/icons/:filename"))
 	require.True(t, hasRoute(e, http.MethodGet, "/api/proxy/image/:encoded"))
+	// 16/17 批：MCP 连接管理走登录态，出向端点 /mcp 走长期 token（不挂在 JWT 组里）
+	require.True(t, hasRoute(e, http.MethodGet, "/api/mcp/servers"))
+	require.True(t, hasRoute(e, http.MethodPost, "/api/mcp/servers/:id/inspect"))
+	require.True(t, hasRoute(e, http.MethodGet, "/api/mcp/outbound"))
+	require.True(t, hasRoute(e, http.MethodPost, "/mcp"))
 }
 
 func TestNewRouter_SwaggerDisabled(t *testing.T) {
@@ -103,6 +114,10 @@ func TestNewRouter_SwaggerDisabled(t *testing.T) {
 	filterService := mock.NewMockFilterService(ctrl)
 	filterHandler := handler.NewFilterHandler(filterService)
 	proxySourceHandler := handler.NewProxySourceHandler(mock.NewMockProxySourceService(ctrl))
+	mcpService := mock.NewMockMCPService(ctrl)
+	mcpOutboundService := mock.NewMockMCPOutboundService(ctrl)
+	mcpHandler := handler.NewMCPHandler(mcpService, mcpOutboundService)
+	mcpEndpointHandler := handler.NewMCPEndpointHandler(mcpOutboundService)
 
 	e := gh.NewRouter(
 		folderHandler,
@@ -117,6 +132,8 @@ func TestNewRouter_SwaggerDisabled(t *testing.T) {
 		domainRateLimitHandler,
 		filterHandler,
 		proxySourceHandler,
+		mcpHandler,
+		mcpEndpointHandler,
 		authService,
 		"",
 		false,
@@ -160,6 +177,10 @@ func TestNewRouter_LogoutRouteIsPublic(t *testing.T) {
 	filterService := mock.NewMockFilterService(ctrl)
 	filterHandler := handler.NewFilterHandler(filterService)
 	proxySourceHandler := handler.NewProxySourceHandler(mock.NewMockProxySourceService(ctrl))
+	mcpService := mock.NewMockMCPService(ctrl)
+	mcpOutboundService := mock.NewMockMCPOutboundService(ctrl)
+	mcpHandler := handler.NewMCPHandler(mcpService, mcpOutboundService)
+	mcpEndpointHandler := handler.NewMCPEndpointHandler(mcpOutboundService)
 
 	e := gh.NewRouter(
 		folderHandler,
@@ -174,6 +195,8 @@ func TestNewRouter_LogoutRouteIsPublic(t *testing.T) {
 		domainRateLimitHandler,
 		filterHandler,
 		proxySourceHandler,
+		mcpHandler,
+		mcpEndpointHandler,
 		authService,
 		"",
 		false,

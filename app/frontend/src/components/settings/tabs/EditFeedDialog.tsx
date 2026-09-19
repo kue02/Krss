@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -10,6 +11,7 @@ import { useUpdateFeed, useUpdateFeedAI } from "@/hooks/useFeeds";
 import { useUpdateFeedProxy, useProxySources } from "@/hooks/useProxySources";
 import { TriStateControl } from "@/components/ui/tri-state-control";
 import { ProxyEffectiveLine } from "@/components/settings/ProxyEffectiveLine";
+import { MCPSubscriptionWizard } from "@/components/settings/tabs/MCPSubscriptionWizard";
 import { cn } from "@/lib/utils";
 import type { Feed, ProxyEffective, ProxyMode } from "@/types/api";
 
@@ -39,6 +41,10 @@ export function EditFeedDialog({
   const updateFeed = useUpdateFeed();
   const updateFeedAI = useUpdateFeedAI();
   const updateFeedProxy = useUpdateFeedProxy();
+  const queryClient = useQueryClient();
+  // 16-14：MCP 订阅的取数配置走向导编辑模式（AI 栏不另起入口）
+  const [mcpWizardOpen, setMcpWizardOpen] = useState(false);
+  const isMCPFeed = feed?.sourceType === "mcp";
   // 一览里拿这一条的实际生效结果（打开弹窗就能看到「来自：文件夹『技术』」，不用先保存一次）
   const { data: proxySources } = useProxySources(Boolean(feed));
   const reminderLength = Array.from(summaryPromptReminder).length;
@@ -100,6 +106,7 @@ export function EditFeedDialog({
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg p-0">
         <DialogHeader className="p-4">
@@ -141,6 +148,36 @@ export function EditFeedDialog({
               {feed?.url}
             </div>
           </div>
+          {/* 16-14：MCP 订阅的取数配置入口（连接/工具 + 编辑按钮，进向导编辑模式） */}
+          {isMCPFeed && (
+            <div className="space-y-2 rounded-field border border-border px-3 py-2">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm text-foreground">
+                  {t("feeds.mcp_config_title")}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setMcpWizardOpen(true)}
+                  className={cn(
+                    "rounded-[var(--radius)] px-3 py-1.5 text-xs font-medium transition-colors",
+                    "border border-border bg-background hover:bg-secondary",
+                  )}
+                >
+                  {t("feeds.mcp_config_edit")}
+                </button>
+              </div>
+              <div className="truncate text-xs text-muted-foreground">
+                {feed?.mcpConfig
+                  ? t("feeds.mcp_config_summary", {
+                      target:
+                        feed.mcpConfig.kind === "tool"
+                          ? (feed.mcpConfig.toolName ?? "")
+                          : (feed.mcpConfig.resourceUri ?? ""),
+                    })
+                  : null}
+              </div>
+            </div>
+          )}
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-4">
               <label
@@ -269,5 +306,17 @@ export function EditFeedDialog({
         </form>
       </DialogContent>
     </Dialog>
+    {isMCPFeed && (
+      <MCPSubscriptionWizard
+        open={mcpWizardOpen}
+        onOpenChange={setMcpWizardOpen}
+        servers={[]}
+        editFeed={feed}
+        onCreated={() => {
+          void queryClient.invalidateQueries({ queryKey: ["feeds"] });
+        }}
+      />
+    )}
+    </>
   );
 }

@@ -490,6 +490,68 @@ func runMigrations(db *sql.DB) error {
 		return err
 	}
 
+	// Migration 27: MCP（16 批 · 入向）—— 26 被「代理」那批占用，这里接 27。
+	//   feeds.source_type —— 'rss'（默认）/ 'mcp'：这条订阅「怎么取」。老数据默认 rss ⇒ 行为零变化。
+	//   feeds.mcp_config  —— 仅 source_type='mcp' 时有值：JSON（连接 id + 工具/资源 + 参数 + 五项字段映射 + 去重键）。
+	//   mcp_servers       —— MCP 连接本体（建表不塞 KV：有连接状态/错误/计数，要被建源向导遍历与引用）。
+	//   两列都有默认值（'rss' / NULL）⇒ 老库升级后一行不用改、一条行为也不变。
+	if err := addColumnIfMissing(db, "feeds", "source_type", `ALTER TABLE feeds ADD COLUMN source_type TEXT NOT NULL DEFAULT 'rss'`); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "feeds", "mcp_config", `ALTER TABLE feeds ADD COLUMN mcp_config TEXT`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS mcp_servers (
+			id INTEGER PRIMARY KEY,
+			name TEXT NOT NULL,
+			transport TEXT NOT NULL DEFAULT 'streamable-http',
+			url TEXT NOT NULL,
+			headers TEXT,
+			auth_type TEXT NOT NULL DEFAULT 'none',
+			enabled INTEGER NOT NULL DEFAULT 1,
+			is_connected INTEGER NOT NULL DEFAULT 0,
+			last_error TEXT,
+			tool_count INTEGER NOT NULL DEFAULT 0,
+			resource_count INTEGER NOT NULL DEFAULT 0,
+			purposes TEXT NOT NULL DEFAULT 'ai',
+			use_global_fetch INTEGER NOT NULL DEFAULT 1,
+			fetch_timeout_seconds INTEGER,
+			fetch_concurrency INTEGER,
+			refresh_interval_minutes INTEGER,
+			last_used_at TEXT,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		)
+	`); err != nil {
+		return fmt.Errorf("create mcp_servers table: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_feeds_source_type ON feeds(source_type)`); err != nil {
+		return fmt.Errorf("create idx_feeds_source_type: %w", err)
+	}
+
+	// Migration 28: MCP 口径扩大（16-10 SSE / 16-11 OAuth / 16-12 失败结构化）。
+	// 27 已经在开发库副本上跑过，只许新增列，不许改 27 的任何东西。
+	//   mcp_servers.last_transport      —— 上次成功的传输（transport='auto' 时优先试它，避免每轮重复探测）
+	//   mcp_servers.oauth_*             —— OAuth token 一套（token 进库；出接口掩码；不进日志）
+	//   mcp_servers.last_failure        —— 上次失败的结构化 JSON（桶/细分/建议/原始返回，供三处共用）
+	// 全是新增可空列 ⇒ 老数据零变化。
+	if err := addColumnIfMissing(db, "mcp_servers", "last_transport", `ALTER TABLE mcp_servers ADD COLUMN last_transport TEXT`); err != nil {
+		return err
+	}
+	for _, column := range []string{
+		"oauth_client_id", "oauth_client_secret", "oauth_access_token",
+		"oauth_refresh_token", "oauth_expires_at", "oauth_token_type",
+		"oauth_scope", "oauth_auth_server",
+	} {
+		if err := addColumnIfMissing(db, "mcp_servers", column, `ALTER TABLE mcp_servers ADD COLUMN `+column+` TEXT`); err != nil {
+			return err
+		}
+	}
+	if err := addColumnIfMissing(db, "mcp_servers", "last_failure", `ALTER TABLE mcp_servers ADD COLUMN last_failure TEXT`); err != nil {
+		return err
+	}
+
 	return nil
 }
 

@@ -1,5 +1,56 @@
 basePath: /api
 definitions:
+  gist_backend_internal_model.MCPFailure:
+    properties:
+      bucket:
+        type: string
+      code:
+        type: string
+      raw:
+        type: string
+      suggestion:
+        type: string
+      title:
+        type: string
+    type: object
+  gist_backend_internal_model.MCPFieldMapping:
+    properties:
+      author:
+        type: string
+      content:
+        type: string
+      id:
+        type: string
+      listPath:
+        description: ListPath 列表路径（如 data.items / results / notes）。空 = 结果本身就是数组。
+        type: string
+      publishedAt:
+        description: PublishedAt 时间字段；Author 作者；ID 去重键字段（id / key / slug / url）。
+        type: string
+      thumbnail:
+        type: string
+      title:
+        type: string
+      url:
+        type: string
+    type: object
+  gist_backend_internal_model.MCPPagination:
+    properties:
+      cursorParam:
+        description: |-
+          CursorParam 传给工具的游标参数名（空 = 按 inputSchema 自动找 cursor/nextCursor/pageToken/offset/page）；
+          CursorPath 从返回里读下一页游标的路径（空 = 按 nextCursor/cursor/next_cursor/pageToken 自动找）。
+        type: string
+      cursorPath:
+        type: string
+      maxItems:
+        type: integer
+      maxPages:
+        description: MaxPages 最多追几页；MaxItems 最多收几条（双上限，先到先停）。
+        type: integer
+      mode:
+        type: string
+    type: object
   gist_backend_internal_model.ProxyOverrideConfig:
     properties:
       host:
@@ -73,6 +124,163 @@ definitions:
       total:
         type: integer
     type: object
+  gist_backend_internal_service.MCPInspectResult:
+    properties:
+      cursorParam:
+        description: CursorParam 游标参数名（inputSchema 里自动找到的；前端「拉更多」往这个参数填）。
+        type: string
+      error:
+        type: string
+      failure:
+        allOf:
+        - $ref: '#/definitions/gist_backend_internal_model.MCPFailure'
+        description: Failure 结构化失败（16-12：向导预览与测试按钮共用同一套文案）。
+      keyLevel:
+        type: string
+      mapping:
+        $ref: '#/definitions/gist_backend_internal_model.MCPFieldMapping'
+      nextCursor:
+        description: NextCursor 第一页之后还有页时回传（向导「拉更多」把游标塞进 arguments 再 inspect）。
+        type: string
+      notes:
+        items:
+          type: string
+        type: array
+      preview:
+        items:
+          $ref: '#/definitions/gist_backend_internal_service.MCPPreviewItem'
+        type: array
+      tier:
+        type: string
+      total:
+        type: integer
+      truncated:
+        type: boolean
+    type: object
+  gist_backend_internal_service.MCPOutboundStatus:
+    properties:
+      baseUrl:
+        description: BaseURL 对外访问地址（用户填；空 = 没填，示例里回落到浏览器当前 origin）。
+        type: string
+      enabled:
+        type: boolean
+      endpoint:
+        type: string
+      protocolVersion:
+        type: string
+      resourceCount:
+        type: integer
+      token:
+        type: string
+      tokenCreatedAt:
+        type: string
+      tokenPrefix:
+        type: string
+      tokenSet:
+        description: |-
+          TokenSet 是否有可用 Token；Token 是明文库里那份原文（可重复查看复制，17-2）。
+          存量哈希没有明文可回 → Token 为空，界面提示点一次「重新生成」。
+        type: boolean
+      toolCount:
+        type: integer
+      writeEnabled:
+        description: WriteEnabled 写操作总开关（默认关；第一版只读）。
+        type: boolean
+    type: object
+  gist_backend_internal_service.MCPPreviewItem:
+    properties:
+      author:
+        type: string
+      content:
+        type: string
+      key:
+        type: string
+      keyLevel:
+        type: string
+      publishedAt:
+        type: string
+      title:
+        type: string
+      url:
+        type: string
+    type: object
+  gist_backend_internal_service.MCPResourceItem:
+    properties:
+      description:
+        type: string
+      mimeType:
+        type: string
+      name:
+        type: string
+      uri:
+        type: string
+    type: object
+  gist_backend_internal_service.MCPSuggestResult:
+    properties:
+      estimatedTokens:
+        description: EstimatedTokens 粗估的消耗（字符数/4，标「约」—— provider 没回真实用量）。
+        type: integer
+      mapping:
+        $ref: '#/definitions/gist_backend_internal_model.MCPFieldMapping'
+      model:
+        type: string
+      raw:
+        type: string
+      textUsed:
+        type: integer
+    type: object
+  gist_backend_internal_service.MCPTestResult:
+    properties:
+      connected:
+        type: boolean
+      error:
+        type: string
+      failure:
+        allOf:
+        - $ref: '#/definitions/gist_backend_internal_model.MCPFailure'
+        description: Failure 结构化失败（16-12：三处共用；成功时为 nil）。
+      latencyMs:
+        type: integer
+      resourceCount:
+        type: integer
+      serverName:
+        type: string
+      serverVersion:
+        type: string
+      toolCount:
+        type: integer
+      transport:
+        description: Transport 这次实际用的传输；LatencyMs 握手耗时毫秒。
+        type: string
+    type: object
+  gist_backend_internal_service.MCPToolItem:
+    properties:
+      description:
+        type: string
+      inputSchema:
+        items:
+          type: integer
+        type: array
+      name:
+        type: string
+      outputSchema:
+        items:
+          type: integer
+        type: array
+      title:
+        type: string
+    type: object
+  gist_backend_internal_service.MCPToolListResult:
+    properties:
+      resources:
+        items:
+          $ref: '#/definitions/gist_backend_internal_service.MCPResourceItem'
+        type: array
+      tools:
+        items:
+          $ref: '#/definitions/gist_backend_internal_service.MCPToolItem'
+        type: array
+    type: object
   gist_backend_internal_service.NetworkSettings:
     properties:
       enabled:
@@ -90,6 +298,26 @@ definitions:
         description: http, socks5
         type: string
       username:
+        type: string
+    type: object
+  gist_backend_internal_service.OAuthDiscoveryResult:
+    properties:
+      authServer:
+        type: string
+      hasClientID:
+        type: boolean
+      hasDCR:
+        type: boolean
+      instructions:
+        type: string
+      needsManual:
+        type: boolean
+    type: object
+  gist_backend_internal_service.OAuthStartResult:
+    properties:
+      authURL:
+        type: string
+      state:
         type: string
     type: object
   gist_backend_internal_service.ProxyEffective:
@@ -371,6 +599,11 @@ definitions:
     properties:
       folderId:
         type: string
+      mcpConfig:
+        $ref: '#/definitions/internal_handler.mcpFeedConfigReq'
+      sourceType:
+        description: 16 批：sourceType=mcp 时走 MCP 建源（url 可空，改由 mcpConfig 描述怎么取数）。
+        type: string
       title:
         type: string
       type:
@@ -581,6 +814,10 @@ definitions:
         type: string
       lastModified:
         type: string
+      mcpConfig:
+        items:
+          type: integer
+        type: array
       proxyConfig:
         allOf:
         - $ref: '#/definitions/gist_backend_internal_model.ProxyOverrideConfig'
@@ -591,6 +828,9 @@ definitions:
       readerMode:
         type: boolean
       siteUrl:
+        type: string
+      sourceType:
+        description: 16 批：rss（默认）/ mcp；MCPConfig 只有 mcp 源才有。
         type: string
       summaryPromptReminder:
         type: string
@@ -980,6 +1220,218 @@ definitions:
       folderId:
         type: string
     type: object
+  internal_handler.mcpFeedConfigReq:
+    properties:
+      arguments:
+        additionalProperties: {}
+        type: object
+      keyLevel:
+        type: string
+      kind:
+        type: string
+      limit:
+        type: integer
+      mapping:
+        $ref: '#/definitions/gist_backend_internal_model.MCPFieldMapping'
+      pagination:
+        $ref: '#/definitions/gist_backend_internal_model.MCPPagination'
+      resourceUri:
+        type: string
+      serverId:
+        type: string
+      tier:
+        type: string
+      toolName:
+        type: string
+    type: object
+  internal_handler.mcpInspectRequest:
+    properties:
+      arguments:
+        additionalProperties: {}
+        type: object
+      kind:
+        type: string
+      limit:
+        type: integer
+      mapping:
+        $ref: '#/definitions/gist_backend_internal_model.MCPFieldMapping'
+      resourceUri:
+        type: string
+      tier:
+        type: string
+      toolName:
+        type: string
+    type: object
+  internal_handler.mcpOAuthStartRequest:
+    properties:
+      clientId:
+        type: string
+      clientSecret:
+        type: string
+      redirectUri:
+        description: |-
+          RedirectURI 回调地址 —— 前端按当前访问 origin 拼（<origin>/api/mcp/oauth/callback），
+          后端不拼不存，零配置、远程可用。
+        type: string
+      scope:
+        type: string
+    type: object
+  internal_handler.mcpOutboundOptionsRequest:
+    properties:
+      baseUrl:
+        description: BaseURL 对外访问地址（用户填的公网/局域网可达 origin；空字符串 = 清掉）。
+        type: string
+      enabled:
+        type: boolean
+      writeEnabled:
+        type: boolean
+    type: object
+  internal_handler.mcpServerRequest:
+    properties:
+      authType:
+        type: string
+      enabled:
+        type: boolean
+      fetchConcurrency:
+        type: integer
+      fetchTimeoutSeconds:
+        description: 单连接取数参数（useGlobalFetch=false 时生效；单独配了就不走全局）
+        type: integer
+      headers:
+        additionalProperties:
+          type: string
+        type: object
+      name:
+        type: string
+      oauthClientId:
+        description: OAuth 手填凭证（16-11：不支持 DCR 的服务用；secret 传掩码 = 没改）
+        type: string
+      oauthClientSecret:
+        type: string
+      purposes:
+        items:
+          type: string
+        type: array
+      refreshIntervalMinutes:
+        type: integer
+      transport:
+        type: string
+      url:
+        type: string
+      useGlobalFetch:
+        type: boolean
+    required:
+    - name
+    - url
+    type: object
+  internal_handler.mcpServerResponse:
+    properties:
+      authType:
+        type: string
+      createdAt:
+        type: string
+      enabled:
+        type: boolean
+      fetchConcurrency:
+        type: integer
+      fetchTimeoutSeconds:
+        type: integer
+      headers:
+        additionalProperties:
+          type: string
+        type: object
+      id:
+        type: string
+      isConnected:
+        type: boolean
+      lastError:
+        type: string
+      lastFailure:
+        allOf:
+        - $ref: '#/definitions/gist_backend_internal_model.MCPFailure'
+        description: LastFailure 结构化失败（16-12：列表行/测试/预览三处共用）
+      lastTransport:
+        description: LastTransport 上次成功的传输（transport='auto' 时下次优先试它 —— 16-10）
+        type: string
+      lastUsedAt:
+        type: string
+      name:
+        type: string
+      oauthAuthServer:
+        type: string
+      oauthAuthorized:
+        type: boolean
+      oauthClientId:
+        description: OAuth 状态（16-11：secret/token 只出掩码，真值永不出接口）
+        type: string
+      oauthClientSecret:
+        type: string
+      oauthExpiresAt:
+        type: string
+      purposes:
+        items:
+          type: string
+        type: array
+      refreshIntervalMinutes:
+        type: integer
+      resourceCount:
+        type: integer
+      toolCount:
+        type: integer
+      transport:
+        type: string
+      updatedAt:
+        type: string
+      url:
+        type: string
+      useGlobalFetch:
+        type: boolean
+    type: object
+  internal_handler.mcpSuggestRequest:
+    properties:
+      arguments:
+        additionalProperties: {}
+        type: object
+      kind:
+        type: string
+      limit:
+        type: integer
+      resourceUri:
+        type: string
+      toolName:
+        type: string
+    type: object
+  internal_handler.mcpTokenResponse:
+    properties:
+      baseUrl:
+        description: BaseURL 对外访问地址（用户填；空 = 没填，示例里回落到浏览器当前 origin）。
+        type: string
+      enabled:
+        type: boolean
+      endpoint:
+        type: string
+      protocolVersion:
+        type: string
+      resourceCount:
+        type: integer
+      token:
+        description: Token 只在生成这一刻返回一次（库里只存哈希）。
+        type: string
+      tokenCreatedAt:
+        type: string
+      tokenPrefix:
+        type: string
+      tokenSet:
+        description: |-
+          TokenSet 是否有可用 Token；Token 是明文库里那份原文（可重复查看复制，17-2）。
+          存量哈希没有明文可回 → Token 为空，界面提示点一次「重新生成」。
+        type: boolean
+      toolCount:
+        type: integer
+      writeEnabled:
+        description: WriteEnabled 写操作总开关（默认关；第一版只读）。
+        type: boolean
+    type: object
   internal_handler.mergeIntoRequest:
     properties:
       targetId:
@@ -1226,6 +1678,34 @@ definitions:
   internal_handler.updateFolderTypeRequest:
     properties:
       type:
+        type: string
+    type: object
+  internal_handler.updateMCPConfigRequest:
+    properties:
+      arguments:
+        additionalProperties: {}
+        type: object
+      folderId:
+        type: string
+      keyLevel:
+        type: string
+      kind:
+        type: string
+      limit:
+        type: integer
+      mapping:
+        $ref: '#/definitions/gist_backend_internal_model.MCPFieldMapping'
+      pagination:
+        $ref: '#/definitions/gist_backend_internal_model.MCPPagination'
+      resourceUri:
+        type: string
+      serverId:
+        type: string
+      tier:
+        type: string
+      title:
+        type: string
+      toolName:
         type: string
     type: object
   internal_handler.updateManyReadRequest:
@@ -1531,6 +2011,40 @@ paths:
           schema:
             $ref: '#/definitions/internal_handler.feedResponse'
       summary: Update feed AI overrides
+      tags:
+      - feeds
+  /api/feeds/{id}/mcp-config:
+    patch:
+      consumes:
+      - application/json
+      description: Update connection/tool-resource/arguments/mapping/pagination/title/folder
+        of an MCP subscription (edit mode of the creation wizard)
+      parameters:
+      - description: Feed ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: MCP config update request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.updateMCPConfigRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.feedResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: Update MCP feed config
       tags:
       - feeds
   /api/feeds/{id}/merge:
@@ -2870,6 +3384,319 @@ paths:
       summary: Clear icon cache
       tags:
       - icons
+  /mcp/oauth/callback:
+    get:
+      parameters:
+      - description: Authorization code
+        in: query
+        name: code
+        required: true
+        type: string
+      - description: State
+        in: query
+        name: state
+        required: true
+        type: string
+      responses:
+        "200":
+          description: HTML result page
+          schema:
+            type: string
+      summary: OAuth callback
+      tags:
+      - mcp
+  /mcp/outbound:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/gist_backend_internal_service.MCPOutboundStatus'
+      summary: MCP outbound status
+      tags:
+      - mcp
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Options
+        in: body
+        name: req
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.mcpOutboundOptionsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/gist_backend_internal_service.MCPOutboundStatus'
+      summary: Update MCP outbound options
+      tags:
+      - mcp
+  /mcp/outbound/token:
+    delete:
+      responses:
+        "204":
+          description: No Content
+      summary: Revoke MCP outbound token
+      tags:
+      - mcp
+    post:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.mcpTokenResponse'
+      summary: Generate MCP outbound token
+      tags:
+      - mcp
+  /mcp/servers:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/internal_handler.mcpServerResponse'
+            type: array
+      summary: List MCP servers
+      tags:
+      - mcp
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: MCP server
+        in: body
+        name: server
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.mcpServerRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_handler.mcpServerResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: Create a MCP server
+      tags:
+      - mcp
+  /mcp/servers/{id}:
+    delete:
+      parameters:
+      - description: MCP server ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+      summary: Delete a MCP server
+      tags:
+      - mcp
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: MCP server ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: MCP server
+        in: body
+        name: server
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.mcpServerRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.mcpServerResponse'
+      summary: Update a MCP server
+      tags:
+      - mcp
+  /mcp/servers/{id}/inspect:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: MCP server ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Inspect request
+        in: body
+        name: req
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.mcpInspectRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/gist_backend_internal_service.MCPInspectResult'
+      summary: Inspect a MCP server (dry run + preview)
+      tags:
+      - mcp
+  /mcp/servers/{id}/oauth/discovery:
+    post:
+      parameters:
+      - description: MCP server ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/gist_backend_internal_service.OAuthDiscoveryResult'
+      summary: Discover OAuth authorization server
+      tags:
+      - mcp
+  /mcp/servers/{id}/oauth/revoke:
+    post:
+      parameters:
+      - description: MCP server ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+      summary: Revoke OAuth authorization
+      tags:
+      - mcp
+  /mcp/servers/{id}/oauth/start:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: MCP server ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: OAuth start request
+        in: body
+        name: req
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.mcpOAuthStartRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/gist_backend_internal_service.OAuthStartResult'
+      summary: Start OAuth authorization
+      tags:
+      - mcp
+  /mcp/servers/{id}/redetect:
+    post:
+      parameters:
+      - description: MCP server ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/gist_backend_internal_service.MCPTestResult'
+      summary: Redetect transport of a MCP server
+      tags:
+      - mcp
+  /mcp/servers/{id}/suggest-mapping:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: MCP server ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Suggest request
+        in: body
+        name: req
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.mcpSuggestRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/gist_backend_internal_service.MCPSuggestResult'
+      summary: Suggest a mapping with AI
+      tags:
+      - mcp
+  /mcp/servers/{id}/test:
+    post:
+      parameters:
+      - description: MCP server ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/gist_backend_internal_service.MCPTestResult'
+      summary: Test a MCP server
+      tags:
+      - mcp
+  /mcp/servers/{id}/tools:
+    post:
+      parameters:
+      - description: MCP server ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/gist_backend_internal_service.MCPToolListResult'
+      summary: List tools of a MCP server
+      tags:
+      - mcp
   /opml/export:
     get:
       description: Export all feeds and folders to an OPML file

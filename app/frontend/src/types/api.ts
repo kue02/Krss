@@ -1,4 +1,7 @@
+import type { MCPFeedConfig } from "@/types/mcp";
+
 export type ContentType = "article" | "picture" | "notification" | "social";
+
 
 export interface Folder {
   id: string;
@@ -31,6 +34,10 @@ export interface Feed {
   etag?: string;
   lastModified?: string;
   errorMessage?: string;
+  /** 取数方式：rss（默认）/ mcp（MCP 工具或资源物化成条目） */
+  sourceType?: "rss" | "mcp";
+  /** MCP 源的取数配置（连接 id + 工具/资源 + 参数 + 字段映射 + 去重键）；rss 源为空 */
+  mcpConfig?: MCPFeedConfig;
   createdAt: string;
   updatedAt: string;
 }

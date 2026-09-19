@@ -1465,3 +1465,51 @@ func TestFeedService_Add_SameTypeSucceeds(t *testing.T) {
 	require.Equal(t, int64(123), feed.ID)
 	require.Equal(t, "picture", createdFeed.Type)
 }
+
+func TestFeedService_UpdateMCPConfig(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockFeeds := mock.NewMockFeedRepository(ctrl)
+	mockFolders := mock.NewMockFolderRepository(ctrl)
+	mockEntries := mock.NewMockEntryRepository(ctrl)
+	mockMCP := servicemock.NewMockMCPService(ctrl)
+
+	rawOld := `{"serverId":"7","kind":"tool"}`
+	existing := model.Feed{ID: 9, Title: "旧", Type: "article", SourceType: model.FeedSourceMCP, MCPConfig: &rawOld}
+
+	mockFeeds.EXPECT().GetByID(gomock.Any(), int64(9)).Return(existing, nil)
+	mockMCP.EXPECT().GetServer(gomock.Any(), int64(7)).Return(model.MCPServer{ID: 7}, nil)
+	var saved model.Feed
+	mockFeeds.EXPECT().Update(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, feed model.Feed) (model.Feed, error) {
+			saved = feed
+			return feed, nil
+		},
+	)
+
+	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, nil, nil, nil, mockMCP)
+	updated, err := svc.UpdateMCPConfig(context.Background(), 9, service.MCPFeedAddInput{
+		ServerID: 7, Kind: "tool", ToolName: "search", Limit: 20,
+		Mapping:    model.MCPFieldMapping{Title: "headline"},
+		Pagination: &model.MCPPagination{Mode: model.MCPPaginationHistory, MaxPages: 3, MaxItems: 200},
+		Title:      "新标题",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "新标题", updated.Title)
+	require.NotNil(t, saved.MCPConfig)
+	cfg, err := service.ParseMCPFeedConfig(saved.MCPConfig)
+	require.NoError(t, err)
+	require.Equal(t, 20, cfg.Limit)
+	require.Equal(t, "headline", cfg.Mapping.Title)
+	require.NotNil(t, cfg.Pagination)
+	require.Equal(t, model.MCPPaginationHistory, cfg.Pagination.Mode)
+
+	// RSS 源调这个接口直接 ErrInvalid
+	rss := model.Feed{ID: 10, Title: "rss", Type: "article", SourceType: model.FeedSourceRSS}
+	mockFeeds.EXPECT().GetByID(gomock.Any(), int64(10)).Return(rss, nil)
+	_, err = svc.UpdateMCPConfig(context.Background(), 10, service.MCPFeedAddInput{
+		ServerID: 7, Kind: "tool", ToolName: "search", Title: "x",
+	})
+	require.ErrorIs(t, err, service.ErrInvalid)
+}

@@ -24,6 +24,8 @@ func NewRouter(
 	domainRateLimitHandler *handler.DomainRateLimitHandler,
 	filterHandler *handler.FilterHandler,
 	proxySourceHandler *handler.ProxySourceHandler,
+	mcpHandler *handler.MCPHandler,
+	mcpEndpointHandler *handler.MCPEndpointHandler,
 	authService service.AuthService,
 	staticDir string,
 	enableSwagger bool,
@@ -59,6 +61,15 @@ func NewRouter(
 	domainRateLimitHandler.RegisterRoutes(api)
 	filterHandler.RegisterRoutes(api)
 	proxySourceHandler.RegisterRoutes(api)
+	// MCP 连接管理 + 出向状态/令牌（16/17 批）：走登录态（JWT）
+	mcpHandler.RegisterRoutes(api)
+
+	// MCP 出向端点 /mcp：**不走 JWT** —— 它用长期 token（MCP 客户端只会带这个）
+	mcpEndpointHandler.RegisterRoutes(e)
+
+	// MCP OAuth 回调：**不走 JWT** —— 浏览器从授权服务器跳回来带不了 JWT，
+	// 安全靠 state（256 位随机、单次有效、10 分钟过期），见 MCPHandler.RegisterPublicRoutes
+	mcpHandler.RegisterPublicRoutes(e)
 
 	// Icon routes with cache recovery
 	iconHandler.RegisterRoutes(e)

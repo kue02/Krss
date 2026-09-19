@@ -31,6 +31,9 @@ const maxFeedSummaryPromptReminderLength = 2000
 
 type FeedService interface {
 	Add(ctx context.Context, feedURL string, folderID *int64, titleOverride string, feedType string) (model.Feed, error)
+	// AddMCP 新建一条 MCP 订阅（16 批）：落一条普通 feed 行（source_type='mcp'），
+	// 并**立刻拉一次首批条目** —— 这是本项目两条入库路径里的第二条，不能被绕过。
+	AddMCP(ctx context.Context, input MCPFeedAddInput) (model.Feed, error)
 	AddWithoutFetch(ctx context.Context, feedURL string, folderID *int64, titleOverride string, feedType string) (model.Feed, bool, error)
 	Preview(ctx context.Context, feedURL string) (FeedPreview, error)
 	List(ctx context.Context, folderID *int64) ([]model.Feed, error)
@@ -47,6 +50,9 @@ type FeedService interface {
 	UpdateAIOverrides(ctx context.Context, id int64, autoTranslate, autoSummary, readerMode *bool) (model.Feed, error)
 	// UpdateProxyOverride 单独设置某个订阅的代理覆盖（迁移 26）：跟随上级 / 走代理 / 直连
 	UpdateProxyOverride(ctx context.Context, id int64, update ProxyOverrideUpdate) (model.Feed, error)
+	// UpdateMCPConfig 改 MCP 订阅的取数配置（16-14 编辑模式）：连接/工具-资源/参数/映射/分页/标题/文件夹。
+	// 只允许 source_type='mcp' 的源；不立刻重拉（向导里预览门禁已经验过），下次刷新按新配置取。
+	UpdateMCPConfig(ctx context.Context, id int64, input MCPFeedAddInput) (model.Feed, error)
 	Delete(ctx context.Context, id int64) error
 	DeleteBatch(ctx context.Context, ids []int64) error
 }
@@ -64,6 +70,24 @@ type FeedPreview struct {
 	Entries []model.Entry
 }
 
+// MCPFeedAddInput 新建 MCP 订阅的入参（建源向导最后一步传进来的那份配置）。
+// UpdateMCPConfig 复用它（忽略 FeedType）：编辑模式回填的连接/工具-资源/参数/映射/分页/标题/文件夹。
+type MCPFeedAddInput struct {
+	ServerID    int64
+	Kind        string
+	ToolName    string
+	ResourceURI string
+	Arguments   map[string]any
+	Limit       int
+	Mapping     model.MCPFieldMapping
+	Pagination  *model.MCPPagination
+	Tier        string
+	KeyLevel    string
+	Title       string
+	FolderID    *int64
+	FeedType    string
+}
+
 type feedService struct {
 	feeds         repository.FeedRepository
 	folders       repository.FolderRepository
@@ -73,10 +97,18 @@ type feedService struct {
 	clientFactory *network.ClientFactory
 	anubis        AnubisSolver
 	filters       FilterService
+	// mcp 16 批（入向）：可选依赖 —— 不传就建不了 MCP 订阅，RSS 路径完全不受影响。
+	mcp MCPService
 }
 
-func NewFeedService(feeds repository.FeedRepository, folders repository.FolderRepository, entries repository.EntryRepository, icons IconService, settings SettingsService, clientFactory *network.ClientFactory, anubisSolver AnubisSolver, filters FilterService) FeedService {
-	return &feedService{feeds: feeds, folders: folders, entries: entries, icons: icons, settings: settings, clientFactory: clientFactory, anubis: anubisSolver, filters: filters}
+// NewFeedService 建订阅服务。mcpService 是可选依赖（变参，16 批加进来）——
+// 既有调用点与测试一行不用改。
+func NewFeedService(feeds repository.FeedRepository, folders repository.FolderRepository, entries repository.EntryRepository, icons IconService, settings SettingsService, clientFactory *network.ClientFactory, anubisSolver AnubisSolver, filters FilterService, mcpService ...MCPService) FeedService {
+	svc := &feedService{feeds: feeds, folders: folders, entries: entries, icons: icons, settings: settings, clientFactory: clientFactory, anubis: anubisSolver, filters: filters}
+	for _, m := range mcpService {
+		svc.mcp = m
+	}
+	return svc
 }
 
 func (s *feedService) Add(ctx context.Context, feedURL string, folderID *int64, titleOverride string, feedType string) (model.Feed, error) {
@@ -190,6 +222,127 @@ func (s *feedService) Add(ctx context.Context, feedURL string, folderID *int64, 
 	}
 
 	return created, nil
+}
+
+// AddMCP 新建 MCP 订阅（16 批）。与 Add() 的差别只在「怎么取第一批」：
+// Add 走 HTTP+gofeed，这里走 MCP 服务；之后的入库 + 规则引擎部分与 Add 完全同构。
+func (s *feedService) AddMCP(ctx context.Context, input MCPFeedAddInput) (model.Feed, error) {
+	if s.mcp == nil {
+		return model.Feed{}, fmt.Errorf("%w: MCP 服务未初始化", ErrInvalid)
+	}
+	config := model.MCPFeedConfig{
+		ServerID:    model.SnowflakeID(input.ServerID),
+		Kind:        input.Kind,
+		ToolName:    input.ToolName,
+		ResourceURI: input.ResourceURI,
+		Arguments:   input.Arguments,
+		Limit:       input.Limit,
+		Mapping:     input.Mapping,
+		Pagination:  input.Pagination,
+		Tier:        input.Tier,
+		KeyLevel:    input.KeyLevel,
+	}
+	rawConfig, err := BuildMCPFeedConfig(config)
+	if err != nil {
+		return model.Feed{}, err
+	}
+
+	feedURL := MCPFeedURL(config)
+	if existing, err := s.feeds.FindByURL(ctx, feedURL); err != nil {
+		return model.Feed{}, fmt.Errorf("check mcp feed url: %w", err)
+	} else if existing != nil {
+		return model.Feed{}, &FeedConflictError{ExistingFeed: *existing}
+	}
+
+	feedType := input.FeedType
+	if feedType == "" {
+		feedType = "article"
+	}
+	if input.FolderID != nil {
+		folder, err := s.folders.GetByID(ctx, *input.FolderID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return model.Feed{}, ErrNotFound
+			}
+			return model.Feed{}, fmt.Errorf("check folder: %w", err)
+		}
+		if folder.Type != feedType {
+			return model.Feed{}, ErrInvalid
+		}
+	}
+
+	title := strings.TrimSpace(input.Title)
+	if title == "" {
+		title = defaultMCPFeedTitle(config)
+	}
+
+	created, err := s.feeds.Create(ctx, model.Feed{
+		FolderID:   input.FolderID,
+		Title:      title,
+		URL:        feedURL,
+		Type:       feedType,
+		SourceType: model.FeedSourceMCP,
+		MCPConfig:  &rawConfig,
+	})
+	if err != nil {
+		logger.Error("mcp feed create failed", "module", "service", "action", "create", "resource", "feed", "result", "failed", "mcp_server_id", config.ServerID.Int64(), "error", err)
+		return model.Feed{}, err
+	}
+	logger.Info("mcp feed created", "module", "service", "action", "create", "resource", "feed", "result", "ok",
+		"feed_id", created.ID, "feed_title", created.Title, "mcp_server_id", config.ServerID.Int64(), "kind", config.Kind)
+
+	// 首批条目：立刻拉一次（这条路径与刷新路径共用 MCPService.FetchFeedItems）。
+	// 取数失败不吞：写进该源的 error_message（界面行内红字），订阅行照样建出来。
+	result, fetchErr := s.mcp.FetchFeedItems(ctx, created)
+	if fetchErr != nil {
+		errMsg := fetchErr.Error()
+		_ = s.feeds.UpdateErrorMessage(ctx, created.ID, &errMsg)
+		created.ErrorMessage = &errMsg
+		logger.Warn("mcp feed first fetch failed", "module", "service", "action", "fetch", "resource", "feed", "result", "failed",
+			"feed_id", created.ID, "mcp_server_id", config.ServerID.Int64(), "error", fetchErr)
+		return created, nil
+	}
+
+	newEntries := make([]model.Entry, 0, len(result.Items))
+	dynamicTime := hasDynamicTime(result.Items)
+	for _, item := range result.Items {
+		entry := itemToEntry(created.ID, item, dynamicTime)
+		if entry.URL == nil || *entry.URL == "" {
+			continue
+		}
+		if err := s.entries.CreateOrUpdate(ctx, entry); err != nil {
+			logger.Warn("entry create failed", "module", "service", "action", "create", "resource", "entry", "result", "failed", "feed_id", created.ID, "error", err)
+			continue
+		}
+		newEntries = append(newEntries, entry)
+	}
+
+	// 规则引擎挂在入库之后（与 Add 同一处）：MCP 订阅的第一批条目也要过一遍
+	if len(newEntries) > 0 && s.filters != nil {
+		if applied, err := s.filters.ApplyToEntries(ctx, created, newEntries); err != nil {
+			logger.Warn("apply filters failed", "module", "service", "action", "apply", "resource", "filter", "result", "failed", "feed_id", created.ID, "error", err)
+		} else if applied > 0 {
+			logger.Info("filters applied on new entries", "module", "service", "action", "apply", "resource", "filter", "result", "ok", "feed_id", created.ID, "applied", applied)
+		}
+	}
+
+	return created, nil
+}
+
+// defaultMCPFeedTitle 没填标题时的默认名：MCP · 工具名（资源则用资源名/uri 尾段）。
+func defaultMCPFeedTitle(config model.MCPFeedConfig) string {
+	name := config.ToolName
+	if config.Kind == "resource" {
+		name = config.ResourceURI
+		if index := strings.LastIndex(name, "/"); index >= 0 && index+1 < len(name) {
+			name = name[index+1:]
+		}
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = "订阅"
+	}
+	return "MCP · " + name
 }
 
 // AddWithoutFetch creates a feed record without fetching content.
@@ -388,6 +541,73 @@ func (s *feedService) UpdateProxyOverride(ctx context.Context, id int64, update 
 	// 只记「档位 + 有没有单独指定」：地址与密码一律不进日志
 	logger.Info("feed proxy override updated", "module", "service", "action", "update", "resource", "proxy", "result", "ok", "feed_id", id, "mode", ProxyModeToString(mode), "custom_config", cfg.Usable())
 	return feed, nil
+}
+
+// UpdateMCPConfig 改 MCP 订阅的取数配置（16-14 编辑模式）。
+// 只允许 source_type='mcp' 的源（RSS 源调这个接口直接 400）；连接不存在也 400。
+// 标题/文件夹语义与 Update 一致；mcp_config 整体替换（BuildMCPFeedConfig 同一套钳制）。
+func (s *feedService) UpdateMCPConfig(ctx context.Context, id int64, input MCPFeedAddInput) (model.Feed, error) {
+	feed, err := s.feeds.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return model.Feed{}, ErrNotFound
+		}
+		return model.Feed{}, fmt.Errorf("get feed: %w", err)
+	}
+	if !feed.IsMCP() {
+		return model.Feed{}, fmt.Errorf("%w: 只有 MCP 订阅能改取数配置", ErrInvalid)
+	}
+	if s.mcp == nil {
+		return model.Feed{}, fmt.Errorf("%w: MCP 服务未初始化", ErrInvalid)
+	}
+	if _, err := s.mcp.GetServer(ctx, input.ServerID); err != nil {
+		return model.Feed{}, fmt.Errorf("%w: MCP 连接不存在", ErrInvalid)
+	}
+	config := model.MCPFeedConfig{
+		ServerID:    model.SnowflakeID(input.ServerID),
+		Kind:        input.Kind,
+		ToolName:    input.ToolName,
+		ResourceURI: input.ResourceURI,
+		Arguments:   input.Arguments,
+		Limit:       input.Limit,
+		Mapping:     input.Mapping,
+		Pagination:  input.Pagination,
+		Tier:        input.Tier,
+		KeyLevel:    input.KeyLevel,
+	}
+	rawConfig, err := BuildMCPFeedConfig(config)
+	if err != nil {
+		return model.Feed{}, err
+	}
+
+	trimmedTitle := strings.TrimSpace(input.Title)
+	if trimmedTitle == "" {
+		return model.Feed{}, ErrInvalid
+	}
+	if input.FolderID != nil {
+		folder, err := s.folders.GetByID(ctx, *input.FolderID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return model.Feed{}, ErrNotFound
+			}
+			return model.Feed{}, fmt.Errorf("check folder: %w", err)
+		}
+		if folder.Type != feed.Type {
+			return model.Feed{}, ErrInvalid
+		}
+	}
+
+	feed.Title = trimmedTitle
+	feed.FolderID = input.FolderID
+	feed.MCPConfig = &rawConfig
+	updated, err := s.feeds.Update(ctx, feed)
+	if err != nil {
+		logger.Error("mcp feed config update failed", "module", "service", "action", "update", "resource", "feed", "result", "failed", "feed_id", id, "error", err)
+		return model.Feed{}, err
+	}
+	logger.Info("mcp feed config updated", "module", "service", "action", "update", "resource", "feed", "result", "ok",
+		"feed_id", updated.ID, "mcp_server_id", config.ServerID.Int64(), "kind", config.Kind)
+	return updated, nil
 }
 
 // UpdateAIOverrides 覆盖单个订阅的自动翻译/自动摘要/正文打开方式；

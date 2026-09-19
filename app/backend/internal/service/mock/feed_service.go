@@ -57,6 +57,21 @@ func (mr *MockFeedServiceMockRecorder) Add(ctx, feedURL, folderID, titleOverride
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Add", reflect.TypeOf((*MockFeedService)(nil).Add), ctx, feedURL, folderID, titleOverride, feedType)
 }
 
+// AddMCP mocks base method.
+func (m *MockFeedService) AddMCP(ctx context.Context, input service.MCPFeedAddInput) (model.Feed, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddMCP", ctx, input)
+	ret0, _ := ret[0].(model.Feed)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AddMCP indicates an expected call of AddMCP.
+func (mr *MockFeedServiceMockRecorder) AddMCP(ctx, input any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddMCP", reflect.TypeOf((*MockFeedService)(nil).AddMCP), ctx, input)
+}
+
 // AddWithoutFetch mocks base method.
 func (m *MockFeedService) AddWithoutFetch(ctx context.Context, feedURL string, folderID *int64, titleOverride, feedType string) (model.Feed, bool, error) {
 	m.ctrl.T.Helper()
@@ -189,6 +204,21 @@ func (m *MockFeedService) UpdateAIOverrides(ctx context.Context, id int64, autoT
 func (mr *MockFeedServiceMockRecorder) UpdateAIOverrides(ctx, id, autoTranslate, autoSummary, readerMode any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateAIOverrides", reflect.TypeOf((*MockFeedService)(nil).UpdateAIOverrides), ctx, id, autoTranslate, autoSummary, readerMode)
+}
+
+// UpdateMCPConfig mocks base method.
+func (m *MockFeedService) UpdateMCPConfig(ctx context.Context, id int64, input service.MCPFeedAddInput) (model.Feed, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateMCPConfig", ctx, id, input)
+	ret0, _ := ret[0].(model.Feed)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateMCPConfig indicates an expected call of UpdateMCPConfig.
+func (mr *MockFeedServiceMockRecorder) UpdateMCPConfig(ctx, id, input any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateMCPConfig", reflect.TypeOf((*MockFeedService)(nil).UpdateMCPConfig), ctx, id, input)
 }
 
 // UpdateProxyOverride mocks base method.

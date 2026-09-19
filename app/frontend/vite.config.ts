@@ -136,6 +136,9 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": backendOrigin,
+      // MCP 出向端点在**后端**同源（生产就是同一个 origin）；dev 下不代理的话，
+      // 界面里那份「客户端配置示例」给出的 http://localhost:5174/mcp 是个打不通的地址。
+      "/mcp": backendOrigin,
       // 订阅图标由后端提供；不代理的话 dev 下会落到 SPA 兜底（返回 HTML），
       // <img> 加载失败就退回默认图标（表现为「明明有图标却不显示」）
       "/icons": backendOrigin,

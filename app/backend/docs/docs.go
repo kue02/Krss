@@ -406,6 +406,56 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/feeds/{id}/mcp-config": {
+            "patch": {
+                "description": "Update connection/tool-resource/arguments/mapping/pagination/title/folder of an MCP subscription (edit mode of the creation wizard)",
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feeds"
+                ],
+                "summary": "Update MCP feed config",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Feed ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "MCP config update request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.updateMCPConfigRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.feedResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/feeds/{id}/merge": {
             "post": {
                 "description": "Move entries of :id into targetId, then delete :id (target is kept)",
@@ -2380,6 +2430,491 @@ const docTemplate = `{
                 }
             }
         },
+        "/mcp/oauth/callback": {
+            "get": {
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "OAuth callback",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Authorization code",
+                        "name": "code",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "State",
+                        "name": "state",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "HTML result page",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/mcp/outbound": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "MCP outbound status",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/gist_backend_internal_service.MCPOutboundStatus"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Update MCP outbound options",
+                "parameters": [
+                    {
+                        "description": "Options",
+                        "name": "req",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.mcpOutboundOptionsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/gist_backend_internal_service.MCPOutboundStatus"
+                        }
+                    }
+                }
+            }
+        },
+        "/mcp/outbound/token": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Generate MCP outbound token",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.mcpTokenResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Revoke MCP outbound token",
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/mcp/servers": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "List MCP servers",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/internal_handler.mcpServerResponse"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Create a MCP server",
+                "parameters": [
+                    {
+                        "description": "MCP server",
+                        "name": "server",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.mcpServerRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.mcpServerResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/mcp/servers/{id}": {
+            "delete": {
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Delete a MCP server",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "MCP server ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            },
+            "patch": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Update a MCP server",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "MCP server ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "MCP server",
+                        "name": "server",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.mcpServerRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.mcpServerResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/mcp/servers/{id}/inspect": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Inspect a MCP server (dry run + preview)",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "MCP server ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Inspect request",
+                        "name": "req",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.mcpInspectRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/gist_backend_internal_service.MCPInspectResult"
+                        }
+                    }
+                }
+            }
+        },
+        "/mcp/servers/{id}/oauth/discovery": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Discover OAuth authorization server",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "MCP server ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/gist_backend_internal_service.OAuthDiscoveryResult"
+                        }
+                    }
+                }
+            }
+        },
+        "/mcp/servers/{id}/oauth/revoke": {
+            "post": {
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Revoke OAuth authorization",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "MCP server ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/mcp/servers/{id}/oauth/start": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Start OAuth authorization",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "MCP server ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "OAuth start request",
+                        "name": "req",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.mcpOAuthStartRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/gist_backend_internal_service.OAuthStartResult"
+                        }
+                    }
+                }
+            }
+        },
+        "/mcp/servers/{id}/redetect": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Redetect transport of a MCP server",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "MCP server ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/gist_backend_internal_service.MCPTestResult"
+                        }
+                    }
+                }
+            }
+        },
+        "/mcp/servers/{id}/suggest-mapping": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Suggest a mapping with AI",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "MCP server ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Suggest request",
+                        "name": "req",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.mcpSuggestRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/gist_backend_internal_service.MCPSuggestResult"
+                        }
+                    }
+                }
+            }
+        },
+        "/mcp/servers/{id}/test": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "Test a MCP server",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "MCP server ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/gist_backend_internal_service.MCPTestResult"
+                        }
+                    }
+                }
+            }
+        },
+        "/mcp/servers/{id}/tools": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "mcp"
+                ],
+                "summary": "List tools of a MCP server",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "MCP server ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/gist_backend_internal_service.MCPToolListResult"
+                        }
+                    }
+                }
+            }
+        },
         "/opml/export": {
             "get": {
                 "description": "Export all feeds and folders to an OPML file",
@@ -3182,6 +3717,79 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "gist_backend_internal_model.MCPFailure": {
+            "type": "object",
+            "properties": {
+                "bucket": {
+                    "type": "string"
+                },
+                "code": {
+                    "type": "string"
+                },
+                "raw": {
+                    "type": "string"
+                },
+                "suggestion": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "gist_backend_internal_model.MCPFieldMapping": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "listPath": {
+                    "description": "ListPath 列表路径（如 data.items / results / notes）。空 = 结果本身就是数组。",
+                    "type": "string"
+                },
+                "publishedAt": {
+                    "description": "PublishedAt 时间字段；Author 作者；ID 去重键字段（id / key / slug / url）。",
+                    "type": "string"
+                },
+                "thumbnail": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "gist_backend_internal_model.MCPPagination": {
+            "type": "object",
+            "properties": {
+                "cursorParam": {
+                    "description": "CursorParam 传给工具的游标参数名（空 = 按 inputSchema 自动找 cursor/nextCursor/pageToken/offset/page）；\nCursorPath 从返回里读下一页游标的路径（空 = 按 nextCursor/cursor/next_cursor/pageToken 自动找）。",
+                    "type": "string"
+                },
+                "cursorPath": {
+                    "type": "string"
+                },
+                "maxItems": {
+                    "type": "integer"
+                },
+                "maxPages": {
+                    "description": "MaxPages 最多追几页；MaxItems 最多收几条（双上限，先到先停）。",
+                    "type": "integer"
+                },
+                "mode": {
+                    "type": "string"
+                }
+            }
+        },
         "gist_backend_internal_model.ProxyOverrideConfig": {
             "type": "object",
             "properties": {
@@ -3293,6 +3901,243 @@ const docTemplate = `{
                 }
             }
         },
+        "gist_backend_internal_service.MCPInspectResult": {
+            "type": "object",
+            "properties": {
+                "cursorParam": {
+                    "description": "CursorParam 游标参数名（inputSchema 里自动找到的；前端「拉更多」往这个参数填）。",
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "failure": {
+                    "description": "Failure 结构化失败（16-12：向导预览与测试按钮共用同一套文案）。",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/gist_backend_internal_model.MCPFailure"
+                        }
+                    ]
+                },
+                "keyLevel": {
+                    "type": "string"
+                },
+                "mapping": {
+                    "$ref": "#/definitions/gist_backend_internal_model.MCPFieldMapping"
+                },
+                "nextCursor": {
+                    "description": "NextCursor 第一页之后还有页时回传（向导「拉更多」把游标塞进 arguments 再 inspect）。",
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "preview": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/gist_backend_internal_service.MCPPreviewItem"
+                    }
+                },
+                "tier": {
+                    "type": "string"
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "truncated": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "gist_backend_internal_service.MCPOutboundStatus": {
+            "type": "object",
+            "properties": {
+                "baseUrl": {
+                    "description": "BaseURL 对外访问地址（用户填；空 = 没填，示例里回落到浏览器当前 origin）。",
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "endpoint": {
+                    "type": "string"
+                },
+                "protocolVersion": {
+                    "type": "string"
+                },
+                "resourceCount": {
+                    "type": "integer"
+                },
+                "token": {
+                    "type": "string"
+                },
+                "tokenCreatedAt": {
+                    "type": "string"
+                },
+                "tokenPrefix": {
+                    "type": "string"
+                },
+                "tokenSet": {
+                    "description": "TokenSet 是否有可用 Token；Token 是明文库里那份原文（可重复查看复制，17-2）。\n存量哈希没有明文可回 → Token 为空，界面提示点一次「重新生成」。",
+                    "type": "boolean"
+                },
+                "toolCount": {
+                    "type": "integer"
+                },
+                "writeEnabled": {
+                    "description": "WriteEnabled 写操作总开关（默认关；第一版只读）。",
+                    "type": "boolean"
+                }
+            }
+        },
+        "gist_backend_internal_service.MCPPreviewItem": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "keyLevel": {
+                    "type": "string"
+                },
+                "publishedAt": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "gist_backend_internal_service.MCPResourceItem": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "mimeType": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "uri": {
+                    "type": "string"
+                }
+            }
+        },
+        "gist_backend_internal_service.MCPSuggestResult": {
+            "type": "object",
+            "properties": {
+                "estimatedTokens": {
+                    "description": "EstimatedTokens 粗估的消耗（字符数/4，标「约」—— provider 没回真实用量）。",
+                    "type": "integer"
+                },
+                "mapping": {
+                    "$ref": "#/definitions/gist_backend_internal_model.MCPFieldMapping"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "raw": {
+                    "type": "string"
+                },
+                "textUsed": {
+                    "type": "integer"
+                }
+            }
+        },
+        "gist_backend_internal_service.MCPTestResult": {
+            "type": "object",
+            "properties": {
+                "connected": {
+                    "type": "boolean"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "failure": {
+                    "description": "Failure 结构化失败（16-12：三处共用；成功时为 nil）。",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/gist_backend_internal_model.MCPFailure"
+                        }
+                    ]
+                },
+                "latencyMs": {
+                    "type": "integer"
+                },
+                "resourceCount": {
+                    "type": "integer"
+                },
+                "serverName": {
+                    "type": "string"
+                },
+                "serverVersion": {
+                    "type": "string"
+                },
+                "toolCount": {
+                    "type": "integer"
+                },
+                "transport": {
+                    "description": "Transport 这次实际用的传输；LatencyMs 握手耗时毫秒。",
+                    "type": "string"
+                }
+            }
+        },
+        "gist_backend_internal_service.MCPToolItem": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "inputSchema": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "outputSchema": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "gist_backend_internal_service.MCPToolListResult": {
+            "type": "object",
+            "properties": {
+                "resources": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/gist_backend_internal_service.MCPResourceItem"
+                    }
+                },
+                "tools": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/gist_backend_internal_service.MCPToolItem"
+                    }
+                }
+            }
+        },
         "gist_backend_internal_service.NetworkSettings": {
             "type": "object",
             "properties": {
@@ -3317,6 +4162,37 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "gist_backend_internal_service.OAuthDiscoveryResult": {
+            "type": "object",
+            "properties": {
+                "authServer": {
+                    "type": "string"
+                },
+                "hasClientID": {
+                    "type": "boolean"
+                },
+                "hasDCR": {
+                    "type": "boolean"
+                },
+                "instructions": {
+                    "type": "string"
+                },
+                "needsManual": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "gist_backend_internal_service.OAuthStartResult": {
+            "type": "object",
+            "properties": {
+                "authURL": {
+                    "type": "string"
+                },
+                "state": {
                     "type": "string"
                 }
             }
@@ -3744,6 +4620,13 @@ const docTemplate = `{
                 "folderId": {
                     "type": "string"
                 },
+                "mcpConfig": {
+                    "$ref": "#/definitions/internal_handler.mcpFeedConfigReq"
+                },
+                "sourceType": {
+                    "description": "16 批：sourceType=mcp 时走 MCP 建源（url 可空，改由 mcpConfig 描述怎么取数）。",
+                    "type": "string"
+                },
                 "title": {
                     "type": "string"
                 },
@@ -4063,6 +4946,12 @@ const docTemplate = `{
                 "lastModified": {
                     "type": "string"
                 },
+                "mcpConfig": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
                 "proxyConfig": {
                     "description": "ProxyConfig：本条单独指定的一套代理（密码已掩码）；缺省 = 用全局那套",
                     "allOf": [
@@ -4079,6 +4968,10 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "siteUrl": {
+                    "type": "string"
+                },
+                "sourceType": {
+                    "description": "16 批：rss（默认）/ mcp；MCPConfig 只有 mcp 源才有。",
                     "type": "string"
                 },
                 "summaryPromptReminder": {
@@ -4674,6 +5567,317 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handler.mcpFeedConfigReq": {
+            "type": "object",
+            "properties": {
+                "arguments": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "keyLevel": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "mapping": {
+                    "$ref": "#/definitions/gist_backend_internal_model.MCPFieldMapping"
+                },
+                "pagination": {
+                    "$ref": "#/definitions/gist_backend_internal_model.MCPPagination"
+                },
+                "resourceUri": {
+                    "type": "string"
+                },
+                "serverId": {
+                    "type": "string"
+                },
+                "tier": {
+                    "type": "string"
+                },
+                "toolName": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.mcpInspectRequest": {
+            "type": "object",
+            "properties": {
+                "arguments": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "mapping": {
+                    "$ref": "#/definitions/gist_backend_internal_model.MCPFieldMapping"
+                },
+                "resourceUri": {
+                    "type": "string"
+                },
+                "tier": {
+                    "type": "string"
+                },
+                "toolName": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.mcpOAuthStartRequest": {
+            "type": "object",
+            "properties": {
+                "clientId": {
+                    "type": "string"
+                },
+                "clientSecret": {
+                    "type": "string"
+                },
+                "redirectUri": {
+                    "description": "RedirectURI 回调地址 —— 前端按当前访问 origin 拼（\u003corigin\u003e/api/mcp/oauth/callback），\n后端不拼不存，零配置、远程可用。",
+                    "type": "string"
+                },
+                "scope": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.mcpOutboundOptionsRequest": {
+            "type": "object",
+            "properties": {
+                "baseUrl": {
+                    "description": "BaseURL 对外访问地址（用户填的公网/局域网可达 origin；空字符串 = 清掉）。",
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "writeEnabled": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "internal_handler.mcpServerRequest": {
+            "type": "object",
+            "required": [
+                "name",
+                "url"
+            ],
+            "properties": {
+                "authType": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "fetchConcurrency": {
+                    "type": "integer"
+                },
+                "fetchTimeoutSeconds": {
+                    "description": "单连接取数参数（useGlobalFetch=false 时生效；单独配了就不走全局）",
+                    "type": "integer"
+                },
+                "headers": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "oauthClientId": {
+                    "description": "OAuth 手填凭证（16-11：不支持 DCR 的服务用；secret 传掩码 = 没改）",
+                    "type": "string"
+                },
+                "oauthClientSecret": {
+                    "type": "string"
+                },
+                "purposes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "refreshIntervalMinutes": {
+                    "type": "integer"
+                },
+                "transport": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                },
+                "useGlobalFetch": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "internal_handler.mcpServerResponse": {
+            "type": "object",
+            "properties": {
+                "authType": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "fetchConcurrency": {
+                    "type": "integer"
+                },
+                "fetchTimeoutSeconds": {
+                    "type": "integer"
+                },
+                "headers": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "isConnected": {
+                    "type": "boolean"
+                },
+                "lastError": {
+                    "type": "string"
+                },
+                "lastFailure": {
+                    "description": "LastFailure 结构化失败（16-12：列表行/测试/预览三处共用）",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/gist_backend_internal_model.MCPFailure"
+                        }
+                    ]
+                },
+                "lastTransport": {
+                    "description": "LastTransport 上次成功的传输（transport='auto' 时下次优先试它 —— 16-10）",
+                    "type": "string"
+                },
+                "lastUsedAt": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "oauthAuthServer": {
+                    "type": "string"
+                },
+                "oauthAuthorized": {
+                    "type": "boolean"
+                },
+                "oauthClientId": {
+                    "description": "OAuth 状态（16-11：secret/token 只出掩码，真值永不出接口）",
+                    "type": "string"
+                },
+                "oauthClientSecret": {
+                    "type": "string"
+                },
+                "oauthExpiresAt": {
+                    "type": "string"
+                },
+                "purposes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "refreshIntervalMinutes": {
+                    "type": "integer"
+                },
+                "resourceCount": {
+                    "type": "integer"
+                },
+                "toolCount": {
+                    "type": "integer"
+                },
+                "transport": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                },
+                "useGlobalFetch": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "internal_handler.mcpSuggestRequest": {
+            "type": "object",
+            "properties": {
+                "arguments": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "resourceUri": {
+                    "type": "string"
+                },
+                "toolName": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.mcpTokenResponse": {
+            "type": "object",
+            "properties": {
+                "baseUrl": {
+                    "description": "BaseURL 对外访问地址（用户填；空 = 没填，示例里回落到浏览器当前 origin）。",
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "endpoint": {
+                    "type": "string"
+                },
+                "protocolVersion": {
+                    "type": "string"
+                },
+                "resourceCount": {
+                    "type": "integer"
+                },
+                "token": {
+                    "description": "Token 只在生成这一刻返回一次（库里只存哈希）。",
+                    "type": "string"
+                },
+                "tokenCreatedAt": {
+                    "type": "string"
+                },
+                "tokenPrefix": {
+                    "type": "string"
+                },
+                "tokenSet": {
+                    "description": "TokenSet 是否有可用 Token；Token 是明文库里那份原文（可重复查看复制，17-2）。\n存量哈希没有明文可回 → Token 为空，界面提示点一次「重新生成」。",
+                    "type": "boolean"
+                },
+                "toolCount": {
+                    "type": "integer"
+                },
+                "writeEnabled": {
+                    "description": "WriteEnabled 写操作总开关（默认关；第一版只读）。",
+                    "type": "boolean"
+                }
+            }
+        },
         "internal_handler.mergeIntoRequest": {
             "type": "object",
             "properties": {
@@ -5048,6 +6252,48 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.updateMCPConfigRequest": {
+            "type": "object",
+            "properties": {
+                "arguments": {
+                    "type": "object",
+                    "additionalProperties": {}
+                },
+                "folderId": {
+                    "type": "string"
+                },
+                "keyLevel": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "mapping": {
+                    "$ref": "#/definitions/gist_backend_internal_model.MCPFieldMapping"
+                },
+                "pagination": {
+                    "$ref": "#/definitions/gist_backend_internal_model.MCPPagination"
+                },
+                "resourceUri": {
+                    "type": "string"
+                },
+                "serverId": {
+                    "type": "string"
+                },
+                "tier": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "toolName": {
                     "type": "string"
                 }
             }

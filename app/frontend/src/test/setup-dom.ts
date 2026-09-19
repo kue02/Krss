@@ -115,3 +115,41 @@ if (typeof globalThis.ResizeObserver === "undefined") {
     });
   }
 }
+
+/**
+ * jsdom 没有 `CSS` 命名空间，而 react-aria 在**打开下拉/弹层**时会调 `CSS.escape(...)`
+ *（`react-aria/dist/private/selection/utils.mjs` 的 `getItemElement` —— 用来按 `data-key` 找项）。
+ * 缺了它，任何「点开 HeroUI Select 看选项」的测试都会以
+ * `TypeError: Cannot read properties of undefined (reading 'escape')` 收场，
+ * 而那其实是**环境缺口**、不是组件 bug（真机浏览器里 `CSS` 一直在）。
+ *
+ * 这里只补 `escape` 这一个方法：测试断言的是「选项在不在、是不是禁用」，不需要真转义。
+ */
+if (typeof globalThis.CSS === "undefined") {
+  Object.defineProperty(globalThis, "CSS", {
+    value: { escape: (value: string) => value },
+    configurable: true,
+    writable: true,
+  });
+}
+
+/**
+ * jsdom 没有 `ResizeObserver`，而 HeroUI 的 `ScrollShadow`（`useScrollShadow`）
+ * 挂载即 `new ResizeObserver(...)` —— 任何渲染只读 JSON 区（MCPJsonView）的测试
+ * 都会以 `ReferenceError` 收场，而那是**环境缺口**、不是组件 bug
+ * （真机浏览器里 ResizeObserver 一直在；阴影方向测不了，但内容断言不受影响）。
+ *
+ * 这里补一个空转实现：observe/unobserve/disconnect 都收下不做事。
+ */
+if (typeof globalThis.ResizeObserver === "undefined") {
+  class NoopResizeObserver {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  }
+  Object.defineProperty(globalThis, "ResizeObserver", {
+    value: NoopResizeObserver,
+    configurable: true,
+    writable: true,
+  });
+}

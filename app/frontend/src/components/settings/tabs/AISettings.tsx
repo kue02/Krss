@@ -11,6 +11,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { Select } from "@/components/ui/select";
+import { MCPServersSection } from "@/components/settings/tabs/MCPServersSection";
 import type {
   AIProvider,
   AIProviderConfig,
@@ -891,6 +892,9 @@ export function AISettings() {
           {successMessage}
         </div>
       )}
+
+      {/* MCP 服务：连接管理 + 「新建 MCP 订阅」向导入口（同一份连接两种用途） */}
+      <MCPServersSection />
     </div>
   );
 }
