@@ -290,7 +290,7 @@ export function MCPServersSection() {
             aria-label={t("ai_settings.mcp_servers")}
             className="w-full table-fixed"
           >
-            <Table.Header>
+            <Table.Header className="bg-muted/40 /* 草图表头底 */">
               {/* 列宽沿用实测值：图标 22 · 名称+副行(1fr) · 状态 132 · 用途 92 · 操作 140 */}
               <Table.Column
                 className="w-[22px] p-0"
@@ -298,16 +298,19 @@ export function MCPServersSection() {
               >
                 <span aria-hidden> </span>
               </Table.Column>
-              <Table.Column isRowHeader>
+              <Table.Column
+                isRowHeader
+                className="py-1.5 text-[11px] text-muted-foreground /* 草图表头 11px灰 */"
+              >
                 {t("ai_settings.mcp_col_name")}
               </Table.Column>
-              <Table.Column className="w-[132px]">
+              <Table.Column className="w-[132px] py-1.5 text-[11px] text-muted-foreground /* 草图 11px灰 */">
                 {t("ai_settings.mcp_col_status")}
               </Table.Column>
-              <Table.Column className="w-[92px]">
+              <Table.Column className="w-[92px] py-1.5 text-[11px] text-muted-foreground /* 草图 11px灰 */">
                 {t("ai_settings.mcp_col_purpose")}
               </Table.Column>
-              <Table.Column className="w-[140px] text-right">
+              <Table.Column className="w-[140px] py-1.5 text-right text-[11px] text-muted-foreground /* 草图 11px灰 */">
                 {t("ai_settings.mcp_col_actions")}
               </Table.Column>
             </Table.Header>
