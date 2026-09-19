@@ -34,7 +34,7 @@ type createFeedRequest struct {
 	MCPConfig  *mcpFeedConfigReq `json:"mcpConfig"`
 }
 
-// mcpFeedConfigReq 建 MCP 订阅时带过来的配置（连接 + 工具/资源 + 参数 + 字段映射）。
+// mcpFeedConfigReq 建 MCP 订阅时带过来的配置（连接 + 工具/资源 + 参数 + 字段映射 + 分页）。
 type mcpFeedConfigReq struct {
 	ServerID    string                `json:"serverId"`
 	Kind        string                `json:"kind"`
@@ -43,8 +43,16 @@ type mcpFeedConfigReq struct {
 	Arguments   map[string]any        `json:"arguments"`
 	Limit       int                   `json:"limit"`
 	Mapping     model.MCPFieldMapping `json:"mapping"`
+	Pagination  *model.MCPPagination  `json:"pagination"`
 	Tier        string                `json:"tier"`
 	KeyLevel    string                `json:"keyLevel"`
+}
+
+// updateMCPConfigRequest 改 MCP 订阅的取数配置（16-14 编辑模式）：标题/文件夹 + 整份 mcpConfig。
+type updateMCPConfigRequest struct {
+	Title    string  `json:"title"`
+	FolderID *string `json:"folderId"`
+	mcpFeedConfigReq
 }
 
 type updateTypeRequest struct {
@@ -200,6 +208,7 @@ func (h *FeedHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/feeds/:id/merge", h.MergeInto)
 	g.PATCH("/feeds/:id/ai", h.UpdateAIOverrides)
 	g.PATCH("/feeds/:id/proxy", h.UpdateProxyOverride)
+	g.PATCH("/feeds/:id/mcp-config", h.UpdateMCPConfig)
 	g.DELETE("/feeds/:id", h.Delete)
 	g.DELETE("/feeds", h.DeleteBatch)
 }
@@ -252,6 +261,7 @@ func (h *FeedHandler) Create(c echo.Context) error {
 			Arguments:   req.MCPConfig.Arguments,
 			Limit:       req.MCPConfig.Limit,
 			Mapping:     req.MCPConfig.Mapping,
+			Pagination:  req.MCPConfig.Pagination,
 			Tier:        req.MCPConfig.Tier,
 			KeyLevel:    req.MCPConfig.KeyLevel,
 			Title:       req.Title,
@@ -564,6 +574,63 @@ func (h *FeedHandler) UpdateProxyOverride(c echo.Context) error {
 	effective := h.proxySources.ResolveForFeed(ctx, feed)
 	logger.Info("feed proxy override updated", "module", "handler", "action", "update", "resource", "proxy", "result", "ok", "feed_id", feed.ID, "mode", effective.Mode, "source", effective.Source)
 	return c.JSON(http.StatusOK, feedProxyResponse{Feed: toFeedResponse(feed), Effective: effective})
+}
+
+// UpdateMCPConfig updates the fetch config of an MCP subscription.
+// @Summary Update MCP feed config
+// @Description Update connection/tool-resource/arguments/mapping/pagination/title/folder of an MCP subscription (edit mode of the creation wizard)
+// @Tags feeds
+// @Accept json
+// @Param id path int true "Feed ID"
+// @Param request body updateMCPConfigRequest true "MCP config update request"
+// @Success 200 {object} feedResponse
+// @Failure 400 {object} errorResponse
+// @Failure 404 {object} errorResponse
+// @Router /api/feeds/{id}/mcp-config [patch]
+func (h *FeedHandler) UpdateMCPConfig(c echo.Context) error {
+	id, err := parseIDParam(c, "id")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
+	}
+	var req updateMCPConfigRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
+	}
+	if strings.TrimSpace(req.ServerID) == "" {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "mcpConfig.serverId is required"})
+	}
+	serverID, err := strconv.ParseInt(strings.TrimSpace(req.ServerID), 10, 64)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid mcp server ID"})
+	}
+	var folderID *int64
+	if req.FolderID != nil {
+		fid, err := strconv.ParseInt(*req.FolderID, 10, 64)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid folder ID"})
+		}
+		folderID = &fid
+	}
+	updated, err := h.service.UpdateMCPConfig(c.Request().Context(), id, service.MCPFeedAddInput{
+		ServerID:    serverID,
+		Kind:        req.Kind,
+		ToolName:    req.ToolName,
+		ResourceURI: req.ResourceURI,
+		Arguments:   req.Arguments,
+		Limit:       req.Limit,
+		Mapping:     req.Mapping,
+		Pagination:  req.Pagination,
+		Tier:        req.Tier,
+		KeyLevel:    req.KeyLevel,
+		Title:       req.Title,
+		FolderID:    folderID,
+	})
+	if err != nil {
+		logger.Error("mcp feed config update failed", "module", "handler", "action", "update", "resource", "feed", "result", "failed", "feed_id", id, "error", err)
+		return writeServiceError(c, err)
+	}
+	logger.Info("mcp feed config updated", "module", "handler", "action", "update", "resource", "feed", "result", "ok", "feed_id", updated.ID)
+	return c.JSON(http.StatusOK, toFeedResponse(updated))
 }
 
 // UpdateType updates the content type of a feed.

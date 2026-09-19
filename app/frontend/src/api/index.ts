@@ -52,6 +52,7 @@ import type {
 } from "@/types/filters";
 import type {
   MCPFeedCreatePayload,
+  MCPFeedUpdatePayload,
   MCPInspectRequest,
   MCPInspectResult,
   MCPOAuthDiscovery,
@@ -1589,6 +1590,17 @@ export async function createMCPFeed(
   });
 }
 
+/** 改 MCP 订阅的取数配置（16-14 编辑模式）：标题/文件夹 + 整份 mcpConfig 展平。 */
+export async function updateMCPFeed(
+  id: string,
+  payload: MCPFeedUpdatePayload,
+): Promise<Feed> {
+  return request<Feed>(`/api/feeds/${id}/mcp-config`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
 // ---------- MCP 出向：Krss 自己当 MCP 服务器 ----------
 
 export async function getMCPOutbound(): Promise<MCPOutboundStatus> {
@@ -1606,7 +1618,7 @@ export async function updateMCPOutbound(payload: {
   });
 }
 
-/** 生成长期 token。明文只在这里回一次（库里只存哈希），界面必须显示一次并给复制。 */
+/** 生成长期 Token。明文存库，状态里常驻可查（17-2）。 */
 export async function createMCPOutboundToken(): Promise<MCPOutboundTokenResponse> {
   return request<MCPOutboundTokenResponse>("/api/mcp/outbound/token", {
     method: "POST",

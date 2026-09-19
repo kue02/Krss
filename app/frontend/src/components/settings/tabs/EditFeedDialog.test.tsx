@@ -35,6 +35,18 @@ vi.mock("@/hooks/useFeeds", () => ({
   useUpdateFeedAI: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 
+// 16-14：编辑页里挂了向导（用 folders + queryClient），测试里桩掉
+vi.mock("@/hooks/useFolders", () => ({ useFolders: () => ({ data: [] }) }));
+
+// 16-14：编辑页里挂了向导（保存后让 feeds 失效），测试里只桩 useQueryClient，其余透传
+vi.mock("@tanstack/react-query", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@tanstack/react-query")>();
+  return {
+    ...actual,
+    useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+  };
+});
+
 // 14 批：弹窗里新增了代理覆盖（三态 + 生效结果）——这些用例只关心标题/提示词/AI 三态，
 // 所以把代理那两个 hook 换成不连后端的桩。
 const { mockUpdateFeedProxy } = vi.hoisted(() => ({
@@ -196,5 +208,35 @@ describe("EditFeedDialog", () => {
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
+  });
+
+  it("MCP 订阅多一块取数配置入口；RSS 订阅没有（16-14）", () => {
+    const { rerender } = render(
+      <EditFeedDialog
+        feed={buildFeed({
+          sourceType: "mcp",
+          mcpConfig: {
+            serverId: "s1",
+            kind: "tool",
+            toolName: "search",
+            mapping: {},
+          },
+        })}
+        open
+        onOpenChange={mockOnOpenChange}
+      />,
+    );
+
+    expect(screen.getByText("feeds.mcp_config_title")).toBeTruthy();
+    expect(screen.getByText("feeds.mcp_config_edit")).toBeTruthy();
+
+    rerender(
+      <EditFeedDialog
+        feed={buildFeed()}
+        open
+        onOpenChange={mockOnOpenChange}
+      />,
+    );
+    expect(screen.queryByText("feeds.mcp_config_title")).toBeNull();
   });
 });

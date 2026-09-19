@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -23,8 +24,10 @@ import (
 // 17 批（出向）：Krss 自己作为 MCP 服务器，让 Claude Code / Codex / Hermes 这类 agent
 // 直接读这个阅读器（「帮我总结今天未读的」「搜我库里关于 X 的条目」）。
 //
-// 已拍板：B1 第一版只读 · B2 tools + resources 都要 · B3 长期 token（库里只存哈希）·
+// 已拍板：B1 第一版只读 · B2 tools + resources 都要 · B3 长期 Token（个人用，明文存库、可重复查看复制）·
 //        B4 入口放 设置 → 数据控制 · B5 用本机 Hermes 接上当验收。
+// 2026-09-19 返工（17-2）：Token 改明文存库 —— 不要一次性仪式、不要占位符。
+// 存量哈希（mcp.outbound_token_hash）不可回显：Authorize 里兼容过渡，重新生成后即删。
 // 与入向共用同一套 MCP 底座（internal/service/mcp）。
 // ---------------------------------------------------------------------------
 
@@ -32,6 +35,10 @@ import (
 const (
 	keyMCPOutboundEnabled      = "mcp.outbound_enabled"
 	keyMCPOutboundWriteEnabled = "mcp.outbound_write_enabled"
+	// keyMCPOutboundToken 明文 Token（17-2 返工：个人用，可重复查看复制）。
+	keyMCPOutboundToken = "mcp.outbound_token"
+	// keyMCPOutboundTokenHash 旧哈希（一次性仪式时代的存量）：不可回显，只在 Authorize 里兼容过渡，
+	// 重新生成 / 撤销时一并删掉。
 	keyMCPOutboundTokenHash    = "mcp.outbound_token_hash"
 	keyMCPOutboundTokenPrefix  = "mcp.outbound_token_prefix"
 	keyMCPOutboundTokenCreated = "mcp.outbound_token_created_at"
@@ -48,10 +55,12 @@ type MCPOutboundStatus struct {
 	Enabled bool `json:"enabled"`
 	// WriteEnabled 写操作总开关（默认关；第一版只读）。
 	WriteEnabled bool `json:"writeEnabled"`
-	// TokenSet 是否已生成过 token；TokenPrefix 是前 8 位（明文只在生成那一次返回）。
-	TokenSet      bool   `json:"tokenSet"`
-	TokenPrefix   string `json:"tokenPrefix,omitempty"`
-	TokenCreated  string `json:"tokenCreatedAt,omitempty"`
+	// TokenSet 是否有可用 Token；Token 是明文库里那份原文（可重复查看复制，17-2）。
+	// 存量哈希没有明文可回 → Token 为空，界面提示点一次「重新生成」。
+	TokenSet     bool   `json:"tokenSet"`
+	Token        string `json:"token,omitempty"`
+	TokenPrefix  string `json:"tokenPrefix,omitempty"`
+	TokenCreated string `json:"tokenCreatedAt,omitempty"`
 	// BaseURL 对外访问地址（用户填；空 = 没填，示例里回落到浏览器当前 origin）。
 	BaseURL       string `json:"baseUrl,omitempty"`
 	Endpoint      string `json:"endpoint"`
@@ -162,11 +171,13 @@ func (s *mcpOutboundService) Status(ctx context.Context) (MCPOutboundStatus, err
 	if err != nil {
 		return MCPOutboundStatus{}, err
 	}
-	hash := s.getString(ctx, keyMCPOutboundTokenHash)
+	token := s.getString(ctx, keyMCPOutboundToken)
+	legacyHash := s.getString(ctx, keyMCPOutboundTokenHash)
 	return MCPOutboundStatus{
 		Enabled:       s.getBool(ctx, keyMCPOutboundEnabled, true),
 		WriteEnabled:  s.getBool(ctx, keyMCPOutboundWriteEnabled, false),
-		TokenSet:      hash != "",
+		TokenSet:      token != "" || legacyHash != "",
+		Token:         token,
 		TokenPrefix:   s.getString(ctx, keyMCPOutboundTokenPrefix),
 		TokenCreated:  s.getString(ctx, keyMCPOutboundTokenCreated),
 		BaseURL:       normalizeMCPBaseURL(s.getString(ctx, keyMCPOutboundBaseURL)),
@@ -184,11 +195,15 @@ func (s *mcpOutboundService) GenerateToken(ctx context.Context) (MCPOutboundStat
 	}
 	token := MCPTokenPrefix + hex.EncodeToString(raw)
 	values := map[string]string{
-		keyMCPOutboundTokenHash:    hashToken(token),
+		keyMCPOutboundToken:        token,
 		keyMCPOutboundTokenPrefix:  token[:len(MCPTokenPrefix)+8],
 		keyMCPOutboundTokenCreated: time.Now().UTC().Format(time.RFC3339),
 	}
 	if err := s.settings.SetMany(ctx, values); err != nil {
+		return MCPOutboundStatus{}, "", err
+	}
+	// 旧哈希键清掉：以后只有明文这一份（存量过渡结束）。
+	if err := s.settings.Delete(ctx, keyMCPOutboundTokenHash); err != nil {
 		return MCPOutboundStatus{}, "", err
 	}
 	logger.Info("mcp outbound token generated", "module", "service", "action", "create", "resource", "mcp_token", "result", "ok")
@@ -197,7 +212,7 @@ func (s *mcpOutboundService) GenerateToken(ctx context.Context) (MCPOutboundStat
 }
 
 func (s *mcpOutboundService) RevokeToken(ctx context.Context) error {
-	for _, key := range []string{keyMCPOutboundTokenHash, keyMCPOutboundTokenPrefix, keyMCPOutboundTokenCreated} {
+	for _, key := range []string{keyMCPOutboundToken, keyMCPOutboundTokenHash, keyMCPOutboundTokenPrefix, keyMCPOutboundTokenCreated} {
 		if err := s.settings.Delete(ctx, key); err != nil {
 			return err
 		}
@@ -238,7 +253,8 @@ func (s *mcpOutboundService) UpdateOptions(ctx context.Context, enabled, writeEn
 	return s.Status(ctx)
 }
 
-// Authorize 校验 token：库里只存哈希，比较哈希（长度固定，比较即常量时间）。
+// Authorize 校验 token：明文直接比（个人用，17-2）；
+// 存量哈希过渡：库里只有旧哈希时，比哈希不断服，重新生成后即删。
 func (s *mcpOutboundService) Authorize(ctx context.Context, token string) bool {
 	token = strings.TrimSpace(token)
 	if token == "" {
@@ -247,11 +263,14 @@ func (s *mcpOutboundService) Authorize(ctx context.Context, token string) bool {
 	if !s.getBool(ctx, keyMCPOutboundEnabled, true) {
 		return false
 	}
-	stored := s.getString(ctx, keyMCPOutboundTokenHash)
-	if stored == "" {
+	if stored := s.getString(ctx, keyMCPOutboundToken); stored != "" {
+		return subtle.ConstantTimeCompare([]byte(stored), []byte(token)) == 1
+	}
+	legacy := s.getString(ctx, keyMCPOutboundTokenHash)
+	if legacy == "" {
 		return false
 	}
-	return stored == hashToken(token)
+	return subtle.ConstantTimeCompare([]byte(legacy), []byte(hashToken(token))) == 1
 }
 
 // NewMCPSessionID 给 streamable-http 会话一个不透明 id（我们无状态，只是让客户端有东西可带）。
@@ -401,12 +420,12 @@ func (s *mcpOutboundService) Tools(ctx context.Context) []MCPToolDescriptor {
 			Annotations:  readOnly,
 		},
 		{
-			Name:        "list_entries",
-			Title:       "列出条目",
-			Description: "按订阅 / 视图 / 未读 / 星标列条目。默认未读优先，limit 默认 20（上限 100）。",
-			InputSchema: toolSchema(`{"type":"object","properties":{"feedId":{"type":"string","description":"订阅 id（可省略）"},"viewId":{"type":"string","description":"保存筛选视图 id（可省略）"},"unreadOnly":{"type":"boolean","description":"只看未读，默认 true"},"starredOnly":{"type":"boolean","description":"只看星标，默认 false"},"limit":{"type":"integer","description":"条数，默认 20，上限 100"}},"additionalProperties":false}`),
+			Name:         "list_entries",
+			Title:        "列出条目",
+			Description:  "按订阅 / 视图 / 未读 / 星标列条目。默认未读优先，limit 默认 20（上限 100）。",
+			InputSchema:  toolSchema(`{"type":"object","properties":{"feedId":{"type":"string","description":"订阅 id（可省略）"},"viewId":{"type":"string","description":"保存筛选视图 id（可省略）"},"unreadOnly":{"type":"boolean","description":"只看未读，默认 true"},"starredOnly":{"type":"boolean","description":"只看星标，默认 false"},"limit":{"type":"integer","description":"条数，默认 20，上限 100"}},"additionalProperties":false}`),
 			OutputSchema: toolSchema(`{"type":"object","properties":{"count":{"type":"integer"},"entries":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"feedId":{"type":"string"},"title":{"type":"string"},"url":{"type":"string"},"publishedAt":{"type":"string"},"summary":{"type":"string"},"read":{"type":"boolean"},"starred":{"type":"boolean"}}}}},"required":["entries"]}`),
-			Annotations: readOnly,
+			Annotations:  readOnly,
 		},
 		{
 			Name:         "search_entries",

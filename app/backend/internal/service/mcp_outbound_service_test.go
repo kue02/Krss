@@ -2,6 +2,8 @@ package service_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"strconv"
 	"strings"
@@ -40,12 +42,13 @@ func newOutboundFixture(t *testing.T) (service.MCPOutboundService, *sqlFixture) 
 
 	entryService := service.NewEntryService(entryRepo, feedRepo, folderRepo, nil)
 	outbound := service.NewMCPOutboundService(settingsRepo, entryService, feedRepo, folderRepo)
-	return outbound, &sqlFixture{feedID: feedID, entryID: entryID}
+	return outbound, &sqlFixture{feedID: feedID, entryID: entryID, settings: settingsRepo}
 }
 
 type sqlFixture struct {
-	feedID  int64
-	entryID int64
+	feedID   int64
+	entryID  int64
+	settings repository.SettingsRepository
 }
 
 func TestOutbound_StatusDefaultsReadOnly(t *testing.T) {
@@ -72,8 +75,8 @@ func TestOutbound_TokenLifecycle(t *testing.T) {
 	require.True(t, strings.HasPrefix(token, service.MCPTokenPrefix))
 	require.True(t, strings.HasPrefix(status.TokenPrefix, service.MCPTokenPrefix))
 
-	// 明文只在这一刻出现：状态里没有任何地方回显完整 token
-	require.NotContains(t, status.TokenPrefix, token[len(service.MCPTokenPrefix):])
+	// 17-2 返工：明文存库 —— 状态里直接回显完整 Token，可重复查看复制
+	require.Equal(t, token, status.Token)
 
 	require.True(t, outbound.Authorize(ctx, token))
 	require.False(t, outbound.Authorize(ctx, token+"x"))
@@ -81,6 +84,49 @@ func TestOutbound_TokenLifecycle(t *testing.T) {
 
 	require.NoError(t, outbound.RevokeToken(ctx))
 	require.False(t, outbound.Authorize(ctx, token))
+}
+
+func TestOutbound_RegenerateInvalidatesOldToken(t *testing.T) {
+	outbound, _ := newOutboundFixture(t)
+	ctx := context.Background()
+
+	_, oldToken, err := outbound.GenerateToken(ctx)
+	require.NoError(t, err)
+	status, newToken, err := outbound.GenerateToken(ctx)
+	require.NoError(t, err)
+	require.NotEqual(t, oldToken, newToken)
+	// 状态里回显的就是当前这份明文
+	require.Equal(t, newToken, status.Token)
+	require.False(t, outbound.Authorize(ctx, oldToken))
+	require.True(t, outbound.Authorize(ctx, newToken))
+}
+
+// TestOutbound_LegacyHashTransitionalAuth 存量哈希过渡：一次性仪式时代库里只有哈希，
+// 明文不可回显但旧 Token 不断服；重新生成后旧 Token 立刻失效。
+func TestOutbound_LegacyHashTransitionalAuth(t *testing.T) {
+	outbound, fixture := newOutboundFixture(t)
+	ctx := context.Background()
+
+	legacyToken := service.MCPTokenPrefix + "legacysecrettoken000000000001"
+	sum := sha256.Sum256([]byte(legacyToken))
+	// 键名是 service 包私有的 mcp.outbound_token_hash，这里写字面量模拟存量
+	require.NoError(t, fixture.settings.SetMany(ctx, map[string]string{
+		"mcp.outbound_token_hash":       hex.EncodeToString(sum[:]),
+		"mcp.outbound_token_prefix":     legacyToken[:len(service.MCPTokenPrefix)+8],
+		"mcp.outbound_token_created_at": time.Now().UTC().Format(time.RFC3339),
+	}))
+	require.True(t, outbound.Authorize(ctx, legacyToken), "存量哈希的旧 Token 过渡期不断服")
+	require.False(t, outbound.Authorize(ctx, legacyToken+"x"))
+	status, err := outbound.Status(ctx)
+	require.NoError(t, err)
+	require.True(t, status.TokenSet)
+	require.Empty(t, status.Token, "存量哈希没有明文可回显")
+
+	newStatus, newToken, err := outbound.GenerateToken(ctx)
+	require.NoError(t, err)
+	require.Equal(t, newToken, newStatus.Token)
+	require.False(t, outbound.Authorize(ctx, legacyToken), "重新生成后旧 Token 立刻失效")
+	require.True(t, outbound.Authorize(ctx, newToken))
 }
 
 func TestOutbound_DisabledBlocksAuth(t *testing.T) {

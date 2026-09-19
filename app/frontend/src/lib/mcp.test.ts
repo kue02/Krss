@@ -286,10 +286,28 @@ describe("粘贴 JSON 建档（parseMCPJSON，三种形状）", () => {
       ok: false,
       error: "no_servers_found",
     });
-    // stdio 本地进程不认
+    // stdio 本地进程拒识（16-15）：单条直接报，整包 stdio 也报，混包跳过 stdio 条
     expect(
       parseMCPJSON(JSON.stringify({ command: "npx", args: ["-y", "x"] })),
-    ).toEqual({ ok: false, error: "no_servers_found" });
+    ).toEqual({ ok: false, error: "stdio_unsupported" });
+    expect(
+      parseMCPJSON(
+        JSON.stringify({
+          mcpServers: { local: { command: "npx", args: ["-y", "x"] } },
+        }),
+      ),
+    ).toEqual({ ok: false, error: "stdio_unsupported" });
+    const mixed = parseMCPJSON(
+      JSON.stringify({
+        mcpServers: {
+          local: { command: "npx", args: ["-y", "x"] },
+          remote: { url: "https://example.com/mcp" },
+        },
+      }),
+    );
+    expect(mixed.ok).toBe(true);
+    if (!mixed.ok) return;
+    expect(mixed.servers.map((server) => server.name)).toEqual(["remote"]);
     expect(parseMCPJSON(JSON.stringify({ url: "not a url" }))).toEqual({
       ok: false,
       error: "url_invalid",

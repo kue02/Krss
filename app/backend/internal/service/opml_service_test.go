@@ -199,6 +199,10 @@ func (s *feedServiceStub) AddMCP(ctx context.Context, input service.MCPFeedAddIn
 	return model.Feed{}, nil
 }
 
+func (s *feedServiceStub) UpdateMCPConfig(ctx context.Context, id int64, input service.MCPFeedAddInput) (model.Feed, error) {
+	return model.Feed{}, nil
+}
+
 func (s *feedServiceStub) AddWithoutFetch(ctx context.Context, feedURL string, folderID *int64, titleOverride string, feedType string) (model.Feed, bool, error) {
 	s.calls = append(s.calls, feedAddCall{url: feedURL, folderID: folderID})
 	feed := model.Feed{ID: s.nextID, URL: feedURL, FolderID: folderID, Title: titleOverride, Type: feedType}

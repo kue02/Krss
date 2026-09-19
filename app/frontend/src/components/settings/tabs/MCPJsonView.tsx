@@ -7,7 +7,7 @@ import { tokenizeJSON, type MCPJsonTokenKind } from "@/lib/mcp";
  * 只读 JSON/文本展示（16-13 口径）：`Code` 包在 `ScrollShadow` 里 +
  * 自写小 tokenizer 上色。四色用现有主题 token，不新造色：
  * key=accent / string=绿 / number=琥珀 / literal=紫 / 标点=次要文字。
- * 不做「边打字边高亮」—— 编辑走 MCPJsonEditor（TextArea），这里只读。
+ * 不做「边打字边高亮」—— 编辑走裸 `TextArea`（失焦自动校验+格式化），这里只读。
  */
 const TOKEN_CLASS: Record<MCPJsonTokenKind, string> = {
   key: "text-accent",
@@ -34,7 +34,7 @@ export function MCPJsonView({ code, maxHeight, className }: MCPJsonViewProps) {
       <Code
         className={cn(
           "block w-full bg-transparent px-3 py-2 text-left",
-          "font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-all",
+          "font-mono text-xs leading-relaxed whitespace-pre-wrap break-all",
         )}
       >
         {tokens.map((token, index) => (

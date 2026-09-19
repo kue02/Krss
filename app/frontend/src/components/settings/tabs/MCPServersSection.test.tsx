@@ -132,17 +132,17 @@ describe("MCP 服务段（16-6 硬布局）", () => {
     // 预设卡片整段删掉：入口与文案都不该出现
     expect(screen.queryByText("ai_settings.mcp_presets")).toBeNull();
     expect(screen.queryByText("ai_settings.mcp_preset_fabric")).toBeNull();
-    // 新入口在
-    expect(screen.getByText("ai_settings.mcp_paste_json")).toBeTruthy();
-    // 表头与行共用同一套钉死的栅格（132/92/140；末列不许 auto，否则各自按内容算就对不齐）
-    const grids = [...document.querySelectorAll(".grid")].filter((el) =>
-      el.className.includes("132px"),
+    // 返工口径：「粘贴 JSON 新建」独立按钮没了，并入「新建连接」
+    expect(screen.queryByText("ai_settings.mcp_paste_json")).toBeNull();
+    expect(screen.getByText("ai_settings.mcp_add_connection")).toBeTruthy();
+    // HeroUI Table：原生 table + 列头
+    expect(
+      document.querySelector("table") ?? screen.getByRole("table"),
+    ).toBeTruthy();
+    // 16-16 警戒区：八字水印在 DOM 里（纯背景，不挡操作）
+    expect(document.body.textContent).toContain(
+      "ai_settings.mcp_warn_watermark",
     );
-    expect(grids.length).toBeGreaterThanOrEqual(2);
-    for (const grid of grids) {
-      expect(grid.className).toContain("22px_minmax(0,1fr)_132px_92px_140px");
-      expect(grid.className).not.toContain("_auto]");
-    }
   });
 
   it("粘贴 JSON → 识别结果卡 → 填入表单 → 保存（transport/headers/purposes 落位）", async () => {
@@ -151,21 +151,12 @@ describe("MCP 服务段（16-6 硬布局）", () => {
     render(<MCPServersSection />);
     await screen.findByText("ai_settings.mcp_empty");
 
-    fireEvent.click(screen.getByText("ai_settings.mcp_paste_json"));
-    // 默认页就是粘贴（Tabs 双面板都挂载，非 active 的带 hidden，按这个过滤；
-    // 注意 Panel 的 DIV 也会被 label 命中，只收 TEXTAREA）
-    const visibleEditor = () =>
-      screen
-        .getAllByLabelText("ai_settings.mcp_tab_paste")
-        .filter(
-          (el) => el.tagName === "TEXTAREA" && !el.closest("[hidden]"),
-        )
-        .at(0) as HTMLTextAreaElement;
-    const editor = await waitFor(() => {
-      const el = visibleEditor();
-      expect(el).toBeTruthy();
-      return el;
-    });
+    // 单页对话框：新建连接里自带粘贴 JSON 段（无 Tabs）
+    fireEvent.click(screen.getByText("ai_settings.mcp_add_connection"));
+    const editor = (await screen.findByLabelText(
+      "ai_settings.mcp_paste_json_label",
+    )) as HTMLTextAreaElement;
+    expect(editor.tagName).toBe("TEXTAREA");
     fireEvent.change(
       editor,
       {
@@ -188,10 +179,8 @@ describe("MCP 服务段（16-6 硬布局）", () => {
     expect(screen.getByText("nas-mcp")).toBeTruthy();
     expect(screen.getByText("http://192.0.2.1:8931/sse")).toBeTruthy();
 
-    // 填入表单 → 切到手动页，草稿落位
-    fireEvent.click(
-      screen.getByText(`${"ai_settings.mcp_tab_manual"} →`),
-    );
+    // 填入表单 → 草稿落位（单页：失焦自动填，这里点按钮同样填）
+    fireEvent.click(screen.getByText("ai_settings.mcp_fill_form"));
     const nameInput = (await screen.findByLabelText(
       "ai_settings.mcp_name",
     )) as HTMLInputElement;
@@ -214,19 +203,39 @@ describe("MCP 服务段（16-6 硬布局）", () => {
     expect("fetchTimeoutSeconds" in payload).toBe(false);
   });
 
+  it("失焦自动校验+格式化并反填（16-9 返工：不用点按钮）", async () => {
+    render(<MCPServersSection />);
+    await screen.findByText("ai_settings.mcp_empty");
+
+    fireEvent.click(screen.getByText("ai_settings.mcp_add_connection"));
+    const editor = (await screen.findByLabelText(
+      "ai_settings.mcp_paste_json_label",
+    )) as HTMLTextAreaElement;
+    // 故意写成没格式化的单行
+    fireEvent.change(editor, {
+      target: {
+        value:
+          '{"mcpServers":{"nas-mcp":{"type":"sse","url":"http://192.0.2.1:8931/sse"}}}',
+      },
+    });
+    fireEvent.blur(editor);
+
+    // 失焦后：框内被格式化（换行了），上方名称框被反填
+    await waitFor(() => expect(editor.value).toContain("\n"));
+    const nameInput = (await screen.findByLabelText(
+      "ai_settings.mcp_name",
+    )) as HTMLInputElement;
+    expect(nameInput.value).toBe("nas-mcp");
+  });
+
   it("粘贴坏 JSON 给明确错误码，不发请求", async () => {
     render(<MCPServersSection />);
     await screen.findByText("ai_settings.mcp_empty");
 
-    fireEvent.click(screen.getByText("ai_settings.mcp_paste_json"));
-    const badEditor = await waitFor(() => {
-      const el = screen
-        .getAllByLabelText("ai_settings.mcp_tab_paste")
-        .filter((node) => node.tagName === "TEXTAREA" && !node.closest("[hidden]"))
-        .at(0) as HTMLTextAreaElement;
-      expect(el).toBeTruthy();
-      return el;
-    });
+    fireEvent.click(screen.getByText("ai_settings.mcp_add_connection"));
+    const badEditor = (await screen.findByLabelText(
+      "ai_settings.mcp_paste_json_label",
+    )) as HTMLTextAreaElement;
     fireEvent.change(badEditor, { target: { value: "{oops" } });
     expect(
       await screen.findByText("ai_settings.mcp_parse_not_json"),
@@ -239,8 +248,7 @@ describe("MCP 服务段（16-6 硬布局）", () => {
     await screen.findByText("ai_settings.mcp_empty");
 
     fireEvent.click(screen.getByText("ai_settings.mcp_add_connection"));
-    // 新建连接直接落在手动页（编辑态共用同一页）
-    fireEvent.click(await screen.findByText("ai_settings.mcp_tab_manual"));
+    // 单页对话框：基础字段与粘贴 JSON 同页，直接保存看校验
     fireEvent.click(screen.getByText("actions.save"));
 
     expect(

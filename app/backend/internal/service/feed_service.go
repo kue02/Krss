@@ -50,6 +50,9 @@ type FeedService interface {
 	UpdateAIOverrides(ctx context.Context, id int64, autoTranslate, autoSummary, readerMode *bool) (model.Feed, error)
 	// UpdateProxyOverride 单独设置某个订阅的代理覆盖（迁移 26）：跟随上级 / 走代理 / 直连
 	UpdateProxyOverride(ctx context.Context, id int64, update ProxyOverrideUpdate) (model.Feed, error)
+	// UpdateMCPConfig 改 MCP 订阅的取数配置（16-14 编辑模式）：连接/工具-资源/参数/映射/分页/标题/文件夹。
+	// 只允许 source_type='mcp' 的源；不立刻重拉（向导里预览门禁已经验过），下次刷新按新配置取。
+	UpdateMCPConfig(ctx context.Context, id int64, input MCPFeedAddInput) (model.Feed, error)
 	Delete(ctx context.Context, id int64) error
 	DeleteBatch(ctx context.Context, ids []int64) error
 }
@@ -68,6 +71,7 @@ type FeedPreview struct {
 }
 
 // MCPFeedAddInput 新建 MCP 订阅的入参（建源向导最后一步传进来的那份配置）。
+// UpdateMCPConfig 复用它（忽略 FeedType）：编辑模式回填的连接/工具-资源/参数/映射/分页/标题/文件夹。
 type MCPFeedAddInput struct {
 	ServerID    int64
 	Kind        string
@@ -76,6 +80,7 @@ type MCPFeedAddInput struct {
 	Arguments   map[string]any
 	Limit       int
 	Mapping     model.MCPFieldMapping
+	Pagination  *model.MCPPagination
 	Tier        string
 	KeyLevel    string
 	Title       string
@@ -233,6 +238,7 @@ func (s *feedService) AddMCP(ctx context.Context, input MCPFeedAddInput) (model.
 		Arguments:   input.Arguments,
 		Limit:       input.Limit,
 		Mapping:     input.Mapping,
+		Pagination:  input.Pagination,
 		Tier:        input.Tier,
 		KeyLevel:    input.KeyLevel,
 	}
@@ -535,6 +541,73 @@ func (s *feedService) UpdateProxyOverride(ctx context.Context, id int64, update 
 	// 只记「档位 + 有没有单独指定」：地址与密码一律不进日志
 	logger.Info("feed proxy override updated", "module", "service", "action", "update", "resource", "proxy", "result", "ok", "feed_id", id, "mode", ProxyModeToString(mode), "custom_config", cfg.Usable())
 	return feed, nil
+}
+
+// UpdateMCPConfig 改 MCP 订阅的取数配置（16-14 编辑模式）。
+// 只允许 source_type='mcp' 的源（RSS 源调这个接口直接 400）；连接不存在也 400。
+// 标题/文件夹语义与 Update 一致；mcp_config 整体替换（BuildMCPFeedConfig 同一套钳制）。
+func (s *feedService) UpdateMCPConfig(ctx context.Context, id int64, input MCPFeedAddInput) (model.Feed, error) {
+	feed, err := s.feeds.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return model.Feed{}, ErrNotFound
+		}
+		return model.Feed{}, fmt.Errorf("get feed: %w", err)
+	}
+	if !feed.IsMCP() {
+		return model.Feed{}, fmt.Errorf("%w: 只有 MCP 订阅能改取数配置", ErrInvalid)
+	}
+	if s.mcp == nil {
+		return model.Feed{}, fmt.Errorf("%w: MCP 服务未初始化", ErrInvalid)
+	}
+	if _, err := s.mcp.GetServer(ctx, input.ServerID); err != nil {
+		return model.Feed{}, fmt.Errorf("%w: MCP 连接不存在", ErrInvalid)
+	}
+	config := model.MCPFeedConfig{
+		ServerID:    model.SnowflakeID(input.ServerID),
+		Kind:        input.Kind,
+		ToolName:    input.ToolName,
+		ResourceURI: input.ResourceURI,
+		Arguments:   input.Arguments,
+		Limit:       input.Limit,
+		Mapping:     input.Mapping,
+		Pagination:  input.Pagination,
+		Tier:        input.Tier,
+		KeyLevel:    input.KeyLevel,
+	}
+	rawConfig, err := BuildMCPFeedConfig(config)
+	if err != nil {
+		return model.Feed{}, err
+	}
+
+	trimmedTitle := strings.TrimSpace(input.Title)
+	if trimmedTitle == "" {
+		return model.Feed{}, ErrInvalid
+	}
+	if input.FolderID != nil {
+		folder, err := s.folders.GetByID(ctx, *input.FolderID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return model.Feed{}, ErrNotFound
+			}
+			return model.Feed{}, fmt.Errorf("check folder: %w", err)
+		}
+		if folder.Type != feed.Type {
+			return model.Feed{}, ErrInvalid
+		}
+	}
+
+	feed.Title = trimmedTitle
+	feed.FolderID = input.FolderID
+	feed.MCPConfig = &rawConfig
+	updated, err := s.feeds.Update(ctx, feed)
+	if err != nil {
+		logger.Error("mcp feed config update failed", "module", "service", "action", "update", "resource", "feed", "result", "failed", "feed_id", id, "error", err)
+		return model.Feed{}, err
+	}
+	logger.Info("mcp feed config updated", "module", "service", "action", "update", "resource", "feed", "result", "ok",
+		"feed_id", updated.ID, "mcp_server_id", config.ServerID.Int64(), "kind", config.Kind)
+	return updated, nil
 }
 
 // UpdateAIOverrides 覆盖单个订阅的自动翻译/自动摘要/正文打开方式；

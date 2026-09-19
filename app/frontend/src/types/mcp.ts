@@ -238,6 +238,8 @@ export interface MCPOutboundStatus {
   /** 允许写操作（mark_read / star_entry），默认关 */
   writeEnabled: boolean;
   tokenSet: boolean;
+  /** 明文 Token（17-2：可重复查看复制；存量哈希没有明文可回时为空） */
+  token?: string;
   tokenPrefix?: string;
   tokenCreatedAt?: string;
   /** 对外访问地址（用户填；空 = 没填，示例回落到浏览器当前 origin） */
@@ -248,7 +250,7 @@ export interface MCPOutboundStatus {
   resourceCount: number;
 }
 
-/** POST /api/mcp/outbound/token —— 明文 token 只此一次 */
+/** POST /api/mcp/outbound/token —— 明文 Token（17-2：存库可重复查看，不是一次性） */
 export interface MCPOutboundTokenResponse extends MCPOutboundStatus {
   token: string;
 }
@@ -275,3 +277,12 @@ export interface MCPFeedCreatePayload {
   type?: ContentType;
   mcpConfig: MCPFeedConfig;
 }
+
+/**
+ * PATCH /api/feeds/:id/mcp-config 改 MCP 订阅取数配置（16-14 编辑模式）：
+ * 后端是扁平结构（title/folderId + 整份 mcpConfig 展平），与新建的嵌套形状不同。
+ */
+export type MCPFeedUpdatePayload = MCPFeedConfig & {
+  title: string;
+  folderId?: string;
+};

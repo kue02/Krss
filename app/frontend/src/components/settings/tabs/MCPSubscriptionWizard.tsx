@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Chip, Tabs, ToggleButton, ToggleButtonGroup } from "@heroui/react";
+import { Button, Chip, Tabs, TextArea, ToggleButton, ToggleButtonGroup } from "@heroui/react";
 import { RefreshCw } from "lucide-react";
 import {
   Dialog,
@@ -14,8 +14,10 @@ import {
   ApiError,
   createMCPFeed,
   inspectMCPServer,
+  listMCPServers,
   listMCPServerTools,
   suggestMCPMapping,
+  updateMCPFeed,
 } from "@/api";
 import { useFolders } from "@/hooks/useFolders";
 import {
@@ -44,9 +46,9 @@ import type {
   MCPSuggestResult,
   MCPToolsResponse,
 } from "@/types/mcp";
+import type { Feed } from "@/types/api";
 import { showToast } from "@/stores/toast-store";
 import { MCPFailureBlock } from "./MCPFailureBlock";
-import { MCPJsonEditor } from "./MCPJsonEditor";
 
 const inputClass = cn(
   "h-9 w-full rounded-md border border-border bg-background px-2.5 text-sm text-foreground",
@@ -69,7 +71,7 @@ const MAPPING_FIELD_KEYS: Record<keyof MCPEntryMapping, string> = {
 interface MCPSubscriptionWizardProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** 已加载的连接列表（由 AI 栏的 MCP 服务段传进来） */
+  /** 已加载的连接列表（由 AI 栏的 MCP 服务段传进来；为空时向导自己拉） */
   servers: MCPServer[];
   /** 建好订阅后的回调（外壳去让订阅列表失效） */
   onCreated?: () => void | Promise<void>;
@@ -77,6 +79,12 @@ interface MCPSubscriptionWizardProps {
   presetServerId?: string;
   /** 向导第 1 步「+ 新建连接」：回外壳开连接对话框（向导先关） */
   onNeedConnection?: () => void;
+  /**
+   * 编辑模式（16-14）：传 MCP 订阅的 feed，按它的 mcpConfig 回填
+   * 连接/工具-资源/参数/映射/分页/标题/文件夹，保存走更新接口。
+   * 入口在订阅编辑页（AI 栏不另起入口）。
+   */
+  editFeed?: Feed | null;
 }
 
 /**
@@ -90,13 +98,34 @@ interface MCPSubscriptionWizardProps {
 export function MCPSubscriptionWizard({
   open,
   onOpenChange,
-  servers,
+  servers: serversProp,
   onCreated,
   presetServerId,
   onNeedConnection,
+  editFeed,
 }: MCPSubscriptionWizardProps) {
   const { t } = useTranslation();
   const { data: folders = [] } = useFolders();
+
+  const isEditing = editFeed?.sourceType === "mcp" && !!editFeed.mcpConfig;
+
+  /** 连接列表：外壳传了就用，没传（订阅编辑页入口）自己拉 */
+  const [loadedServers, setLoadedServers] = useState<MCPServer[] | null>(null);
+  useEffect(() => {
+    if (!open || serversProp.length > 0 || loadedServers !== null) return;
+    let cancelled = false;
+    void listMCPServers()
+      .then((list) => {
+        if (!cancelled) setLoadedServers(list);
+      })
+      .catch(() => {
+        if (!cancelled) setLoadedServers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, serversProp.length, loadedServers]);
+  const servers = serversProp.length > 0 ? serversProp : (loadedServers ?? []);
 
   const [screen, setScreen] = useState(0);
   const [serverId, setServerId] = useState("");
@@ -146,20 +175,25 @@ export function MCPSubscriptionWizard({
     [selectable, serverId],
   );
 
-  /** 打开时重置（可选带 presetServerId 直接落在第一屏已选好） */
+  /** 打开时重置：编辑模式按 feed.mcpConfig 回填，新建走空草稿（可带 presetServerId） */
   useEffect(() => {
     if (!open) return;
+    const config = isEditing ? editFeed?.mcpConfig : undefined;
     setScreen(0);
-    setServerId(presetServerId ?? "");
-    setKind("tool");
-    setToolName("");
-    setResourceUri("");
-    setArgsText("");
-    setLimit(5);
-    setPageMode("single");
-    setMaxPages(MCP_DEFAULT_MAX_PAGES);
-    setMaxItems(MCP_DEFAULT_MAX_ITEMS);
-    setMappingDraft(emptyMappingDraft());
+    setServerId(config?.serverId ?? presetServerId ?? "");
+    setKind(config?.kind ?? "tool");
+    setToolName(config?.toolName ?? "");
+    setResourceUri(config?.resourceUri ?? "");
+    setArgsText(
+      config?.arguments ? JSON.stringify(config.arguments, null, 2) : "",
+    );
+    setLimit(config?.limit && config.limit > 0 ? config.limit : 5);
+    setPageMode(config?.pagination?.mode === "history" ? "history" : "single");
+    setMaxPages(config?.pagination?.maxPages ?? MCP_DEFAULT_MAX_PAGES);
+    setMaxItems(config?.pagination?.maxItems ?? MCP_DEFAULT_MAX_ITEMS);
+    setMappingDraft(
+      config?.mapping ? mappingDraftFromMapping(config.mapping) : emptyMappingDraft(),
+    );
     setTools(null);
     setToolsError(null);
     setSuggestion(null);
@@ -170,11 +204,11 @@ export function MCPSubscriptionWizard({
     setIsSuggesting(false);
     setSuggestError(null);
     setAiSuggestion(null);
-    setTitle("");
-    setTitleTouched(false);
-    setFolderId("");
+    setTitle(editFeed?.title ?? "");
+    setTitleTouched(Boolean(editFeed?.title));
+    setFolderId(editFeed?.folderId ?? "");
     setCreateError(null);
-  }, [open, presetServerId]);
+  }, [open, presetServerId, isEditing, editFeed]);
 
   /** 选了连接就拉工具/资源清单 */
   useEffect(() => {
@@ -296,9 +330,11 @@ export function MCPSubscriptionWizard({
   useEffect(() => {
     if (!open) return;
     if (screen !== 1) return;
+    // 编辑模式不自动推断：回填的就是要改的那份，推断会把它覆盖掉
+    if (isEditing) return;
     if (suggestion || isInspecting) return;
     void runSuggestion();
-  }, [open, screen, suggestion, isInspecting, runSuggestion]);
+  }, [open, screen, suggestion, isInspecting, runSuggestion, isEditing]);
 
   const handlePreview = useCallback(async () => {
     if (!selectedServer) return;
@@ -394,32 +430,44 @@ export function MCPSubscriptionWizard({
     setIsCreating(true);
     setCreateError(null);
     try {
-      await createMCPFeed({
-        title: feedTitle,
-        folderId: folderId || undefined,
-        mcpConfig: buildMCPFeedConfig({
-          serverId: selectedServer.id,
-          kind,
-          toolName: kind === "tool" ? toolName : undefined,
-          resourceUri: kind === "resource" ? resourceUri : undefined,
-          arguments:
-            kind === "tool" && parsedArgs.ok ? parsedArgs.value : undefined,
-          limit: kind === "tool" ? limit : undefined,
-          mapping,
-          tier: preview?.tier,
-          keyLevel: preview?.keyLevel,
-          pagination:
-            kind === "tool" && pageMode === "history"
-              ? {
-                  mode: "history",
-                  maxPages,
-                  maxItems,
-                }
-              : undefined,
-        }),
+      const config = buildMCPFeedConfig({
+        serverId: selectedServer.id,
+        kind,
+        toolName: kind === "tool" ? toolName : undefined,
+        resourceUri: kind === "resource" ? resourceUri : undefined,
+        arguments:
+          kind === "tool" && parsedArgs.ok ? parsedArgs.value : undefined,
+        limit: kind === "tool" ? limit : undefined,
+        mapping,
+        tier: preview?.tier,
+        keyLevel: preview?.keyLevel,
+        pagination:
+          kind === "tool" && pageMode === "history"
+            ? {
+                mode: "history",
+                maxPages,
+                maxItems,
+              }
+            : undefined,
       });
-      await onCreated?.();
-      showToast(t("ai_settings.mcp_feed_created", { title: feedTitle }));
+      if (isEditing && editFeed) {
+        // 编辑模式：标题/文件夹 + 整份 mcpConfig 展平，走更新接口
+        await updateMCPFeed(editFeed.id, {
+          ...config,
+          title: feedTitle,
+          folderId: folderId || undefined,
+        });
+        await onCreated?.();
+        showToast(t("ai_settings.mcp_feed_updated", { title: feedTitle }));
+      } else {
+        await createMCPFeed({
+          title: feedTitle,
+          folderId: folderId || undefined,
+          mcpConfig: config,
+        });
+        await onCreated?.();
+        showToast(t("ai_settings.mcp_feed_created", { title: feedTitle }));
+      }
       onOpenChange(false);
     } catch (err) {
       if (err instanceof ApiError && err.message === "feed_exists") {
@@ -451,6 +499,8 @@ export function MCPSubscriptionWizard({
     pageMode,
     maxPages,
     maxItems,
+    isEditing,
+    editFeed,
     onCreated,
     onOpenChange,
     t,
@@ -479,7 +529,11 @@ export function MCPSubscriptionWizard({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl p-0">
         <DialogHeader className="p-4">
-          <DialogTitle>{t("ai_settings.mcp_new_subscription")}</DialogTitle>
+          <DialogTitle>
+            {isEditing
+              ? t("ai_settings.mcp_edit_subscription")
+              : t("ai_settings.mcp_new_subscription")}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="max-h-[72vh] space-y-4 overflow-y-auto px-4 pb-4">
@@ -609,11 +663,13 @@ export function MCPSubscriptionWizard({
                         <span className="text-xs text-muted-foreground">
                           {t("ai_settings.mcp_arguments")}
                         </span>
-                        <MCPJsonEditor
+                        {/* 工具参数 JSON：裸 TextArea（等宽），非法时行内提示；三按钮已删（16-9 返工） */}
+                        <TextArea
+                          aria-label={t("ai_settings.mcp_arguments")}
                           value={argsText}
-                          onChange={setArgsText}
-                          ariaLabel={t("ai_settings.mcp_arguments")}
+                          onChange={(event) => setArgsText(event.target.value)}
                           rows={3}
+                          className="w-full font-mono text-xs"
                         />
                         {!parsedArgs.ok && (
                           <p className="text-xs text-destructive">
@@ -914,7 +970,7 @@ export function MCPSubscriptionWizard({
                   </p>
                 )}
 
-                {preview && preview.preview.length > 0 && (
+                {preview && (preview.preview ?? []).length > 0 && (
                   <PreviewTable preview={preview} />
                 )}
 
@@ -1063,7 +1119,9 @@ export function MCPSubscriptionWizard({
               >
                 {isCreating
                   ? t("settings.saving")
-                  : t("ai_settings.mcp_create")}
+                  : isEditing
+                    ? t("actions.save")
+                    : t("ai_settings.mcp_create")}
               </Button>
             )}
           </div>
@@ -1105,7 +1163,7 @@ function PreviewTable({
         )}
       </div>
       <div className="divide-y divide-border rounded-lg border border-border">
-        {preview.preview.slice(0, 5).map((item, index) => (
+        {(preview.preview ?? []).slice(0, 5).map((item, index) => (
           <div
             key={`${item.key}-${index}`}
             className="grid grid-cols-[minmax(0,1fr)_150px_170px] gap-2 px-3 py-2"

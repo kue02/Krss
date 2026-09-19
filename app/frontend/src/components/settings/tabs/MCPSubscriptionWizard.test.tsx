@@ -14,9 +14,11 @@ import type {
 } from "@/types/mcp";
 
 const mocks = vi.hoisted(() => ({
+  listMCPServers: vi.fn(),
   listMCPServerTools: vi.fn(),
   inspectMCPServer: vi.fn(),
   createMCPFeed: vi.fn(),
+  updateMCPFeed: vi.fn(),
   suggestMCPMapping: vi.fn(),
 }));
 
@@ -42,9 +44,11 @@ vi.mock("@/api", () => ({
       this.status = status;
     }
   },
+  listMCPServers: mocks.listMCPServers,
   listMCPServerTools: mocks.listMCPServerTools,
   inspectMCPServer: mocks.inspectMCPServer,
   createMCPFeed: mocks.createMCPFeed,
+  updateMCPFeed: mocks.updateMCPFeed,
   suggestMCPMapping: mocks.suggestMCPMapping,
 }));
 
@@ -322,6 +326,29 @@ describe("MCP 建源向导（3 屏）", () => {
     ).toBe("sections.1");
   });
 
+  it("预览失败（preview 为 null）不白屏，走共用失败块", async () => {
+    mocks.inspectMCPServer.mockResolvedValue({
+      ...SUGGESTION,
+      preview: null,
+      total: 0,
+      error: "HTTP 502",
+      failure: {
+        bucket: "upstream",
+        code: "bad_gateway",
+        title: "上游网关错误（502）",
+        suggestion: "稍后重试",
+        raw: "502",
+      },
+    });
+    renderWizard();
+    await gotoScreen2();
+
+    fireEvent.click(buttonFor("ai_settings.mcp_preview"));
+    // 失败块出来，页面没白（第 2 屏标题还在）
+    expect(await screen.findByText("上游网关错误（502）")).toBeTruthy();
+    expect(screen.getByText("ai_settings.mcp_screen_2")).toBeTruthy();
+  });
+
   it("预览失败走共用失败块（人话标题），不是一句 error 原文", async () => {
     mocks.inspectMCPServer.mockResolvedValue({
       ...SUGGESTION,
@@ -339,5 +366,94 @@ describe("MCP 建源向导（3 屏）", () => {
 
     fireEvent.click(buttonFor("ai_settings.mcp_preview"));
     expect(await screen.findByText("需要授权（401）")).toBeTruthy();
+  });
+});
+
+describe("MCP 订阅编辑（16-14：向导编辑模式）", () => {
+  const EDIT_FEED = {
+    id: "f9",
+    folderId: "folder-1",
+    title: "旧标题",
+    url: "mcp://1/tool/search_notes",
+    type: "article",
+    sourceType: "mcp",
+    mcpConfig: {
+      serverId: "s1",
+      kind: "tool",
+      toolName: "search_notes",
+      arguments: { q: "AI" },
+      limit: 5,
+      mapping: { listPath: "data.items", title: "headline", url: "link", id: "id" },
+    },
+    createdAt: "2026-09-18T00:00:00Z",
+    updatedAt: "2026-09-18T00:00:00Z",
+  } as const;
+
+  it("打开即按 feed.mcpConfig 回填：标题用编辑态标题，保存走更新接口", async () => {
+    mocks.inspectMCPServer.mockResolvedValue(PREVIEW);
+    mocks.updateMCPFeed.mockResolvedValue({ id: "f9" });
+
+    render(
+      <MCPSubscriptionWizard
+        open
+        onOpenChange={() => {}}
+        servers={[server()]}
+        editFeed={{ ...EDIT_FEED }}
+      />,
+    );
+
+    // 标题是编辑态标题，不是新建
+    expect(
+      await screen.findByText("ai_settings.mcp_edit_subscription"),
+    ).toBeTruthy();
+
+    // 第 1 屏直接能下一步（连接+工具已回填）
+    fireEvent.click(buttonFor("ai_settings.mcp_next"));
+    await waitFor(() =>
+      expect(mocks.listMCPServerTools).toHaveBeenCalledWith("s1"),
+    );
+    fireEvent.click(buttonFor("ai_settings.mcp_next"));
+
+    // 第 2 屏映射已回填旧值（不是自动推断的新值 name）
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByLabelText(
+            "ai_settings.mcp_mapping_title",
+          ) as HTMLInputElement
+        ).value,
+      ).toBe("headline"),
+    );
+
+    // 预览门禁照样卡：回填不算预览过，必须重新预览
+    fireEvent.click(buttonFor("ai_settings.mcp_preview"));
+    await waitFor(() => expect(screen.getByText("第一条")).toBeTruthy());
+
+    fireEvent.click(buttonFor("ai_settings.mcp_next"));
+    // 第 3 屏标题回填旧标题
+    await waitFor(() =>
+      expect(
+        (screen.getByLabelText("ai_settings.mcp_feed_title") as HTMLInputElement)
+          .value,
+      ).toBe("旧标题"),
+    );
+
+    fireEvent.click(buttonFor("actions.save"));
+    await waitFor(() =>
+      expect(mocks.updateMCPFeed).toHaveBeenCalledTimes(1),
+    );
+    const [id, payload] = mocks.updateMCPFeed.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(id).toBe("f9");
+    expect(payload).toMatchObject({
+      title: "旧标题",
+      folderId: "folder-1",
+      serverId: "s1",
+      kind: "tool",
+      toolName: "search_notes",
+    });
+    expect(mocks.createMCPFeed).not.toHaveBeenCalled();
   });
 });

@@ -7,7 +7,8 @@ import {
   Chip,
   Dropdown,
   Label,
-  Tabs,
+  Table,
+  TextArea,
   ToggleButton,
   ToggleButtonGroup,
 } from "@heroui/react";
@@ -37,6 +38,7 @@ import {
   buildMCPServerPayload,
   buildOAuthCallbackURL,
   emptyMCPServerDraft,
+  formatMCPJSON,
   MCP_DEFAULT_CONCURRENCY,
   MCP_DEFAULT_REFRESH_INTERVAL_MINUTES,
   MCP_DEFAULT_TIMEOUT_SECONDS,
@@ -61,7 +63,6 @@ import type {
 import { showToast } from "@/stores/toast-store";
 import { MCPSubscriptionWizard } from "./MCPSubscriptionWizard";
 import { MCPFailureBlock } from "./MCPFailureBlock";
-import { MCPJsonEditor } from "./MCPJsonEditor";
 import { MCPJsonView } from "./MCPJsonView";
 
 const inputClass = cn(
@@ -72,12 +73,36 @@ const inputClass = cn(
 
 const labelClass = "text-sm font-medium text-foreground";
 
-/**
- * 列表栅格（表头与行共用同一模板，缺一不可）：
- * 图标 22 · 名称+副行(1fr) · 状态列 132 · 用途列 92 · 操作列 140。
- * 末列不能用 auto —— 表头与每行是独立 grid，auto 会按各自内容算，1fr 就对不齐了。
- */
-const MCP_ROW_GRID = "grid-cols-[22px_minmax(0,1fr)_132px_92px_140px]";
+/** 八字水印文案键（16-16 警戒区；返工验收通过即摘，整段删掉） */
+function MCPWarnZone({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation();
+  const watermark = t("ai_settings.mcp_warn_watermark");
+  return (
+    <div
+      className={cn(
+        "relative overflow-hidden rounded-[10px] border border-red-200 p-3.5",
+        "bg-[repeating-linear-gradient(-45deg,rgba(220,38,38,0.13)_0_14px,rgba(220,38,38,0.05)_14px_28px),#fef2f2]",
+        "dark:border-red-900/60",
+        "dark:bg-[repeating-linear-gradient(-45deg,rgba(248,113,113,0.14)_0_14px,rgba(248,113,113,0.05)_14px_28px),rgba(69,10,10,0.35)]",
+      )}
+    >
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 flex flex-col justify-around overflow-hidden"
+      >
+        {[0, 1, 2, 3].map((row) => (
+          <span
+            key={row}
+            className="-rotate-[16deg] text-2xl font-extrabold whitespace-nowrap text-red-600/10 tracking-[8px] dark:text-red-400/10"
+          >
+            {`${watermark} · `.repeat(6)}
+          </span>
+        ))}
+      </div>
+      <div className="relative">{children}</div>
+    </div>
+  );
+}
 
 /**
  * AI 设置栏的「MCP 服务」段（16-6 按 mcp-v2-detailed.html 硬布局）。
@@ -94,11 +119,9 @@ export function MCPServersSection() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  /** 弹窗状态：editing 为 null = 新建 */
+  /** 弹窗状态：editing 为 null = 新建（单页对话框，无 Tabs，见 16-6 返工） */
   const [formOpen, setFormOpen] = useState(false);
-  const [formTab, setFormTab] = useState<"paste" | "manual">("paste");
   const [editing, setEditing] = useState<MCPServer | null>(null);
-  const [pasteFill, setPasteFill] = useState<MCPServerDraft | null>(null);
 
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, MCPTestResult>>(
@@ -129,17 +152,13 @@ export function MCPServersSection() {
     void load();
   }, [load]);
 
-  const openCreate = useCallback((tab: "paste" | "manual" = "paste") => {
+  const openCreate = useCallback(() => {
     setEditing(null);
-    setPasteFill(null);
-    setFormTab(tab);
     setFormOpen(true);
   }, []);
 
   const openEdit = useCallback((server: MCPServer) => {
     setEditing(server);
-    setPasteFill(null);
-    setFormTab("manual");
     setFormOpen(true);
   }, []);
 
@@ -147,7 +166,6 @@ export function MCPServersSection() {
     async (server: MCPServer, created: boolean) => {
       setFormOpen(false);
       setEditing(null);
-      setPasteFill(null);
       await load();
       showToast(
         t(
@@ -223,7 +241,9 @@ export function MCPServersSection() {
 
   return (
     <section className="space-y-3 border-t border-border pt-4">
-      {/* 段头：说明 + 入口（按草图：粘贴 JSON 新建 / 新建连接 / + 新建 MCP 订阅） */}
+      {/* 16-16 警戒区：标题+按钮+表格全罩在里面，返工验收通过即摘 */}
+      <MCPWarnZone>
+      {/* 段头：说明 + 入口（返工口径：「粘贴 JSON 新建」并入「新建连接」，只留两个按钮） */}
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <span className="text-sm font-medium">
@@ -237,14 +257,7 @@ export function MCPServersSection() {
           <Button
             size="sm"
             variant="secondary"
-            onPress={() => openCreate("paste")}
-          >
-            {t("ai_settings.mcp_paste_json")}
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            onPress={() => openCreate("manual")}
+            onPress={() => openCreate()}
           >
             <Plus className="size-4" />
             {t("ai_settings.mcp_add_connection")}
@@ -277,65 +290,76 @@ export function MCPServersSection() {
       )}
 
       {servers.length > 0 && (
-        <div className="overflow-hidden rounded-lg border border-border">
-          {/* 列头（与行同栅格，数字按草图钉死） */}
-          <div
-            className={`grid ${MCP_ROW_GRID} items-center gap-3 bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground`}
+        <Table.Root className="overflow-hidden rounded-lg border border-border bg-background">
+          <Table.Content
+            aria-label={t("ai_settings.mcp_servers")}
+            className="w-full table-fixed"
           >
-            <span />
-            <span>{t("ai_settings.mcp_col_name")}</span>
-            <span>{t("ai_settings.mcp_col_status")}</span>
-            <span>{t("ai_settings.mcp_col_purpose")}</span>
-            <span className="text-right">
-              {t("ai_settings.mcp_col_actions")}
-            </span>
-          </div>
-          <div className="divide-y divide-border/60">
-            {servers.map((server) => (
-              <MCPServerRow
-                key={server.id}
-                server={server}
-                testResult={testResults[server.id] ?? null}
-                testing={
-                  testingId === server.id ||
-                  testingId === `${server.id}:redetect`
-                }
-                redetecting={testingId === `${server.id}:redetect`}
-                onTest={() => handleTest(server)}
-                onAuthorize={() => openEdit(server)}
-                onEdit={() => openEdit(server)}
-                onRedetect={() => void runTest(server, true)}
-                onDelete={() => {
-                  setDeleteError(null);
-                  setPendingDelete(server);
-                }}
-                onExit={(exit) => {
-                  // 列表行失败块的出口：需要改草稿的动作都进编辑框
-                  if (exit === "to_sse" || exit === "redetect") {
-                    void runTest(server, true);
-                  } else {
-                    openEdit(server);
+            <Table.Header>
+              {/* 列宽沿用实测值：图标 22 · 名称+副行(1fr) · 状态 132 · 用途 92 · 操作 140 */}
+              <Table.Column
+                className="w-[22px] p-0"
+                aria-label={t("ai_settings.mcp_col_status")}
+              >
+                <span aria-hidden> </span>
+              </Table.Column>
+              <Table.Column isRowHeader>
+                {t("ai_settings.mcp_col_name")}
+              </Table.Column>
+              <Table.Column className="w-[132px]">
+                {t("ai_settings.mcp_col_status")}
+              </Table.Column>
+              <Table.Column className="w-[92px]">
+                {t("ai_settings.mcp_col_purpose")}
+              </Table.Column>
+              <Table.Column className="w-[140px] text-right">
+                {t("ai_settings.mcp_col_actions")}
+              </Table.Column>
+            </Table.Header>
+            <Table.Body>
+              {servers.map((server) => (
+                <MCPServerRow
+                  key={server.id}
+                  server={server}
+                  testResult={testResults[server.id] ?? null}
+                  testing={
+                    testingId === server.id ||
+                    testingId === `${server.id}:redetect`
                   }
-                }}
-              />
-            ))}
-          </div>
-        </div>
+                  redetecting={testingId === `${server.id}:redetect`}
+                  onTest={() => handleTest(server)}
+                  onAuthorize={() => openEdit(server)}
+                  onEdit={() => openEdit(server)}
+                  onRedetect={() => void runTest(server, true)}
+                  onDelete={() => {
+                    setDeleteError(null);
+                    setPendingDelete(server);
+                  }}
+                  onExit={(exit) => {
+                    // 列表行失败块的出口：需要改草稿的动作都进编辑框
+                    if (exit === "to_sse" || exit === "redetect") {
+                      void runTest(server, true);
+                    } else {
+                      openEdit(server);
+                    }
+                  }}
+                />
+              ))}
+            </Table.Body>
+          </Table.Content>
+        </Table.Root>
       )}
+      </MCPWarnZone>
 
       <MCPServerFormDialog
         open={formOpen}
-        tab={formTab}
-        onTabChange={setFormTab}
         onOpenChange={(open) => {
           setFormOpen(open);
           if (!open) {
             setEditing(null);
-            setPasteFill(null);
           }
         }}
         server={editing}
-        pasteFill={pasteFill}
         onSaved={handleSaved}
         onReload={load}
       />
@@ -347,7 +371,7 @@ export function MCPServersSection() {
         onCreated={handleFeedCreated}
         onNeedConnection={() => {
           setWizardOpen(false);
-          openCreate("manual");
+          openCreate();
         }}
       />
 
@@ -521,177 +545,200 @@ function MCPServerRow({
     testResult?.failure ?? server.lastFailure ?? null;
 
   return (
-    <div className="px-3 py-2.5">
-      <div className={`grid ${MCP_ROW_GRID} items-center gap-3`}>
-        {/* 图标 22 */}
-        <span
-          aria-hidden
-          className="size-[22px] shrink-0 rounded-md bg-foreground/10"
-        />
+    <>
+      <Table.Row>
+        {/* 状态圆点列 22（效果图 A：绿/红圆点） */}
+        <Table.Cell>
+          <span
+            aria-hidden
+            className={cn("mx-auto block size-2 rounded-full", status.dot)}
+          />
+        </Table.Cell>
         {/* 名称 + 副行（主机 · 传输 · 能力计数） */}
-        <div className="min-w-0">
-          <div className="truncate text-sm text-foreground">{server.name}</div>
-          <div
-            className="truncate font-mono text-[11px] text-muted-foreground"
-            title={`${server.url} · ${transportLabel} · ${capability}`}
-          >
-            {host} · {transportLabel} · {capability}
-          </div>
-        </div>
-        {/* 状态列 132 */}
-        <span className="flex w-[132px] items-center gap-1.5 text-xs">
-          <span className={cn("size-2 shrink-0 rounded-full", status.dot)} />
-          <span className={cn("truncate", status.danger && "text-destructive")}>
-            {status.text}
-          </span>
-        </span>
-        {/* 用途列 92：标记，不是开关 */}
-        <span className="flex w-[92px] flex-wrap items-center gap-1">
-          {server.purposes.length === 0 && (
-            <span className="text-[11px] text-muted-foreground">—</span>
-          )}
-          {server.purposes.map((purpose) => (
-            <Chip
-              key={purpose}
-              size="sm"
-              variant="tertiary"
-              color={purpose === "feed" ? "accent" : "default"}
-              className="border border-border"
+        <Table.Cell>
+          <div className="min-w-0">
+            <div className="truncate text-sm text-foreground">
+              {server.name}
+            </div>
+            <div
+              className="truncate font-mono text-[11px] text-muted-foreground"
+              title={`${server.url} · ${transportLabel} · ${capability}`}
             >
-              {t(
-                purpose === "feed"
-                  ? "ai_settings.mcp_purpose_feed"
-                  : "ai_settings.mcp_purpose_ai",
-              )}
-            </Chip>
-          ))}
-        </span>
-        {/* 操作列 140：与栅格末列同宽，内容右对齐吃掉余量 */}
-        <span className="flex w-[140px] items-center justify-end gap-1">
-          {needsAuth ? (
-            <Button size="sm" variant="ghost" onPress={onAuthorize}>
-              {t("ai_settings.mcp_oauth_authorize")}
-            </Button>
-          ) : (
+              {host} · {transportLabel} · {capability}
+            </div>
+          </div>
+        </Table.Cell>
+        {/* 状态列 132 */}
+        <Table.Cell>
+          <span className="flex items-center gap-1.5 text-xs">
+            <span className={cn("truncate", status.danger && "text-destructive")}>
+              {status.text}
+            </span>
+          </span>
+        </Table.Cell>
+        {/* 用途列 92：标记，不是开关 */}
+        <Table.Cell>
+          <span className="flex flex-wrap items-center gap-1">
+            {server.purposes.length === 0 && (
+              <span className="text-[11px] text-muted-foreground">—</span>
+            )}
+            {server.purposes.map((purpose) => (
+              <Chip
+                key={purpose}
+                size="sm"
+                variant="tertiary"
+                color={purpose === "feed" ? "accent" : "default"}
+                className="border border-border"
+              >
+                {t(
+                  purpose === "feed"
+                    ? "ai_settings.mcp_purpose_feed"
+                    : "ai_settings.mcp_purpose_ai",
+                )}
+              </Chip>
+            ))}
+          </span>
+        </Table.Cell>
+        {/* 操作列 140：图标按钮组（测试 ↻ / 编辑 ✎ / 更多 ⋯） */}
+        <Table.Cell>
+          <span className="flex items-center justify-end gap-1">
+            {needsAuth ? (
+              <Button size="sm" variant="ghost" onPress={onAuthorize}>
+                {t("ai_settings.mcp_oauth_authorize")}
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="ghost"
+                isIconOnly
+                isDisabled={testing}
+                aria-label={
+                  redetecting
+                    ? t("ai_settings.mcp_test_redetecting")
+                    : t("ai_settings.mcp_test")
+                }
+                onPress={onTest}
+              >
+                <RefreshCw
+                  className={cn("size-3.5", testing && "animate-spin")}
+                />
+              </Button>
+            )}
             <Button
               size="sm"
               variant="ghost"
-              isDisabled={testing}
-              aria-label={t("ai_settings.mcp_test")}
-              onPress={onTest}
+              isIconOnly
+              aria-label={t("ai_settings.mcp_menu_edit")}
+              onPress={onEdit}
             >
-              <RefreshCw className={cn("size-3.5", testing && "animate-spin")} />
-              {redetecting
-                ? t("ai_settings.mcp_test_redetecting")
-                : t("ai_settings.mcp_test")}
+              <Pencil className="size-3.5" />
             </Button>
-          )}
-          <Button
-            size="sm"
-            variant="ghost"
-            isIconOnly
-            aria-label={t("ai_settings.mcp_menu_edit")}
-            onPress={onEdit}
-          >
-            <Pencil className="size-3.5" />
-          </Button>
-          <Dropdown>
-            <Dropdown.Trigger
-              aria-label={t("ai_settings.mcp_col_actions")}
-              className={cn(
-                "inline-flex size-7 items-center justify-center rounded-md",
-                "text-muted-foreground transition-colors",
-                "hover:bg-secondary hover:text-foreground data-[pressed]:bg-secondary",
-              )}
-            >
-              <MoreHorizontal className="size-4" />
-            </Dropdown.Trigger>
-            <Dropdown.Popover placement="bottom end">
-              <Dropdown.Menu
+            <Dropdown>
+              <Dropdown.Trigger
                 aria-label={t("ai_settings.mcp_col_actions")}
-                onAction={(key) => {
-                  if (key === "test") onTest();
-                  else if (key === "authorize") onAuthorize();
-                  else if (key === "redetect") onRedetect();
-                  else if (key === "edit") onEdit();
-                  else if (key === "delete") onDelete();
-                }}
-              >
-                <Dropdown.Item
-                  key="test"
-                  id="test"
-                  textValue={t("ai_settings.mcp_menu_test")}
-                >
-                  <Label>{t("ai_settings.mcp_menu_test")}</Label>
-                </Dropdown.Item>
-                {server.authType === "oauth" && (
-                  <Dropdown.Item
-                    key="authorize"
-                    id="authorize"
-                    textValue={t("ai_settings.mcp_menu_authorize")}
-                  >
-                    <Label>{t("ai_settings.mcp_menu_authorize")}</Label>
-                  </Dropdown.Item>
+                className={cn(
+                  "inline-flex size-7 items-center justify-center rounded-md",
+                  "text-muted-foreground transition-colors",
+                  "hover:bg-secondary hover:text-foreground data-[pressed]:bg-secondary",
                 )}
-                <Dropdown.Item
-                  key="redetect"
-                  id="redetect"
-                  textValue={t("ai_settings.mcp_menu_redetect")}
+              >
+                <MoreHorizontal className="size-4" />
+              </Dropdown.Trigger>
+              <Dropdown.Popover placement="bottom end">
+                <Dropdown.Menu
+                  aria-label={t("ai_settings.mcp_col_actions")}
+                  onAction={(key) => {
+                    if (key === "test") onTest();
+                    else if (key === "authorize") onAuthorize();
+                    else if (key === "redetect") onRedetect();
+                    else if (key === "edit") onEdit();
+                    else if (key === "delete") onDelete();
+                  }}
                 >
-                  <Label>{t("ai_settings.mcp_menu_redetect")}</Label>
-                </Dropdown.Item>
-                <Dropdown.Item
-                  key="edit"
-                  id="edit"
-                  textValue={t("ai_settings.mcp_menu_edit")}
-                >
-                  <Label>{t("ai_settings.mcp_menu_edit")}</Label>
-                </Dropdown.Item>
-                <Dropdown.Item
-                  key="delete"
-                  id="delete"
-                  textValue={t("ai_settings.mcp_menu_delete")}
-                  variant="danger"
-                >
-                  <Label>{t("ai_settings.mcp_menu_delete")}</Label>
-                </Dropdown.Item>
-              </Dropdown.Menu>
-            </Dropdown.Popover>
-          </Dropdown>
-        </span>
-      </div>
+                  <Dropdown.Item
+                    key="test"
+                    id="test"
+                    textValue={t("ai_settings.mcp_menu_test")}
+                  >
+                    <Label>{t("ai_settings.mcp_menu_test")}</Label>
+                  </Dropdown.Item>
+                  {server.authType === "oauth" && (
+                    <Dropdown.Item
+                      key="authorize"
+                      id="authorize"
+                      textValue={t("ai_settings.mcp_menu_authorize")}
+                    >
+                      <Label>{t("ai_settings.mcp_menu_authorize")}</Label>
+                    </Dropdown.Item>
+                  )}
+                  <Dropdown.Item
+                    key="redetect"
+                    id="redetect"
+                    textValue={t("ai_settings.mcp_menu_redetect")}
+                  >
+                    <Label>{t("ai_settings.mcp_menu_redetect")}</Label>
+                  </Dropdown.Item>
+                  <Dropdown.Item
+                    key="edit"
+                    id="edit"
+                    textValue={t("ai_settings.mcp_menu_edit")}
+                  >
+                    <Label>{t("ai_settings.mcp_menu_edit")}</Label>
+                  </Dropdown.Item>
+                  <Dropdown.Item
+                    key="delete"
+                    id="delete"
+                    textValue={t("ai_settings.mcp_menu_delete")}
+                    variant="danger"
+                  >
+                    <Label>{t("ai_settings.mcp_menu_delete")}</Label>
+                  </Dropdown.Item>
+                </Dropdown.Menu>
+              </Dropdown.Popover>
+            </Dropdown>
+          </span>
+        </Table.Cell>
+      </Table.Row>
 
-      {/* 测试结果行内回显（成功绿 / 失败进共用失败块） */}
+      {/* 测试结果行内回显（成功绿 / 失败进共用失败块）：失败块独占一行 */}
       {testResult && (
-        <div className="mt-1.5 pl-[34px]">
-          {testResult.connected ? (
-            <div className="text-xs text-emerald-600 dark:text-emerald-400">
-              {t("ai_settings.mcp_test_ok", {
-                count: testResult.toolCount,
-                resources: testResult.resourceCount,
-              })}
-              {testResult.transport ? ` · ${testResult.transport}` : ""}
-              {typeof testResult.latencyMs === "number"
-                ? ` · ${testResult.latencyMs}ms`
-                : ""}
+        <Table.Row>
+          <Table.Cell colSpan={5}>
+            <div className="pl-[34px]">
+              {testResult.connected ? (
+                <div className="text-xs text-emerald-600 dark:text-emerald-400">
+                  {t("ai_settings.mcp_test_ok", {
+                    count: testResult.toolCount,
+                    resources: testResult.resourceCount,
+                  })}
+                  {testResult.transport ? ` · ${testResult.transport}` : ""}
+                  {typeof testResult.latencyMs === "number"
+                    ? ` · ${testResult.latencyMs}ms`
+                    : ""}
+                </div>
+              ) : testResult.failure ? (
+                <MCPFailureBlock failure={testResult.failure} onExit={onExit} />
+              ) : (
+                <div className="break-all text-xs text-destructive">
+                  {testResult.error || t("ai_settings.mcp_test_failed")}
+                </div>
+              )}
             </div>
-          ) : testResult.failure ? (
-            <MCPFailureBlock failure={testResult.failure} onExit={onExit} />
-          ) : (
-            <div className="break-all text-xs text-destructive">
-              {testResult.error || t("ai_settings.mcp_test_failed")}
-            </div>
-          )}
-        </div>
+          </Table.Cell>
+        </Table.Row>
       )}
 
       {/* 库里的失败（没刚测过时看它，与上面同一套组件） */}
       {!testResult && failure && (
-        <div className="mt-1.5 pl-[34px]">
-          <MCPFailureBlock failure={failure} onExit={onExit} compact />
-        </div>
+        <Table.Row>
+          <Table.Cell colSpan={5}>
+            <div className="pl-[34px]">
+              <MCPFailureBlock failure={failure} onExit={onExit} compact />
+            </div>
+          </Table.Cell>
+        </Table.Row>
       )}
-    </div>
+    </>
   );
 }
 
@@ -701,24 +748,39 @@ function MCPServerRow({
 
 interface MCPServerFormDialogProps {
   open: boolean;
-  tab: "paste" | "manual";
-  onTabChange: (tab: "paste" | "manual") => void;
   onOpenChange: (open: boolean) => void;
   /** null = 新建 */
   server: MCPServer | null;
-  /** 粘贴识别后「填入表单」的内容（新建时用） */
-  pasteFill: MCPServerDraft | null;
   onSaved: (server: MCPServer, created: boolean) => void;
   onReload: () => void | Promise<void>;
 }
 
+/** 识别结果转表单草稿（粘贴建档默认两种用途都标，向导里可见，编辑里可改） */
+function draftFromParsed(item: MCPParsedServer): MCPServerDraft {
+  const base = emptyMCPServerDraft();
+  return {
+    ...base,
+    name: item.name,
+    transport: item.transport,
+    url: item.url,
+    authType: Object.keys(item.headers).length > 0 ? "header" : "none",
+    headers: Object.entries(item.headers).map(([key, value]) => ({
+      key,
+      value,
+    })),
+    purposes: ["ai", "feed"],
+  };
+}
+
+/** 空草稿（粘贴了但没反填时，保存键按识别结果走） */
+function isEmptyDraft(draft: MCPServerDraft): boolean {
+  return draft.name.trim() === "" && draft.url.trim() === "";
+}
+
 function MCPServerFormDialog({
   open,
-  tab,
-  onTabChange,
   onOpenChange,
   server,
-  pasteFill,
   onSaved,
   onReload,
 }: MCPServerFormDialogProps) {
@@ -728,25 +790,21 @@ function MCPServerFormDialog({
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // 粘贴页状态（只在新建时出现）
+  // 粘贴 JSON（单页的可选段，见 16-6 返工）：失焦自动校验+格式化，成功出卡并反填
   const [pasteText, setPasteText] = useState("");
   const [isCreatingAll, setIsCreatingAll] = useState(false);
   const [createAllError, setCreateAllError] = useState<string | null>(null);
 
-  // 打开时重置表单：编辑回填连接，新建用粘贴填入（或空草稿）
+  // 打开时重置表单：编辑回填连接，新建空草稿
   useEffect(() => {
     if (!open) return;
     /* eslint-disable-next-line react-hooks/set-state-in-effect */
-    setDraft(
-      server
-        ? mcpDraftFromServer(server)
-        : (pasteFill ?? emptyMCPServerDraft()),
-    );
+    setDraft(server ? mcpDraftFromServer(server) : emptyMCPServerDraft());
     setShowErrors(false);
     setSaveError(null);
     setPasteText("");
     setCreateAllError(null);
-  }, [open, server, pasteFill]);
+  }, [open, server]);
 
   const errors = useMemo(() => validateMCPServerDraft(draft), [draft]);
 
@@ -771,14 +829,21 @@ function MCPServerFormDialog({
   };
 
   const handleSave = async () => {
-    if (errors.length > 0) {
+    // 粘贴了但没失焦（没反填）时：单条识别结果直接当这份草稿存，不让用户白点一次保存
+    const single =
+      parsed?.ok && parsed.servers.length === 1 ? parsed.servers[0] : null;
+    const effective = single && isEmptyDraft(draft) ? draftFromParsed(single) : draft;
+    if (single && isEmptyDraft(draft)) {
+      setDraft(effective);
+    }
+    if (validateMCPServerDraft(effective).length > 0) {
       setShowErrors(true);
       return;
     }
     setIsSaving(true);
     setSaveError(null);
     try {
-      const payload = buildMCPServerPayload(draft);
+      const payload = buildMCPServerPayload(effective);
       const saved = server
         ? await updateMCPServer(server.id, payload)
         : await createMCPServer(payload);
@@ -793,29 +858,24 @@ function MCPServerFormDialog({
     }
   };
 
-  /** 识别结果「填入表单」：切到手动页继续改（测完再保存） */
-  const fillFromParsed = useCallback(
-    (item: MCPParsedServer) => {
-      const base = emptyMCPServerDraft();
-      setDraft({
-        ...base,
-        name: item.name,
-        transport: item.transport,
-        url: item.url,
-        authType: Object.keys(item.headers).length > 0 ? "header" : "none",
-        headers: Object.entries(item.headers).map(([key, value]) => ({
-          key,
-          value,
-        })),
-        // 粘贴建档默认两种用途都标（向导里可见，编辑里可改）
-        purposes: ["ai", "feed"],
-      });
-      setShowErrors(false);
-      setSaveError(null);
-      onTabChange("manual");
-    },
-    [onTabChange],
-  );
+  /** 识别结果「填入表单」（失焦自动调；多条不填，只出卡走全部创建） */
+  const fillFromParsed = useCallback((item: MCPParsedServer) => {
+    setDraft(draftFromParsed(item));
+    setShowErrors(false);
+    setSaveError(null);
+  }, []);
+
+  /** 失焦即自动校验+格式化（16-9 返工）：成功格式化并反填（单条），失败只出卡 */
+  const handlePasteBlur = useCallback(() => {
+    if (!pasteText.trim()) return;
+    const formatted = formatMCPJSON(pasteText);
+    if (!formatted.ok) return;
+    setPasteText(formatted.text);
+    const result = parseMCPJSON(formatted.text);
+    if (result.ok && result.servers.length === 1 && result.servers[0]) {
+      fillFromParsed(result.servers[0]);
+    }
+  }, [pasteText, fillFromParsed]);
 
   /** 多条一次建完（用途默认双标，跟全局取数；逐条报错不中断） */
   const handleCreateAll = useCallback(async () => {
@@ -885,32 +945,34 @@ function MCPServerFormDialog({
         </DialogHeader>
 
         <div className="max-h-[70vh] space-y-4 overflow-y-auto px-4 pb-4">
-          {!server && (
-            <Tabs.Root
-              selectedKey={tab}
-              onSelectionChange={(key) =>
-                onTabChange(key as "paste" | "manual")
-              }
-            >
-              <Tabs.List>
-                <Tabs.Tab id="paste">
-                  {t("ai_settings.mcp_tab_paste")}
-                </Tabs.Tab>
-                <Tabs.Tab id="manual">
-                  {t("ai_settings.mcp_tab_manual")}
-                </Tabs.Tab>
-              </Tabs.List>
-
-              <Tabs.Panel id="paste" className="space-y-3 pt-3">
-                <MCPJsonEditor
-                  value={pasteText}
-                  onChange={setPasteText}
-                  ariaLabel={t("ai_settings.mcp_tab_paste")}
-                  rows={5}
-                />
-                <p className="text-xs text-muted-foreground">
-                  {t("ai_settings.mcp_paste_hint")}
-                </p>
+          <ManualForm
+            draft={draft}
+            patch={patch}
+            patchHeader={patchHeader}
+            server={server}
+            transportOptions={transportOptions}
+            fetchOptions={fetchOptions}
+            onReload={onReload}
+            middle={
+              <>
+                {/* 粘贴 JSON（可选）：失焦自动校验+格式化，成功出卡并反填上方表单 */}
+                <div className="space-y-1.5">
+                  <span className={labelClass}>
+                    {t("ai_settings.mcp_paste_json_label")}
+                  </span>
+                  <TextArea
+                    aria-label={t("ai_settings.mcp_paste_json_label")}
+                    value={pasteText}
+                    onChange={(event) => setPasteText(event.target.value)}
+                    onBlur={() => handlePasteBlur()}
+                    rows={4}
+                    className="w-full font-mono text-xs"
+                    placeholder='{"mcpServers":{...}}'
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {t("ai_settings.mcp_paste_hint")}
+                  </p>
+                </div>
 
                 {parsed && !parsed.ok && (
                   <div className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
@@ -1023,40 +1085,16 @@ function MCPServerFormDialog({
                             variant="secondary"
                             onPress={() => fillFromParsed(item)}
                           >
-                            {t("ai_settings.mcp_tab_manual")} →
+                            {t("ai_settings.mcp_fill_form")}
                           </Button>
                         </div>
                       </div>
                     ))}
                   </div>
                 )}
-              </Tabs.Panel>
-
-              <Tabs.Panel id="manual" className="pt-3">
-                <ManualForm
-                  draft={draft}
-                  patch={patch}
-                  patchHeader={patchHeader}
-                  server={server}
-                  transportOptions={transportOptions}
-                  fetchOptions={fetchOptions}
-                  onReload={onReload}
-                />
-              </Tabs.Panel>
-            </Tabs.Root>
-          )}
-
-          {server && (
-            <ManualForm
-              draft={draft}
-              patch={patch}
-              patchHeader={patchHeader}
-              server={server}
-              transportOptions={transportOptions}
-              fetchOptions={fetchOptions}
-              onReload={onReload}
-            />
-          )}
+              </>
+            }
+          />
 
           {showErrors && errors.length > 0 && (
             <ul className="space-y-0.5 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
@@ -1081,16 +1119,14 @@ function MCPServerFormDialog({
           <Button size="sm" variant="ghost" onPress={() => onOpenChange(false)}>
             {t("actions.cancel")}
           </Button>
-          {/* 粘贴页不直接保存（走识别卡 → 填入表单 / 全部创建） */}
-          {!(server === null && tab === "paste") && (
-            <Button
-              size="sm"
-              isDisabled={isSaving}
-              onPress={() => void handleSave()}
-            >
-              {isSaving ? t("settings.saving") : t("actions.save")}
-            </Button>
-          )}
+          {/* 单页恒显示保存（粘贴没反填时按识别结果存，见 handleSave） */}
+          <Button
+            size="sm"
+            isDisabled={isSaving}
+            onPress={() => void handleSave()}
+          >
+            {isSaving ? t("settings.saving") : t("actions.save")}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -1098,7 +1134,7 @@ function MCPServerFormDialog({
 }
 
 // ---------------------------------------------------------------------------
-// 手动填写页（新建的手动 tab / 编辑共用）
+// 表单主体（单页对话框共用：基础字段 → 粘贴 JSON + 识别卡 → 认证 → 用途/取数）
 // ---------------------------------------------------------------------------
 
 interface ManualFormProps {
@@ -1109,6 +1145,8 @@ interface ManualFormProps {
   transportOptions: { value: string; label: string }[];
   fetchOptions: { value: string; label: string }[];
   onReload: () => void | Promise<void>;
+  /** 单页对话框的中间段（粘贴 JSON + 识别结果卡，插在 URL 后、认证前） */
+  middle?: React.ReactNode;
 }
 
 function ManualForm({
@@ -1119,6 +1157,7 @@ function ManualForm({
   transportOptions,
   fetchOptions,
   onReload,
+  middle,
 }: ManualFormProps) {
   const { t } = useTranslation();
   const [testing, setTesting] = useState(false);
@@ -1223,6 +1262,9 @@ function ManualForm({
           className={cn(inputClass, "font-mono text-xs")}
         />
       </div>
+
+      {/* 单页中间段：粘贴 JSON（可选）+ 识别结果卡 */}
+      {middle}
 
       {/* 认证方式 */}
       <div className="space-y-1.5">

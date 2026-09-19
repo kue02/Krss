@@ -218,7 +218,8 @@ export type MCPParseError =
   | "not_json"
   | "not_object"
   | "no_servers_found"
-  | "url_invalid";
+  | "url_invalid"
+  | "stdio_unsupported";
 
 /**
  * 认三种形状：
@@ -256,15 +257,26 @@ export function parseMCPJSON(raw: string): MCPParseResult {
     const entries = Object.entries(bundle as Record<string, unknown>);
     if (entries.length === 0) return { ok: false, error: "no_servers_found" };
     const servers: MCPParsedServer[] = [];
+    let sawStdio = false;
     for (const [name, item] of entries) {
       const one = parseSingleServer(name, item);
+      // stdio 条跳过（桌面端本地进程，网页版起不了）；整包都是 stdio 才报拒识
+      if (one === "stdio") {
+        sawStdio = true;
+        continue;
+      }
       if (one === null) return { ok: false, error: "url_invalid" };
       servers.push(one);
     }
+    if (servers.length === 0 && sawStdio) {
+      return { ok: false, error: "stdio_unsupported" };
+    }
+    if (servers.length === 0) return { ok: false, error: "no_servers_found" };
     return { ok: true, servers };
   }
-  // ②/③-b：单条（{type,url,headers} 或 {url}；command 本地进程不认）
+  // ②/③-b：单条（{type,url,headers} 或 {url}；command 本地进程拒识，见 16-15）
   const one = parseSingleServer("", obj);
+  if (one === "stdio") return { ok: false, error: "stdio_unsupported" };
   if (one === null) {
     if (!hasAnyUrl(obj)) return { ok: false, error: "no_servers_found" };
     return { ok: false, error: "url_invalid" };
@@ -280,15 +292,18 @@ function hasAnyUrl(obj: Record<string, unknown>): boolean {
   );
 }
 
-/** 单条解析：name 为 "" 时从 url 派生默认名 */
-function parseSingleServer(name: string, item: unknown): MCPParsedServer | null {
+/** 单条解析：name 为 "" 时从 url 派生默认名；"stdio" = 桌面端本地进程配置（拒识） */
+function parseSingleServer(
+  name: string,
+  item: unknown,
+): MCPParsedServer | "stdio" | null {
   if (item === null || typeof item !== "object" || Array.isArray(item)) {
     return null;
   }
   const obj = item as Record<string, unknown>;
-  // command+args（stdio 本地进程）：没有 url，不认 —— 明确返回 null 让界面说清
+  // command+args（stdio 本地进程）：没有 url，拒识 —— 返回哨兵让外层报 stdio_unsupported
   if (typeof obj["command"] === "string" && obj["url"] === undefined) {
-    return null;
+    return "stdio";
   }
   const url =
     asString(obj["url"]) ??
@@ -494,7 +509,8 @@ export function isMCPPreviewReady(input: {
   const { result } = input;
   if (!result) return false;
   if (result.error) return false;
-  if (result.preview.length === 0) return false;
+  // 后端失败时 preview 可能是 null（JSON）—— 按空数组算，不许炸
+  if ((result.preview ?? []).length === 0) return false;
   return input.previewSignature !== null &&
     input.previewSignature === input.currentSignature;
 }
@@ -624,17 +640,21 @@ export function mcpFailureExits(
 export function buildMCPClientConfigExample(
   origin?: string,
   transport?: "http" | "sse",
+  token?: string,
 ): string {
   const base = (origin ?? "").trim().replace(/\/+$/, "");
   const endpoint = base ? `${base}/mcp` : "http://<host>:<port>/mcp";
   const type = transport === "sse" ? "sse" : "http";
+  // 17-5：复制即用 —— 有真 Token 直接填进去，不用再手动换占位符
+  const authorization =
+    token && token.trim() ? `Bearer ${token.trim()}` : `Bearer ${MCP_TOKEN_PLACEHOLDER}`;
   return JSON.stringify(
     {
       mcpServers: {
         krss: {
           type,
           url: endpoint,
-          headers: { Authorization: `Bearer ${MCP_TOKEN_PLACEHOLDER}` },
+          headers: { Authorization: authorization },
         },
       },
     },
