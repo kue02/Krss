@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { QueryClient } from "@tanstack/react-query";
 import type { Entry } from "@/types/api";
 import {
   clearDeferredRemovals,
   deferEntryRemoval,
   deferredRemovalIds,
+  deferUnreadRemovals,
   getDeferredRemovalsVersion,
   hasDeferredRemovals,
   mergeDeferredRemovals,
@@ -90,5 +92,62 @@ describe("deferred-removal", () => {
     unsubscribe();
     clearDeferredRemovals();
     expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  describe("deferUnreadRemovals（24-1：点开看过的离列表才摘）", () => {
+    function seedClient(lists: { unreadOnly: boolean; entries: Entry[] }[]) {
+      const client = new QueryClient();
+      for (const [i, list] of lists.entries()) {
+        client.setQueryData(["entries", { unreadOnly: list.unreadOnly, tag: i }], {
+          pages: [{ entries: list.entries, hasMore: false }],
+        });
+      }
+      return client;
+    }
+
+    it("只看未读查询里的已读条目会被记下（带本体 + 下标）", () => {
+      const a = makeEntry("a");
+      const b = makeEntry("b");
+      const client = seedClient([{ unreadOnly: true, entries: [a, b] }]);
+      client.setQueryData(["entry", "b"], { ...b, read: true });
+
+      deferUnreadRemovals(client, new Set(["b"]));
+
+      expect(deferredRemovalIds()).toEqual(["b"]);
+      // 重拉换掉后按原下标插回已读态
+      const merged = mergeDeferredRemovals([a]);
+      expect(merged.map((item) => item.id)).toEqual(["a", "b"]);
+      expect(merged[1]?.read).toBe(true);
+    });
+
+    it("非未读查询（全部/星标）里的条目不记", () => {
+      const a = makeEntry("a");
+      const client = seedClient([{ unreadOnly: false, entries: [a] }]);
+      client.setQueryData(["entry", "a"], { ...a, read: true });
+
+      deferUnreadRemovals(client, new Set(["a"]));
+
+      expect(hasDeferredRemovals()).toBe(false);
+    });
+
+    it("缓存里已经没了的 id 不记（重拉换掉了，本来就不用留）", () => {
+      const client = seedClient([
+        { unreadOnly: true, entries: [makeEntry("a")] },
+      ]);
+
+      deferUnreadRemovals(client, new Set(["ghost"]));
+
+      expect(hasDeferredRemovals()).toBe(false);
+    });
+
+    it("又被切回未读的不记", () => {
+      const a = makeEntry("a");
+      const client = seedClient([{ unreadOnly: true, entries: [a] }]);
+      client.setQueryData(["entry", "a"], { ...a, read: false });
+
+      deferUnreadRemovals(client, new Set(["a"]));
+
+      expect(hasDeferredRemovals()).toBe(false);
+    });
   });
 });

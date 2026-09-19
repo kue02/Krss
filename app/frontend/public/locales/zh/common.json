@@ -310,6 +310,7 @@
     "copied_link": "已复制链接",
     "mark_read": "标为已读",
     "mark_unread": "标为未读",
+    "mark_above_read": "标记上方为已读",
     "reading_progress": "阅读进度",
     "close": "关闭",
     "min_read": "{{mins}} 分钟阅读",
@@ -693,6 +694,8 @@
     "timeline_granularity_day": "每天",
     "timeline_collapse": "折叠行数",
     "timeline_collapse_hint": "卡片默认折叠，点「展开全文」就地展开（不跳时间轴）",
+    "timeline_single_side": "窄栏合为一栏",
+    "timeline_single_side_hint": "容器变窄时自动把左右两栏合成一栏",
     "timeline_lines_1": "1 行",
     "timeline_lines_2": "2 行",
     "timeline_lines_3": "3 行",
@@ -1003,6 +1006,7 @@
     "entries_count": "{{count}} 条",
     "more_entries": "还有 {{count}} 条",
     "expand": "展开全文",
-    "collapse": "收起"
+    "collapse": "收起",
+    "resize_hint": "拖动调整高度"
   }
 }

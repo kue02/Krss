@@ -9,7 +9,7 @@ import {
 import { useMarkManyAsRead, useRemoveFromUnreadList } from "@/hooks/useEntries";
 import type { Entry } from "@/types/api";
 import type { ScrollSurface } from "./scroll-surface";
-import { clearDeferredRemovals, deferEntryRemoval } from "./deferred-removal";
+import { clearDeferredRemovals, deferEntryRemoval, deferredRemovalIds as getDeferredRemovalIds } from "./deferred-removal";
 
 const MARK_READ_ON_SCROLL_BATCH_DELAY_MS = 200;
 const MARK_READ_ON_SCROLL_GRACE_MS = 1000;
@@ -171,9 +171,16 @@ export function useScrollMarkRead({
      * 把上一段滚动标掉的条目**一次摘掉**：回来时它们就不在了。
      * 这就是用户要的「切换离开当前视图、或换订阅再回来，这些已读条目才消失」——
      * 延迟摘除模式下 flush 阶段不摘（否则条目被往上顶）。
+     *
+     * 24-1：点开看过的条目（EntryContent 卸载时记的）也在同一张记账里，
+     * 一起摘 —— 否则它们会一直留在缓存里不消失。
      */
-    if (deferredRemovalIds.current.size > 0) {
-      removeFromUnreadList(new Set(deferredRemovalIds.current));
+    const pendingIds = new Set<string>([
+      ...deferredRemovalIds.current,
+      ...getDeferredRemovalIds(),
+    ]);
+    if (pendingIds.size > 0) {
+      removeFromUnreadList(pendingIds);
       deferredRemovalIds.current.clear();
     }
     // 22-3：同时把「先别消失」的记账清掉 —— 这一步之后回来的列表本来就不该再有它们

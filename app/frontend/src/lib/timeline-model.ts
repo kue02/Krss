@@ -42,11 +42,13 @@ export const TIMELINE_COLLAPSES: readonly TimelineCollapse[] = [
 export const DEFAULT_TIMELINE_COLLAPSE: TimelineCollapse = "2";
 
 /**
- * 窄栏退化阈值（15-1）：中栏（第二栏）宽度**小于**这个值就退化成单侧时间线。
- * 385 来自效果图那张对照表 —— 350px 时交替布局的卡片只剩 ~130px，
- * 已经读不了（效果图里也标了「建议窄栏自动切单侧」）。
+ * 窄栏退化阈值：时间线容器宽度**小于**这个值就退化成单侧时间线
+ * （左时间列 + 右卡片，移动端就是这个形态）。
+ * 768 对齐移动端断点（`MOBILE_BREAKPOINT` / `SETTINGS_MOBILE_BREAKPOINT`）——
+ * 用户反馈：桌面两栏后容器恒宽 65ch，385 的旧阈值永远触发不了，「合一栏跟没了似的」。
+ * 关掉「窄栏合一栏」设置则始终左右交替。
  */
-export const TIMELINE_SINGLE_SIDE_WIDTH = 385;
+export const TIMELINE_SINGLE_SIDE_WIDTH = 768;
 
 /** 同一时间桶里最多平铺几张卡，再多就吸成「小节点 + 计数」（可点开，就地展开） */
 export const TIMELINE_BUCKET_CARD_LIMIT = 3;
@@ -110,7 +112,7 @@ export function timelineCollapseClampLines(
   return value === "full" ? null : Number(value);
 }
 
-/** 窄栏判定（< 385px 真退化成单侧） */
+/** 窄栏判定（< 768px 即移动端宽度，真退化成单侧） */
 export function isSingleSideWidth(width: number): boolean {
   return width > 0 && width < TIMELINE_SINGLE_SIDE_WIDTH;
 }

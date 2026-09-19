@@ -838,6 +838,31 @@ body.mobile-document-scroll-locked {
   margin: 6px 6px 0 0;
 }
 
+/* ---------------------------------------------------------------------------
+ * 24-6：正文强调（阅读区 + 时间线内展开共用 `.reading-prose` 挂载点）。
+ *
+ * 故意放在所有 @layer 之外（与上面社交卡片引文媒体同理）：未分层规则赢过
+ * utilities 层的 prose 系列，写进 components 层会被 `prose-strong:` 盖掉。
+ *   - 正文 body 变浅到约 68%，加粗保持 800 + 100% 最黑 —— 用明暗差突出加粗；
+ *   - strong 无衬底（背景清掉，免得跟随 mark/高亮底色）；
+ *   - blockquote 斜体**只动默认档**（data-quote-style="block"）：用户在外观里
+ *     切了 divider / card 就听他的，那两档一行不动。
+ * ------------------------------------------------------------------------ */
+.reading-prose {
+  color: color-mix(in srgb, var(--foreground) 68%, transparent);
+}
+
+.reading-prose strong {
+  font-weight: 800;
+  color: var(--foreground);
+  background-color: transparent;
+  background-image: none;
+}
+
+html[data-quote-style="block"] .reading-prose blockquote {
+  font-style: italic;
+}
+
 /* 卡片里的视频也压成 16:9 封面（Folo 的卡片视频就是这个比例），别整段竖屏铺开 */
 .entry-card video,
 .entry-card .article-video {

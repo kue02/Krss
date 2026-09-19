@@ -8,7 +8,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { useEntriesInfinite, useUnreadCounts } from "@/hooks/useEntries";
+import { useEntriesInfinite, useUnreadCounts, useMarkManyAsRead } from "@/hooks/useEntries";
 import { AlertDialog, Button } from "@heroui/react";
 import { useFeeds } from "@/hooks/useFeeds";
 import { useRefreshStatus } from "@/hooks/useRefreshStatus";
@@ -53,7 +53,7 @@ import {
 import { NotificationTimeline } from "./NotificationTimeline";
 import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
 import { useFilterViewStore } from "@/stores/filter-view-store";
-import { ArrowUp, Inbox } from "lucide-react";
+import { ArrowUp, Check, Inbox } from "lucide-react";
 import type { Entry, Feed, Folder, ContentType } from "@/types/api";
 
 /** 刚点刷新时后端可能还没开始跑，这段宽限期内先别宣布「刷完了」（毫秒） */
@@ -277,6 +277,9 @@ export function EntryList({
   const timelineCollapse = resolveTimelineCollapse(
     useUISettingKey("timelineCollapseByView")?.[contentType],
   );
+  /** 窄栏自动合一栏（默认开；关掉则始终左右交替） */
+  const timelineAutoSingleSide =
+    useUISettingKey("timelineSingleSideByView")?.[contentType] !== false;
   /**
    * 轴上可选的条目（被吸进小节点的条目不算节点）：时间线组件回报上来，
    * 键盘 j/k、↑/↓ 就用它做吸附顺序 —— 不会选到看不见的条目。
@@ -410,6 +413,23 @@ export function EntryList({
     () =>
       mergeDeferredRemovals(flattenUniqueEntries(data?.pages)),
     [data, deferredRemovalVersion],
+  );
+
+  // 24-5：右键「标记上方为已读」—— 把这条之上的未读一次标掉。
+  // 与菜单里「标为已读」同语义（直接写库、不推迟摘除），上面被标掉的当场消失。
+  const { mutate: markManyAsRead } = useMarkManyAsRead();
+  const handleMarkAboveEntry = useCallback(
+    (entryId: string) => {
+      const index = entries.findIndex((entry) => entry.id === entryId);
+      if (index <= 0) return;
+      const ids = entries
+        .slice(0, index)
+        .filter((entry) => !entry.read)
+        .map((entry) => entry.id);
+      if (ids.length === 0) return;
+      markManyAsRead({ ids, read: true });
+    },
+    [entries, markManyAsRead],
   );
 
   // 键盘快捷键：j/k 上下篇（选中即已读）、m 已读、s 星标、v 打开原文、Esc 关闭
@@ -957,8 +977,11 @@ export function EntryList({
                   unreadCounts={unreadCounts?.counts}
                   selectedEntryId={selectedEntryId}
                   onSelectEntry={handleSelectEntry}
+                  onMarkAboveEntry={handleMarkAboveEntry}
+                  onCloseEntry={onCloseEntry}
                   granularity={timelineGranularity}
                   collapse={timelineCollapse}
+                  autoSingleSide={timelineAutoSingleSide}
                   autoTranslate={autoTranslate}
                   targetLanguage={targetLanguage}
                   onSelectableEntriesChange={setTimelineSelectableEntries}
@@ -974,6 +997,7 @@ export function EntryList({
                     feed={feedsMap.get(entry.feedId)}
                     isSelected={entry.id === selectedEntryId}
                     onClick={handleSelectEntry}
+                    onMarkAboveEntry={handleMarkAboveEntry}
                     autoTranslate={autoTranslate}
                     targetLanguage={targetLanguage}
                     social={isSocialView}
@@ -982,9 +1006,26 @@ export function EntryList({
                   />
                 ))
               )}
+              {/* 24-5：列表尾整宽弱边框「全部标记为已读」（语义=清当前范围未读，
+                  与列表头那颗同接口 onMarkAllRead；胶囊浮在下面，pb-16 已留白）。
+                  宽度跟时间线/社交卡片同款居中可读宽度，免得在宽栏下失控拉满。 */}
+              {entries.length > 0 && (
+                <div className="mx-auto mt-1 w-full max-w-[clamp(45ch,60vw,65ch)] px-2">
+                  <button
+                    type="button"
+                    data-testid="mark-all-read-footer"
+                    onClick={onMarkAllRead}
+                    className="flex h-[35px] w-full items-center justify-center gap-1.5 rounded-[10px] border border-border bg-transparent px-3 text-[13px] text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
+                  >
+                    <Check className="size-4 shrink-0" />
+                    {t("entry.mark_all_read")}
+                  </button>
+                </div>
+              )}
               {scrollReadEndPaddingHeight > 0 && (
                 <div
                   aria-hidden="true"
+                  data-testid="scroll-read-end-padding"
                   style={{ height: scrollReadEndPaddingHeight }}
                 />
               )}
@@ -1047,7 +1088,7 @@ function EntryListSkeleton() {
               <div
                 className={cn(
                   "shrink-0 rounded-lg bg-secondary/70",
-                  isLarge ? "mt-3 aspect-video w-full" : "size-16",
+                  isLarge ? "mt-3 aspect-video w-full" : "size-[76px]",
                 )}
               />
             )}

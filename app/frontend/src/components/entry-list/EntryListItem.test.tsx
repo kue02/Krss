@@ -89,11 +89,15 @@ describe("EntryListItem", () => {
       />,
     );
 
+    // 24-7：源名走 MarqueeText（默认截断、悬浮跑马灯），时间 ml-auto 贴右缘
     const feedTitle = screen.getByText(feed.title);
     const publishedAt = screen.getByText("3 hours ago");
 
-    expect(feedTitle.className).toContain("truncate");
-    expect(feedTitle.className).not.toContain("flex-1");
+    expect(feedTitle.className).toContain("whitespace-nowrap");
+    const marqueeBox = feedTitle.parentElement;
+    expect(marqueeBox?.className).toContain("overflow-hidden");
+    expect(marqueeBox?.className).toContain("flex-1");
+    expect(publishedAt.className).toContain("ml-auto");
     expect(publishedAt.className).toContain("shrink-0");
     expect(publishedAt.className).toContain("whitespace-nowrap");
   });

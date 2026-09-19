@@ -93,9 +93,10 @@ export function EntryContentHeader({
   return (
     <div className="absolute inset-x-0 top-0 z-20">
       {/* Background and Border Layer */}
+      {/* 对齐 Nextflux ActionButtons：70% 底 + 小 blur + 细边框，无 mask 渐隐（48px 高的条加渐隐会把按钮下半截切淡） */}
       <div
         className={cn(
-          "absolute inset-0 transition-opacity duration-300 ease-in-out pointer-events-none border-b border-border bg-background/95 backdrop-blur-[8px]",
+          "absolute inset-0 transition-opacity duration-300 ease-in-out pointer-events-none border-b border-foreground/10 bg-overlay/70 backdrop-blur-sm",
           isAtTop ? "opacity-0" : "opacity-100",
         )}
       />

@@ -2,6 +2,7 @@ import { forwardRef, memo, useEffect, useRef, useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
+  ChevronsUp,
   Clock,
   ExternalLink,
   Globe,
@@ -17,6 +18,7 @@ import { getEntryImages } from "@/lib/extract-images";
 import { useImagePreviewStore } from "@/stores/image-preview-store";
 import { useTranslationStore } from "@/stores/translation-store";
 import { FeedIcon } from "@/components/ui/feed-icon";
+import { MarqueeText } from "@/components/ui/marquee-text";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -40,6 +42,11 @@ import { stripContentImages } from "@/lib/strip-content-images";
 import { parseSocialSource } from "@/lib/social-source";
 import { removeContentSeparators } from "@/lib/social-content";
 import { copyToClipboard } from "@/stores/toast-store";
+import {
+  isRecoverableProxyUrl,
+  renewProxyCookie,
+  withProxyCacheBust,
+} from "@/lib/proxy-image-recovery";
 import { useInView } from "@/hooks/useInView";
 import { ArticleContent } from "@/components/ui/article-content";
 import { resolveReadingFontStack } from "@/lib/reading-fonts";
@@ -66,6 +73,8 @@ interface EntryListItemProps {
   fetchReadable?: boolean;
   /** 社交媒体视图下：长贴默认展开（按视图设置） */
   autoExpandLong?: boolean;
+  /** 24-5：右键「标记上方为已读」（父级按当前列表顺序算上面有哪些） */
+  onMarkAboveEntry?: (entryId: string) => void;
   style?: React.CSSProperties;
   "data-index"?: number;
   "data-entry-id"?: string;
@@ -127,7 +136,14 @@ function MutedBadge({ filterId }: { filterId?: string }) {
  *
  * 导出给通知视图的时间线卡片复用（同一套菜单，不写第二份）。
  */
-export function EntryContextMenuContent({ entry }: { entry: Entry }) {
+export function EntryContextMenuContent({
+  entry,
+  onMarkAbove,
+}: {
+  entry: Entry;
+  /** 24-5：把这条之上的未读一次标掉（调用方给，时间线卡片复用同一套菜单） */
+  onMarkAbove?: () => void;
+}) {
   const { t } = useTranslation();
   const unmute = useUnmuteEntry();
   const exception = useCreateFilterException();
@@ -142,6 +158,12 @@ export function EntryContextMenuContent({ entry }: { entry: Entry }) {
         <readAction.Icon className="size-4 shrink-0 text-muted-foreground" />
         {t(readAction.labelKey)}
       </ContextMenuItem>
+      {onMarkAbove && (
+        <ContextMenuItem onClick={onMarkAbove}>
+          <ChevronsUp className="size-4 shrink-0 text-muted-foreground" />
+          {t("entry.mark_above_read")}
+        </ContextMenuItem>
+      )}
       <ContextMenuSeparator />
       {entry.muted && (
         <>
@@ -192,6 +214,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
       social = false,
       fetchReadable = false,
       autoExpandLong = false,
+      onMarkAboveEntry,
       style,
       "data-index": dataIndex,
       "data-entry-id": dataEntryId,
@@ -205,6 +228,11 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     const [iconError, setIconError] = useState(false);
     const [imageError, setImageError] = useState(false);
     const [isThumbLoaded, setIsThumbLoaded] = useState(false);
+    // 24-4：代理图 401 先续期再重载一次（cookie 自愈），不行才隐藏
+    const [thumbRecovered, setThumbRecovered] = useState(false);
+    const [recoveredThumbs, setRecoveredThumbs] = useState<Set<string>>(
+      () => new Set(),
+    );
     // 社交媒体视图：长贴是否已手动展开（Folo 的「显示更多」）
     const [bodyExpanded, setBodyExpanded] = useState(false);
     // 展开时先动画到实测高度，动画结束后再交回 auto（对齐 Folo 的 AutoResizeHeight）
@@ -548,16 +576,28 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                           aria-label="查看大图"
                         >
                           <img
-                            src={url}
+                            src={recoveredThumbs.has(url) ? withProxyCacheBust(url) : url}
                             alt=""
                             width={112}
                             height={112}
                             loading="lazy"
                             decoding="async"
                             className="size-28 object-cover transition-transform duration-200 hover:scale-[1.03]"
-                            onError={() =>
-                              setFailedThumbs((prev) => new Set(prev).add(url))
-                            }
+                            onError={() => {
+                              // 24-4：先续期 cookie 再重载一次，不行才隐藏
+                              if (
+                                isRecoverableProxyUrl(url) &&
+                                !recoveredThumbs.has(url)
+                              ) {
+                                void renewProxyCookie().finally(() =>
+                                  setRecoveredThumbs(
+                                    (prev) => new Set(prev).add(url),
+                                  ),
+                                );
+                                return;
+                              }
+                              setFailedThumbs((prev) => new Set(prev).add(url));
+                            }}
                           />
                         </button>
                       ))}
@@ -653,7 +693,12 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
               </div>
             </div>
           </ContextMenuTrigger>
-          <EntryContextMenuContent entry={entry} />
+          <EntryContextMenuContent
+            entry={entry}
+            onMarkAbove={
+              onMarkAboveEntry ? () => onMarkAboveEntry(entry.id) : undefined
+            }
+          />
         </ContextMenu>
       );
     }
@@ -668,11 +713,11 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
               inViewRef.current = node;
             }}
             className={cn(
-              
               // 只过渡真正会变的属性：transition-all 会让几百张卡片为「任何」属性变化做检查
-              "group relative mx-2 mb-1.5 flex cursor-pointer overflow-hidden rounded-[10px] border p-2",
+              "group relative mx-2 mb-1.5 cursor-pointer overflow-hidden rounded-[10px] border p-2",
               "transition-[background-color,border-color,box-shadow,opacity] duration-200",
-              isLargeImage ? "flex-col gap-3" : "items-stretch gap-3",
+              // 24-7：上下结构（来源行顶满 + 标题摘要/右图行），大图档保持纵向
+              isLargeImage ? "flex flex-col gap-3" : "block",
               isSelected
                 ? "border-border/60 bg-card shadow-nf"
                 : "border-transparent hover:bg-item-hover",
@@ -687,50 +732,59 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
             {/* Material 3 涟漪 —— 与 Nextflux 的 ArticleCard 同库同参数 */}
             <Ripple hoverOpacity={0} pressedOpacity={0.05} duration={100} />
 
-            {/* 左：文字区 */}
-            <div className="flex min-w-0 flex-1 flex-col">
-              {/* 来源行 */}
-              <div
-                className={cn(
-                  "flex min-w-0 items-center gap-1.5 overflow-hidden text-xs",
-                  isUnread ? "text-muted-foreground" : "text-muted-foreground/70",
+            {/* 24-7：第一行来源栏顶满宽（头像 20px + 源名 + 时间贴右缘，无小圆点；
+                源名超长默认截断、悬浮跑马灯复用 13-2 的 MarqueeText） */}
+            <div
+              data-entry-source-row=""
+              className={cn(
+                "flex min-w-0 items-center gap-1.5 overflow-hidden text-xs",
+                isUnread ? "text-muted-foreground" : "text-muted-foreground/70",
+              )}
+            >
+              <UnreadIndicator unread={isUnread} count={feedUnreadCount}>
+                {showIcon ? (
+                  <img
+                    src={`/icons/${feed.iconPath}`}
+                    alt=""
+                    width={20}
+                    height={20}
+                    loading="lazy"
+                    decoding="async"
+                    className="size-5 shrink-0 rounded-[var(--ui-icon-radius,3px)] object-contain"
+                    onError={() => setIconError(true)}
+                  />
+                ) : (
+                  <FeedIcon className="size-5 shrink-0 text-muted-foreground/50" />
                 )}
-              >
-                <UnreadIndicator unread={isUnread} count={feedUnreadCount}>
-                  {showIcon ? (
-                    <img
-                      src={`/icons/${feed.iconPath}`}
-                      alt=""
-                      width={20}
-                      height={20}
-                      loading="lazy"
-                      decoding="async"
-                      className="size-5 shrink-0 rounded-[var(--ui-icon-radius,3px)] object-contain"
-                      onError={() => setIconError(true)}
-                    />
-                  ) : (
-                    <FeedIcon className="size-5 shrink-0 text-muted-foreground/50" />
-                  )}
-                </UnreadIndicator>
-                <span className="block min-w-0 truncate font-bold">
-                  {displayFeedName}
+              </UnreadIndicator>
+              <MarqueeText
+                text={displayFeedName}
+                className="min-w-0 flex-1 font-bold"
+              />
+              {publishedAt && (
+                <span
+                  data-entry-time=""
+                  className="ml-auto shrink-0 whitespace-nowrap pl-2"
+                >
+                  {publishedAt}
                 </span>
-                {publishedAt && (
-                  <>
-                    <span className="shrink-0 text-muted-foreground/40">·</span>
-                    <span className="shrink-0 whitespace-nowrap">
-                      {publishedAt}
-                    </span>
-                  </>
-                )}
-                {entry.muted && <MutedBadge filterId={entry.filterId} />}
-              </div>
+              )}
+              {entry.muted && <MutedBadge filterId={entry.filterId} />}
+            </div>
 
-              {/* 标题 */}
-              <div
-                className={cn(
-                  "mt-1.5 text-base font-semibold leading-6 wrap-anywhere",
-                  titleContainsUrl ? "line-clamp-3" : "line-clamp-2",
+            {/* 24-7：第二行标题摘要 + 右侧缩略图（固定 76×76、object-cover、
+                相对标题摘要块垂直居中 —— 不等高，避免压扁/裁切） */}
+            <div
+              className={cn(
+                isLargeImage ? "mt-3 flex flex-col gap-3" : "mt-1.5 flex items-center gap-3",
+              )}
+            >
+              <div className="min-w-0 flex-1">
+                {/* 标题 */}
+                <div
+                  className={cn(
+                    "text-base font-semibold leading-6 wrap-anywhere",
+                    titleContainsUrl ? "line-clamp-3" : "line-clamp-2",
                   // Nextflux 只用 opacity 表示已读；这里标题始终是前景色，
                   // 已读/未读只差字重，避免再叠一层灰导致正文难以辨认
                   // 已读 / 未读**不切字重**（对齐 Nextflux 的 ArticleCard：字体恒为 font-semibold，只用颜色区分）。
@@ -761,28 +815,33 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                 </div>
               )}
 
-              {/* 阅读时长（沉底） */}
+              {/* 阅读时长 */}
               {readingTime && (
-                <div className="mt-auto flex items-center gap-1 pt-2 text-xs text-muted-foreground/80">
+                <div className="mt-1 flex items-center gap-1 pt-1 text-xs text-muted-foreground/80">
                   <Clock className="size-3 shrink-0" />
                   <span className="line-clamp-1">{readingTime}</span>
                 </div>
               )}
-            </div>
+              </div>
 
-            {/* 缩略图：小图贴右，大图铺在正文下方 */}
-            {showThumbnail && (
-              <div
-                className={cn(
-                  "overflow-hidden rounded-lg bg-secondary",
-                  !isThumbLoaded && "animate-pulse",
-                  isLargeImage
-                    ? "h-[168px] w-full shrink-0"
-                    : "h-[92px] w-[92px] shrink-0 self-start",
-                )}
-              >
+              {/* 缩略图：小图贴右（固定 76×76、垂直居中），大图铺在正文下方 */}
+              {showThumbnail && (
+                <div
+                  data-entry-thumb=""
+                  className={cn(
+                    "overflow-hidden rounded-lg bg-secondary",
+                    !isThumbLoaded && "animate-pulse",
+                    isLargeImage
+                      ? "h-[168px] w-full shrink-0"
+                      : "size-[76px] shrink-0 self-center",
+                  )}
+                >
                 <img
-                  src={thumbnail ?? ""}
+                  src={
+                    thumbRecovered && thumbnail
+                      ? withProxyCacheBust(thumbnail)
+                      : (thumbnail ?? "")
+                  }
                   alt=""
                   loading="lazy"
                   decoding="async"
@@ -791,14 +850,33 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                     isThumbLoaded ? "opacity-100" : "opacity-0",
                   )}
                   onLoad={() => setIsThumbLoaded(true)}
-                  onError={() => setImageError(true)}
+                  onError={() => {
+                    // 24-4：先续期 cookie 再重载一次，不行才隐藏
+                    if (
+                      !thumbRecovered &&
+                      thumbnail &&
+                      isRecoverableProxyUrl(thumbnail)
+                    ) {
+                      void renewProxyCookie().finally(() =>
+                        setThumbRecovered(true),
+                      );
+                      return;
+                    }
+                    setImageError(true);
+                  }}
                 />
               </div>
             )}
+            </div>
 
           </div>
         </ContextMenuTrigger>
-        <EntryContextMenuContent entry={entry} />
+        <EntryContextMenuContent
+          entry={entry}
+          onMarkAbove={
+            onMarkAboveEntry ? () => onMarkAboveEntry(entry.id) : undefined
+          }
+        />
       </ContextMenu>
     );
   },

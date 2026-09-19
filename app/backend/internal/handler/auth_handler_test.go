@@ -166,6 +166,74 @@ func TestAuthHandler_GetCurrentUser_Success(t *testing.T) {
 	require.Equal(t, "alice", resp.Username)
 }
 
+func TestAuthHandler_GetCurrentUser_RefreshesCookieWithBearer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockAuthService(ctrl)
+	h := handler.NewAuthHandlerHelper(mockService)
+
+	e := newTestEcho()
+	req := newJSONRequest(http.MethodGet, "/auth/me", nil)
+	req.Header.Set("Authorization", "Bearer valid-token")
+	c, rec := newTestContext(e, req)
+
+	user := &service.User{
+		Username: "alice",
+		Nickname: "Alice",
+		Email:    "alice@example.com",
+	}
+
+	mockService.EXPECT().
+		GetCurrentUser(gomock.Any()).
+		Return(user, nil)
+
+	err := h.GetCurrentUser(c)
+	require.NoError(t, err)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	cookies := rec.Result().Cookies()
+	var authCookie *http.Cookie
+	for _, cookie := range cookies {
+		if cookie.Name == "gist_auth" {
+			authCookie = cookie
+			break
+		}
+	}
+	require.NotNil(t, authCookie)
+	require.Equal(t, "valid-token", authCookie.Value)
+}
+
+func TestAuthHandler_GetCurrentUser_NoCookieRewriteWithoutBearer(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockAuthService(ctrl)
+	h := handler.NewAuthHandlerHelper(mockService)
+
+	e := newTestEcho()
+	req := newJSONRequest(http.MethodGet, "/auth/me", nil)
+	c, rec := newTestContext(e, req)
+
+	user := &service.User{
+		Username: "alice",
+		Nickname: "Alice",
+		Email:    "alice@example.com",
+	}
+
+	mockService.EXPECT().
+		GetCurrentUser(gomock.Any()).
+		Return(user, nil)
+
+	err := h.GetCurrentUser(c)
+	require.NoError(t, err)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	for _, cookie := range rec.Result().Cookies() {
+		require.NotEqual(t, "gist_auth", cookie.Name)
+	}
+}
+
 func TestAuthHandler_UpdateProfile_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

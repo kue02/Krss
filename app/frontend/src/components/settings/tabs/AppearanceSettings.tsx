@@ -179,9 +179,10 @@ export function AppearanceSettings() {
   // 「滚动标已读」总开关形态：perView 才显示下面的按视图覆盖；off 时判定项置灰
   const { mode: scrollReadMode } = useScrollReadSetting();
   const scrollReadTimingByView = useUISettingKey("scrollReadTimingByView");
-  // 第十五批：通知视图时间线的两个按视图设置（粒度 / 折叠行数）
+  // 第十五批：通知视图时间线的两个按视图设置（粒度 / 折叠行数）+ 窄栏合一栏
   const timelineGranularityByView = useUISettingKey("timelineGranularityByView");
   const timelineCollapseByView = useUISettingKey("timelineCollapseByView");
+  const timelineSingleSideByView = useUISettingKey("timelineSingleSideByView");
   const {
     setFetchReadableForView,
     setExpandLongForView,
@@ -199,6 +200,7 @@ export function AppearanceSettings() {
     setScrollReadTimingForView,
     setTimelineGranularityForView,
     setTimelineCollapseForView,
+    setTimelineSingleSideForView,
     setCardImageSize,
     setCardPreviewLines,
     setEntryFontFamily,
@@ -849,6 +851,24 @@ export function AppearanceSettings() {
                             value: "full",
                             label: t("appearance_view.timeline_lines_full"),
                           },
+                        ]}
+                      />
+                    </SettingRow>
+                    <SettingRow
+                      label={t("appearance_view.timeline_single_side")}
+                      hint={t("appearance_view.timeline_single_side_hint")}
+                    >
+                      <SegmentedControl
+                        className="shrink-0"
+                        value={
+                          timelineSingleSideByView?.[view] === false ? "off" : "on"
+                        }
+                        onValueChange={(value) =>
+                          setTimelineSingleSideForView(view, value === "on")
+                        }
+                        options={[
+                          { value: "off", label: t("appearance_view.off") },
+                          { value: "on", label: t("appearance_view.on") },
                         ]}
                       />
                     </SettingRow>
