@@ -75,6 +75,11 @@ export interface TimelineEntryRow {
   node: TimelineNodeKind;
   /** 紧贴节点的标注：头节点给粒度桶的时间，后续条目给自己的精确时间 */
   label: string;
+  /**
+   * C-②：单侧列（76px）放不下「9月18日 周五 22:00」这种跨天全标 ——
+   * shortLabel 只留 HH:MM（日期看跨天分隔头），渲染层 singleSide 时用它。
+   */
+  shortLabel: string;
   /** 所在时间桶的 key（展开态、调试定位都用它） */
   bucket: string;
   /** 这个桶里一共有多少条（含被吸进小节点的）—— 头节点上挂「N 条」用它 */
@@ -283,6 +288,10 @@ export function buildTimelineRows(
           index === 0
             ? formatBucketLabel(item.at, granularity, now, t, locale)
             : formatClockTime(item.at),
+        // C-②：单侧列只留 HH:MM（头节点也只取钟点，日期看分隔头）
+        shortLabel: formatClockTime(
+          index === 0 ? bucketStartMs(item.at, granularity) : item.at,
+        ),
         bucket: group.key,
         // 头节点上的「N 条」= 整个桶的条数（平铺的 + 被吸进小节点的）
         bucketCount: group.entries.length,
@@ -329,6 +338,7 @@ export function expandTimelineRows(
         side: index % 2 === 0 ? row.side : row.side === "left" ? "right" : "left",
         node: "minor",
         label: formatClockTime(entryTimestamp(entry)),
+        shortLabel: formatClockTime(entryTimestamp(entry)),
         bucket: row.key,
         bucketCount: row.entries.length,
       });

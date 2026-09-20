@@ -238,8 +238,9 @@ export function MCPServersSection() {
     <section className="space-y-3 border-t border-border pt-4">
       {/* 16-16 警戒区：标题+按钮+表格全罩在里面，返工验收通过即摘 */}
       <MCPWarnZone>
-      {/* 段头：说明 + 入口（返工口径：「粘贴 JSON 新建」并入「新建连接」，只留两个按钮） */}
-      <div className="flex flex-wrap items-start justify-between gap-2">
+      {/* 段头：说明 + 入口（返工口径：「粘贴 JSON 新建」并入「新建连接」，只留两个按钮；
+          E：移动端上下堆叠，按钮独占一行不再与标题抢宽） */}
+      <div className="flex flex-wrap items-start justify-between gap-2 max-sm:flex-col max-sm:items-stretch">
         <div className="min-w-0 flex-1">
           <span className="text-sm font-medium">
             {t("ai_settings.mcp_servers")}
@@ -285,7 +286,13 @@ export function MCPServersSection() {
       )}
 
       {servers.length > 0 && (
-        <Table.Root className="overflow-hidden rounded-lg border border-border bg-background">
+        <>
+        {/* E（草图 mcp-mobile-v1 v1）：整表窄屏横滑 —— 桌面列宽（22+132+92+140）一行不动，
+            移动端整表定宽 544px（名称列完整 ~158px 不再被压成竖排），容器横滚。
+            警戒条/Chip/按钮样式原样保留，只动结构。 */}
+        <div className="overflow-hidden rounded-lg border border-border">
+        <div className="overflow-x-auto">
+        <Table.Root className="w-[544px] table-fixed border-0 bg-background sm:w-full">
           <Table.Content
             aria-label={t("ai_settings.mcp_servers")}
             className="w-full table-fixed"
@@ -346,6 +353,9 @@ export function MCPServersSection() {
             </Table.Body>
           </Table.Content>
         </Table.Root>
+        </div>
+        </div>
+        </>
       )}
       </MCPWarnZone>
 

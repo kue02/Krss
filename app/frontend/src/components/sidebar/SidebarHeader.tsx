@@ -70,7 +70,7 @@ export function SidebarHeader({
               <AddIcon className="size-4 text-muted-foreground" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" sideOffset={4}>
+          <DropdownMenuContent align="end" sideOffset={4} className="z-[60]">
             <DropdownMenuItem className={menuItemStyles} onSelect={onAddClick}>
               <RssIcon className="size-4 shrink-0 text-muted-foreground" />
               <span>{t("actions.add_feed")}</span>

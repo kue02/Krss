@@ -224,6 +224,11 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
     return (
       <Dialog
       open={open}
+      // C-①：子浮层（规则编辑器 HeroUI Drawer，portal 到 body）开着时切非 modal ——
+      // Radix modal 的滚动锁只认自己 content，Drawer 在外面会被吃掉 wheel/touchmove；
+      // 非 modal 时 Radix 不挂滚动锁，Drawer.Body 自由滚。Esc/外部点击仍由下面两道 guard 拦住，
+      // 遮罩由 Drawer 自己的 Backdrop 补（桌面 620px 抽屉/移动全屏都有全屏 backdrop）。
+      modal={!childOverlayOpen}
       onOpenChange={(next) => (next ? onOpenChange(true) : tryLeave(() => onOpenChange(false)))}
     >
         <DialogContent
@@ -281,6 +286,8 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
   return (
     <Dialog
       open={open}
+      // C-①：同移动端分支（子浮层开着时切非 modal，把滚动锁让给 HeroUI Drawer）
+      modal={!childOverlayOpen}
       onOpenChange={(next) => (next ? onOpenChange(true) : tryLeave(() => onOpenChange(false)))}
     >
       <DialogContent
