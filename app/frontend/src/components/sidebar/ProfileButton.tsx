@@ -10,6 +10,7 @@ interface ProfileButtonProps {
   userName?: string;
   onProfileClick?: () => void;
   onSettingsClick?: () => void;
+  onShortcutsClick?: () => void;
   onLogoutClick?: () => void;
   /** 触发器的额外类名（侧栏账户栏把整行做成触发器时用） */
   triggerClassName?: string;
@@ -103,6 +104,7 @@ export function ProfileButton({
   userName,
   onProfileClick,
   onSettingsClick,
+  onShortcutsClick,
   onLogoutClick,
   triggerClassName,
   children,
@@ -114,7 +116,12 @@ export function ProfileButton({
   const handleAction = (key: React.Key) => {
     if (key === "profile") onProfileClick?.();
     if (key === "settings") onSettingsClick?.();
-    if (key === "shortcuts") shortcutsHelp.toggle();
+    // 2026-09-20（移动端设置滑不动的同根）：快捷键弹窗从侧栏 Sheet 里开时也要先关 Sheet，
+    // 否则 Sheet 的滚动锁会吃掉弹窗内容的滚动；调用方没传 onShortcutsClick 就自己 toggle（桌面路径）。
+    if (key === "shortcuts") {
+      if (onShortcutsClick) onShortcutsClick();
+      else shortcutsHelp.toggle();
+    }
     if (key === "logout") onLogoutClick?.();
   };
 

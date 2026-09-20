@@ -30,6 +30,11 @@ import { Toaster } from "@/components/ui/toaster";
 import { RefreshReportDialog } from "@/components/refresh/RefreshReportDialog";
 import { useRefreshReportWatcher } from "@/hooks/useRefreshReportWatcher";
 import { FilterEditorDialog } from "@/components/automation/FilterEditorDialog";
+import { SettingsModal, ProfileModal } from "@/components/settings";
+import {
+  useSettingsModalStore,
+  useProfileModalStore,
+} from "@/stores/settings-modal-store";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { refreshAllFeeds } from "@/api";
 import { ShortcutsHelpDialog } from "@/components/shortcuts/ShortcutsHelpDialog";
@@ -517,6 +522,9 @@ function AuthenticatedApp() {
       onSelectAll={handleSelectAll}
       contentType={contentType}
       appearanceSettings={appearanceSettings}
+      // 移动端：侧栏里的设置/资料弹窗打开时先关 Sheet，否则 Sheet 的滚动锁
+      // 会吃掉弹窗内容区的滚动（移动端设置滑不动，2026-09-20）。
+      onRequestClose={closeSidebar}
     />
   );
 
@@ -867,6 +875,10 @@ function AppContent() {
 function App() {
   // 「减少动态效果」也要管住 framer-motion 的 JS 动画（CSS 覆盖只影响 CSS 动画）
   const reduceMotion = useUISettingKey("reduceMotion");
+  const isSettingsOpen = useSettingsModalStore((state) => state.open);
+  const setSettingsOpen = useSettingsModalStore((state) => state.setOpen);
+  const isProfileOpen = useProfileModalStore((state) => state.open);
+  const setProfileOpen = useProfileModalStore((state) => state.setOpen);
 
   return (
     <div className="app-shell">
@@ -877,6 +889,14 @@ function App() {
             <UpdateNotice />
             {/* 规则编辑器：设置页/订阅右键/条目右键都靠 filter-editor-store 唤起它 */}
             <FilterEditorDialog />
+            {/*
+             * 设置 / 资料弹窗挂在这里（与侧栏 Sheet 平级），不挂在 Sidebar 里 ——
+             * 移动端 Sidebar 装在 Sheet 里，Sheet 一关 Sidebar 就卸载，
+             * 挂在里面的弹窗会跟着消失；且 Sheet 的滚动锁会吃掉弹窗内容区的滚动
+             * （2026-09-20 移动端设置滑不动：sheet.tsx:26 + Combination 两处 preventDefault）。
+             */}
+            <SettingsModal open={isSettingsOpen} onOpenChange={setSettingsOpen} />
+            <ProfileModal open={isProfileOpen} onOpenChange={setProfileOpen} />
             <Toaster />
             <RefreshReportDialog />
           </Router>

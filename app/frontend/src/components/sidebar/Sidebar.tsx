@@ -46,9 +46,9 @@ import {
 } from "@/hooks/useFilters";
 import { useUISettingKey } from "@/hooks/useUISettings";
 import { useFilterViewStore } from "@/stores/filter-view-store";
-import { useSettingsModalStore } from "@/stores/settings-modal-store";
+import { useSettingsModalStore, useProfileModalStore } from "@/stores/settings-modal-store";
+import { shortcutsHelp } from "@/stores/shortcuts-store";
 import { feedItemStyles, sidebarItemIconStyles } from "./styles";
-import { SettingsModal, ProfileModal } from "@/components/settings";
 import { EditFeedDialog } from "@/components/settings/tabs/EditFeedDialog";
 import { RenameFolderDialog } from "./RenameFolderDialog";
 import { CreateFolderDialog } from "./CreateFolderDialog";
@@ -113,6 +113,15 @@ interface SidebarProps {
   onSelectAll?: (contentType?: ContentType) => void;
   contentType: ContentType;
   appearanceSettings?: AppearanceSettings;
+  /**
+   * 移动端侧栏 Sheet 关掉自己（App 传下来的 closeSidebar）。
+   * 设置/资料弹窗是从侧栏里打开的：不先关 Sheet，它的 touchmove/wheel 锁
+   * （`ui/sheet.tsx` 的 preventBackgroundScroll）会把 Radix Dialog 内容区的
+   * 滚动事件一起吃掉 —— 移动端打开设置后滑不动就是这么来的（2026-09-20 实锤，
+   * 调用栈见 sheet.tsx:26 + Combination-*.js:956 两处 preventDefault）。
+   * 桌面端不走 Sheet，传不传都行。
+   */
+  onRequestClose?: () => void;
 }
 
 interface FolderWithFeeds {
@@ -137,12 +146,12 @@ export function Sidebar({
   onSelectAll,
   contentType,
   appearanceSettings,
+  onRequestClose,
 }: SidebarProps) {
   const { t } = useTranslation();
   const { user, logout } = useAuth();
-  const isSettingsOpen = useSettingsModalStore((state) => state.open);
   const setIsSettingsOpen = useSettingsModalStore((state) => state.setOpen);
-  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const setIsProfileOpen = useProfileModalStore((state) => state.setOpen);
   const [editingFeed, setEditingFeed] = useState<Feed | null>(null);
   const [renamingFolder, setRenamingFolder] = useState<Folder | null>(null);
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
@@ -824,13 +833,24 @@ export function Sidebar({
       <SidebarAccountBar
         avatarUrl={user?.avatarUrl}
         userName={user?.nickname || user?.username}
-        onProfileClick={() => setIsProfileOpen(true)}
-        onSettingsClick={() => setIsSettingsOpen(true)}
+        onProfileClick={() => {
+          onRequestClose?.();
+          setIsProfileOpen(true);
+        }}
+        onSettingsClick={() => {
+          onRequestClose?.();
+          setIsSettingsOpen(true);
+        }}
+        onShortcutsClick={() => {
+          onRequestClose?.();
+          shortcutsHelp.toggle();
+        }}
         onLogoutClick={logout}
       />
 
-      <SettingsModal open={isSettingsOpen} onOpenChange={setIsSettingsOpen} />
-      <ProfileModal open={isProfileOpen} onOpenChange={setIsProfileOpen} />
+      {/* 设置 / 资料弹窗挂在 App 顶层（与 Sheet 平级），不在这里 ——
+          移动端 Sidebar 装在 Sheet 里，Sheet 一关 Sidebar 就卸载，
+          挂在这里的弹窗会跟着消失（2026-09-20 移动端设置滑不动）。 */}
       <RenameFolderDialog
         folder={renamingFolder}
         open={renamingFolder !== null}

@@ -6,6 +6,7 @@ interface SidebarAccountBarProps {
   userName?: string;
   onProfileClick?: () => void;
   onSettingsClick?: () => void;
+  onShortcutsClick?: () => void;
   onLogoutClick?: () => void;
 }
 
@@ -20,6 +21,7 @@ export function SidebarAccountBar({
   userName,
   onProfileClick,
   onSettingsClick,
+  onShortcutsClick,
   onLogoutClick,
 }: SidebarAccountBarProps) {
   const { t } = useTranslation();
@@ -32,6 +34,7 @@ export function SidebarAccountBar({
         userName={displayName}
         onProfileClick={onProfileClick}
         onSettingsClick={onSettingsClick}
+        onShortcutsClick={onShortcutsClick}
         onLogoutClick={onLogoutClick}
         // 整行可点（头像 + 名字），和 Nextflux 一致；不是只有那个 32px 的头像能点
         triggerClassName="dropdown-trigger flex h-10 w-full items-center gap-2 rounded-[19.2px] px-3 py-2 text-left hover:bg-item-hover data-[state=open]:bg-item-hover"
