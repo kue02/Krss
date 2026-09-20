@@ -374,4 +374,107 @@ describe("MCP 服务段（16-6 硬布局）", () => {
     // 没删掉：列表还在
     expect(screen.getByText("Fabric")).toBeTruthy();
   });
+
+  it("16-23：表格逐项抄 :5200（Chip 锚点类、图标按钮 28、用途列零内边距、失败卡无缩进）", async () => {
+    mocks.listMCPServers.mockResolvedValue([
+      server({ id: "s1", purposes: ["ai", "feed"] }),
+    ]);
+    render(<MCPServersSection />);
+    await screen.findByText("Fabric");
+
+    // Chip：状态 + 用途都走锚点类，外观值不进 TSX（未分层 HeroUI 恒胜，写了白给）
+    const chips = document.querySelectorAll(".mcp-table-root .mcp-chip");
+    expect(chips.length).toBe(3); // 状态 1 + 用途 2
+    expect(chips[0]!.className).toContain("mcp-chip--ok");
+    expect(chips[1]!.className).toContain("mcp-chip"); // 用途：中性底
+    chips.forEach((chip) => {
+      expect(chip.className).not.toContain("bg-");
+      expect(chip.className).not.toContain("text-");
+    });
+
+    // 图标按钮 3 颗（测试 / 编辑 / 更多），同样只有锚点类
+    const iconBtns = document.querySelectorAll(".mcp-table-root .mcp-icon-btn");
+    expect(iconBtns.length).toBe(3);
+
+    // 用途列零内边距锚点：92px 全给内容，两枚 chip 并排不换行
+    expect(document.querySelector(".mcp-col-purpose")).toBeTruthy();
+
+    // 名称 13px/500、副行 11px 且不再是等宽字体
+    const name = screen.getByText("Fabric");
+    expect(name.className).toContain("text-[13px]");
+    expect(name.className).toContain("font-medium");
+    const sub = name.nextElementSibling as HTMLElement | null;
+    expect(sub?.className).toContain("mt-0.5");
+    expect(sub?.className).toContain("text-[11px]");
+    expect(sub?.className ?? "").not.toContain("font-mono");
+  });
+
+  it("16-23：失败卡走 row 形态（red-50 底 / red-200 框 / 无 34px 缩进）", async () => {
+    mocks.listMCPServers.mockResolvedValue([
+      server({
+        id: "s2",
+        name: "老失败",
+        isConnected: false,
+        lastError: "连不上服务（连接被拒绝）",
+        lastFailure: {
+          bucket: "network",
+          code: "refused",
+          title: "连不上服务（连接被拒绝）",
+          suggestion: "确认服务已启动",
+          raw: "dial tcp: connect: connection refused",
+        },
+      }),
+    ]);
+
+    render(<MCPServersSection />);
+    await screen.findByText("连不上服务（连接被拒绝）");
+
+    // 失败行是表里的通栏单元格，锚点类给内边距（对齐 :5200 的 12px，不是旧的 34px 缩进）
+    const cell = document.querySelector(".mcp-row-detail");
+    expect(cell).toBeTruthy();
+    expect(cell!.className).toContain("table__cell");
+    expect(document.querySelector(".pl-\\[34px\\]")).toBeNull();
+
+    // 卡片颜色照 :5200（red 色板，而不是 destructive token）
+    const card = cell!.firstElementChild as HTMLElement;
+    expect(card.className).toContain("bg-red-50");
+    expect(card.className).toContain("border-red-200");
+  });
+
+  it("16-17/16-18/16-19：警戒底走 CSS 类＋段头 h30＋表格 frameless", async () => {
+    mocks.listMCPServers.mockResolvedValue([server({ id: "s1" })]);
+    render(<MCPServersSection />);
+    await screen.findByText("Fabric");
+
+    // 16-17：斜纹底走 .mcp-warn-zone（纯 CSS），不再用会被编成非法
+    // 背景色的 gradient 任意值写法（注意：注释里别出现方括号包裹的类名字样，
+    // Tailwind 内容扫描会把它当类名编一条永远用不上的死规则进 dist）
+    const warnZone = document.querySelector(".mcp-warn-zone");
+    expect(warnZone).toBeTruthy();
+    expect(warnZone!.className).not.toContain("repeating-linear-gradient");
+
+    // 16-18：段头两按钮 h30（草图 .btn），标题与按钮同行顶部对齐由布局类保证
+    const addBtn = screen.getByText("ai_settings.mcp_add_connection");
+    const subBtn = screen.getByText("ai_settings.mcp_new_subscription");
+    expect(addBtn.className).toContain("h-[30px]");
+    expect(subBtn.className).toContain("h-[30px]");
+
+    // 16-19 最终态（按 HeroUI 文档 BEM 口径）：TSX 只留 secondary 原生逻辑 +
+    // mcp-table-root 定制类；框/罩/去线全在 index.css 定制块里，不在工具类里
+    const tableRoot = document.querySelector(".table-root");
+    expect(tableRoot?.className).toContain("table-root--secondary");
+    expect(tableRoot?.className).not.toContain("table-root--primary");
+    expect(tableRoot?.className).toContain("mcp-table-root");
+    expect(tableRoot?.className).toContain("mt-3");
+    // 外观类不许回 TSX（未分层恒胜，写了白给）：root 上除了布局类只有一个定制类
+    expect(tableRoot?.className ?? "").not.toContain("rounded");
+    expect(tableRoot?.className ?? "").not.toContain("border");
+    // thead 不叠任何底色类；table 同时挂 mcp-table + table__content（定制块的选择器锚点）
+    expect(document.querySelector("thead")?.className ?? "").not.toContain(
+      "bg-",
+    );
+    const table = document.querySelector("table");
+    expect(table?.className).toContain("mcp-table");
+    expect(table?.className).toContain("table__content");
+  });
 });

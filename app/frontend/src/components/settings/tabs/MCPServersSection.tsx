@@ -68,6 +68,15 @@ import { MCPJsonView } from "./MCPJsonView";
 /* 手搓 input 已删：表单输入一律 HeroUI Input（草图 .input h36 撑满，见 GUIDE 抄数表） */
 const labelClass = "mb-1.5 block text-[13px] font-medium text-foreground";
 
+/* A 段列表锚点类（16-23）：外观全在 index.css 的 .mcp-table-root 定制块里 ——
+   HeroUI 的表格/Chip/Button 样式是未分层 CSS，工具类压不住（移植笔记有实测）。
+   值照 :5200 `Documents/Test/mcp-heroui` A 段量：Chip 高 22 / 11px / 圆角 6；
+   图标按钮 28×28 / 圆角 6；状态实色底（连上 emerald、失败 red），用途 = 6% 前景底。 */
+const mcpChipNeutralClass = "mcp-chip";
+const mcpChipOkClass = "mcp-chip mcp-chip--ok";
+const mcpChipBadClass = "mcp-chip mcp-chip--bad";
+const mcpIconButtonClass = "mcp-icon-btn";
+
 /** 八字水印文案键（16-16 警戒区；返工验收通过即摘，整段删掉） */
 function MCPWarnZone({ children }: { children: React.ReactNode }) {
   const { t } = useTranslation();
@@ -75,10 +84,8 @@ function MCPWarnZone({ children }: { children: React.ReactNode }) {
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-[10px] border border-red-200 p-3.5",
-        "bg-[repeating-linear-gradient(-45deg,rgba(220,38,38,0.13)_0_14px,rgba(220,38,38,0.05)_14px_28px),#fef2f2]",
+        "mcp-warn-zone relative overflow-hidden rounded-[10px] border border-red-200 p-3.5",
         "dark:border-red-900/60",
-        "dark:bg-[repeating-linear-gradient(-45deg,rgba(248,113,113,0.14)_0_14px,rgba(248,113,113,0.05)_14px_28px),rgba(69,10,10,0.35)]",
       )}
     >
       <div
@@ -238,27 +245,30 @@ export function MCPServersSection() {
     <section className="space-y-3 border-t border-border pt-4">
       {/* 16-16 警戒区：标题+按钮+表格全罩在里面，返工验收通过即摘 */}
       <MCPWarnZone>
-      {/* 段头：说明 + 入口（返工口径：「粘贴 JSON 新建」并入「新建连接」，只留两个按钮） */}
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <span className="text-sm font-medium">
+      {/* 段头：说明 + 入口（返工口径：「粘贴 JSON 新建」并入「新建连接」，只留两个按钮；
+          类名照 :5200（Documents/Test/mcp-heroui）A 段：按钮 h30，见 16-18） */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold">
             {t("ai_settings.mcp_servers")}
-          </span>
-          <p className="text-xs text-muted-foreground">
+          </div>
+          <div className="mt-1 max-w-[380px] text-xs text-muted-foreground">
             {t("ai_settings.mcp_servers_hint")}
-          </p>
+          </div>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <Button size="sm" onPress={() => openCreate()}>
-            <Plus className="size-4" />
+        <div className="flex shrink-0 gap-2">
+          <Button
+            className="h-[30px] rounded-md border border-foreground bg-foreground px-3 text-xs text-background shadow-none hover:bg-foreground/90"
+            onPress={() => openCreate()}
+          >
+            <Plus className="size-3.5" />
             {t("ai_settings.mcp_add_connection")}
           </Button>
           <Button
-            size="sm"
-            variant="secondary"
+            className="h-[30px] rounded-md border border-border bg-surface px-3 text-xs text-foreground shadow-none hover:bg-surface-secondary"
             onPress={() => setWizardOpen(true)}
           >
-            <Plus className="size-4" />
+            <Plus className="size-3.5" />
             {t("ai_settings.mcp_new_subscription")}
           </Button>
         </div>
@@ -285,12 +295,21 @@ export function MCPServersSection() {
       )}
 
       {servers.length > 0 && (
-        <Table.Root className="overflow-hidden rounded-lg border border-border bg-background">
+        <Table.Root
+          variant="secondary"
+          className="mcp-table-root mt-3"
+          /* 16-19：只留布局类；框/罩/去线全收进 index.css 的 .mcp-table-root 定制块
+            （按 HeroUI 文档 BEM 口径：secondary 原生逻辑 + 自定义外观）。
+             mt-3：WarnZone 内无 space-y，表与段头要有 12px（:5200 表自带 mt-3）。 */
+        >
           <Table.Content
             aria-label={t("ai_settings.mcp_servers")}
-            className="w-full table-fixed"
+            className="mcp-table w-full table-fixed"
           >
-            <Table.Header className="bg-muted/40 /* 草图表头底 */">
+            {/* 16-19：表头用 secondary 原生 surface 药丸条（首末 16px 端角，
+                框用 rounded-2xl=16px 对齐咬合）；veil 罩/列透明类删掉 —— 未分层
+                HeroUI 样式恒胜出，写了也不生效，不留假代码 */}
+            <Table.Header>
               {/* 列宽沿用实测值：图标 22 · 名称+副行(1fr) · 状态 132 · 用途 92 · 操作 140 */}
               <Table.Column
                 className="w-[22px] p-0"
@@ -552,14 +571,15 @@ function MCPServerRow({
             className={cn("mx-auto block size-2 rounded-full", status.dot)}
           />
         </Table.Cell>
-        {/* 名称 + 副行（主机 · 传输 · 能力计数） */}
+        {/* 名称 + 副行（主机 · 传输 · 能力计数）：
+            :5200 量到名称 13px/500、副行 11px/400 且无等宽字体、与名称间距 2px（mt-0.5） */}
         <Table.Cell>
           <div className="min-w-0">
-            <div className="truncate text-sm text-foreground">
+            <div className="truncate text-[13px] leading-normal font-medium">
               {server.name}
             </div>
             <div
-              className="truncate font-mono text-[11px] text-muted-foreground"
+              className="mt-0.5 truncate text-[11px] leading-normal text-muted-foreground"
               title={`${server.url} · ${transportLabel} · ${capability}`}
             >
               {host} · {transportLabel} · {capability}
@@ -569,22 +589,20 @@ function MCPServerRow({
         {/* 状态列 132：Chip（效果图 A），不断行 */}
         <Table.Cell>
           <Chip
-            size="sm"
             variant="tertiary"
-            color={
+            className={
               status.danger
-                ? "danger"
+                ? mcpChipBadClass
                 : server.isConnected
-                  ? "success"
-                  : "default"
+                  ? mcpChipOkClass
+                  : mcpChipNeutralClass
             }
-            className="border border-border whitespace-nowrap"
           >
             {status.text}
           </Chip>
         </Table.Cell>
-        {/* 用途列 92：标记，不是开关（不断行，窄列自动上下堆） */}
-        <Table.Cell>
+        {/* 用途列 92：标记，不是开关；左右零内边距（.mcp-col-purpose）腾出 85px 让两枚 chip 并排 */}
+        <Table.Cell className="mcp-col-purpose">
           <span className="flex flex-wrap items-center gap-1">
             {server.purposes.length === 0 && (
               <span className="text-[11px] text-muted-foreground">—</span>
@@ -592,10 +610,8 @@ function MCPServerRow({
             {server.purposes.map((purpose) => (
               <Chip
                 key={purpose}
-                size="sm"
                 variant="tertiary"
-                color={purpose === "feed" ? "accent" : "default"}
-                className="border border-border whitespace-nowrap"
+                className={mcpChipNeutralClass}
               >
                 {t(
                   purpose === "feed"
@@ -606,9 +622,10 @@ function MCPServerRow({
             ))}
           </span>
         </Table.Cell>
-        {/* 操作列 140：图标按钮组（测试 ↻ / 编辑 ✎ / 更多 ⋯） */}
+        {/* 操作列 140：图标按钮组（测试 ↻ / 编辑 ✎ / 更多 ⋯）
+            :5200 量到 28×28 / 圆角 6 / 前景色 60% / 组内间距 2px（gap-0.5） */}
         <Table.Cell>
-          <span className="flex items-center justify-end gap-1">
+          <span className="flex items-center justify-end gap-0.5">
             {needsAuth ? (
               <Button size="sm" variant="ghost" onPress={onAuthorize}>
                 {t("ai_settings.mcp_oauth_authorize")}
@@ -619,6 +636,7 @@ function MCPServerRow({
                 variant="ghost"
                 isIconOnly
                 isDisabled={testing}
+                className={mcpIconButtonClass}
                 aria-label={
                   redetecting
                     ? t("ai_settings.mcp_test_redetecting")
@@ -635,6 +653,7 @@ function MCPServerRow({
               size="sm"
               variant="ghost"
               isIconOnly
+              className={mcpIconButtonClass}
               aria-label={t("ai_settings.mcp_menu_edit")}
               onPress={onEdit}
             >
@@ -644,12 +663,11 @@ function MCPServerRow({
               <Dropdown.Trigger
                 aria-label={t("ai_settings.mcp_col_actions")}
                 className={cn(
-                  "inline-flex size-8 items-center justify-center rounded-md",
-                  "text-muted-foreground transition-colors",
-                  "hover:bg-secondary hover:text-foreground data-[pressed]:bg-secondary",
+                  mcpIconButtonClass,
+                  "inline-flex items-center justify-center transition-colors",
                 )}
               >
-                <MoreHorizontal className="size-4" />
+                <MoreHorizontal className="size-3.5" />
               </Dropdown.Trigger>
               <Dropdown.Popover placement="bottom end">
                 <Dropdown.Menu
@@ -707,30 +725,34 @@ function MCPServerRow({
         </Table.Cell>
       </Table.Row>
 
-      {/* 测试结果行内回显（成功绿 / 失败进共用失败块）：失败块独占一行 */}
+      {/* 测试结果行内回显（成功绿 / 失败进共用失败块）：失败块独占一行。
+          :5200 里失败卡无缩进（与行内容左缘对齐）⇒ 去掉 pl-[34px]，卡片对齐交给
+          .mcp-row-detail 的内边距（12px），上间距按草图行内 gap 12 配平。 */}
       {testResult && (
         <Table.Row>
-          <Table.Cell colSpan={5}>
-            <div className="pl-[34px]">
-              {testResult.connected ? (
-                <div className="text-xs text-emerald-600 dark:text-emerald-400">
-                  {t("ai_settings.mcp_test_ok", {
-                    count: testResult.toolCount,
-                    resources: testResult.resourceCount,
-                  })}
-                  {testResult.transport ? ` · ${testResult.transport}` : ""}
-                  {typeof testResult.latencyMs === "number"
-                    ? ` · ${testResult.latencyMs}ms`
-                    : ""}
-                </div>
-              ) : testResult.failure ? (
-                <MCPFailureBlock failure={testResult.failure} onExit={onExit} />
-              ) : (
-                <div className="break-all text-xs text-destructive">
-                  {testResult.error || t("ai_settings.mcp_test_failed")}
-                </div>
-              )}
-            </div>
+          <Table.Cell colSpan={5} className="mcp-row-detail">
+            {testResult.connected ? (
+              <div className="text-xs text-emerald-600 dark:text-emerald-400">
+                {t("ai_settings.mcp_test_ok", {
+                  count: testResult.toolCount,
+                  resources: testResult.resourceCount,
+                })}
+                {testResult.transport ? ` · ${testResult.transport}` : ""}
+                {typeof testResult.latencyMs === "number"
+                  ? ` · ${testResult.latencyMs}ms`
+                  : ""}
+              </div>
+            ) : testResult.failure ? (
+              <MCPFailureBlock
+                failure={testResult.failure}
+                onExit={onExit}
+                appearance="row"
+              />
+            ) : (
+              <div className="break-all text-xs text-destructive">
+                {testResult.error || t("ai_settings.mcp_test_failed")}
+              </div>
+            )}
           </Table.Cell>
         </Table.Row>
       )}
@@ -738,10 +760,13 @@ function MCPServerRow({
       {/* 库里的失败（没刚测过时看它，与上面同一套组件） */}
       {!testResult && failure && (
         <Table.Row>
-          <Table.Cell colSpan={5}>
-            <div className="pl-[34px]">
-              <MCPFailureBlock failure={failure} onExit={onExit} compact />
-            </div>
+          <Table.Cell colSpan={5} className="mcp-row-detail">
+            <MCPFailureBlock
+              failure={failure}
+              onExit={onExit}
+              compact
+              appearance="row"
+            />
           </Table.Cell>
         </Table.Row>
       )}

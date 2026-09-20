@@ -24,6 +24,11 @@ interface MCPFailureBlockProps {
   onExit?: (exit: MCPFailureExit) => void;
   compact?: boolean;
   className?: string;
+  /**
+   * row = A 段列表行里的形态（16-23 抄 :5200）：red-50 底 + red-200 框 + 紧凑内边距 +
+   * 标题 red-700。测试按钮 / 建源向导保持默认（destructive 底，B 段口径不动）。
+   */
+  appearance?: "default" | "row";
 }
 
 const EXIT_LABEL_KEY: Record<MCPFailureExit, string> = {
@@ -39,15 +44,20 @@ export function MCPFailureBlock({
   onExit,
   compact = false,
   className,
+  appearance = "default",
 }: MCPFailureBlockProps) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(!compact);
   const exits = mcpFailureExits(failure).filter((exit) => exit !== "none");
+  const isRow = appearance === "row";
 
   return (
     <div
       className={cn(
-        "rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2",
+        "rounded-md border",
+        isRow
+          ? "border-red-200 bg-red-50 px-2.5 py-1.5 dark:border-red-900 dark:bg-red-950"
+          : "border-destructive/40 bg-destructive/5 px-3 py-2",
         className,
       )}
     >
@@ -66,10 +76,20 @@ export function MCPFailureBlock({
             )}
           </button>
         )}
-        <span className="text-xs font-medium text-destructive">
+        <span
+          className={cn(
+            "text-xs font-medium",
+            isRow ? "text-red-700 dark:text-red-300" : "text-destructive",
+          )}
+        >
           {failure.title}
         </span>
-        <span className="text-[11px] text-muted-foreground">
+        <span
+          className={cn(
+            "text-muted-foreground",
+            isRow ? "text-xs" : "text-[11px]",
+          )}
+        >
           {t(mcpFailureBucketLabelKey(failure.bucket))}
         </span>
       </div>
