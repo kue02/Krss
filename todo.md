@@ -136,8 +136,8 @@
 **复杂度收敛 7 条（用户已点头）**：① 传输默认自动识别 + **记住上次成功的那种**（可手改 / 可重新探测）② 向导 **3 屏**（连接+取什么 / 映射+预览 / 刷新+归类）
 ③ 失败原因 **4 桶 + 细分文案**（含「未知」兜底）④ OAuth 回调**运行时取当前 origin**（零配置）+ 不支持 DCR 时给 `client_id`/`client_secret` 两框
 ⑤ 分页单次 cursor 循环 + 上限可调 + **「拉更多」手动按钮** ⑥ AI 兜底一次调用、**必须预览确认才落库** ⑦ 只砍 prompts 计数（映射预设导入导出仍留 P2）。
-**现有分支 `feat/mcp`（2 提交）继续在原树改，不重开**：后端骨架（迁移 27 / 分叉 / 映射 / 出向）留用；
-`MCPServersSection.tsx`(862 行) 与 `MCPSubscriptionWizard.tsx`(833 行) **整体重写**（不做增量修补）；该分支的提交**先不合并**。
+> **2026-09-20 已落地并合入主树（`6a5944d`），7 提交；门禁与活体验证见 `docs/变更记录.md`；用户复验 + Hermes 出向自测通过后勾选。**
+返工结论：`MCPServersSection.tsx` 与 `MCPSubscriptionWizard.tsx` 已按效果图整体重写；分支 7 提交已合入主树，`.worktrees/mcp` 已删（用户发话），分支保留。
 
 - [ ] **16-1 数据层（迁移 27）**：`feeds` 加 `source_type`（默认 `rss`）+ `mcp_config`（JSON：连接 id / 工具或资源 / 参数 / 字段映射 / 分页配置）；新表 `mcp_servers`（name·transport·url·headers·enabled·is_connected·last_error·tool_count·resource_count·**auth 相关字段**）。新列默认值 ⇒ **老数据零变化**。
 - [ ] **16-2 抓取分叉**：按 `source_type` 分叉，**分叉点放在 `saveEntries()` 之前** —— 之后（去重 / FTS / 规则引擎 / 自动翻译标记）一行不改。**两条入库路径都要接**（刷新 + 添加订阅首批）。
@@ -162,6 +162,7 @@
 
 > 方案见 `docs/MCP-方案-2026-09-18.md` §五；界面按 `mcp-v2-detailed.html` 的 §⑤。与 16 批**共用同一套 MCP 底座**；出向不存在「映射」问题（返回形状我们自己定）。
 > 2026-09-19 微调：**不做 prompts 计数展示**；客户端配置示例**可复制**（HTTP 与 SSE 两种写法都给）。
+> **2026-09-20 已随 16 批合入主树（`6a5944d`）；出向 Hermes 自测见 `docs/变更记录.md`；待用户复验后勾选。**
 
 - [ ] **17-1 只读 MCP 服务器**：`/mcp`（streamable-http）；tools `list_feeds` / `list_entries` / `search_entries` / `get_entry`，resources `krss://feed/<id>`、`krss://entry/<id>`、`krss://unread`。
 - [ ] **17-2 鉴权**：**长期 Token**（不复用登录 JWT —— 那是短期的）；**明文存库、可重复查看复制**（个人用，用户 2026-09-19 拍板；不要一次性仪式、不要占位符）；入口建议放 设置 → 数据控制。**存量哈希不可回显**，合并后点一次「重新生成」即可。`Token` 首字母大写，删掉解释性括号文案。
