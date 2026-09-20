@@ -258,7 +258,7 @@ export function AutoRefreshHistorySection() {
          */
         <ScrollShadow className="max-h-[232px]">
           <div className="space-y-1.5 pe-1">
-            {visible.map((record) => {
+            {visible.map((record, index) => {
               const when = formatWhen(record.at);
               const ago = formatAgo(record.at);
               const failures = groupRefreshFailures(record.results);
@@ -275,7 +275,9 @@ export function AutoRefreshHistorySection() {
               const isLatest = record.at === latestAt;
 
               return (
-                <Disclosure key={record.at}>
+                // at 是秒级时间戳：两轮同秒结束就会撞 key（线上实锤 console.error），
+                // record 又没有唯一 id，只能缀 index（列表只增不改，就近展开态不受影响）
+                <Disclosure key={`${record.at}#${index}`}>
                   <Disclosure.Heading>
                     {/*
                       四列：时间 / 三个数字 / 状态 / 展开箭头（19-1）。
