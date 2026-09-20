@@ -134,6 +134,9 @@ export default defineConfig({
     }),
   ],
   server: {
+    // 局域网 dev 访问：0.0.0.0 监听 + 放行任意 Host（仅开发服务器，生产走构建产物不受影响）
+    host: "0.0.0.0",
+    allowedHosts: true,
     proxy: {
       "/api": backendOrigin,
       // MCP 出向端点在**后端**同源（生产就是同一个 origin）；dev 下不代理的话，
