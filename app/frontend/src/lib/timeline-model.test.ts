@@ -271,4 +271,19 @@ describe("timeline-model · 行序列", () => {
     expect(formatBucketLabel(olderMs, "hour", now, t, "zh-CN")).toContain("09:00");
     expect(formatBucketLabel(olderMs, "hour", now, t, "zh-CN")).not.toBe("09:00");
   });
+
+  it("C-②：shortLabel 永远只有 HH:MM（跨天头节点也不带日期）", () => {
+    const rows = buildTimelineRows(
+      [entry("a", localIso(2026, 9, 15, 9, 30))],
+      {
+        granularity: "hour",
+        t,
+        now,
+        locale: "zh-CN",
+      },
+    );
+    const first = rows.find((row) => row.kind === "entry");
+    expect(first?.kind === "entry" && first.label).not.toBe("09:00");
+    expect(first?.kind === "entry" && first.shortLabel).toBe("09:00");
+  });
 });

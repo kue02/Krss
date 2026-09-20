@@ -57,4 +57,17 @@ describe("settings/profile modal placement (mobile scroll regression 2026-09-20)
     const sidebar = src("components/sidebar/Sidebar.tsx");
     expect(sidebar).toContain("onShortcutsClick");
   });
+
+  it("C-①：子浮层开着时设置切非 modal（Radix 滚动锁让给 HeroUI Drawer）", () => {
+    // Radix modal 的滚动锁只认自己 content，规则编辑器 Drawer portal 到 body 会被吃掉滚动；
+    // 非 modal 时不挂锁，Drawer.Body 自由滚。Esc/外部点击已有 guard 拦住，不靠 modal。
+    const modal = src("components/settings/SettingsModal.tsx");
+    expect(modal).toContain("modal={!childOverlayOpen}");
+  });
+
+  it("F-1：+号菜单盖过侧栏 Sheet（z-60 > Sheet z-50）", () => {
+    // 移动端 Sheet content 是 fixed z-50，菜单 portal 到 body 同 z 下后来居上被盖住。
+    const header = src("components/sidebar/SidebarHeader.tsx");
+    expect(header).toContain('className="z-[60]"');
+  });
 });

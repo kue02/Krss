@@ -759,18 +759,19 @@ export function NotificationTimeline({
 
             {singleSide ? (
               <>
-                {/* 单侧：时间列在轴左边、右对齐 —— 时间戳右缘紧贴节点左缘 */}
+                {/* 单侧：时间列在轴左边、右对齐 —— 时间戳右缘紧贴节点左缘；
+                    C-②：76px 列只留 HH:MM（日期看跨天分隔头）+ nowrap，390 下不再挤两行 */}
                 <div className="flex justify-end pr-2 pt-[11px]">
                   <span
                     data-timeline-time=""
                     className={cn(
-                      "tabular-nums",
+                      "whitespace-nowrap tabular-nums",
                       row.node === "major"
                         ? "text-[11px] font-semibold text-foreground"
                         : "text-[10.5px] text-muted-foreground",
                     )}
                   >
-                    {row.label}
+                    {row.shortLabel}
                   </span>
                 </div>
                 <div className="min-w-0 pb-2.5 pl-3">{card}</div>

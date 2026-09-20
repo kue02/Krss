@@ -145,6 +145,23 @@ describe("MCP 服务段（16-6 硬布局）", () => {
     );
   });
 
+  it("E：移动端段头堆叠 + 整表 544px 横滑（只动结构，样式原样）", async () => {
+    // 草图 mcp-mobile-v1 v1：段头 max-sm:flex-col 上下堆叠；
+    // 整表定宽 544px 装进 overflow-x-auto（桌面 sm:w-full 一行不动）；
+    // 16-22 收口成果不动：variant=secondary + .mcp-table-root 定制块仍提供框/veil。
+    mocks.listMCPServers.mockResolvedValue([server({ id: "s1" })]);
+    const { container } = render(<MCPServersSection />);
+    await screen.findByText("Fabric");
+    expect(container.querySelector(".max-sm\\:flex-col")).toBeTruthy();
+    const scroller = container.querySelector(".overflow-x-auto");
+    expect(scroller).toBeTruthy();
+    // w-[544px] 长在 Table.Root 的 div（data-slot=table）上，不是 table 元素本身
+    const root = scroller?.querySelector('[data-slot="table"]');
+    expect(root?.className).toContain("w-[544px]");
+    expect(root?.className).toContain("sm:w-full");
+    expect(root?.className).toContain("mcp-table-root");
+  });
+
   it("粘贴 JSON → 识别结果卡 → 填入表单 → 保存（transport/headers/purposes 落位）", async () => {
     mocks.createMCPServer.mockResolvedValue(server({ id: "s3" }));
 

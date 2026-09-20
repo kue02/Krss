@@ -495,8 +495,8 @@ export function AutomationSettings() {
 
   return (
     <div className="space-y-4">
-      {/* 顶栏工具条 */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      {/* 顶栏工具条（C-③：移动端上下堆叠，说明文不再被按钮挤成 5 行） */}
+      <div className="flex flex-wrap items-start justify-between gap-3 max-sm:flex-col max-sm:items-stretch">
         <div className="min-w-0 flex-1">
           <div className="text-xs leading-relaxed text-muted-foreground">
             {t("automation.subtitle")}

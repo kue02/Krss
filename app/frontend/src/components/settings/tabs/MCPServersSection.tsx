@@ -246,8 +246,9 @@ export function MCPServersSection() {
       {/* 16-16 警戒区：标题+按钮+表格全罩在里面，返工验收通过即摘 */}
       <MCPWarnZone>
       {/* 段头：说明 + 入口（返工口径：「粘贴 JSON 新建」并入「新建连接」，只留两个按钮；
-          类名照 :5200（Documents/Test/mcp-heroui）A 段：按钮 h30，见 16-18） */}
-      <div className="flex items-start justify-between gap-3">
+          类名照 :5200（Documents/Test/mcp-heroui）A 段：按钮 h30，见 16-18；
+          E：移动端上下堆叠，按钮独占一行不再与标题抢宽） */}
+      <div className="flex items-start justify-between gap-3 max-sm:flex-col max-sm:items-stretch">
         <div className="min-w-0">
           <div className="text-sm font-semibold">
             {t("ai_settings.mcp_servers")}
@@ -294,13 +295,18 @@ export function MCPServersSection() {
         </div>
       )}
 
+      {/* E（草图 mcp-mobile-v1 v1）：整表窄屏横滑 —— 外面只加横滚容器，
+          框/圆角/veil 全由 .mcp-table-root 定制块提供（16-22 收口成果不动）；
+          桌面列宽一行不动，移动端整表定宽 544px（sm:w-full 恢复全宽）。 */}
       {servers.length > 0 && (
+        <div className="overflow-x-auto">
         <Table.Root
           variant="secondary"
-          className="mcp-table-root mt-3"
+          className="mcp-table-root mt-3 w-[544px] sm:w-full"
           /* 16-19：只留布局类；框/罩/去线全收进 index.css 的 .mcp-table-root 定制块
             （按 HeroUI 文档 BEM 口径：secondary 原生逻辑 + 自定义外观）。
-             mt-3：WarnZone 内无 space-y，表与段头要有 12px（:5200 表自带 mt-3）。 */
+             mt-3：WarnZone 内无 space-y，表与段头要有 12px（:5200 表自带 mt-3）。
+             E：移动端定宽 544px 横滑，桌面 sm:w-full 全宽。 */
         >
           <Table.Content
             aria-label={t("ai_settings.mcp_servers")}
@@ -365,6 +371,7 @@ export function MCPServersSection() {
             </Table.Body>
           </Table.Content>
         </Table.Root>
+        </div>
       )}
       </MCPWarnZone>
 
