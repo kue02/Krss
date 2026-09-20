@@ -11,10 +11,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/repository"
-	"gist/backend/internal/repository/testutil"
-	"gist/backend/internal/service"
+	"krss/backend/internal/model"
+	"krss/backend/internal/repository"
+	"krss/backend/internal/repository/testutil"
+	"krss/backend/internal/service"
 )
 
 // —— 假依赖：AI 与 webhook 都是「外部世界」，测试里一律用替身，绝不真出网/真花钱 ——

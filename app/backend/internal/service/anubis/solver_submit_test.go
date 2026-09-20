@@ -16,8 +16,8 @@ import (
 	"github.com/Noooste/azuretls-client"
 	"github.com/stretchr/testify/require"
 
-	"gist/backend/internal/service/anubis"
-	"gist/backend/pkg/network"
+	"krss/backend/internal/service/anubis"
+	"krss/backend/pkg/network"
 )
 
 type stubSession struct {
@@ -504,7 +504,7 @@ func TestSolveFromBodyWithHeaders_ReuseRequestFingerprint(t *testing.T) {
 	body := buildChallengeBody("fast", 0, "id", "data")
 
 	headers := http.Header{
-		"User-Agent":     {"GistFetcher/1.0"},
+		"User-Agent":     {"KrssFetcher/1.0"},
 		"Accept":         {"application/rss+xml,application/xml;q=0.9,*/*;q=0.8"},
 		"Sec-Fetch-Site": {"cross-site"},
 	}
@@ -517,7 +517,7 @@ func TestSolveFromBodyWithHeaders_ReuseRequestFingerprint(t *testing.T) {
 
 	userAgent, ok := findHeader(req.OrderedHeaders, "user-agent")
 	require.True(t, ok)
-	require.Equal(t, "GistFetcher/1.0", userAgent)
+	require.Equal(t, "KrssFetcher/1.0", userAgent)
 
 	accept, ok := findHeader(req.OrderedHeaders, "accept")
 	require.True(t, ok)

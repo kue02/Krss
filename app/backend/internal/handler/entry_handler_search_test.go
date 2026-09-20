@@ -7,9 +7,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"gist/backend/internal/handler"
-	"gist/backend/internal/model"
-	"gist/backend/internal/service/mock"
+	"krss/backend/internal/handler"
+	"krss/backend/internal/model"
+	"krss/backend/internal/service/mock"
 )
 
 func TestEntryHandler_Search_Success(t *testing.T) {

@@ -6,13 +6,13 @@ import (
 )
 
 const (
-	AppName    = "Gist"
+	AppName    = "Krss"
 	AppVersion = "1.2.0"
-	AppRepo    = "https://github.com/9bingyin/Gist"
+	AppRepo    = "https://github.com/hu2327401139/krss"
 )
 
-// GistUserAgent identifies as Gist RSS reader
-var GistUserAgent = "Mozilla/5.0 (compatible; " + AppName + "/" + AppVersion + "; +" + AppRepo + ")"
+// KrssUserAgent identifies as Krss RSS reader
+var KrssUserAgent = "Mozilla/5.0 (compatible; " + AppName + "/" + AppVersion + "; +" + AppRepo + ")"
 
 // Chrome headers for TLS fingerprinting (must match azuretls Chrome profile version)
 const (
@@ -21,7 +21,7 @@ const (
 )
 
 // DefaultUserAgent for RSS fetching
-var DefaultUserAgent = GistUserAgent
+var DefaultUserAgent = KrssUserAgent
 
 type Config struct {
 	Addr          string
@@ -34,31 +34,31 @@ type Config struct {
 }
 
 func Load() Config {
-	addr := os.Getenv("GIST_ADDR")
+	addr := os.Getenv("KRSS_ADDR")
 	if addr == "" {
 		addr = ":8080"
 	}
-	dataDir := os.Getenv("GIST_DATA_DIR")
+	dataDir := os.Getenv("KRSS_DATA_DIR")
 	if dataDir == "" {
 		dataDir = "./data"
 	}
-	path := os.Getenv("GIST_DB_PATH")
+	path := os.Getenv("KRSS_DB_PATH")
 	if path == "" {
-		path = filepath.Join(dataDir, "gist.db")
+		path = filepath.Join(dataDir, "krss.db")
 	}
-	staticDir := os.Getenv("GIST_STATIC_DIR")
+	staticDir := os.Getenv("KRSS_STATIC_DIR")
 	if staticDir == "" {
 		staticDir = detectStaticDir()
 	}
 
-	logLevel := os.Getenv("GIST_LOG_LEVEL")
+	logLevel := os.Getenv("KRSS_LOG_LEVEL")
 	if logLevel == "" {
 		logLevel = "info"
 	}
 
-	enableSwagger := os.Getenv("GIST_SWAGGER") == "true"
-	pprofAddr := os.Getenv("GIST_PPROF_ADDR")
-	if os.Getenv("GIST_ENABLE_PPROF") == "true" && pprofAddr == "" {
+	enableSwagger := os.Getenv("KRSS_SWAGGER") == "true"
+	pprofAddr := os.Getenv("KRSS_PPROF_ADDR")
+	if os.Getenv("KRSS_ENABLE_PPROF") == "true" && pprofAddr == "" {
 		pprofAddr = "127.0.0.1:6060"
 	}
 

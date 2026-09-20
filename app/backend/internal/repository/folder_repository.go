@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"time"
 
-	"gist/backend/internal/model"
-	"gist/backend/pkg/snowflake"
+	"krss/backend/internal/model"
+	"krss/backend/pkg/snowflake"
 )
 
 type FolderRepository interface {

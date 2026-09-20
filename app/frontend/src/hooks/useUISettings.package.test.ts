@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { spyOnStorageWrites } from "@/test/storage-write-spy";
 
 /**
- * 21 批（2026-09-18）：`gist-ui-settings` 从「扁平一坨」变成
+ * 21 批（2026-09-18）：`krss-ui-settings` 从「扁平一坨」变成
  * `{ shared, device: { desktop, mobile } }` —— 尺寸类（列宽/缩放/侧栏）按设备分套。
  *
  * 这里用「每个用例重新 import 模块」的方式测：该模块在导入时就同步读 localStorage
@@ -48,21 +48,15 @@ describe("界面设置整包：尺寸类按设备分套（21 批）", () => {
     expect(mod.getUISettings().cardPreviewLines).toBe(5);
   });
 
-  it("老格式（扁平）读进来时迁移：尺寸类落到当前设备档，并顺手写回新形状", async () => {
-    localStorage.setItem(
-      "gist-ui-settings",
-      JSON.stringify({ feedColWidth: 300, cardPreviewLines: 5 }),
-    );
+  it("形状不对（既不是整包也不是可用的值）→ 走默认值，不崩", async () => {
+    localStorage.setItem("krss-ui-settings", JSON.stringify({ feedColWidth: 300 }));
 
     const mod = await freshModule();
 
-    expect(mod.getUISettings().feedColWidth).toBe(300);
-    expect(mod.getUISettings().cardPreviewLines).toBe(5);
-    const raw = storedPackage();
-    expect(raw.device?.desktop?.feedColWidth).toBe(300);
-    expect(raw.shared?.cardPreviewLines).toBe(5);
-    // 老键搬完即删（keys 的迁移在 lib/settings-storage.ts）
-    expect(localStorage.getItem("gist-ui-settings")).toBeNull();
+    // 扁平形状已不再被识别（改名清理摘掉兼容）：回落默认值
+    expect(mod.getUISettings().feedColWidth).toBe(
+      (await import("./useUISettings")).defaultUISettings.feedColWidth,
+    );
   });
 
   it("服务端整包覆盖本地；窗口跨 768px 断点时尺寸类换到另一档、共用项不动", async () => {

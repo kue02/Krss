@@ -13,7 +13,7 @@ import (
 	"net/url"
 	"strings"
 
-	"gist/backend/internal/model"
+	"krss/backend/internal/model"
 )
 
 // Classify 把一次连接/取数失败收成结构化原因。endpoint 只用来拼建议（取主机名），

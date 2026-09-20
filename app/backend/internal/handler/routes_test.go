@@ -6,8 +6,8 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"gist/backend/internal/handler"
-	"gist/backend/pkg/network"
+	"krss/backend/internal/handler"
+	"krss/backend/pkg/network"
 )
 
 func assertRoute(t *testing.T, routes []*echo.Route, method, path string) {

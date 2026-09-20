@@ -7,9 +7,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"gist/backend/internal/repository/mock"
-	"gist/backend/internal/model"
-	"gist/backend/internal/service"
+	"krss/backend/internal/repository/mock"
+	"krss/backend/internal/model"
+	"krss/backend/internal/service"
 )
 
 func newFeedServiceForMerge(t *testing.T) (*mock.MockFeedRepository, *mock.MockEntryRepository, service.FeedService) {

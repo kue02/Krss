@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/service/mcp"
+	"krss/backend/internal/model"
+	"krss/backend/internal/service/mcp"
 
 	"github.com/stretchr/testify/require"
 )

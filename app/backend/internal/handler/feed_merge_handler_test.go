@@ -7,10 +7,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"gist/backend/internal/handler"
-	"gist/backend/internal/model"
-	"gist/backend/internal/service"
-	"gist/backend/internal/service/mock"
+	"krss/backend/internal/handler"
+	"krss/backend/internal/model"
+	"krss/backend/internal/service"
+	"krss/backend/internal/service/mock"
 )
 
 // 用户场景（第十批 10-4）：RSSHub 换实例后两个订阅撞成同一地址 → 409 + 告诉前端撞的是谁，

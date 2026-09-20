@@ -12,7 +12,7 @@ import (
 	tls "github.com/Noooste/utls"
 	"golang.org/x/net/proxy"
 
-	"gist/backend/pkg/logger"
+	"krss/backend/pkg/logger"
 )
 
 // ProxyProvider provides proxy configuration.

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"gist/backend/internal/service"
-	"gist/backend/internal/service/ai"
+	"krss/backend/internal/service"
+	"krss/backend/internal/service/ai"
 
 	"github.com/stretchr/testify/require"
 )

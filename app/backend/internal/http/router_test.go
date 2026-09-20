@@ -5,10 +5,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"gist/backend/internal/handler"
-	gh "gist/backend/internal/http"
-	"gist/backend/internal/service/mock"
-	"gist/backend/pkg/network"
+	"krss/backend/internal/handler"
+	gh "krss/backend/internal/http"
+	"krss/backend/internal/service/mock"
+	"krss/backend/pkg/network"
 
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/require"

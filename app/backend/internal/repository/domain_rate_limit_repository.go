@@ -6,8 +6,8 @@ import (
 	"database/sql"
 	"time"
 
-	"gist/backend/internal/model"
-	"gist/backend/pkg/snowflake"
+	"krss/backend/internal/model"
+	"krss/backend/pkg/snowflake"
 )
 
 // DomainRateLimitRepository defines the interface for domain rate limit storage.

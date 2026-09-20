@@ -17,12 +17,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/repository"
-	"gist/backend/internal/repository/testutil"
-	"gist/backend/internal/service"
-	"gist/backend/internal/service/mcp"
-	"gist/backend/pkg/network"
+	"krss/backend/internal/model"
+	"krss/backend/internal/repository"
+	"krss/backend/internal/repository/testutil"
+	"krss/backend/internal/service"
+	"krss/backend/internal/service/mcp"
+	"krss/backend/pkg/network"
 )
 
 // ---------------------------------------------------------------------------

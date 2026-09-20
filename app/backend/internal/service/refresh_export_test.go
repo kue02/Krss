@@ -5,7 +5,7 @@ import (
 
 	"time"
 
-	"gist/backend/internal/model"
+	"krss/backend/internal/model"
 )
 
 // RefreshFeedWithFreshClientForTest exposes refreshFeedWithFreshClient for tests.

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"gist/backend/internal/model"
-	"gist/backend/pkg/snowflake"
+	"krss/backend/internal/model"
+	"krss/backend/pkg/snowflake"
 )
 
 // MCPServerRepository MCP 连接（16 批）。建表不塞 KV：有连接状态 / 错误 / 计数，要被建源向导遍历与引用。

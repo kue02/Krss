@@ -21,9 +21,9 @@ beforeEach(() => {
 });
 
 describe("分类展开态（21 批）", () => {
-  it("老键 gist-category-state 迁移，非布尔的脏值被丢掉", async () => {
+  it("非布尔的脏值被丢掉", async () => {
     localStorage.setItem(
-      "gist-category-state",
+      "krss-category-state",
       JSON.stringify({ 技术: true, 新闻: false, junk: "yes" }),
     );
 
@@ -31,7 +31,6 @@ describe("分类展开态（21 批）", () => {
 
     expect(mod.isCategoryOpen("技术")).toBe(true);
     expect(mod.isCategoryOpen("junk")).toBe(false);
-    expect(localStorage.getItem("gist-category-state")).toBeNull();
   });
 
   it("损坏的 JSON 不会让启动崩掉（回落空状态）", async () => {

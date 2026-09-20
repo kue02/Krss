@@ -11,8 +11,8 @@ package mock
 
 import (
 	context "context"
-	model "gist/backend/internal/model"
-	service "gist/backend/internal/service"
+	model "krss/backend/internal/model"
+	service "krss/backend/internal/service"
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"

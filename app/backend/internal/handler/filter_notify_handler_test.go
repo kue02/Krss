@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"gist/backend/internal/handler"
-	"gist/backend/internal/model"
-	"gist/backend/internal/service"
-	"gist/backend/internal/service/mock"
+	"krss/backend/internal/handler"
+	"krss/backend/internal/model"
+	"krss/backend/internal/service"
+	"krss/backend/internal/service/mock"
 )
 
 // 设置页「发送测试推送」成功了 → 200 + 状态码

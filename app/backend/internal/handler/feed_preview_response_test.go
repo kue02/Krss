@@ -7,9 +7,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"gist/backend/internal/handler"
-	"gist/backend/internal/model"
-	"gist/backend/internal/service"
+	"krss/backend/internal/handler"
+	"krss/backend/internal/model"
+	"krss/backend/internal/service"
 )
 
 func strPtr(v string) *string { return &v }

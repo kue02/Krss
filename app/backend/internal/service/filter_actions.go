@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/service/ai"
-	"gist/backend/pkg/logger"
+	"krss/backend/internal/model"
+	"krss/backend/internal/service/ai"
+	"krss/backend/pkg/logger"
 )
 
 // 自然语言建规则：一句人话 → 规则草稿（不落库，交给编辑器确认）。

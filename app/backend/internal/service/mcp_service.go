@@ -14,12 +14,12 @@ import (
 
 	"github.com/mmcdole/gofeed"
 
-	"gist/backend/internal/hashutil"
-	"gist/backend/internal/model"
-	"gist/backend/internal/repository"
-	"gist/backend/internal/service/mcp"
-	"gist/backend/pkg/logger"
-	"gist/backend/pkg/network"
+	"krss/backend/internal/hashutil"
+	"krss/backend/internal/model"
+	"krss/backend/internal/repository"
+	"krss/backend/internal/service/mcp"
+	"krss/backend/pkg/logger"
+	"krss/backend/pkg/network"
 )
 
 // ---------------------------------------------------------------------------

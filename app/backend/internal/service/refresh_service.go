@@ -15,11 +15,11 @@ import (
 	"github.com/mmcdole/gofeed"
 	"golang.org/x/sync/semaphore"
 
-	"gist/backend/internal/config"
-	"gist/backend/internal/model"
-	"gist/backend/internal/repository"
-	"gist/backend/pkg/logger"
-	"gist/backend/pkg/network"
+	"krss/backend/internal/config"
+	"krss/backend/internal/model"
+	"krss/backend/internal/repository"
+	"krss/backend/pkg/logger"
+	"krss/backend/pkg/network"
 )
 
 // refreshTimeout / maxConcurrentRefresh / maxConcurrentPerHost 是**默认值**，

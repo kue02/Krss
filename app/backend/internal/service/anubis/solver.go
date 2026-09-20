@@ -18,9 +18,9 @@ import (
 
 	"github.com/Noooste/azuretls-client"
 
-	"gist/backend/internal/config"
-	"gist/backend/pkg/logger"
-	"gist/backend/pkg/network"
+	"krss/backend/internal/config"
+	"krss/backend/pkg/logger"
+	"krss/backend/pkg/network"
 )
 
 const (

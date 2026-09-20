@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 interface Window {
-  __GIST_BOOT_READY__?: boolean;
+  __KRSS_BOOT_READY__?: boolean;
 }
 
 declare module "virtual:pwa-register/react" {

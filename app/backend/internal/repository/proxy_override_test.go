@@ -7,9 +7,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/repository"
-	"gist/backend/internal/repository/testutil"
+	"krss/backend/internal/model"
+	"krss/backend/internal/repository"
+	"krss/backend/internal/repository/testutil"
 )
 
 // 14 批（迁移 26）：feeds / folders 各加 proxy_mode + proxy_config，

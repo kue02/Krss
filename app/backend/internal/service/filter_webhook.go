@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"gist/backend/internal/model"
+	"krss/backend/internal/model"
 )
 
 // webhook 动作的投递细节：出网、异步、幂等性交给下游自己判断。

@@ -2,11 +2,11 @@ package repository_test
 
 import (
 	"context"
-	"gist/backend/internal/repository"
+	"krss/backend/internal/repository"
 	"testing"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/repository/testutil"
+	"krss/backend/internal/model"
+	"krss/backend/internal/repository/testutil"
 
 	"github.com/stretchr/testify/require"
 )

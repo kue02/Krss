@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"testing"
 
-	"gist/backend/internal/db"
+	"krss/backend/internal/db"
 
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"

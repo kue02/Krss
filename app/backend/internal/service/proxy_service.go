@@ -16,9 +16,9 @@ import (
 	"github.com/Noooste/azuretls-client"
 	"github.com/gabriel-vasile/mimetype"
 
-	"gist/backend/internal/config"
-	"gist/backend/pkg/logger"
-	"gist/backend/pkg/network"
+	"krss/backend/internal/config"
+	"krss/backend/pkg/logger"
+	"krss/backend/pkg/network"
 )
 
 const proxyTimeout = 30 * time.Second

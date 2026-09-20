@@ -29,12 +29,12 @@
         let lightTheme = "light";
         let darkTheme = "dark";
         try {
-          // 键名 krss-* 优先（21 批改名），老键 gist-* 兜底 —— 首屏要跟 useTheme 读的是同一份值
-          mode = localStorage.getItem("krss-theme") || localStorage.getItem("gist-theme") || "system";
+          // 键名 krss-*（改名清理后不留老键兼容）—— 首屏要跟 useTheme 读的是同一份值
+          mode = localStorage.getItem("krss-theme") || "system";
           lightTheme =
-            localStorage.getItem("krss-light-theme") || localStorage.getItem("gist-light-theme") || "light";
+            localStorage.getItem("krss-light-theme") || "light";
           darkTheme =
-            localStorage.getItem("krss-dark-theme") || localStorage.getItem("gist-dark-theme") || "dark";
+            localStorage.getItem("krss-dark-theme") || "dark";
         } catch {
           // Use the system theme when storage is unavailable.
         }
@@ -82,9 +82,9 @@
     <div id="root"></div>
     <script>
       (() => {
-        const BOOT_READY_ATTR = "data-gist-boot-ready";
-        const SOFT_RELOAD_KEY = "gist.boot.soft_count";
-        const HARD_RECOVER_KEY = "gist.boot.hard_count";
+        const BOOT_READY_ATTR = "data-krss-boot-ready";
+        const SOFT_RELOAD_KEY = "krss.boot.soft_count";
+        const HARD_RECOVER_KEY = "krss.boot.hard_count";
         const SOFT_RELOAD_LIMIT = 1;
         const HARD_RECOVER_LIMIT = 1;
         const SOFT_RELOAD_TIMEOUT_MS = 3500;
@@ -104,11 +104,11 @@
 
         const isBootReady = () =>
           document.documentElement.getAttribute(BOOT_READY_ATTR) === "1" ||
-          window.__GIST_BOOT_READY__ === true;
+          window.__KRSS_BOOT_READY__ === true;
 
         const hasSessionStorage = (() => {
           try {
-            const probeKey = "__gist_boot_probe__";
+            const probeKey = "__krss_boot_probe__";
             sessionStorage.setItem(probeKey, "1");
             sessionStorage.removeItem(probeKey);
             return true;

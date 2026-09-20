@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/repository/mock"
-	"gist/backend/internal/service"
+	"krss/backend/internal/model"
+	"krss/backend/internal/repository/mock"
+	"krss/backend/internal/service"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"

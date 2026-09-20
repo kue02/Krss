@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"gist/backend/internal/model"
-	"gist/backend/pkg/snowflake"
+	"krss/backend/internal/model"
+	"krss/backend/pkg/snowflake"
 )
 
 type FeedRepository interface {

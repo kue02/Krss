@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"testing"
 
-	"gist/backend/internal/handler"
-	"gist/backend/internal/service"
+	"krss/backend/internal/handler"
+	"krss/backend/internal/service"
 
 	"github.com/stretchr/testify/require"
 )

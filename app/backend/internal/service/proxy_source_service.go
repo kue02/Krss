@@ -5,9 +5,9 @@ import (
 	"context"
 	"strconv"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/repository"
-	"gist/backend/pkg/logger"
+	"krss/backend/internal/model"
+	"krss/backend/internal/repository"
+	"krss/backend/pkg/logger"
 )
 
 // 代理按来源生效（用户 14 批 · 迁移 26）。

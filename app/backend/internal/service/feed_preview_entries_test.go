@@ -8,7 +8,7 @@ import (
 	"github.com/mmcdole/gofeed/extensions"
 	"github.com/stretchr/testify/require"
 
-	"gist/backend/internal/service"
+	"krss/backend/internal/service"
 )
 
 // 添加订阅时的「试看」条目：只取前几条、字段要够渲染该视图

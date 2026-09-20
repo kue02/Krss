@@ -11,7 +11,7 @@ package mock
 
 import (
 	context "context"
-	service "gist/backend/internal/service"
+	service "krss/backend/internal/service"
 	reflect "reflect"
 	time "time"
 

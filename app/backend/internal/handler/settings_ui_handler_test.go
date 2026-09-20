@@ -7,13 +7,13 @@ import (
 	"net/http"
 	"testing"
 
-	"gist/backend/internal/handler"
+	"krss/backend/internal/handler"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"gist/backend/internal/service"
-	"gist/backend/internal/service/mock"
+	"krss/backend/internal/service"
+	"krss/backend/internal/service/mock"
 )
 
 // errStoreFailure：模拟仓储层真出错（与「值不合法」区分开，前者 500、后者 400）。

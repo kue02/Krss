@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"gist/backend/internal/model"
+	"krss/backend/internal/model"
 )
 
 // IsHashFilenameForTest exposes hash filename check for tests.

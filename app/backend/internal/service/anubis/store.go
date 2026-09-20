@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"gist/backend/internal/repository"
-	"gist/backend/pkg/logger"
+	"krss/backend/internal/repository"
+	"krss/backend/pkg/logger"
 )
 
 const (

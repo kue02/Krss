@@ -7,12 +7,12 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"gist/backend/internal/service"
-	"gist/backend/pkg/logger"
+	"krss/backend/internal/service"
+	"krss/backend/pkg/logger"
 )
 
 // authCookieName must match the one in middleware.go
-const authCookieName = "gist_auth"
+const authCookieName = "krss_auth"
 
 type AuthHandler struct {
 	service service.AuthService
@@ -191,7 +191,7 @@ func (h *AuthHandler) GetCurrentUser(c echo.Context) error {
 
 	logger.Debug("auth me", "module", "handler", "action", "list", "resource", "auth", "result", "ok", "actor", user.Username)
 	// 24-4：带着有效 Bearer 走到这里，说明 localStorage 的 token 还活着、
-	// 只是浏览器给 <img> 用的 gist_auth cookie 掉了。顺手重写回去，
+	// 只是浏览器给 <img> 用的 krss_auth cookie 掉了。顺手重写回去，
 	// 下一次代理图请求就能带上 cookie、不再 401 —— 无需重登。
 	if token := bearerToken(c); token != "" {
 		setAuthCookie(c, token)

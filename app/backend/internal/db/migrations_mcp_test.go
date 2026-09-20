@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"gist/backend/internal/db"
+	"krss/backend/internal/db"
 
 	_ "modernc.org/sqlite"
 

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"gist/backend/internal/service"
+	"krss/backend/internal/service"
 
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"

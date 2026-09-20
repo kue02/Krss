@@ -9,7 +9,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"gist/backend/internal/db"
+	"krss/backend/internal/db"
 
 	"github.com/stretchr/testify/require"
 )

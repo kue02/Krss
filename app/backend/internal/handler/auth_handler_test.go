@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"testing"
 
-	"gist/backend/internal/handler"
-	"gist/backend/internal/service"
-	"gist/backend/internal/service/mock"
+	"krss/backend/internal/handler"
+	"krss/backend/internal/service"
+	"krss/backend/internal/service/mock"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -195,7 +195,7 @@ func TestAuthHandler_GetCurrentUser_RefreshesCookieWithBearer(t *testing.T) {
 	cookies := rec.Result().Cookies()
 	var authCookie *http.Cookie
 	for _, cookie := range cookies {
-		if cookie.Name == "gist_auth" {
+		if cookie.Name == "krss_auth" {
 			authCookie = cookie
 			break
 		}
@@ -230,7 +230,7 @@ func TestAuthHandler_GetCurrentUser_NoCookieRewriteWithoutBearer(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	for _, cookie := range rec.Result().Cookies() {
-		require.NotEqual(t, "gist_auth", cookie.Name)
+		require.NotEqual(t, "krss_auth", cookie.Name)
 	}
 }
 
@@ -286,7 +286,7 @@ func TestAuthHandler_Logout_Success(t *testing.T) {
 	cookies := rec.Result().Cookies()
 	var authCookie *http.Cookie
 	for _, cookie := range cookies {
-		if cookie.Name == "gist_auth" {
+		if cookie.Name == "krss_auth" {
 			authCookie = cookie
 			break
 		}

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"gist/backend/internal/model"
+	"krss/backend/internal/model"
 )
 
 // ---------------------------------------------------------------------------

@@ -6,9 +6,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/repository"
-	"gist/backend/internal/repository/testutil"
+	"krss/backend/internal/model"
+	"krss/backend/internal/repository"
+	"krss/backend/internal/repository/testutil"
 )
 
 // 关键词检索：标题/正文/作者/链接都能命中，大小写不敏感，中文任意位置可搜

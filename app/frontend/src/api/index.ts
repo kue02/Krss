@@ -68,7 +68,7 @@ import type {
 } from "@/types/mcp";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? "";
-// 21 批：gist_auth_token → krss_auth_token（readLocalValue 会把老键的值搬过来，不掉登录）
+// 登录 token 存 localStorage（键名见 LS_KEYS.authToken）
 const TOKEN_SPEC = LS_KEYS.authToken;
 
 export class ApiError extends Error {

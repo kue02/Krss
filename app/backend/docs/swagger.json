@@ -2,7 +2,7 @@
     "swagger": "2.0",
     "info": {
         "description": "This is a modern RSS reader API.",
-        "title": "Gist API",
+        "title": "Krss API",
         "contact": {},
         "version": "1.0"
     },
@@ -156,7 +156,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/gist_backend_internal_service.BatchTranslateResult"
+                            "$ref": "#/definitions/krss_backend_internal_service.BatchTranslateResult"
                         }
                     },
                     "400": {
@@ -2468,7 +2468,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/gist_backend_internal_service.MCPOutboundStatus"
+                            "$ref": "#/definitions/krss_backend_internal_service.MCPOutboundStatus"
                         }
                     }
                 }
@@ -2499,7 +2499,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/gist_backend_internal_service.MCPOutboundStatus"
+                            "$ref": "#/definitions/krss_backend_internal_service.MCPOutboundStatus"
                         }
                     }
                 }
@@ -2688,7 +2688,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/gist_backend_internal_service.MCPInspectResult"
+                            "$ref": "#/definitions/krss_backend_internal_service.MCPInspectResult"
                         }
                     }
                 }
@@ -2716,7 +2716,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/gist_backend_internal_service.OAuthDiscoveryResult"
+                            "$ref": "#/definitions/krss_backend_internal_service.OAuthDiscoveryResult"
                         }
                     }
                 }
@@ -2778,7 +2778,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/gist_backend_internal_service.OAuthStartResult"
+                            "$ref": "#/definitions/krss_backend_internal_service.OAuthStartResult"
                         }
                     }
                 }
@@ -2806,7 +2806,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/gist_backend_internal_service.MCPTestResult"
+                            "$ref": "#/definitions/krss_backend_internal_service.MCPTestResult"
                         }
                     }
                 }
@@ -2846,7 +2846,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/gist_backend_internal_service.MCPSuggestResult"
+                            "$ref": "#/definitions/krss_backend_internal_service.MCPSuggestResult"
                         }
                     }
                 }
@@ -2874,7 +2874,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/gist_backend_internal_service.MCPTestResult"
+                            "$ref": "#/definitions/krss_backend_internal_service.MCPTestResult"
                         }
                     }
                 }
@@ -2902,7 +2902,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/gist_backend_internal_service.MCPToolListResult"
+                            "$ref": "#/definitions/krss_backend_internal_service.MCPToolListResult"
                         }
                     }
                 }
@@ -3004,7 +3004,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/gist_backend_internal_service.ImportTask"
+                            "$ref": "#/definitions/krss_backend_internal_service.ImportTask"
                         }
                     }
                 }
@@ -3024,7 +3024,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/gist_backend_internal_service.ProxySourceOverview"
+                            "$ref": "#/definitions/krss_backend_internal_service.ProxySourceOverview"
                         }
                     },
                     "500": {
@@ -3296,7 +3296,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/gist_backend_internal_service.SettingsExport"
+                            "$ref": "#/definitions/krss_backend_internal_service.SettingsExport"
                         }
                     },
                     "500": {
@@ -3462,7 +3462,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/gist_backend_internal_service.SettingsExport"
+                            "$ref": "#/definitions/krss_backend_internal_service.SettingsExport"
                         }
                     }
                 ],
@@ -3710,666 +3710,6 @@
         }
     },
     "definitions": {
-        "gist_backend_internal_model.MCPFailure": {
-            "type": "object",
-            "properties": {
-                "bucket": {
-                    "type": "string"
-                },
-                "code": {
-                    "type": "string"
-                },
-                "raw": {
-                    "type": "string"
-                },
-                "suggestion": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
-                }
-            }
-        },
-        "gist_backend_internal_model.MCPFieldMapping": {
-            "type": "object",
-            "properties": {
-                "author": {
-                    "type": "string"
-                },
-                "content": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "listPath": {
-                    "description": "ListPath 列表路径（如 data.items / results / notes）。空 = 结果本身就是数组。",
-                    "type": "string"
-                },
-                "publishedAt": {
-                    "description": "PublishedAt 时间字段；Author 作者；ID 去重键字段（id / key / slug / url）。",
-                    "type": "string"
-                },
-                "thumbnail": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
-                },
-                "url": {
-                    "type": "string"
-                }
-            }
-        },
-        "gist_backend_internal_model.MCPPagination": {
-            "type": "object",
-            "properties": {
-                "cursorParam": {
-                    "description": "CursorParam 传给工具的游标参数名（空 = 按 inputSchema 自动找 cursor/nextCursor/pageToken/offset/page）；\nCursorPath 从返回里读下一页游标的路径（空 = 按 nextCursor/cursor/next_cursor/pageToken 自动找）。",
-                    "type": "string"
-                },
-                "cursorPath": {
-                    "type": "string"
-                },
-                "maxItems": {
-                    "type": "integer"
-                },
-                "maxPages": {
-                    "description": "MaxPages 最多追几页；MaxItems 最多收几条（双上限，先到先停）。",
-                    "type": "integer"
-                },
-                "mode": {
-                    "type": "string"
-                }
-            }
-        },
-        "gist_backend_internal_model.ProxyOverrideConfig": {
-            "type": "object",
-            "properties": {
-                "host": {
-                    "type": "string"
-                },
-                "password": {
-                    "type": "string"
-                },
-                "port": {
-                    "type": "integer"
-                },
-                "type": {
-                    "type": "string"
-                },
-                "username": {
-                    "type": "string"
-                }
-            }
-        },
-        "gist_backend_internal_service.AIProviderConfig": {
-            "type": "object",
-            "properties": {
-                "apiKey": {
-                    "type": "string"
-                },
-                "baseUrl": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "model": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "provider": {
-                    "type": "string"
-                },
-                "requestOptions": {
-                    "type": "object",
-                    "additionalProperties": {}
-                }
-            }
-        },
-        "gist_backend_internal_service.BatchTranslateResult": {
-            "type": "object",
-            "properties": {
-                "cached": {
-                    "type": "boolean"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "summary": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
-                }
-            }
-        },
-        "gist_backend_internal_service.ImportResult": {
-            "type": "object",
-            "properties": {
-                "feedsCreated": {
-                    "type": "integer"
-                },
-                "feedsSkipped": {
-                    "type": "integer"
-                },
-                "foldersCreated": {
-                    "type": "integer"
-                },
-                "foldersSkipped": {
-                    "type": "integer"
-                }
-            }
-        },
-        "gist_backend_internal_service.ImportTask": {
-            "type": "object",
-            "properties": {
-                "createdAt": {
-                    "type": "string"
-                },
-                "current": {
-                    "type": "integer"
-                },
-                "error": {
-                    "type": "string"
-                },
-                "feed": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "result": {
-                    "$ref": "#/definitions/gist_backend_internal_service.ImportResult"
-                },
-                "status": {
-                    "description": "\"running\", \"done\", \"error\", \"cancelled\"",
-                    "type": "string"
-                },
-                "total": {
-                    "type": "integer"
-                }
-            }
-        },
-        "gist_backend_internal_service.MCPInspectResult": {
-            "type": "object",
-            "properties": {
-                "cursorParam": {
-                    "description": "CursorParam 游标参数名（inputSchema 里自动找到的；前端「拉更多」往这个参数填）。",
-                    "type": "string"
-                },
-                "error": {
-                    "type": "string"
-                },
-                "failure": {
-                    "description": "Failure 结构化失败（16-12：向导预览与测试按钮共用同一套文案）。",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/gist_backend_internal_model.MCPFailure"
-                        }
-                    ]
-                },
-                "keyLevel": {
-                    "type": "string"
-                },
-                "mapping": {
-                    "$ref": "#/definitions/gist_backend_internal_model.MCPFieldMapping"
-                },
-                "nextCursor": {
-                    "description": "NextCursor 第一页之后还有页时回传（向导「拉更多」把游标塞进 arguments 再 inspect）。",
-                    "type": "string"
-                },
-                "notes": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "preview": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/gist_backend_internal_service.MCPPreviewItem"
-                    }
-                },
-                "tier": {
-                    "type": "string"
-                },
-                "total": {
-                    "type": "integer"
-                },
-                "truncated": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "gist_backend_internal_service.MCPOutboundStatus": {
-            "type": "object",
-            "properties": {
-                "baseUrl": {
-                    "description": "BaseURL 对外访问地址（用户填；空 = 没填，示例里回落到浏览器当前 origin）。",
-                    "type": "string"
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "endpoint": {
-                    "type": "string"
-                },
-                "protocolVersion": {
-                    "type": "string"
-                },
-                "resourceCount": {
-                    "type": "integer"
-                },
-                "token": {
-                    "type": "string"
-                },
-                "tokenCreatedAt": {
-                    "type": "string"
-                },
-                "tokenPrefix": {
-                    "type": "string"
-                },
-                "tokenSet": {
-                    "description": "TokenSet 是否有可用 Token；Token 是明文库里那份原文（可重复查看复制，17-2）。\n存量哈希没有明文可回 → Token 为空，界面提示点一次「重新生成」。",
-                    "type": "boolean"
-                },
-                "toolCount": {
-                    "type": "integer"
-                },
-                "writeEnabled": {
-                    "description": "WriteEnabled 写操作总开关（默认关；第一版只读）。",
-                    "type": "boolean"
-                }
-            }
-        },
-        "gist_backend_internal_service.MCPPreviewItem": {
-            "type": "object",
-            "properties": {
-                "author": {
-                    "type": "string"
-                },
-                "content": {
-                    "type": "string"
-                },
-                "key": {
-                    "type": "string"
-                },
-                "keyLevel": {
-                    "type": "string"
-                },
-                "publishedAt": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
-                },
-                "url": {
-                    "type": "string"
-                }
-            }
-        },
-        "gist_backend_internal_service.MCPResourceItem": {
-            "type": "object",
-            "properties": {
-                "description": {
-                    "type": "string"
-                },
-                "mimeType": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "uri": {
-                    "type": "string"
-                }
-            }
-        },
-        "gist_backend_internal_service.MCPSuggestResult": {
-            "type": "object",
-            "properties": {
-                "estimatedTokens": {
-                    "description": "EstimatedTokens 粗估的消耗（字符数/4，标「约」—— provider 没回真实用量）。",
-                    "type": "integer"
-                },
-                "mapping": {
-                    "$ref": "#/definitions/gist_backend_internal_model.MCPFieldMapping"
-                },
-                "model": {
-                    "type": "string"
-                },
-                "raw": {
-                    "type": "string"
-                },
-                "textUsed": {
-                    "type": "integer"
-                }
-            }
-        },
-        "gist_backend_internal_service.MCPTestResult": {
-            "type": "object",
-            "properties": {
-                "connected": {
-                    "type": "boolean"
-                },
-                "error": {
-                    "type": "string"
-                },
-                "failure": {
-                    "description": "Failure 结构化失败（16-12：三处共用；成功时为 nil）。",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/gist_backend_internal_model.MCPFailure"
-                        }
-                    ]
-                },
-                "latencyMs": {
-                    "type": "integer"
-                },
-                "resourceCount": {
-                    "type": "integer"
-                },
-                "serverName": {
-                    "type": "string"
-                },
-                "serverVersion": {
-                    "type": "string"
-                },
-                "toolCount": {
-                    "type": "integer"
-                },
-                "transport": {
-                    "description": "Transport 这次实际用的传输；LatencyMs 握手耗时毫秒。",
-                    "type": "string"
-                }
-            }
-        },
-        "gist_backend_internal_service.MCPToolItem": {
-            "type": "object",
-            "properties": {
-                "description": {
-                    "type": "string"
-                },
-                "inputSchema": {
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
-                },
-                "name": {
-                    "type": "string"
-                },
-                "outputSchema": {
-                    "type": "array",
-                    "items": {
-                        "type": "integer"
-                    }
-                },
-                "title": {
-                    "type": "string"
-                }
-            }
-        },
-        "gist_backend_internal_service.MCPToolListResult": {
-            "type": "object",
-            "properties": {
-                "resources": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/gist_backend_internal_service.MCPResourceItem"
-                    }
-                },
-                "tools": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/gist_backend_internal_service.MCPToolItem"
-                    }
-                }
-            }
-        },
-        "gist_backend_internal_service.NetworkSettings": {
-            "type": "object",
-            "properties": {
-                "enabled": {
-                    "type": "boolean"
-                },
-                "host": {
-                    "type": "string"
-                },
-                "ipStack": {
-                    "description": "default, ipv4, ipv6",
-                    "type": "string"
-                },
-                "password": {
-                    "type": "string"
-                },
-                "port": {
-                    "type": "integer"
-                },
-                "type": {
-                    "description": "http, socks5",
-                    "type": "string"
-                },
-                "username": {
-                    "type": "string"
-                }
-            }
-        },
-        "gist_backend_internal_service.OAuthDiscoveryResult": {
-            "type": "object",
-            "properties": {
-                "authServer": {
-                    "type": "string"
-                },
-                "hasClientID": {
-                    "type": "boolean"
-                },
-                "hasDCR": {
-                    "type": "boolean"
-                },
-                "instructions": {
-                    "type": "string"
-                },
-                "needsManual": {
-                    "type": "boolean"
-                }
-            }
-        },
-        "gist_backend_internal_service.OAuthStartResult": {
-            "type": "object",
-            "properties": {
-                "authURL": {
-                    "type": "string"
-                },
-                "state": {
-                    "type": "string"
-                }
-            }
-        },
-        "gist_backend_internal_service.ProxyEffective": {
-            "type": "object",
-            "properties": {
-                "missing": {
-                    "description": "Missing：这一层选了「走代理」但拿不到可用地址（全局总开关关着、或单独指定没填全）→ 实际直连",
-                    "type": "boolean"
-                },
-                "mode": {
-                    "description": "Mode 实际生效：proxy = 走代理，direct = 直连",
-                    "type": "string"
-                },
-                "source": {
-                    "description": "Source 这个结果由谁决定：feed / folder / global",
-                    "type": "string"
-                },
-                "sourceId": {
-                    "description": "SourceID / SourceName 决定它的那一层（folder 时是文件夹名字，界面直接显示「来自：文件夹『技术』」）",
-                    "type": "string"
-                },
-                "sourceName": {
-                    "type": "string"
-                }
-            }
-        },
-        "gist_backend_internal_service.ProxyFeedView": {
-            "type": "object",
-            "properties": {
-                "effective": {
-                    "$ref": "#/definitions/gist_backend_internal_service.ProxyEffective"
-                },
-                "folderId": {
-                    "type": "string"
-                },
-                "iconPath": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "override": {
-                    "$ref": "#/definitions/gist_backend_internal_service.ProxyOverrideView"
-                },
-                "title": {
-                    "type": "string"
-                },
-                "type": {
-                    "type": "string"
-                }
-            }
-        },
-        "gist_backend_internal_service.ProxyFolderView": {
-            "type": "object",
-            "properties": {
-                "effective": {
-                    "$ref": "#/definitions/gist_backend_internal_service.ProxyEffective"
-                },
-                "feedCount": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "override": {
-                    "$ref": "#/definitions/gist_backend_internal_service.ProxyOverrideView"
-                },
-                "parentId": {
-                    "type": "string"
-                },
-                "type": {
-                    "type": "string"
-                }
-            }
-        },
-        "gist_backend_internal_service.ProxyOverrideCount": {
-            "type": "object",
-            "properties": {
-                "feeds": {
-                    "type": "integer"
-                },
-                "folders": {
-                    "type": "integer"
-                },
-                "globalEnabled": {
-                    "type": "boolean"
-                },
-                "proxiedFeeds": {
-                    "type": "integer"
-                }
-            }
-        },
-        "gist_backend_internal_service.ProxyOverrideView": {
-            "type": "object",
-            "properties": {
-                "config": {
-                    "$ref": "#/definitions/gist_backend_internal_model.ProxyOverrideConfig"
-                },
-                "mode": {
-                    "type": "string"
-                }
-            }
-        },
-        "gist_backend_internal_service.ProxySourceOverview": {
-            "type": "object",
-            "properties": {
-                "counts": {
-                    "$ref": "#/definitions/gist_backend_internal_service.ProxyOverrideCount"
-                },
-                "feeds": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/gist_backend_internal_service.ProxyFeedView"
-                    }
-                },
-                "folders": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/gist_backend_internal_service.ProxyFolderView"
-                    }
-                },
-                "global": {
-                    "$ref": "#/definitions/gist_backend_internal_service.NetworkSettings"
-                }
-            }
-        },
-        "gist_backend_internal_service.RefreshFeedResult": {
-            "type": "object",
-            "properties": {
-                "error": {
-                    "type": "string"
-                },
-                "feedId": {
-                    "type": "integer"
-                },
-                "iconPath": {
-                    "type": "string"
-                },
-                "new": {
-                    "type": "integer"
-                },
-                "skipped": {
-                    "type": "boolean"
-                },
-                "title": {
-                    "type": "string"
-                },
-                "updated": {
-                    "type": "integer"
-                }
-            }
-        },
-        "gist_backend_internal_service.SettingsExport": {
-            "type": "object",
-            "properties": {
-                "excludedKeys": {
-                    "description": "ExcludedKeys 导出时被排除的键（凭证类）——写进文件里，让用户知道漏了哪些、为什么。",
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "exportedAt": {
-                    "type": "string"
-                },
-                "settings": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "type": "array",
-                        "items": {
-                            "type": "integer"
-                        }
-                    }
-                },
-                "version": {
-                    "type": "integer"
-                }
-            }
-        },
         "internal_handler.aiModelsRequest": {
             "type": "object",
             "properties": {
@@ -4426,7 +3766,7 @@
                 "providers": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/gist_backend_internal_service.AIProviderConfig"
+                        "$ref": "#/definitions/krss_backend_internal_service.AIProviderConfig"
                     }
                 },
                 "rateLimit": {
@@ -4476,7 +3816,7 @@
                 "providers": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/gist_backend_internal_service.AIProviderConfig"
+                        "$ref": "#/definitions/krss_backend_internal_service.AIProviderConfig"
                     }
                 },
                 "rateLimit": {
@@ -4899,7 +4239,7 @@
             "type": "object",
             "properties": {
                 "effective": {
-                    "$ref": "#/definitions/gist_backend_internal_service.ProxyEffective"
+                    "$ref": "#/definitions/krss_backend_internal_service.ProxyEffective"
                 },
                 "feed": {
                     "$ref": "#/definitions/internal_handler.feedResponse"
@@ -4949,7 +4289,7 @@
                     "description": "ProxyConfig：本条单独指定的一套代理（密码已掩码）；缺省 = 用全局那套",
                     "allOf": [
                         {
-                            "$ref": "#/definitions/gist_backend_internal_model.ProxyOverrideConfig"
+                            "$ref": "#/definitions/krss_backend_internal_model.ProxyOverrideConfig"
                         }
                     ]
                 },
@@ -5407,7 +4747,7 @@
             "type": "object",
             "properties": {
                 "effective": {
-                    "$ref": "#/definitions/gist_backend_internal_service.ProxyEffective"
+                    "$ref": "#/definitions/krss_backend_internal_service.ProxyEffective"
                 },
                 "folder": {
                     "$ref": "#/definitions/internal_handler.folderResponse"
@@ -5447,7 +4787,7 @@
                     "description": "ProxyConfig：本层单独指定的一套代理（密码已掩码）；缺省 = 用全局那套",
                     "allOf": [
                         {
-                            "$ref": "#/definitions/gist_backend_internal_model.ProxyOverrideConfig"
+                            "$ref": "#/definitions/krss_backend_internal_model.ProxyOverrideConfig"
                         }
                     ]
                 },
@@ -5577,10 +4917,10 @@
                     "type": "integer"
                 },
                 "mapping": {
-                    "$ref": "#/definitions/gist_backend_internal_model.MCPFieldMapping"
+                    "$ref": "#/definitions/krss_backend_internal_model.MCPFieldMapping"
                 },
                 "pagination": {
-                    "$ref": "#/definitions/gist_backend_internal_model.MCPPagination"
+                    "$ref": "#/definitions/krss_backend_internal_model.MCPPagination"
                 },
                 "resourceUri": {
                     "type": "string"
@@ -5610,7 +4950,7 @@
                     "type": "integer"
                 },
                 "mapping": {
-                    "$ref": "#/definitions/gist_backend_internal_model.MCPFieldMapping"
+                    "$ref": "#/definitions/krss_backend_internal_model.MCPFieldMapping"
                 },
                 "resourceUri": {
                     "type": "string"
@@ -5749,7 +5089,7 @@
                     "description": "LastFailure 结构化失败（16-12：列表行/测试/预览三处共用）",
                     "allOf": [
                         {
-                            "$ref": "#/definitions/gist_backend_internal_model.MCPFailure"
+                            "$ref": "#/definitions/krss_backend_internal_model.MCPFailure"
                         }
                     ]
                 },
@@ -6021,7 +5361,7 @@
                     "description": "Results 最近一轮刷新里每个订阅的结果（新/更新条数、失败原因）—— 刷新结果弹框用（用户 11-8）",
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/gist_backend_internal_service.RefreshFeedResult"
+                        "$ref": "#/definitions/krss_backend_internal_service.RefreshFeedResult"
                     }
                 },
                 "total": {
@@ -6269,10 +5609,10 @@
                     "type": "integer"
                 },
                 "mapping": {
-                    "$ref": "#/definitions/gist_backend_internal_model.MCPFieldMapping"
+                    "$ref": "#/definitions/krss_backend_internal_model.MCPFieldMapping"
                 },
                 "pagination": {
-                    "$ref": "#/definitions/gist_backend_internal_model.MCPPagination"
+                    "$ref": "#/definitions/krss_backend_internal_model.MCPPagination"
                 },
                 "resourceUri": {
                     "type": "string"
@@ -6386,6 +5726,666 @@
                     "additionalProperties": {
                         "type": "integer"
                     }
+                }
+            }
+        },
+        "krss_backend_internal_model.MCPFailure": {
+            "type": "object",
+            "properties": {
+                "bucket": {
+                    "type": "string"
+                },
+                "code": {
+                    "type": "string"
+                },
+                "raw": {
+                    "type": "string"
+                },
+                "suggestion": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_model.MCPFieldMapping": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "listPath": {
+                    "description": "ListPath 列表路径（如 data.items / results / notes）。空 = 结果本身就是数组。",
+                    "type": "string"
+                },
+                "publishedAt": {
+                    "description": "PublishedAt 时间字段；Author 作者；ID 去重键字段（id / key / slug / url）。",
+                    "type": "string"
+                },
+                "thumbnail": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_model.MCPPagination": {
+            "type": "object",
+            "properties": {
+                "cursorParam": {
+                    "description": "CursorParam 传给工具的游标参数名（空 = 按 inputSchema 自动找 cursor/nextCursor/pageToken/offset/page）；\nCursorPath 从返回里读下一页游标的路径（空 = 按 nextCursor/cursor/next_cursor/pageToken 自动找）。",
+                    "type": "string"
+                },
+                "cursorPath": {
+                    "type": "string"
+                },
+                "maxItems": {
+                    "type": "integer"
+                },
+                "maxPages": {
+                    "description": "MaxPages 最多追几页；MaxItems 最多收几条（双上限，先到先停）。",
+                    "type": "integer"
+                },
+                "mode": {
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_model.ProxyOverrideConfig": {
+            "type": "object",
+            "properties": {
+                "host": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "integer"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_service.AIProviderConfig": {
+            "type": "object",
+            "properties": {
+                "apiKey": {
+                    "type": "string"
+                },
+                "baseUrl": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "requestOptions": {
+                    "type": "object",
+                    "additionalProperties": {}
+                }
+            }
+        },
+        "krss_backend_internal_service.BatchTranslateResult": {
+            "type": "object",
+            "properties": {
+                "cached": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "summary": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_service.ImportResult": {
+            "type": "object",
+            "properties": {
+                "feedsCreated": {
+                    "type": "integer"
+                },
+                "feedsSkipped": {
+                    "type": "integer"
+                },
+                "foldersCreated": {
+                    "type": "integer"
+                },
+                "foldersSkipped": {
+                    "type": "integer"
+                }
+            }
+        },
+        "krss_backend_internal_service.ImportTask": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "current": {
+                    "type": "integer"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "feed": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "result": {
+                    "$ref": "#/definitions/krss_backend_internal_service.ImportResult"
+                },
+                "status": {
+                    "description": "\"running\", \"done\", \"error\", \"cancelled\"",
+                    "type": "string"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "krss_backend_internal_service.MCPInspectResult": {
+            "type": "object",
+            "properties": {
+                "cursorParam": {
+                    "description": "CursorParam 游标参数名（inputSchema 里自动找到的；前端「拉更多」往这个参数填）。",
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "failure": {
+                    "description": "Failure 结构化失败（16-12：向导预览与测试按钮共用同一套文案）。",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/krss_backend_internal_model.MCPFailure"
+                        }
+                    ]
+                },
+                "keyLevel": {
+                    "type": "string"
+                },
+                "mapping": {
+                    "$ref": "#/definitions/krss_backend_internal_model.MCPFieldMapping"
+                },
+                "nextCursor": {
+                    "description": "NextCursor 第一页之后还有页时回传（向导「拉更多」把游标塞进 arguments 再 inspect）。",
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "preview": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_service.MCPPreviewItem"
+                    }
+                },
+                "tier": {
+                    "type": "string"
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "truncated": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "krss_backend_internal_service.MCPOutboundStatus": {
+            "type": "object",
+            "properties": {
+                "baseUrl": {
+                    "description": "BaseURL 对外访问地址（用户填；空 = 没填，示例里回落到浏览器当前 origin）。",
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "endpoint": {
+                    "type": "string"
+                },
+                "protocolVersion": {
+                    "type": "string"
+                },
+                "resourceCount": {
+                    "type": "integer"
+                },
+                "token": {
+                    "type": "string"
+                },
+                "tokenCreatedAt": {
+                    "type": "string"
+                },
+                "tokenPrefix": {
+                    "type": "string"
+                },
+                "tokenSet": {
+                    "description": "TokenSet 是否有可用 Token；Token 是明文库里那份原文（可重复查看复制，17-2）。\n存量哈希没有明文可回 → Token 为空，界面提示点一次「重新生成」。",
+                    "type": "boolean"
+                },
+                "toolCount": {
+                    "type": "integer"
+                },
+                "writeEnabled": {
+                    "description": "WriteEnabled 写操作总开关（默认关；第一版只读）。",
+                    "type": "boolean"
+                }
+            }
+        },
+        "krss_backend_internal_service.MCPPreviewItem": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "keyLevel": {
+                    "type": "string"
+                },
+                "publishedAt": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_service.MCPResourceItem": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "mimeType": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "uri": {
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_service.MCPSuggestResult": {
+            "type": "object",
+            "properties": {
+                "estimatedTokens": {
+                    "description": "EstimatedTokens 粗估的消耗（字符数/4，标「约」—— provider 没回真实用量）。",
+                    "type": "integer"
+                },
+                "mapping": {
+                    "$ref": "#/definitions/krss_backend_internal_model.MCPFieldMapping"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "raw": {
+                    "type": "string"
+                },
+                "textUsed": {
+                    "type": "integer"
+                }
+            }
+        },
+        "krss_backend_internal_service.MCPTestResult": {
+            "type": "object",
+            "properties": {
+                "connected": {
+                    "type": "boolean"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "failure": {
+                    "description": "Failure 结构化失败（16-12：三处共用；成功时为 nil）。",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/krss_backend_internal_model.MCPFailure"
+                        }
+                    ]
+                },
+                "latencyMs": {
+                    "type": "integer"
+                },
+                "resourceCount": {
+                    "type": "integer"
+                },
+                "serverName": {
+                    "type": "string"
+                },
+                "serverVersion": {
+                    "type": "string"
+                },
+                "toolCount": {
+                    "type": "integer"
+                },
+                "transport": {
+                    "description": "Transport 这次实际用的传输；LatencyMs 握手耗时毫秒。",
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_service.MCPToolItem": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "inputSchema": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "outputSchema": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_service.MCPToolListResult": {
+            "type": "object",
+            "properties": {
+                "resources": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_service.MCPResourceItem"
+                    }
+                },
+                "tools": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_service.MCPToolItem"
+                    }
+                }
+            }
+        },
+        "krss_backend_internal_service.NetworkSettings": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "host": {
+                    "type": "string"
+                },
+                "ipStack": {
+                    "description": "default, ipv4, ipv6",
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "integer"
+                },
+                "type": {
+                    "description": "http, socks5",
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_service.OAuthDiscoveryResult": {
+            "type": "object",
+            "properties": {
+                "authServer": {
+                    "type": "string"
+                },
+                "hasClientID": {
+                    "type": "boolean"
+                },
+                "hasDCR": {
+                    "type": "boolean"
+                },
+                "instructions": {
+                    "type": "string"
+                },
+                "needsManual": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "krss_backend_internal_service.OAuthStartResult": {
+            "type": "object",
+            "properties": {
+                "authURL": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_service.ProxyEffective": {
+            "type": "object",
+            "properties": {
+                "missing": {
+                    "description": "Missing：这一层选了「走代理」但拿不到可用地址（全局总开关关着、或单独指定没填全）→ 实际直连",
+                    "type": "boolean"
+                },
+                "mode": {
+                    "description": "Mode 实际生效：proxy = 走代理，direct = 直连",
+                    "type": "string"
+                },
+                "source": {
+                    "description": "Source 这个结果由谁决定：feed / folder / global",
+                    "type": "string"
+                },
+                "sourceId": {
+                    "description": "SourceID / SourceName 决定它的那一层（folder 时是文件夹名字，界面直接显示「来自：文件夹『技术』」）",
+                    "type": "string"
+                },
+                "sourceName": {
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_service.ProxyFeedView": {
+            "type": "object",
+            "properties": {
+                "effective": {
+                    "$ref": "#/definitions/krss_backend_internal_service.ProxyEffective"
+                },
+                "folderId": {
+                    "type": "string"
+                },
+                "iconPath": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "override": {
+                    "$ref": "#/definitions/krss_backend_internal_service.ProxyOverrideView"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_service.ProxyFolderView": {
+            "type": "object",
+            "properties": {
+                "effective": {
+                    "$ref": "#/definitions/krss_backend_internal_service.ProxyEffective"
+                },
+                "feedCount": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "override": {
+                    "$ref": "#/definitions/krss_backend_internal_service.ProxyOverrideView"
+                },
+                "parentId": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_service.ProxyOverrideCount": {
+            "type": "object",
+            "properties": {
+                "feeds": {
+                    "type": "integer"
+                },
+                "folders": {
+                    "type": "integer"
+                },
+                "globalEnabled": {
+                    "type": "boolean"
+                },
+                "proxiedFeeds": {
+                    "type": "integer"
+                }
+            }
+        },
+        "krss_backend_internal_service.ProxyOverrideView": {
+            "type": "object",
+            "properties": {
+                "config": {
+                    "$ref": "#/definitions/krss_backend_internal_model.ProxyOverrideConfig"
+                },
+                "mode": {
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_service.ProxySourceOverview": {
+            "type": "object",
+            "properties": {
+                "counts": {
+                    "$ref": "#/definitions/krss_backend_internal_service.ProxyOverrideCount"
+                },
+                "feeds": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_service.ProxyFeedView"
+                    }
+                },
+                "folders": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_service.ProxyFolderView"
+                    }
+                },
+                "global": {
+                    "$ref": "#/definitions/krss_backend_internal_service.NetworkSettings"
+                }
+            }
+        },
+        "krss_backend_internal_service.RefreshFeedResult": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "feedId": {
+                    "type": "integer"
+                },
+                "iconPath": {
+                    "type": "string"
+                },
+                "new": {
+                    "type": "integer"
+                },
+                "skipped": {
+                    "type": "boolean"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updated": {
+                    "type": "integer"
+                }
+            }
+        },
+        "krss_backend_internal_service.SettingsExport": {
+            "type": "object",
+            "properties": {
+                "excludedKeys": {
+                    "description": "ExcludedKeys 导出时被排除的键（凭证类）——写进文件里，让用户知道漏了哪些、为什么。",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "exportedAt": {
+                    "type": "string"
+                },
+                "settings": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "type": "integer"
+                        }
+                    }
+                },
+                "version": {
+                    "type": "integer"
                 }
             }
         }

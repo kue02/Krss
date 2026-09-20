@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	gh "gist/backend/internal/http"
+	gh "krss/backend/internal/http"
 
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/require"

@@ -11,7 +11,7 @@ import { LS_KEYS } from "@/lib/settings-storage";
  * 「点击 → setUnreadBadge」是通的 —— 所以这里把 store 这一层单独钉住。
  *
  * 21 批（2026-09-18）改了落盘格式，这条用例跟着改了两处断言：
- *   1. 键名 `gist-ui-settings` → `krss-ui-settings`（老键会被 readLocalValue 自动搬过来）；
+ *   1. 键名 `krss-ui-settings`；
  *   2. 值不再是扁平一坨，而是 `{ shared, device: { desktop, mobile } }` ——
  *      `unreadBadge` 不是尺寸类，落在 `shared` 里；尺寸类（列宽 / 缩放 / 侧栏）按设备分套。
  */

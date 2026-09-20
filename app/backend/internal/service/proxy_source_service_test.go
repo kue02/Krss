@@ -8,10 +8,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"gist/backend/internal/model"
-	repomock "gist/backend/internal/repository/mock"
-	"gist/backend/internal/service"
-	"gist/backend/internal/service/mock"
+	"krss/backend/internal/model"
+	repomock "krss/backend/internal/repository/mock"
+	"krss/backend/internal/service"
+	"krss/backend/internal/service/mock"
 )
 
 // 14 批：代理按来源生效 —— 解析顺序「订阅 → 文件夹（含父级链）→ 全局」，第一个非 NULL 说了算。

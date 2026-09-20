@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"gist/backend/pkg/logger"
+	"krss/backend/pkg/logger"
 )
 
 type ImportTask struct {

@@ -6,7 +6,7 @@ interface CategoryState {
   [categoryName: string]: boolean;
 }
 
-// 21 批：键名 gist-category-state → krss-category-state（老键的值会被搬过来）
+// 本地缓存键名见 LS_KEYS（改名清理后只有 krss-*）
 const STORAGE_SPEC = LS_KEYS.categoryState;
 
 function getStoredState(): CategoryState {

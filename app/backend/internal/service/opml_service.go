@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/repository"
-	"gist/backend/pkg/logger"
-	"gist/backend/pkg/opml"
+	"krss/backend/internal/model"
+	"krss/backend/internal/repository"
+	"krss/backend/pkg/logger"
+	"krss/backend/pkg/opml"
 )
 
 type OPMLService interface {
@@ -135,7 +135,7 @@ func (s *opmlService) Export(ctx context.Context) ([]byte, error) {
 	doc := opml.Document{
 		Version: "2.0",
 		Head: opml.Head{
-			Title:        "Gist Subscriptions",
+			Title:        "Krss Subscriptions",
 			DateCreated:  date,
 			DateModified: date,
 		},

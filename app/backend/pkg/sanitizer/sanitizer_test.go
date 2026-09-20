@@ -3,7 +3,7 @@ package sanitizer_test
 import (
 	"testing"
 
-	"gist/backend/pkg/sanitizer"
+	"krss/backend/pkg/sanitizer"
 )
 
 func TestSanitizeAuthor(t *testing.T) {

@@ -3,16 +3,16 @@ package service_test
 import (
 	"context"
 	"errors"
-	"gist/backend/internal/service"
+	"krss/backend/internal/service"
 	"testing"
 	"time"
 
-	repositorymock "gist/backend/internal/repository/mock"
+	repositorymock "krss/backend/internal/repository/mock"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/service/ai"
+	"krss/backend/internal/model"
+	"krss/backend/internal/service/ai"
 )
 
 func TestAIService_GetSummaryLanguage(t *testing.T) {

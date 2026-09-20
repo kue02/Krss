@@ -2,7 +2,7 @@ package ai_test
 
 import (
 	"context"
-	"gist/backend/internal/service/ai"
+	"krss/backend/internal/service/ai"
 	"testing"
 
 	"github.com/stretchr/testify/require"

@@ -22,10 +22,10 @@ import (
 	"sync"
 	"time"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/service/mcp"
-	"gist/backend/pkg/logger"
-	"gist/backend/pkg/network"
+	"krss/backend/internal/model"
+	"krss/backend/internal/service/mcp"
+	"krss/backend/pkg/logger"
+	"krss/backend/pkg/network"
 )
 
 // OAuthPending 一次进行中的授权（state 当凭证）。

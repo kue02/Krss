@@ -2,7 +2,7 @@ package handler_test
 
 import (
 	"context"
-	"gist/backend/internal/handler"
+	"krss/backend/internal/handler"
 	"net/http"
 	"testing"
 	"time"
@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/service"
-	"gist/backend/internal/service/mock"
+	"krss/backend/internal/model"
+	"krss/backend/internal/service"
+	"krss/backend/internal/service/mock"
 )
 
 func TestFeedHandler_Create_Success(t *testing.T) {

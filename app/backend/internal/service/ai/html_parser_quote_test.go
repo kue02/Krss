@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"gist/backend/internal/service/ai"
+	"krss/backend/internal/service/ai"
 )
 
 // 引文容器必须整块当一段：拆开的话外层 div 没人认领，译文里引文就没有容器

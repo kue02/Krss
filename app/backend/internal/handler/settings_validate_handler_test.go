@@ -8,9 +8,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"gist/backend/internal/handler"
-	"gist/backend/internal/service"
-	"gist/backend/internal/service/mock"
+	"krss/backend/internal/handler"
+	"krss/backend/internal/service"
+	"krss/backend/internal/service/mock"
 )
 
 // 用户填了个没协议头的地址时，必须给 400 + 一句可执行的提示，而不是「内部错误」

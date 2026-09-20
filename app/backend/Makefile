@@ -10,12 +10,12 @@ lint:
 	golangci-lint run
 
 build:
-	go build -o gist-server ./cmd/server
+	go build -o krss-server ./cmd/server
 
 cover:
 	go test ./... -coverprofile=coverage.out
 	go tool cover -html=coverage.out
 
 clean:
-	rm -f gist-server coverage.out
+	rm -f krss-server coverage.out
 	find . -name "mock_*.go" -type f -delete

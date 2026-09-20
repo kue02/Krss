@@ -6,7 +6,7 @@ import (
 
 	"golang.org/x/time/rate"
 
-	"gist/backend/pkg/logger"
+	"krss/backend/pkg/logger"
 )
 
 // DefaultRateLimit is the default QPS limit.

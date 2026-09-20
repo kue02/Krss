@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/repository"
-	"gist/backend/internal/repository/testutil"
+	"krss/backend/internal/model"
+	"krss/backend/internal/repository"
+	"krss/backend/internal/repository/testutil"
 
 	"github.com/stretchr/testify/require"
 )

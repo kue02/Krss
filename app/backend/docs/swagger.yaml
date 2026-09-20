@@ -1,444 +1,5 @@
 basePath: /api
 definitions:
-  gist_backend_internal_model.MCPFailure:
-    properties:
-      bucket:
-        type: string
-      code:
-        type: string
-      raw:
-        type: string
-      suggestion:
-        type: string
-      title:
-        type: string
-    type: object
-  gist_backend_internal_model.MCPFieldMapping:
-    properties:
-      author:
-        type: string
-      content:
-        type: string
-      id:
-        type: string
-      listPath:
-        description: ListPath 列表路径（如 data.items / results / notes）。空 = 结果本身就是数组。
-        type: string
-      publishedAt:
-        description: PublishedAt 时间字段；Author 作者；ID 去重键字段（id / key / slug / url）。
-        type: string
-      thumbnail:
-        type: string
-      title:
-        type: string
-      url:
-        type: string
-    type: object
-  gist_backend_internal_model.MCPPagination:
-    properties:
-      cursorParam:
-        description: |-
-          CursorParam 传给工具的游标参数名（空 = 按 inputSchema 自动找 cursor/nextCursor/pageToken/offset/page）；
-          CursorPath 从返回里读下一页游标的路径（空 = 按 nextCursor/cursor/next_cursor/pageToken 自动找）。
-        type: string
-      cursorPath:
-        type: string
-      maxItems:
-        type: integer
-      maxPages:
-        description: MaxPages 最多追几页；MaxItems 最多收几条（双上限，先到先停）。
-        type: integer
-      mode:
-        type: string
-    type: object
-  gist_backend_internal_model.ProxyOverrideConfig:
-    properties:
-      host:
-        type: string
-      password:
-        type: string
-      port:
-        type: integer
-      type:
-        type: string
-      username:
-        type: string
-    type: object
-  gist_backend_internal_service.AIProviderConfig:
-    properties:
-      apiKey:
-        type: string
-      baseUrl:
-        type: string
-      id:
-        type: string
-      model:
-        type: string
-      name:
-        type: string
-      provider:
-        type: string
-      requestOptions:
-        additionalProperties: {}
-        type: object
-    type: object
-  gist_backend_internal_service.BatchTranslateResult:
-    properties:
-      cached:
-        type: boolean
-      id:
-        type: string
-      summary:
-        type: string
-      title:
-        type: string
-    type: object
-  gist_backend_internal_service.ImportResult:
-    properties:
-      feedsCreated:
-        type: integer
-      feedsSkipped:
-        type: integer
-      foldersCreated:
-        type: integer
-      foldersSkipped:
-        type: integer
-    type: object
-  gist_backend_internal_service.ImportTask:
-    properties:
-      createdAt:
-        type: string
-      current:
-        type: integer
-      error:
-        type: string
-      feed:
-        type: string
-      id:
-        type: string
-      result:
-        $ref: '#/definitions/gist_backend_internal_service.ImportResult'
-      status:
-        description: '"running", "done", "error", "cancelled"'
-        type: string
-      total:
-        type: integer
-    type: object
-  gist_backend_internal_service.MCPInspectResult:
-    properties:
-      cursorParam:
-        description: CursorParam 游标参数名（inputSchema 里自动找到的；前端「拉更多」往这个参数填）。
-        type: string
-      error:
-        type: string
-      failure:
-        allOf:
-        - $ref: '#/definitions/gist_backend_internal_model.MCPFailure'
-        description: Failure 结构化失败（16-12：向导预览与测试按钮共用同一套文案）。
-      keyLevel:
-        type: string
-      mapping:
-        $ref: '#/definitions/gist_backend_internal_model.MCPFieldMapping'
-      nextCursor:
-        description: NextCursor 第一页之后还有页时回传（向导「拉更多」把游标塞进 arguments 再 inspect）。
-        type: string
-      notes:
-        items:
-          type: string
-        type: array
-      preview:
-        items:
-          $ref: '#/definitions/gist_backend_internal_service.MCPPreviewItem'
-        type: array
-      tier:
-        type: string
-      total:
-        type: integer
-      truncated:
-        type: boolean
-    type: object
-  gist_backend_internal_service.MCPOutboundStatus:
-    properties:
-      baseUrl:
-        description: BaseURL 对外访问地址（用户填；空 = 没填，示例里回落到浏览器当前 origin）。
-        type: string
-      enabled:
-        type: boolean
-      endpoint:
-        type: string
-      protocolVersion:
-        type: string
-      resourceCount:
-        type: integer
-      token:
-        type: string
-      tokenCreatedAt:
-        type: string
-      tokenPrefix:
-        type: string
-      tokenSet:
-        description: |-
-          TokenSet 是否有可用 Token；Token 是明文库里那份原文（可重复查看复制，17-2）。
-          存量哈希没有明文可回 → Token 为空，界面提示点一次「重新生成」。
-        type: boolean
-      toolCount:
-        type: integer
-      writeEnabled:
-        description: WriteEnabled 写操作总开关（默认关；第一版只读）。
-        type: boolean
-    type: object
-  gist_backend_internal_service.MCPPreviewItem:
-    properties:
-      author:
-        type: string
-      content:
-        type: string
-      key:
-        type: string
-      keyLevel:
-        type: string
-      publishedAt:
-        type: string
-      title:
-        type: string
-      url:
-        type: string
-    type: object
-  gist_backend_internal_service.MCPResourceItem:
-    properties:
-      description:
-        type: string
-      mimeType:
-        type: string
-      name:
-        type: string
-      uri:
-        type: string
-    type: object
-  gist_backend_internal_service.MCPSuggestResult:
-    properties:
-      estimatedTokens:
-        description: EstimatedTokens 粗估的消耗（字符数/4，标「约」—— provider 没回真实用量）。
-        type: integer
-      mapping:
-        $ref: '#/definitions/gist_backend_internal_model.MCPFieldMapping'
-      model:
-        type: string
-      raw:
-        type: string
-      textUsed:
-        type: integer
-    type: object
-  gist_backend_internal_service.MCPTestResult:
-    properties:
-      connected:
-        type: boolean
-      error:
-        type: string
-      failure:
-        allOf:
-        - $ref: '#/definitions/gist_backend_internal_model.MCPFailure'
-        description: Failure 结构化失败（16-12：三处共用；成功时为 nil）。
-      latencyMs:
-        type: integer
-      resourceCount:
-        type: integer
-      serverName:
-        type: string
-      serverVersion:
-        type: string
-      toolCount:
-        type: integer
-      transport:
-        description: Transport 这次实际用的传输；LatencyMs 握手耗时毫秒。
-        type: string
-    type: object
-  gist_backend_internal_service.MCPToolItem:
-    properties:
-      description:
-        type: string
-      inputSchema:
-        items:
-          type: integer
-        type: array
-      name:
-        type: string
-      outputSchema:
-        items:
-          type: integer
-        type: array
-      title:
-        type: string
-    type: object
-  gist_backend_internal_service.MCPToolListResult:
-    properties:
-      resources:
-        items:
-          $ref: '#/definitions/gist_backend_internal_service.MCPResourceItem'
-        type: array
-      tools:
-        items:
-          $ref: '#/definitions/gist_backend_internal_service.MCPToolItem'
-        type: array
-    type: object
-  gist_backend_internal_service.NetworkSettings:
-    properties:
-      enabled:
-        type: boolean
-      host:
-        type: string
-      ipStack:
-        description: default, ipv4, ipv6
-        type: string
-      password:
-        type: string
-      port:
-        type: integer
-      type:
-        description: http, socks5
-        type: string
-      username:
-        type: string
-    type: object
-  gist_backend_internal_service.OAuthDiscoveryResult:
-    properties:
-      authServer:
-        type: string
-      hasClientID:
-        type: boolean
-      hasDCR:
-        type: boolean
-      instructions:
-        type: string
-      needsManual:
-        type: boolean
-    type: object
-  gist_backend_internal_service.OAuthStartResult:
-    properties:
-      authURL:
-        type: string
-      state:
-        type: string
-    type: object
-  gist_backend_internal_service.ProxyEffective:
-    properties:
-      missing:
-        description: Missing：这一层选了「走代理」但拿不到可用地址（全局总开关关着、或单独指定没填全）→ 实际直连
-        type: boolean
-      mode:
-        description: Mode 实际生效：proxy = 走代理，direct = 直连
-        type: string
-      source:
-        description: Source 这个结果由谁决定：feed / folder / global
-        type: string
-      sourceId:
-        description: SourceID / SourceName 决定它的那一层（folder 时是文件夹名字，界面直接显示「来自：文件夹『技术』」）
-        type: string
-      sourceName:
-        type: string
-    type: object
-  gist_backend_internal_service.ProxyFeedView:
-    properties:
-      effective:
-        $ref: '#/definitions/gist_backend_internal_service.ProxyEffective'
-      folderId:
-        type: string
-      iconPath:
-        type: string
-      id:
-        type: string
-      override:
-        $ref: '#/definitions/gist_backend_internal_service.ProxyOverrideView'
-      title:
-        type: string
-      type:
-        type: string
-    type: object
-  gist_backend_internal_service.ProxyFolderView:
-    properties:
-      effective:
-        $ref: '#/definitions/gist_backend_internal_service.ProxyEffective'
-      feedCount:
-        type: integer
-      id:
-        type: string
-      name:
-        type: string
-      override:
-        $ref: '#/definitions/gist_backend_internal_service.ProxyOverrideView'
-      parentId:
-        type: string
-      type:
-        type: string
-    type: object
-  gist_backend_internal_service.ProxyOverrideCount:
-    properties:
-      feeds:
-        type: integer
-      folders:
-        type: integer
-      globalEnabled:
-        type: boolean
-      proxiedFeeds:
-        type: integer
-    type: object
-  gist_backend_internal_service.ProxyOverrideView:
-    properties:
-      config:
-        $ref: '#/definitions/gist_backend_internal_model.ProxyOverrideConfig'
-      mode:
-        type: string
-    type: object
-  gist_backend_internal_service.ProxySourceOverview:
-    properties:
-      counts:
-        $ref: '#/definitions/gist_backend_internal_service.ProxyOverrideCount'
-      feeds:
-        items:
-          $ref: '#/definitions/gist_backend_internal_service.ProxyFeedView'
-        type: array
-      folders:
-        items:
-          $ref: '#/definitions/gist_backend_internal_service.ProxyFolderView'
-        type: array
-      global:
-        $ref: '#/definitions/gist_backend_internal_service.NetworkSettings'
-    type: object
-  gist_backend_internal_service.RefreshFeedResult:
-    properties:
-      error:
-        type: string
-      feedId:
-        type: integer
-      iconPath:
-        type: string
-      new:
-        type: integer
-      skipped:
-        type: boolean
-      title:
-        type: string
-      updated:
-        type: integer
-    type: object
-  gist_backend_internal_service.SettingsExport:
-    properties:
-      excludedKeys:
-        description: ExcludedKeys 导出时被排除的键（凭证类）——写进文件里，让用户知道漏了哪些、为什么。
-        items:
-          type: string
-        type: array
-      exportedAt:
-        type: string
-      settings:
-        additionalProperties:
-          items:
-            type: integer
-          type: array
-        type: object
-      version:
-        type: integer
-    type: object
   internal_handler.aiModelsRequest:
     properties:
       apiKey:
@@ -476,7 +37,7 @@ definitions:
         type: string
       providers:
         items:
-          $ref: '#/definitions/gist_backend_internal_service.AIProviderConfig'
+          $ref: '#/definitions/krss_backend_internal_service.AIProviderConfig'
         type: array
       rateLimit:
         type: integer
@@ -510,7 +71,7 @@ definitions:
         type: string
       providers:
         items:
-          $ref: '#/definitions/gist_backend_internal_service.AIProviderConfig'
+          $ref: '#/definitions/krss_backend_internal_service.AIProviderConfig'
         type: array
       rateLimit:
         type: integer
@@ -788,7 +349,7 @@ definitions:
   internal_handler.feedProxyResponse:
     properties:
       effective:
-        $ref: '#/definitions/gist_backend_internal_service.ProxyEffective'
+        $ref: '#/definitions/krss_backend_internal_service.ProxyEffective'
       feed:
         $ref: '#/definitions/internal_handler.feedResponse'
     type: object
@@ -820,7 +381,7 @@ definitions:
         type: array
       proxyConfig:
         allOf:
-        - $ref: '#/definitions/gist_backend_internal_model.ProxyOverrideConfig'
+        - $ref: '#/definitions/krss_backend_internal_model.ProxyOverrideConfig'
         description: ProxyConfig：本条单独指定的一套代理（密码已掩码）；缺省 = 用全局那套
       proxyMode:
         description: 代理覆盖（14 批）：inherit = 跟随文件夹链 → 全局；proxy / direct 是本条自己选的
@@ -1122,7 +683,7 @@ definitions:
   internal_handler.folderProxyResponse:
     properties:
       effective:
-        $ref: '#/definitions/gist_backend_internal_service.ProxyEffective'
+        $ref: '#/definitions/krss_backend_internal_service.ProxyEffective'
       folder:
         $ref: '#/definitions/internal_handler.folderResponse'
     type: object
@@ -1147,7 +708,7 @@ definitions:
         type: string
       proxyConfig:
         allOf:
-        - $ref: '#/definitions/gist_backend_internal_model.ProxyOverrideConfig'
+        - $ref: '#/definitions/krss_backend_internal_model.ProxyOverrideConfig'
         description: ProxyConfig：本层单独指定的一套代理（密码已掩码）；缺省 = 用全局那套
       proxyMode:
         description: 代理覆盖（14 批）：inherit = 跟随父级文件夹链 → 全局；proxy / direct 是本层自己选的
@@ -1232,9 +793,9 @@ definitions:
       limit:
         type: integer
       mapping:
-        $ref: '#/definitions/gist_backend_internal_model.MCPFieldMapping'
+        $ref: '#/definitions/krss_backend_internal_model.MCPFieldMapping'
       pagination:
-        $ref: '#/definitions/gist_backend_internal_model.MCPPagination'
+        $ref: '#/definitions/krss_backend_internal_model.MCPPagination'
       resourceUri:
         type: string
       serverId:
@@ -1254,7 +815,7 @@ definitions:
       limit:
         type: integer
       mapping:
-        $ref: '#/definitions/gist_backend_internal_model.MCPFieldMapping'
+        $ref: '#/definitions/krss_backend_internal_model.MCPFieldMapping'
       resourceUri:
         type: string
       tier:
@@ -1348,7 +909,7 @@ definitions:
         type: string
       lastFailure:
         allOf:
-        - $ref: '#/definitions/gist_backend_internal_model.MCPFailure'
+        - $ref: '#/definitions/krss_backend_internal_model.MCPFailure'
         description: LastFailure 结构化失败（16-12：列表行/测试/预览三处共用）
       lastTransport:
         description: LastTransport 上次成功的传输（transport='auto' 时下次优先试它 —— 16-10）
@@ -1532,7 +1093,7 @@ definitions:
       results:
         description: Results 最近一轮刷新里每个订阅的结果（新/更新条数、失败原因）—— 刷新结果弹框用（用户 11-8）
         items:
-          $ref: '#/definitions/gist_backend_internal_service.RefreshFeedResult'
+          $ref: '#/definitions/krss_backend_internal_service.RefreshFeedResult'
         type: array
       total:
         description: 本次刷新进度：Total 待刷新源数、Completed 已完成数（仅刷新中有效）
@@ -1694,9 +1255,9 @@ definitions:
       limit:
         type: integer
       mapping:
-        $ref: '#/definitions/gist_backend_internal_model.MCPFieldMapping'
+        $ref: '#/definitions/krss_backend_internal_model.MCPFieldMapping'
       pagination:
-        $ref: '#/definitions/gist_backend_internal_model.MCPPagination'
+        $ref: '#/definitions/krss_backend_internal_model.MCPPagination'
       resourceUri:
         type: string
       serverId:
@@ -1771,10 +1332,449 @@ definitions:
           type: integer
         type: object
     type: object
+  krss_backend_internal_model.MCPFailure:
+    properties:
+      bucket:
+        type: string
+      code:
+        type: string
+      raw:
+        type: string
+      suggestion:
+        type: string
+      title:
+        type: string
+    type: object
+  krss_backend_internal_model.MCPFieldMapping:
+    properties:
+      author:
+        type: string
+      content:
+        type: string
+      id:
+        type: string
+      listPath:
+        description: ListPath 列表路径（如 data.items / results / notes）。空 = 结果本身就是数组。
+        type: string
+      publishedAt:
+        description: PublishedAt 时间字段；Author 作者；ID 去重键字段（id / key / slug / url）。
+        type: string
+      thumbnail:
+        type: string
+      title:
+        type: string
+      url:
+        type: string
+    type: object
+  krss_backend_internal_model.MCPPagination:
+    properties:
+      cursorParam:
+        description: |-
+          CursorParam 传给工具的游标参数名（空 = 按 inputSchema 自动找 cursor/nextCursor/pageToken/offset/page）；
+          CursorPath 从返回里读下一页游标的路径（空 = 按 nextCursor/cursor/next_cursor/pageToken 自动找）。
+        type: string
+      cursorPath:
+        type: string
+      maxItems:
+        type: integer
+      maxPages:
+        description: MaxPages 最多追几页；MaxItems 最多收几条（双上限，先到先停）。
+        type: integer
+      mode:
+        type: string
+    type: object
+  krss_backend_internal_model.ProxyOverrideConfig:
+    properties:
+      host:
+        type: string
+      password:
+        type: string
+      port:
+        type: integer
+      type:
+        type: string
+      username:
+        type: string
+    type: object
+  krss_backend_internal_service.AIProviderConfig:
+    properties:
+      apiKey:
+        type: string
+      baseUrl:
+        type: string
+      id:
+        type: string
+      model:
+        type: string
+      name:
+        type: string
+      provider:
+        type: string
+      requestOptions:
+        additionalProperties: {}
+        type: object
+    type: object
+  krss_backend_internal_service.BatchTranslateResult:
+    properties:
+      cached:
+        type: boolean
+      id:
+        type: string
+      summary:
+        type: string
+      title:
+        type: string
+    type: object
+  krss_backend_internal_service.ImportResult:
+    properties:
+      feedsCreated:
+        type: integer
+      feedsSkipped:
+        type: integer
+      foldersCreated:
+        type: integer
+      foldersSkipped:
+        type: integer
+    type: object
+  krss_backend_internal_service.ImportTask:
+    properties:
+      createdAt:
+        type: string
+      current:
+        type: integer
+      error:
+        type: string
+      feed:
+        type: string
+      id:
+        type: string
+      result:
+        $ref: '#/definitions/krss_backend_internal_service.ImportResult'
+      status:
+        description: '"running", "done", "error", "cancelled"'
+        type: string
+      total:
+        type: integer
+    type: object
+  krss_backend_internal_service.MCPInspectResult:
+    properties:
+      cursorParam:
+        description: CursorParam 游标参数名（inputSchema 里自动找到的；前端「拉更多」往这个参数填）。
+        type: string
+      error:
+        type: string
+      failure:
+        allOf:
+        - $ref: '#/definitions/krss_backend_internal_model.MCPFailure'
+        description: Failure 结构化失败（16-12：向导预览与测试按钮共用同一套文案）。
+      keyLevel:
+        type: string
+      mapping:
+        $ref: '#/definitions/krss_backend_internal_model.MCPFieldMapping'
+      nextCursor:
+        description: NextCursor 第一页之后还有页时回传（向导「拉更多」把游标塞进 arguments 再 inspect）。
+        type: string
+      notes:
+        items:
+          type: string
+        type: array
+      preview:
+        items:
+          $ref: '#/definitions/krss_backend_internal_service.MCPPreviewItem'
+        type: array
+      tier:
+        type: string
+      total:
+        type: integer
+      truncated:
+        type: boolean
+    type: object
+  krss_backend_internal_service.MCPOutboundStatus:
+    properties:
+      baseUrl:
+        description: BaseURL 对外访问地址（用户填；空 = 没填，示例里回落到浏览器当前 origin）。
+        type: string
+      enabled:
+        type: boolean
+      endpoint:
+        type: string
+      protocolVersion:
+        type: string
+      resourceCount:
+        type: integer
+      token:
+        type: string
+      tokenCreatedAt:
+        type: string
+      tokenPrefix:
+        type: string
+      tokenSet:
+        description: |-
+          TokenSet 是否有可用 Token；Token 是明文库里那份原文（可重复查看复制，17-2）。
+          存量哈希没有明文可回 → Token 为空，界面提示点一次「重新生成」。
+        type: boolean
+      toolCount:
+        type: integer
+      writeEnabled:
+        description: WriteEnabled 写操作总开关（默认关；第一版只读）。
+        type: boolean
+    type: object
+  krss_backend_internal_service.MCPPreviewItem:
+    properties:
+      author:
+        type: string
+      content:
+        type: string
+      key:
+        type: string
+      keyLevel:
+        type: string
+      publishedAt:
+        type: string
+      title:
+        type: string
+      url:
+        type: string
+    type: object
+  krss_backend_internal_service.MCPResourceItem:
+    properties:
+      description:
+        type: string
+      mimeType:
+        type: string
+      name:
+        type: string
+      uri:
+        type: string
+    type: object
+  krss_backend_internal_service.MCPSuggestResult:
+    properties:
+      estimatedTokens:
+        description: EstimatedTokens 粗估的消耗（字符数/4，标「约」—— provider 没回真实用量）。
+        type: integer
+      mapping:
+        $ref: '#/definitions/krss_backend_internal_model.MCPFieldMapping'
+      model:
+        type: string
+      raw:
+        type: string
+      textUsed:
+        type: integer
+    type: object
+  krss_backend_internal_service.MCPTestResult:
+    properties:
+      connected:
+        type: boolean
+      error:
+        type: string
+      failure:
+        allOf:
+        - $ref: '#/definitions/krss_backend_internal_model.MCPFailure'
+        description: Failure 结构化失败（16-12：三处共用；成功时为 nil）。
+      latencyMs:
+        type: integer
+      resourceCount:
+        type: integer
+      serverName:
+        type: string
+      serverVersion:
+        type: string
+      toolCount:
+        type: integer
+      transport:
+        description: Transport 这次实际用的传输；LatencyMs 握手耗时毫秒。
+        type: string
+    type: object
+  krss_backend_internal_service.MCPToolItem:
+    properties:
+      description:
+        type: string
+      inputSchema:
+        items:
+          type: integer
+        type: array
+      name:
+        type: string
+      outputSchema:
+        items:
+          type: integer
+        type: array
+      title:
+        type: string
+    type: object
+  krss_backend_internal_service.MCPToolListResult:
+    properties:
+      resources:
+        items:
+          $ref: '#/definitions/krss_backend_internal_service.MCPResourceItem'
+        type: array
+      tools:
+        items:
+          $ref: '#/definitions/krss_backend_internal_service.MCPToolItem'
+        type: array
+    type: object
+  krss_backend_internal_service.NetworkSettings:
+    properties:
+      enabled:
+        type: boolean
+      host:
+        type: string
+      ipStack:
+        description: default, ipv4, ipv6
+        type: string
+      password:
+        type: string
+      port:
+        type: integer
+      type:
+        description: http, socks5
+        type: string
+      username:
+        type: string
+    type: object
+  krss_backend_internal_service.OAuthDiscoveryResult:
+    properties:
+      authServer:
+        type: string
+      hasClientID:
+        type: boolean
+      hasDCR:
+        type: boolean
+      instructions:
+        type: string
+      needsManual:
+        type: boolean
+    type: object
+  krss_backend_internal_service.OAuthStartResult:
+    properties:
+      authURL:
+        type: string
+      state:
+        type: string
+    type: object
+  krss_backend_internal_service.ProxyEffective:
+    properties:
+      missing:
+        description: Missing：这一层选了「走代理」但拿不到可用地址（全局总开关关着、或单独指定没填全）→ 实际直连
+        type: boolean
+      mode:
+        description: Mode 实际生效：proxy = 走代理，direct = 直连
+        type: string
+      source:
+        description: Source 这个结果由谁决定：feed / folder / global
+        type: string
+      sourceId:
+        description: SourceID / SourceName 决定它的那一层（folder 时是文件夹名字，界面直接显示「来自：文件夹『技术』」）
+        type: string
+      sourceName:
+        type: string
+    type: object
+  krss_backend_internal_service.ProxyFeedView:
+    properties:
+      effective:
+        $ref: '#/definitions/krss_backend_internal_service.ProxyEffective'
+      folderId:
+        type: string
+      iconPath:
+        type: string
+      id:
+        type: string
+      override:
+        $ref: '#/definitions/krss_backend_internal_service.ProxyOverrideView'
+      title:
+        type: string
+      type:
+        type: string
+    type: object
+  krss_backend_internal_service.ProxyFolderView:
+    properties:
+      effective:
+        $ref: '#/definitions/krss_backend_internal_service.ProxyEffective'
+      feedCount:
+        type: integer
+      id:
+        type: string
+      name:
+        type: string
+      override:
+        $ref: '#/definitions/krss_backend_internal_service.ProxyOverrideView'
+      parentId:
+        type: string
+      type:
+        type: string
+    type: object
+  krss_backend_internal_service.ProxyOverrideCount:
+    properties:
+      feeds:
+        type: integer
+      folders:
+        type: integer
+      globalEnabled:
+        type: boolean
+      proxiedFeeds:
+        type: integer
+    type: object
+  krss_backend_internal_service.ProxyOverrideView:
+    properties:
+      config:
+        $ref: '#/definitions/krss_backend_internal_model.ProxyOverrideConfig'
+      mode:
+        type: string
+    type: object
+  krss_backend_internal_service.ProxySourceOverview:
+    properties:
+      counts:
+        $ref: '#/definitions/krss_backend_internal_service.ProxyOverrideCount'
+      feeds:
+        items:
+          $ref: '#/definitions/krss_backend_internal_service.ProxyFeedView'
+        type: array
+      folders:
+        items:
+          $ref: '#/definitions/krss_backend_internal_service.ProxyFolderView'
+        type: array
+      global:
+        $ref: '#/definitions/krss_backend_internal_service.NetworkSettings'
+    type: object
+  krss_backend_internal_service.RefreshFeedResult:
+    properties:
+      error:
+        type: string
+      feedId:
+        type: integer
+      iconPath:
+        type: string
+      new:
+        type: integer
+      skipped:
+        type: boolean
+      title:
+        type: string
+      updated:
+        type: integer
+    type: object
+  krss_backend_internal_service.SettingsExport:
+    properties:
+      excludedKeys:
+        description: ExcludedKeys 导出时被排除的键（凭证类）——写进文件里，让用户知道漏了哪些、为什么。
+        items:
+          type: string
+        type: array
+      exportedAt:
+        type: string
+      settings:
+        additionalProperties:
+          items:
+            type: integer
+          type: array
+        type: object
+      version:
+        type: integer
+    type: object
 info:
   contact: {}
   description: This is a modern RSS reader API.
-  title: Gist API
+  title: Krss API
   version: "1.0"
 paths:
   /ai/cache:
@@ -1877,7 +1877,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/gist_backend_internal_service.BatchTranslateResult'
+            $ref: '#/definitions/krss_backend_internal_service.BatchTranslateResult'
         "400":
           description: Bad Request
           schema:
@@ -3413,7 +3413,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/gist_backend_internal_service.MCPOutboundStatus'
+            $ref: '#/definitions/krss_backend_internal_service.MCPOutboundStatus'
       summary: MCP outbound status
       tags:
       - mcp
@@ -3433,7 +3433,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/gist_backend_internal_service.MCPOutboundStatus'
+            $ref: '#/definitions/krss_backend_internal_service.MCPOutboundStatus'
       summary: Update MCP outbound options
       tags:
       - mcp
@@ -3555,7 +3555,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/gist_backend_internal_service.MCPInspectResult'
+            $ref: '#/definitions/krss_backend_internal_service.MCPInspectResult'
       summary: Inspect a MCP server (dry run + preview)
       tags:
       - mcp
@@ -3573,7 +3573,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/gist_backend_internal_service.OAuthDiscoveryResult'
+            $ref: '#/definitions/krss_backend_internal_service.OAuthDiscoveryResult'
       summary: Discover OAuth authorization server
       tags:
       - mcp
@@ -3613,7 +3613,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/gist_backend_internal_service.OAuthStartResult'
+            $ref: '#/definitions/krss_backend_internal_service.OAuthStartResult'
       summary: Start OAuth authorization
       tags:
       - mcp
@@ -3631,7 +3631,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/gist_backend_internal_service.MCPTestResult'
+            $ref: '#/definitions/krss_backend_internal_service.MCPTestResult'
       summary: Redetect transport of a MCP server
       tags:
       - mcp
@@ -3657,7 +3657,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/gist_backend_internal_service.MCPSuggestResult'
+            $ref: '#/definitions/krss_backend_internal_service.MCPSuggestResult'
       summary: Suggest a mapping with AI
       tags:
       - mcp
@@ -3675,7 +3675,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/gist_backend_internal_service.MCPTestResult'
+            $ref: '#/definitions/krss_backend_internal_service.MCPTestResult'
       summary: Test a MCP server
       tags:
       - mcp
@@ -3693,7 +3693,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/gist_backend_internal_service.MCPToolListResult'
+            $ref: '#/definitions/krss_backend_internal_service.MCPToolListResult'
       summary: List tools of a MCP server
       tags:
       - mcp
@@ -3760,7 +3760,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/gist_backend_internal_service.ImportTask'
+            $ref: '#/definitions/krss_backend_internal_service.ImportTask'
       summary: Import Status
       tags:
       - opml
@@ -3773,7 +3773,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/gist_backend_internal_service.ProxySourceOverview'
+            $ref: '#/definitions/krss_backend_internal_service.ProxySourceOverview'
         "500":
           description: Internal Server Error
           schema:
@@ -3952,7 +3952,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/gist_backend_internal_service.SettingsExport'
+            $ref: '#/definitions/krss_backend_internal_service.SettingsExport'
         "500":
           description: Internal Server Error
           schema:
@@ -4063,7 +4063,7 @@ paths:
         name: settings
         required: true
         schema:
-          $ref: '#/definitions/gist_backend_internal_service.SettingsExport'
+          $ref: '#/definitions/krss_backend_internal_service.SettingsExport'
       produces:
       - application/json
       responses:

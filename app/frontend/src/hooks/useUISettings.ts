@@ -221,8 +221,7 @@ interface UISettings {
 
 /**
  * 21 批（2026-09-18）：设置搬到服务端后，localStorage 退化成**本地缓存** ——
- * 首屏照旧同步读它（不闪），服务端值拉回来再对账覆盖；键名同时从 `gist-*` 改成 `krss-*`
- * （迁移见 lib/settings-storage.ts，老键会被搬过来，用户无感）。
+ * 首屏照旧同步读它（不闪），服务端值拉回来再对账覆盖。
  */
 const STORAGE_SPEC = LS_KEYS.uiSettings;
 
@@ -341,19 +340,6 @@ function normalizePackage(input: unknown): UISettingsPackageShape | null {
   };
 }
 
-/** 老格式（扁平一坨，不分设备）→ 新格式：尺寸类落到**当前设备**那一档，其余进 shared。 */
-function packageFromLegacyFlat(flat: Record<string, unknown>): UISettingsPackageShape {
-  const pkg = emptyPackage();
-  const device = currentDeviceClass();
-
-  for (const [key, value] of Object.entries(flat)) {
-    const bag = DEVICE_SCOPED.has(key) ? pkg.device[device] : pkg.shared;
-    bag[key] = value;
-  }
-
-  return pkg;
-}
-
 function readStoredPackage(): UISettingsPackageShape {
   if (typeof window === "undefined") return emptyPackage();
 
@@ -364,13 +350,11 @@ function readStoredPackage(): UISettingsPackageShape {
     const parsed: unknown = JSON.parse(stored);
     if (!isPlainObject(parsed)) return emptyPackage();
 
-    // 已经是新格式（有 shared / device）就收窄一下；否则按老的扁平格式迁移
-    const isNewShape = isPlainObject(parsed.shared) || isPlainObject(parsed.device);
-    const pkg = isNewShape
-      ? (normalizePackage(parsed) ?? emptyPackage())
-      : packageFromLegacyFlat(sanitizeBag(parsed));
+    // 只认新格式（{ shared, device }）；形状不对就丢掉走默认值，
+    // 服务端那份拉回来会覆盖（改名清理后不留扁平格式兼容）。
+    const pkg = normalizePackage(parsed) ?? emptyPackage();
 
-    // 迁移是一次性的：顺手把新形状写回去（下次启动就是原生新格式）
+    // 顺手把收窄后的形状写回去（下次启动就是干净的新格式）
     persistPackage(pkg);
     return pkg;
   } catch {

@@ -8,8 +8,8 @@ import (
 	"errors"
 	"time"
 
-	"gist/backend/internal/model"
-	"gist/backend/pkg/snowflake"
+	"krss/backend/internal/model"
+	"krss/backend/pkg/snowflake"
 )
 
 // MatchedEntry 一条「某规则命中过的条目」（撤销时按它决定要不要退回未读）。

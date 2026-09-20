@@ -885,7 +885,7 @@ html[data-quote-style="block"] .reading-prose blockquote {
  * HeroUI 没有对应组件（ScrollShadow 是滚动阴影），所以是自写 keyframes +
  * 由组件按「内容宽 - 容器宽」写进的 --marquee-distance 变量。
  * ------------------------------------------------------------------------ */
-@keyframes gist-marquee {
+@keyframes krss-marquee {
   0%,
   15% {
     transform: translateX(0);
@@ -902,7 +902,7 @@ html[data-quote-style="block"] .reading-prose blockquote {
 
 .marquee:hover .marquee-track,
 .marquee:focus-within .marquee-track {
-  animation: gist-marquee 5s linear infinite alternate;
+  animation: krss-marquee 5s linear infinite alternate;
 }
 
 @media (prefers-reduced-motion: reduce) {

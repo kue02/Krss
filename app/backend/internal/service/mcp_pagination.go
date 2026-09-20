@@ -14,8 +14,8 @@ import (
 	"fmt"
 	"strings"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/service/mcp"
+	"krss/backend/internal/model"
+	"krss/backend/internal/service/mcp"
 )
 
 // cursorParamCandidates 发游标的参数名（按常见度排序）。

@@ -4,11 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"gist/backend/internal/repository"
+	"krss/backend/internal/repository"
 	"sync"
 	"testing"
 
-	"gist/backend/internal/repository/testutil"
+	"krss/backend/internal/repository/testutil"
 
 	"github.com/stretchr/testify/require"
 )

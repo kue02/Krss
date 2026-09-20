@@ -1,35 +1,30 @@
 /**
- * 本地缓存的键名与「老键名迁移」（21 批，2026-09-18）。
+ * 本地缓存的键名（改名清理后：只有 `krss-*`，不留老键兼容）。
  *
- * 为什么要有这个文件：这批做了两件事，都动到 localStorage 的键名/形状 ——
- *   1. 界面设置搬到服务端（跨设备一致），localStorage 退化成**本地缓存**（首屏不闪的那份）；
- *   2. 顺手把 `gist-*` 键名改成 `krss-*`（发布方案里列过这件事，不一起改就要改两遍）。
- *
- * 迁移规则：读的时候 `krss-*` 没有、老 `gist-*` 还在 → 把值搬到新键并删掉老键。
- * 一次读走完，用户无感（不清缓存、不掉登录、不丢设置）。
+ * 21 批（2026-09-18）把界面设置搬到服务端（跨设备一致），localStorage 退化成
+ * **本地缓存**（首屏不闪的那份）；顺手把键名改成了 `krss-*`。
+ * 改名清理（2026-09-20，用户拍板：dev 版不留兼容）把老 `gist-*` 键与迁移逻辑
+ * 一并摘掉 —— 没跑过 21 批代码的浏览器最多是本地缓存重置，服务端那份才是准的。
  */
 
 export interface StorageKeySpec {
-  /** 现在的键名 */
+  /** 键名 */
   key: string;
-  /** 老键名（迁移用；没有就填 null） */
-  legacy: string | null;
 }
 
 export const LS_KEYS = {
-  authToken: { key: "krss_auth_token", legacy: "gist_auth_token" },
-  uiSettings: { key: "krss-ui-settings", legacy: "gist-ui-settings" },
-  theme: { key: "krss-theme", legacy: "gist-theme" },
-  lightTheme: { key: "krss-light-theme", legacy: "gist-light-theme" },
-  darkTheme: { key: "krss-dark-theme", legacy: "gist-dark-theme" },
-  lang: { key: "krss-lang", legacy: "gist-lang" },
-  categoryState: { key: "krss-category-state", legacy: "gist-category-state" },
+  authToken: { key: "krss_auth_token" },
+  uiSettings: { key: "krss-ui-settings" },
+  theme: { key: "krss-theme" },
+  lightTheme: { key: "krss-light-theme" },
+  darkTheme: { key: "krss-dark-theme" },
+  lang: { key: "krss-lang" },
+  categoryState: { key: "krss-category-state" },
   autoRefreshHistory: {
     key: "krss-auto-refresh-history",
-    legacy: "gist-auto-refresh-history",
   },
   /** 「本地有改动还没推给服务端」的脏标记（21 批） */
-  settingsDirty: { key: "krss-settings-dirty", legacy: "gist-settings-dirty" },
+  settingsDirty: { key: "krss-settings-dirty" },
 } as const satisfies Record<string, StorageKeySpec>;
 
 function storage(): Storage | null {
@@ -41,21 +36,13 @@ function storage(): Storage | null {
   }
 }
 
-/** 读本地值；老键名还有值就搬过来（一次性迁移）。 */
+/** 读本地值。 */
 export function readLocalValue(spec: StorageKeySpec): string | null {
   const store = storage();
   if (!store) return null;
 
   try {
-    const current = store.getItem(spec.key);
-    if (current !== null) return current;
-    if (!spec.legacy) return null;
-
-    const legacy = store.getItem(spec.legacy);
-    if (legacy === null) return null;
-    store.setItem(spec.key, legacy);
-    store.removeItem(spec.legacy);
-    return legacy;
+    return store.getItem(spec.key);
   } catch {
     return null;
   }
@@ -76,19 +63,7 @@ export function removeLocalValue(spec: StorageKeySpec): void {
   if (!store) return;
   try {
     store.removeItem(spec.key);
-    if (spec.legacy) store.removeItem(spec.legacy);
   } catch {
     // 同上
-  }
-}
-
-/** 测试与调试用：读老键名（不做迁移）。 */
-export function peekLegacyValue(spec: StorageKeySpec): string | null {
-  const store = storage();
-  if (!store || !spec.legacy) return null;
-  try {
-    return store.getItem(spec.legacy);
-  } catch {
-    return null;
   }
 }

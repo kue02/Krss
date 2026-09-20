@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"gist/backend/internal/db"
-	"gist/backend/internal/hashutil"
-	"gist/backend/internal/model"
-	"gist/backend/pkg/snowflake"
+	"krss/backend/internal/db"
+	"krss/backend/internal/hashutil"
+	"krss/backend/internal/model"
+	"krss/backend/pkg/snowflake"
 
 	_ "modernc.org/sqlite"
 )

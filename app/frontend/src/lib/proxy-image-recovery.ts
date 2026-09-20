@@ -3,7 +3,7 @@ import { getCurrentUser } from "@/api";
 /**
  * 24-4：代理图的 cookie 自愈。
  *
- * `<img>` 带不上 Bearer，代理接口认的是 `gist_auth` cookie —— cookie 一掉
+ * `<img>` 带不上 Bearer，代理接口认的是 `krss_auth` cookie —— cookie 一掉
  * （过期 / 被清），图就 401，文字走 API 反而没事。后端已在 `GET /api/auth/me`
  * 里加了顺手重写（有效 Bearer 来就重写 cookie），这里是前端兜底：
  * 图挂了先调一次 `/auth/me`（localStorage 的 token 还活着就能把 cookie 写回来），

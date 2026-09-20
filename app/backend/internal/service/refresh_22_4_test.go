@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/repository/mock"
-	"gist/backend/internal/service"
-	"gist/backend/pkg/network"
+	"krss/backend/internal/model"
+	"krss/backend/internal/repository/mock"
+	"krss/backend/internal/service"
+	"krss/backend/pkg/network"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"

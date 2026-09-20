@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/repository"
-	"gist/backend/internal/service/anubis"
+	"krss/backend/internal/model"
+	"krss/backend/internal/repository"
+	"krss/backend/internal/service/anubis"
 
 	"github.com/stretchr/testify/require"
 )

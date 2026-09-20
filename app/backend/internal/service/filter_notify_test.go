@@ -10,10 +10,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/repository"
-	"gist/backend/internal/repository/testutil"
-	"gist/backend/internal/service"
+	"krss/backend/internal/model"
+	"krss/backend/internal/repository"
+	"krss/backend/internal/repository/testutil"
+	"krss/backend/internal/service"
 )
 
 // fakeNotifier 记下「谁被推到了哪个地址、推了什么」，并可按需返回失败。
@@ -119,7 +119,7 @@ func TestFilterService_Notify_UsesRuleURL(t *testing.T) {
 	require.Contains(t, payload.Body, "小众软件")
 	require.Contains(t, payload.Body, "重要更新提醒")
 	require.Equal(t, *entry.URL, payload.URL, "点开推送要能直达条目")
-	require.Equal(t, "Gist 自动化", payload.Group)
+	require.Equal(t, "Krss 自动化", payload.Group)
 }
 
 // 规则没填地址 → 跟随设置里的全局推送地址（这是与 webhook 不同的地方：空地址是合法的）

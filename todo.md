@@ -54,6 +54,13 @@
 
 ## 2. 未开工（⬜）——要做的事
 
+### 2.0 改名清理 Gist → Krss（2026-09-20 开工，用户拍板：硬改、不留兼容）
+
+- [x] 后端：`config.go`（AppName/AppRepo/UA/8 个 `KRSS_*`/`krss.db`）+ go module 改名 + 179 文件 import + 用户可见字串 + cookie `krss_auth` + 构建/部署文件 + `make gen/test/lint` + `swag init`（全绿）
+- [x] 前端：boot 握手、marquee、idb 库名、事件名、`KRSS_DEV_BACKEND`、兼容层全摘（含扁平格式）+ 迁移测试改写 + `bun run test`（870 过）+ `tsc -b`（干净）
+- [x] 本机数据：`~/Documents/Docker/krss/`、`krss.db`、镜像 `krss:dev` 建成、`:8080` 新二进制已起，API 实测 77 订阅 / 2175 条目与改名前一致
+- [x] 零残留 grep 验收（精确模式，代码区 0 命中）
+
 ### 2.1 收尾杂项（2026-09-17 起挂着）
 
 - [ ] **搜索排除静音条目**：`entry_repository.Search` 补 `muted = 0` + 回归测试（你已拍板：静音必搜不到）

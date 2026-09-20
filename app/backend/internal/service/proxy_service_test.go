@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"gist/backend/internal/service"
-	"gist/backend/internal/service/anubis"
-	"gist/backend/pkg/network"
+	"krss/backend/internal/service"
+	"krss/backend/internal/service/anubis"
+	"krss/backend/pkg/network"
 
 	"github.com/stretchr/testify/require"
 )

@@ -11,9 +11,9 @@ import (
 	"time"
 	"unicode"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/service/ai"
-	"gist/backend/pkg/logger"
+	"krss/backend/internal/model"
+	"krss/backend/internal/service/ai"
+	"krss/backend/pkg/logger"
 )
 
 // AI 条件（P3）与自然语言建规则共用的成本护栏。

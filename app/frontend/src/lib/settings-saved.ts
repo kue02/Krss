@@ -5,7 +5,7 @@
  * `useUISettings` 是纯数据层，不该依赖 i18n 与 toast 组件；由 App 订阅事件、拿 t() 文案弹。
  * 另外做了**防抖**：连续拨数字或连点开关只在停手后提示一次，不然会刷屏。
  */
-export const SETTINGS_SAVED_EVENT = "gist:settings-saved";
+export const SETTINGS_SAVED_EVENT = "krss:settings-saved";
 
 export function notifySettingsSaved(): void {
   if (typeof window === "undefined") return;
@@ -19,7 +19,7 @@ export function notifySettingsSaved(): void {
  * 只有「推给服务端」这一步失败 —— 不说的话用户会以为一切都保存好了，
  * 换台设备打开才发现少了一半。（用户明确要求：失败须给可见原因，不接受无提示失败。）
  */
-export const SETTINGS_SYNC_FAILED_EVENT = "gist:settings-sync-failed";
+export const SETTINGS_SYNC_FAILED_EVENT = "krss:settings-sync-failed";
 
 export function notifySettingsSyncFailed(error?: unknown): void {
   if (typeof window === "undefined") return;

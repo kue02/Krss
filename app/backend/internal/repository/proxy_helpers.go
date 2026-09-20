@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"gist/backend/internal/model"
+	"krss/backend/internal/model"
 )
 
 // 代理按来源生效（迁移 26）：feeds / folders 各两列。

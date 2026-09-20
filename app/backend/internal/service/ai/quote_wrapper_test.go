@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"gist/backend/internal/service/ai"
+	"krss/backend/internal/service/ai"
 )
 
 // 模型把引文块的外层 div 丢掉时，要按原文补回来（否则正文里引文没有样式）

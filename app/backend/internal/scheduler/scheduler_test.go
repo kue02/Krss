@@ -1,14 +1,14 @@
 package scheduler_test
 
 import (
-	"gist/backend/internal/scheduler"
+	"krss/backend/internal/scheduler"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"gist/backend/internal/service/mock"
+	"krss/backend/internal/service/mock"
 )
 
 func TestScheduler(t *testing.T) {

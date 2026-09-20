@@ -10,7 +10,7 @@ import { registerSettingsGroup, scheduleSettingsFlush } from "@/lib/settings-syn
 
 export type UILang = "zh" | "en";
 
-/** 键名 gist-lang → krss-lang（老键的值会被搬过来） */
+/** 本地缓存键名（改名清理后只有 `krss-lang`） */
 const STORAGE_SPEC = LS_KEYS.lang;
 
 export const DEFAULT_UI_LANG: UILang = "zh";

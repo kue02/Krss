@@ -1,15 +1,15 @@
 package handler_test
 
 import (
-	"gist/backend/internal/handler"
+	"krss/backend/internal/handler"
 	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/service/mock"
+	"krss/backend/internal/model"
+	"krss/backend/internal/service/mock"
 )
 
 func TestFolderHandler_Create_Success(t *testing.T) {

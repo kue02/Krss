@@ -12,11 +12,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/repository"
-	"gist/backend/internal/service/ai"
-	"gist/backend/pkg/logger"
-	"gist/backend/pkg/network"
+	"krss/backend/internal/model"
+	"krss/backend/internal/repository"
+	"krss/backend/internal/service/ai"
+	"krss/backend/pkg/logger"
+	"krss/backend/pkg/network"
 )
 
 // TranslateBlockResult represents a translated block result.

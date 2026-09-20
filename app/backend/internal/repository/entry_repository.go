@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/urlutil"
-	"gist/backend/pkg/snowflake"
+	"krss/backend/internal/model"
+	"krss/backend/internal/urlutil"
+	"krss/backend/pkg/snowflake"
 )
 
 type EntryListFilter struct {

@@ -1,4 +1,4 @@
-module gist/backend
+module krss/backend
 
 go 1.25.5
 

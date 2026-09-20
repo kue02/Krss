@@ -8,10 +8,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"gist/backend/internal/handler"
-	"gist/backend/internal/model"
-	"gist/backend/internal/service"
-	"gist/backend/internal/service/mock"
+	"krss/backend/internal/handler"
+	"krss/backend/internal/model"
+	"krss/backend/internal/service"
+	"krss/backend/internal/service/mock"
 )
 
 // 14 批：PATCH /feeds/:id/proxy 与 PATCH /folders/:id/proxy 的接口契约。

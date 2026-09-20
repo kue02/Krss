@@ -17,13 +17,13 @@ import (
 
 	"github.com/mmcdole/gofeed"
 
-	"gist/backend/internal/config"
-	"gist/backend/internal/hashutil"
-	"gist/backend/internal/model"
-	"gist/backend/internal/repository"
-	"gist/backend/pkg/logger"
-	"gist/backend/pkg/network"
-	"gist/backend/pkg/sanitizer"
+	"krss/backend/internal/config"
+	"krss/backend/internal/hashutil"
+	"krss/backend/internal/model"
+	"krss/backend/internal/repository"
+	"krss/backend/pkg/logger"
+	"krss/backend/pkg/network"
+	"krss/backend/pkg/sanitizer"
 )
 
 const feedTimeout = 30 * time.Second

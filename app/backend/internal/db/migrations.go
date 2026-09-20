@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"gist/backend/internal/hashutil"
-	"gist/backend/internal/urlutil"
+	"krss/backend/internal/hashutil"
+	"krss/backend/internal/urlutil"
 )
 
 // Base schema - uses Snowflake IDs (no AUTOINCREMENT)

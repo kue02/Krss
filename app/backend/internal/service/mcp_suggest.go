@@ -15,7 +15,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"gist/backend/internal/model"
+	"krss/backend/internal/model"
 )
 
 // MCPSuggestRequest AI 猜映射的入参（复用 inspect 的取数参数）。

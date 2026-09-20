@@ -8,9 +8,9 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/service"
-	"gist/backend/pkg/logger"
+	"krss/backend/internal/model"
+	"krss/backend/internal/service"
+	"krss/backend/pkg/logger"
 )
 
 // 代理按来源生效（用户 14 批 · 迁移 26）的接口层。

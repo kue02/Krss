@@ -17,4 +17,4 @@ data
 *.db-wal
 .DS_Store
 Thumbs.db
-backend/gist-server
+backend/krss-server

@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	anubischallenge "gist/backend/internal/service/anubis"
+	anubischallenge "krss/backend/internal/service/anubis"
 	"github.com/Noooste/azuretls-client"
 )
 

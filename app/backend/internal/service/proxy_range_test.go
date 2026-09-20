@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"gist/backend/internal/service"
+	"krss/backend/internal/service"
 )
 
 func TestSliceByRange(t *testing.T) {

@@ -64,7 +64,7 @@ function readStored(): ThemeConfig {
   };
   if (typeof window === "undefined") return fallback;
 
-  // 21 批：键名 gist-theme* → krss-theme*（readLocalValue 会把老键的值搬过来，用户无感）
+  // 本地缓存键名见 LS_KEYS（改名清理后只有 krss-*）
   const mode = readLocalValue(MODE_SPEC);
   const light = readLocalValue(LIGHT_SPEC);
   const dark = readLocalValue(DARK_SPEC);

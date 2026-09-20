@@ -16,10 +16,10 @@ import (
 	"github.com/Noooste/azuretls-client"
 	"golang.org/x/net/html"
 
-	"gist/backend/internal/config"
-	"gist/backend/internal/repository"
-	"gist/backend/pkg/logger"
-	"gist/backend/pkg/network"
+	"krss/backend/internal/config"
+	"krss/backend/internal/repository"
+	"krss/backend/pkg/logger"
+	"krss/backend/pkg/network"
 )
 
 const readabilityTimeout = 30 * time.Second

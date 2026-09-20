@@ -7,7 +7,7 @@ export interface ImageDimension {
   ratio: number;
 }
 
-const store = createStore("gist-image-dimensions", "dimensions");
+const store = createStore("krss-image-dimensions", "dimensions");
 
 export async function getDimension(
   src: string,

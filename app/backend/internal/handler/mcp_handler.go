@@ -10,10 +10,10 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/service"
-	"gist/backend/pkg/logger"
-	"gist/backend/pkg/network"
+	"krss/backend/internal/model"
+	"krss/backend/internal/service"
+	"krss/backend/pkg/logger"
+	"krss/backend/pkg/network"
 )
 
 // MCPHandler 16 批（入向）连接管理 + 17 批（出向）状态/令牌。

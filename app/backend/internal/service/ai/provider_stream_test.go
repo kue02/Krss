@@ -12,7 +12,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"gist/backend/internal/service/ai"
+	"krss/backend/internal/service/ai"
 )
 
 func TestOpenAIProvider_ResponsesEndpoints(t *testing.T) {

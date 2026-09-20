@@ -3,7 +3,7 @@
  *
  * 对齐 Folo 的 `parseSocialMedia(entry.authorUrl || entry.url || entry.guid)`：
  * 社交视图的条目要显示 `@handle`（可点进作者主页），而不是只显示订阅源名字。
- * Gist 的 entry 没有 authorUrl 字段，所以只看 url。
+ * Krss 的 entry 没有 authorUrl 字段，所以只看 url。
  */
 export type SocialPlatform = "x" | "weibo" | "bluesky" | "mastodon";
 

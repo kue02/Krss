@@ -9,7 +9,7 @@ import { LS_KEYS, readLocalValue, removeLocalValue, writeLocalValue } from "@/li
  * 不值得为它加后端表；上限 20 条，避免无限增长。
  *
  * 21 批：**故意不进服务端同步**（用户拍板）—— 这是「本机跑过什么」的运行记录，
- * 不是设置；同步过去会让两台设备互相污染。这里只做了键名迁移（gist-* → krss-*）。
+ * 不是设置；同步过去会让两台设备互相污染。键名 `krss-*`（改名清理后不留老键兼容）。
  */
 export interface AutoRefreshRecord {
   /** 这一轮结束时间（后端 lastRefreshedAt） */
@@ -70,7 +70,7 @@ const STORAGE_SPEC = LS_KEYS.autoRefreshHistory;
  * 导出出来是为了让测试把「固定 20」钉死 —— 别再顺手加设置项。
  */
 export const AUTO_REFRESH_HISTORY_LIMIT = 20;
-const EVENT = "gist-auto-refresh-history-changed";
+const EVENT = "krss-auto-refresh-history-changed";
 
 export function loadAutoRefreshHistory(): AutoRefreshRecord[] {
   try {

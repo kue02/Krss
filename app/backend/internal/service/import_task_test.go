@@ -2,7 +2,7 @@ package service_test
 
 import (
 	"context"
-	"gist/backend/internal/service"
+	"krss/backend/internal/service"
 	"testing"
 	"time"
 

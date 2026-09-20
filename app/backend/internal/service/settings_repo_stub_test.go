@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"gist/backend/internal/model"
+	"krss/backend/internal/model"
 )
 
 type settingsRepoStub struct {

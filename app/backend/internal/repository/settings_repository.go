@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"gist/backend/internal/model"
+	"krss/backend/internal/model"
 )
 
 // SettingsRepository defines the interface for settings storage.

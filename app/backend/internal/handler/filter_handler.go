@@ -9,9 +9,9 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/service"
-	"gist/backend/pkg/logger"
+	"krss/backend/internal/model"
+	"krss/backend/internal/service"
+	"krss/backend/pkg/logger"
 )
 
 // FilterHandler 过滤规则（自动化）的 HTTP 层。

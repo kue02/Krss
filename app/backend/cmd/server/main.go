@@ -12,21 +12,21 @@ import (
 	"syscall"
 	"time"
 
-	"gist/backend/internal/config"
-	"gist/backend/internal/db"
-	"gist/backend/internal/handler"
-	transport "gist/backend/internal/http"
-	"gist/backend/internal/repository"
-	"gist/backend/internal/scheduler"
-	"gist/backend/internal/service"
-	"gist/backend/internal/service/ai"
-	"gist/backend/internal/service/anubis"
-	"gist/backend/pkg/logger"
-	"gist/backend/pkg/network"
-	"gist/backend/pkg/snowflake"
+	"krss/backend/internal/config"
+	"krss/backend/internal/db"
+	"krss/backend/internal/handler"
+	transport "krss/backend/internal/http"
+	"krss/backend/internal/repository"
+	"krss/backend/internal/scheduler"
+	"krss/backend/internal/service"
+	"krss/backend/internal/service/ai"
+	"krss/backend/internal/service/anubis"
+	"krss/backend/pkg/logger"
+	"krss/backend/pkg/network"
+	"krss/backend/pkg/snowflake"
 )
 
-// @title Gist API
+// @title Krss API
 // @version 1.0
 // @description This is a modern RSS reader API.
 // @BasePath /api

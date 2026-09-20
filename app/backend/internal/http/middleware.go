@@ -7,12 +7,12 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"gist/backend/internal/service"
-	"gist/backend/pkg/logger"
+	"krss/backend/internal/service"
+	"krss/backend/pkg/logger"
 )
 
 // AuthCookieName is the name of the authentication cookie.
-const AuthCookieName = "gist_auth"
+const AuthCookieName = "krss_auth"
 
 // RequestLoggerMiddleware logs HTTP requests using logger.
 func RequestLoggerMiddleware() echo.MiddlewareFunc {

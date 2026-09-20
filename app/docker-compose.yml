@@ -1,12 +1,12 @@
 services:
-  gist:
-    image: ghcr.io/9bingyin/gist:develop
-    container_name: gist
+  krss:
+    image: ghcr.io/hu2327401139/krss:latest
+    container_name: krss
     ports:
       - "8080:8080"
     volumes:
       - ./data:/app/data
     environment:
-      - GIST_LOG_LEVEL=info
-      # - GIST_SWAGGER=true  # Enable Swagger API docs at /swagger/index.html
+      - KRSS_LOG_LEVEL=info
+      # - KRSS_SWAGGER=true  # Enable Swagger API docs at /swagger/index.html
     restart: always

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/repository"
+	"krss/backend/internal/model"
+	"krss/backend/internal/repository"
 )
 
 // 推送通道（Bark 兼容）：规则命中 → 推一条到手机。
@@ -106,7 +106,7 @@ func BuildFilterNotifyPayload(filter model.Filter, feed model.Feed, entry model.
 		Title: truncateRunes(title, notifyTitleLimit),
 		Body:  truncateRunes(strings.Join(parts, " · "), notifyBodyLimit),
 		URL:   link,
-		Group: "Gist 自动化",
+		Group: "Krss 自动化",
 	}
 }
 

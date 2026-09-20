@@ -13,7 +13,7 @@ import (
 	tls "github.com/Noooste/utls"
 	"github.com/stretchr/testify/require"
 
-	"gist/backend/pkg/network"
+	"krss/backend/pkg/network"
 )
 
 type tlsTestProvider struct{}

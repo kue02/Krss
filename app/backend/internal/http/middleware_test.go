@@ -6,12 +6,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	gh "gist/backend/internal/http"
+	gh "krss/backend/internal/http"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"gist/backend/internal/service/mock"
+	"krss/backend/internal/service/mock"
 )
 
 func TestJWTAuthMiddleware(t *testing.T) {

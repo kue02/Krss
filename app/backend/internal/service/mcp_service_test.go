@@ -9,12 +9,12 @@ import (
 	"strings"
 	"testing"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/repository"
-	"gist/backend/internal/repository/testutil"
-	"gist/backend/internal/service"
-	"gist/backend/pkg/network"
-	"gist/backend/pkg/snowflake"
+	"krss/backend/internal/model"
+	"krss/backend/internal/repository"
+	"krss/backend/internal/repository/testutil"
+	"krss/backend/internal/service"
+	"krss/backend/pkg/network"
+	"krss/backend/pkg/snowflake"
 
 	"github.com/stretchr/testify/require"
 )

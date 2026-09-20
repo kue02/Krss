@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/repository"
-	"gist/backend/pkg/logger"
+	"krss/backend/internal/model"
+	"krss/backend/internal/repository"
+	"krss/backend/pkg/logger"
 )
 
 type EntryListParams struct {

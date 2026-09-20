@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/repository"
-	"gist/backend/pkg/logger"
-	"gist/backend/pkg/network"
+	"krss/backend/internal/model"
+	"krss/backend/internal/repository"
+	"krss/backend/pkg/logger"
+	"krss/backend/pkg/network"
 )
 
 // 规则的 last_error 用前缀区分来源：只清掉「上一次属于自己」的那条，别互相覆盖。
@@ -1309,9 +1309,9 @@ func (s *filterService) TestNotify(ctx context.Context) (int, error) {
 		return 0, ErrInvalid
 	}
 	payload, err := MarshalFilterNotify(FilterNotifyPayload{
-		Title: "Gist 测试推送",
+		Title: "Krss 测试推送",
 		Body:  "能看到这条，说明推送通道已经通了",
-		Group: "Gist 自动化",
+		Group: "Krss 自动化",
 	})
 	if err != nil {
 		return 0, fmt.Errorf("build test notify: %w", err)

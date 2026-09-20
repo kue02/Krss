@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/repository/mock"
-	"gist/backend/internal/service"
-	servicemock "gist/backend/internal/service/mock"
-	"gist/backend/pkg/network"
+	"krss/backend/internal/model"
+	"krss/backend/internal/repository/mock"
+	"krss/backend/internal/service"
+	servicemock "krss/backend/internal/service/mock"
+	"krss/backend/pkg/network"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"

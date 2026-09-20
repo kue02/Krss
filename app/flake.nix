@@ -1,5 +1,5 @@
 {
-  description = "Gist development environment";
+  description = "Krss development environment";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";

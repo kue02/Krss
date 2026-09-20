@@ -18,7 +18,7 @@ const OPTIONS: { id: EntryFilter; labelKey: string }[] = [
  * 中栏底部的筛选胶囊 —— Nextflux 的标志元素
  *
  * Starred / Unread / All 三态，选中项为强调色实心胶囊，
- * 分别接 Gist 后端既有的 `starredOnly` / `unreadOnly` 参数。
+ * 分别接 Krss 后端既有的 `starredOnly` / `unreadOnly` 参数。
  * 「已静音」不再占这里的位置（2026-09-17 用户要求）：它是回看入口，
  * 已挪到 设置 → 自动化，由 `filter-view-store.mutedOnly` 驱动。
  */

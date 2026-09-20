@@ -12,27 +12,27 @@ WORKDIR /app/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -v -o gist-server ./cmd/server/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -v -o krss-server ./cmd/server/main.go
 
 # Stage 3: Final Image
 FROM alpine:latest
 WORKDIR /app
 RUN apk add --no-cache ca-certificates tzdata su-exec \
-    && addgroup -g 1000 -S gist \
-    && adduser -u 1000 -G gist -S -h /app gist
+    && addgroup -g 1000 -S krss \
+    && adduser -u 1000 -G krss -S -h /app krss
 
-COPY --from=backend-builder /app/backend/gist-server .
+COPY --from=backend-builder /app/backend/krss-server .
 COPY --from=frontend-builder /app/frontend/dist ./static
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh \
-    && mkdir -p /app/data && chown -R gist:gist /app
+    && mkdir -p /app/data && chown -R krss:krss /app
 
-ENV GIST_ADDR=:8080
-ENV GIST_DATA_DIR=/app/data
-ENV GIST_STATIC_DIR=/app/static
-ENV GIST_LOG_LEVEL=info
+ENV KRSS_ADDR=:8080
+ENV KRSS_DATA_DIR=/app/data
+ENV KRSS_STATIC_DIR=/app/static
+ENV KRSS_LOG_LEVEL=info
 ENV TZ=Asia/Shanghai
 
 EXPOSE 8080
 ENTRYPOINT ["entrypoint.sh"]
-CMD ["./gist-server"]
+CMD ["./krss-server"]

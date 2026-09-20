@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"gist/backend/internal/repository"
-	"gist/backend/internal/service/ai"
-	"gist/backend/pkg/logger"
+	"krss/backend/internal/repository"
+	"krss/backend/internal/service/ai"
+	"krss/backend/pkg/logger"
 )
 
 // AIProviderConfig 一个保存好的 AI 提供商配置（可存多个，随时切换当前使用）。

@@ -6,13 +6,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"gist/backend/internal/handler"
+	"krss/backend/internal/handler"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"gist/backend/internal/service"
-	"gist/backend/internal/service/mock"
+	"krss/backend/internal/service"
+	"krss/backend/internal/service/mock"
 )
 
 func TestSettingsHandler_GetAISettings_Success(t *testing.T) {

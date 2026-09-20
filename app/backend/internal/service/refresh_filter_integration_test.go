@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"gist/backend/internal/model"
-	"gist/backend/internal/repository"
-	"gist/backend/internal/service"
-	"gist/backend/pkg/network"
+	"krss/backend/internal/model"
+	"krss/backend/internal/repository"
+	"krss/backend/internal/service"
+	"krss/backend/pkg/network"
 
 	"github.com/stretchr/testify/require"
 )

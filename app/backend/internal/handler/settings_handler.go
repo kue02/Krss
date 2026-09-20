@@ -9,9 +9,9 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"gist/backend/internal/service"
-	"gist/backend/pkg/logger"
-	"gist/backend/pkg/network"
+	"krss/backend/internal/service"
+	"krss/backend/pkg/logger"
+	"krss/backend/pkg/network"
 )
 
 // Request/Response types

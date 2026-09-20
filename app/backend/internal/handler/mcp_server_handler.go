@@ -9,8 +9,8 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"gist/backend/internal/service"
-	"gist/backend/pkg/logger"
+	"krss/backend/internal/service"
+	"krss/backend/pkg/logger"
 )
 
 // MCPEndpointHandler 17 批（出向）：Krss 作为 MCP 服务器。

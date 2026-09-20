@@ -3,7 +3,7 @@ package service
 import (
 	"errors"
 
-	"gist/backend/internal/model"
+	"krss/backend/internal/model"
 )
 
 var (

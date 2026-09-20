@@ -23,12 +23,10 @@ describe("ui-lang（21 批）", () => {
     expect(getUILang()).toBe("zh");
   });
 
-  it("老键 gist-lang 的值会被搬过来（用户无感改名）", () => {
-    localStorage.setItem("gist-lang", "en");
+  it("新键的值被正常读出", () => {
+    localStorage.setItem("krss-lang", "en");
 
     expect(getUILang()).toBe("en");
-    expect(localStorage.getItem("krss-lang")).toBe("en");
-    expect(localStorage.getItem("gist-lang")).toBeNull();
   });
 
   it("野值（不在 zh/en 里的）一律回落到默认中文", () => {

@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 /**
  * 13-3 的关键回归：**面板里的改动必须真的写进配置**。
- * 起因：真机点「未读数」之后，`localStorage["gist-ui-settings"].unreadBadge` 仍是 undefined ——
+ * 起因：真机点「未读数」之后，`localStorage["krss-ui-settings"].unreadBadge` 仍是 undefined ——
  * 面板渲染没问题，写链路断了。这里用单测把「点击 → setUnreadBadge」钉死（比浏览器探针确定）。
  */
 const config = {
