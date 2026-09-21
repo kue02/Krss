@@ -49,7 +49,6 @@ import { useUISettingKey } from "@/hooks/useUISettings";
 import {
   resolveTimelineCollapse,
   resolveTimelineGranularity,
-  resolveTimelineTimeBasis,
 } from "@/lib/timeline-model";
 import { NotificationTimeline } from "./NotificationTimeline";
 import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
@@ -274,9 +273,6 @@ export function EntryList({
   const isNotificationTimeline = contentType === "notification";
   const timelineGranularity = resolveTimelineGranularity(
     useUISettingKey("timelineGranularityByView")?.[contentType],
-  );
-  const timelineTimeBasis = resolveTimelineTimeBasis(
-    useUISettingKey("timelineTimeBasisByView")?.[contentType],
   );
   const timelineCollapse = resolveTimelineCollapse(
     useUISettingKey("timelineCollapseByView")?.[contentType],
@@ -984,7 +980,6 @@ export function EntryList({
                   onMarkAboveEntry={handleMarkAboveEntry}
                   onCloseEntry={onCloseEntry}
                   granularity={timelineGranularity}
-                  timeBasis={timelineTimeBasis}
                   collapse={timelineCollapse}
                   autoSingleSide={timelineAutoSingleSide}
                   autoTranslate={autoTranslate}

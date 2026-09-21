@@ -27,21 +27,6 @@ export const TIMELINE_GRANULARITIES: readonly TimelineGranularity[] = [
 export const DEFAULT_TIMELINE_GRANULARITY: TimelineGranularity = "hour";
 
 /**
- * 时间基准（用户拍板：默认=发布时间，现状不动）：
- *   published = 按发布时间分组（文章自带的时间，`publishedAt || createdAt`）；
- *   fetched   = 按抓取时间分组（本机抓回的时间，`createdAt || publishedAt`，即刷新批次）。
- */
-export type TimelineTimeBasis = "published" | "fetched";
-
-export const TIMELINE_TIME_BASES: readonly TimelineTimeBasis[] = [
-  "published",
-  "fetched",
-];
-
-/** 拍板默认「发布时间」（现状不动） */
-export const DEFAULT_TIMELINE_TIME_BASIS: TimelineTimeBasis = "published";
-
-/**
  * 折叠档位（15-3 拍板：默认折叠、折叠 2 行，档位 1/2/3/全文）。
  * `full` = 不折叠（正文全量显示，"展开"变成一个空操作）。
  */
@@ -80,11 +65,6 @@ export interface TimelineDateRow {
   key: string;
   /** 今天 / 昨天 / 9月16日 周二 */
   label: string;
-  /**
-   * 26-4：本组时间范围（如"09:00–12:00"，单条则单个"09:00"，en dash –）。
-   * 按 timeBasis 取每条时间、min~max；缺时间（at=0）的那天不生成。
-   */
-  rangeLabel?: string;
 }
 
 export interface TimelineEntryRow {
@@ -124,12 +104,6 @@ export function resolveTimelineGranularity(value: unknown): TimelineGranularity 
     : DEFAULT_TIMELINE_GRANULARITY;
 }
 
-export function resolveTimelineTimeBasis(value: unknown): TimelineTimeBasis {
-  return TIMELINE_TIME_BASES.includes(value as TimelineTimeBasis)
-    ? (value as TimelineTimeBasis)
-    : DEFAULT_TIMELINE_TIME_BASIS;
-}
-
 export function resolveTimelineCollapse(value: unknown): TimelineCollapse {
   return TIMELINE_COLLAPSES.includes(value as TimelineCollapse)
     ? (value as TimelineCollapse)
@@ -148,20 +122,10 @@ export function isSingleSideWidth(width: number): boolean {
   return width > 0 && width < TIMELINE_SINGLE_SIDE_WIDTH;
 }
 
-/**
- * 条目在轴上的时间基准，默认发布时间（现状）：
- *   published = `publishedAt || createdAt`（没有 publishedAt 的条目退回 createdAt）；
- *   fetched   = `createdAt || publishedAt`（按本机抓回时间，即刷新批次）。
- */
-export function entryTimestamp(
-  entry: Entry,
-  basis: TimelineTimeBasis = DEFAULT_TIMELINE_TIME_BASIS,
-): number {
-  const raw =
-    basis === "fetched"
-      ? entry.createdAt || entry.publishedAt
-      : entry.publishedAt || entry.createdAt;
-  const parsed = Date.parse(raw ?? "");
+/** 条目在轴上的时间基准：没有 publishedAt 的条目退回 createdAt */
+export function entryTimestamp(entry: Entry): number {
+  const raw = entry.publishedAt || entry.createdAt;
+  const parsed = Date.parse(raw);
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
@@ -242,8 +206,6 @@ export function formatBucketLabel(
 
 export interface BuildTimelineOptions {
   granularity: TimelineGranularity;
-  /** 时间基准（默认发布时间，现状不动） */
-  timeBasis?: TimelineTimeBasis;
   t: TranslateFunction;
   /** "now" 注入进来是为了可测（今天/昨天的判定） */
   now?: number;
@@ -264,7 +226,6 @@ export function buildTimelineRows(
   entries: Entry[],
   {
     granularity,
-    timeBasis = DEFAULT_TIMELINE_TIME_BASIS,
     t,
     now = Date.now(),
     locale,
@@ -272,7 +233,7 @@ export function buildTimelineRows(
   }: BuildTimelineOptions,
 ): TimelineRow[] {
   const sorted = entries
-    .map((entry, index) => ({ entry, index, at: entryTimestamp(entry, timeBasis) }))
+    .map((entry, index) => ({ entry, index, at: entryTimestamp(entry) }))
     .sort((a, b) => (b.at - a.at) || (a.index - b.index));
 
   /** 先按桶分组，再决定每个桶里平铺几条、吸几条 */
@@ -294,30 +255,6 @@ export function buildTimelineRows(
     sideIndex++ % 2 === 0 ? "left" : "right";
   let lastDay: string | null = null;
 
-  /**
-   * 26-4：日期行的 rangeLabel 汇总**当天全部条目**（同一天可能多个桶，
-   * 到插行时后面的桶还没见过，所以先整天扫一遍 min~max；at<=0 缺时间的不计）。
-   */
-  const dayRanges = new Map<string, { min: number; max: number }>();
-  for (const item of sorted) {
-    if (item.at <= 0) continue;
-    const day = localDayKey(item.at);
-    const current = dayRanges.get(day);
-    if (!current) {
-      dayRanges.set(day, { min: item.at, max: item.at });
-    } else {
-      if (item.at < current.min) current.min = item.at;
-      if (item.at > current.max) current.max = item.at;
-    }
-  }
-  const rangeLabelFor = (day: string): string | undefined => {
-    const range = dayRanges.get(day);
-    if (!range) return undefined;
-    const low = formatClockTime(range.min);
-    const high = formatClockTime(range.max);
-    return low === high ? low : `${low}–${high}`;
-  };
-
   for (const group of groups) {
     const first = group.entries[0];
     if (!first) continue;
@@ -325,12 +262,10 @@ export function buildTimelineRows(
     // 跨天：先插日期分隔（同一天的正午/整点桶永远同一天，所以按桶的首条判即可）
     const dayKey = localDayKey(first.at);
     if (dayKey !== lastDay) {
-      const rangeLabel = rangeLabelFor(dayKey);
       rows.push({
         kind: "date",
         key: `day:${dayKey}`,
         label: formatDayLabel(first.at, now, t, locale),
-        ...(rangeLabel !== undefined ? { rangeLabel } : {}),
       });
       lastDay = dayKey;
     }
@@ -387,7 +322,6 @@ export function buildTimelineRows(
 export function expandTimelineRows(
   rows: TimelineRow[],
   expandedClusterKeys: ReadonlySet<string>,
-  timeBasis: TimelineTimeBasis = DEFAULT_TIMELINE_TIME_BASIS,
 ): TimelineRow[] {
   if (expandedClusterKeys.size === 0) return rows;
 
@@ -403,8 +337,8 @@ export function expandTimelineRows(
         entry,
         side: index % 2 === 0 ? row.side : row.side === "left" ? "right" : "left",
         node: "minor",
-        label: formatClockTime(entryTimestamp(entry, timeBasis)),
-        shortLabel: formatClockTime(entryTimestamp(entry, timeBasis)),
+        label: formatClockTime(entryTimestamp(entry)),
+        shortLabel: formatClockTime(entryTimestamp(entry)),
         bucket: row.key,
         bucketCount: row.entries.length,
       });

@@ -48,42 +48,6 @@ describe("界面设置整包：尺寸类按设备分套（21 批）", () => {
     expect(mod.getUISettings().cardPreviewLines).toBe(5);
   });
 
-  it("新键 timelineTimeBasisByView：写 shared，服务端整包回来不丢", async () => {
-    const mod = await freshModule();
-
-    mod.setUISetting("timelineTimeBasisByView", {
-      article: "published",
-      picture: "published",
-      notification: "fetched",
-      social: "published",
-    });
-
-    const raw = storedPackage();
-    expect(raw.shared?.timelineTimeBasisByView).toEqual({
-      article: "published",
-      picture: "published",
-      notification: "fetched",
-      social: "published",
-    });
-    expect(mod.getUISettings().timelineTimeBasisByView.notification).toBe("fetched");
-
-    // 服务端整包（含新键）覆盖本地后不丢，且默认值仍是全发布时间
-    const mod2 = await freshModule();
-    mod2.applyUISettingsPackageFromServer({
-      shared: {
-        timelineTimeBasisByView: {
-          article: "published",
-          picture: "published",
-          notification: "published",
-          social: "published",
-        },
-      },
-      device: { desktop: {}, mobile: {} },
-    });
-    expect(mod2.getUISettings().timelineTimeBasisByView.notification).toBe("published");
-    expect(mod2.defaultUISettings.timelineTimeBasisByView.notification).toBe("published");
-  });
-
   it("形状不对（既不是整包也不是可用的值）→ 走默认值，不崩", async () => {
     localStorage.setItem("krss-ui-settings", JSON.stringify({ feedColWidth: 300 }));
 

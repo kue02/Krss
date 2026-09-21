@@ -23,7 +23,6 @@ import {
   type TimelineGranularity,
   type TimelineRow,
   type TimelineSide,
-  type TimelineTimeBasis,
 } from "@/lib/timeline-model";
 import type { Entry, Feed } from "@/types/api";
 
@@ -465,8 +464,6 @@ export interface NotificationTimelineProps {
   /** 24-8：收起选中展开的条目（把选中交回列表） */
   onCloseEntry?: () => void;
   granularity: TimelineGranularity;
-  /** 时间基准（默认发布时间，现状不动；EntryList 里 resolve 后传进来） */
-  timeBasis?: TimelineTimeBasis;
   collapse: TimelineCollapse;
   /** 窄栏自动合一栏（默认开；关掉则始终左右交替） */
   autoSingleSide?: boolean;
@@ -488,7 +485,6 @@ export function NotificationTimeline({
   onMarkAboveEntry,
   onCloseEntry,
   granularity,
-  timeBasis = "published",
   collapse,
   autoSingleSide = true,
   autoTranslate,
@@ -594,97 +590,24 @@ export function NotificationTimeline({
     return () => cancelAnimationFrame(frame);
   }, [expandedSignature]);
 
-  // 换粒度 / 换时间基准 / 换列表时收起来，免得「展开态」跟着另一批数据走
+  // 换粒度 / 换列表时收起来，免得「展开态」跟着另一批数据走
   useEffect(() => {
     setExpandedClusters(new Set());
-  }, [granularity, timeBasis, entries]);
-
-  /**
-   * 日期分隔行吸顶：只让「当前日期」那一条贴住顶部。
-   *
-   * 原生 `sticky top-0` 在这里会整摞贴住（每条分隔都满足 sticky 条件），
-   * 所以用 scroll 监听手写：每条分隔只在「它的自然顶滚过可视区顶部」后才 fixed 钉住；
-   * 钉住时 top 取「可视区顶」与「下一条分隔顶 − 自己高度」之小 —— 下一条滚上来即顶走旧的，
-   * 同一时刻永远只有一条贴住。没滚到的行保持 static，不占顶。
-   */
-  useEffect(() => {
-    const root = containerRef.current;
-    if (!root) return;
-    const scroller =
-      root.closest<HTMLElement>('[data-testid="entry-list-viewport"]') ?? undefined;
-    const dates = () =>
-      [...root.querySelectorAll<HTMLElement>("[data-timeline-date]")];
-    let frame = 0;
-    const update = () => {
-      frame = 0;
-      const nodes = dates();
-      if (nodes.length === 0) return;
-      const scrollerTop = scroller
-        ? scroller.getBoundingClientRect().top
-        : 0;
-      // 先全部复位，再按自然顺序决定谁钉住（避免残留 fixed）
-      for (const node of nodes) {
-        node.style.position = "";
-        node.style.top = "";
-        node.style.left = "";
-        node.style.right = "";
-        node.style.zIndex = "";
-      }
-      const tops = nodes.map((node) => node.getBoundingClientRect().top);
-      // 找到最后一条「自然顶已滚过可视区顶」的分隔 = 当前日期
-      let current = -1;
-      for (let index = 0; index < nodes.length; index += 1) {
-        if ((tops[index] ?? Infinity) <= scrollerTop + 1) current = index;
-      }
-      if (current < 0) return;
-      const node = nodes[current];
-      if (!node) return;
-      const height = node.getBoundingClientRect().height;
-      const nextTop = tops[current + 1] ?? Infinity;
-      // 下一条分隔顶上来时把当前这条顶走（顶走量 = 自己高度）
-      const top = Math.min(scrollerTop, nextTop - height);
-      const rect = node.getBoundingClientRect();
-      node.style.position = "fixed";
-      node.style.top = `${Math.round(top)}px`;
-      node.style.left = `${Math.round(rect.left)}px`;
-      node.style.right = `${Math.round(window.innerWidth - rect.right)}px`;
-      node.style.zIndex = "1";
-    };
-    const schedule = () => {
-      if (frame) return;
-      frame = requestAnimationFrame(update);
-    };
-    schedule();
-    scroller?.addEventListener("scroll", schedule, { passive: true });
-    window.addEventListener("resize", schedule);
-    return () => {
-      cancelAnimationFrame(frame);
-      scroller?.removeEventListener("scroll", schedule);
-      window.removeEventListener("resize", schedule);
-      for (const node of dates()) {
-        node.style.position = "";
-        node.style.top = "";
-        node.style.left = "";
-        node.style.right = "";
-        node.style.zIndex = "";
-      }
-    };
-  }, [entries, granularity, timeBasis, i18n.language, singleSide, t]);
+  }, [granularity, entries]);
 
   const rows = useMemo(
     () =>
       buildTimelineRows(entries, {
         granularity,
-        timeBasis,
         t,
         locale: i18n.language,
       }),
-    [entries, granularity, timeBasis, t, i18n.language],
+    [entries, granularity, t, i18n.language],
   );
 
   const displayRows = useMemo(
-    () => expandTimelineRows(rows, expandedClusters, timeBasis),
-    [rows, expandedClusters, timeBasis],
+    () => expandTimelineRows(rows, expandedClusters),
+    [rows, expandedClusters],
   );
 
   /** 轴上的卡片（顺序即键盘吸附顺序） */
@@ -742,66 +665,18 @@ export function NotificationTimeline({
 
       {displayRows.map((row) => {
         if (row.kind === "date") {
-          // 26-4：日期行三列结构 —— 左列 rangeLabel（与卡片时间同列同字号：
-          // 单侧 76px 右对齐 / 交替 64px 居中，11px 600 前景）；
-          // 中列圆点 x 严格 = 轴 x（单侧 76px / 交替 50%，TimelineDot 复用 major 9px）；
-          // 右列日期 label；条底 1px hairline。
-          // 吸顶逻辑见上面的吸顶 effect：量的是整行高度，换班逻辑不动。
-          const dotLeft = singleSide ? `${SINGLE_SIDE_TIME_COLUMN}px` : "50%";
           return (
             <div
               key={row.key}
               data-timeline-date={row.label}
               className={cn(
-                "relative grid items-start border-b border-border/60 bg-background py-3",
-                singleSide
-                  ? "grid-cols-[76px_minmax(0,1fr)]"
-                  : "grid-cols-[minmax(0,1fr)_64px_minmax(0,1fr)]",
+                "relative flex items-center py-3",
+                singleSide ? "justify-start pl-[86px]" : "justify-center",
               )}
             >
-              <TimelineDot node="major" unread={false} left={dotLeft} />
-              {singleSide ? (
-                <>
-                  <div className="flex justify-end pr-2 pt-[11px]">
-                    {row.rangeLabel !== undefined ? (
-                      <span
-                        data-timeline-time=""
-                        className="whitespace-nowrap text-[11px] font-semibold tabular-nums text-foreground"
-                      >
-                        {row.rangeLabel}
-                      </span>
-                    ) : (
-                      <span data-timeline-time="" />
-                    )}
-                  </div>
-                  <div className="min-w-0 pl-3">
-                    <span className="rounded-full bg-background px-2 text-[11.5px] font-semibold tabular-nums text-foreground">
-                      {row.label}
-                    </span>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <span />
-                  <div className="flex justify-center pt-[11px]">
-                    {row.rangeLabel !== undefined ? (
-                      <span
-                        data-timeline-time=""
-                        className="whitespace-nowrap text-[11px] font-semibold tabular-nums text-foreground"
-                      >
-                        {row.rangeLabel}
-                      </span>
-                    ) : (
-                      <span data-timeline-time="" />
-                    )}
-                  </div>
-                  <div className="min-w-0 px-1">
-                    <span className="rounded-full bg-background px-2 text-[11.5px] font-semibold tabular-nums text-foreground">
-                      {row.label}
-                    </span>
-                  </div>
-                </>
-              )}
+              <span className="rounded-full bg-background px-2 text-[11.5px] font-semibold tabular-nums text-foreground">
+                {row.label}
+              </span>
             </div>
           );
         }

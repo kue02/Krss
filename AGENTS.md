@@ -6,9 +6,13 @@
 
 ## 一、必须遵守（违反即验收不合格）
 
-1. **界面、动画、动效、样式一律用 HeroUI v3（https://heroui.com/）与 Nextflux 的既有实现**，不手搓复刻、不自创风格；
-   取值要量 computed style，不许凭肉眼估。参考：`references/nextflux/`（源码）、http://192.0.2.1:3100（线上实例，需登录）、
-   `references/folo/`（信息流形态）、`docs/移植笔记.md`（已对齐的实测值）。**这条不满足 = 直接不合格。**
+1. **界面、动画、动效、样式优先用 HeroUI v3（https://heroui.com/），HeroUI 没有的照 Nextflux 的既有实现补**，不手搓复刻、不自创风格；
+   取值要量 computed style，不许凭肉眼估。动手前先查 HeroUI 有无现成组件：`https://heroui.com/react/llms.txt`（索引）、
+   `https://heroui.com/react/llms-components.txt`（仅组件）、`https://heroui.com/react/llms-patterns.txt`（模式片段），
+   或 MCP `heroui-react`、`.agents/skills/heroui-react/`。HeroUI 没有的（右键菜单、图片灯箱、跑马灯等）照 Nextflux 实现补，不算违规。
+   参考：`references/nextflux/`（源码）、http://192.0.2.1:3100（线上实例，需登录）、
+   `references/folo/`（信息流形态）、`docs/移植笔记.md`（已对齐的实测值）。
+   HeroUI 版本升级先在草图验 API 变化，再进真项目。**这条不满足 = 直接不合格。**
 2. **所有任务先列进 `todo.md`，做一项勾一项**，提交与汇报要能对应到 `todo.md` 的条目。
 3. **全部实测**：后端真打接口、前端在浏览器里真点（Hermes 下用 ego-browser）；没有实测证据不许勾。
 4. 用户说"去看 xxx"就必须去看，看完给结论。
