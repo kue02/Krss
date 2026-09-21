@@ -177,9 +177,9 @@ describe("NotificationTimeline · 主干形态（15-1）", () => {
     const { container } = renderTimeline(entries);
     const dates = Array.from(container.querySelectorAll<HTMLElement>("[data-timeline-date]"));
     expect(dates.length).toBeGreaterThan(0);
+    // 吸顶是 scroll 监听手写的（原生 sticky 会整摞贴住），首屏未滚动时保持 static 不占顶
     for (const node of dates) {
-      expect(node.classList.contains("sticky")).toBe(true);
-      expect(node.classList.contains("top-0")).toBe(true);
+      expect(node.style.position).toBe("");
     }
   });
 

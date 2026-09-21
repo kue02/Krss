@@ -599,6 +599,78 @@ export function NotificationTimeline({
     setExpandedClusters(new Set());
   }, [granularity, timeBasis, entries]);
 
+  /**
+   * 日期分隔行吸顶：只让「当前日期」那一条贴住顶部。
+   *
+   * 原生 `sticky top-0` 在这里会整摞贴住（每条分隔都满足 sticky 条件），
+   * 所以用 scroll 监听手写：每条分隔只在「它的自然顶滚过可视区顶部」后才 fixed 钉住；
+   * 钉住时 top 取「可视区顶」与「下一条分隔顶 − 自己高度」之小 —— 下一条滚上来即顶走旧的，
+   * 同一时刻永远只有一条贴住。没滚到的行保持 static，不占顶。
+   */
+  useEffect(() => {
+    const root = containerRef.current;
+    if (!root) return;
+    const scroller =
+      root.closest<HTMLElement>('[data-testid="entry-list-viewport"]') ?? undefined;
+    const dates = () =>
+      [...root.querySelectorAll<HTMLElement>("[data-timeline-date]")];
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const nodes = dates();
+      if (nodes.length === 0) return;
+      const scrollerTop = scroller
+        ? scroller.getBoundingClientRect().top
+        : 0;
+      // 先全部复位，再按自然顺序决定谁钉住（避免残留 fixed）
+      for (const node of nodes) {
+        node.style.position = "";
+        node.style.top = "";
+        node.style.left = "";
+        node.style.right = "";
+        node.style.zIndex = "";
+      }
+      const tops = nodes.map((node) => node.getBoundingClientRect().top);
+      // 找到最后一条「自然顶已滚过可视区顶」的分隔 = 当前日期
+      let current = -1;
+      for (let index = 0; index < nodes.length; index += 1) {
+        if ((tops[index] ?? Infinity) <= scrollerTop + 1) current = index;
+      }
+      if (current < 0) return;
+      const node = nodes[current];
+      if (!node) return;
+      const height = node.getBoundingClientRect().height;
+      const nextTop = tops[current + 1] ?? Infinity;
+      // 下一条分隔顶上来时把当前这条顶走（顶走量 = 自己高度）
+      const top = Math.min(scrollerTop, nextTop - height);
+      const rect = node.getBoundingClientRect();
+      node.style.position = "fixed";
+      node.style.top = `${Math.round(top)}px`;
+      node.style.left = `${Math.round(rect.left)}px`;
+      node.style.right = `${Math.round(window.innerWidth - rect.right)}px`;
+      node.style.zIndex = "1";
+    };
+    const schedule = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(update);
+    };
+    schedule();
+    scroller?.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    return () => {
+      cancelAnimationFrame(frame);
+      scroller?.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      for (const node of dates()) {
+        node.style.position = "";
+        node.style.top = "";
+        node.style.left = "";
+        node.style.right = "";
+        node.style.zIndex = "";
+      }
+    };
+  }, [entries, granularity, timeBasis, i18n.language, singleSide, t]);
+
   const rows = useMemo(
     () =>
       buildTimelineRows(entries, {
@@ -670,13 +742,14 @@ export function NotificationTimeline({
 
       {displayRows.map((row) => {
         if (row.kind === "date") {
+          // 日期分隔行吸顶（逻辑见上面的吸顶 effect）：平时 static，
+          // 滚过可视区顶的那条由 effect 改 fixed 钉住，下一条顶上来即换班。
           return (
             <div
               key={row.key}
               data-timeline-date={row.label}
               className={cn(
-                // 日期分隔行吸顶：划过顶部时固定，内容从下面滑过
-                "sticky top-0 z-[1] flex items-center bg-background py-3",
+                "flex items-center bg-background py-3",
                 singleSide ? "justify-start pl-[86px]" : "justify-center",
               )}
             >
