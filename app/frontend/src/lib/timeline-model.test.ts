@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   bucketStartMs,
   buildTimelineRows,
+  entryTimestamp,
   expandTimelineRows,
   formatBucketLabel,
   formatClockTime,
@@ -9,6 +10,7 @@ import {
   localDayKey,
   resolveTimelineCollapse,
   resolveTimelineGranularity,
+  resolveTimelineTimeBasis,
   timelineCollapseClampLines,
   TIMELINE_SINGLE_SIDE_WIDTH,
   type TimelineRow,
@@ -285,5 +287,126 @@ describe("timeline-model · 行序列", () => {
     const first = rows.find((row) => row.kind === "entry");
     expect(first?.kind === "entry" && first.label).not.toBe("09:00");
     expect(first?.kind === "entry" && first.shortLabel).toBe("09:00");
+  });
+});
+
+describe("timeline-model · 时间基准（发布时间 / 抓取时间）", () => {
+  const now = new Date(2026, 8, 18, 15, 0, 0).getTime();
+
+  it("认不出的时间基准一律回发布时间（默认档，现状不动）", () => {
+    expect(resolveTimelineTimeBasis("weekly")).toBe("published");
+    expect(resolveTimelineTimeBasis(undefined)).toBe("published");
+    expect(resolveTimelineTimeBasis(null)).toBe("published");
+    expect(resolveTimelineTimeBasis("published")).toBe("published");
+    expect(resolveTimelineTimeBasis("fetched")).toBe("fetched");
+  });
+
+  it("entryTimestamp：默认发布时间；抓取时间按 createdAt（发布时间缺失时互为回退）", () => {
+    const item = entry("x", localIso(2026, 9, 16, 10, 0), {
+      createdAt: localIso(2026, 9, 18, 9, 0),
+    });
+    // 默认 = 发布时间（现状）
+    expect(entryTimestamp(item)).toBe(Date.parse(localIso(2026, 9, 16, 10, 0)));
+    expect(entryTimestamp(item, "published")).toBe(
+      Date.parse(localIso(2026, 9, 16, 10, 0)),
+    );
+    expect(entryTimestamp(item, "fetched")).toBe(
+      Date.parse(localIso(2026, 9, 18, 9, 0)),
+    );
+    // 没有 publishedAt 的条目：两档都退回另一边，不会掉到 0
+    const noPublished = entry("y", localIso(2026, 9, 17, 8, 0), {
+      publishedAt: undefined,
+      createdAt: localIso(2026, 9, 17, 8, 0),
+    });
+    expect(entryTimestamp(noPublished, "published")).toBe(
+      Date.parse(localIso(2026, 9, 17, 8, 0)),
+    );
+    expect(entryTimestamp(noPublished, "fetched")).toBe(
+      Date.parse(localIso(2026, 9, 17, 8, 0)),
+    );
+  });
+
+  it("默认不传 timeBasis = 显式发布时间（行为零变化）", () => {
+    const entries = [
+      entry("a", localIso(2026, 9, 18, 14, 32)),
+      entry("b", localIso(2026, 9, 18, 14, 10)),
+      entry("c", localIso(2026, 9, 17, 9, 0)),
+    ];
+    const implicit = buildTimelineRows(entries, {
+      granularity: "hour",
+      t,
+      now,
+      locale: "zh-CN",
+    });
+    const explicit = buildTimelineRows(entries, {
+      granularity: "hour",
+      timeBasis: "published",
+      t,
+      now,
+      locale: "zh-CN",
+    });
+    expect(implicit).toEqual(explicit);
+  });
+
+  it("抓取时间按 createdAt 分组（同发布日、不同抓取日 → 每天档下两个日期分隔）", () => {
+    const entries = [
+      entry("a", localIso(2026, 9, 16, 10, 0), {
+        createdAt: localIso(2026, 9, 18, 9, 0),
+      }),
+      entry("b", localIso(2026, 9, 16, 11, 0), {
+        createdAt: localIso(2026, 9, 17, 9, 0),
+      }),
+    ];
+    // 发布时间：同一天 → 只有一个日期分隔
+    const published = buildTimelineRows(entries, {
+      granularity: "day",
+      t,
+      now,
+      locale: "zh-CN",
+    });
+    expect(published.filter((row) => row.kind === "date")).toHaveLength(1);
+    // 抓取时间：不同天 → 两个日期分隔，且抓取晚的在上
+    const fetched = buildTimelineRows(entries, {
+      granularity: "day",
+      timeBasis: "fetched",
+      t,
+      now,
+      locale: "zh-CN",
+    });
+    expect(fetched.filter((row) => row.kind === "date")).toHaveLength(2);
+    expect(
+      fetched
+        .filter((row) => row.kind === "entry")
+        .map((row) => (row.kind === "entry" ? row.entry.id : "")),
+    ).toEqual(["a", "b"]);
+  });
+
+  it("展开态小节点的精确时间也跟时间基准走", () => {
+    const entries = ["a", "b", "c", "d", "e", "f"].map((id, index) =>
+      entry(id, localIso(2026, 9, 16, 20 - index, 0), {
+        createdAt: localIso(2026, 9, 18, 10 - index, 0),
+      }),
+    );
+    const rows = buildTimelineRows(entries, {
+      granularity: "day",
+      t,
+      now,
+      locale: "zh-CN",
+    });
+    const cluster = rows.find((row) => row.kind === "cluster");
+    expect(cluster?.kind).toBe("cluster");
+
+    const tailLabels = (expanded: TimelineRow[]) =>
+      expanded
+        .slice(-3)
+        .map((row) => (row.kind === "entry" ? row.label : ""));
+    // 默认 = 发布时间：被吸掉的 d/e/f 是发布日的 17:00/16:00/15:00
+    expect(tailLabels(expandTimelineRows(rows, new Set([cluster!.key])))).toEqual(
+      ["17:00", "16:00", "15:00"],
+    );
+    // 抓取时间：同一批是抓取日的 07:00/06:00/05:00
+    expect(
+      tailLabels(expandTimelineRows(rows, new Set([cluster!.key]), "fetched")),
+    ).toEqual(["07:00", "06:00", "05:00"]);
   });
 });

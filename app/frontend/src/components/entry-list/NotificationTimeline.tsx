@@ -23,6 +23,7 @@ import {
   type TimelineGranularity,
   type TimelineRow,
   type TimelineSide,
+  type TimelineTimeBasis,
 } from "@/lib/timeline-model";
 import type { Entry, Feed } from "@/types/api";
 
@@ -464,6 +465,8 @@ export interface NotificationTimelineProps {
   /** 24-8：收起选中展开的条目（把选中交回列表） */
   onCloseEntry?: () => void;
   granularity: TimelineGranularity;
+  /** 时间基准（默认发布时间，现状不动；EntryList 里 resolve 后传进来） */
+  timeBasis?: TimelineTimeBasis;
   collapse: TimelineCollapse;
   /** 窄栏自动合一栏（默认开；关掉则始终左右交替） */
   autoSingleSide?: boolean;
@@ -485,6 +488,7 @@ export function NotificationTimeline({
   onMarkAboveEntry,
   onCloseEntry,
   granularity,
+  timeBasis = "published",
   collapse,
   autoSingleSide = true,
   autoTranslate,
@@ -590,24 +594,25 @@ export function NotificationTimeline({
     return () => cancelAnimationFrame(frame);
   }, [expandedSignature]);
 
-  // 换粒度 / 换列表时收起来，免得「展开态」跟着另一批数据走
+  // 换粒度 / 换时间基准 / 换列表时收起来，免得「展开态」跟着另一批数据走
   useEffect(() => {
     setExpandedClusters(new Set());
-  }, [granularity, entries]);
+  }, [granularity, timeBasis, entries]);
 
   const rows = useMemo(
     () =>
       buildTimelineRows(entries, {
         granularity,
+        timeBasis,
         t,
         locale: i18n.language,
       }),
-    [entries, granularity, t, i18n.language],
+    [entries, granularity, timeBasis, t, i18n.language],
   );
 
   const displayRows = useMemo(
-    () => expandTimelineRows(rows, expandedClusters),
-    [rows, expandedClusters],
+    () => expandTimelineRows(rows, expandedClusters, timeBasis),
+    [rows, expandedClusters, timeBasis],
   );
 
   /** 轴上的卡片（顺序即键盘吸附顺序） */
@@ -670,7 +675,8 @@ export function NotificationTimeline({
               key={row.key}
               data-timeline-date={row.label}
               className={cn(
-                "relative flex items-center py-3",
+                // 日期分隔行吸顶：划过顶部时固定，内容从下面滑过
+                "sticky top-0 z-[1] flex items-center bg-background py-3",
                 singleSide ? "justify-start pl-[86px]" : "justify-center",
               )}
             >
