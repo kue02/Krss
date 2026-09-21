@@ -444,3 +444,48 @@ describe("NotificationTimeline · 与列表的契约", () => {
     expect(after.map((item) => item.id)).toEqual(["a", "b", "c", "d", "e", "f"]);
   });
 });
+
+describe("NotificationTimeline · 日期行打磨（26-4）", () => {
+  it("日期行含 rangeLabel 文本（同天多条 = min~max）", () => {
+    const { container } = renderTimeline([
+      entry("a", localIso(18, 9, 5)),
+      entry("b", localIso(18, 12, 40)),
+    ]);
+    const date = container.querySelector<HTMLElement>("[data-timeline-date]");
+    expect(date).not.toBeNull();
+    expect(date?.textContent).toContain("09:05–12:40");
+  });
+
+  it("日期行圆点 data-timeline-dot=major 且 left=轴位（交替 50%）", () => {
+    const { container } = renderTimeline([entry("a", localIso(18, 9, 0))]);
+    const date = container.querySelector<HTMLElement>("[data-timeline-date]");
+    const dot = date?.querySelector<HTMLElement>("[data-timeline-dot]");
+    expect(dot?.dataset.timelineDot).toBe("major");
+    expect(dot?.dataset.timelineDotSize).toBe("9");
+    // 交替布局轴在 50%，圆点 left 必须严格等于轴位
+    expect(dot?.style.left).toBe("50%");
+    expect(
+      container.querySelector<HTMLElement>("[data-timeline-axis]")?.style.left,
+    ).toBe("50%");
+  });
+
+  it("日期行左列时间元素存在（rangeLabel 挂 data-timeline-time）", () => {
+    const { container } = renderTimeline([
+      entry("a", localIso(18, 9, 0)),
+      entry("b", localIso(17, 9, 0)),
+    ]);
+    const dates = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-timeline-date]"),
+    );
+    expect(dates).toHaveLength(2);
+    for (const date of dates) {
+      const time = date.querySelector("[data-timeline-time]");
+      expect(time).not.toBeNull();
+      expect(time?.textContent).toMatch(/\d{2}:\d{2}/);
+    }
+    // 条底 hairline 在
+    for (const date of dates) {
+      expect(date.className).toContain("border-b");
+    }
+  });
+});

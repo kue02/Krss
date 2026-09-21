@@ -80,6 +80,11 @@ export interface TimelineDateRow {
   key: string;
   /** 今天 / 昨天 / 9月16日 周二 */
   label: string;
+  /**
+   * 26-4：本组时间范围（如"09:00–12:00"，单条则单个"09:00"，en dash –）。
+   * 按 timeBasis 取每条时间、min~max；缺时间（at=0）的那天不生成。
+   */
+  rangeLabel?: string;
 }
 
 export interface TimelineEntryRow {
@@ -289,6 +294,30 @@ export function buildTimelineRows(
     sideIndex++ % 2 === 0 ? "left" : "right";
   let lastDay: string | null = null;
 
+  /**
+   * 26-4：日期行的 rangeLabel 汇总**当天全部条目**（同一天可能多个桶，
+   * 到插行时后面的桶还没见过，所以先整天扫一遍 min~max；at<=0 缺时间的不计）。
+   */
+  const dayRanges = new Map<string, { min: number; max: number }>();
+  for (const item of sorted) {
+    if (item.at <= 0) continue;
+    const day = localDayKey(item.at);
+    const current = dayRanges.get(day);
+    if (!current) {
+      dayRanges.set(day, { min: item.at, max: item.at });
+    } else {
+      if (item.at < current.min) current.min = item.at;
+      if (item.at > current.max) current.max = item.at;
+    }
+  }
+  const rangeLabelFor = (day: string): string | undefined => {
+    const range = dayRanges.get(day);
+    if (!range) return undefined;
+    const low = formatClockTime(range.min);
+    const high = formatClockTime(range.max);
+    return low === high ? low : `${low}–${high}`;
+  };
+
   for (const group of groups) {
     const first = group.entries[0];
     if (!first) continue;
@@ -296,10 +325,12 @@ export function buildTimelineRows(
     // 跨天：先插日期分隔（同一天的正午/整点桶永远同一天，所以按桶的首条判即可）
     const dayKey = localDayKey(first.at);
     if (dayKey !== lastDay) {
+      const rangeLabel = rangeLabelFor(dayKey);
       rows.push({
         kind: "date",
         key: `day:${dayKey}`,
         label: formatDayLabel(first.at, now, t, locale),
+        ...(rangeLabel !== undefined ? { rangeLabel } : {}),
       });
       lastDay = dayKey;
     }

@@ -290,6 +290,68 @@ describe("timeline-model · 行序列", () => {
   });
 });
 
+describe("timeline-model · 日期行 rangeLabel（26-4）", () => {
+  const now = new Date(2026, 8, 18, 15, 0, 0).getTime();
+
+  it("同天多条：rangeLabel = min~max（en dash –，按 timeBasis 取时间）", () => {
+    const rows = buildTimelineRows(
+      [
+        entry("a", localIso(2026, 9, 18, 9, 5)),
+        entry("b", localIso(2026, 9, 18, 12, 40)),
+        entry("c", localIso(2026, 9, 18, 10, 15)),
+      ],
+      { granularity: "hour", t, now, locale: "zh-CN" },
+    );
+    const dates = rows.filter((row) => row.kind === "date");
+    expect(dates).toHaveLength(1);
+    expect(dates[0]?.kind === "date" && dates[0].rangeLabel).toBe("09:05–12:40");
+  });
+
+  it("单条：rangeLabel = 单个时间", () => {
+    const rows = buildTimelineRows([entry("a", localIso(2026, 9, 18, 9, 5))], {
+      granularity: "hour",
+      t,
+      now,
+      locale: "zh-CN",
+    });
+    const date = rows.find((row) => row.kind === "date");
+    expect(date?.kind === "date" && date.rangeLabel).toBe("09:05");
+  });
+
+  it("跨天各算各的：同一天多个桶也只汇总当天", () => {
+    const rows = buildTimelineRows(
+      [
+        entry("a", localIso(2026, 9, 18, 14, 0)),
+        entry("b", localIso(2026, 9, 18, 9, 0)),
+        entry("c", localIso(2026, 9, 17, 20, 30)),
+        entry("d", localIso(2026, 9, 17, 8, 15)),
+      ],
+      { granularity: "hour", t, now, locale: "zh-CN" },
+    );
+    const dates = rows.filter((row) => row.kind === "date");
+    expect(dates).toHaveLength(2);
+    expect(dates[0]?.kind === "date" && dates[0].rangeLabel).toBe("09:00–14:00");
+    expect(dates[1]?.kind === "date" && dates[1].rangeLabel).toBe("08:15–20:30");
+  });
+
+  it("缺时间（at=0）：不生成 rangeLabel", () => {
+    const bad = entry("x", localIso(2026, 9, 18, 9, 0), {
+      publishedAt: "not-a-date",
+      createdAt: "also-bad",
+    });
+    expect(entryTimestamp(bad)).toBe(0);
+    const rows = buildTimelineRows([bad], {
+      granularity: "hour",
+      t,
+      now,
+      locale: "zh-CN",
+    });
+    const date = rows.find((row) => row.kind === "date");
+    expect(date?.kind).toBe("date");
+    expect(date?.kind === "date" && date.rangeLabel).toBeUndefined();
+  });
+});
+
 describe("timeline-model · 时间基准（发布时间 / 抓取时间）", () => {
   const now = new Date(2026, 8, 18, 15, 0, 0).getTime();
 

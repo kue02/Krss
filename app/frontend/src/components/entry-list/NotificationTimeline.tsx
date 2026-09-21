@@ -742,20 +742,66 @@ export function NotificationTimeline({
 
       {displayRows.map((row) => {
         if (row.kind === "date") {
-          // 日期分隔行吸顶（逻辑见上面的吸顶 effect）：平时 static，
-          // 滚过可视区顶的那条由 effect 改 fixed 钉住，下一条顶上来即换班。
+          // 26-4：日期行三列结构 —— 左列 rangeLabel（与卡片时间同列同字号：
+          // 单侧 76px 右对齐 / 交替 64px 居中，11px 600 前景）；
+          // 中列圆点 x 严格 = 轴 x（单侧 76px / 交替 50%，TimelineDot 复用 major 9px）；
+          // 右列日期 label；条底 1px hairline。
+          // 吸顶逻辑见上面的吸顶 effect：量的是整行高度，换班逻辑不动。
+          const dotLeft = singleSide ? `${SINGLE_SIDE_TIME_COLUMN}px` : "50%";
           return (
             <div
               key={row.key}
               data-timeline-date={row.label}
               className={cn(
-                "flex items-center bg-background py-3",
-                singleSide ? "justify-start pl-[86px]" : "justify-center",
+                "relative grid items-start border-b border-border/60 bg-background py-3",
+                singleSide
+                  ? "grid-cols-[76px_minmax(0,1fr)]"
+                  : "grid-cols-[minmax(0,1fr)_64px_minmax(0,1fr)]",
               )}
             >
-              <span className="rounded-full bg-background px-2 text-[11.5px] font-semibold tabular-nums text-foreground">
-                {row.label}
-              </span>
+              <TimelineDot node="major" unread={false} left={dotLeft} />
+              {singleSide ? (
+                <>
+                  <div className="flex justify-end pr-2 pt-[11px]">
+                    {row.rangeLabel !== undefined ? (
+                      <span
+                        data-timeline-time=""
+                        className="whitespace-nowrap text-[11px] font-semibold tabular-nums text-foreground"
+                      >
+                        {row.rangeLabel}
+                      </span>
+                    ) : (
+                      <span data-timeline-time="" />
+                    )}
+                  </div>
+                  <div className="min-w-0 pl-3">
+                    <span className="rounded-full bg-background px-2 text-[11.5px] font-semibold tabular-nums text-foreground">
+                      {row.label}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span />
+                  <div className="flex justify-center pt-[11px]">
+                    {row.rangeLabel !== undefined ? (
+                      <span
+                        data-timeline-time=""
+                        className="whitespace-nowrap text-[11px] font-semibold tabular-nums text-foreground"
+                      >
+                        {row.rangeLabel}
+                      </span>
+                    ) : (
+                      <span data-timeline-time="" />
+                    )}
+                  </div>
+                  <div className="min-w-0 px-1">
+                    <span className="rounded-full bg-background px-2 text-[11.5px] font-semibold tabular-nums text-foreground">
+                      {row.label}
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
           );
         }
