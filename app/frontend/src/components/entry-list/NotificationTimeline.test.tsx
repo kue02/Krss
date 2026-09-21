@@ -169,6 +169,34 @@ describe("NotificationTimeline · 主干形态（15-1）", () => {
     expect(dates.every((node) => node.querySelector("[data-entry-id]") === null)).toBe(true);
   });
 
+  it("日期分隔行吸顶（划过顶部时固定，不随内容滑走）", () => {
+    const entries = [
+      entry("a", localIso(18, 9, 0)),
+      entry("b", localIso(17, 9, 0)),
+    ];
+    const { container } = renderTimeline(entries);
+    const dates = Array.from(container.querySelectorAll<HTMLElement>("[data-timeline-date]"));
+    expect(dates.length).toBeGreaterThan(0);
+    // 吸顶是 scroll 监听手写的（原生 sticky 会整摞贴住），首屏未滚动时保持 static 不占顶
+    for (const node of dates) {
+      expect(node.style.position).toBe("");
+    }
+  });
+
+  it("时间基准切抓取时间：同发布日、不同抓取日的两条散开成两个日期分隔", () => {
+    const entries = [
+      entry("a", localIso(16, 10, 0), { createdAt: localIso(18, 9, 0) }),
+      entry("b", localIso(16, 11, 0), { createdAt: localIso(17, 9, 0) }),
+    ];
+    // 默认 = 发布时间：同一天 → 只有一个日期分隔
+    const { container, unmount } = renderTimeline(entries, { granularity: "day" });
+    expect(container.querySelectorAll("[data-timeline-date]")).toHaveLength(1);
+    unmount();
+    // 切抓取时间：不同天 → 两个日期分隔
+    const fetched = renderTimeline(entries, { granularity: "day", timeBasis: "fetched" });
+    expect(fetched.container.querySelectorAll("[data-timeline-date]")).toHaveLength(2);
+  });
+
   it("密集条目吸成小节点 + 计数，点一下就地展开、再点收回", () => {
     const entries = ["a", "b", "c", "d", "e", "f"].map((id, index) =>
       entry(id, localIso(17, 20 - index, 0)),

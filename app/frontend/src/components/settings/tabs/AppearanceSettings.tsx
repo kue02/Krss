@@ -35,6 +35,7 @@ import { readingFonts } from "@/lib/reading-fonts";
 import type {
   TimelineCollapse,
   TimelineGranularity,
+  TimelineTimeBasis,
 } from "@/lib/timeline-model";
 import { updateAppearanceSettings } from "@/api";
 import { cn } from "@/lib/utils";
@@ -179,8 +180,9 @@ export function AppearanceSettings() {
   // 「滚动标已读」总开关形态：perView 才显示下面的按视图覆盖；off 时判定项置灰
   const { mode: scrollReadMode } = useScrollReadSetting();
   const scrollReadTimingByView = useUISettingKey("scrollReadTimingByView");
-  // 第十五批：通知视图时间线的两个按视图设置（粒度 / 折叠行数）+ 窄栏合一栏
+  // 第十五批：通知视图时间线的两个按视图设置（粒度 / 折叠行数）+ 窄栏合一栏 + 时间基准
   const timelineGranularityByView = useUISettingKey("timelineGranularityByView");
+  const timelineTimeBasisByView = useUISettingKey("timelineTimeBasisByView");
   const timelineCollapseByView = useUISettingKey("timelineCollapseByView");
   const timelineSingleSideByView = useUISettingKey("timelineSingleSideByView");
   const {
@@ -200,6 +202,7 @@ export function AppearanceSettings() {
     setScrollReadTimingForView,
     setTimelineGranularityForView,
     setTimelineCollapseForView,
+    setTimelineTimeBasisForView,
     setTimelineSingleSideForView,
     setCardImageSize,
     setCardPreviewLines,
@@ -829,6 +832,31 @@ export function AppearanceSettings() {
                           {
                             value: "day",
                             label: t("appearance_view.timeline_granularity_day"),
+                          },
+                        ]}
+                      />
+                    </SettingRow>
+                    <SettingRow
+                      label={t("appearance_view.timeline_time_basis")}
+                      hint={t("appearance_view.timeline_time_basis_hint")}
+                    >
+                      <SegmentedControl
+                        className="shrink-0"
+                        value={timelineTimeBasisByView?.[view] ?? "published"}
+                        onValueChange={(value) =>
+                          setTimelineTimeBasisForView(
+                            view,
+                            value as TimelineTimeBasis,
+                          )
+                        }
+                        options={[
+                          {
+                            value: "published",
+                            label: t("appearance_view.timeline_time_basis_published"),
+                          },
+                          {
+                            value: "fetched",
+                            label: t("appearance_view.timeline_time_basis_fetched"),
                           },
                         ]}
                       />

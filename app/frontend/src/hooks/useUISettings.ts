@@ -12,6 +12,7 @@ import type { ScrollMarkReadTiming } from "@/components/entry-list/useScrollMark
 import type {
   TimelineCollapse,
   TimelineGranularity,
+  TimelineTimeBasis,
 } from "@/lib/timeline-model";
 
 export type CardImageSize = "none" | "small" | "large";
@@ -22,6 +23,8 @@ export type ViewScrollRead = Record<ContentType, ScrollReadOverride>;
 /** 第十五批：通知视图时间线的两个按视图设置（粒度 / 折叠行数） */
 export type ViewTimelineGranularity = Record<ContentType, TimelineGranularity>;
 export type ViewTimelineCollapse = Record<ContentType, TimelineCollapse>;
+/** 时间基准（发布时间 / 抓取时间，默认全发布时间，现状不动） */
+export type ViewTimelineTimeBasis = Record<ContentType, TimelineTimeBasis>;
 export type QuoteStyle = "block" | "divider" | "card";
 /**
  * 已读/未读的全局统一标记（用户 11-14）：
@@ -207,6 +210,12 @@ interface UISettings {
    * 放在 ByView 家族里是为了和「按视图设置」其他项同一套存储（只有 notification 会用到）。
    */
   timelineGranularityByView: ViewTimelineGranularity;
+  /**
+   * 通知视图时间线的**时间基准**（发布时间 / 抓取时间，只影响分组与节点标注，不重新请求数据）。
+   * 默认全发布时间 = 现状不动。放在 ByView 家族里是为了和「按视图设置」其他项同一套存储
+   * （只有 notification 会用到）。
+   */
+  timelineTimeBasisByView: ViewTimelineTimeBasis;
   /**
    * 第十五批（15-3/15-5）：通知视图卡片的**折叠行数**（1/2/3/全文），默认 2 行。
    * 注意：**没有「切回列表」这一项** —— 通知视图只有时间线这一种形态（用户定案）。
@@ -438,6 +447,13 @@ export const defaultUISettings: UISettings = {
     picture: "hour",
     notification: "hour",
     social: "hour",
+  },
+  // 时间基准 —— 默认全「发布时间」（现状不动）
+  timelineTimeBasisByView: {
+    article: "published",
+    picture: "published",
+    notification: "published",
+    social: "published",
   },
   timelineCollapseByView: {
     article: "2",
@@ -737,6 +753,17 @@ export function useUISettingActions() {
     [],
   );
 
+  /** 通知视图时间线的时间基准（发布时间 / 抓取时间，只改分组与节点标注，不重新请求数据） */
+  const setTimelineTimeBasisForView = useCallback(
+    (view: ContentType, basis: TimelineTimeBasis) => {
+      setUISetting("timelineTimeBasisByView", {
+        ...getUISettings().timelineTimeBasisByView,
+        [view]: basis,
+      });
+    },
+    [],
+  );
+
   /** 窄栏自动合一栏（关掉则始终左右交替） */
   const setTimelineSingleSideForView = useCallback(
     (view: ContentType, enabled: boolean) => {
@@ -786,6 +813,7 @@ export function useUISettingActions() {
     setScrollReadTimingForView,
     setTimelineGranularityForView,
     setTimelineCollapseForView,
+    setTimelineTimeBasisForView,
     setTimelineSingleSideForView,
     resetToDefaults,
   };
