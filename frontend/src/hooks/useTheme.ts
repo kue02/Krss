@@ -11,7 +11,7 @@ import { registerSettingsGroup, scheduleSettingsFlush } from "@/lib/settings-syn
  *
  * 落地方式：<html class="light|dark" data-theme="<主题 id>">
  *   - class 承载 light/dark 语义（HeroUI 与 Tailwind 的 dark: 变体都读它）
- *   - data-theme 指向具体配色（明暗各选一套），token 定义见 src/styles/nextflux-theme.css
+ *   - data-theme 指向具体配色（明暗各选一套），token 定义见 src/styles/theme-tokens.css
  */
 
 export type Theme = "light" | "dark" | "system";

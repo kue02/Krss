@@ -29,8 +29,7 @@ function formatTime(value: string): string {
  * 2026-09-18：**换回项目自己的 Dialog（Radix）**。那个 a11y 报错已经在
  * `@/components/ui/dialog` 里用视觉隐藏的 `DialogDescription` 兜掉了；而 HeroUI `Modal`
  * 的内容被 portal 到 `document.body`，落在外层设置弹窗的 `react-remove-scroll` shard 之外
- * —— 滚轮事件被 `preventDefault()` 吃掉，命中记录一多就「滚不动」（代理覆盖管理弹窗踩过同一个坑，
- * 取证与结论见 docs/dev/移植笔记.md 14 批那条）。
+ * —— 滚轮事件被 `preventDefault()` 吃掉，命中记录一多就「滚不动」（代理覆盖管理弹窗踩过同一个坑）。
  */
 export function FilterMatchesDialog({
   rule,

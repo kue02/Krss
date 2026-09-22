@@ -1,6 +1,6 @@
 /* ==========================================================================
- * Nextflux 皮肤 · 主题层
- * 来源：electh/nextflux 的 src/index.css（HEROUI v3 token 覆写 + 自定义阴影）
+ * 主题令牌层（配色 token 覆写 + 自定义阴影）
+ * 配色与柔影取值移植自 Nextflux 的 src/index.css（见 README 致谢）
  * 用法：<html class="light|dark" data-theme="light|stone|leaf|dark|nord-dark">
  * ========================================================================== */
 

@@ -75,7 +75,7 @@ func (s *proxyService) FetchImage(ctx context.Context, imageURL, refererURL stri
 
 func (s *proxyService) FetchMedia(ctx context.Context, mediaURL, refererURL, rangeHeader string) (*ProxyResult, error) {
 	// 先用标准 HTTP 客户端：它能正确走「设置 → 网络」里配置的代理，也会自动跟随图床跳转
-	// （azuretls 会话在本机的 HTTP 代理下会超时，见 docs/dev/移植笔记.md）
+	// （azuretls 会话在 HTTP 代理下会超时）
 	result, stdErr := s.fetchWithStandardClient(ctx, mediaURL, refererURL, rangeHeader)
 	if stdErr == nil {
 		return result, nil

@@ -220,7 +220,7 @@
     "label": "Theme",
     "description": "Pick the display mode; the two palettes below are chosen by this",
     "palette_label": "Theme palette",
-    "palette_description": "One palette each for light and dark (from Nextflux); with “System” the app follows your OS",
+    "palette_description": "One palette each for light and dark; with “System” the app follows your OS",
     "light_palette": "Light palette",
     "dark_palette": "Dark palette",
     "themes": {

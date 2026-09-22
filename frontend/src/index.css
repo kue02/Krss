@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @import "@heroui/styles";
-@import "./styles/nextflux-theme.css";
+@import "./styles/theme-tokens.css";
 @plugin "tailwindcss-motion";
 @plugin "@tailwindcss/typography";
 

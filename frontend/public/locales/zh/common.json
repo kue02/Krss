@@ -220,7 +220,7 @@
     "label": "主题",
     "description": "选择应用的显示主题；下面两栏是配色，用哪一栏由这里决定",
     "palette_label": "配色主题",
-    "palette_description": "亮色配色与暗色配色可各选一套（配色来自 Nextflux）；选「跟随系统」时，跟随系统在浅色/深色之间切换",
+    "palette_description": "亮色配色与暗色配色可各选一套；选「跟随系统」时，跟随系统在浅色/深色之间切换",
     "light_palette": "亮色配色",
     "dark_palette": "暗色配色",
     "themes": {

@@ -30,7 +30,7 @@ import { dispatchScrollToTop } from "@/hooks/useScrollToTop";
  *   A. `Filter`（漏斗）—— **默认选它**：最直白的「只显示筛出来的这一部分」
  *   B. `ListFilter`（列表 + 漏斗）—— 更强调「当前这个列表」
  *   C. `Focus`（准星）—— 更强调「聚焦在当前视图」
- * 换档只改这一行（效果图见 `docs/dev/变更记录.md` 23-1 的三张真机截图）。
+ * 换档只改这一行。
  */
 const StarredViewIcon = Filter;
 

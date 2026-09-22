@@ -1,7 +1,7 @@
 /**
  * MCP 双向功能的类型契约（入向 MCP → Feed / 出向 Krss 当 MCP 服务器）。
  *
- * 字段与后端 `/api/mcp/*` 的响应一一对应（见 docs/dev/MCP-方案-2026-09-18.md 与后端 handler）。
+ * 字段与后端 `/api/mcp/*` 的响应一一对应。
  * 两条铁律：① 不出现 any；② Header 值永远只是掩码串（`MCP_MASK`），真值只在后端。
  */
 import type { ContentType } from "@/types/api";

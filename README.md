@@ -1,7 +1,7 @@
 # Krss
 
 [![License: GPL v2](https://img.shields.io/badge/License-GPL_v2-blue.svg)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
-[![Build Docker Image](https://github.com/hu2327401139/krss/actions/workflows/docker-build.yml/badge.svg)](https://github.com/hu2327401139/krss/actions/workflows/docker-build.yml)
+[![Build Docker Image](https://github.com/hu2327401139/Krss/actions/workflows/docker-build.yml/badge.svg)](https://github.com/hu2327401139/Krss/actions/workflows/docker-build.yml)
 
 轻量级自托管 RSS 阅读器：单二进制 + SQLite，三栏界面，内置 AI 摘要与翻译、自动化过滤规则。
 
@@ -50,7 +50,7 @@
 ### Docker Compose（推荐）
 
 ```bash
-curl -O https://raw.githubusercontent.com/hu2327401139/krss/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/hu2327401139/Krss/main/docker-compose.yml
 docker compose up -d
 ```
 

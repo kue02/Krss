@@ -22,10 +22,9 @@ docs/references/
 references/
 .agents/
 
-# ── 参考仓库（上游副本，可重新拉取，不入库）──────────────────────
-#   重新拉取：
-#     git clone --depth 1 https://github.com/9bingyin/Gist.git      docs/references/gist-upstream
-#     git clone --depth 1 https://github.com/electh/nextflux.git    docs/references/nextflux
+# ── 参考副本（本地只读，不入库）─────────────────────────────────
+#    第三方源码副本放这里；要复现时按各项目自己的仓库地址拉取：
+#      docs/references/<项目名>/
 
 # ── 本地工具配置 ────────────────────────────────────────────────
 .claude/
