@@ -18,8 +18,8 @@ import (
 func TestInferFromToolResult_StructuredJSON(t *testing.T) {
 	// 第 ③ 档：有结构化 JSON、没声明 schema —— 按常见字段名自动预填
 	payload := `{"data":{"items":[
-		{"id":"note-1","title":"第一条","url":"https://example.com/1","content":"正文一","updated_at":"2026-09-18T10:00:00Z","author":{"name":"kue"}},
-		{"id":"note-2","title":"第二条","url":"https://example.com/2","content":"正文二","updated_at":"2026-09-17T10:00:00Z","author":{"name":"kue"}}
+		{"id":"note-1","title":"第一条","url":"https://example.com/1","content":"正文一","updated_at":"2026-09-18T10:00:00Z","author":{"name":"user"}},
+		{"id":"note-2","title":"第二条","url":"https://example.com/2","content":"正文二","updated_at":"2026-09-17T10:00:00Z","author":{"name":"user"}}
 	]}}`
 	result := mcp.CallToolResult{Content: []mcp.Content{{Type: "text", Text: payload}}}
 

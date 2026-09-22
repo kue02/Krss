@@ -101,7 +101,7 @@ func TestOPMLHandler_Export_Success(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "application/xml", rec.Header().Get("Content-Type"))
-	require.Contains(t, rec.Header().Get("Content-Disposition"), "gist.opml")
+	require.Contains(t, rec.Header().Get("Content-Disposition"), "krss.opml")
 	require.Equal(t, expectedXML, rec.Body.Bytes())
 }
 

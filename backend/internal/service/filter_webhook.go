@@ -61,7 +61,7 @@ type httpWebhookSender struct {
 
 // NewHTTPWebhookSender 用给定的 http.Client（main 里由 network.ClientFactory 造，因而会走代理设置）。
 func NewHTTPWebhookSender(client *http.Client) FilterWebhookSender {
-	return &httpWebhookSender{client: client, userAgent: "gist-filter-webhook/1"}
+	return &httpWebhookSender{client: client, userAgent: "krss-filter-webhook/1"}
 }
 
 func (s *httpWebhookSender) Send(ctx context.Context, url string, payload []byte) (int, error) {

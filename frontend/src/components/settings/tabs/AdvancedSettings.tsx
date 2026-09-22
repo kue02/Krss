@@ -215,7 +215,7 @@ export function AdvancedSettings() {
   return (
     <div className="space-y-6">
       {/* 自动刷新历史（用户 12-17；第十九批重做，效果图见
-          ~/Documents/test/gist-nextflux-ui/mockups/auto-refresh-history.html）：
+          mockups/auto-refresh-history.html（本地草图，未入库））：
           定时刷新的结果不再弹框，来这里回看。列表形态、展开明细、清空确认都在它自己的文件里。 */}
       <AutoRefreshHistorySection />
 

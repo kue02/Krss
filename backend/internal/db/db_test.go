@@ -15,7 +15,7 @@ import (
 )
 
 func TestOpen(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "gist-db-test")
+	tempDir, err := os.MkdirTemp("", "krss-db-test")
 	require.NoError(t, err)
 	defer os.RemoveAll(tempDir)
 

@@ -40,9 +40,9 @@ const (
 )
 
 // NewHTTPNotifier 与 webhook 发送器共用实现（同样的 POST JSON + 读回一小段 body 当原因），
-// 只把 UA 换成 gist-notify/1，便于在 Bark / 反向代理日志里分辨是谁发的。
+// 只把 UA 换成 krss-notify/1，便于在 Bark / 反向代理日志里分辨是谁发的。
 func NewHTTPNotifier(client *http.Client) FilterWebhookSender {
-	return &httpWebhookSender{client: client, userAgent: "gist-notify/1"}
+	return &httpWebhookSender{client: client, userAgent: "krss-notify/1"}
 }
 
 // NotifyService 推送通道：设置里的全局地址 + 真正发送。

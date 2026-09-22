@@ -29,7 +29,7 @@ import type { Entry, Feed } from "@/types/api";
 /**
  * 通知视图 · 时间线（第十五批 15-1~15-4）。
  *
- * 形态（用户已拍板，效果图 `~/Documents/test/gist-nextflux-ui/mockups/notification-timeline.html`）：
+ * 形态（用户已拍板，效果图 `mockups/notification-timeline.html`（本地草图，未入库））：
  *   - 只作用于 `contentType === "notification"`，其余视图一行不动；
  *   - 中间一条竖轴，卡片左右交替；时间戳**紧贴节点**；最新在最上（数据本来就是 DESC）；
  *   - 同一个时间桶太密集时，多出来的条目吸成一个**小节点 + 计数**，点一下就地展开；

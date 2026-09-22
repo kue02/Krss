@@ -898,7 +898,7 @@ export async function exportOPML(): Promise<void> {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "gist.opml";
+  a.download = "krss.opml";
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

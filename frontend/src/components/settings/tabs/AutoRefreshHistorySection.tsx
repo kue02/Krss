@@ -27,7 +27,7 @@ import {
 
 /**
  * 设置 → 高级 · 自动刷新历史（第十九批重做，效果图
- * `~/Documents/test/gist-nextflux-ui/mockups/auto-refresh-history.html`）。
+ * `mockups/auto-refresh-history.html`（本地草图，未入库））。
  *
  * 12-17 那版「能用但不好用」：20 条是一叠同款描边行，时间与三个数字挤在一句里、
  * 数字不对齐、失败只是个红字、展开后 77 行表格要把失败自己找出来。这版按效果图改四件事：

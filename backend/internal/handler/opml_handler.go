@@ -210,6 +210,6 @@ func (h *OPMLHandler) Export(c echo.Context) error {
 		return writeServiceError(c, err)
 	}
 	logger.Info("opml export", "module", "handler", "action", "export", "resource", "opml", "result", "ok")
-	c.Response().Header().Set("Content-Disposition", `attachment; filename="gist.opml"`)
+	c.Response().Header().Set("Content-Disposition", `attachment; filename="krss.opml"`)
 	return c.Blob(http.StatusOK, "application/xml", payload)
 }

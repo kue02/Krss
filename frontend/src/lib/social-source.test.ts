@@ -27,11 +27,11 @@ describe("parseSocialSource", () => {
 
   it("识别 Bluesky 链接", () => {
     expect(
-      parseSocialSource("https://bsky.app/profile/kue.bsky.social/post/3kabc"),
+      parseSocialSource("https://bsky.app/profile/example-user.bsky.social/post/3kabc"),
     ).toEqual({
       platform: "bluesky",
-      handle: "kue.bsky.social",
-      profileUrl: "https://bsky.app/profile/kue.bsky.social",
+      handle: "example-user.bsky.social",
+      profileUrl: "https://bsky.app/profile/example-user.bsky.social",
     });
   });
 

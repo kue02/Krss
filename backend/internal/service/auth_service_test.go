@@ -230,8 +230,8 @@ func TestAuthService_UpdateProfile_Avatar(t *testing.T) {
 	svc := service.NewAuthService(repo)
 	ctx := context.Background()
 
-	require.NoError(t, repo.Set(ctx, "user.username", "kue"))
-	require.NoError(t, repo.Set(ctx, "user.email", "kue@example.com"))
+	require.NoError(t, repo.Set(ctx, "user.username", "user"))
+	require.NoError(t, repo.Set(ctx, "user.email", "user@example.com"))
 
 	// 默认：Gravatar
 	current, err := svc.GetCurrentUser(ctx)

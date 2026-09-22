@@ -124,7 +124,7 @@ func TestOPMLService_Integration_ImportFromFile(t *testing.T) {
 		t.Skip("Skipping integration test. Set INTEGRATION_TEST=1 to run.")
 	}
 
-	opmlPath := "~/Downloads/gist.opml"
+	opmlPath := "~/Downloads/krss.opml"
 	if _, err := os.Stat(opmlPath); os.IsNotExist(err) {
 		t.Skip("OPML file not found at " + opmlPath)
 	}

@@ -7,7 +7,7 @@ import {
 } from "./proxy-image-recovery";
 
 vi.mock("@/api", () => ({
-  getCurrentUser: vi.fn(() => Promise.resolve({ username: "kue" })),
+  getCurrentUser: vi.fn(() => Promise.resolve({ username: "user" })),
 }));
 
 import { getCurrentUser } from "@/api";
