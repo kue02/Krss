@@ -201,6 +201,21 @@ func (s *folderService) Delete(ctx context.Context, id int64) error {
 		return fmt.Errorf("get folder: %w", err)
 	}
 
+	// 20-2/20-3：先递归删直接子文件夹（含其子孙订阅）。
+	// 不这么做的话，子文件夹会被 DB 外键 CASCADE 顺带删掉，
+	// 但其订阅的 folder_id 只是 ON DELETE SET NULL 置空 → 订阅跑到根目录。
+	all, err := s.folders.List(ctx)
+	if err != nil {
+		return fmt.Errorf("list folders for delete: %w", err)
+	}
+	for _, folder := range all {
+		if folder.ParentID != nil && *folder.ParentID == id {
+			if err := s.Delete(ctx, folder.ID); err != nil {
+				return err
+			}
+		}
+	}
+
 	// Delete all feeds in this folder using batch operation (entries will be cascade deleted by DB)
 	feeds, err := s.feeds.List(ctx, &id)
 	if err != nil {

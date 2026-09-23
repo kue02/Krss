@@ -242,6 +242,10 @@ func TestFolderService_Delete_Success(t *testing.T) {
 		GetByID(ctx, folderID).
 		Return(model.Folder{ID: folderID, Name: "Test"}, nil)
 
+	mockFolders.EXPECT().
+		List(ctx).
+		Return([]model.Folder{}, nil)
+
 	mockFeeds.EXPECT().
 		List(ctx, &folderID).
 		Return([]model.Feed{}, nil)
@@ -268,6 +272,10 @@ func TestFolderService_Delete_WithFeeds(t *testing.T) {
 	mockFolders.EXPECT().
 		GetByID(ctx, folderID).
 		Return(model.Folder{ID: folderID, Name: "Test"}, nil)
+
+	mockFolders.EXPECT().
+		List(ctx).
+		Return([]model.Folder{}, nil)
 
 	feeds := []model.Feed{
 		{ID: 1, FolderID: &folderID, Title: "Feed 1"},
@@ -578,6 +586,10 @@ func TestFolderService_Delete_ListFeedsFails(t *testing.T) {
 		GetByID(ctx, folderID).
 		Return(model.Folder{ID: folderID, Name: "Test"}, nil)
 
+	mockFolders.EXPECT().
+		List(ctx).
+		Return([]model.Folder{}, nil)
+
 	mockFeeds.EXPECT().
 		List(ctx, &folderID).
 		Return(nil, dbError)
@@ -607,6 +619,10 @@ func TestFolderService_Delete_FeedDeleteBatchFails(t *testing.T) {
 	mockFolders.EXPECT().
 		GetByID(ctx, folderID).
 		Return(model.Folder{ID: folderID, Name: "Test"}, nil)
+
+	mockFolders.EXPECT().
+		List(ctx).
+		Return([]model.Folder{}, nil)
 
 	feeds := []model.Feed{
 		{ID: 1, FolderID: &folderID, Title: "Feed 1"},
@@ -648,6 +664,10 @@ func TestFolderService_Delete_FolderDeleteFails(t *testing.T) {
 		GetByID(ctx, folderID).
 		Return(model.Folder{ID: folderID, Name: "Test"}, nil)
 
+	mockFolders.EXPECT().
+		List(ctx).
+		Return([]model.Folder{}, nil)
+
 	mockFeeds.EXPECT().
 		List(ctx, &folderID).
 		Return([]model.Feed{}, nil)
@@ -664,4 +684,46 @@ func TestFolderService_Delete_FolderDeleteFails(t *testing.T) {
 	if !errors.Is(err, dbError) {
 		t.Errorf("expected original error, got: %v", err)
 	}
+}
+
+// 20-2/20-3：删父文件夹递归带走子孙及订阅（子订阅不再 SET NULL 跑根目录）。
+func TestFolderService_Delete_RecursiveChildren(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockFolders := mock.NewMockFolderRepository(ctrl)
+	mockFeeds := mock.NewMockFeedRepository(ctrl)
+	svc := service.NewFolderService(mockFolders, mockFeeds)
+	ctx := context.Background()
+
+	parentID := int64(1)
+	childID := int64(2)
+	grandID := int64(3)
+	parent := model.Folder{ID: parentID, Name: "Parent"}
+	child := model.Folder{ID: childID, Name: "Child", ParentID: &parentID}
+	grand := model.Folder{ID: grandID, Name: "Grand", ParentID: &childID}
+	all := []model.Folder{parent, child, grand}
+
+	childFeed := []model.Feed{{ID: 20, FolderID: &childID, Title: "Child Feed"}}
+	grandFeed := []model.Feed{{ID: 30, FolderID: &grandID, Title: "Grand Feed"}}
+
+	// 外层：删父
+	mockFolders.EXPECT().GetByID(ctx, parentID).Return(parent, nil)
+	mockFolders.EXPECT().List(ctx).Return(all, nil).Times(3)
+	// 递归：删子
+	mockFolders.EXPECT().GetByID(ctx, childID).Return(child, nil)
+	// 递归：删孙
+	mockFolders.EXPECT().GetByID(ctx, grandID).Return(grand, nil)
+	mockFeeds.EXPECT().List(ctx, &grandID).Return(grandFeed, nil)
+	mockFeeds.EXPECT().DeleteBatch(ctx, []int64{30}).Return(int64(1), nil)
+	mockFolders.EXPECT().Delete(ctx, grandID).Return(nil)
+	// 回到子：删子的订阅与子
+	mockFeeds.EXPECT().List(ctx, &childID).Return(childFeed, nil)
+	mockFeeds.EXPECT().DeleteBatch(ctx, []int64{20}).Return(int64(1), nil)
+	mockFolders.EXPECT().Delete(ctx, childID).Return(nil)
+	// 回到父：父无直接订阅，删父
+	mockFeeds.EXPECT().List(ctx, &parentID).Return([]model.Feed{}, nil)
+	mockFolders.EXPECT().Delete(ctx, parentID).Return(nil)
+
+	require.NoError(t, svc.Delete(ctx, parentID))
 }

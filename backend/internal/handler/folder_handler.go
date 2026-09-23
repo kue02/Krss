@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -281,6 +282,11 @@ func (h *FolderHandler) DeleteBatch(c echo.Context) error {
 			return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid folder ID"})
 		}
 		if err := h.service.Delete(c.Request().Context(), id); err != nil {
+			// 20-2：批量删除幂等——排在后面的子文件夹可能已被删父时递归带走，
+			// NotFound 说明「要删的东西已经没了」，跳过而不是整批失败。
+			if errors.Is(err, service.ErrNotFound) {
+				continue
+			}
 			logger.Error("folder batch delete failed", "module", "handler", "action", "delete", "resource", "folder", "result", "failed", "folder_id", id, "error", err)
 			return writeServiceError(c, err)
 		}
