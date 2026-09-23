@@ -5,7 +5,11 @@
 
 轻量级自托管 RSS 阅读器：单二进制 + SQLite，三栏界面，内置 AI 摘要与翻译、自动化过滤规则。
 
-![Krss 界面预览](docs/images/screenshot.png)
+![Krss 三栏阅读界面](docs/images/screenshot_03.png)
+
+| 社交媒体视图 | 通知视图 |
+| :---: | :---: |
+| ![社交媒体视图](docs/images/screenshot_01.png) | ![通知视图](docs/images/screenshot_02.png) |
 
 ## 功能特性
 
