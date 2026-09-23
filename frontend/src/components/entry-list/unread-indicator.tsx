@@ -47,11 +47,20 @@ export function UnreadIndicator({
         {children}
         <Badge
           placement="top-left"
-          color="accent"
+          // 20-1：别用 color="accent"——HeroUI 的 accent 在浅色主题下解析成近黑色
+          // （实测 rgb(1,6,10)），8px 小点压在彩色 favicon 上直接隐身。
+          // `bg-primary` 也被 Badge 自身 variant 背景盖掉，只能内联 `--accent`（主题里是对的）。
           size="sm"
           variant="primary"
           data-unread-marker="dot"
-          className="size-2 min-h-0 min-w-0 -translate-x-1 -translate-y-1 rounded-full"
+          // 21-1：HeroUI 自带 translate(25%) 已经把圆点往外推了 4px，
+          // 再写 -translate 会把圆点几乎整个推到图标外面、看着像被切掉一半。
+          // 去掉外推，让圆点对半压在图标边上（Folo 式）+ 白边托出来，保证完整可见。
+          className="size-2 min-h-0 min-w-0 rounded-full"
+          style={{
+            backgroundColor: "var(--accent)",
+            boxShadow: "0 0 0 1.5px var(--background)",
+          }}
         />
       </Badge.Anchor>
     );
@@ -103,6 +112,8 @@ export function UnreadIndicator({
           paddingInline: isCount ? 4 : 0,
           transform: `translate(${translateX}, ${translateY})`,
           ...(customColor ? { backgroundColor: customColor } : null),
+          // 21-1：小圆点压在彩色 favicon 上难看见，加一圈底色描边托出来（只作用于 dot 内容）
+          ...(isCount ? null : { boxShadow: "0 0 0 1.5px var(--background)" }),
         }}
       >
         {isCount ? (
