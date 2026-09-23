@@ -137,6 +137,21 @@ const getTypeIcon = (type: ContentType) => {
   }
 };
 
+/** 20-3：文件夹完整路径（`父 / 子`），多层下拉按路径认文件夹 */
+function folderPath(folder: Folder, byId: Map<string, Folder>): string {
+  const parts = [folder.name];
+  let current = folder;
+  const seen = new Set<string>([current.id]);
+  while (current.parentId) {
+    const parent = byId.get(current.parentId);
+    if (!parent || seen.has(parent.id)) break;
+    seen.add(parent.id);
+    parts.unshift(parent.name);
+    current = parent;
+  }
+  return parts.join(" / ");
+}
+
 export function FeedPreviewCard({
   feed,
   folders,
@@ -154,20 +169,32 @@ export function FeedPreviewCard({
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const filteredFolders = useMemo(() => {
+    const byId = new Map(folders.map((folder) => [folder.id, folder]));
+    const withPath = folders.map((folder) => ({
+      folder,
+      path: folderPath(folder, byId),
+    }));
     if (!folderInput.trim()) {
-      return folders;
+      return withPath;
     }
     const lowerInput = folderInput.toLowerCase();
-    return folders.filter((folder) =>
-      folder.name.toLowerCase().includes(lowerInput),
+    return withPath.filter(
+      ({ folder, path }) =>
+        folder.name.toLowerCase().includes(lowerInput) ||
+        path.toLowerCase().includes(lowerInput),
     );
   }, [folders, folderInput]);
 
   const selectedFolder = useMemo(() => {
-    if (!folderInput.trim()) return null;
-    return folders.find(
-      (folder) =>
-        folder.name.toLowerCase() === folderInput.trim().toLowerCase(),
+    const input = folderInput.trim().toLowerCase();
+    if (!input) return null;
+    const byId = new Map(folders.map((folder) => [folder.id, folder]));
+    return (
+      folders.find(
+        (folder) => folderPath(folder, byId).toLowerCase() === input,
+      ) ??
+      folders.find((folder) => folder.name.toLowerCase() === input) ??
+      null
     );
   }, [folders, folderInput]);
 
@@ -393,15 +420,15 @@ export function FeedPreviewCard({
                       })}
                     </button>
                   )}
-                  {filteredFolders.map((folder) => (
+                  {filteredFolders.map(({ folder, path }) => (
                     <button
                       key={folder.id}
                       type="button"
-                      onClick={() => handleFolderSelect(folder.name)}
+                      onClick={() => handleFolderSelect(path)}
                       className="w-full px-3 py-2 text-left text-sm hover:bg-secondary flex items-center gap-2"
                     >
                       {getTypeIcon(folder.type)}
-                      <span>{folder.name}</span>
+                      <span>{path}</span>
                     </button>
                   ))}
                 </div>

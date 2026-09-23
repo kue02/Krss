@@ -39,17 +39,37 @@ async function findOrCreateFolder(
   existingFolders: Folder[],
   targetType: ContentType,
 ): Promise<string> {
-  const existing = existingFolders.find(
-    (folder) =>
-      folder.name.toLowerCase() === folderName.toLowerCase() &&
-      folder.type === targetType,
-  );
-  if (existing) {
-    return existing.id;
+  // 20-3：支持多层路径（`父 / 子` 或 `父/子`），逐层 find-or-create。
+  // 不这么做的话，同名子文件夹会误匹配到别的层，新建也只能建在根目录。
+  const segments = folderName
+    .split("/")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  if (segments.length === 0) {
+    throw new Error("empty folder name");
   }
-
-  const created = await createFolder({ name: folderName, type: targetType });
-  return created.id;
+  const knownFolders = [...existingFolders];
+  let parentId: string | undefined;
+  for (const segment of segments) {
+    const existing = knownFolders.find(
+      (folder) =>
+        folder.name.toLowerCase() === segment.toLowerCase() &&
+        folder.type === targetType &&
+        (folder.parentId ?? undefined) === parentId,
+    );
+    if (existing) {
+      parentId = existing.id;
+    } else {
+      const created = await createFolder({
+        name: segment,
+        parentId,
+        type: targetType,
+      });
+      knownFolders.push(created);
+      parentId = created.id;
+    }
+  }
+  return parentId as string;
 }
 
 export function useAddFeed(
