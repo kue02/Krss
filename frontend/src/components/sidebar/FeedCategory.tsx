@@ -34,6 +34,10 @@ interface FeedCategoryProps {
   children: ReactNode;
   defaultOpen?: boolean;
   isSelected?: boolean;
+  /** 21-2：展开态键默认用 name；多层同名文件夹会串，传 folderId 隔离 */
+  stateKey?: string;
+  /** 21-2：嵌套深度（子文件夹缩进） */
+  depth?: number;
   onSelect?: () => void;
   onBulkOverrides?: (folderId: string) => void;
   /** 12-9：刷新这个分类下的所有订阅 */
@@ -50,6 +54,8 @@ export function FeedCategory({
   children,
   defaultOpen = false,
   isSelected = false,
+  stateKey,
+  depth = 0,
   onSelect,
   onBulkOverrides,
   onRefresh,
@@ -58,7 +64,7 @@ export function FeedCategory({
   onChangeType,
 }: FeedCategoryProps) {
   const { t } = useTranslation();
-  const [open, , toggle] = useCategoryState(name, defaultOpen);
+  const [open, , toggle] = useCategoryState(stateKey ?? name, defaultOpen);
   const triggerRef = useRef<HTMLDivElement>(null);
 
   const handleContextMenu = useCallback(
@@ -82,7 +88,7 @@ export function FeedCategory({
   });
 
   return (
-    <div>
+    <div className={depth > 0 ? "ml-4 border-l border-border/50 pl-1" : undefined}>
       {/* Category header */}
       <ContextMenu>
         <ContextMenuTrigger asChild ref={triggerRef}>

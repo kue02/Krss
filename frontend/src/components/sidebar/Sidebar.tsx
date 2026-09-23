@@ -129,6 +129,11 @@ interface FolderWithFeeds {
   feeds: Feed[];
 }
 
+/** 21-2：文件夹树节点（子文件夹嵌套渲染） */
+interface FolderTreeNode extends FolderWithFeeds {
+  children: FolderTreeNode[];
+}
+
 /** 视图数量角标：数组可能还没回来（后端一次算全部视图），取不到就是 0。 */
 function viewCountOf(
   counts: Record<string, number> | undefined,
@@ -352,9 +357,42 @@ export function Sidebar({
     }));
   }, [foldersWithFeeds, sortBy, sortFeeds]);
 
-  // 订阅区头部那个「全部展开 / 全部收起」按钮：分类的展开态以分类名为键存在 localStorage
+  // 21-2：按 parentId 建树（顶层 = 无父级或父级不在当前视图；排序与扁平一致）
+  const folderTree = useMemo(() => {
+    const byId = new Map<string, FolderTreeNode>();
+    for (const item of sortedFoldersWithFeeds) {
+      byId.set(item.folder.id, { ...item, children: [] });
+    }
+    const roots: FolderTreeNode[] = [];
+    for (const node of byId.values()) {
+      const parentId = node.folder.parentId;
+      const parent = parentId ? byId.get(parentId) : undefined;
+      if (parent && parent !== node) {
+        parent.children.push(node);
+      } else {
+        roots.push(node);
+      }
+    }
+    const sortNodes = (nodes: FolderTreeNode[]) => {
+      if (sortBy === "date") {
+        nodes.sort(
+          (a, b) =>
+            new Date(a.folder.createdAt).getTime() -
+            new Date(b.folder.createdAt).getTime(),
+        );
+      } else {
+        nodes.sort((a, b) => compareNames(a.folder.name, b.folder.name));
+      }
+      for (const node of nodes) sortNodes(node.children);
+    };
+    sortNodes(roots);
+    return roots;
+  }, [sortedFoldersWithFeeds, sortBy]);
+
+  // 订阅区头部那个「全部展开 / 全部收起」按钮：分类的展开态以文件夹 id 为键存在 localStorage
+  //（21-2：原来用 name，多层同名文件夹会串）
   const folderNames = useMemo(
-    () => sortedFoldersWithFeeds.map(({ folder }) => folder.name),
+    () => sortedFoldersWithFeeds.map(({ folder }) => folder.id),
     [sortedFoldersWithFeeds],
   );
   const allFoldersOpen = useAllCategoriesOpen(folderNames);
@@ -691,84 +729,40 @@ export function Sidebar({
                 </div>
               </div>
 
-              {/* Feed categories —— 分组之间留一点间距，让「一组订阅」读起来是一块 */}
+              {/* Feed categories —— 分组之间留一点间距，让「一组订阅」读起来是一块；
+                  21-2：按 parentId 建树，子文件夹缩进渲染在父级下面（OPML 多层导入的数据） */}
               <div className="space-y-px">
-                {sortedFoldersWithFeeds.map(
-                  ({ folder, feeds: folderFeeds }, folderIndex) => (
-                    <div
-                      key={folder.id}
-                      className={folderIndex > 0 ? "mt-1.5" : undefined}
-                    >
-                      <FeedCategory
-                        folderId={folder.id}
-                        name={folder.name}
-                        unreadCount={folderUnreadCounts.get(folder.id) || 0}
-                        isSelected={isFolderSelected(folder.id)}
-                        onSelect={() => onSelectFolder(folder.id)}
-                        onRename={handleRenameFolder}
-                        onDelete={handleDeleteFolder}
-                        onChangeType={handleChangeFolderType}
-                        onBulkOverrides={handleBulkOverrides}
-                        onRefresh={handleRefreshFolder}
-                      >
-                        {listBoxMode ? (
-                          <ListBox
-                            aria-label={folder.name}
-                            selectionMode="single"
-                            selectedKeys={selectedFeedKeys}
-                            onAction={(key) => onSelectFeed(String(key))}
-                            className="space-y-px"
-                          >
-                            {folderFeeds.map((feed) => (
-                            <FeedItem
-                              asListBoxItem
-                              key={feed.id}
-                              feedId={feed.id}
-                              name={feed.title}
-                              feedUrl={feed.url}
-                              siteUrl={feed.siteUrl}
-                              onRefresh={handleRefreshFeed}
-                              iconPath={feed.iconPath}
-                              unreadCount={unreadCounts.get(feed.id) || 0}
-                              isActive={isFeedSelected(feed.id)}
-                              errorMessage={feed.errorMessage}
-                              onClick={() => onSelectFeed(feed.id)}
-                              className="pl-6"
-                              folders={folders}
-                              onEdit={handleEditFeed}
-                              onDelete={handleDeleteFeed}
-                              onMoveToFolder={handleMoveToFolder}
-                              onChangeType={handleChangeFeedType}
-                            />
-                            ))}
-                          </ListBox>
-                        ) : (
-                          folderFeeds.map((feed) => (
-                          <FeedItem
-                            key={feed.id}
-                            feedId={feed.id}
-                            name={feed.title}
-                            feedUrl={feed.url}
-                            siteUrl={feed.siteUrl}
-                            onRefresh={handleRefreshFeed}
-                            iconPath={feed.iconPath}
-                            unreadCount={unreadCounts.get(feed.id) || 0}
-                            isActive={isFeedSelected(feed.id)}
-                            errorMessage={feed.errorMessage}
-                            onClick={() => onSelectFeed(feed.id)}
-                            className="pl-6"
-                            folders={folders}
-                            onEdit={handleEditFeed}
-                            onDelete={handleDeleteFeed}
-                            onMoveToFolder={handleMoveToFolder}
-                            onChangeType={handleChangeFeedType}
-                          />
-                          ))
-                        )}
-                      </FeedCategory>
-                    </div>
-                  ),
-                )}
+                {folderTree.map((node, nodeIndex) => (
+                  <div
+                    key={node.folder.id}
+                    className={nodeIndex > 0 ? "mt-1.5" : undefined}
+                  >
+                    <FolderNode
+                      node={node}
+                      depth={0}
+                      listBoxMode={listBoxMode}
+                      selectedFeedKeys={selectedFeedKeys}
+                      folderUnreadCounts={folderUnreadCounts}
+                      isFolderSelected={isFolderSelected}
+                      onSelectFolder={onSelectFolder}
+                      onSelectFeed={onSelectFeed}
+                      handleRenameFolder={handleRenameFolder}
+                      handleDeleteFolder={handleDeleteFolder}
+                      handleChangeFolderType={handleChangeFolderType}
+                      handleBulkOverrides={handleBulkOverrides}
+                      handleRefreshFolder={handleRefreshFolder}
+                      handleRefreshFeed={handleRefreshFeed}
+                      handleEditFeed={handleEditFeed}
+                      handleDeleteFeed={handleDeleteFeed}
+                      handleMoveToFolder={handleMoveToFolder}
+                      handleChangeFeedType={handleChangeFeedType}
+                      folders={folders}
+                      unreadCounts={unreadCounts}
+                      sortFeeds={sortFeeds}
+                      isFeedSelected={isFeedSelected}
+                    />
+                  </div>
+                ))}
 
                 {listBoxMode ? (
                   <ListBox
@@ -928,6 +922,159 @@ function SidebarScrollArea({
     >
       {children}
     </div>
+  );
+}
+
+/** 21-2：文件夹树递归节点（子文件夹缩进渲染在父级 children 里，订阅排在子文件夹前面） */
+function FolderNode({
+  node,
+  depth,
+  listBoxMode,
+  selectedFeedKeys,
+  folderUnreadCounts,
+  isFolderSelected,
+  onSelectFolder,
+  onSelectFeed,
+  handleRenameFolder,
+  handleDeleteFolder,
+  handleChangeFolderType,
+  handleBulkOverrides,
+  handleRefreshFolder,
+  handleRefreshFeed,
+  handleEditFeed,
+  handleDeleteFeed,
+  handleMoveToFolder,
+  handleChangeFeedType,
+  folders,
+  unreadCounts,
+  sortFeeds,
+  isFeedSelected,
+}: {
+  node: FolderTreeNode;
+  depth: number;
+  listBoxMode: boolean;
+  selectedFeedKeys: Set<string> | string[];
+  folderUnreadCounts: Map<string, number>;
+  isFolderSelected: (folderId: string) => boolean;
+  onSelectFolder: (folderId: string) => void;
+  onSelectFeed: (feedId: string) => void;
+  handleRenameFolder: (folderId: string) => void;
+  handleDeleteFolder: (folderId: string) => void;
+  handleChangeFolderType: (folderId: string, type: ContentType) => void;
+  handleBulkOverrides: (folderId: string) => void;
+  handleRefreshFolder: (folderId: string) => void;
+  handleRefreshFeed: (feedId: string) => void;
+  handleEditFeed: (feedId: string) => void;
+  handleDeleteFeed: (feedId: string) => void;
+  handleMoveToFolder: (feedId: string, folderId: string | null) => void;
+  handleChangeFeedType: (feedId: string, type: ContentType) => void;
+  folders: Folder[];
+  unreadCounts: Map<string, number>;
+  sortFeeds: (feeds: Feed[]) => Feed[];
+  isFeedSelected: (feedId: string) => boolean;
+}) {
+  const { folder } = node;
+  const folderFeeds = sortFeeds(node.feeds);
+  const childProps = {
+    listBoxMode,
+    selectedFeedKeys,
+    folderUnreadCounts,
+    isFolderSelected,
+    onSelectFolder,
+    onSelectFeed,
+    handleRenameFolder,
+    handleDeleteFolder,
+    handleChangeFolderType,
+    handleBulkOverrides,
+    handleRefreshFolder,
+    handleRefreshFeed,
+    handleEditFeed,
+    handleDeleteFeed,
+    handleMoveToFolder,
+    handleChangeFeedType,
+    folders,
+    unreadCounts,
+    sortFeeds,
+    isFeedSelected,
+  };
+  return (
+    <FeedCategory
+      folderId={folder.id}
+      name={folder.name}
+      stateKey={folder.id}
+      depth={depth}
+      unreadCount={folderUnreadCounts.get(folder.id) || 0}
+      isSelected={isFolderSelected(folder.id)}
+      onSelect={() => onSelectFolder(folder.id)}
+      onRename={handleRenameFolder}
+      onDelete={handleDeleteFolder}
+      onChangeType={handleChangeFolderType}
+      onBulkOverrides={handleBulkOverrides}
+      onRefresh={handleRefreshFolder}
+    >
+      {node.children.map((child) => (
+        <FolderNode
+          key={child.folder.id}
+          node={child}
+          depth={depth + 1}
+          {...childProps}
+        />
+      ))}
+      {listBoxMode ? (
+        <ListBox
+          aria-label={folder.name}
+          selectionMode="single"
+          selectedKeys={selectedFeedKeys}
+          onAction={(key) => onSelectFeed(String(key))}
+          className="space-y-px"
+        >
+          {folderFeeds.map((feed) => (
+            <FeedItem
+              asListBoxItem
+              key={feed.id}
+              feedId={feed.id}
+              name={feed.title}
+              feedUrl={feed.url}
+              siteUrl={feed.siteUrl}
+              onRefresh={handleRefreshFeed}
+              iconPath={feed.iconPath}
+              unreadCount={unreadCounts.get(feed.id) || 0}
+              isActive={isFeedSelected(feed.id)}
+              errorMessage={feed.errorMessage}
+              onClick={() => onSelectFeed(feed.id)}
+              className="pl-6"
+              folders={folders}
+              onEdit={handleEditFeed}
+              onDelete={handleDeleteFeed}
+              onMoveToFolder={handleMoveToFolder}
+              onChangeType={handleChangeFeedType}
+            />
+          ))}
+        </ListBox>
+      ) : (
+        folderFeeds.map((feed) => (
+          <FeedItem
+            key={feed.id}
+            feedId={feed.id}
+            name={feed.title}
+            feedUrl={feed.url}
+            siteUrl={feed.siteUrl}
+            onRefresh={handleRefreshFeed}
+            iconPath={feed.iconPath}
+            unreadCount={unreadCounts.get(feed.id) || 0}
+            isActive={isFeedSelected(feed.id)}
+            errorMessage={feed.errorMessage}
+            onClick={() => onSelectFeed(feed.id)}
+            className="pl-6"
+            folders={folders}
+            onEdit={handleEditFeed}
+            onDelete={handleDeleteFeed}
+            onMoveToFolder={handleMoveToFolder}
+            onChangeType={handleChangeFeedType}
+          />
+        ))
+      )}
+    </FeedCategory>
   );
 }
 
