@@ -737,7 +737,12 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
             <div
               data-entry-source-row=""
               className={cn(
-                "flex min-w-0 items-center gap-1.5 overflow-hidden text-xs",
+                // ⚠️ 这一行**不要**加 `overflow-hidden`：行高（20px）正好等于图标高、左缘与图标左缘重合，
+                // 而角标（`UnreadIndicator`）按设计要压在图标左上角、有 2px 露在行外 ——
+                // 加了 `overflow-hidden` 会把外露那 2px 切掉，表现成「角标被限制在订阅图标范围内、缺一角」
+                // （用户 2026-09-23 报的就是这个）。文字溢出由 `MarqueeText` 自己的 `overflow-hidden` 兜住，
+                // 卡片根节点还有一层 `overflow-hidden` 兜底，这里不需要重复裁切。
+                "flex min-w-0 items-center gap-1.5 text-xs",
                 isUnread ? "text-muted-foreground" : "text-muted-foreground/70",
               )}
             >
