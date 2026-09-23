@@ -323,12 +323,14 @@ const TimelineCard = memo(function TimelineCard({
             <div className="mt-2">
               <div className="mx-auto w-full max-w-[clamp(45ch,60vw,65ch)]">
                 <div className="relative">
+                  {/* 20-4：不要 overscroll-contain——用户要的是内层到底后继续滚带动外层列表
+                      （默认链式滚动）。之前加的 contain 把链拦死，内层到底就停住、外层不动。 */}
                   <div
                     ref={bodyRef}
                     data-timeline-full={entry.id}
                     data-timeline-full-height={fullHeight}
                     onClick={(event) => event.stopPropagation()}
-                    className="entry-content reading-prose prose prose-sm dark:prose-invert max-w-none break-words overflow-y-auto overscroll-y-contain rounded-lg border border-border/60 p-3"
+                    className="entry-content reading-prose prose prose-sm dark:prose-invert max-w-none break-words overflow-y-auto rounded-lg border border-border/60 p-3"
                     style={{ height: fullHeight }}
                   >
                     <ArticleContent
