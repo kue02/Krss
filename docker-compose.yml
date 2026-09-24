@@ -1,6 +1,6 @@
 services:
   krss:
-    image: ghcr.io/hu2327401139/krss:latest
+    image: ghcr.io/kue02/krss:latest
     container_name: krss
     ports:
       - "8080:8080"

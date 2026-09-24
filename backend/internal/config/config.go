@@ -8,7 +8,7 @@ import (
 const (
 	AppName    = "Krss"
 	AppVersion = "1.2.0"
-	AppRepo    = "https://github.com/hu2327401139/Krss"
+	AppRepo    = "https://github.com/kue02/Krss"
 )
 
 // KrssUserAgent identifies as Krss RSS reader
