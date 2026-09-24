@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"net/url"
 
 	"krss/backend/internal/model"
 )
@@ -10,6 +11,15 @@ import (
 // IsHashFilenameForTest exposes hash filename check for tests.
 func IsHashFilenameForTest(filename string) bool {
 	return isHashFilename(filename)
+}
+
+// ExtractIconURLsForTest exposes HTML `<link rel="icon">` extraction for tests（25-2）。
+func ExtractIconURLsForTest(baseURL string, page []byte) []string {
+	base, err := url.Parse(baseURL)
+	if err != nil {
+		return nil
+	}
+	return extractIconURLs(base, page)
 }
 
 // IsValidIconPathForTest exposes icon path validation for tests.

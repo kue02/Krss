@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -16,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -544,4 +546,126 @@ func TestIconService_ClearAllIcons_ResetsConditionalGet(t *testing.T) {
 	// Verify both clear functions were called
 	require.True(t, clearIconPathsCalled, "ClearAllIconPaths should be called")
 	require.True(t, clearCondGetCalled, "ClearAllConditionalGet should be called to reset ETag/Last-Modified")
+}
+
+// —— 25-2：站点把图标放在别处（CDN / 子路径 / 相对路径）时，去读首页 HTML 声明的 <link rel="icon"> ——
+
+// thirdPartyBlockingTransport 把第三方 favicon 服务（Google / DuckDuckGo）拦成 404：
+// 用例保持离线，且能证明命中的图标确实来自站点 HTML，而不是"恰好 Google 有缓存"。
+type thirdPartyBlockingTransport struct{ base http.RoundTripper }
+
+func (t thirdPartyBlockingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if strings.Contains(req.URL.Host, "google.com") || strings.Contains(req.URL.Host, "duckduckgo.com") {
+		return &http.Response{
+			StatusCode: http.StatusNotFound,
+			Status:     "404 Not Found",
+			Body:       io.NopCloser(strings.NewReader("")),
+			Header:     http.Header{},
+			Request:    req,
+		}, nil
+	}
+	return t.base.RoundTrip(req)
+}
+
+func offlineIconService(dataDir string) service.IconService {
+	client := &http.Client{Transport: thirdPartyBlockingTransport{base: http.DefaultTransport}}
+	return service.NewIconService(dataDir, &feedRepoStub{}, network.NewClientFactoryForTest(client), nil)
+}
+
+func TestIconService_ExtractIconURLs(t *testing.T) {
+	page := []byte(`<!doctype html><html><head>
+		<link rel="mask-icon" href="/mask.svg">
+		<link rel="apple-touch-icon" href="apple-touch-icon.png">
+		<link rel="shortcut icon" href="//cdn.example.com/favicon.ico">
+		<link rel="icon" href="/icon-32.png">
+		<link rel="stylesheet" href="/style.css">
+		<link rel="icon" href="/icon-32.png">
+		<link rel="icon" href="data:image/png;base64,AAAA">
+	</head><body>ok</body></html>`)
+
+	got := service.ExtractIconURLsForTest("https://example.com/blog/index.html", page)
+
+	require.Equal(t, []string{
+		"https://example.com/blog/apple-touch-icon.png", // 相对路径按首页解析
+		"https://cdn.example.com/favicon.ico",           // 协议相对路径
+		"https://example.com/icon-32.png",              // 绝对路径，重复只留一次
+	}, got, "应跳过 mask-icon 与 data:，并保持文档顺序")
+}
+
+func TestIconService_ExtractIconURLs_NoDeclaration(t *testing.T) {
+	got := service.ExtractIconURLsForTest("https://example.com", []byte(`<html><head><title>x</title></head></html>`))
+	require.Empty(t, got)
+}
+
+func TestIconService_FetchAndSaveIcon_DeclaredInHTML(t *testing.T) {
+	iconData := pngBytes(t, 32, 32)
+	page := `<!doctype html><html><head>
+		<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+		<link rel="icon" href="assets/app-32.png">
+	</head><body>ok</body></html>`
+
+	var mu sync.Mutex
+	var requested []string
+	record := func(mux *http.ServeMux, path string, handler http.HandlerFunc) {
+		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
+			mu.Lock()
+			requested = append(requested, r.URL.Path)
+			mu.Unlock()
+			handler(w, r)
+		})
+	}
+
+	mux := http.NewServeMux()
+	record(mux, "/favicon.ico", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
+	record(mux, "/apple-touch-icon.png", func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
+	record(mux, "/assets/app-32.png", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(iconData) })
+	record(mux, "/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = io.WriteString(w, page)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	dataDir := t.TempDir()
+	svc := offlineIconService(dataDir)
+
+	got, err := svc.FetchAndSaveIcon(context.Background(), "", server.URL)
+	require.NoError(t, err)
+
+	parsed, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	expected := parsed.Hostname() + ".png"
+	require.Equal(t, expected, got, "/favicon.ico 404 时应落到 HTML 里声明的图标")
+
+	saved, err := os.ReadFile(filepath.Join(dataDir, "icons", expected))
+	require.NoError(t, err)
+	require.Equal(t, iconData, saved)
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Contains(t, requested, "/assets/app-32.png")
+	require.Contains(t, requested, "/apple-touch-icon.png", "文档顺序在前的声明要先试")
+}
+
+func TestIconService_FetchAndSaveIcon_SkipsPageWhenFaviconWorks(t *testing.T) {
+	iconData := pngBytes(t, 32, 32)
+
+	var pageHits int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(iconData) })
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&pageHits, 1)
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = io.WriteString(w, `<html><head><link rel="icon" href="/icon.png"></head></html>`)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	dataDir := t.TempDir()
+	svc := offlineIconService(dataDir)
+
+	got, err := svc.FetchAndSaveIcon(context.Background(), "", server.URL)
+	require.NoError(t, err)
+	require.NotEmpty(t, got)
+	require.Zero(t, atomic.LoadInt32(&pageHits), "favicon.ico 已经命中时不该再多抓一次首页 HTML")
 }

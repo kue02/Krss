@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/mmcdole/gofeed"
+	"golang.org/x/net/html"
 	"golang.org/x/sync/errgroup"
 
 	"krss/backend/internal/config"
@@ -33,6 +34,12 @@ import (
 const (
 	iconTimeout        = 30 * time.Second
 	maxConcurrentIcons = 4 // Concurrent icon fetch limit
+
+	// 25-2：站点首页 HTML 只用来找 <link rel="icon"> 声明的图标，给它一个更短的超时 ——
+	// 这条兜底不该把整轮回填拖住（拿不到就直接落到 Google / DuckDuckGo）。
+	htmlIconTimeout = 10 * time.Second
+	// 首页最多读这么多字节再解析（图标声明都在 <head> 里）
+	htmlIconScanBytes = 512 * 1024
 )
 
 type IconService interface {
@@ -115,11 +122,12 @@ func (s *iconService) FetchAndSaveIconForFeed(ctx context.Context, feedID int64,
 		}
 	}
 
-	// Build list of URLs to try (in order):
-	// 1. RSS feed image (if provided)
-	// 2. Local /favicon.ico
-	// 3. Google Favicon API
-	// 4. DuckDuckGo Favicon API
+	// 候选顺序（25-2 起）：
+	// 1. RSS 里的 <image>
+	// 2. 站点 /favicon.ico
+	// 3. 站点首页 HTML 里声明的 <link rel="icon|shortcut icon|apple-touch-icon">（都是拼不出来的地址）
+	// 4. Google Favicon API
+	// 5. DuckDuckGo Favicon API
 	var urlsToTry []string
 	var isRSSImage bool
 
@@ -133,32 +141,31 @@ func (s *iconService) FetchAndSaveIconForFeed(ctx context.Context, feedID int64,
 		urlsToTry = append(urlsToTry, localURL)
 	}
 
-	// Add Google Favicon API
-	if googleURL := s.buildFaviconURL(siteURL); googleURL != "" {
-		urlsToTry = append(urlsToTry, googleURL)
-	}
-
-	// Add DuckDuckGo Favicon API as final fallback
-	if ddgURL := s.buildDDGFaviconURL(siteURL); ddgURL != "" {
-		urlsToTry = append(urlsToTry, ddgURL)
-	}
-
 	if len(urlsToTry) == 0 {
 		return "", nil
 	}
 
 	// Try each URL until one succeeds
-	var result *iconDownloadResult
-	var successURL string
-	var lastErr error
+	result, successURL, lastErr := s.tryDownloadIconURLs(ctx, urlsToTry, feedID)
 
-	for _, iconURL := range urlsToTry {
-		result, lastErr = s.downloadIconWithFormat(ctx, iconURL, feedID)
-		if lastErr == nil {
-			successURL = iconURL
-			break
+	// 25-2：站点把图标放在别处（CDN / 子路径 / 相对路径）时，唯一的出路是去读首页 HTML。
+	// 放在这里而不是拼进上面的列表，是为了**只有前面都没命中**才多花这一次首页请求。
+	if result == nil {
+		if declared := s.declaredIconURLs(ctx, siteURL, feedID); len(declared) > 0 {
+			result, successURL, lastErr = s.tryDownloadIconURLs(ctx, declared, feedID)
 		}
-		logger.Debug("icon download failed", "module", "service", "action", "fetch", "resource", "icon", "result", "failed", "host", network.ExtractHost(iconURL), "error", lastErr)
+	}
+
+	// 最后才轮到第三方 favicon 服务：自建环境（NAS 等）常年直连不可达，只能当兜底
+	if result == nil {
+		var fallbacks []string
+		if googleURL := s.buildFaviconURL(siteURL); googleURL != "" {
+			fallbacks = append(fallbacks, googleURL)
+		}
+		if ddgURL := s.buildDDGFaviconURL(siteURL); ddgURL != "" {
+			fallbacks = append(fallbacks, ddgURL)
+		}
+		result, successURL, lastErr = s.tryDownloadIconURLs(ctx, fallbacks, feedID)
 	}
 
 	if result == nil {
@@ -514,6 +521,135 @@ func (s *iconService) buildDDGFaviconURL(siteURL string) string {
 	}
 
 	return fmt.Sprintf("https://icons.duckduckgo.com/ip3/%s.ico", domain)
+}
+
+// tryDownloadIconURLs 按顺序试一组图标地址：第一个成功的连地址一起返回，全失败则返回最后一次的错。
+func (s *iconService) tryDownloadIconURLs(ctx context.Context, urls []string, feedID int64) (*iconDownloadResult, string, error) {
+	var lastErr error
+	for _, iconURL := range urls {
+		result, err := s.downloadIconWithFormat(ctx, iconURL, feedID)
+		if err == nil {
+			return result, iconURL, nil
+		}
+		lastErr = err
+		logger.Debug("icon download failed", "module", "service", "action", "fetch", "resource", "icon", "result", "failed", "host", network.ExtractHost(iconURL), "error", lastErr)
+	}
+	return nil, "", lastErr
+}
+
+// declaredIconURLs 抓站点首页 HTML，取出 <link rel="…icon…"> 里声明的图标地址（绝对化后按文档顺序）。
+//
+// 25-2：只试「站点/favicon.ico」时，凡是把图标放在别处的站点就永远抓不到 ——
+// sspai 放 cdn-static、appinn 放 CDN、ncase.me 用相对路径 favicon.png，
+// 实测这些地址在自建环境（NAS 直连）也是 200，纯粹是没人去读 HTML。
+func (s *iconService) declaredIconURLs(ctx context.Context, siteURL string, feedID int64) []string {
+	if strings.TrimSpace(siteURL) == "" {
+		return nil
+	}
+
+	base, err := url.Parse(siteURL)
+	if err != nil || base.Hostname() == "" {
+		return nil
+	}
+
+	page, err := s.fetchPageHTML(ctx, base.String(), feedID)
+	if err != nil {
+		logger.Debug("icon page fetch failed", "module", "service", "action", "fetch", "resource", "icon", "result", "failed", "host", network.ExtractHost(siteURL), "error", err)
+		return nil
+	}
+
+	return extractIconURLs(base, page)
+}
+
+// fetchPageHTML 取站点首页（只读前 htmlIconScanBytes 字节）。
+//
+// 这是 25-2 新增的兜底路径，刻意做得比图标下载更"轻"：短超时、不参与 Anubis 挑战重试 ——
+// 失败就直接交给后面的 Google / DuckDuckGo，不值得为它把整轮回填拖住。
+func (s *iconService) fetchPageHTML(ctx context.Context, pageURL string, feedID int64) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", config.DefaultUserAgent)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml")
+
+	client := s.clientFactory.NewHTTPClientForFeed(ctx, feedID, htmlIconTimeout)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
+	}
+
+	return io.ReadAll(io.LimitReader(resp.Body, htmlIconScanBytes))
+}
+
+// extractIconURLs 从 HTML 里按文档顺序收集图标地址，并解析成绝对 URL（去重）。
+// 跳过 mask-icon（单色 svg，多用于"固定到桌面"，拿来当订阅图标是一块死灰）与 data: 内联图标（没有可下载的地址）。
+func extractIconURLs(base *url.URL, page []byte) []string {
+	doc, err := html.Parse(bytes.NewReader(page))
+	if err != nil {
+		return nil
+	}
+
+	var urls []string
+	seen := make(map[string]bool)
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if n.Type == html.ElementNode && n.Data == "link" && isIconRel(linkAttr(n, "rel")) {
+			if resolved := resolveIconHref(base, linkAttr(n, "href")); resolved != "" && !seen[resolved] {
+				seen[resolved] = true
+				urls = append(urls, resolved)
+			}
+		}
+		for child := n.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+	}
+	walk(doc)
+
+	return urls
+}
+
+func linkAttr(n *html.Node, key string) string {
+	for _, attr := range n.Attr {
+		if strings.EqualFold(attr.Key, key) {
+			return strings.TrimSpace(attr.Val)
+		}
+	}
+	return ""
+}
+
+// isIconRel 判 rel 是否声明了图标：`icon` / `shortcut icon` / `apple-touch-icon[-precomposed]` 都算，`mask-icon` 不算。
+func isIconRel(rel string) bool {
+	for _, field := range strings.Fields(strings.ToLower(rel)) {
+		if strings.Contains(field, "icon") && !strings.Contains(field, "mask") {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveIconHref 把 href 解析成绝对地址：相对路径按首页地址解析（ncase.me 写的就是 `favicon.png`）。
+func resolveIconHref(base *url.URL, href string) string {
+	if href == "" || strings.HasPrefix(strings.ToLower(href), "data:") {
+		return ""
+	}
+
+	ref, err := url.Parse(href)
+	if err != nil {
+		return ""
+	}
+
+	abs := base.ResolveReference(ref)
+	if (abs.Scheme != "http" && abs.Scheme != "https") || abs.Hostname() == "" {
+		return ""
+	}
+
+	return abs.String()
 }
 
 // iconFilename generates a filename based on the domain and extension
