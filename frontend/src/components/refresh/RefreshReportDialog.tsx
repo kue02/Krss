@@ -111,7 +111,7 @@ export function RefreshReportDialog() {
                     const text = report.failures
                       .map((item) => `${item.title}: ${item.error}`)
                       .join("\n");
-                    void copyToClipboard(text, t("refresh_report.copied"));
+                    void copyToClipboard(text, t("refresh_report.copied"), t("actions.copy_failed"));
                   }}
                 >
                   <Copy className="size-3.5" />

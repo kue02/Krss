@@ -27,6 +27,7 @@
     "expand": "Expand",
     "collapse": "Collapse",
     "copy": "Copy",
+    "copy_failed": "Copy failed, please copy manually",
     "refresh": "Refresh",
     "delete": "Delete",
     "move_to_folder": "Move to Folder",

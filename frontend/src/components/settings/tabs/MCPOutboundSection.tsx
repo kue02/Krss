@@ -318,6 +318,7 @@ export function MCPOutboundSection() {
                         void copyToClipboard(
                           status.token ?? "",
                           t("data_control.mcp_token_copied"),
+                          t("actions.copy_failed"),
                         )
                       }
                     >
@@ -412,6 +413,7 @@ export function MCPOutboundSection() {
                     void copyToClipboard(
                       clientConfig,
                       t("data_control.mcp_client_config_copied"),
+                      t("actions.copy_failed"),
                     )
                   }
                 >

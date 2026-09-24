@@ -389,6 +389,7 @@ export function AutoRefreshHistorySection() {
                                     )
                                     .join("\n"),
                                   t("settings.auto_refresh_history_copied"),
+                                  t("actions.copy_failed"),
                                 )
                               }
                             >
@@ -438,6 +439,7 @@ export function AutoRefreshHistorySection() {
                                 void copyToClipboard(
                                   group.reason,
                                   t("settings.auto_refresh_history_copied"),
+                                  t("actions.copy_failed"),
                                 )
                               }
                             >

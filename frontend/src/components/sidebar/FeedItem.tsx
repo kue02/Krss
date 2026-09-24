@@ -339,7 +339,7 @@ export function FeedItem({
         {feedUrl && (
           <ContextMenuItem
             onClick={() => {
-              void copyToClipboard(feedUrl, t("actions.copied_feed_url"));
+              void copyToClipboard(feedUrl, t("actions.copied_feed_url"), t("actions.copy_failed"));
             }}
           >
             <Copy className="size-4 shrink-0 text-muted-foreground" />
@@ -359,7 +359,7 @@ export function FeedItem({
             </ContextMenuItem>
             <ContextMenuItem
               onClick={() => {
-                void copyToClipboard(siteUrlResolved, t("actions.copied_site_url"));
+                void copyToClipboard(siteUrlResolved, t("actions.copied_site_url"), t("actions.copy_failed"));
               }}
             >
               <Globe className="size-4 shrink-0 text-muted-foreground" />

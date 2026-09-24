@@ -128,6 +128,7 @@ export function MCPFailureBlock({
                   void copyToClipboard(
                     failure.raw ?? "",
                     t("ai_settings.mcp_raw_copied"),
+                    t("actions.copy_failed"),
                   )
                 }
               >

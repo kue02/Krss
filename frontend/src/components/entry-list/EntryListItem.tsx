@@ -648,7 +648,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                         type="button"
                         title={t("entry.copy_link")}
                         onClick={() =>
-                          void copyToClipboard(entry.url!, t("entry.copied_link"))
+                          void copyToClipboard(entry.url!, t("entry.copied_link"), t("actions.copy_failed"))
                         }
                         className="flex size-7 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
                       >
@@ -681,7 +681,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
-                          void copyToClipboard(entry.url!, t("entry.copied_link"));
+                          void copyToClipboard(entry.url!, t("entry.copied_link"), t("actions.copy_failed"));
                         }}
                         className="transition-colors duration-200 hover:text-foreground"
                       >
