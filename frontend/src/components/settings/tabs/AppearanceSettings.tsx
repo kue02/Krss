@@ -1096,9 +1096,9 @@ export function AppearanceSettings() {
                 )}
                 {/* 29-4：悬停大图档「一篇文章多图」的切换触发方式（用户 2026-09-25 原话：
                     「3 个都做成可配置项」）—— 三个独立开关，可任意组合。
-                    图片视图与文章视图的悬停档共用同一个列表（PictureHoverList），两处都显示这一组。 */}
-                {((view === "picture" && pictureLayout === "hover") ||
-                  (view === "article" && articleLayout === "hover")) && (
+                    31-2：文章视图的悬停档已改成「悬停正文」（不再走 hover-img），
+                    所以这一组只服务图片视图的悬停大图档。 */}
+                {view === "picture" && pictureLayout === "hover" && (
                   <>
                     <div className="px-1 pt-2 text-xs text-muted-foreground">
                       {t("appearance_view.hover_multi_scope")}

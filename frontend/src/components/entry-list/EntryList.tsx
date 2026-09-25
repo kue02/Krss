@@ -52,7 +52,7 @@ import {
   resolveTimelineTimeBasis,
 } from "@/lib/timeline-model";
 import { NotificationTimeline } from "./NotificationTimeline";
-import { PictureHoverList } from "@/components/picture-hover/PictureHoverList";
+import { NotificationBodyPreview } from "./NotificationBodyPreview";
 import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
 import { useFilterViewStore } from "@/stores/filter-view-store";
 import { ArrowUp, Check, Inbox } from "lucide-react";
@@ -274,16 +274,77 @@ export function EntryList({
    */
   const isNotificationTimeline = contentType === "notification";
   /**
-   * 文章视图第三档（reader-transition 批新增）：悬停大图。
-   * 列表形态与图片视图第三档一致（同复用 PictureHoverList + hover-img 原件），
-   * 差别只在点击：走 handleSelectEntry（同普通卡片），正文用推进转场进第三栏。
-   * 只作用于 article，其它视图一行不动。
+   * 文章视图 hover 档（reader-transition 批新增为「悬停大图」；31-2 改成「悬停正文」）：
+   * 行还是普通文章卡片（`EntryListItem` 一行不动，含缩略图/标题/摘要），
+   * **悬停时浮块显示这一条的完整正文**（复用 29-1 那套浮块：跟随指针、不遮标题、可滚可选中），
+   * 点击行照旧打开正文（第三栏阅读器）。
+   *
+   * 用户原话（2026-09-25）：「文章视图的悬停大图，鼠标悬浮上去的时候，它也应该显示文章。
+   * 当点击的时候，正好弹出正文页面。因为文章是图，展示图片没什么用处。」
+   *
+   * 为什么用容器事件委托而不是给 `EntryListItem` 加 onMouseEnter：
+   * 那是全仓最大的热点文件，且同一份行还要服务时间线/社交/列表三条路径；
+   * 委托只认行上的 `data-entry-id`，对行本身零改动（图片视图的 hover 档不动，
+   * 它仍走 PictureHoverList + hover-img 原件）。
    */
   const articleLayout = useUISettingKey("articleLayout");
   const isArticleHover = contentType === "article" && articleLayout === "hover";
-  /** 28-7a：文章视图 hover 档也复用同一套尺寸预设（两处调用同一个 PictureHoverList） */
-  const hoverRowHeight = useUISettingKey("hoverRowHeight");
-  const hoverImageSize = useUISettingKey("hoverImageSize");
+  const [articleHoverAnchor, setArticleHoverAnchor] = useState<{
+    id: string;
+    x: number;
+    y: number;
+    cardTop: number;
+    cardBottom: number;
+  } | null>(null);
+  const articleHoverCloseTimer = useRef<number | null>(null);
+  const cancelArticleHoverClose = useCallback(() => {
+    if (articleHoverCloseTimer.current !== null) {
+      window.clearTimeout(articleHoverCloseTimer.current);
+      articleHoverCloseTimer.current = null;
+    }
+  }, []);
+  /** 离开行后延迟 250ms 再收 —— 留出「把指针移进浮块继续看/选中正文」的时间 */
+  const closeArticleHoverSoon = useCallback(() => {
+    cancelArticleHoverClose();
+    articleHoverCloseTimer.current = window.setTimeout(() => {
+      articleHoverCloseTimer.current = null;
+      setArticleHoverAnchor(null);
+    }, 250);
+  }, [cancelArticleHoverClose]);
+  const handleArticleHoverOver = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const target = event.target as Element | null;
+      const row = target?.closest?.("[data-entry-id]");
+      const id = row?.getAttribute("data-entry-id");
+      if (!row || !id) return;
+      const rect = row.getBoundingClientRect();
+      cancelArticleHoverClose();
+      setArticleHoverAnchor((prev) =>
+        prev &&
+        prev.id === id &&
+        Math.abs(prev.x - event.clientX) < 2 &&
+        Math.abs(prev.y - event.clientY) < 2
+          ? prev
+          : {
+              id,
+              x: event.clientX,
+              y: event.clientY,
+              cardTop: rect.top,
+              cardBottom: rect.bottom,
+            },
+      );
+    },
+    [cancelArticleHoverClose],
+  );
+  const handleArticleHoverOut = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const next = event.relatedTarget as Element | null;
+      // 移到另一行 ⇒ 交给 mouseover 换内容；彻底离开列表/移到浮块 ⇒ 延后收
+      if (next?.closest?.("[data-entry-id]")) return;
+      closeArticleHoverSoon();
+    },
+    [closeArticleHoverSoon],
+  );
 
   /** 28-1：顶栏左上角那颗「卡片列表 ↔ 悬停大图」切换（只有文章视图会拿到它） */
   const { setArticleLayout } = useUISettingActions();
@@ -999,7 +1060,13 @@ export function EntryList({
           ) : entries.length === 0 ? (
             <EntryListEmpty />
           ) : (
-            <div className="w-full pb-16">
+            <div
+              className="w-full pb-16"
+              /* 31-2：文章 hover 档的悬停认行靠事件委托（对行零改动）；别的档不挂监听 */
+              onMouseOver={isArticleHover ? handleArticleHoverOver : undefined}
+              onMouseOut={isArticleHover ? handleArticleHoverOut : undefined}
+              data-article-body-hover={isArticleHover ? "true" : undefined}
+            >
               {/* pb-16：底部悬浮的「星标 / 未读 / 已静音 / 全部」胶囊会盖住内容，留白让最后一条能滚上来 */}
               {isNotificationTimeline ? (
                 <NotificationTimeline
@@ -1019,17 +1086,6 @@ export function EntryList({
                   autoTranslate={autoTranslate}
                   targetLanguage={targetLanguage}
                   onSelectableEntriesChange={setTimelineSelectableEntries}
-                />
-              ) : isArticleHover ? (
-                <PictureHoverList
-                  items={entries.map((entry) => ({
-                    entry,
-                    feed: feedsMap.get(entry.feedId),
-                  }))}
-                  onSelectEntry={handleSelectEntry}
-                  selectedEntryId={selectedEntryId}
-                  rowHeight={hoverRowHeight}
-                  imageSize={hoverImageSize}
                 />
               ) : (
                 entries.map((entry, index) => (
@@ -1079,6 +1135,40 @@ export function EntryList({
 
           {isFetchingNextPage && <LoadingMore />}
         </div>
+
+        {isArticleHover && (() => {
+          /* entries 声明在下面，这里现算悬停的那条（同 NotificationTimeline 的写法） */
+          const articleHoverEntry = articleHoverAnchor
+            ? (entries.find((entry) => entry.id === articleHoverAnchor.id) ??
+              null)
+            : null;
+          return (
+          <NotificationBodyPreview
+            entry={articleHoverEntry}
+            visible={articleHoverEntry !== null}
+            anchor={
+              articleHoverAnchor
+                ? {
+                    x: articleHoverAnchor.x,
+                    y: articleHoverAnchor.y,
+                    cardTop: articleHoverAnchor.cardTop,
+                    cardBottom: articleHoverAnchor.cardBottom,
+                  }
+                : { x: 0, y: 0, cardTop: null, cardBottom: null }
+            }
+            feedName={
+              articleHoverEntry
+                ? ((feedsMap.get(articleHoverEntry.feedId)?.title ??
+                  t("entry.unknown_feed")) as string)
+                : ""
+            }
+            autoTranslate={autoTranslate}
+            targetLanguage={targetLanguage}
+            onMouseEnter={cancelArticleHoverClose}
+            onMouseLeave={closeArticleHoverSoon}
+          />
+          );
+        })()}
 
         {!usesDocumentScroll && (
           <EntryListFilterPill

@@ -1,6 +1,12 @@
 import { useTranslation } from "react-i18next";
 import { ToggleButton } from "@heroui/react";
-import { Filter, GalleryHorizontalEnd, Images, LayoutGrid } from "lucide-react";
+import {
+  Filter,
+  GalleryHorizontalEnd,
+  Images,
+  LayoutGrid,
+  LayoutList,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { RefreshStatus } from "@/api";
 import { RefreshTooltip } from "./RefreshTooltip";
@@ -9,7 +15,6 @@ import {
   CircleFilledIcon,
   CheckCircleIcon,
   FileTextIcon,
-  ImageIcon,
   MenuIcon,
   RefreshIcon,
   RefreshSpinner,
@@ -181,9 +186,11 @@ export function EntryListHeader({
             className="flex size-8 shrink-0 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95"
           >
             {articleLayout === "hover" ? (
-              <FileTextIcon className="size-4" />
+              /* 31-2：hover 档 = 悬停正文，点下去回到卡片列表 */
+              <LayoutList className="size-4" />
             ) : (
-              <ImageIcon className="size-4" />
+              /* 列表档：点下去是「悬停正文」 */
+              <FileTextIcon className="size-4" />
             )}
           </button>
         )}
