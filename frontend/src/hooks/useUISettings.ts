@@ -3,6 +3,8 @@ import { notifySettingsSaved } from "@/lib/settings-saved";
 import { LS_KEYS, readLocalValue, writeLocalValue } from "@/lib/settings-storage";
 import {
   currentDeviceClass,
+  markManyUiSettingsChanged,
+  markUiSettingsChanged,
   registerSettingsGroup,
   scheduleSettingsFlush,
   type SettingsDeviceClass,
@@ -646,6 +648,9 @@ export function setUISetting<K extends keyof UISettings>(
   // 12-7：即时型改动给一句「已保存」（App 订阅事件、带防抖后弹 toast）。
   // 28-8：但「结果肉眼立即可见」的那些不弹 —— 见 SILENT_SAVE_UI_KEYS。
   if (!SILENT_SAVE_UI_KEYS.has(key as string)) notifySettingsSaved();
+  // 28-9：记下本机动过这个键 —— 推送时只盖它，别的键以服务端为基线，
+  // 免得把另一台设备刚改的别的设置一起盖掉。
+  markUiSettingsChanged(key as string);
   // 21 批：本地立即生效之外，防抖后写服务端（跨设备一致）；失败会另弹一句可见的提示
   scheduleSettingsFlush("ui");
 }
@@ -1071,6 +1076,8 @@ export function resetUISettingsToDefaults(): void {
   cachedSettings = flatFromPackage(cachedPackage, currentDeviceClass());
   persistPackage(cachedPackage);
   emitChange();
+  // 28-9：整包替换，shared 里每个键都算「动过」，否则下一批推送会把默认值当没改过而不上报
+  markManyUiSettingsChanged(Object.keys(shared));
   notifySettingsSaved();
   scheduleSettingsFlush("ui");
 }
