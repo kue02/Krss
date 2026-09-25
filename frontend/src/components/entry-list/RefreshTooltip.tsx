@@ -75,7 +75,10 @@ export function RefreshTooltip({
   const total = status?.total ?? 0;
   const completed = status?.completed ?? 0;
   const results = status?.results ?? [];
-  const shown = results.slice(0, MAX_ROWS);
+  // 取**最近完成的** N 个（不是最早的 N 个）：后端按完成顺序追加 results，
+  // 原来 slice(0, 8) 永远是同一批源 —— 刷新推进时整块列表纹丝不动，用户看到的就是
+  // 「固定就显示那几个」（用户 9-25 反馈）。取尾部之后每 2 秒轮询都会滚动出新行。
+  const shown = results.slice(-MAX_ROWS);
   const pending = Math.max(0, total - completed);
 
   const newTotal = results.reduce((s, r) => s + (r.new ?? 0) + (r.updated ?? 0), 0);
