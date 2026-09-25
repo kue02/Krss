@@ -161,7 +161,14 @@ async function flushSettings(): Promise<void> {
   try {
     // 写前先取：另一台设备的尺寸档、以及别的组的最新值都在这一份里
     const remote = await getUISettings();
-    const payload = buildSettingsPayload(remote, collectLocalValues(), sending);
+    // 28-9：只有这次真的要推 ui 组时才取走键表 —— 不然这一批没带 ui 的话，
+    // 取走（清空）就等于把「本机改过哪几个键」白扔了，下一次推 ui 时无从得知。
+    const payload = buildSettingsPayload(
+      remote,
+      collectLocalValues(),
+      sending,
+      sending.has("ui") ? takeChangedUiKeys() : [],
+    );
     if (Object.keys(payload).length === 0) return;
     await putUISettings(payload);
     clearDirtyFlag();
@@ -230,6 +237,40 @@ function collectLocalValues(): Partial<SettingsGroupValues> {
 }
 
 /**
+ * 28-9：本机这一次真正动过哪几个 UI 键。
+ *
+ * 为什么需要：`buildSettingsPayload` 的 touched 是**组级**（`ui` / `ui.theme`…），
+ * 一个 `ui` 组里到底动过哪几个键它并不知道，于是 `shared` 只能整份拿本地覆盖服务端 ——
+ * 后果是 A 设备改了某设置、B 设备此时改了另一个不同设置，B 一推送就把 A 的改动盖掉（多设备丢改动）。
+ *
+ * 记到键级之后，推送时只盖这几个键，其余以服务端为基线。
+ * device 段不需要这么处理：那一档是本机独占的，别人不会改。
+ */
+const changedUiKeys = new Set<string>();
+
+/** 记录一个被本机改动过的 UI 键（`setUISetting` 调用）。 */
+export function markUiSettingsChanged(key: string): void {
+  changedUiKeys.add(key);
+}
+
+/** 整包替换（恢复默认等）时标记一批键都动过。 */
+export function markManyUiSettingsChanged(keys: Iterable<string>): void {
+  for (const key of keys) changedUiKeys.add(key);
+}
+
+/** 取走并清空本次累积的键（推送时调用一次）。 */
+export function takeChangedUiKeys(): string[] {
+  const keys = [...changedUiKeys];
+  changedUiKeys.clear();
+  return keys;
+}
+
+/** 仅供测试：清掉累积状态。 */
+export function resetChangedUiKeys(): void {
+  changedUiKeys.clear();
+}
+
+/**
  * 合并出真正要 PUT 的整包：以服务端那份为基线，只盖本地改过的组。
  *
  * 「ui」这一组要特别处理：**当前设备那一档用本地的，另一档保留服务端的** ——
@@ -239,12 +280,14 @@ export function buildSettingsPayload(
   remote: UISettingsResponse,
   local: Partial<SettingsGroupValues>,
   keys: Iterable<SettingsGroupKey>,
+  /** 28-9：`ui` 组里本机真正动过的键（见 markUiSettingsChanged）。缺省则不盖任何键。 */
+  changedUiKeys: readonly string[] = [],
 ): UISettingsPayload {
   const payload: UISettingsPayload = {};
   const touched = new Set(keys);
 
   if (touched.has("ui") && local.ui) {
-    payload.ui = mergeUiPackage(remote.ui, local.ui);
+    payload.ui = mergeUiPackage(remote.ui, local.ui, currentDeviceClass(), changedUiKeys);
   }
   if (touched.has("ui.theme") && local["ui.theme"]) {
     payload.theme = local["ui.theme"];
@@ -264,13 +307,32 @@ export function mergeUiPackage(
   remote: UISettingsPackage | undefined,
   local: UISettingsPackage,
   device: SettingsDeviceClass = currentDeviceClass(),
+  /**
+   * 28-9：本机这次真正动过的键。**只盖这些键**，其余以服务端为基线 ——
+   * 默认空数组（不盖任何键、完全以服务端为基线）是刻意的：忘了传不会造成丢改动，
+   * 最多是这一次没把自己改的值推上去。
+   */
+  changedKeys: readonly string[] = [],
 ): UISettingsPackage {
   const other: SettingsDeviceClass = device === "desktop" ? "mobile" : "desktop";
   const remoteDevice = remote?.device ?? {};
   const localDevice = local.device ?? {};
 
+  const remoteShared = remote?.shared ?? {};
+  const localShared = local.shared ?? {};
+  const shared: Record<string, unknown> = { ...remoteShared };
+  // 服务端那份 shared 本来就是空的（一条都没存过 / 首次迁移 / 恢复过默认）：
+  // 没有「别人的值」会被盖掉，这一次就该把本地整份当基线推上去。
+  const keysToApply =
+    Object.keys(remoteShared).length === 0 ? Object.keys(localShared) : changedKeys;
+  for (const key of keysToApply) {
+    if (Object.prototype.hasOwnProperty.call(localShared, key)) {
+      shared[key] = localShared[key];
+    }
+  }
+
   return {
-    shared: local.shared ?? {},
+    shared,
     device: {
       [device]: localDevice[device] ?? {},
       [other]: remoteDevice[other] ?? localDevice[other] ?? {},

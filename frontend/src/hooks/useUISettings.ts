@@ -3,6 +3,8 @@ import { notifySettingsSaved } from "@/lib/settings-saved";
 import { LS_KEYS, readLocalValue, writeLocalValue } from "@/lib/settings-storage";
 import {
   currentDeviceClass,
+  markManyUiSettingsChanged,
+  markUiSettingsChanged,
   registerSettingsGroup,
   scheduleSettingsFlush,
   type SettingsDeviceClass,
@@ -26,6 +28,14 @@ export type ViewTimelineCollapse = Record<ContentType, TimelineCollapse>;
 /** 26-2：通知视图时间线的时间基准（发布时间 / 抓取时间），默认发布时间 = 现状 */
 export type ViewTimelineTimeBasis = Record<ContentType, TimelineTimeBasis>;
 export type QuoteStyle = "block" | "divider" | "card";
+/**
+ * 文章视图第二栏的排布（reader-transition 批新增）：
+ *   list  = 今天的卡片列表（默认，行为零变化）
+ *   hover = 与图片视图第三档同形态：列表行 + 鼠标跟随大图预览
+ *           （复用 picture-hover/PictureHoverList + obsidianui hover-img 原件），
+ *           差别只在点击：用 Nextflux 式推进转场把正文推进第三栏。
+ */
+export type ArticleLayout = "list" | "hover";
 /**
  * 已读/未读的全局统一标记（用户 11-14）：
  *   badge = HeroUI `Badge` 角标（**用户拍板的默认**）
@@ -128,10 +138,35 @@ interface UISettings {
   entryColWidth: number;
   sidebarVisible: boolean;
   /**
-   * 图片视图的排布：masonry = 瀑布流（按原图比例，默认）/ grid = 等高正方格（对齐整齐）。
-   * 用户 2026-09-17 要求加这一档。
+   * 图片视图的排布（28-7 收敛为两档，用户 2026-09-25）：
+   *  - grid = 网格（合并了原先的「瀑布流」与「网格」，具体样式看 gridStyle）
+   *  - hover = 悬停大图
+   * 历史遗留值 "masonry" 仍可能出现（老数据），读取时按 `resolvePictureLayout()` 归一为 grid。
    */
-  pictureLayout: "masonry" | "grid" | "hover";
+  pictureLayout: "grid" | "hover" | "masonry";
+  /**
+   * 28-7：网格档下的样式（用户：「合并网格应该只有两个选项」）：
+   *  - "masonry"（默认）= 之前「瀑布流」的效果，按原图比例排
+   *  - "square" = 之前「网格」的效果，裁成等高正方格
+   * 注意：界面上那一档叫「瀑布流」时指的其实是前者；真正的 Pinterest 式瀑布流尚未实现。
+   */
+  gridStyle: "masonry" | "square";
+  /**
+   * 28-7a：图片视图「悬停大图」档的尺寸自定义（用户 2026-09-25）。
+   * 两个维度各自二选一，互不绑定，可混搭：
+   *  - hoverRowHeight：行高尺度。compact = 5179 现值（padding 10px/标题 14.5px·500）；
+   *    comfortable = 5175（longpost 树）那套（13px / 15px·400）。
+   *  - hoverImageSize：悬停浮块尺寸。small = 5179 现值（上游 400×250）；
+   *    large = 5175 那套（min(560px, 42vw)）。
+   * 默认 compact + small（= 用户说的「5179 的设置，这是默认设置」）。
+   */
+  hoverRowHeight: "compact" | "comfortable";
+  hoverImageSize: "small" | "large";
+  /**
+   * 文章视图第二栏的排布：list = 卡片列表（默认）；hover = 悬停大图（同图片视图第三档形态）。
+   * reader-transition 批新增（用户 2026-09-25）。
+   */
+  articleLayout: ArticleLayout;
   /** 列表卡片的缩略图档位（对齐 Nextflux 的卡片图尺寸） */
   cardImageSize: CardImageSize;
   /** 卡片摘要显示行数，0 = 不显示摘要 */
@@ -240,6 +275,23 @@ const STORAGE_SPEC = LS_KEYS.uiSettings;
  * 用户拍板的理由：桌面 `feedColWidth=256`、`uiScale` 这类值同步到手机上直接没法用，
  * 所以「跨设备一致」只对共用那部分成立，尺寸类各设备自己一套。
  */
+/**
+ * 28-7：把历史遗留的 pictureLayout 归一。
+ * 老数据里 "masonry" 表示「按原图比例那一档」，合并后它 = 网格档 + 样式 masonry。
+ */
+export function resolvePictureLayout(layout: string): "grid" | "hover" {
+  return layout === "hover" ? "hover" : "grid";
+}
+
+/** 28-7：老数据里 "masonry" 对应网格档的 masonry 样式；"grid" 则看用户选的样式。 */
+export function resolveGridStyle(
+  layout: string,
+  style: "masonry" | "square" | undefined,
+): "masonry" | "square" {
+  if (style === "square" || style === "masonry") return style;
+  return layout === "grid" ? "square" : "masonry";
+}
+
 export const DEVICE_SCOPED_UI_KEYS = [
   "feedColWidth",
   "entryColWidth",
@@ -248,6 +300,26 @@ export const DEVICE_SCOPED_UI_KEYS = [
 ] as const;
 
 const DEVICE_SCOPED = new Set<string>(DEVICE_SCOPED_UI_KEYS);
+
+/**
+ * 28-8：改完**不弹**「已保存」的设置键（用户 2026-09-25 反馈）。
+ *
+ * 判据是「结果肉眼立即可见」：拖出来的列宽、切过去的档位与样式、拖出来的整体缩放 ——
+ * 用户看着界面就知道已经变了，每动一下弹一句只会刷屏（他说「轻轻调一下下面就弹个框，太频繁了」）。
+ * 需要确认自己有没有改成功的（开关、下拉、数值输入）仍然照弹。
+ */
+const SILENT_SAVE_UI_KEYS = new Set<string>([
+  // 拖宽度类
+  "feedColWidth",
+  "entryColWidth",
+  "uiScale",
+  // 切档位 / 切样式类
+  "pictureLayout",
+  "articleLayout",
+  "gridStyle",
+  "hoverRowHeight",
+  "hoverImageSize",
+]);
 
 /** 存储/同步的整包形状（与 `types/settings.ts` 的 UISettingsPackage 同形） */
 export interface UISettingsPackageShape {
@@ -392,7 +464,11 @@ export const defaultUISettings: UISettings = {
   feedColWidth: 256,
   entryColWidth: 336,
   sidebarVisible: true,
-  pictureLayout: "masonry",
+  pictureLayout: "grid",
+  gridStyle: "masonry",
+  hoverRowHeight: "compact",
+  hoverImageSize: "small",
+  articleLayout: "list",
   cardImageSize: "small",
   cardPreviewLines: 2,
   entryFontFamily: "",
@@ -549,17 +625,32 @@ export function setUISetting<K extends keyof UISettings>(
       },
     };
   } else {
+    // 28-6：非设备级键只该存 shared。但 device 段可能残留同名旧值 ——
+    // 合并规则是 {...shared, ...device[当前设备]}，device 覆盖 shared，
+    // 于是前端写进 shared 的值永远被那条残留压掉，表现为「切了没反应」。
+    // 这里在写 shared 的同时精确删掉两段里的同名键（不碰真正的设备级键）。
+    // 实例：服务端 device.desktop.pictureLayout 残留 'hover'，导致设置页与顶栏
+    // 切图片档位一律无效。
+    const cleanedDesktop = { ...cachedPackage.device.desktop };
+    const cleanedMobile = { ...cachedPackage.device.mobile };
+    delete cleanedDesktop[key as string];
+    delete cleanedMobile[key as string];
     cachedPackage = {
       ...cachedPackage,
       shared: { ...cachedPackage.shared, [key]: value },
+      device: { desktop: cleanedDesktop, mobile: cleanedMobile },
     };
   }
 
   cachedSettings = flatFromPackage(cachedPackage, device);
   persistPackage(cachedPackage);
   emitChange();
-  // 12-7：即时型改动给一句「已保存」（App 订阅事件、带防抖后弹 toast）
-  notifySettingsSaved();
+  // 12-7：即时型改动给一句「已保存」（App 订阅事件、带防抖后弹 toast）。
+  // 28-8：但「结果肉眼立即可见」的那些不弹 —— 见 SILENT_SAVE_UI_KEYS。
+  if (!SILENT_SAVE_UI_KEYS.has(key as string)) notifySettingsSaved();
+  // 28-9：记下本机动过这个键 —— 推送时只盖它，别的键以服务端为基线，
+  // 免得把另一台设备刚改的别的设置一起盖掉。
+  markUiSettingsChanged(key as string);
   // 21 批：本地立即生效之外，防抖后写服务端（跨设备一致）；失败会另弹一句可见的提示
   scheduleSettingsFlush("ui");
 }
@@ -601,8 +692,28 @@ export function useUISettingActions() {
     setUISetting("cardImageSize", size);
   }, []);
 
-  const setPictureLayout = useCallback((layout: "masonry" | "grid" | "hover") => {
+  const setPictureLayout = useCallback((layout: "grid" | "hover") => {
     setUISetting("pictureLayout", layout);
+  }, []);
+
+  /** 28-7：网格档下的样式（masonry = 之前瀑布流的效果 / square = 之前网格的效果） */
+  const setGridStyle = useCallback((style: "masonry" | "square") => {
+    setUISetting("gridStyle", style);
+  }, []);
+
+  /** 28-7a：悬停大图档的行高尺度（compact = 5179 默认 / comfortable = 5175 那套） */
+  const setHoverRowHeight = useCallback((value: "compact" | "comfortable") => {
+    setUISetting("hoverRowHeight", value);
+  }, []);
+
+  /** 28-7a：悬停浮块尺寸（small = 上游 400×250 / large = 5175 的 560px） */
+  const setHoverImageSize = useCallback((value: "small" | "large") => {
+    setUISetting("hoverImageSize", value);
+  }, []);
+
+  /** 文章视图第二栏的排布（reader-transition 批新增） */
+  const setArticleLayout = useCallback((layout: ArticleLayout) => {
+    setUISetting("articleLayout", layout);
   }, []);
 
   const setCardPreviewLines = useCallback((lines: number) => {
@@ -791,6 +902,10 @@ export function useUISettingActions() {
     toggleSidebarVisible,
     setCardImageSize,
     setPictureLayout,
+    setGridStyle,
+    setHoverRowHeight,
+    setHoverImageSize,
+    setArticleLayout,
     setCardPreviewLines,
     setEntryFontFamily,
     setEntryFontSize,
@@ -961,6 +1076,8 @@ export function resetUISettingsToDefaults(): void {
   cachedSettings = flatFromPackage(cachedPackage, currentDeviceClass());
   persistPackage(cachedPackage);
   emitChange();
+  // 28-9：整包替换，shared 里每个键都算「动过」，否则下一批推送会把默认值当没改过而不上报
+  markManyUiSettingsChanged(Object.keys(shared));
   notifySettingsSaved();
   scheduleSettingsFlush("ui");
 }

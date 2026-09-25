@@ -938,6 +938,10 @@
     "picture_layout_masonry": "瀑布流",
     "picture_layout_grid": "网格",
     "picture_layout_hover": "悬停大图",
+    "article_layout": "列表样式",
+    "article_layout_list": "卡片列表",
+    "article_layout_hover": "悬停大图",
+    "article_layout_hover_hint": "与图片视图第三档同形态：列表行 + 鼠标跟随大图；点击用推进转场把正文推进右侧",
     "show_splitter": "显示分界限（平时也画这条线）",
     "show_splitter_hint": "关掉后不再画这条竖线（悬浮时的拖拽指示线不受影响），栏宽保留",
     "timeline_granularity": "时间粒度",
@@ -957,7 +961,16 @@
     "timeline_lines_1": "1 行",
     "timeline_lines_2": "2 行",
     "timeline_lines_3": "3 行",
-    "timeline_lines_full": "全文"
+    "timeline_lines_full": "全文",
+    "hover_row_height": "悬停大图 · 行高",
+    "hover_row_height_compact": "紧凑（默认）",
+    "hover_row_height_comfortable": "宽松",
+    "hover_image_size": "悬停大图 · 图片大小",
+    "hover_image_size_small": "小（400×250）",
+    "hover_image_size_large": "大",
+    "grid_style": "网格 · 样式",
+    "grid_style_masonry": "按原图比例（默认）",
+    "grid_style_square": "正方格"
   },
   "folder": {
     "create": "新增分类",

@@ -26,9 +26,11 @@ interface EntryContentProps {
   entryId: string | null;
   isMobile?: boolean;
   onBack?: () => void;
+  /** 28-5：桌面正文区左上角的关闭按钮（与移动端 onBack 同位置，图标用 X） */
+  onClose?: () => void;
 }
 
-export function EntryContent({ entryId, isMobile, onBack }: EntryContentProps) {
+export function EntryContent({ entryId, isMobile, onBack, onClose }: EntryContentProps) {
   const { t } = useTranslation();
   const { data: entry, isLoading } = useEntry(entryId);
   const { data: aiSettings } = useAISettings();
@@ -194,6 +196,7 @@ export function EntryContent({ entryId, isMobile, onBack }: EntryContentProps) {
         onToggleTranslation={handleToggleTranslation}
         isMobile={isMobile}
         onBack={onBack}
+        onClose={onClose}
         isOriginalSiteActive={showOriginalSite}
         onToggleOriginalSite={() => setShowOriginalSite((value) => !value)}
       />

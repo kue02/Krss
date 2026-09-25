@@ -45,13 +45,14 @@ import {
 } from "./deferred-removal";
 import { useEntryListScrollSurface } from "./scroll-surface";
 import { useEntryHotkeys } from "@/hooks/useEntryHotkeys";
-import { useUISettingKey } from "@/hooks/useUISettings";
+import { useUISettingKey, useUISettingActions } from "@/hooks/useUISettings";
 import {
   resolveTimelineCollapse,
   resolveTimelineGranularity,
   resolveTimelineTimeBasis,
 } from "@/lib/timeline-model";
 import { NotificationTimeline } from "./NotificationTimeline";
+import { PictureHoverList } from "@/components/picture-hover/PictureHoverList";
 import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
 import { useFilterViewStore } from "@/stores/filter-view-store";
 import { ArrowUp, Check, Inbox } from "lucide-react";
@@ -272,6 +273,23 @@ export function EntryList({
    * 设置里能调的只有粒度与折叠行数（15-5）。
    */
   const isNotificationTimeline = contentType === "notification";
+  /**
+   * 文章视图第三档（reader-transition 批新增）：悬停大图。
+   * 列表形态与图片视图第三档一致（同复用 PictureHoverList + hover-img 原件），
+   * 差别只在点击：走 handleSelectEntry（同普通卡片），正文用推进转场进第三栏。
+   * 只作用于 article，其它视图一行不动。
+   */
+  const articleLayout = useUISettingKey("articleLayout");
+  const isArticleHover = contentType === "article" && articleLayout === "hover";
+  /** 28-7a：文章视图 hover 档也复用同一套尺寸预设（两处调用同一个 PictureHoverList） */
+  const hoverRowHeight = useUISettingKey("hoverRowHeight");
+  const hoverImageSize = useUISettingKey("hoverImageSize");
+
+  /** 28-1：顶栏左上角那颗「卡片列表 ↔ 悬停大图」切换（只有文章视图会拿到它） */
+  const { setArticleLayout } = useUISettingActions();
+  const handleToggleArticleLayout = useCallback(() => {
+    setArticleLayout(articleLayout === "hover" ? "list" : "hover");
+  }, [articleLayout, setArticleLayout]);
   const timelineGranularity = resolveTimelineGranularity(
     useUISettingKey("timelineGranularityByView")?.[contentType],
   );
@@ -890,6 +908,10 @@ export function EntryList({
           isMobile={isMobile}
           onMenuClick={handleMenuClick}
           isTablet={isTablet}
+          articleLayout={contentType === "article" ? articleLayout : undefined}
+          onToggleArticleLayout={
+            contentType === "article" ? handleToggleArticleLayout : undefined
+          }
           onToggleSidebar={onToggleSidebar}
           sidebarVisible={sidebarVisible}
         />
@@ -992,6 +1014,17 @@ export function EntryList({
                   autoTranslate={autoTranslate}
                   targetLanguage={targetLanguage}
                   onSelectableEntriesChange={setTimelineSelectableEntries}
+                />
+              ) : isArticleHover ? (
+                <PictureHoverList
+                  items={entries.map((entry) => ({
+                    entry,
+                    feed: feedsMap.get(entry.feedId),
+                  }))}
+                  onSelectEntry={handleSelectEntry}
+                  selectedEntryId={selectedEntryId}
+                  rowHeight={hoverRowHeight}
+                  imageSize={hoverImageSize}
                 />
               ) : (
                 entries.map((entry, index) => (

@@ -17,6 +17,7 @@ import { showToast } from "@/stores/toast-store";
 import { ThreeColumnLayout } from "@/components/layout/three-column-layout";
 import { Sheet } from "@/components/ui/sheet";
 import { MotionConfig } from "framer-motion";
+import { EntryContentTransition } from "@/components/entry-content/EntryContentTransition";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Sidebar } from "@/components/sidebar";
 import { AddFeedPage } from "@/components/add-feed";
@@ -475,12 +476,30 @@ function AuthenticatedApp() {
     locked: usesMobileDocumentScroll && mobileView === "detail",
   });
 
-  const entryContent = selectedEntryId ? (
-    <Suspense fallback={<EntryContentFallback />}>
-      <LazyEntryContent key={selectedEntryId} entryId={selectedEntryId} />
-    </Suspense>
-  ) : (
-    <EntryContentPlaceholder message={t("entry.select_article")} />
+  // 28-3：文章视图的「悬停大图」档 —— 未选中条目时整块收起第三栏（用户：
+  // 「默认是不显示第三栏的，我们点击条目之后，第三栏才像 Nextflux 一样推进来」）。
+  // 只作用于 article + hover，其它视图/档位不受影响。
+  const articleLayout = useUISettingKey("articleLayout");
+  const isArticleHoverLayout =
+    contentType === "article" && articleLayout === "hover";
+
+  // 桌面三栏的第三栏：Nextflux 式转场（reader-transition 批）。
+  // 未选 → 首次选中 = 整块从右侧推进；已选 → 换另一条 = 正文上下滑动。
+  // 触发条件与数值见 entry-content/reader-transition.ts（抄自 Nextflux ArticleView.jsx L146-202）。
+  const entryContent = (
+    <EntryContentTransition entryId={selectedEntryId}>
+      {selectedEntryId ? (
+        <Suspense fallback={<EntryContentFallback />}>
+          <LazyEntryContent
+            key={selectedEntryId}
+            entryId={selectedEntryId}
+            onClose={() => selectEntry(null)}
+          />
+        </Suspense>
+      ) : (
+        <EntryContentPlaceholder message={t("entry.select_article")} />
+      )}
+    </EntryContentTransition>
   );
 
   const mobileEntryContent = selectedEntryId ? (
@@ -802,6 +821,7 @@ function AuthenticatedApp() {
         }
         content={entryContent}
         showSidebar={showSidebar}
+        hideContent={isArticleHoverLayout && !selectedEntryId}
       />
       <ImagePreview />
         <VideoPreview />

@@ -167,12 +167,50 @@ describe("设备档（尺寸类按设备分套）", () => {
   });
 
   it("推给服务端时：当前设备那一档用本地的，另一档保留服务端的", () => {
-    const merged = mergeUiPackage(serverRemote().ui, local.ui, "desktop");
+    const merged = mergeUiPackage(serverRemote().ui, local.ui, "desktop", [
+      "cardPreviewLines",
+    ]);
 
     expect(merged.shared).toEqual({ cardPreviewLines: 3 });
     expect(merged.device?.desktop?.feedColWidth).toBe(256);
     // 手机上那档没被桌面端覆盖掉 —— 这条就是「别把桌面列宽同步到手机」的判据
     expect(merged.device?.mobile?.feedColWidth).toBe(150);
+  });
+
+  /**
+   * 28-9：`shared` 里的键**只有本机声明「动过」的才盖**，其余保留服务端的。
+   *
+   * 反例就是修复前的行为：整份拿本地盖上去，于是另一台设备刚改的别的设置被一起盖掉
+   * （单设备永远碰不到，多设备就是丢改动）。
+   */
+  it("shared：只盖本机动过的键，别的键保留服务端的（28-9）", () => {
+    // 服务端有 cardPreviewLines=9（另一台设备改的），本机只动过 gridStyle
+    const remote = {
+      shared: { cardPreviewLines: 9, gridStyle: "square" as const },
+      device: {},
+    };
+    const merged = mergeUiPackage(
+      remote,
+      { shared: { cardPreviewLines: 3, gridStyle: "masonry" }, device: {} },
+      "desktop",
+      ["gridStyle"],
+    );
+
+    // 本机动过的键盖上去
+    expect(merged.shared?.gridStyle).toBe("masonry");
+    // 本机没动过的键保留服务端那份 —— 修复前这里会是 3（把对方的值盖掉）
+    expect(merged.shared?.cardPreviewLines).toBe(9);
+  });
+
+  it("shared：服务端那一份本来就是空的时，整份以本地为基线（首次迁移 / 新账号）", () => {
+    const merged = mergeUiPackage(
+      { shared: {}, device: {} },
+      { shared: { cardPreviewLines: 3 }, device: {} },
+      "desktop",
+      [],
+    );
+
+    expect(merged.shared?.cardPreviewLines).toBe(3);
   });
 
   it("服务端没有另一档时回落到本地值", () => {

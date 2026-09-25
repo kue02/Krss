@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { ToggleButton } from "@heroui/react";
-import { Filter } from "lucide-react";
+import { Filter, Images, LayoutGrid } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { RefreshStatus } from "@/api";
 import { RefreshTooltip } from "./RefreshTooltip";
@@ -8,6 +8,8 @@ import {
   CircleOutlineIcon,
   CircleFilledIcon,
   CheckCircleIcon,
+  FileTextIcon,
+  ImageIcon,
   MenuIcon,
   RefreshIcon,
   RefreshSpinner,
@@ -67,6 +69,19 @@ interface EntryListHeaderProps {
   isTablet?: boolean;
   onToggleSidebar?: () => void;
   sidebarVisible?: boolean;
+  /**
+   * 28-1：文章视图的「展示方式」切换（卡片列表 ↔ 悬停大图）。
+   * 不传这两项就不渲染那颗按钮 —— 其它视图行为不变。
+   * 28-6：按钮位置按用户要求放在**标题文字的右边**（不是标题左边）。
+   */
+  articleLayout?: "list" | "hover";
+  onToggleArticleLayout?: () => void;
+  /**
+   * 28-7：图片视图的「展示方式」切换（网格 ⇄ 悬停大图，两档循环）。
+   * 同上，不传则不渲染。
+   */
+  pictureLayout?: "grid" | "hover";
+  onTogglePictureLayout?: () => void;
 }
 
 export function EntryListHeader({
@@ -90,6 +105,10 @@ export function EntryListHeader({
   isTablet,
   onToggleSidebar,
   sidebarVisible,
+  articleLayout,
+  onToggleArticleLayout,
+  pictureLayout,
+  onTogglePictureLayout,
 }: EntryListHeaderProps) {
   const { t } = useTranslation();
 
@@ -138,6 +157,60 @@ export function EntryListHeader({
             )
           )}
         </div>
+        {/* 28-1 / 28-6（用户：「把它放在右侧，右侧就是文字的右侧…不是右侧三个按钮的位置」）：
+            展示方式切换按钮，紧跟在标题文字右边；图标表达「点下去会变成什么」。
+            文章视图两档循环；图片视图三档循环（瀑布流 → 网格 → 悬停大图）。 */}
+        {onToggleArticleLayout && (
+          <button
+            type="button"
+            onClick={onToggleArticleLayout}
+            aria-label={
+              articleLayout === "hover"
+                ? t("appearance_view.article_layout_list")
+                : t("appearance_view.article_layout_hover")
+            }
+            {...{
+              title:
+                articleLayout === "hover"
+                  ? t("appearance_view.article_layout_list")
+                  : t("appearance_view.article_layout_hover"),
+            }}
+            className="flex size-8 shrink-0 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95"
+          >
+            {articleLayout === "hover" ? (
+              <FileTextIcon className="size-4" />
+            ) : (
+              <ImageIcon className="size-4" />
+            )}
+          </button>
+        )}
+        {onTogglePictureLayout && (
+          /* 28-7：图片视图档位循环 —— 网格 ⇄ 悬停大图。
+             图标与提示都表达「点下去会变成什么」。 */
+          <button
+            type="button"
+            onClick={onTogglePictureLayout}
+            aria-label={t(
+              pictureLayout === "hover"
+                ? "appearance_view.picture_layout_grid"
+                : "appearance_view.picture_layout_hover",
+            )}
+            {...{
+              title: t(
+                pictureLayout === "hover"
+                  ? "appearance_view.picture_layout_grid"
+                  : "appearance_view.picture_layout_hover",
+              ),
+            }}
+            className="flex size-8 shrink-0 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95"
+          >
+            {pictureLayout === "hover" ? (
+              <LayoutGrid className="size-4" />
+            ) : (
+              <Images className="size-4" />
+            )}
+          </button>
+        )}
       </div>
 
       <div className="flex shrink-0 items-center gap-0.5">

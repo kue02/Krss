@@ -21,6 +21,7 @@ import { useAppearanceSettings } from "@/hooks/useAppearanceSettings";
 import {
   useUISettingActions,
   useUISettingKey,
+  resolveGridStyle,
   type CardImageSize,
   type QuoteStyle,
   type ScrollReadOverride,
@@ -211,9 +212,17 @@ export function AppearanceSettings() {
     setEntryFontSize,
     setEntryLineHeight,
     setPictureLayout,
+    setArticleLayout,
+    setHoverRowHeight,
+    setHoverImageSize,
+    setGridStyle,
   } = useUISettingActions();
   const { data: appearanceSettings } = useAppearanceSettings();
   const pictureLayout = useUISettingKey("pictureLayout");
+  const articleLayout = useUISettingKey("articleLayout");
+  const hoverRowHeight = useUISettingKey("hoverRowHeight");
+  const hoverImageSize = useUISettingKey("hoverImageSize");
+  const gridStyle = resolveGridStyle(pictureLayout, useUISettingKey("gridStyle"));
 
   const themeOptions = useMemo(
     () => [
@@ -921,20 +930,42 @@ export function AppearanceSettings() {
                     />
                   </SettingRow>
                 )}
-                {/* 图片视图：瀑布流 / 等高正方格（用户 2026-09-17 要求加这一档） */}
+                {/* 文章视图：卡片列表（默认）/ 悬停大图（同图片视图第三档形态；\n                    点击用 Nextflux 式推进转场把正文推进第三栏）。reader-transition 批新增 */ }
+                {view === "article" && (
+                  <SettingRow
+                    label={t("appearance_view.article_layout")}
+                    hint={t("appearance_view.article_layout_hover_hint")}
+                  >
+                    <SegmentedControl
+                      className="shrink-0"
+                      value={articleLayout}
+                      onValueChange={(value) =>
+                        setArticleLayout(value as "list" | "hover")
+                      }
+                      options={[
+                        {
+                          value: "list",
+                          label: t("appearance_view.article_layout_list"),
+                        },
+                        {
+                          value: "hover",
+                          label: t("appearance_view.article_layout_hover"),
+                        },
+                      ]}
+                    />
+                  </SettingRow>
+                )}
+                {/* 图片视图档位（28-7 收敛为两档：网格 / 悬停大图）。
+                    原先的「瀑布流」与「网格」合并成一档「网格」，两者的差别降为下面那条「样式」。 */}
                 {view === "picture" && (
                   <SettingRow label={t("appearance_view.picture_layout")}>
                     <SegmentedControl
                       className="shrink-0"
-                      value={pictureLayout}
+                      value={pictureLayout === "hover" ? "hover" : "grid"}
                       onValueChange={(value) =>
-                        setPictureLayout(value as "masonry" | "grid")
+                        setPictureLayout(value as "grid" | "hover")
                       }
                       options={[
-                        {
-                          value: "masonry",
-                          label: t("appearance_view.picture_layout_masonry"),
-                        },
                         {
                           value: "grid",
                           label: t("appearance_view.picture_layout_grid"),
@@ -946,6 +977,75 @@ export function AppearanceSettings() {
                       ]}
                     />
                   </SettingRow>
+                )}
+                {/* 28-7：网格档下的样式（用户「合并网格应该只有两个选项：默认的是之前瀑布流
+                    的效果，另一个可选的是之前网格的效果」）。只在网格档显示。 */}
+                {view === "picture" && pictureLayout !== "hover" && (
+                  <SettingRow label={t("appearance_view.grid_style")}>
+                    <SegmentedControl
+                      className="shrink-0"
+                      value={gridStyle}
+                      onValueChange={(value) =>
+                        setGridStyle(value as "masonry" | "square")
+                      }
+                      options={[
+                        {
+                          value: "masonry",
+                          label: t("appearance_view.grid_style_masonry"),
+                        },
+                        {
+                          value: "square",
+                          label: t("appearance_view.grid_style_square"),
+                        },
+                      ]}
+                    />
+                  </SettingRow>
+                )}
+                {/* 28-7a：悬停大图档的尺寸自定义（用户 2026-09-25 要求这两项可设置，
+                    预设来自两棵树：compact/small = 5179 现值，comfortable/large = 5175 那套） */}
+                {view === "picture" && pictureLayout === "hover" && (
+                  <>
+                    <SettingRow label={t("appearance_view.hover_row_height")}>
+                      <SegmentedControl
+                        className="shrink-0"
+                        value={hoverRowHeight}
+                        onValueChange={(value) =>
+                          setHoverRowHeight(value as "compact" | "comfortable")
+                        }
+                        options={[
+                          {
+                            value: "compact",
+                            label: t("appearance_view.hover_row_height_compact"),
+                          },
+                          {
+                            value: "comfortable",
+                            label: t(
+                              "appearance_view.hover_row_height_comfortable",
+                            ),
+                          },
+                        ]}
+                      />
+                    </SettingRow>
+                    <SettingRow label={t("appearance_view.hover_image_size")}>
+                      <SegmentedControl
+                        className="shrink-0"
+                        value={hoverImageSize}
+                        onValueChange={(value) =>
+                          setHoverImageSize(value as "small" | "large")
+                        }
+                        options={[
+                          {
+                            value: "small",
+                            label: t("appearance_view.hover_image_size_small"),
+                          },
+                          {
+                            value: "large",
+                            label: t("appearance_view.hover_image_size_large"),
+                          },
+                        ]}
+                      />
+                    </SettingRow>
+                  </>
                 )}
                 {/* 按视图覆盖只在总开关选了「按视图单独设」时出现 ——
                     否则这里能和通用里的总开关打架（用户 2026-09-17 要求收口） */}
