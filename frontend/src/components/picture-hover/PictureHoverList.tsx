@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { HoverImg } from "@/components/block/hover-img";
 import { getEntryImages } from "@/lib/extract-images";
 import { formatRelativeTime } from "@/lib/date-utils";
+import { useUISettingKey } from "@/hooks/useUISettings";
 import type { Entry, Feed } from "@/types/api";
 import "./picture-hover.css";
 
@@ -42,6 +43,8 @@ export function PictureHoverList({
   imageSize = "small",
 }: PictureHoverListProps) {
   const { t } = useTranslation();
+  /* 29-4：多图切换触发开关（三个独立开关，只读不改键） */
+  const multiImageConfig = useUISettingKey("hoverMultiImage");
 
   // 28-7a：尺寸预设打成 data-* 属性，picture-hover.css 据此取值（上游原件不动）
   const sizeAttrs = {
@@ -64,7 +67,9 @@ export function PictureHoverList({
         return {
           title: entry.title?.trim() || "",
           label: [feed?.title, time].filter(Boolean).join(" · "),
+          /* 29-3：第一张保留做回退（单图行与原来一字一致），全部图走 imageSrcs */
           imageSrc: images[0] ?? "",
+          imageSrcs: images,
           // 沿用项目里 `/icons/<iconPath>` 的取法（上游没有这个字段）
           iconSrc: feed?.iconPath ? `/icons/${feed.iconPath}` : undefined,
         };
@@ -96,7 +101,7 @@ export function PictureHoverList({
   if (!onSelectEntry) {
     return (
       <div {...sizeAttrs}>
-        <HoverImg projects={projects} className="krss-hover-img" />
+        <HoverImg projects={projects} className="krss-hover-img" multiImageConfig={multiImageConfig} />
       </div>
     );
   }
@@ -120,7 +125,7 @@ export function PictureHoverList({
       data-testid="hover-entry-list"
       {...sizeAttrs}
     >
-      <HoverImg projects={projects} className="krss-hover-img" />
+      <HoverImg projects={projects} className="krss-hover-img" multiImageConfig={multiImageConfig} />
     </div>
   );
 }

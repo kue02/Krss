@@ -104,6 +104,22 @@
   object-fit: cover;
 }
 
+/* 29-3：同一条目多图时的横向 strip（translateX(-i*100%) + transition 切图，
+   无箭头/圆点/页码）。单图行不走这里，与原来一字一致。 */
+.hover-img-multi {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.3s ease;
+}
+
+.hover-img-multi img {
+  width: 100%;
+  height: 100%;
+  flex: none;
+  object-fit: cover;
+}
+
 /* Responsive */
 @media (max-width: 1024px) {
   .hover-img-project {
