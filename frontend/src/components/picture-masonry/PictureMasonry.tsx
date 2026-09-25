@@ -431,8 +431,11 @@ export function PictureMasonry({
             />
           </div>
         ) : isReady ? (
+          /* key 里必须带上 gridStyle：VirtuosoMasonry 只在 data / columnCount 这类输入变化时
+             重建内部项，换 ItemContent（新的 useCallback）它不理会 —— 表现为改了「网格 · 样式」
+             后已挂载的卡片不变，必须刷新整页才生效。带上样式即强制重建。 */
           <VirtuosoMasonry
-            key={`${filterKey}-${resolvedLayout}`}
+            key={`${filterKey}-${resolvedLayout}-${gridStyle}`}
             data={items}
             columnCount={currentColumn}
             ItemContent={MasonryItemContent}
