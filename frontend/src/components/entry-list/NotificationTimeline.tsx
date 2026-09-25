@@ -867,16 +867,16 @@ export function NotificationTimeline({
       {sections.map((section) => (
         /* 每段一层容器 = sticky 的作用域：本段滚完，日期行被段底边推走，下一段接替 */
         <div key={section.key} className="relative">
-          {/* 日期分隔行（用户 9-24 要吸顶 / 9-25 先做成居中胶囊 → 2026-09-25 复验后按用户
-              「位置和形态都回原来那样，唯一区别就是现在有吸顶了」回到 2423cda 那版）：
-              全宽条 + 同色半透底 + 轻微模糊 + 底部 1px inset 分隔线（不占布局，行高与间距不变）；
+          {/* 日期分隔行（用户 9-24 要吸顶 / 9-25 居中胶囊 → 2423cda 全宽条 → 2026-09-25
+              复验后按用户「要最早那版：纯一行文字、无底色、无分隔线」回到 2423cda 之前那版）：
+              只有一行文字（solid `bg-background` 小 pill 保住字底、无描边无投影），
+              不加底条、不加分隔线、不加模糊 —— 唯一保留的是 `sticky top-0` 吸顶。
               文字位置与胶囊前一致 —— 单栏左对齐到卡片列左缘（时间列 86px 之后）、交替布局居中。
               仍是段内 sticky（本段滚完被段底推走，下一段接替），只有当前吸顶的那条会浮起。 */}
           <div
             data-timeline-date={section.label}
-            style={{ boxShadow: "inset 0 -1px 0 var(--border)" }}
             className={cn(
-              "sticky top-0 z-10 flex items-center bg-background/85 py-3 backdrop-blur-md",
+              "sticky top-0 z-10 flex items-center py-3",
               singleSide ? "justify-start pl-[86px]" : "justify-center",
             )}
           >
