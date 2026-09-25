@@ -885,6 +885,7 @@ export function EntryList({
           isRefreshing={showRefreshing}
           refreshTotal={shownTotal}
           refreshCompleted={shownCompleted}
+          refreshStatus={globalRefreshStatus}
           scrollToTopScope="entrylist"
           isMobile={isMobile}
           onMenuClick={handleMenuClick}

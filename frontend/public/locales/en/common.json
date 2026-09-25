@@ -1195,6 +1195,19 @@
     "close": "Close",
     "item_skipped": "Skipped (backing off)"
   },
+  "refresh_tooltip": {
+    "refreshing": "Refreshing · {{completed}} / {{total}}",
+    "trigger_manual": "Manual",
+    "trigger_auto": "Scheduled",
+    "elapsed": "{{count}}s elapsed",
+    "no_new": "No new entries",
+    "failed": "Failed · {{reason}}",
+    "skipped": "Skipped",
+    "pending": "{{count}} feeds still queued",
+    "view_report": "View full report",
+    "last_summary": "Last refresh {{at}} · {{count}} feeds · {{added}} new",
+    "never": "Not refreshed yet"
+  },
   "common": {
     "loading": "Loading…"
   },

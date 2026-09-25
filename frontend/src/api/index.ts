@@ -619,6 +619,8 @@ export async function refreshFeeds(
 export interface RefreshStatus {
   isRefreshing: boolean;
   lastRefreshedAt?: string;
+  /** 本轮刷新开始时间（仅刷新中返回）—— 悬浮浮层算「已跑时长」用 */
+  startedAt?: string;
   /** 本次刷新要刷的源数（仅刷新中返回） */
   total?: number;
   /** 最近一轮刷新是谁触发的：manual（手动）/ auto（定时器）—— 12-17 */
@@ -627,7 +629,7 @@ export interface RefreshStatus {
   completed?: number;
   /**
    * 最近一轮刷新里每个订阅的结果（用户 11-8：刷新完要告诉用户「一共更新了多少条」并能看明细）。
-   * 后端只在刷新结束后带上（刷新中不带）。
+   * 刷新中带上的是**已完成部分**（悬浮浮层逐源显示用）；空闲时是完整结果（刷新结果弹框用）。
    */
   results?: RefreshFeedResult[];
 }

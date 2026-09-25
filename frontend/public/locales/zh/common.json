@@ -1192,6 +1192,19 @@
     "close": "关闭",
     "item_skipped": "已跳过（失败退避中）"
   },
+  "refresh_tooltip": {
+    "refreshing": "正在刷新 · {{completed}} / {{total}}",
+    "trigger_manual": "手动触发",
+    "trigger_auto": "定时触发",
+    "elapsed": "已跑 {{count}} 秒",
+    "no_new": "无新条目",
+    "failed": "失败 · {{reason}}",
+    "skipped": "已跳过",
+    "pending": "还有 {{count}} 个源排队中",
+    "view_report": "查看完整报告",
+    "last_summary": "上次刷新 {{at}} · {{count}} 源 · 新增 {{added}} 条",
+    "never": "还没有刷新过"
+  },
   "common": {
     "loading": "加载中…"
   },
