@@ -987,6 +987,7 @@ export function EntryList({
                   onCloseEntry={onCloseEntry}
                   granularity={timelineGranularity}
                   collapse={timelineCollapse}
+                  autoExpandLong={expandLongByView?.[contentType] ?? false}
                   timeBasis={timelineTimeBasis}
                   autoSingleSide={timelineAutoSingleSide}
                   autoTranslate={autoTranslate}

@@ -89,8 +89,9 @@ interface EntryListItemProps {
  *   - 未读 = 深色粗体标题，已读 = 整体降透明度
  *   - 顶部来源行（favicon + 源名 + 相对时间）、底部阅读时长
  */
-/** 社交媒体视图里长贴折叠高度（对齐 Folo 的 collapsedHeight = 300） */
-const SOCIAL_COLLAPSED_PX = 300;
+/** 社交媒体视图里长贴折叠高度（对齐 Folo 的 collapsedHeight = 300）。
+ * 通知视图的「长贴自动展开」复用同一判据（见 NotificationTimeline），保持语义一致。 */
+export const SOCIAL_COLLAPSED_PX = 300;
 const SOCIAL_COLLAPSED_HEIGHT = `${SOCIAL_COLLAPSED_PX}px`;
 /** Folo 的 mask-b-2xl：只在最后 90px 做淡出 */
 const SOCIAL_COLLAPSE_MASK =

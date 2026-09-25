@@ -19,6 +19,7 @@ vi.mock("react-i18next", () => ({
 // 卡片里的右键菜单是条目那条共用菜单（含 react-query 依赖），这里不测它
 vi.mock("./EntryListItem", () => ({
   EntryContextMenuContent: () => null,
+  SOCIAL_COLLAPSED_PX: 300,
 }));
 
 vi.mock("@/stores/translation-store", () => ({
@@ -293,6 +294,100 @@ describe("NotificationTimeline · 折叠 / 展开（15-3）", () => {
       if (clientHeightDescriptor) {
         Object.defineProperty(HTMLElement.prototype, "clientHeight", clientHeightDescriptor);
       }
+    }
+  });
+});
+
+describe("NotificationTimeline · 长贴自动展开（与社交视图同语义）", () => {
+  /**
+   * jsdom 不做布局（scrollHeight 恒为 0）→ 用桩控制「自然高度」，
+   * 卡片上报的正是这个值，父级拿它判长贴（> 300px）。
+   */
+  function stubNaturalHeight(height: number) {
+    const descriptor = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollHeight",
+    );
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get: () => height,
+    });
+    return () => {
+      if (descriptor) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "scrollHeight",
+          descriptor,
+        );
+      }
+    };
+  }
+
+  /** 很长的正文（自然高度一定超 300px，判据走高度桩、不走字数） */
+  function longEntry(): Entry {
+    return entry("long", localIso(18, 14, 10), {
+      content: `<p>${"很长的正文 ".repeat(200)}</p>`,
+    });
+  }
+
+  it("开关关时按档位钳制（长贴也不展开）", () => {
+    const restore = stubNaturalHeight(800);
+    try {
+      const { container } = renderTimeline([longEntry()], {
+        collapse: "2",
+        autoExpandLong: false,
+      });
+      const body = container.querySelector<HTMLElement>("[data-timeline-body]");
+      expect(body?.dataset.timelineBody).toBe("2");
+      expect(body?.style.webkitLineClamp).toBe("2");
+    } finally {
+      restore();
+    }
+  });
+
+  it("开关开 + 长贴不钳制（全文显示、不出展开按钮）", () => {
+    const restore = stubNaturalHeight(800);
+    try {
+      const { container } = renderTimeline([longEntry()], {
+        collapse: "2",
+        autoExpandLong: true,
+      });
+      const body = container.querySelector<HTMLElement>("[data-timeline-body]");
+      expect(body?.dataset.timelineBody).toBe("full");
+      expect(body?.style.webkitLineClamp).toBe("");
+      expect(container.querySelector("[data-timeline-expand]")).toBeNull();
+    } finally {
+      restore();
+    }
+  });
+
+  it("开关开 + 短贴仍按档位钳制", () => {
+    const restore = stubNaturalHeight(40);
+    try {
+      const { container } = renderTimeline([longEntry()], {
+        collapse: "2",
+        autoExpandLong: true,
+      });
+      const body = container.querySelector<HTMLElement>("[data-timeline-body]");
+      expect(body?.dataset.timelineBody).toBe("2");
+      expect(body?.style.webkitLineClamp).toBe("2");
+    } finally {
+      restore();
+    }
+  });
+
+  it("高度没量出来前按短贴处理（不先展开再塌回）", () => {
+    const restore = stubNaturalHeight(0);
+    try {
+      const { container } = renderTimeline([longEntry()], {
+        collapse: "2",
+        autoExpandLong: true,
+      });
+      const body = container.querySelector<HTMLElement>("[data-timeline-body]");
+      expect(body?.dataset.timelineBody).toBe("2");
+      expect(body?.style.webkitLineClamp).toBe("2");
+    } finally {
+      restore();
     }
   });
 });

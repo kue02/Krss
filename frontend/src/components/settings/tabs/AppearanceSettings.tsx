@@ -784,7 +784,7 @@ export function AppearanceSettings() {
                     ]}
                   />
                 </SettingRow>
-                {view === "social" && (
+                {(view === "social" || view === "notification") && (
                   <SettingRow label={t("appearance_view.expand_long")}>
                     <SegmentedControl
                       className="shrink-0"

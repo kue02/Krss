@@ -8,7 +8,7 @@ import { stripHtml } from "@/lib/html-utils";
 import { FeedIcon } from "@/components/ui/feed-icon";
 import { ArticleContent } from "@/components/ui/article-content";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
-import { EntryContextMenuContent } from "./EntryListItem";
+import { EntryContextMenuContent, SOCIAL_COLLAPSED_PX } from "./EntryListItem";
 import { UnreadIndicator, unreadRowClass } from "./unread-indicator";
 import { useMarkAsRead } from "@/hooks/useEntries";
 import { deferEntryRemoval } from "./deferred-removal";
@@ -134,6 +134,10 @@ interface TimelineCardProps {
   bucketCount: number;
   clampLines: number | null;
   expanded: boolean;
+  /** 「长贴自动展开」：该条目是长贴时不钳制（与社交视图同一开关语义） */
+  autoExpandLongEntry?: boolean;
+  /** 把预览正文的自然高度上报给父级（= 不钳制时的渲染高度，长贴判据用） */
+  onNaturalHeightChange?: (entryId: string, height: number) => void;
   onToggleExpand: (entryId: string) => void;
   onSelect: (entryId: string) => void;
   /** 24-5：右键「标记上方为已读」（与卡片列表同一套菜单） */
@@ -166,6 +170,8 @@ const TimelineCard = memo(function TimelineCard({
   bucketCount,
   clampLines,
   expanded,
+  autoExpandLongEntry = false,
+  onNaturalHeightChange,
   onToggleExpand,
   onSelect,
   onMarkAbove,
@@ -201,9 +207,23 @@ const TimelineCard = memo(function TimelineCard({
   }, [entry.content, displayTitle]);
 
   // 折叠态下正文是否真的被截断（用 scrollHeight 判定，图片异步加载会改高度 → 复测一次）
+  // 另把自然高度（= 不钳制时的渲染高度）上报给父级：父级拿它判「长贴」（> 300px），
+  // 口径与社交视图的 scrollHeight > 300 + 8 等价 —— 读的是同一段预览 DOM 的 scrollHeight，
+  // 不摘 clamp、不改视觉、不挂常驻 observer（只量两次）。
   useEffect(() => {
     const node2 = bodyRef.current;
-    if (!node2 || clampLines === null) {
+    if (onNaturalHeightChange) {
+      const report = () => onNaturalHeightChange(entry.id, node2?.scrollHeight ?? 0);
+      report();
+      const retry = setTimeout(report, 400);
+      return () => clearTimeout(retry);
+    }
+    return undefined;
+  }, [entry.id, previewText, clampLines, onNaturalHeightChange]);
+  useEffect(() => {
+    const node2 = bodyRef.current;
+    // 「长贴自动展开」命中的条目不再钳制：截断判定直接回短贴，展开按钮也不出
+    if (!node2 || clampLines === null || autoExpandLongEntry) {
       setIsClipped(false);
       return;
     }
@@ -211,9 +231,10 @@ const TimelineCard = memo(function TimelineCard({
     measure();
     const retry = setTimeout(measure, 400);
     return () => clearTimeout(retry);
-  }, [previewText, clampLines]);
+  }, [previewText, clampLines, autoExpandLongEntry]);
 
-  const canExpand = clampLines !== null;
+  const effectiveClampLines = autoExpandLongEntry ? null : clampLines;
+  const canExpand = effectiveClampLines !== null;
   const showToggle = canExpand && (isClipped || expanded);
   const feedName = feed?.title || t("entry.unknown_feed");
   // 24-8：展开态是「正文级完整渲染」而不是去掉 clamp —— 有全文才进展开容器
@@ -370,17 +391,19 @@ const TimelineCard = memo(function TimelineCard({
               {previewText && (
                 <div
                   ref={bodyRef}
-                  data-timeline-body={clampLines === null ? "full" : String(clampLines)}
+                  data-timeline-body={
+                    effectiveClampLines === null ? "full" : String(effectiveClampLines)
+                  }
                   className={cn(
                     "mt-1 text-[12.5px] leading-5 text-muted-foreground wrap-anywhere",
                     !isUnread && "text-muted-foreground/70",
                   )}
                   style={
-                    clampLines !== null && !expanded
+                    effectiveClampLines !== null && !expanded
                       ? {
                           display: "-webkit-box",
                           WebkitBoxOrient: "vertical",
-                          WebkitLineClamp: clampLines,
+                          WebkitLineClamp: effectiveClampLines,
                           overflow: "hidden",
                         }
                       : undefined
@@ -470,6 +493,8 @@ export interface NotificationTimelineProps {
   onCloseEntry?: () => void;
   granularity: TimelineGranularity;
   collapse: TimelineCollapse;
+  /** 「长贴自动展开」开关（通知视图槽位，与社交视图同一语义） */
+  autoExpandLong?: boolean;
   /** 26-2：时间基准（发布时间 / 抓取时间），默认发布时间 = 现状 */
   timeBasis?: TimelineTimeBasis;
   /** 窄栏自动合一栏（默认开；关掉则始终左右交替） */
@@ -493,6 +518,7 @@ export function NotificationTimeline({
   onCloseEntry,
   granularity,
   collapse,
+  autoExpandLong = false,
   timeBasis,
   autoSingleSide = true,
   autoTranslate,
@@ -504,6 +530,29 @@ export function NotificationTimeline({
   const width = useContainerWidth(containerRef);
   const singleSide = autoSingleSide && isSingleSideWidth(width);
   const clampLines = timelineCollapseClampLines(collapse);
+  /**
+   * 「长贴自动展开」的长贴判据 —— 与社交视图同一口径（渲染高度 > 300px）。
+   *
+   * 做法：各卡片把自己的预览正文**自然高度**（scrollHeight = 不钳制时的渲染高度）
+   * 上报到这里，父级只记一个 id → 高度的 map，比 300 即得结论。
+   *   - 量的是**卡片里真实挂载的那段预览 DOM**（同字号/同行高/同列宽），只是读它的
+   *     scrollHeight 而不是 clientHeight —— 读 scrollHeight 不需要摘 clamp，
+   *     卡片视觉上仍是钳制态，不闪；
+   *   - 没量出来之前按短贴处理（保持现有行为，不先展开再塌回）；
+   *   - 上报只在「预览文本 / 钳制行数 / 开关」变化时跑一次 + 400ms 后复测一次
+   *     （对齐社交视图的图片异步复测），没有常驻 ResizeObserver，不影响滚动。
+   */
+  const [naturalHeights, setNaturalHeights] = useState<Record<string, number>>({});
+  const handleNaturalHeightChange = useCallback(
+    (entryId: string, height: number) => {
+      setNaturalHeights((current) =>
+        current[entryId] === height
+          ? current
+          : { ...current, [entryId]: height },
+      );
+    },
+    [],
+  );
   /** 26-2：时间基准（缺值一律回发布时间 = 现状） */
   const basis = resolveTimelineTimeBasis(timeBasis);
 
@@ -604,6 +653,14 @@ export function NotificationTimeline({
   useEffect(() => {
     setExpandedClusters(new Set());
   }, [granularity, timeBasis, entries]);
+  // 换一批条目时上一批的自然高度作废（id → 高度是按条目记的，不清会串）；
+  // 跳过首轮挂载 —— 挂载时子卡片的上报 effect 先跑，父级清零后跑会把刚上报的盖掉
+  const prevEntriesRef = useRef(entries);
+  useEffect(() => {
+    if (prevEntriesRef.current === entries) return;
+    prevEntriesRef.current = entries;
+    setNaturalHeights({});
+  }, [entries]);
 
   const rows = useMemo(
     () =>
@@ -746,6 +803,11 @@ export function NotificationTimeline({
             node={row.node}
             bucketCount={row.bucketCount}
             clampLines={clampLines}
+            autoExpandLongEntry={
+              autoExpandLong &&
+              (naturalHeights[entry.id] ?? 0) > SOCIAL_COLLAPSED_PX
+            }
+            onNaturalHeightChange={handleNaturalHeightChange}
             expanded={
               expandedEntries.has(entry.id) || entry.id === selectedEntryId
             }
