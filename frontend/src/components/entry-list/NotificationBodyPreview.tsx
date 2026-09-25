@@ -8,16 +8,32 @@ import type { Entry } from "@/types/api";
 /**
  * 通知视图 · 悬停正文浮块（29-1）。
  *
- * - 跟随指针：照 `components/block/hover-img.tsx` 那套（`position: fixed` +
- *   `xPercent/yPercent: -50` + `gsap.quickTo` + 进场 scale）；
+ * - 定位：进场用**鼠标进入卡片那一刻的坐标**（`anchor`）直接落到视口内并夹紧，
+ *   不依赖后续 mousemove —— 否则指针停在卡片上不动时浮块会待在 (0,0) 左上角外；
+ * - 跟随：`position: fixed` + `xPercent/yPercent: -50` + `gsap.quickTo`（照
+ *   `components/block/hover-img.tsx`）；**指针一旦进入浮块就停止跟随**，
+ *   否则浮块被指针顶着走，人移不进去（滚动/选中/点链接全废）；
  * - 鼠标可移进：`pointer-events: auto`，开关由上层用 250ms 延迟控制
  *  （照 `components/entry-list/RefreshTooltip.tsx` 同款：进入清 timer，离开起 timer）；
  * - 浮块卸载 = 直接从 DOM 撤掉，不留透明层；
  * - 正文用与卡片展开态同一套 `ArticleContent` 管道；
  * - 外观沿用项目浮层语言（圆角 / border / bg-card / 重投影），不自创新风格。
  */
+/** 把浮块钉在视口内：半个浮块 + 8px 边距，指针贴边时也不会露出视口 */
+function clampToViewport(node: HTMLElement, x: number, y: number): [number, number] {
+  const halfW = node.offsetWidth / 2;
+  const halfH = node.offsetHeight / 2;
+  const maxX = window.innerWidth - halfW - 8;
+  const maxY = window.innerHeight - halfH - 8;
+  return [
+    Math.min(Math.max(x, halfW + 8), Math.max(maxX, halfW + 8)),
+    Math.min(Math.max(y, halfH + 8), Math.max(maxY, halfH + 8)),
+  ];
+}
+
 export function NotificationBodyPreview({
   entry,
+  anchor,
   feedName,
   autoTranslate,
   targetLanguage,
@@ -25,6 +41,8 @@ export function NotificationBodyPreview({
   onMouseLeave,
 }: {
   entry: Entry;
+  /** 进入卡片时的指针坐标（浮块的初始落点） */
+  anchor: { x: number; y: number };
   feedName: string;
   autoTranslate: boolean;
   targetLanguage: string;
@@ -43,31 +61,24 @@ export function NotificationBodyPreview({
   useEffect(() => {
     const node = floatRef.current;
     if (!node) return;
-    gsap.set(node, { scale: 0.96, xPercent: -50, yPercent: -50, opacity: 0 });
+    // 先落到进入卡片那一刻的指针位置（夹紧在视口内），再 scaled 进场
+    const [x0, y0] = clampToViewport(node, anchor.x, anchor.y);
+    gsap.set(node, { x: x0, y: y0, scale: 0.96, xPercent: -50, yPercent: -50, opacity: 0 });
     const xTo = gsap.quickTo(node, "x", { duration: 0.4, ease: "power3.out" });
     const yTo = gsap.quickTo(node, "y", { duration: 0.4, ease: "power3.out" });
-    // 首帧先落到当前指针位置，免得从 (0,0) 飞过来
-    if (typeof window !== "undefined" && "_lastHoverXY" in window) {
-      const xy = (window as unknown as { _lastHoverXY?: [number, number] })._lastHoverXY;
-      if (xy) {
-        xTo(xy[0]);
-        yTo(xy[1]);
-      }
-    }
     const handleMove = (event: MouseEvent) => {
       // 指针已经进了浮块就不再跟随 —— 否则浮块永远被指针「顶着」走，
       // 人根本移不进去（滚轮也许还能滚，但拖选文字、点链接、拖滚动条全废）。
       if (event.target instanceof Node && node.contains(event.target)) return;
-      (window as unknown as { _lastHoverXY?: [number, number] })._lastHoverXY = [
-        event.clientX,
-        event.clientY,
-      ];
-      xTo(event.clientX);
-      yTo(event.clientY);
+      const [x, y] = clampToViewport(node, event.clientX, event.clientY);
+      xTo(x);
+      yTo(y);
     };
     window.addEventListener("mousemove", handleMove);
     gsap.to(node, { scale: 1, opacity: 1, duration: 0.25, ease: "power2.out" });
     return () => window.removeEventListener("mousemove", handleMove);
+    // anchor 只在挂载那一刻取用（换条目走 key 重新挂载）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

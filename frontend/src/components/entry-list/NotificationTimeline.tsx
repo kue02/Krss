@@ -141,7 +141,7 @@ interface TimelineCardProps {
   expanded: boolean;
   /** 29-1：正文悬停档 —— 卡片只留来源行 + 标题，不渲染正文/展开按钮/拖高手柄 */
   bodyOnHover?: boolean;
-  onHoverEnter?: (entryId: string) => void;
+  onHoverEnter?: (entryId: string, x: number, y: number) => void;
   onHoverLeave?: () => void;
   /** 「长贴自动展开」：该条目是长贴时不钳制（与社交视图同一开关语义） */
   autoExpandLongEntry?: boolean;
@@ -300,7 +300,11 @@ const TimelineCard = memo(function TimelineCard({
           data-timeline-side={side}
           data-body-on-hover={bodyOnHover ? "true" : undefined}
           onClick={() => onSelect(entry.id)}
-          onMouseEnter={bodyOnHover ? () => onHoverEnter?.(entry.id) : undefined}
+          onMouseEnter={
+            bodyOnHover
+              ? (event) => onHoverEnter?.(entry.id, event.clientX, event.clientY)
+              : undefined
+          }
           onMouseLeave={bodyOnHover ? () => onHoverLeave?.() : undefined}
           className={cn(
             "group relative cursor-pointer overflow-hidden rounded-[10px] border p-2.5 transition-[background-color,border-color,box-shadow,opacity] duration-200",
@@ -594,10 +598,15 @@ export function NotificationTimeline({
   const hoverMode = bodyOnHover && !coarsePointer;
 
   /**
-   * 29-1：悬停浮块状态 —— 卡片 enter 立开，卡片 leave / 浮块 leave 起 250ms
-   * 延迟关（RefreshTooltip 同款），浮块 enter 清 timer。
+   * 29-1：悬停浮块状态 —— 卡片 enter 立开（锚点取 mouseenter 事件自带的坐标：
+   * 指针停在卡片上不动时也必须先出现在正确位置，不能等下一次 mousemove），
+   * 卡片 leave / 浮块 leave 起 250ms 延迟关（RefreshTooltip 同款），浮块 enter 清 timer。
    */
-  const [hoverEntryId, setHoverEntryId] = useState<string | null>(null);
+  const [hoverAnchor, setHoverAnchor] = useState<{
+    id: string;
+    x: number;
+    y: number;
+  } | null>(null);
   const hoverCloseTimer = useRef<number | null>(null);
   const cancelHoverClose = useCallback(() => {
     if (hoverCloseTimer.current !== null) {
@@ -606,20 +615,20 @@ export function NotificationTimeline({
     }
   }, []);
   const openHover = useCallback(
-    (entryId: string) => {
+    (entryId: string, x: number, y: number) => {
       cancelHoverClose();
-      setHoverEntryId(entryId);
+      setHoverAnchor({ id: entryId, x, y });
     },
     [cancelHoverClose],
   );
   const scheduleHoverClose = useCallback(() => {
     cancelHoverClose();
-    hoverCloseTimer.current = window.setTimeout(() => setHoverEntryId(null), 250);
+    hoverCloseTimer.current = window.setTimeout(() => setHoverAnchor(null), 250);
   }, [cancelHoverClose]);
   useEffect(() => cancelHoverClose, [cancelHoverClose]);
   // 换一批条目 / 退出悬停档时撤掉浮块（直接从 DOM 撤，不留透明层）
   useEffect(() => {
-    if (!hoverMode) setHoverEntryId(null);
+    if (!hoverMode) setHoverAnchor(null);
   }, [hoverMode, entries]);
 
   const [expandedClusters, setExpandedClusters] = useState<ReadonlySet<string>>(
@@ -1015,13 +1024,14 @@ export function NotificationTimeline({
         </div>
       ))}
       {/* 29-1：悬停正文浮块 —— 移出后直接从 DOM 撤掉，不留透明层挡点击 */}
-      {hoverMode && hoverEntryId
+      {hoverMode && hoverAnchor
         ? (() => {
-            const hoverEntry = entries.find((item) => item.id === hoverEntryId);
+            const hoverEntry = entries.find((item) => item.id === hoverAnchor.id);
             return hoverEntry ? (
               <NotificationBodyPreview
                 key={hoverEntry.id}
                 entry={hoverEntry}
+                anchor={{ x: hoverAnchor.x, y: hoverAnchor.y }}
                 feedName={
                   feeds.get(hoverEntry.feedId)?.title ?? t("entry.unknown_feed")
                 }
