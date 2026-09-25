@@ -687,19 +687,14 @@ export function NotificationTimeline({
       {sections.map((section) => (
         /* 每段一层容器 = sticky 的作用域：本段滚完，日期行被段底边推走，下一段接替 */
         <div key={section.key} className="relative">
-          {/* 日期分隔行（用户 9-24）：段内吸顶。全宽条 + 同色背景 + 轻微模糊 +
-              底部 1px inset 分隔线（不占布局，行高与间距与原来一致），卡片穿过不糊 */}
+          {/* 日期分隔行（用户 9-24 要吸顶 / 9-25 定形态：草图**变体 B 居中胶囊**）——
+              只有胶囊自己有底色/描边/投影，两侧不铺横条；浮动在列表上方，
+              卡片从下面穿过。仍旧是段内 sticky：本段滚完被段底推走，下一段接替。 */}
           <div
             data-timeline-date={section.label}
-            style={{ boxShadow: "inset 0 -1px 0 var(--border)" }}
-            className={cn(
-              "sticky top-0 z-10 flex items-center bg-background/85 py-3 backdrop-blur-md",
-              singleSide ? "justify-start pl-[86px]" : "justify-center",
-            )}
+            className="sticky top-2 z-10 mx-auto flex w-max items-center rounded-full border border-border bg-background/95 px-3 py-[3px] text-[11.5px] font-semibold tabular-nums shadow-[0_6px_16px_rgba(0,0,0,0.10)] backdrop-blur-md"
           >
-            <span className="rounded-full bg-background px-2 text-[11.5px] font-semibold tabular-nums text-foreground">
-              {section.label}
-            </span>
+            {section.label}
           </div>
 
           {section.rows.map((row) => {

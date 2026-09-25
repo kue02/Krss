@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Popover, ProgressBar } from "@heroui/react";
 import { FeedAvatar } from "@/components/ui/feed-avatar";
@@ -47,6 +47,29 @@ export function RefreshTooltip({
   const { t } = useTranslation();
   const openReport = useRefreshReportStore((state) => state.open);
   const [open, setOpen] = useState(false);
+  const closeTimer = useRef<number | null>(null);
+
+  // 悬停开/关必须「热区连续 + 延迟关」：
+  // 之前 Trigger 与 Dialog 各自直接 onMouseEnter/Leave 开关，而 Popover.Content 的 offset 默认
+  // 是 8px —— 按钮和浮层之间留了一条 8px 缝隙。鼠标从按钮移向浮层会跨过它：leave 关掉浮层，
+  // 指针随即落回按钮又 enter 打开，如此往复 = 不停闪动（用户 9-25 反馈）。
+  // 现在 offset={0}，视觉间距改由浮层自身的内边距提供（padding 仍在浮层热区内，无缝），
+  // 关闭再加 250ms 延迟兜住手抖。
+  const cancelClose = () => {
+    if (closeTimer.current !== null) {
+      window.clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  };
+  const openNow = () => {
+    cancelClose();
+    setOpen(true);
+  };
+  const scheduleClose = () => {
+    cancelClose();
+    closeTimer.current = window.setTimeout(() => setOpen(false), 250);
+  };
+  useEffect(() => cancelClose, []);
 
   const refreshing = Boolean(status?.isRefreshing);
   const total = status?.total ?? 0;
@@ -65,17 +88,15 @@ export function RefreshTooltip({
 
   return (
     <Popover.Root isOpen={open} onOpenChange={setOpen}>
-      <Popover.Trigger
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
-      >
+      <Popover.Trigger onMouseEnter={openNow} onMouseLeave={scheduleClose}>
         {children}
       </Popover.Trigger>
-      <Popover.Content placement="bottom" className="w-80">
+      {/* offset=0 + pt-2：把 8px 视觉间距做成浮层的内边距，鼠标全程在热区内，不再闪 */}
+      <Popover.Content placement="bottom" offset={0} className="w-80 pt-2">
         <Popover.Dialog
           className="p-3"
-          onMouseEnter={() => setOpen(true)}
-          onMouseLeave={() => setOpen(false)}
+          onMouseEnter={openNow}
+          onMouseLeave={scheduleClose}
         >
           {refreshing ? (
             <>

@@ -248,23 +248,10 @@ export function formatClockTime(ms: number): string {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-/** 日期分隔 / 每天粒度的标注：今天 / 昨天 / 9月16日 周二 */
-/** 中文数字（1→一、10→十、14→十四、24→二十四），用于「九月十四日」这类完整日期 */
-const CN_DIGITS = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
-export function chineseNumber(value: number): string {
-  if (!Number.isInteger(value) || value <= 0 || value > 99) return String(value);
-  if (value < 10) return CN_DIGITS[value] ?? String(value);
-  if (value === 10) return "十";
-  const tens = Math.floor(value / 10);
-  const ones = value % 10;
-  const head = tens === 1 ? "十" : `${CN_DIGITS[tens]}十`;
-  return ones === 0 ? head : `${head}${CN_DIGITS[ones]}`;
-}
-
 /**
- * 日期分隔行文案（用户 9-24）：要能一眼读出「几月几号」——
- * 中文写成完整全称「九月十四日 周一」；今天/昨天在最前面带相对词
- * （「今天 · 九月二十四日 周三」），吸顶时既知道是哪天、也知道是几号。
+ * 日期分隔 / 每天粒度的标注（用户 9-24）：要能一眼读出「几月几号」，所以带上星期；
+ * 格式按用户 9-25 的要求用阿拉伯数字「9月7日 周一」（不要「九月六日」这种中文数字）；
+ * 今天/昨天在最前面带相对词（「今天 · 9月25日 周五」），吸顶时既知道哪天也知道几号。
  */
 export function formatDayLabel(
   ms: number,
@@ -275,7 +262,7 @@ export function formatDayLabel(
   const date = new Date(ms);
   const isZh = (locale ?? "").toLowerCase().startsWith("zh");
   const full = isZh
-    ? `${chineseNumber(date.getMonth() + 1)}月${chineseNumber(date.getDate())}日 周${"日一二三四五六"[date.getDay()]}`
+    ? `${date.getMonth() + 1}月${date.getDate()}日 周${"日一二三四五六"[date.getDay()]}`
     : date.toLocaleDateString(locale, {
         month: "long",
         day: "numeric",

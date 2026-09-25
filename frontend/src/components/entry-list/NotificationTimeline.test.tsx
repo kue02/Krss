@@ -163,8 +163,8 @@ describe("NotificationTimeline · 主干形态（15-1）", () => {
     const { container } = renderTimeline(entries);
     const dates = Array.from(container.querySelectorAll("[data-timeline-date]"));
     expect(dates.map((node) => (node as HTMLElement).dataset.timelineDate)).toEqual([
-      "timeline.today · 九月十八日 周五",
-      "timeline.yesterday · 九月十七日 周四",
+      "timeline.today · 9月18日 周五",
+      "timeline.yesterday · 9月17日 周四",
     ]);
     expect(dates.every((node) => node.querySelector("[data-entry-id]") === null)).toBe(true);
   });
@@ -430,12 +430,17 @@ describe("NotificationTimeline · 日期吸顶（26-1 重做）", () => {
     for (const date of dates) {
       // 原生 sticky 吸顶：无 scroll 监听、无 fixed，定位纯 CSS
       expect(date.className).toContain("sticky");
-      expect(date.className).toContain("top-0");
-      // 行高与间距与原来一致（py-3），不是吸顶顺手改的
-      expect(date.className).toContain("py-3");
+      // 悬浮位置略低于顶边（胶囊会「飘」在列表上方）
+      expect(date.className).toContain("top-2");
+      // 形态 = 居中胶囊（用户 9-25 在草图变体 A/B 里选了 B）：
+      // 只有胶囊自己有底色/描边/投影，两侧不铺横条
+      expect(date.className).toContain("rounded-full");
+      expect(date.className).toContain("mx-auto");
+      expect(date.className).toContain("w-max");
+      expect(date.className).toContain("border");
+      expect(date.className).not.toContain("justify-center");
+      expect(date.className).not.toContain("pl-[86px]");
     }
-    // 交替布局下日期行居中（单侧才是 pl-[86px] 左对齐）
-    expect(dates[0]?.className).toContain("justify-center");
   });
 
   it("日期行不挡卡片点击：自身不是按钮、无 pointer 事件拦截", () => {

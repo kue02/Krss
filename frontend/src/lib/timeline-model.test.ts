@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   bucketStartMs,
   buildTimelineRows,
-  chineseNumber,
   entryTimestampByBasis,
   expandTimelineRows,
   formatBucketLabel,
@@ -152,9 +151,9 @@ describe("timeline-model · 行序列", () => {
     const dates = rows.filter((row) => row.kind === "date");
     // 用户 9-24：日期分隔要读到「几月几号」，今天/昨天带相对词前缀
     expect(dates.map((row) => (row.kind === "date" ? row.label : ""))).toEqual([
-      "timeline.today · 九月十八日 周五",
-      "timeline.yesterday · 九月十七日 周四",
-      "九月十六日 周三",
+      "timeline.today · 9月18日 周五",
+      "timeline.yesterday · 9月17日 周四",
+      "9月16日 周三",
     ]);
     // 日期分隔插在当天的第一条之前
     expect(kinds(rows)).toEqual(["date", "entry", "date", "entry", "date", "entry"]);
@@ -190,7 +189,7 @@ describe("timeline-model · 行序列", () => {
     expect(majorsOf("minute")).toEqual(["14:47", "14:46", "14:12", "13:59"]);
     expect(majorsOf("quarter")).toEqual(["14:45", "14:00", "13:45"]);
     expect(majorsOf("hour")).toEqual(["14:00", "13:00"]);
-    expect(majorsOf("day")).toEqual(["timeline.today · 九月十八日 周五"]);
+    expect(majorsOf("day")).toEqual(["timeline.today · 9月18日 周五"]);
   });
 
   it("同一个桶太密集时吸成小节点 + 计数（每天档：6 条 → 3 张卡 + 一簇 3 条）", () => {
@@ -435,9 +434,9 @@ describe("timeline-model · 日期分段（吸顶的作用域）", () => {
     });
     const sections = splitTimelineSections(rows);
     expect(sections.map((section) => section.label)).toEqual([
-      "timeline.today · 九月十八日 周五",
-      "timeline.yesterday · 九月十七日 周四",
-      "九月十六日 周三",
+      "timeline.today · 9月18日 周五",
+      "timeline.yesterday · 9月17日 周四",
+      "9月16日 周三",
     ]);
     // 内容行一条不落：段内行的总数 = 原行序列里非日期行（类型上段内已不含日期行）
     expect(sections.flatMap((section) => section.rows)).toHaveLength(
@@ -465,17 +464,3 @@ describe("timeline-model · 日期分段（吸顶的作用域）", () => {
   });
 });
 
-describe("chineseNumber（「九月十四日」这样的完整日期）", () => {
-  it("一 / 九 / 十 / 十一 / 十四 / 二十 / 二十四 / 三十一", () => {
-    expect([1, 9, 10, 11, 14, 20, 24, 31].map(chineseNumber)).toEqual([
-      "一",
-      "九",
-      "十",
-      "十一",
-      "十四",
-      "二十",
-      "二十四",
-      "三十一",
-    ]);
-  });
-});
