@@ -165,14 +165,29 @@ describe("悬停大图多图切换（29-3 / 29-4）", () => {
     expect(stripOf(0)?.getAttribute("data-img-index")).toBe("0");
   });
 
-  it("浮块 data-float-hover：行悬停中为 true（可进浮块），与行记忆独立", () => {
+  it("浮块 data-float-hover：两个开关全关时不吃指针；开了且行悬停中才 true（反证）", () => {
+    // 默认只开 rowWheel ⇒ 浮块是纯跟随预览，指针照常穿过去（不挡列表点击/滚动）
     render(<HoverImg projects={projects} />);
     const wrapper = document.querySelector(".hover-img-thumbnail-wrapper")!;
     const rows = document.querySelectorAll(".hover-img-project");
     fireEvent.mouseEnter(rows[0]!);
-    expect(wrapper.getAttribute("data-float-hover")).toBe("true");
+    expect(wrapper.getAttribute("data-float-hover")).toBe("false");
     expect(wrapper.getAttribute("data-active-row")).toBe("0");
     // 可断言测试库能定位到浮块（真机用 data 属性读索引）
     expect(screen.getByText("multi")).not.toBeNull();
+    cleanup();
+
+    // floatWheel 开 + 行悬停中 ⇒ 浮块吃指针（鼠标能进去、滚轮/横滑有地方落）
+    render(
+      <HoverImg
+        projects={projects}
+        multiImageConfig={{ rowWheel: true, floatWheel: true, hSwipe: false }}
+      />,
+    );
+    const wrapper2 = document.querySelector(".hover-img-thumbnail-wrapper")!;
+    const rows2 = document.querySelectorAll(".hover-img-project");
+    fireEvent.mouseEnter(rows2[0]!);
+    expect(wrapper2.getAttribute("data-float-hover")).toBe("true");
+    expect(wrapper2.getAttribute("data-active-row")).toBe("0");
   });
 });
