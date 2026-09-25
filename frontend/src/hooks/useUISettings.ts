@@ -37,6 +37,18 @@ export type QuoteStyle = "block" | "divider" | "card";
  */
 export type ArticleLayout = "list" | "hover";
 /**
+ * 29-4（用户 2026-09-25）：「悬停大图」档下一篇文章多图时的切换触发方式。
+ * 三个独立开关，可任意组合（用户原话：「3 个都做成可配置项」）：
+ *  - rowWheel   鼠标停在那一行上滚轮 = 切图（这一下不吃列表滚动）
+ *  - floatWheel 鼠标移进浮块后滚轮 = 切图（行上的滚轮仍滚列表）
+ *  - hSwipe     鼠标横向滑动 = 上一张 / 下一张
+ */
+export type HoverMultiImageConfig = {
+  rowWheel: boolean;
+  floatWheel: boolean;
+  hSwipe: boolean;
+};
+/**
  * 已读/未读的全局统一标记（用户 11-14）：
  *   badge = HeroUI `Badge` 角标（**用户拍板的默认**）
  *   dot   = 小圆点（原来只有社交媒体视图有）
@@ -162,6 +174,8 @@ interface UISettings {
    */
   hoverRowHeight: "compact" | "comfortable";
   hoverImageSize: "small" | "large";
+  /** 29-4：悬停大图档「多图切换」的三个触发开关（默认只开行上滚轮） */
+  hoverMultiImage: HoverMultiImageConfig;
   /**
    * 文章视图第二栏的排布：list = 卡片列表（默认）；hover = 悬停大图（同图片视图第三档形态）。
    * reader-transition 批新增（用户 2026-09-25）。
@@ -468,6 +482,7 @@ export const defaultUISettings: UISettings = {
   gridStyle: "masonry",
   hoverRowHeight: "compact",
   hoverImageSize: "small",
+  hoverMultiImage: { rowWheel: true, floatWheel: false, hSwipe: false },
   articleLayout: "list",
   cardImageSize: "small",
   cardPreviewLines: 2,
