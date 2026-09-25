@@ -303,6 +303,9 @@ export function EntryList({
   /** 窄栏自动合一栏（默认开；关掉则始终左右交替） */
   const timelineAutoSingleSide =
     useUISettingKey("timelineSingleSideByView")?.[contentType] !== false;
+  /** 29-1：正文悬停档（默认 false = 现状一字不改） */
+  const notificationBodyOnHover =
+    useUISettingKey("notificationBodyOnHover") ?? false;
   /**
    * 轴上可选的条目（被吸进小节点的条目不算节点）：时间线组件回报上来，
    * 键盘 j/k、↑/↓ 就用它做吸附顺序 —— 不会选到看不见的条目。
@@ -1012,6 +1015,7 @@ export function EntryList({
                   autoExpandLong={expandLongByView?.[contentType] ?? false}
                   timeBasis={timelineTimeBasis}
                   autoSingleSide={timelineAutoSingleSide}
+                  bodyOnHover={notificationBodyOnHover}
                   autoTranslate={autoTranslate}
                   targetLanguage={targetLanguage}
                   onSelectableEntriesChange={setTimelineSelectableEntries}

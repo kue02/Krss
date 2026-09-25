@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { stripHtml } from "@/lib/html-utils";
 import { FeedIcon } from "@/components/ui/feed-icon";
 import { ArticleContent } from "@/components/ui/article-content";
+import { NotificationBodyPreview } from "./NotificationBodyPreview";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import {
   EntryContextMenuContent,
@@ -138,6 +139,10 @@ interface TimelineCardProps {
   bucketCount: number;
   clampLines: number | null;
   expanded: boolean;
+  /** 29-1：正文悬停档 —— 卡片只留来源行 + 标题，不渲染正文/展开按钮/拖高手柄 */
+  bodyOnHover?: boolean;
+  onHoverEnter?: (entryId: string) => void;
+  onHoverLeave?: () => void;
   /** 「长贴自动展开」：该条目是长贴时不钳制（与社交视图同一开关语义） */
   autoExpandLongEntry?: boolean;
   /** 把预览正文的自然高度上报给父级（= 不钳制时的渲染高度，长贴判据用） */
@@ -174,6 +179,9 @@ const TimelineCard = memo(function TimelineCard({
   bucketCount,
   clampLines,
   expanded,
+  bodyOnHover = false,
+  onHoverEnter,
+  onHoverLeave,
   autoExpandLongEntry = false,
   onNaturalHeightChange,
   onToggleExpand,
@@ -215,6 +223,8 @@ const TimelineCard = memo(function TimelineCard({
   // 口径与社交视图的 scrollHeight > 300 + 8 等价 —— 读的是同一段预览 DOM 的 scrollHeight，
   // 不摘 clamp、不改视觉、不挂常驻 observer（只量两次）。
   useEffect(() => {
+    // 29-1：悬停档下卡片里没有正文预览，不量自然高度、不判截断（不生效且不报错）
+    if (bodyOnHover) return undefined;
     const node2 = bodyRef.current;
     if (onNaturalHeightChange) {
       const report = () => onNaturalHeightChange(entry.id, node2?.scrollHeight ?? 0);
@@ -223,8 +233,10 @@ const TimelineCard = memo(function TimelineCard({
       return () => clearTimeout(retry);
     }
     return undefined;
-  }, [entry.id, previewText, clampLines, onNaturalHeightChange]);
+  }, [entry.id, previewText, clampLines, onNaturalHeightChange, bodyOnHover]);
   useEffect(() => {
+    // 29-1：悬停档下卡片里没有正文预览，不判截断
+    if (bodyOnHover) return undefined;
     const node2 = bodyRef.current;
     // 「长贴自动展开」命中的条目不再钳制：截断判定直接回短贴，展开按钮也不出
     if (!node2 || clampLines === null || autoExpandLongEntry) {
@@ -235,7 +247,7 @@ const TimelineCard = memo(function TimelineCard({
     measure();
     const retry = setTimeout(measure, 400);
     return () => clearTimeout(retry);
-  }, [previewText, clampLines, autoExpandLongEntry]);
+  }, [previewText, clampLines, autoExpandLongEntry, bodyOnHover]);
 
   const effectiveClampLines = autoExpandLongEntry ? null : clampLines;
   const canExpand = effectiveClampLines !== null;
@@ -286,7 +298,10 @@ const TimelineCard = memo(function TimelineCard({
           data-entry-id={entry.id}
           data-timeline-card={node}
           data-timeline-side={side}
+          data-body-on-hover={bodyOnHover ? "true" : undefined}
           onClick={() => onSelect(entry.id)}
+          onMouseEnter={bodyOnHover ? () => onHoverEnter?.(entry.id) : undefined}
+          onMouseLeave={bodyOnHover ? () => onHoverLeave?.() : undefined}
           className={cn(
             "group relative cursor-pointer overflow-hidden rounded-[10px] border p-2.5 transition-[background-color,border-color,box-shadow,opacity] duration-200",
             isSelected
@@ -345,9 +360,8 @@ const TimelineCard = memo(function TimelineCard({
             {displayTitle || t("entry.untitled")}
           </div>
 
-          {/* 24-8：展开态 = 正文级完整渲染（标题/图片/全文按阅读区管道排版），
-              居中可读宽度、固定高度容器 + 内部滚动 —— 再长的正文也不挤下面的条目 */}
-          {expanded && hasFullContent ? (
+          {/* 29-1：悬停档 = 来源行 + 标题，不再渲染正文预览/展开按钮/展开容器/拖高手柄 */}
+          {bodyOnHover ? null : expanded && hasFullContent ? (
             <div className="mt-2">
               <div className="mx-auto w-full max-w-[clamp(45ch,60vw,65ch)]">
                 <div className="relative">
@@ -505,6 +519,9 @@ export interface NotificationTimelineProps {
   autoSingleSide?: boolean;
   autoTranslate: boolean;
   targetLanguage: string;
+  /** 29-1：正文悬停档（默认 false = 现状一字不改）。
+   * true = 卡片只留来源行 + 标题，正文走悬浮块；触屏（hover: none）由内部自动降级回卡片内正文。 */
+  bodyOnHover?: boolean;
   /**
    * 把「轴上的卡片」（不含被吸进小节点的条目）回报给父级 ——
    * 键盘 j/k、↑/↓ 就在这些节点之间吸附，不会选到看不见的条目。
@@ -527,6 +544,7 @@ export function NotificationTimeline({
   autoSingleSide = true,
   autoTranslate,
   targetLanguage,
+  bodyOnHover = false,
   onSelectableEntriesChange,
 }: NotificationTimelineProps) {
   const { t, i18n } = useTranslation();
@@ -559,6 +577,50 @@ export function NotificationTimeline({
   );
   /** 26-2：时间基准（缺值一律回发布时间 = 现状） */
   const basis = resolveTimelineTimeBasis(timeBasis);
+
+  /**
+   * 29-1：触屏降级 —— `hover: none` 的设备没有悬停，正文必须留在卡片里，
+   * 即使开关开了也按现状渲染。
+   */
+  const [coarsePointer, setCoarsePointer] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const query = window.matchMedia("(hover: none)");
+    setCoarsePointer(query.matches);
+    const onChange = (event: MediaQueryListEvent) => setCoarsePointer(event.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
+  const hoverMode = bodyOnHover && !coarsePointer;
+
+  /**
+   * 29-1：悬停浮块状态 —— 卡片 enter 立开，卡片 leave / 浮块 leave 起 250ms
+   * 延迟关（RefreshTooltip 同款），浮块 enter 清 timer。
+   */
+  const [hoverEntryId, setHoverEntryId] = useState<string | null>(null);
+  const hoverCloseTimer = useRef<number | null>(null);
+  const cancelHoverClose = useCallback(() => {
+    if (hoverCloseTimer.current !== null) {
+      window.clearTimeout(hoverCloseTimer.current);
+      hoverCloseTimer.current = null;
+    }
+  }, []);
+  const openHover = useCallback(
+    (entryId: string) => {
+      cancelHoverClose();
+      setHoverEntryId(entryId);
+    },
+    [cancelHoverClose],
+  );
+  const scheduleHoverClose = useCallback(() => {
+    cancelHoverClose();
+    hoverCloseTimer.current = window.setTimeout(() => setHoverEntryId(null), 250);
+  }, [cancelHoverClose]);
+  useEffect(() => cancelHoverClose, [cancelHoverClose]);
+  // 换一批条目 / 退出悬停档时撤掉浮块（直接从 DOM 撤，不留透明层）
+  useEffect(() => {
+    if (!hoverMode) setHoverEntryId(null);
+  }, [hoverMode, entries]);
 
   const [expandedClusters, setExpandedClusters] = useState<ReadonlySet<string>>(
     () => new Set(),
@@ -863,15 +925,20 @@ export function NotificationTimeline({
             node={row.node}
             bucketCount={row.bucketCount}
             clampLines={clampLines}
-            autoExpandLongEntry={isAutoExpanded(entry.id)}
-            onNaturalHeightChange={handleNaturalHeightChange}
+            autoExpandLongEntry={hoverMode ? false : isAutoExpanded(entry.id)}
+            onNaturalHeightChange={hoverMode ? undefined : handleNaturalHeightChange}
             expanded={
-              expandedEntries.has(entry.id) ||
-              entry.id === selectedEntryId ||
-              isAutoExpanded(entry.id)
+              hoverMode
+                ? false
+                : expandedEntries.has(entry.id) ||
+                  entry.id === selectedEntryId ||
+                  isAutoExpanded(entry.id)
             }
             onToggleExpand={toggleEntry}
             onSelect={handleSelect}
+            bodyOnHover={hoverMode}
+            onHoverEnter={hoverMode ? openHover : undefined}
+            onHoverLeave={hoverMode ? scheduleHoverClose : undefined}
             onMarkAbove={
               onMarkAboveEntry
                 ? () => onMarkAboveEntry(entry.id)
@@ -947,6 +1014,25 @@ export function NotificationTimeline({
           })}
         </div>
       ))}
+      {/* 29-1：悬停正文浮块 —— 移出后直接从 DOM 撤掉，不留透明层挡点击 */}
+      {hoverMode && hoverEntryId
+        ? (() => {
+            const hoverEntry = entries.find((item) => item.id === hoverEntryId);
+            return hoverEntry ? (
+              <NotificationBodyPreview
+                key={hoverEntry.id}
+                entry={hoverEntry}
+                feedName={
+                  feeds.get(hoverEntry.feedId)?.title ?? t("entry.unknown_feed")
+                }
+                autoTranslate={autoTranslate}
+                targetLanguage={targetLanguage}
+                onMouseEnter={cancelHoverClose}
+                onMouseLeave={scheduleHoverClose}
+              />
+            ) : null;
+          })()
+        : null}
     </div>
   );
 }
