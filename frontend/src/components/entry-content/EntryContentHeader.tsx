@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { X } from "lucide-react";
 import { isSafeUrl } from "@/lib/url";
 import { cn } from "@/lib/utils";
 import { BackIcon, GlobeIcon } from "@/components/ui/icons";
@@ -26,6 +27,12 @@ interface EntryContentHeaderProps {
   onToggleTranslation?: () => void;
   isMobile?: boolean;
   onBack?: () => void;
+  /**
+   * 28-5：桌面第三栏（正文区）左上角的关闭按钮。
+   * 移动端已有 onBack（返回列表），桌面此前只能按 Esc 关 —— 用户要求正文左上角
+   * 有一颗可见的关闭按钮。只传 onClose 时不渲染 onBack 那颗，避免两颗重复。
+   */
+  onClose?: () => void;
   /** 是否正在阅读栏里加载原站（#13） */
   isOriginalSiteActive?: boolean;
   onToggleOriginalSite?: () => void;
@@ -81,6 +88,7 @@ export function EntryContentHeader({
   translationDisabled,
   onToggleTranslation,
   onBack,
+  onClose,
   isOriginalSiteActive = false,
   onToggleOriginalSite,
 }: EntryContentHeaderProps) {
@@ -104,17 +112,21 @@ export function EntryContentHeader({
       {/* Content Layer */}
       <div className="relative flex h-12 items-center justify-between gap-3 px-4">
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-          {onBack && (
+          {(onClose || onBack) && (
             <button
               type="button"
-              onClick={onBack}
+              onClick={onClose ?? onBack}
               // 与同排其它按钮同尺寸（36px / 图标 20px）；之前是 44px，看着比旁边一圈都大。
               // 注意不要用负 margin：按钮会探出头部容器左边，被后面的面板压住一半（用户截图）
-              title={t("actions.back")}
-              aria-label={t("actions.back")}
+              title={onClose ? t("actions.close") : t("actions.back")}
+              aria-label={onClose ? t("actions.close") : t("actions.back")}
               className="no-drag-region flex size-9 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground active:scale-95"
             >
-              <BackIcon className="size-5" />
+              {onClose ? (
+                <X className="size-5" />
+              ) : (
+                <BackIcon className="size-5" />
+              )}
             </button>
           )}
           <div

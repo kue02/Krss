@@ -490,7 +490,11 @@ function AuthenticatedApp() {
     <EntryContentTransition entryId={selectedEntryId}>
       {selectedEntryId ? (
         <Suspense fallback={<EntryContentFallback />}>
-          <LazyEntryContent key={selectedEntryId} entryId={selectedEntryId} />
+          <LazyEntryContent
+            key={selectedEntryId}
+            entryId={selectedEntryId}
+            onClose={() => selectEntry(null)}
+          />
         </Suspense>
       ) : (
         <EntryContentPlaceholder message={t("entry.select_article")} />
