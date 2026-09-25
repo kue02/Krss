@@ -17,6 +17,12 @@ interface PictureHoverListProps {
   onSelectEntry?: (entryId: string) => void;
   /** 选中行的 entry id（可选）：给行加 `data-selected`，便于样式/测试定位 */
   selectedEntryId?: string | null;
+  /**
+   * 28-7a：行高尺度与浮块尺寸（用户 2026-09-25 要求这两项可设置）。
+   * 打成根节点上的 data-* 属性，由 picture-hover.css 取值 —— 上游原件不动。
+   */
+  rowHeight?: "compact" | "comfortable";
+  imageSize?: "small" | "large";
 }
 
 /**
@@ -32,8 +38,16 @@ export function PictureHoverList({
   items,
   onSelectEntry,
   selectedEntryId,
+  rowHeight = "compact",
+  imageSize = "small",
 }: PictureHoverListProps) {
   const { t } = useTranslation();
+
+  // 28-7a：尺寸预设打成 data-* 属性，picture-hover.css 据此取值（上游原件不动）
+  const sizeAttrs = {
+    "data-row-height": rowHeight,
+    "data-image-size": imageSize,
+  } as const;
 
   const projects = useMemo(
     () =>
@@ -80,7 +94,11 @@ export function PictureHoverList({
   });
 
   if (!onSelectEntry) {
-    return <HoverImg projects={projects} className="krss-hover-img" />;
+    return (
+      <div {...sizeAttrs}>
+        <HoverImg projects={projects} className="krss-hover-img" />
+      </div>
+    );
   }
 
   // 可点形态（文章视图 hover 档）：HoverImg 原件不动，在外层做事件委托。
@@ -100,6 +118,7 @@ export function PictureHoverList({
       ref={listRef}
       onClick={handleClick}
       data-testid="hover-entry-list"
+      {...sizeAttrs}
     >
       <HoverImg projects={projects} className="krss-hover-img" />
     </div>

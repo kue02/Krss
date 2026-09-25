@@ -212,10 +212,14 @@ export function AppearanceSettings() {
     setEntryLineHeight,
     setPictureLayout,
     setArticleLayout,
+    setHoverRowHeight,
+    setHoverImageSize,
   } = useUISettingActions();
   const { data: appearanceSettings } = useAppearanceSettings();
   const pictureLayout = useUISettingKey("pictureLayout");
   const articleLayout = useUISettingKey("articleLayout");
+  const hoverRowHeight = useUISettingKey("hoverRowHeight");
+  const hoverImageSize = useUISettingKey("hoverImageSize");
 
   const themeOptions = useMemo(
     () => [
@@ -973,6 +977,52 @@ export function AppearanceSettings() {
                       ]}
                     />
                   </SettingRow>
+                )}
+                {/* 28-7a：悬停大图档的尺寸自定义（用户 2026-09-25 要求这两项可设置，
+                    预设来自两棵树：compact/small = 5179 现值，comfortable/large = 5175 那套） */}
+                {view === "picture" && pictureLayout === "hover" && (
+                  <>
+                    <SettingRow label={t("appearance_view.hover_row_height")}>
+                      <SegmentedControl
+                        className="shrink-0"
+                        value={hoverRowHeight}
+                        onValueChange={(value) =>
+                          setHoverRowHeight(value as "compact" | "comfortable")
+                        }
+                        options={[
+                          {
+                            value: "compact",
+                            label: t("appearance_view.hover_row_height_compact"),
+                          },
+                          {
+                            value: "comfortable",
+                            label: t(
+                              "appearance_view.hover_row_height_comfortable",
+                            ),
+                          },
+                        ]}
+                      />
+                    </SettingRow>
+                    <SettingRow label={t("appearance_view.hover_image_size")}>
+                      <SegmentedControl
+                        className="shrink-0"
+                        value={hoverImageSize}
+                        onValueChange={(value) =>
+                          setHoverImageSize(value as "small" | "large")
+                        }
+                        options={[
+                          {
+                            value: "small",
+                            label: t("appearance_view.hover_image_size_small"),
+                          },
+                          {
+                            value: "large",
+                            label: t("appearance_view.hover_image_size_large"),
+                          },
+                        ]}
+                      />
+                    </SettingRow>
+                  </>
                 )}
                 {/* 按视图覆盖只在总开关选了「按视图单独设」时出现 ——
                     否则这里能和通用里的总开关打架（用户 2026-09-17 要求收口） */}

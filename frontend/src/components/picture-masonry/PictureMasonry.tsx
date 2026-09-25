@@ -128,6 +128,9 @@ export function PictureMasonry({
   const isHover = pictureLayout === "hover";
   /** 28-6：顶栏那颗档位切换（用户要求图片视图也加一个，三档循环） */
   const { setPictureLayout } = useUISettingActions();
+  /** 28-7a：悬停大图档的尺寸预设（行高 / 浮块大小，用户要求可设置） */
+  const hoverRowHeight = useUISettingKey("hoverRowHeight");
+  const hoverImageSize = useUISettingKey("hoverImageSize");
   const handleTogglePictureLayout = useCallback(() => {
     setPictureLayout(
       pictureLayout === "masonry"
@@ -418,7 +421,11 @@ export function PictureMasonry({
           </div>
         ) : isReady && isHover ? (
           <div className={cn("p-4", !usesDocumentScroll && "h-full overflow-auto")}>
-            <PictureHoverList items={items} />
+            <PictureHoverList
+              items={items}
+              rowHeight={hoverRowHeight}
+              imageSize={hoverImageSize}
+            />
           </div>
         ) : isReady ? (
           <VirtuosoMasonry

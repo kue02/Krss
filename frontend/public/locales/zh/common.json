@@ -961,7 +961,13 @@
     "timeline_lines_1": "1 行",
     "timeline_lines_2": "2 行",
     "timeline_lines_3": "3 行",
-    "timeline_lines_full": "全文"
+    "timeline_lines_full": "全文",
+    "hover_row_height": "悬停大图 · 行高",
+    "hover_row_height_compact": "紧凑（默认）",
+    "hover_row_height_comfortable": "宽松",
+    "hover_image_size": "悬停大图 · 图片大小",
+    "hover_image_size_small": "小（400×250）",
+    "hover_image_size_large": "大"
   },
   "folder": {
     "create": "新增分类",

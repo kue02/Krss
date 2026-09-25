@@ -964,7 +964,13 @@
     "timeline_lines_1": "1 line",
     "timeline_lines_2": "2 lines",
     "timeline_lines_3": "3 lines",
-    "timeline_lines_full": "Full text"
+    "timeline_lines_full": "Full text",
+    "hover_row_height": "Hover view · row height",
+    "hover_row_height_compact": "Compact (default)",
+    "hover_row_height_comfortable": "Comfortable",
+    "hover_image_size": "Hover view · image size",
+    "hover_image_size_small": "Small (400×250)",
+    "hover_image_size_large": "Large"
   },
   "folder": {
     "create": "New category",

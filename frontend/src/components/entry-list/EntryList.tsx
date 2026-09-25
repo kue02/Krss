@@ -281,6 +281,9 @@ export function EntryList({
    */
   const articleLayout = useUISettingKey("articleLayout");
   const isArticleHover = contentType === "article" && articleLayout === "hover";
+  /** 28-7a：文章视图 hover 档也复用同一套尺寸预设（两处调用同一个 PictureHoverList） */
+  const hoverRowHeight = useUISettingKey("hoverRowHeight");
+  const hoverImageSize = useUISettingKey("hoverImageSize");
 
   /** 28-1：顶栏左上角那颗「卡片列表 ↔ 悬停大图」切换（只有文章视图会拿到它） */
   const { setArticleLayout } = useUISettingActions();
@@ -1020,6 +1023,8 @@ export function EntryList({
                   }))}
                   onSelectEntry={handleSelectEntry}
                   selectedEntryId={selectedEntryId}
+                  rowHeight={hoverRowHeight}
+                  imageSize={hoverImageSize}
                 />
               ) : (
                 entries.map((entry, index) => (

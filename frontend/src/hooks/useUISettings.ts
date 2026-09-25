@@ -141,6 +141,17 @@ interface UISettings {
    */
   pictureLayout: "masonry" | "grid" | "hover";
   /**
+   * 28-7a：图片视图「悬停大图」档的尺寸自定义（用户 2026-09-25）。
+   * 两个维度各自二选一，互不绑定，可混搭：
+   *  - hoverRowHeight：行高尺度。compact = 5179 现值（padding 10px/标题 14.5px·500）；
+   *    comfortable = 5175（longpost 树）那套（13px / 15px·400）。
+   *  - hoverImageSize：悬停浮块尺寸。small = 5179 现值（上游 400×250）；
+   *    large = 5175 那套（min(560px, 42vw)）。
+   * 默认 compact + small（= 用户说的「5179 的设置，这是默认设置」）。
+   */
+  hoverRowHeight: "compact" | "comfortable";
+  hoverImageSize: "small" | "large";
+  /**
    * 文章视图第二栏的排布：list = 卡片列表（默认）；hover = 悬停大图（同图片视图第三档形态）。
    * reader-transition 批新增（用户 2026-09-25）。
    */
@@ -406,6 +417,8 @@ export const defaultUISettings: UISettings = {
   entryColWidth: 336,
   sidebarVisible: true,
   pictureLayout: "masonry",
+  hoverRowHeight: "compact",
+  hoverImageSize: "small",
   articleLayout: "list",
   cardImageSize: "small",
   cardPreviewLines: 2,
@@ -630,6 +643,16 @@ export function useUISettingActions() {
     setUISetting("pictureLayout", layout);
   }, []);
 
+  /** 28-7a：悬停大图档的行高尺度（compact = 5179 默认 / comfortable = 5175 那套） */
+  const setHoverRowHeight = useCallback((value: "compact" | "comfortable") => {
+    setUISetting("hoverRowHeight", value);
+  }, []);
+
+  /** 28-7a：悬停浮块尺寸（small = 上游 400×250 / large = 5175 的 560px） */
+  const setHoverImageSize = useCallback((value: "small" | "large") => {
+    setUISetting("hoverImageSize", value);
+  }, []);
+
   /** 文章视图第二栏的排布（reader-transition 批新增） */
   const setArticleLayout = useCallback((layout: ArticleLayout) => {
     setUISetting("articleLayout", layout);
@@ -821,6 +844,8 @@ export function useUISettingActions() {
     toggleSidebarVisible,
     setCardImageSize,
     setPictureLayout,
+    setHoverRowHeight,
+    setHoverImageSize,
     setArticleLayout,
     setCardPreviewLines,
     setEntryFontFamily,
