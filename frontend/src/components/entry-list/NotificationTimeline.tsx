@@ -796,14 +796,22 @@ export function NotificationTimeline({
       {sections.map((section) => (
         /* 每段一层容器 = sticky 的作用域：本段滚完，日期行被段底边推走，下一段接替 */
         <div key={section.key} className="relative">
-          {/* 日期分隔行（用户 9-24 要吸顶 / 9-25 定形态：草图**变体 B 居中胶囊**）——
-              只有胶囊自己有底色/描边/投影，两侧不铺横条；浮动在列表上方，
-              卡片从下面穿过。仍旧是段内 sticky：本段滚完被段底推走，下一段接替。 */}
+          {/* 日期分隔行（用户 9-24 要吸顶 / 9-25 先做成居中胶囊 → 2026-09-25 复验后按用户
+              「位置和形态都回原来那样，唯一区别就是现在有吸顶了」回到 2423cda 那版）：
+              全宽条 + 同色半透底 + 轻微模糊 + 底部 1px inset 分隔线（不占布局，行高与间距不变）；
+              文字位置与胶囊前一致 —— 单栏左对齐到卡片列左缘（时间列 86px 之后）、交替布局居中。
+              仍是段内 sticky（本段滚完被段底推走，下一段接替），只有当前吸顶的那条会浮起。 */}
           <div
             data-timeline-date={section.label}
-            className="sticky top-2 z-10 mx-auto flex w-max items-center rounded-full border border-border bg-background/95 px-3 py-[3px] text-[11.5px] font-semibold tabular-nums shadow-[0_6px_16px_rgba(0,0,0,0.10)] backdrop-blur-md"
+            style={{ boxShadow: "inset 0 -1px 0 var(--border)" }}
+            className={cn(
+              "sticky top-0 z-10 flex items-center bg-background/85 py-3 backdrop-blur-md",
+              singleSide ? "justify-start pl-[86px]" : "justify-center",
+            )}
           >
-            {section.label}
+            <span className="rounded-full bg-background px-2 text-[11.5px] font-semibold tabular-nums text-foreground">
+              {section.label}
+            </span>
           </div>
 
           {section.rows.map((row) => {
