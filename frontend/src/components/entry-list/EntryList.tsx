@@ -52,6 +52,7 @@ import {
   resolveTimelineTimeBasis,
 } from "@/lib/timeline-model";
 import { NotificationTimeline } from "./NotificationTimeline";
+import { PictureHoverList } from "@/components/picture-hover/PictureHoverList";
 import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
 import { useFilterViewStore } from "@/stores/filter-view-store";
 import { ArrowUp, Check, Inbox } from "lucide-react";
@@ -272,6 +273,14 @@ export function EntryList({
    * 设置里能调的只有粒度与折叠行数（15-5）。
    */
   const isNotificationTimeline = contentType === "notification";
+  /**
+   * 文章视图第三档（reader-transition 批新增）：悬停大图。
+   * 列表形态与图片视图第三档一致（同复用 PictureHoverList + hover-img 原件），
+   * 差别只在点击：走 handleSelectEntry（同普通卡片），正文用推进转场进第三栏。
+   * 只作用于 article，其它视图一行不动。
+   */
+  const articleLayout = useUISettingKey("articleLayout");
+  const isArticleHover = contentType === "article" && articleLayout === "hover";
   const timelineGranularity = resolveTimelineGranularity(
     useUISettingKey("timelineGranularityByView")?.[contentType],
   );
@@ -992,6 +1001,15 @@ export function EntryList({
                   autoTranslate={autoTranslate}
                   targetLanguage={targetLanguage}
                   onSelectableEntriesChange={setTimelineSelectableEntries}
+                />
+              ) : isArticleHover ? (
+                <PictureHoverList
+                  items={entries.map((entry) => ({
+                    entry,
+                    feed: feedsMap.get(entry.feedId),
+                  }))}
+                  onSelectEntry={handleSelectEntry}
+                  selectedEntryId={selectedEntryId}
                 />
               ) : (
                 entries.map((entry, index) => (

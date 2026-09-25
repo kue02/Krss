@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { HoverImg } from "@/components/block/hover-img";
 import { getEntryImages } from "@/lib/extract-images";
@@ -8,6 +8,15 @@ import "./picture-hover.css";
 
 interface PictureHoverListProps {
   items: { entry: Entry; feed?: Feed }[];
+  /**
+   * 行点击回调（reader-transition 批新增，可选）。
+   * HoverImg 上游原件的行没有 onClick，这里在适配层用事件委托补上 ——
+   * 行的下标就是 items 的下标（HoverImg 按 projects 顺序渲染 `.hover-img-project`），
+   * 点到行即按下标回查 entry.id。不传则与原来完全一致（纯展示，点击无反应）。
+   */
+  onSelectEntry?: (entryId: string) => void;
+  /** 选中行的 entry id（可选）：给行加 `data-selected`，便于样式/测试定位 */
+  selectedEntryId?: string | null;
 }
 
 /**
@@ -19,7 +28,11 @@ interface PictureHoverListProps {
  *  1. 把 krss 的条目映射成它的 `ProjectItem`（标题 / 来源·时间 / 图片 / 来源图标）；
  *  2. 用 `picture-hover.css` 把它的落地页尺度收成条目列表尺度（不改动效本身）。
  */
-export function PictureHoverList({ items }: PictureHoverListProps) {
+export function PictureHoverList({
+  items,
+  onSelectEntry,
+  selectedEntryId,
+}: PictureHoverListProps) {
   const { t } = useTranslation();
 
   const projects = useMemo(
@@ -45,7 +58,52 @@ export function PictureHoverList({ items }: PictureHoverListProps) {
     [items, t],
   );
 
-  return <HoverImg projects={projects} className="krss-hover-img" />;
+  const listRef = useRef<HTMLDivElement | null>(null);
+
+  // 选中行打标：HoverImg 行上没有 data-entry-id，这里按下标同步一份，
+  // 供测试与「回到顶部」这类按 [data-entry-id] 定位的逻辑使用。
+  useEffect(() => {
+    if (!onSelectEntry) return;
+    const node = listRef.current;
+    if (!node) return;
+    const rows = node.querySelectorAll(".hover-img-project");
+    rows.forEach((row, index) => {
+      const entry = items[index]?.entry;
+      if (entry) row.setAttribute("data-entry-id", entry.id);
+      else row.removeAttribute("data-entry-id");
+      if (selectedEntryId && entry?.id === selectedEntryId) {
+        row.setAttribute("data-selected", "true");
+      } else {
+        row.removeAttribute("data-selected");
+      }
+    });
+  });
+
+  if (!onSelectEntry) {
+    return <HoverImg projects={projects} className="krss-hover-img" />;
+  }
+
+  // 可点形态（文章视图 hover 档）：HoverImg 原件不动，在外层做事件委托。
+  // 行顺序 = projects 顺序 = items 顺序，按下标回查 entry.id。
+  const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    const row = (event.target as HTMLElement).closest(".hover-img-project");
+    if (!row) return;
+    const container = row.parentElement;
+    if (!container) return;
+    const index = Array.prototype.indexOf.call(container.children, row);
+    const entry = items[index]?.entry;
+    if (entry) onSelectEntry(entry.id);
+  };
+
+  return (
+    <div
+      ref={listRef}
+      onClick={handleClick}
+      data-testid="hover-entry-list"
+    >
+      <HoverImg projects={projects} className="krss-hover-img" />
+    </div>
+  );
 }
 
 export default PictureHoverList;

@@ -27,6 +27,14 @@ export type ViewTimelineCollapse = Record<ContentType, TimelineCollapse>;
 export type ViewTimelineTimeBasis = Record<ContentType, TimelineTimeBasis>;
 export type QuoteStyle = "block" | "divider" | "card";
 /**
+ * 文章视图第二栏的排布（reader-transition 批新增）：
+ *   list  = 今天的卡片列表（默认，行为零变化）
+ *   hover = 与图片视图第三档同形态：列表行 + 鼠标跟随大图预览
+ *           （复用 picture-hover/PictureHoverList + obsidianui hover-img 原件），
+ *           差别只在点击：用 Nextflux 式推进转场把正文推进第三栏。
+ */
+export type ArticleLayout = "list" | "hover";
+/**
  * 已读/未读的全局统一标记（用户 11-14）：
  *   badge = HeroUI `Badge` 角标（**用户拍板的默认**）
  *   dot   = 小圆点（原来只有社交媒体视图有）
@@ -132,6 +140,11 @@ interface UISettings {
    * 用户 2026-09-17 要求加这一档。
    */
   pictureLayout: "masonry" | "grid" | "hover";
+  /**
+   * 文章视图第二栏的排布：list = 卡片列表（默认）；hover = 悬停大图（同图片视图第三档形态）。
+   * reader-transition 批新增（用户 2026-09-25）。
+   */
+  articleLayout: ArticleLayout;
   /** 列表卡片的缩略图档位（对齐 Nextflux 的卡片图尺寸） */
   cardImageSize: CardImageSize;
   /** 卡片摘要显示行数，0 = 不显示摘要 */
@@ -393,6 +406,7 @@ export const defaultUISettings: UISettings = {
   entryColWidth: 336,
   sidebarVisible: true,
   pictureLayout: "masonry",
+  articleLayout: "list",
   cardImageSize: "small",
   cardPreviewLines: 2,
   entryFontFamily: "",
@@ -605,6 +619,11 @@ export function useUISettingActions() {
     setUISetting("pictureLayout", layout);
   }, []);
 
+  /** 文章视图第二栏的排布（reader-transition 批新增） */
+  const setArticleLayout = useCallback((layout: ArticleLayout) => {
+    setUISetting("articleLayout", layout);
+  }, []);
+
   const setCardPreviewLines = useCallback((lines: number) => {
     setUISetting("cardPreviewLines", lines);
   }, []);
@@ -791,6 +810,7 @@ export function useUISettingActions() {
     toggleSidebarVisible,
     setCardImageSize,
     setPictureLayout,
+    setArticleLayout,
     setCardPreviewLines,
     setEntryFontFamily,
     setEntryFontSize,

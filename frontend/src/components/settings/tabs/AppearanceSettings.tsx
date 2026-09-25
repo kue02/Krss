@@ -211,9 +211,11 @@ export function AppearanceSettings() {
     setEntryFontSize,
     setEntryLineHeight,
     setPictureLayout,
+    setArticleLayout,
   } = useUISettingActions();
   const { data: appearanceSettings } = useAppearanceSettings();
   const pictureLayout = useUISettingKey("pictureLayout");
+  const articleLayout = useUISettingKey("articleLayout");
 
   const themeOptions = useMemo(
     () => [
@@ -917,6 +919,31 @@ export function AppearanceSettings() {
                       options={[
                         { value: "off", label: t("appearance_view.off") },
                         { value: "on", label: t("appearance_view.on") },
+                      ]}
+                    />
+                  </SettingRow>
+                )}
+                {/* 文章视图：卡片列表（默认）/ 悬停大图（同图片视图第三档形态；\n                    点击用 Nextflux 式推进转场把正文推进第三栏）。reader-transition 批新增 */ }
+                {view === "article" && (
+                  <SettingRow
+                    label={t("appearance_view.article_layout")}
+                    hint={t("appearance_view.article_layout_hover_hint")}
+                  >
+                    <SegmentedControl
+                      className="shrink-0"
+                      value={articleLayout}
+                      onValueChange={(value) =>
+                        setArticleLayout(value as "list" | "hover")
+                      }
+                      options={[
+                        {
+                          value: "list",
+                          label: t("appearance_view.article_layout_list"),
+                        },
+                        {
+                          value: "hover",
+                          label: t("appearance_view.article_layout_hover"),
+                        },
                       ]}
                     />
                   </SettingRow>
