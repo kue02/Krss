@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, cleanup, screen, fireEvent, act } from "@testing-library/react";
+import gsap from "gsap";
 import { HoverImg } from "@/components/block/hover-img";
 
 vi.mock("react-i18next", () => ({
@@ -7,8 +8,10 @@ vi.mock("react-i18next", () => ({
 }));
 
 /* gsap 在 jsdom 里跑不动真实补间 —— mock 掉，只保留 DOM 结构可断言。
- * 切图本身是 React state（imgIndexes → translateX），与 gsap 无关，
- * 所以 structural assertion 在这里是真断言，不是假绿（样式层真机另验）。 */
+ * 无极滚动下：连续位移走 gsap.to（断言它收到的 x 目标值），
+ * data-img-index 是 React state（= Math.round(offset/width)），照常可断言。
+ * jsdom 里 clientWidth 恒为 0，组件用 STRIP_WIDTH_FALLBACK = 400。
+ * 一格普通滚轮 deltaY=100 × 系数 1.0 = 100px = 1/4 张。 */
 vi.mock("gsap", () => {
   const toArray = (_sel: string, scope?: Element) =>
     scope ? Array.from(scope.querySelectorAll("*")) : [];
@@ -21,6 +24,17 @@ vi.mock("gsap", () => {
     },
   };
 });
+
+const mockedGsapTo = () => vi.mocked(gsap.to);
+/* 取最近一次 strip 位移补间的 x 目标（过滤掉浮块 scale / yPercent 等其它补间） */
+function lastStripX(): number | undefined {
+  const calls = mockedGsapTo().mock.calls;
+  for (let i = calls.length - 1; i >= 0; i--) {
+    const vars = calls[i]?.[1] as { x?: number } | undefined;
+    if (vars && typeof vars.x === "number") return vars.x;
+  }
+  return undefined;
+}
 
 const projects = [
   {
@@ -45,11 +59,12 @@ function stripOf(rowIndex: number) {
   return thumbs[rowIndex]?.querySelector(".hover-img-multi") ?? null;
 }
 
-describe("悬停大图多图切换（29-3 / 29-4）", () => {
+describe("悬停大图多图切换（29-3 / 29-4，无极滚动）", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
   afterEach(() => {
+    vi.useRealTimers();
     cleanup();
   });
 
@@ -66,29 +81,68 @@ describe("悬停大图多图切换（29-3 / 29-4）", () => {
     expect(thumbs[1]?.querySelectorAll("img").length).toBe(1);
   });
 
-  it("默认开行上滚轮：行上 wheel 切到第 2 张（translateX -100%），再滚回到第 1 张", () => {
+  it("小幅 wheel 只产生部分位移：一格滚轮走 1/4 张，data-img-index 仍为 0", () => {
+    render(<HoverImg projects={projects} />);
+    const rows = document.querySelectorAll(".hover-img-project");
+    fireEvent.mouseEnter(rows[0]!);
+    fireEvent.wheel(rows[0]!, { deltaY: 100 });
+    // 连续位移 100px 发给 gsap（≈ 1/4 张），而不是一格跳一张
+    expect(lastStripX()).toBe(-100);
+    // 最近一张仍是第 0 张
+    expect(stripOf(0)?.getAttribute("data-img-index")).toBe("0");
+  });
+
+  it("连续滚 3 格累加到 3/4 张 → index 进 1；停 180ms 后吸附到整张", () => {
+    vi.useFakeTimers();
     render(<HoverImg projects={projects} />);
     const rows = document.querySelectorAll(".hover-img-project");
     fireEvent.mouseEnter(rows[0]!);
     const row = rows[0]!;
     fireEvent.wheel(row, { deltaY: 100 });
-    let multi = stripOf(0);
-    expect(multi?.getAttribute("data-img-index")).toBe("1");
-    expect((multi as HTMLElement).style.transform).toBe("translateX(-100%)");
-    // 冷却 120ms 内连滚无效 —— 用不同时间点验证到头停住不循环
-    act(() => {
-      vi.useFakeTimers();
-    });
     fireEvent.wheel(row, { deltaY: 100 });
     fireEvent.wheel(row, { deltaY: 100 });
+    // offset=300px，round(300/400)=1 → index 进 1，但还没吸附（停在 3/4 处）
+    expect(stripOf(0)?.getAttribute("data-img-index")).toBe("1");
+    expect(lastStripX()).toBe(-300);
+    // 停 180ms → 吸附到最近整张（400px）
     act(() => {
-      vi.useRealTimers();
+      vi.advanceTimersByTime(200);
     });
-    multi = stripOf(0);
-    // 至少停在合法范围内（0..2），绝不越界
-    const idx = Number(multi?.getAttribute("data-img-index"));
-    expect(idx).toBeGreaterThanOrEqual(0);
-    expect(idx).toBeLessThanOrEqual(2);
+    expect(lastStripX()).toBe(-400);
+    expect(stripOf(0)?.getAttribute("data-img-index")).toBe("1");
+  });
+
+  it("两端夹紧不循环：往前滚到底停在末张，往回滚到底停在首张", () => {
+    vi.useFakeTimers();
+    render(<HoverImg projects={projects} />);
+    const rows = document.querySelectorAll(".hover-img-project");
+    fireEvent.mouseEnter(rows[0]!);
+    const row = rows[0]!;
+    for (let i = 0; i < 20; i++) fireEvent.wheel(row, { deltaY: 100 });
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    // max=(3-1)*400=800，绝不越界、不循环回 0
+    expect(stripOf(0)?.getAttribute("data-img-index")).toBe("2");
+    expect(lastStripX()).toBe(-800);
+    // 往回滚 20 格：回到首张，不越下界
+    for (let i = 0; i < 20; i++) fireEvent.wheel(row, { deltaY: -100 });
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(stripOf(0)?.getAttribute("data-img-index")).toBe("0");
+    expect(lastStripX()).toBe(-0);
+  });
+
+  it("单图行 wheel 不拦不切（行为与原来一致）", () => {
+    render(<HoverImg projects={projects} />);
+    const rows = document.querySelectorAll(".hover-img-project");
+    fireEvent.mouseEnter(rows[1]!);
+    fireEvent.wheel(rows[1]!, { deltaY: 100 });
+    // 单图行无 strip，多图行也不受影响
+    const thumbs = document.querySelectorAll(".hover-img-thumbnail");
+    expect(thumbs[1]?.querySelector(".hover-img-multi")).toBeNull();
+    expect(stripOf(0)?.getAttribute("data-img-index")).toBe("0");
   });
 
   it("行上滚轮关掉时：wheel 不切图（反证）", () => {
@@ -102,9 +156,10 @@ describe("悬停大图多图切换（29-3 / 29-4）", () => {
     fireEvent.mouseEnter(rows[0]!);
     fireEvent.wheel(rows[0]!, { deltaY: 100 });
     expect(stripOf(0)?.getAttribute("data-img-index")).toBe("0");
+    expect(lastStripX()).toBeUndefined();
   });
 
-  it("floatWheel 开时：浮块上 wheel 切图；关时不切（反证）", () => {
+  it("floatWheel 开时：浮块上 wheel 连续位移；关时不切（反证）", () => {
     const { unmount } = render(
       <HoverImg
         projects={projects}
@@ -115,7 +170,9 @@ describe("悬停大图多图切换（29-3 / 29-4）", () => {
     fireEvent.mouseEnter(rows[0]!);
     const thumb = document.querySelector(".hover-img-thumbnail-wrapper")!;
     fireEvent.wheel(thumb, { deltaY: 100 });
-    expect(stripOf(0)?.getAttribute("data-img-index")).toBe("1");
+    // 同样是小幅部分位移（1/4 张），index 仍 0
+    expect(lastStripX()).toBe(-100);
+    expect(stripOf(0)?.getAttribute("data-img-index")).toBe("0");
     unmount();
     cleanup();
 
