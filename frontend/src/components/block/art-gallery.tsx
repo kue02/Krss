@@ -218,8 +218,16 @@ async function buildAtlas(images: string[]): Promise<THREE.CanvasTexture> {
   return texture;
 }
 
+const MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+/** jsdom / 老环境里没有 matchMedia ⇒ 当「没开减少动效」，不能让组件崩 */
+const motionMedia = () =>
+  typeof window !== "undefined" && typeof window.matchMedia === "function"
+    ? window.matchMedia(MOTION_QUERY)
+    : null;
+
 const subscribeReducedMotion = (notify: () => void) => {
-  const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const query = motionMedia();
+  if (!query) return () => {};
   query.addEventListener("change", notify);
   return () => query.removeEventListener("change", notify);
 };
@@ -228,9 +236,8 @@ const subscribeReducedMotion = (notify: () => void) => {
 function useWallReducedMotion(): boolean {
   return useSyncExternalStore(
     subscribeReducedMotion,
-    () =>
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-    () => true,
+    () => motionMedia()?.matches ?? false,
+    () => false,
   );
 }
 
