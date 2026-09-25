@@ -1166,6 +1166,9 @@ export function EntryList({
             targetLanguage={targetLanguage}
             onMouseEnter={cancelArticleHoverClose}
             onMouseLeave={closeArticleHoverSoon}
+            /* 32-2（用户 2026-09-26 原话）：「文章视图的悬浮框能不能像图片视图里那样？
+               鼠标还在中间，效果什么都一样」⇒ 照 hover-img 原件以指针为中心 */
+            anchorMode="pointer"
           />
           );
         })()}

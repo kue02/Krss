@@ -4,7 +4,7 @@ import {
   collectWallPhotos,
   WALL_MAX_TILES,
   wallAtlasSide,
-  wallCoverCrop,
+  wallFitRect,
   wallGridLayout,
   wallGridWorld,
   wallViewWorld,
@@ -60,23 +60,30 @@ describe("picture-wall 纯计算", () => {
     ).toEqual({ x: 0, y: 0 });
   });
 
-  it("cover 裁切：短边铺满、居中裁（原件是直接拉成正方形会变形）", () => {
-    // 横图 2000×1000 → 左右各裁 500
-    expect(wallCoverCrop(2000, 1000, 512)).toEqual({
-      sx: 500,
-      sy: 0,
-      sw: 1000,
-      sh: 1000,
+  it("完整缩放（contain，不裁切）：长边贴格、短边留黑居中", () => {
+    // 32-2 用户要求「不被裁剪」⇒ 横图 2000×1000 在 512 方格里上下留黑（512 × 256）
+    expect(wallFitRect(2000, 1000, 512)).toEqual({
+      dx: 0,
+      dy: 128,
+      dw: 512,
+      dh: 256,
     });
-    // 竖图 1000×2000 → 上下各裁 500
-    expect(wallCoverCrop(1000, 2000, 512)).toEqual({
-      sx: 0,
-      sy: 500,
-      sw: 1000,
-      sh: 1000,
+    // 竖图 1000×2000 → 左右留黑（256 × 512）
+    expect(wallFitRect(1000, 2000, 512)).toEqual({
+      dx: 128,
+      dy: 0,
+      dw: 256,
+      dh: 512,
     });
-    // 尺寸未知 → 全 0（调用方跳过这一张）
-    expect(wallCoverCrop(0, 0, 512)).toEqual({ sx: 0, sy: 0, sw: 0, sh: 0 });
+    // 正方图正好铺满
+    expect(wallFitRect(800, 800, 512)).toEqual({
+      dx: 0,
+      dy: 0,
+      dw: 512,
+      dh: 512,
+    });
+    // 脏数据不炸
+    expect(wallFitRect(0, 0, 512)).toEqual({ dx: 0, dy: 0, dw: 0, dh: 0 });
   });
 
   it("收照片：去重（忽略代理的 ?ref）+ 封顶", () => {

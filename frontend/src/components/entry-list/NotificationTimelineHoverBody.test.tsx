@@ -4,6 +4,7 @@ import gsap from "gsap";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Entry } from "@/types/api";
 import { NotificationTimeline } from "./NotificationTimeline";
+import { NotificationBodyPreview } from "./NotificationBodyPreview";
 import { resetDeferredRemovals } from "./deferred-removal";
 
 /**
@@ -147,6 +148,28 @@ describe("通知视图 · 悬停正文档", () => {
     expect(x).toBe(320);
     // y：cardBottom(160)+12 = 172 —— 而不是「指针 y+20 = 150」压住标题
     expect(y).toBe(172);
+  });
+
+  it('32-2 文章档：anchorMode="pointer" 以指针为中心（yPercent -50、不做卡片避让）', () => {
+    const view = render(
+      <NotificationBodyPreview
+        entry={entry("a", 14, 10)}
+        visible
+        anchor={{ x: 300, y: 130, cardTop: 100, cardBottom: 160 }}
+        feedName="f"
+        autoTranslate={false}
+        targetLanguage="zh-CN"
+        onMouseEnter={() => {}}
+        onMouseLeave={() => {}}
+        anchorMode="pointer"
+      />,
+    );
+    const float = view.container.querySelector(FLOAT)!;
+    // 与图片视图 hover-img 同款：x/y 直接取指针坐标，两个方向都居中
+    expect(Number(gsap.getProperty(float, "x"))).toBe(300);
+    expect(Number(gsap.getProperty(float, "y"))).toBe(130);
+    expect(Number(gsap.getProperty(float, "yPercent"))).toBe(-50);
+    // 同一份组件在通知档仍是「挂指针右下 + 不遮卡片」（上一条用例的 172）
   });
 
   it("默认档零变化：正文照旧在卡片里，不挂悬停标记", () => {

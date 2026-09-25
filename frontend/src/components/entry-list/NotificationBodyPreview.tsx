@@ -43,18 +43,35 @@ import type { Entry } from "@/types/api";
  *  为什么不挂指针正下方（试过，真机实测有问题）：面板会占住指针正下方的空间，
  *  鼠标往下换下一条卡片时一头扎进面板里 ⇒ 卡片 hover 丢失、内容不换、跟随冻结。
  */
+/**
+ * 落点模式：
+ *  - `card-safe`（默认，通知视图）：挂指针右下 20px、竖直到卡片下沿之下 —— 不遮标题；
+ *  - `pointer`（32-2，文章视图）：以指针为中心（图片视图那个浮块的样子）。
+ */
+export type AnchorMode = "card-safe" | "pointer";
+
 function placeBesidePointer(
   node: HTMLElement,
   x: number,
   y: number,
   cardTop: number | null,
   cardBottom: number | null,
+  mode: AnchorMode,
 ): [number, number] {
   const w = node.offsetWidth;
   const h = node.offsetHeight;
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const GAP = 20;
+  if (mode === "pointer") {
+    /* 32-2：照图片视图那个浮块（hover-img 原件）——**以指针为中心**，
+     * 指针正好落在面板中间，`xPercent/yPercent: -50` 配合；只夹进视口，
+     * 不再让位于卡片下沿（用户明确要「鼠标还在中间，效果跟图片视图一样」）。 */
+    return [
+      Math.min(Math.max(x, 8 + w / 2), Math.max(vw - w / 2 - 8, 8 + w / 2)),
+      Math.min(Math.max(y, 8 + h / 2), Math.max(vh - h / 2 - 8, 8 + h / 2)),
+    ];
+  }
   let left = x + GAP;
   if (left + w > vw - 8) left = x - GAP - w;
   // 竖直：指针下方，但至少落到卡片下沿之下 —— 标题永远不被遮
@@ -78,6 +95,7 @@ export function NotificationBodyPreview({
   targetLanguage,
   onMouseEnter,
   onMouseLeave,
+  anchorMode = "card-safe",
 }: {
   /** null = 无悬停条目：浮块隐藏但不卸载 */
   entry: Entry | null;
@@ -89,6 +107,8 @@ export function NotificationBodyPreview({
   targetLanguage: string;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
+  /** 32-2：落点模式（默认通知视图那套「不遮卡片」） */
+  anchorMode?: AnchorMode;
 }) {
   const { t } = useTranslation();
   const floatRef = useRef<HTMLDivElement | null>(null);
@@ -118,13 +138,15 @@ export function NotificationBodyPreview({
       pointerRef.current.y,
       pointerRef.current.cardTop,
       pointerRef.current.cardBottom,
+      anchorMode,
     );
     gsap.set(node, {
       x: x0,
       y: y0,
       scale: 0,
       xPercent: -50,
-      yPercent: 0,
+      /* pointer 模式两个方向都居中（指针在面板正中）；card-safe 只水平居中、顶部锚定 */
+      yPercent: anchorMode === "pointer" ? -50 : 0,
       opacity: 0,
     });
     const xTo = gsap.quickTo(node, "x", {
@@ -154,6 +176,7 @@ export function NotificationBodyPreview({
         event.clientY,
         pointerRef.current.cardTop,
         pointerRef.current.cardBottom,
+        anchorMode,
       );
       xTo(x);
       yTo(y);
@@ -172,6 +195,7 @@ export function NotificationBodyPreview({
               pointerRef.current.y,
               pointerRef.current.cardTop,
               pointerRef.current.cardBottom,
+              anchorMode,
             );
             gsap.set(node, { x, y });
           })
@@ -196,6 +220,7 @@ export function NotificationBodyPreview({
         pointerRef.current.y,
         pointerRef.current.cardTop,
         pointerRef.current.cardBottom,
+        anchorMode,
       );
       gsap.set(node, { x, y });
       gsap.fromTo(
@@ -219,7 +244,7 @@ export function NotificationBodyPreview({
       });
     }
     // 换条目（visible 不变）时也要按新内容重算落点：内容高度不同
-  }, [visible, entry?.id]);
+  }, [visible, entry?.id, anchorMode]);
 
   return (
     <div

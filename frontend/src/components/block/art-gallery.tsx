@@ -30,8 +30,10 @@ import { cn } from "@/lib/utils";
 import {
   clampWallOffset,
   wallAtlasSide,
-  wallCoverCrop,
+  wallFitRect,
   wallGridLayout,
+  WALL_CELL_WORLD,
+  WALL_IMAGE_FILL,
   wallGridWorld,
   wallViewWorld,
   WALL_TILE_PX,
@@ -122,7 +124,7 @@ const FRAGMENT_SHADER = `
     }
 
     if (hasPhoto) {
-      float imageSize = 0.6;
+      float imageSize = ${WALL_IMAGE_FILL};
       float imageBorder = (1.0 - imageSize) * 0.5;
       vec2 imageUV = (cellUV - imageBorder) / imageSize;
       float edgeSmooth = 0.01;
@@ -187,21 +189,18 @@ async function buildAtlas(images: string[]): Promise<THREE.CanvasTexture> {
     const loaded = await Promise.all(images.map((src) => loadImage(src)));
     loaded.forEach((image, index) => {
       if (!image || !ctx) return;
-      const crop = wallCoverCrop(image.naturalWidth, image.naturalHeight);
-      if (!crop.sw || !crop.sh) return;
+      const fit = wallFitRect(image.naturalWidth, image.naturalHeight);
+      if (!fit.dw || !fit.dh) return;
       const x = (index % side) * WALL_TILE_PX;
       const y = Math.floor(index / side) * WALL_TILE_PX;
       try {
+        /** contain：整张图缩进格子，不裁切（32-2） */
         ctx.drawImage(
           image,
-          crop.sx,
-          crop.sy,
-          crop.sw,
-          crop.sh,
-          x,
-          y,
-          WALL_TILE_PX,
-          WALL_TILE_PX,
+          x + fit.dx,
+          y + fit.dy,
+          fit.dw,
+          fit.dh,
         );
       } catch {
         /* 单张画不进去就留黑格，不影响整面墙 */
@@ -327,7 +326,7 @@ function WallFallback({
 
 export function ArtGallery({
   images,
-  cellSize = 0.75,
+  cellSize = WALL_CELL_WORLD,
   zoomLevel = 1.25,
   hint,
   unsupportedNote,
@@ -404,13 +403,20 @@ function ArtGalleryScene({
     let geometry: THREE.PlaneGeometry | undefined;
     let material: THREE.ShaderMaterial | undefined;
     let atlas: THREE.CanvasTexture | undefined;
+    let containerObserver: ResizeObserver | null = null;
 
     const containerAspect =
       container.clientHeight > 0
         ? container.clientWidth / container.clientHeight
         : 1.6;
-    const grid = wallGridLayout(images.length, containerAspect);
-    const gridWorld = wallGridWorld(grid, cellSize);
+    /* 32-2：网格随窗口自适应 —— 列/行按容器宽高比算；容器尺寸变了（下面的 onResize）
+     * 重算列行与网格世界尺寸，格子世界尺寸由「一屏 N 行」定（WALL_CELL_WORLD）。 */
+    const gridRef = {
+      current: wallGridLayout(images.length, containerAspect),
+    };
+    const gridWorldRef = {
+      current: wallGridWorld(gridRef.current, cellSize),
+    };
 
     const state = {
       isDragging: false,
@@ -447,7 +453,11 @@ function ArtGalleryScene({
         container.clientHeight,
         state.targetZoom,
       );
-      const clamped = clampWallOffset(state.targetOffset, gridWorld, view);
+      const clamped = clampWallOffset(
+        state.targetOffset,
+        gridWorldRef.current,
+        view,
+      );
       state.targetOffset.x = clamped.x;
       state.targetOffset.y = clamped.y;
     };
@@ -542,12 +552,18 @@ function ArtGalleryScene({
         plane as THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial> | undefined
       )?.material.uniforms;
       uniforms?.uResolution?.value.set(width, height);
+      /* 32-2：窗口尺寸变了 ⇒ 列/行与网格世界尺寸跟着重算（自适应），再夹一次偏移 */
+      gridRef.current = wallGridLayout(images.length, width / height);
+      gridWorldRef.current = wallGridWorld(gridRef.current, cellSize);
+      uniforms?.uGridSize?.value.set(gridRef.current.cols, gridRef.current.rows);
+      container.dataset.artGrid = `${gridRef.current.cols}x${gridRef.current.rows}`;
       clampTarget();
     };
 
     const init = async () => {
       atlas = await buildAtlas(images);
       if (cancelled) return;
+      container.dataset.artGrid = `${gridRef.current.cols}x${gridRef.current.rows}`;
 
       const uniforms = {
         uOffset: { value: new THREE.Vector2(0, 0) },
@@ -565,7 +581,7 @@ function ArtGalleryScene({
         uMousePos: { value: new THREE.Vector2(-1, -1) },
         uZoom: { value: 1 },
         uCellSize: { value: cellSize },
-        uGridSize: { value: new THREE.Vector2(grid.cols, grid.rows) },
+        uGridSize: { value: new THREE.Vector2(gridRef.current.cols, gridRef.current.rows) },
         uTextureCount: { value: images.length },
         uImageAtlas: { value: atlas },
       };
@@ -585,6 +601,13 @@ function ArtGalleryScene({
       container.addEventListener("pointercancel", onPointerUp);
       container.addEventListener("pointerleave", onPointerLeave);
       window.addEventListener("resize", onResize);
+      /* 32-2：窗口没变但容器变了（侧栏折叠/预览栏开关）时 window resize 不触发，
+       * 用 ResizeObserver 盯容器，保证「网格随窗口自适应」这句话在任何布局变化下都成立。 */
+      containerObserver =
+        typeof ResizeObserver !== "undefined"
+          ? new ResizeObserver(() => onResize())
+          : null;
+      containerObserver?.observe(container);
       animate();
       setReady(true);
     };
@@ -600,6 +623,7 @@ function ArtGalleryScene({
       container.removeEventListener("pointercancel", onPointerUp);
       container.removeEventListener("pointerleave", onPointerLeave);
       window.removeEventListener("resize", onResize);
+      containerObserver?.disconnect();
       atlas?.dispose();
       geometry?.dispose();
       material?.dispose();

@@ -15,6 +15,24 @@ export const WALL_MAX_TILES = 120;
 /** 图集里每格贴图的边长（像素） */
 export const WALL_TILE_PX = 512;
 
+/**
+ * 一屏可见**几行**（32-2 用户要的「自适应」）：
+ * 格子世界尺寸 = 视口世界高度 / 这个行数 ⇒ 屏幕上的格子恒为容器高度的 1/N，
+ * 窗口变大格子跟着变大、窗口变小格子跟着变小，一屏永远是 N 行（列数由宽高比顺出来）。
+ * 原来是原件写死的 `cellSize = 0.75`（≈ 一屏 2.7 行、格子很大、看着很疏）。
+ */
+export const WALL_VISIBLE_ROWS = 4;
+
+/** shader 里的 cellSize：视口世界高度（2 * zoom 中的 2）÷ 可见行数 */
+export const WALL_CELL_WORLD = 2 / WALL_VISIBLE_ROWS;
+
+/**
+ * 照片占格子的比例（32-2 用户原话：「图片到它格子边框之间的距离，这个边距很大，
+ * 把这边距缩小一点」）—— 原件是 0.6（每边留 20%，很宽），这里收到 0.92（每边 4%）。
+ * 想再窄/再宽只动这一个数。
+ */
+export const WALL_IMAGE_FILL = 0.92;
+
 export interface WallGrid {
   cols: number;
   rows: number;
@@ -106,14 +124,18 @@ export function collectWallPhotos(
 }
 
 /** cover 裁切：把任意尺寸的图按短边铺满正方形，居中裁（原件是直接拉成正方形，会变形） */
-export function wallCoverCrop(
+export function wallFitRect(
   width: number,
   height: number,
   tile: number = WALL_TILE_PX,
-): { sx: number; sy: number; sw: number; sh: number } {
-  if (!width || !height) return { sx: 0, sy: 0, sw: 0, sh: 0 };
-  const scale = Math.max(tile / width, tile / height);
-  const sw = tile / scale;
-  const sh = tile / scale;
-  return { sx: (width - sw) / 2, sy: (height - sh) / 2, sw, sh };
+): { dx: number; dy: number; dw: number; dh: number } {
+  const empty = { dx: 0, dy: 0, dw: 0, dh: 0 };
+  if (!width || !height) return empty;
+  /* 32-2（用户原话）：「它那张图片有些被裁剪了，就让它自适应缩放，不被裁剪」
+   * ⇒ cover（裁掉超出部分）改成 **contain**：整张图按比例缩到格子里，长边贴格、
+   * 短边留黑（格子底色就是黑，看不出接缝）。 */
+  const scale = Math.min(tile / width, tile / height);
+  const dw = width * scale;
+  const dh = height * scale;
+  return { dx: (tile - dw) / 2, dy: (tile - dh) / 2, dw, dh };
 }
