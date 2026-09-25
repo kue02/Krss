@@ -13,10 +13,11 @@ interface PictureHoverListProps {
 /**
  * 图片视图 · 第三种布局（hover-img）
  *
- * 直接复用 obsidianui 的 `hover-img` 组件（`components/block/hover-img.tsx`，
- * 见 https://www.obsidianui.dev/docs/hover-img）负责跟随与进出场，这里只做两件事：
- *  1. 把 krss 的条目映射成它的 `ProjectItem`（标题 / 来源·时间 / 首图）；
- *  2. 用 `picture-hover.css` 收掉它自带的落地页样式，改吃项目主题变量。
+ * 组件本体用 obsidianui 的 `hover-img` 原件（`components/block/hover-img.tsx`），
+ * 跟随 / 逐行切换 / 进出场都是它自己的；它自带的三处 hover 动效也原样保留。
+ * 这里只做两件事：
+ *  1. 把 krss 的条目映射成它的 `ProjectItem`（标题 / 来源·时间 / 图片 / 来源图标）；
+ *  2. 用 `picture-hover.css` 把它的落地页尺度收成条目列表尺度（不改动效本身）。
  */
 export function PictureHoverList({ items }: PictureHoverListProps) {
   const { t } = useTranslation();
@@ -37,10 +38,8 @@ export function PictureHoverList({ items }: PictureHoverListProps) {
           title: entry.title?.trim() || "",
           label: [feed?.title, time].filter(Boolean).join(" · "),
           imageSrc: images[0] ?? "",
-          // ② 行首来源图标（沿用项目里 `/icons/<iconPath>` 的取法）
-          iconSrc: feed?.iconPath ? `/icons/${feed.iconPath}` : "",
-          // ③ 一篇的全部图交给浮块内的左右切换
-          images,
+          // 沿用项目里 `/icons/<iconPath>` 的取法（上游没有这个字段）
+          iconSrc: feed?.iconPath ? `/icons/${feed.iconPath}` : undefined,
         };
       }),
     [items, t],

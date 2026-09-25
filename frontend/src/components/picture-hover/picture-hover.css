@@ -1,166 +1,83 @@
-/*
- * 适配 obsidianui 的 hover-img（components/block/hover-img.css）到 krss 图片视图。
+/**
+ * 图片视图第三档（obsidianui hover-img）的尺寸适配。
  *
- * 那份 CSS 是给落地页写的：100vh 满屏、Raleway 字体、2.5rem 大标题、自带一套配色。
- * 这里不改编它（原样保留，便于日后按上游更新），只在外层收口：
- *  - 覆盖它的 --hi-* 变量 → 改吃 krss 主题变量（明暗自动跟随）
- *  - 去掉 100vh / 居中 / 外部字体
- *  - 行内排版对齐 krss 的列表密度
+ * 原则：组件原件（components/block/hover-img.tsx + hover-img.css）不动外观，
+ * 这里只把它的「作品集落地页」尺度收成阅读器的列表尺度。
+ *
+ * 明确保留它自己的三处 hover 动效（不改、只缩幅度）：
+ *   .hover-img-project:hover      { opacity: .5 }        整行淡出
+ *   .hover-img-project:hover h2   { translateX(-15px) }  标题左移
+ *   .hover-img-project:hover p    { translateX(+15px) }  副标题右移
+ * 浮块尺寸也保持它的 400×250。
  */
 
+/* ── 容器：去掉落地页的 100vh 居中与自带配色，改吃项目主题 ── */
 .krss-hover-img {
-  --hi-bg: transparent;
-  --hi-text: var(--foreground);
-  --hi-text-muted: var(--muted-foreground);
-  --hi-border: var(--border);
-
   min-height: auto;
-  justify-content: flex-start;
+  height: 100%;
+  padding: 0;
+  background: transparent;
+  color: var(--foreground);
   font-family: inherit;
-  overflow: visible;
+  align-items: stretch;
+  justify-content: flex-start;
 }
 
+/* ── 列表行：从 2rem/4rem + 40px 标题收成条目尺度 ── */
 .krss-hover-img .hover-img-projects {
   max-width: none;
 }
 
 .krss-hover-img .hover-img-project {
-  padding: 13px 16px;
+  padding: 10px 16px;
+  border-top-color: var(--border);
+}
+
+.krss-hover-img .hover-img-project:last-child {
+  border-bottom-color: var(--border);
 }
 
 .krss-hover-img .hover-img-project h2 {
-  font-size: 15px;
-  font-weight: 400;
-  letter-spacing: 0;
-}
-
-.krss-hover-img .hover-img-project p {
-  font-size: 12px;
-}
-
-/*
- * 它原版的 hover 是「标题左移 15px + 副标题右移 15px」——那是给居中的落地页标题用的；
- * 我们的行本来就是左右两端对齐，再拽开就散了，改成整行底色。
- */
-.krss-hover-img .hover-img-project:hover {
-  opacity: 1;
-  background: var(--muted);
-}
-
-.krss-hover-img .hover-img-project:hover h2,
-.krss-hover-img .hover-img-project:hover p {
-  transform: none;
-}
-
-/* 缩放进出场（原版 scale 0→1）沿用，只把圆角/阴影对齐项目风格 */
-.krss-hover-img .hover-img-thumbnail-wrapper {
-  border-radius: 12px;
-  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.35);
-}
-
-/* ─────────────────────────────────────────────────────────────
- * 以下对应 hover-img.tsx 里 ②③④⑤ 四处 krss 扩展
- * ───────────────────────────────────────────────────────────── */
-
-/* ② 行首来源图标 */
-.krss-hover-img .hover-img-title-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
+  font-size: 14.5px;
+  font-weight: 500;
+  letter-spacing: normal;
+  line-height: 1.45;
 }
 
+/* 图标 */
 .krss-hover-img .hover-img-icon {
   width: 16px;
   height: 16px;
+  flex: none;
   border-radius: 4px;
   object-fit: contain;
-  flex: none;
 }
 
-.krss-hover-img .hover-img-icon-empty {
-  display: inline-block;
-  background: var(--muted);
-}
-
-/* 行是「左标题 / 右来源·时间」，标题那侧要能收缩，长标题才截得住 */
-.krss-hover-img .hover-img-title-row h2 {
+/* 标题文字（长标题截断） */
+.krss-hover-img .hover-img-title {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* ③④ 浮块：加大（以图片为主）；本体保持穿透（否则它居中在指针上、会把整行盖住点不动），
-      可点的是里面的左右按钮 */
-.krss-hover-img .hover-img-thumbnail-wrapper {
-  width: min(560px, 42vw);
-  height: auto;
-  aspect-ratio: 8 / 5;
-  border-radius: 14px;
-  box-shadow: 0 28px 60px -12px rgb(0 0 0 / 0.42);
-}
-
-.krss-hover-img .hover-img-thumbnail {
-  position: relative;
-  overflow: hidden;
-}
-
-.krss-hover-img .hover-img-thumbnail-track {
-  display: flex;
-  height: 100%;
-  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.krss-hover-img .hover-img-thumbnail-track img {
+.krss-hover-img .hover-img-project p {
   flex: none;
-  height: 100%;
-  object-fit: cover;
-  display: block;
+  margin-left: 12px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
 }
 
-/* ③ 多图时的左右切换按钮 + 计数（父级是穿透的，这里显式开启以便点击） */
-.krss-hover-img .hover-img-nav {
-  pointer-events: auto;
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  background: rgb(0 0 0 / 0.45);
-  color: #fff;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  backdrop-filter: blur(6px);
-  transition: background 0.18s ease;
+/* 动效幅度随尺寸收小（动效本身保留） */
+.krss-hover-img .hover-img-project:hover h2 {
+  transform: translateX(-6px);
 }
 
-.krss-hover-img .hover-img-nav::before {
-  content: "";
-  border: 7px solid transparent;
-}
-
-.krss-hover-img .hover-img-nav.prev { left: 10px; }
-.krss-hover-img .hover-img-nav.next { right: 10px; }
-.krss-hover-img .hover-img-nav.prev::before { border-right-color: #fff; margin-left: -4px; }
-.krss-hover-img .hover-img-nav.next::before { border-left-color: #fff; margin-right: -4px; }
-.krss-hover-img .hover-img-nav:hover { background: rgb(0 0 0 / 0.72); }
-
-.krss-hover-img .hover-img-counter {
-  position: absolute;
-  bottom: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 11.5px;
-  padding: 2px 9px;
-  border-radius: 999px;
-  background: rgb(0 0 0 / 0.5);
-  color: #fff;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
+.krss-hover-img .hover-img-project:hover p {
+  transform: translateX(6px);
 }
