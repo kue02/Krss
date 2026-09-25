@@ -8,7 +8,11 @@ import { stripHtml } from "@/lib/html-utils";
 import { FeedIcon } from "@/components/ui/feed-icon";
 import { ArticleContent } from "@/components/ui/article-content";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
-import { EntryContextMenuContent, SOCIAL_COLLAPSED_PX } from "./EntryListItem";
+import {
+  EntryContextMenuContent,
+  SOCIAL_CLIPPED_SLACK_PX,
+  SOCIAL_COLLAPSED_PX,
+} from "./EntryListItem";
 import { UnreadIndicator, unreadRowClass } from "./unread-indicator";
 import { useMarkAsRead } from "@/hooks/useEntries";
 import { deferEntryRemoval } from "./deferred-removal";
@@ -562,6 +566,30 @@ export function NotificationTimeline({
   const [expandedEntries, setExpandedEntries] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  /**
+   * 用户显式收起过的条目（只记「长贴自动展开」命中的卡片）。
+   * 自然高度上报只在预览分支挂载时跑一次 + 400ms 复测，没有常驻 observer ——
+   * 收起后高度值还留在 `naturalHeights` 里，不记这一笔的话下一渲染就被同一个
+   * 判据又弹开。换一批条目时清空（与 `naturalHeights` 对齐）。
+   */
+  const [manuallyCollapsed, setManuallyCollapsed] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  /**
+   * 「长贴自动展开」命中 ⟺ 这张卡片是展开的。
+   * 命中条件 = 开关开 + 自然高度超长贴阈值 + 用户没显式收起过。
+   * 调用方（钳制 prop / `expanded` prop）都走它，卡片内部的正文内容区、
+   * 折叠判定、展开/收起按钮等所有按 `expanded` 分支的地方自然一致。
+   * 短贴 / 开关关时恒 false，行为与现状完全一致。
+   */
+  const isAutoExpanded = useCallback(
+    (entryId: string) =>
+      autoExpandLong &&
+      (naturalHeights[entryId] ?? 0) >
+        SOCIAL_COLLAPSED_PX + SOCIAL_CLIPPED_SLACK_PX &&
+      !manuallyCollapsed.has(entryId),
+    [autoExpandLong, naturalHeights, manuallyCollapsed],
+  );
   // 24-8：每条展开容器的高度（默认 380，右下角手柄可拖）
   const [fullHeights, setFullHeights] = useState<Record<string, number>>({});
   const { mutate: markAsRead } = useMarkAsRead();
@@ -593,7 +621,9 @@ export function NotificationTimeline({
     [entries, markAsRead, onSelectEntry],
   );
 
-  // 24-8：收起 —— 手动展开的摘掉展开态；选中展开的把选中交回列表
+  // 24-8：收起 —— 手动展开的摘掉展开态；选中展开的把选中交回列表。
+  // 自动展开命中的卡片被用户收起 → 记一笔「显式收起」，不再自动弹开
+  // （自然高度值还留在 naturalHeights 里，没这笔记忆下一渲染就被同一判据弹开）。
   const handleCollapse = useCallback(
     (entryId: string) => {
       setExpandedEntries((current) => {
@@ -602,9 +632,18 @@ export function NotificationTimeline({
         next.delete(entryId);
         return next;
       });
+      if (
+        autoExpandLong &&
+        (naturalHeights[entryId] ?? 0) >
+          SOCIAL_COLLAPSED_PX + SOCIAL_CLIPPED_SLACK_PX
+      ) {
+        setManuallyCollapsed((current) =>
+          current.has(entryId) ? current : new Set(current).add(entryId),
+        );
+      }
       if (selectedEntryId === entryId) onCloseEntry?.();
     },
-    [selectedEntryId, onCloseEntry],
+    [selectedEntryId, onCloseEntry, autoExpandLong, naturalHeights],
   );
 
   // 展开后跟随：展开是纯向下生长、卡片顶部本身不动，所以只处理一种情况——
@@ -660,6 +699,19 @@ export function NotificationTimeline({
     if (prevEntriesRef.current === entries) return;
     prevEntriesRef.current = entries;
     setNaturalHeights({});
+    // 「显式收起」记忆只清掉已不在列表里的 id：同 id 还在（后台刷新同数据）时
+    // 保留记忆，用户收起的卡片不会因为换一批数组引用又弹开
+    setManuallyCollapsed((current) => {
+      if (current.size === 0) return current;
+      const alive = new Set(entries.map((item) => item.id));
+      let dropped = false;
+      const next = new Set<string>();
+      current.forEach((id) => {
+        if (alive.has(id)) next.add(id);
+        else dropped = true;
+      });
+      return dropped ? next : current;
+    });
   }, [entries]);
 
   const rows = useMemo(
@@ -803,13 +855,12 @@ export function NotificationTimeline({
             node={row.node}
             bucketCount={row.bucketCount}
             clampLines={clampLines}
-            autoExpandLongEntry={
-              autoExpandLong &&
-              (naturalHeights[entry.id] ?? 0) > SOCIAL_COLLAPSED_PX
-            }
+            autoExpandLongEntry={isAutoExpanded(entry.id)}
             onNaturalHeightChange={handleNaturalHeightChange}
             expanded={
-              expandedEntries.has(entry.id) || entry.id === selectedEntryId
+              expandedEntries.has(entry.id) ||
+              entry.id === selectedEntryId ||
+              isAutoExpanded(entry.id)
             }
             onToggleExpand={toggleEntry}
             onSelect={handleSelect}

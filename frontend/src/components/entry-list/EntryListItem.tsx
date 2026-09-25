@@ -92,6 +92,9 @@ interface EntryListItemProps {
 /** 社交媒体视图里长贴折叠高度（对齐 Folo 的 collapsedHeight = 300）。
  * 通知视图的「长贴自动展开」复用同一判据（见 NotificationTimeline），保持语义一致。 */
 export const SOCIAL_COLLAPSED_PX = 300;
+/** 判定长贴时的容差（Folo 原实现里的 `300 + 8`）。
+ *  通知视图的「长贴自动展开」必须连容差一起复用，否则 300~308px 的条目两边结论会相反。 */
+export const SOCIAL_CLIPPED_SLACK_PX = 8;
 const SOCIAL_COLLAPSED_HEIGHT = `${SOCIAL_COLLAPSED_PX}px`;
 /** Folo 的 mask-b-2xl：只在最后 90px 做淡出 */
 const SOCIAL_COLLAPSE_MASK =
@@ -307,7 +310,9 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
 
       // 社交媒体视图用固定折叠高度判定（Folo: collapsedHeight = 300）
       const measure = () => {
-        setIsContentClipped(node.scrollHeight > 300 + 8);
+        setIsContentClipped(
+          node.scrollHeight > SOCIAL_COLLAPSED_PX + SOCIAL_CLIPPED_SLACK_PX,
+        );
       };
 
       measure();
