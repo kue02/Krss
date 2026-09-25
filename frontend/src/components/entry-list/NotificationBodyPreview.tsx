@@ -10,10 +10,9 @@ import type { Entry } from "@/types/api";
  *
  * - 父级常挂（无 key、不卸载）：换条目只换 `entry`，无悬停时 `entry=null` +
  *   `visible=false` 藏起（scale 0 + 透明 + 点穿），不重播进场、不闪；
- * - 位置挂在指针下方：`y = 指针 y + 16`（`yPercent: 0`），水平居中并夹紧视口
- *   （左右各留 8px）；下方放不下（`y + 高 > innerHeight - 8`）翻到指针上方
- *   （`y = 指针 y - 16 - 高`）。指针永远在浮块外 ⇒ 跟随不中断、标题不被遮、
- *   指针可主动移进浮块滚正文 / 选文字；
+ * - 位置挂在指针**右下角**（横竖各留 20px；x 取中心 `xPercent: -50`、y 取上沿 `yPercent: 0`）：
+ *   右侧放不下翻到左侧、下方放不下翻到上方，最后整体夹进视口。指针永远在浮块外
+ *   ⇒ 跟随不中断、所悬停条目的标题不被遮、指针可斜着移进浮块滚正文 / 选文字；
  * - 跟随与动效与 `components/block/hover-img.tsx` 同参数：`gsap.quickTo`
  *   （0.4s + power3.out），进场 scale .96→1 + 透明→实（0.25s power2.out），
  *   退场 scale→0 + 透明（0.3s power2.out，退场完不卸载）；
@@ -26,23 +25,48 @@ import type { Entry } from "@/types/api";
  * - 外观沿用项目浮层语言（圆角 / border / bg-card / 重投影），不自创新风格。
  */
 
-/** 浮块落点：指针下方 16px，水平居中夹紧视口；下方放不下翻到指针上方 */
-function placeBelowPointer(
+/**
+ * 浮块落点：挂指针**右下角**（指针恒在面板外 ⇒ 跟随不中断，可斜着移进去滚正文/选文字）。
+ *
+ * 竖直方向加一条硬约束：**不许盖住所悬停的这张卡片**（含它的标题）——
+ * 起点取 `max(指针 y + GAP, 卡片下沿 + 12)`。真机实测过：只按指针算时，
+ * 指针停在卡片上半部（来源行/标题上）会让面板从标题中间压下去，标题就看不见了。
+ *
+ *  - 右侧放不下（x + GAP + w > vw - 8）翻到指针左侧（x = 指针 x - GAP - w）；
+ *  - 下方放不下（且卡片上方能放下）翻到卡片上方（y = 卡片上沿 - 12 - h），
+ *    上方也放不下就贴视口底；
+ *  - 最后整体夹进视口；极端窗口下若仍让指针落进面板，跟随里的 contains 冻结兜底。
+ *  返回 `[水平中心, 上沿]`：x 用中心（`xPercent: -50`），y 用**上沿**（`yPercent: 0`）。
+ *  顶部锚定而不是中心锚定，是因为换条目后正文高度会变 —— 中心锚定会让面板向上长，
+ *  真机实测直接盖住所悬停的卡片。
+ *
+ *  为什么不挂指针正下方（试过，真机实测有问题）：面板会占住指针正下方的空间，
+ *  鼠标往下换下一条卡片时一头扎进面板里 ⇒ 卡片 hover 丢失、内容不换、跟随冻结。
+ */
+function placeBesidePointer(
   node: HTMLElement,
   x: number,
   y: number,
+  cardTop: number | null,
+  cardBottom: number | null,
 ): [number, number] {
   const w = node.offsetWidth;
   const h = node.offsetHeight;
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  const cx = Math.min(
-    Math.max(x, w / 2 + 8),
-    Math.max(vw - w / 2 - 8, w / 2 + 8),
-  );
-  let top = y + 16;
-  if (top + h > vh - 8) top = y - 16 - h;
-  return [cx, Math.max(8, top)];
+  const GAP = 20;
+  let left = x + GAP;
+  if (left + w > vw - 8) left = x - GAP - w;
+  // 竖直：指针下方，但至少落到卡片下沿之下 —— 标题永远不被遮
+  let top =
+    cardBottom !== null ? Math.max(y + GAP, cardBottom + 12) : y + GAP;
+  if (top + h > vh - 8) {
+    const above = cardTop !== null ? cardTop - 12 - h : Number.NEGATIVE_INFINITY;
+    top = above >= 8 ? above : vh - h - 8;
+  }
+  left = Math.min(Math.max(left, 8), Math.max(vw - w - 8, 8));
+  top = Math.min(Math.max(top, 8), Math.max(vh - h - 8, 8));
+  return [left + w / 2, top];
 }
 
 export function NotificationBodyPreview({
@@ -58,8 +82,8 @@ export function NotificationBodyPreview({
   /** null = 无悬停条目：浮块隐藏但不卸载 */
   entry: Entry | null;
   visible: boolean;
-  /** 进入卡片时的指针坐标（首帧落点兜底） */
-  anchor: { x: number; y: number };
+  /** 进入卡片时的指针坐标 + 该卡片的上下沿（首帧落点兜底；卡片沿用于「不许盖住标题」） */
+  anchor: { x: number; y: number; cardTop: number | null; cardBottom: number | null };
   feedName: string;
   autoTranslate: boolean;
   targetLanguage: string;
@@ -88,10 +112,12 @@ export function NotificationBodyPreview({
   useEffect(() => {
     const node = floatRef.current;
     if (!node) return;
-    const [x0, y0] = placeBelowPointer(
+    const [x0, y0] = placeBesidePointer(
       node,
       pointerRef.current.x,
       pointerRef.current.y,
+      pointerRef.current.cardTop,
+      pointerRef.current.cardBottom,
     );
     gsap.set(node, {
       x: x0,
@@ -110,14 +136,51 @@ export function NotificationBodyPreview({
       ease: "power3.out",
     });
     const handleMove = (event: MouseEvent) => {
-      pointerRef.current = { x: event.clientX, y: event.clientY };
-      if (event.target instanceof Node && node.contains(event.target)) return;
-      const [x, y] = placeBelowPointer(node, event.clientX, event.clientY);
+      const target = event.target instanceof Element ? event.target : null;
+      // 顺带把「所悬停卡片」的上下沿带上：指针停在卡片上半部时，
+      // 落点要退到卡片下沿之下，别把标题压掉。
+      const card = target?.closest?.("[data-timeline-card]");
+      const cardRect = card?.getBoundingClientRect();
+      pointerRef.current = {
+        x: event.clientX,
+        y: event.clientY,
+        cardTop: cardRect ? cardRect.top : pointerRef.current.cardTop,
+        cardBottom: cardRect ? cardRect.bottom : pointerRef.current.cardBottom,
+      };
+      if (node.contains(event.target as Node)) return;
+      const [x, y] = placeBesidePointer(
+        node,
+        event.clientX,
+        event.clientY,
+        pointerRef.current.cardTop,
+        pointerRef.current.cardBottom,
+      );
       xTo(x);
       yTo(y);
     };
     window.addEventListener("mousemove", handleMove);
-    return () => window.removeEventListener("mousemove", handleMove);
+    /* 面板高度会随内容/图片陆续渲染而变化：变了就按当前指针重算落点（顶部锚定，
+     * 只向下长），否则内容变高会向上撑、盖住所悬停的卡片。 */
+    const observer =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => {
+            // 指针已经移进面板（冻结态）时不动，免得把人正在看的面板拽走
+            if (node.matches(":hover")) return;
+            const [x, y] = placeBesidePointer(
+              node,
+              pointerRef.current.x,
+              pointerRef.current.y,
+              pointerRef.current.cardTop,
+              pointerRef.current.cardBottom,
+            );
+            gsap.set(node, { x, y });
+          })
+        : null;
+    observer?.observe(node);
+    return () => {
+      window.removeEventListener("mousemove", handleMove);
+      observer?.disconnect();
+    };
     // 挂载一次：换条目只换 entry，不重建跟随
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -127,10 +190,12 @@ export function NotificationBodyPreview({
     const node = floatRef.current;
     if (!node) return;
     if (visible) {
-      const [x, y] = placeBelowPointer(
+      const [x, y] = placeBesidePointer(
         node,
         pointerRef.current.x,
         pointerRef.current.y,
+        pointerRef.current.cardTop,
+        pointerRef.current.cardBottom,
       );
       gsap.set(node, { x, y });
       gsap.fromTo(
@@ -153,7 +218,8 @@ export function NotificationBodyPreview({
         overwrite: "auto",
       });
     }
-  }, [visible]);
+    // 换条目（visible 不变）时也要按新内容重算落点：内容高度不同
+  }, [visible, entry?.id]);
 
   return (
     <div

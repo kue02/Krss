@@ -141,7 +141,13 @@ interface TimelineCardProps {
   expanded: boolean;
   /** 29-1：正文悬停档 —— 卡片只留来源行 + 标题，不渲染正文/展开按钮/拖高手柄 */
   bodyOnHover?: boolean;
-  onHoverEnter?: (entryId: string, x: number, y: number) => void;
+  onHoverEnter?: (
+    entryId: string,
+    x: number,
+    y: number,
+    cardTop: number,
+    cardBottom: number,
+  ) => void;
   onHoverLeave?: () => void;
   /** 「长贴自动展开」：该条目是长贴时不钳制（与社交视图同一开关语义） */
   autoExpandLongEntry?: boolean;
@@ -302,7 +308,17 @@ const TimelineCard = memo(function TimelineCard({
           onClick={() => onSelect(entry.id)}
           onMouseEnter={
             bodyOnHover
-              ? (event) => onHoverEnter?.(entry.id, event.clientX, event.clientY)
+              ? (event) => {
+                  // 带上卡片上下沿：落点要退到卡片下沿之下（标题不被遮）
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  onHoverEnter?.(
+                    entry.id,
+                    event.clientX,
+                    event.clientY,
+                    rect.top,
+                    rect.bottom,
+                  );
+                }
               : undefined
           }
           onMouseLeave={bodyOnHover ? () => onHoverLeave?.() : undefined}
@@ -607,6 +623,8 @@ export function NotificationTimeline({
     id: string;
     x: number;
     y: number;
+    cardTop: number;
+    cardBottom: number;
   } | null>(null);
   const hoverCloseTimer = useRef<number | null>(null);
   const cancelHoverClose = useCallback(() => {
@@ -616,9 +634,9 @@ export function NotificationTimeline({
     }
   }, []);
   const openHover = useCallback(
-    (entryId: string, x: number, y: number) => {
+    (entryId: string, x: number, y: number, cardTop: number, cardBottom: number) => {
       cancelHoverClose();
-      setHoverAnchor({ id: entryId, x, y });
+      setHoverAnchor({ id: entryId, x, y, cardTop, cardBottom });
     },
     [cancelHoverClose],
   );
@@ -1038,8 +1056,13 @@ export function NotificationTimeline({
                 visible={hoverEntry !== null}
                 anchor={
                   hoverAnchor
-                    ? { x: hoverAnchor.x, y: hoverAnchor.y }
-                    : { x: 0, y: 0 }
+                    ? {
+                        x: hoverAnchor.x,
+                        y: hoverAnchor.y,
+                        cardTop: hoverAnchor.cardTop,
+                        cardBottom: hoverAnchor.cardBottom,
+                      }
+                    : { x: 0, y: 0, cardTop: null, cardBottom: null }
                 }
                 feedName={
                   hoverEntry
