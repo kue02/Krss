@@ -50,6 +50,15 @@ const DEFAULT_TRIGGERS: HoverMultiImageTriggers = {
 /* 滚轮连发节流：触控板一次手势会打出几十个 wheel 事件，不节流会连翻好几张 */
 const WHEEL_MIN_INTERVAL_MS = 120;
 
+/* 29-4 浮块 hover 不消失：照 RefreshTooltip 同款（关闭延迟 + 进入取消），
+ * 进出场 scale 动效与鼠标跟随一字不动，只把「立刻藏」换成「延迟藏」。 */
+const FLOAT_HIDE_DELAY_MS = 250;
+/* 29-4 hSwipe：横向滑动切图。位移阈值 48px（小于浮块宽 400px，随手一划就触发，
+ * 又不会把列表里正常的纵向移动误判）+ 350ms 冷却（横向位移和浮块跟随是同一个
+ * mousemove 动作，不冷却一次划动会连翻好几张）。 */
+const HSWIPE_THRESHOLD_PX = 48;
+const HSWIPE_MIN_INTERVAL_MS = 350;
+
 const defaultProjects: ProjectItem[] = [
     {
         title: "Shree Krishna",
@@ -154,24 +163,98 @@ export function HoverImg({ projects = defaultProjects, className, isContained = 
             yToRef.current?.(y);
         };
 
+        /* 29-4：浮块上的监听（floatWheel / hSwipe 都靠「鼠标能进浮块」）。
+         * 注意 CSS 仍保持 pointer-events:none —— 浮块本身永不挡住列表点击/滚动；
+         * 浮块常驻 pointer 命中靠下面这组 mouseenter/leave（同 RefreshTooltip 的
+         * 关闭延迟模式），而 hover 不消失靠「行离开时延迟藏 + 浮块进入时取消」。 */
+        let hideTimer: number | undefined = undefined;
+        const cancelHide = () => {
+            if (hideTimer !== undefined) {
+                window.clearTimeout(hideTimer);
+                hideTimer = undefined;
+            }
+        };
+        const scheduleHide = () => {
+            cancelHide();
+            hideTimer = window.setTimeout(() => {
+                hideTimer = undefined;
+                gsap.to(projectThumbnail, {
+                    scale: 0,
+                    duration: 0.3,
+                    ease: "power2.out",
+                    overwrite: "auto",
+                });
+            }, FLOAT_HIDE_DELAY_MS);
+        };
+
         const handleMouseLeave = () => {
-            gsap.to(projectThumbnail, {
-                scale: 0,
-                duration: 0.3,
-                ease: "power2.out",
-                overwrite: "auto",
-            });
+            /* 29-4：浮块 hover 不消失 — 行容器 mouseleave 只起延迟藏，
+             * 鼠标若已进浮块，浮块的 mouseenter 会取消这次关闭（RefreshTooltip 同款）。 */
+            scheduleHide();
         };
 
         projectsContainer.addEventListener("mousemove", handleMouseMove);
         projectsContainer.addEventListener("mouseleave", handleMouseLeave);
 
+        const thumbMoveState = { lastX: 0, lastFlipAt: 0, tracking: false };
+        const lastFloatWheelAt = { at: 0 };
+
+        /* 浮块进入/离开：进入取消关闭（RefreshTooltip 同款，250ms 延迟关），
+         * 离开浮块才起延迟关闭。行上 handleMouseEnter 会立即 scale 1 重新打开。 */
+        const handleThumbMouseEnter = () => cancelHide();
+        const handleThumbMouseLeave = () => scheduleHide();
+        projectThumbnail.addEventListener("mouseenter", handleThumbMouseEnter);
+        projectThumbnail.addEventListener("mouseleave", handleThumbMouseLeave);
+
+        /* 29-4 floatWheel：鼠标移进浮块后滚轮 = 切图（行上的滚轮仍滚列表）。 */
+        const handleThumbWheel = (e: WheelEvent) => {
+            if (!triggersRef.current.floatWheel) return;
+            const row = activeRowRef.current;
+            const n = countsRef.current[row] ?? 1;
+            if (row < 0 || n <= 1) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const now = performance.now();
+            if (now - lastFloatWheelAt.at < WHEEL_MIN_INTERVAL_MS) return;
+            lastFloatWheelAt.at = now;
+            const dir: 1 | -1 = (e.deltaY || e.deltaX) > 0 ? 1 : -1;
+            stepImage(row, dir);
+        };
+        projectThumbnail.addEventListener("wheel", handleThumbWheel, { passive: false });
+
+        /* 29-4 hSwipe：鼠标横向滑动 = 上一张/下一张。
+         * 横向位移和浮块鼠标跟随是同一个 mousemove 动作，不节流会连翻好几张：
+         * 累计位移超 48px 才翻一张 + 每次翻完 350ms 冷却。 */
+        const handleThumbMouseMove = (e: MouseEvent) => {
+            if (!triggersRef.current.hSwipe) return;
+            const row = activeRowRef.current;
+            const n = countsRef.current[row] ?? 1;
+            if (row < 0 || n <= 1) return;
+            const now = performance.now();
+            if (!thumbMoveState.tracking) {
+                thumbMoveState.lastX = e.clientX;
+                thumbMoveState.tracking = true;
+                thumbMoveState.lastFlipAt = 0;
+                return;
+            }
+            const dx = e.clientX - thumbMoveState.lastX;
+            if (Math.abs(dx) < HSWIPE_THRESHOLD_PX) return;
+            if (now - thumbMoveState.lastFlipAt < HSWIPE_MIN_INTERVAL_MS) return;
+            thumbMoveState.lastFlipAt = now;
+            thumbMoveState.lastX = e.clientX;
+            stepImage(row, dx > 0 ? 1 : -1);
+        };
+        projectThumbnail.addEventListener("mousemove", handleThumbMouseMove);
+
         const projectListeners: Array<() => void> = [];
         /* 每行滚轮节流时间戳（触控板一次手势几十个事件，不节流连翻好几张） */
         const lastWheelAt = new Map<number, number>();
 
+        /* 29-4：行之间换行也先取消旧关闭——新行的 mouseenter 会立即 scale-1 打开，
+         * 避免「从行 A 移到行 B 的瞬间」旧 timer 把浮块藏一下再打开（闪）。 */
         projectElements.forEach((project, index) => {
             const handleMouseEnter = () => {
+                cancelHide();
                 activeRowRef.current = index;
                 setActiveRow(index);
                 gsap.to(projectThumbnail, {
@@ -215,8 +298,13 @@ export function HoverImg({ projects = defaultProjects, className, isContained = 
         });
 
         return () => {
+            cancelHide();
             projectsContainer.removeEventListener("mousemove", handleMouseMove);
             projectsContainer.removeEventListener("mouseleave", handleMouseLeave);
+            projectThumbnail.removeEventListener("mouseenter", handleThumbMouseEnter);
+            projectThumbnail.removeEventListener("mouseleave", handleThumbMouseLeave);
+            projectThumbnail.removeEventListener("wheel", handleThumbWheel);
+            projectThumbnail.removeEventListener("mousemove", handleThumbMouseMove);
             projectListeners.forEach((cleanup) => cleanup());
         };
     }, [projects, isContained, triggers.rowWheel, triggers.floatWheel, triggers.hSwipe]);
@@ -242,6 +330,9 @@ export function HoverImg({ projects = defaultProjects, className, isContained = 
                 className="hover-img-thumbnail-wrapper"
                 ref={thumbnailRef}
                 data-active-row={activeRow}
+                /* 29-4：行悬停中才允许指针进入浮块（floatWheel/hSwipe 落点），
+                 * 收起后回到 none，绝不挡列表。 */
+                data-float-hover={activeRow >= 0 ? "true" : "false"}
                 style={isContained ? { position: "absolute" } : undefined}
             >
                 {projects.map((project, index) => {
