@@ -131,19 +131,35 @@ export function PictureMasonry({
   /** 28-7a：悬停大图档的尺寸预设（行高 / 浮块大小，用户要求可设置） */
   const hoverRowHeight = useUISettingKey("hoverRowHeight");
   const hoverImageSize = useUISettingKey("hoverImageSize");
+  /** 28-7c：网格档列数 / 瀑布流档目标列宽（两个可调项） */
+  const gridColumns = useUISettingKey("gridColumns");
+  const masonryColumnWidth = useUISettingKey("masonryColumnWidth");
   const handleTogglePictureLayout = useCallback(() => {
+    // 28-7c（用户：「上面那个循环按钮…还是三个」）：网格 → 瀑布流 → 悬停大图 三档循环。
     setPictureLayout(
-      pictureLayout === "masonry"
-        ? "grid"
-        : pictureLayout === "grid"
+      pictureLayout === "grid"
+        ? "masonry"
+        : pictureLayout === "masonry"
           ? "hover"
-          : "masonry",
+          : "grid",
     );
   }, [pictureLayout, setPictureLayout]);
-  const { currentColumn, isReady } = useMasonryColumn(
+  const { currentColumn: autoColumn, isReady } = useMasonryColumn(
     isMobile,
     scrollContainerRef,
+    // 28-7c：只有瀑布流档用「目标列宽」反算列数（Pinterest 做法）；网格档继续走断点表
+    pictureLayout === "masonry" && masonryColumnWidth !== "auto"
+      ? Number(masonryColumnWidth)
+      : undefined,
   );
+  /**
+   * 28-7c：最终列数。网格档若指定了固定列数就用它（这是「网格的两个可调项」之一），
+   * 其余情况沿用 useMasonryColumn 的自动值。
+   */
+  const currentColumn =
+    pictureLayout === "grid" && gridColumns !== "auto"
+      ? Number(gridColumns)
+      : autoColumn;
   const loadFromDB = useImageDimensionsStore((state) => state.loadFromDB);
   const clearFailed = useImageDimensionsStore((state) => state.clearFailed);
 

@@ -185,33 +185,35 @@ export function EntryListHeader({
           </button>
         )}
         {onTogglePictureLayout && (
+          /* 28-6 / 28-7c：图片视图档位循环 —— 网格 → 瀑布流 → 悬停大图 → 网格。
+             图标与提示都表达「点下去会变成什么」。 */
           <button
             type="button"
             onClick={onTogglePictureLayout}
             aria-label={t(
-              pictureLayout === "masonry"
-                ? "appearance_view.picture_layout_grid"
-                : pictureLayout === "grid"
+              pictureLayout === "grid"
+                ? "appearance_view.picture_layout_masonry"
+                : pictureLayout === "masonry"
                   ? "appearance_view.picture_layout_hover"
-                  : "appearance_view.picture_layout_masonry",
+                  : "appearance_view.picture_layout_grid",
             )}
             {...{
               title: t(
-                pictureLayout === "masonry"
-                  ? "appearance_view.picture_layout_grid"
-                  : pictureLayout === "grid"
+                pictureLayout === "grid"
+                  ? "appearance_view.picture_layout_masonry"
+                  : pictureLayout === "masonry"
                     ? "appearance_view.picture_layout_hover"
-                    : "appearance_view.picture_layout_masonry",
+                    : "appearance_view.picture_layout_grid",
               ),
             }}
             className="flex size-8 shrink-0 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95"
           >
             {pictureLayout === "grid" ? (
-              <LayoutGrid className="size-4" />
-            ) : pictureLayout === "hover" ? (
+              <Columns3 className="size-4" />
+            ) : pictureLayout === "masonry" ? (
               <Images className="size-4" />
             ) : (
-              <Columns3 className="size-4" />
+              <LayoutGrid className="size-4" />
             )}
           </button>
         )}

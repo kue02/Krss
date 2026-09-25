@@ -214,12 +214,16 @@ export function AppearanceSettings() {
     setArticleLayout,
     setHoverRowHeight,
     setHoverImageSize,
+    setGridColumns,
+    setMasonryColumnWidth,
   } = useUISettingActions();
   const { data: appearanceSettings } = useAppearanceSettings();
   const pictureLayout = useUISettingKey("pictureLayout");
   const articleLayout = useUISettingKey("articleLayout");
   const hoverRowHeight = useUISettingKey("hoverRowHeight");
   const hoverImageSize = useUISettingKey("hoverImageSize");
+  const gridColumns = useUISettingKey("gridColumns");
+  const masonryColumnWidth = useUISettingKey("masonryColumnWidth");
 
   const themeOptions = useMemo(
     () => [
@@ -973,6 +977,58 @@ export function AppearanceSettings() {
                         {
                           value: "hover",
                           label: t("appearance_view.picture_layout_hover"),
+                        },
+                      ]}
+                    />
+                  </SettingRow>
+                )}
+                {/* 28-7c：网格档列数 / 瀑布流档列宽 —— 两个可调项（用户「做两个可调项」），
+                    各自按当前档位显示。瀑布流那个按「列宽固定、列数随宽度变」实现 Pinterest 观感。 */}
+                {view === "picture" && pictureLayout === "grid" && (
+                  <SettingRow label={t("appearance_view.grid_columns")}>
+                    <SegmentedControl
+                      className="shrink-0"
+                      value={String(gridColumns)}
+                      onValueChange={(value) =>
+                        setGridColumns(value as "auto" | "2" | "3" | "4" | "5" | "6")
+                      }
+                      options={[
+                        { value: "auto", label: t("appearance_view.grid_columns_auto") },
+                        { value: "2", label: "2" },
+                        { value: "3", label: "3" },
+                        { value: "4", label: "4" },
+                        { value: "5", label: "5" },
+                        { value: "6", label: "6" },
+                      ]}
+                    />
+                  </SettingRow>
+                )}
+                {view === "picture" && pictureLayout === "masonry" && (
+                  <SettingRow label={t("appearance_view.masonry_column_width")}>
+                    <SegmentedControl
+                      className="shrink-0"
+                      value={String(masonryColumnWidth)}
+                      onValueChange={(value) =>
+                        setMasonryColumnWidth(
+                          value as "auto" | "180" | "220" | "260",
+                        )
+                      }
+                      options={[
+                        {
+                          value: "auto",
+                          label: t("appearance_view.masonry_column_width_auto"),
+                        },
+                        {
+                          value: "180",
+                          label: t("appearance_view.masonry_column_width_narrow"),
+                        },
+                        {
+                          value: "220",
+                          label: t("appearance_view.masonry_column_width_mid"),
+                        },
+                        {
+                          value: "260",
+                          label: t("appearance_view.masonry_column_width_wide"),
                         },
                       ]}
                     />

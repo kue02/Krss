@@ -152,6 +152,17 @@ interface UISettings {
   hoverRowHeight: "compact" | "comfortable";
   hoverImageSize: "small" | "large";
   /**
+   * 28-7c：网格档 / 瀑布流档各自的尺寸自定义（用户 2026-09-25「做两个可调项」）。
+   *  - gridColumns：网格档的列数，`auto` 走原有断点表；否则固定几列。
+   *  - masonryColumnWidth：瀑布流档的目标列宽（px），`auto` 走原有断点表；
+   *    否则列数 = 容器内容宽 ÷ 该值 —— 这是 Pinterest 的做法（列宽固定、列数随宽度变），
+   *    而原来的断点表是反过来的（列数固定、列宽拉伸）。
+   */
+  /* 注意：这两个键的值一律用字符串 —— sanitizeBag 会丢弃「类型与默认值不一致」的键，
+     默认值是字符串 "auto"，所以候选项也必须是字符串，不能写数字。 */
+  gridColumns: "auto" | "2" | "3" | "4" | "5" | "6";
+  masonryColumnWidth: "auto" | "180" | "220" | "260";
+  /**
    * 文章视图第二栏的排布：list = 卡片列表（默认）；hover = 悬停大图（同图片视图第三档形态）。
    * reader-transition 批新增（用户 2026-09-25）。
    */
@@ -419,6 +430,8 @@ export const defaultUISettings: UISettings = {
   pictureLayout: "masonry",
   hoverRowHeight: "compact",
   hoverImageSize: "small",
+  gridColumns: "auto",
+  masonryColumnWidth: "auto",
   articleLayout: "list",
   cardImageSize: "small",
   cardPreviewLines: 2,
@@ -653,6 +666,22 @@ export function useUISettingActions() {
     setUISetting("hoverImageSize", value);
   }, []);
 
+  /** 28-7c：网格档列数（auto = 原断点表） */
+  const setGridColumns = useCallback(
+    (value: "auto" | "2" | "3" | "4" | "5" | "6") => {
+      setUISetting("gridColumns", value);
+    },
+    [],
+  );
+
+  /** 28-7c：瀑布流档目标列宽（auto = 原断点表；否则按列宽反算列数 = Pinterest 做法） */
+  const setMasonryColumnWidth = useCallback(
+    (value: "auto" | "180" | "220" | "260") => {
+      setUISetting("masonryColumnWidth", value);
+    },
+    [],
+  );
+
   /** 文章视图第二栏的排布（reader-transition 批新增） */
   const setArticleLayout = useCallback((layout: ArticleLayout) => {
     setUISetting("articleLayout", layout);
@@ -846,6 +875,8 @@ export function useUISettingActions() {
     setPictureLayout,
     setHoverRowHeight,
     setHoverImageSize,
+    setGridColumns,
+    setMasonryColumnWidth,
     setArticleLayout,
     setCardPreviewLines,
     setEntryFontFamily,

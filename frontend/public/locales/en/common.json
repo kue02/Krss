@@ -970,7 +970,14 @@
     "hover_row_height_comfortable": "Comfortable",
     "hover_image_size": "Hover view · image size",
     "hover_image_size_small": "Small (400×250)",
-    "hover_image_size_large": "Large"
+    "hover_image_size_large": "Large",
+    "grid_columns": "Grid · columns",
+    "grid_columns_auto": "Auto (default)",
+    "masonry_column_width": "Masonry · column width",
+    "masonry_column_width_auto": "Auto (default)",
+    "masonry_column_width_narrow": "Narrow (180px)",
+    "masonry_column_width_mid": "Medium (220px)",
+    "masonry_column_width_wide": "Wide (260px)"
   },
   "folder": {
     "create": "New category",
