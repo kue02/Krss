@@ -978,6 +978,10 @@
     "hover_multi_float_wheel_hint": "Scroll after moving into the floating panel to switch images (row wheel still scrolls the list)",
     "hover_multi_hswipe": "Multi-image · horizontal swipe",
     "hover_multi_hswipe_hint": "Swipe left / right for previous / next image",
+    "notification_body": "Body placement",
+    "notification_body_hint": "The timeline skeleton (axis, timestamps, date sections) is identical in both. With \"hover panel\", a card keeps only its source and title and the body appears in a floating panel on hover (move into it, scroll it, select text)",
+    "notification_body_inline": "In card (current)",
+    "notification_body_hover": "Hover panel",
     "grid_style": "Grid · style",
     "grid_style_masonry": "Original ratio (default)",
     "grid_style_square": "Square"

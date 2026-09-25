@@ -234,6 +234,9 @@ export function AppearanceSettings() {
     hSwipe: hoverMultiImageSetting?.hSwipe ?? false,
   };
   const gridStyle = resolveGridStyle(pictureLayout, useUISettingKey("gridStyle"));
+  /** 29-1：通知视图正文放哪儿（false = 卡片内现状 / true = 悬停浮块） */
+  const notificationBodyOnHoverRaw = useUISettingKey("notificationBodyOnHover");
+  const notificationBodyOnHover = notificationBodyOnHoverRaw ?? false;
 
   const themeOptions = useMemo(
     () => [
@@ -824,6 +827,33 @@ export function AppearanceSettings() {
                     不重新请求数据（分页仍是 limit+1） */}
                 {view === "notification" && (
                   <>
+                    {/* 29-1（用户 2026-09-25）：正文放哪儿 —— 卡片内（现状）或悬停浮块。
+                        骨架（中轴/时间戳/日期分段/单栏交替）两档完全一样，只挪正文。 */}
+                    <SettingRow
+                      label={t("appearance_view.notification_body")}
+                      hint={t("appearance_view.notification_body_hint")}
+                    >
+                      <SegmentedControl
+                        className="shrink-0"
+                        value={notificationBodyOnHover ? "hover" : "inline"}
+                        onValueChange={(value) =>
+                          setUISetting(
+                            "notificationBodyOnHover",
+                            value === "hover",
+                          )
+                        }
+                        options={[
+                          {
+                            value: "inline",
+                            label: t("appearance_view.notification_body_inline"),
+                          },
+                          {
+                            value: "hover",
+                            label: t("appearance_view.notification_body_hover"),
+                          },
+                        ]}
+                      />
+                    </SettingRow>
                     <SettingRow
                       label={t("appearance_view.timeline_granularity")}
                       hint={t("appearance_view.timeline_granularity_hint")}

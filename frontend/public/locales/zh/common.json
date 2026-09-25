@@ -975,6 +975,10 @@
     "hover_multi_float_wheel_hint": "鼠标移进浮块后再滚轮 = 切图（行上的滚轮仍滚列表）",
     "hover_multi_hswipe": "多图切换 · 横向滑动",
     "hover_multi_hswipe_hint": "鼠标左右滑动 = 上一张 / 下一张",
+    "notification_body": "正文显示位置",
+    "notification_body_hint": "时间线骨架（中轴、时间戳、日期分段）两档完全一样；选「悬停浮块」后卡片只剩来源与标题，鼠标悬浮时在旁边弹出正文浮块（可移入、可滚动、可选中）",
+    "notification_body_inline": "卡片内（现状）",
+    "notification_body_hover": "悬停浮块",
     "grid_style": "网格 · 样式",
     "grid_style_masonry": "按原图比例（默认）",
     "grid_style_square": "正方格"

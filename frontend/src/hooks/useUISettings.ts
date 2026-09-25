@@ -177,6 +177,13 @@ interface UISettings {
   /** 29-4：悬停大图档「多图切换」的三个触发开关（默认只开行上滚轮） */
   hoverMultiImage: HoverMultiImageConfig;
   /**
+   * 29-1（用户 2026-09-25）：通知视图的正文放哪儿。
+   *  false（默认）= 现在这样：卡片里带正文预览 + 展开/收起；
+   *  true = 卡片只留「来源行 + 标题」，正文改成鼠标悬浮时弹浮块显示。
+   * 两种档的时间线骨架（中轴、时间戳、节点、日期分段、单栏/交替）完全一致。
+   */
+  notificationBodyOnHover: boolean;
+  /**
    * 文章视图第二栏的排布：list = 卡片列表（默认）；hover = 悬停大图（同图片视图第三档形态）。
    * reader-transition 批新增（用户 2026-09-25）。
    */
@@ -483,6 +490,7 @@ export const defaultUISettings: UISettings = {
   hoverRowHeight: "compact",
   hoverImageSize: "small",
   hoverMultiImage: { rowWheel: true, floatWheel: false, hSwipe: false },
+  notificationBodyOnHover: false,
   articleLayout: "list",
   cardImageSize: "small",
   cardPreviewLines: 2,
