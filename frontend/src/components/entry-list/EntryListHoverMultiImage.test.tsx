@@ -81,18 +81,38 @@ describe("悬停大图多图切换（29-3 / 29-4，无极滚动）", () => {
     expect(thumbs[1]?.querySelectorAll("img").length).toBe(1);
   });
 
-  it("小幅 wheel 只产生部分位移：一格滚轮走 1/4 张，data-img-index 仍为 0", () => {
+  it("一格滚轮只走半张的连续位移（不跳变），停 180ms 才吸附到整张", () => {
+    vi.useFakeTimers();
     render(<HoverImg projects={projects} />);
     const rows = document.querySelectorAll(".hover-img-project");
     fireEvent.mouseEnter(rows[0]!);
+    // jsdom 里 strip 宽度走 fallback 400px：一格 deltaY 100 × WHEEL_GAIN 2.0 = 200px = 半张
     fireEvent.wheel(rows[0]!, { deltaY: 100 });
-    // 连续位移 100px 发给 gsap（≈ 1/4 张），而不是一格跳一张
-    expect(lastStripX()).toBe(-100);
-    // 最近一张仍是第 0 张
-    expect(stripOf(0)?.getAttribute("data-img-index")).toBe("0");
+    expect(lastStripX()).toBe(-200);
+    expect(stripOf(0)?.getAttribute("data-img-index")).toBe("1");
+    // 停 180ms → 吸附到整张 400px
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(lastStripX()).toBe(-400);
+    expect(stripOf(0)?.getAttribute("data-img-index")).toBe("1");
   });
 
-  it("连续滚 3 格累加到 3/4 张 → index 进 1；停 180ms 后吸附到整张", () => {
+  it("迟滞：一段滚动里挪过 1/4 张（不足半张）也至少吸附走一整张", () => {
+    vi.useFakeTimers();
+    render(<HoverImg projects={projects} />);
+    const rows = document.querySelectorAll(".hover-img-project");
+    fireEvent.mouseEnter(rows[0]!);
+    // deltaY 60 × 2.0 = 120px = 0.3 张：round(0.3)=0，但过了 1/4 迟滞线 ⇒ 吸附到第 1 张
+    fireEvent.wheel(rows[0]!, { deltaY: 60 });
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(lastStripX()).toBe(-400);
+    expect(stripOf(0)?.getAttribute("data-img-index")).toBe("1");
+  });
+
+  it("连续滚 3 格累加到 1.5 张 → index 进 2；停 180ms 后吸附到整张", () => {
     vi.useFakeTimers();
     render(<HoverImg projects={projects} />);
     const rows = document.querySelectorAll(".hover-img-project");
@@ -101,15 +121,15 @@ describe("悬停大图多图切换（29-3 / 29-4，无极滚动）", () => {
     fireEvent.wheel(row, { deltaY: 100 });
     fireEvent.wheel(row, { deltaY: 100 });
     fireEvent.wheel(row, { deltaY: 100 });
-    // offset=300px，round(300/400)=1 → index 进 1，但还没吸附（停在 3/4 处）
-    expect(stripOf(0)?.getAttribute("data-img-index")).toBe("1");
-    expect(lastStripX()).toBe(-300);
-    // 停 180ms → 吸附到最近整张（400px）
+    // offset=600px，round(600/400)=2 → index 进 2，但还没吸附（停在 1.5 张处）
+    expect(stripOf(0)?.getAttribute("data-img-index")).toBe("2");
+    expect(lastStripX()).toBe(-600);
+    // 停 180ms → 吸附到最近整张（800px）
     act(() => {
       vi.advanceTimersByTime(200);
     });
-    expect(lastStripX()).toBe(-400);
-    expect(stripOf(0)?.getAttribute("data-img-index")).toBe("1");
+    expect(lastStripX()).toBe(-800);
+    expect(stripOf(0)?.getAttribute("data-img-index")).toBe("2");
   });
 
   it("两端夹紧不循环：往前滚到底停在末张，往回滚到底停在首张", () => {
@@ -170,9 +190,9 @@ describe("悬停大图多图切换（29-3 / 29-4，无极滚动）", () => {
     fireEvent.mouseEnter(rows[0]!);
     const thumb = document.querySelector(".hover-img-thumbnail-wrapper")!;
     fireEvent.wheel(thumb, { deltaY: 100 });
-    // 同样是小幅部分位移（1/4 张），index 仍 0
-    expect(lastStripX()).toBe(-100);
-    expect(stripOf(0)?.getAttribute("data-img-index")).toBe("0");
+    // 同样是小幅连续位移（一格 = 半张），index 进 1
+    expect(lastStripX()).toBe(-200);
+    expect(stripOf(0)?.getAttribute("data-img-index")).toBe("1");
     unmount();
     cleanup();
 

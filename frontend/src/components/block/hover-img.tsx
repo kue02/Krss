@@ -48,10 +48,15 @@ const DEFAULT_TRIGGERS: HoverMultiImageTriggers = {
 };
 
 /* 无极滚动：滚轮累加连续位移（px），停后吸附到最近一张。
- * 一格普通滚轮 deltaY≈100 × WHEEL_GAIN(1.0) = 100px ≈ 1/4 张（strip 宽 400px），
- * 即系数×100/stripWidth ≈ 0.25，落在 1/5~1/3 区间；连续手感 + 180ms 吸附落位。 */
-const WHEEL_GAIN = 1.0;
+ * 一格普通滚轮 deltaY≈100 × WHEEL_GAIN(2.0) = 200px ≈ 1/3 张（真机 strip 宽 560px），
+ * 落在「一格滚轮只走 1/5~1/3 张」的区间；连续手感 + 180ms 吸附落位。
+ * WHEEL_GAIN 调到 1.0 时一格只走 18% —— 会被吸附拉回原位（等于一格没反应），
+ * 所以配一条 SNAP_HYSTERESIS 迟滞：一段滚动里只要挪过 1/4 张，吸附时至少走一整张。 */
+const WHEEL_GAIN = 2.0;
 const SNAP_DELAY_MS = 180;
+/* 迟滞：一段滚动（连续滚轮事件，间隔 < SNAP_DELAY_MS）里位移过了这张的 1/4，
+ * 吸附就至少前进/后退一整张 —— 保证「滚一格 = 走一张」，又不会一划飞好几张。 */
+const SNAP_HYSTERESIS = 0.25;
 /* jsdom 里 clientWidth 恒为 0，真机浮块宽 400px（compact 160px，用实测值优先） */
 const STRIP_WIDTH_FALLBACK = 400;
 
@@ -113,6 +118,8 @@ export function HoverImg({ projects = defaultProjects, className, isContained = 
     const imgIndexesRef = useRef<Record<number, number>>({});
     imgIndexesRef.current = imgIndexes;
     const snapTimersRef = useRef<Record<number, number | undefined>>({});
+    /* 这一「段」滚动的起点整张位置（迟滞判据；见 SNAP_HYSTERESIS） */
+    const burstStartRef = useRef<Record<number, number>>({});
     /* effect 里读最新值用的镜像（监听器只订阅一次，不跟 state 跑） */
     const countsRef = useRef<number[]>([]);
     countsRef.current = projects.map((p) => effectiveImages(p).length);
@@ -193,6 +200,11 @@ export function HoverImg({ projects = defaultProjects, className, isContained = 
             const base =
                 offsetsRef.current[row] ??
                 (imgIndexesRef.current[row] ?? 0) * width;
+            /* 这一「段」滚动的起点整张位置（迟滞判据用）：没有待吸附的定时器 = 新的一段 */
+            const isNewBurst = snapTimersRef.current[row] === undefined;
+            if (isNewBurst) {
+                burstStartRef.current[row] = Math.round(base / width);
+            }
             const offset = Math.min(max, Math.max(0, base + delta * WHEEL_GAIN));
             offsetsRef.current[row] = offset;
             const strip = stripOfRow(row);
@@ -215,8 +227,15 @@ export function HoverImg({ projects = defaultProjects, className, isContained = 
             snapTimersRef.current[row] = window.setTimeout(() => {
                 snapTimersRef.current[row] = undefined;
                 const cur_off = offsetsRef.current[row] ?? nearest * width;
-                const snapped =
-                    Math.min(max, Math.max(0, Math.round(cur_off / width))) * width;
+                const startIdx = burstStartRef.current[row] ?? 0;
+                const moved = cur_off - startIdx * width;
+                let idx = Math.round(cur_off / width);
+                /* 迟滞：一段滚动里挪过 1/4 张，吸附时至少走一整张 ——
+                 * 保证「一格滚轮 = 走一张」，又不会一划飞好几张。 */
+                if (idx === startIdx && Math.abs(moved) >= SNAP_HYSTERESIS * width) {
+                    idx = startIdx + (moved > 0 ? 1 : -1);
+                }
+                const snapped = Math.min(max, Math.max(0, idx)) * width;
                 offsetsRef.current[row] = snapped;
                 const el = stripOfRow(row);
                 if (el) {
