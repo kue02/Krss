@@ -78,6 +78,37 @@ describe("ArticleVideo 封面 + 悬停（§2.25）", () => {
     expect(bar?.getAttribute("aria-valuenow")).toBe("0.25");
   });
 
+  it("无 poster 时 src 补 #t=0.1（逼浏览器 seek 出首帧当封面）", () => {
+    const { video } = mountVideo();
+    const src = video.getAttribute("src") ?? "";
+    // 仍走代理，且尾部带片段
+    expect(src).toContain("/api/proxy/image/");
+    expect(src.endsWith("#t=0.1")).toBe(true);
+  });
+
+  it("有 poster 时不补 #t=0.1（封面用 poster，不必拉视频）", () => {
+    const { container } = render(
+      <ArticleVideo
+        src="https://example.com/v.mp4"
+        poster="https://example.com/p.jpg"
+      />,
+    );
+    const video = container.querySelector("video") as HTMLVideoElement;
+    expect(video.getAttribute("src") ?? "").not.toContain("#t=0.1");
+  });
+
+  it("首帧未到压骨架、loadeddata 后撤骨架（不露白/黑空框）", () => {
+    const { container, video } = mountVideo();
+    const skeleton = () =>
+      container.querySelector('[data-slot="article-video-skeleton"]');
+    expect(skeleton()).not.toBeNull();
+    expect(video.className).toContain("opacity-0");
+
+    fireEvent.loadedData(video);
+    expect(skeleton()).toBeNull();
+    expect(video.className).toContain("opacity-100");
+  });
+
   it("错误态：中性底、播不了也不纯黑空框", () => {
     const { container } = mountVideo();
     const video = container.querySelector("video") as HTMLVideoElement;
