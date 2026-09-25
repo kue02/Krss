@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render } from "@testing-library/react";
+import gsap from "gsap";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Entry } from "@/types/api";
 import { NotificationTimeline } from "./NotificationTimeline";
@@ -120,6 +121,34 @@ afterEach(() => {
 });
 
 describe("通知视图 · 悬停正文档", () => {
+  it("落点规则：挂指针右下，竖直不越过所悬停卡片下沿（防遮标题）", () => {
+    const { container } = renderTimeline([entry("a", 14, 10)], {
+      bodyOnHover: true,
+    });
+    const card = cardOf(container);
+    // jsdom 里 rect 全 0，这里喂一张真卡片：上沿 100 / 下沿 160
+    card.getBoundingClientRect = () =>
+      ({
+        top: 100,
+        bottom: 160,
+        left: 40,
+        right: 640,
+        width: 600,
+        height: 60,
+        x: 40,
+        y: 100,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    fireEvent.mouseEnter(card, { clientX: 300, clientY: 130 });
+    const float = floatOf(container)!;
+    const x = Number(gsap.getProperty(float, "x"));
+    const y = Number(gsap.getProperty(float, "y"));
+    // x：指针右侧 20px（jsdom 里 offsetWidth=0 ⇒ 不翻边）
+    expect(x).toBe(320);
+    // y：cardBottom(160)+12 = 172 —— 而不是「指针 y+20 = 150」压住标题
+    expect(y).toBe(172);
+  });
+
   it("默认档零变化：正文照旧在卡片里，不挂悬停标记", () => {
     const { container } = renderTimeline([entry("a", 14, 10)]);
     const card = cardOf(container);
