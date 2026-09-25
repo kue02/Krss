@@ -27,6 +27,22 @@ export const TIMELINE_GRANULARITIES: readonly TimelineGranularity[] = [
 export const DEFAULT_TIMELINE_GRANULARITY: TimelineGranularity = "hour";
 
 /**
+ * 时间基准两档（26-2 重做，2026-09-24）：
+ *   published = 按文章发布时间（`publishedAt`，缺失退回 `createdAt`）—— 现状语义，默认档；
+ *   fetched   = 按本机抓取时间（`createdAt` = 入库时间 = 刷新批次，缺失退回 `publishedAt`）。
+ * 缺对应时间的条目退回另一个，**不得丢条目**。
+ */
+export type TimelineTimeBasis = "published" | "fetched";
+
+export const TIMELINE_TIME_BASES: readonly TimelineTimeBasis[] = [
+  "published",
+  "fetched",
+];
+
+/** 拍板默认「发布时间」（= 现状，升级零变化） */
+export const DEFAULT_TIMELINE_TIME_BASIS: TimelineTimeBasis = "published";
+
+/**
  * 折叠档位（15-3 拍板：默认折叠、折叠 2 行，档位 1/2/3/全文）。
  * `full` = 不折叠（正文全量显示，"展开"变成一个空操作）。
  */
@@ -97,11 +113,56 @@ export interface TimelineClusterRow {
 
 export type TimelineRow = TimelineDateRow | TimelineEntryRow | TimelineClusterRow;
 
+/** 段内的行：日期行已经提出来当段头了，段里只剩内容行 */
+export type TimelineContentRow = TimelineEntryRow | TimelineClusterRow;
+
+/** 日期段：一条日期分隔行 + 它下面到下一个日期行之前的行（= 吸顶的作用域） */
+export interface TimelineSection {
+  key: string;
+  label: string;
+  rows: TimelineContentRow[];
+}
+
+/**
+ * 按日期行切段（用户 9-24 吸顶）。
+ *
+ * 为什么非切不可：原生 `position: sticky` 的作用域是元素的**包含块**。日期行若全是同一个
+ * 容器的兄弟节点，多个 `top: 0` 的 sticky 元素会互相重叠 —— 实测 26 个日期行全部贴在容器
+ * 顶部（「整摞贴住」），而不是"后一条顶掉前一条"。给每一段套一层容器后，日期行只能在自己
+ * 那一段里吸：本段滚完被段底边推走，下一段的日期行接替 —— 这才是换班，且零 JS 监听。
+ */
+export function splitTimelineSections(
+  rows: readonly TimelineRow[],
+): TimelineSection[] {
+  const sections: TimelineSection[] = [];
+  for (const row of rows) {
+    if (row.kind === "date") {
+      sections.push({ key: row.key, label: row.label, rows: [] });
+      continue;
+    }
+    let current = sections.at(-1);
+    if (!current) {
+      // 兜底：正常列表首行必是日期行；真遇到半份数据也不丢行
+      current = { key: "day:unknown", label: "", rows: [] };
+      sections.push(current);
+    }
+    current.rows.push(row);
+  }
+  return sections;
+}
+
 /** 认不出来的值一律回默认档（服务端/导入回来的半份配置不会把界面读崩） */
 export function resolveTimelineGranularity(value: unknown): TimelineGranularity {
   return TIMELINE_GRANULARITIES.includes(value as TimelineGranularity)
     ? (value as TimelineGranularity)
     : DEFAULT_TIMELINE_GRANULARITY;
+}
+
+/** 认不出的时间基准一律回「发布时间」（= 现状） */
+export function resolveTimelineTimeBasis(value: unknown): TimelineTimeBasis {
+  return TIMELINE_TIME_BASES.includes(value as TimelineTimeBasis)
+    ? (value as TimelineTimeBasis)
+    : DEFAULT_TIMELINE_TIME_BASIS;
 }
 
 export function resolveTimelineCollapse(value: unknown): TimelineCollapse {
@@ -124,7 +185,24 @@ export function isSingleSideWidth(width: number): boolean {
 
 /** 条目在轴上的时间基准：没有 publishedAt 的条目退回 createdAt */
 export function entryTimestamp(entry: Entry): number {
-  const raw = entry.publishedAt || entry.createdAt;
+  return entryTimestampByBasis(entry, DEFAULT_TIMELINE_TIME_BASIS);
+}
+
+/**
+ * 按时间基准取条目的轴上时间（26-2 重做）：
+ *   published = `publishedAt || createdAt`（现状语义）；
+ *   fetched   = `createdAt || publishedAt`（本机抓取时间 = 刷新批次）。
+ * 任一档缺对应时间都退回另一个，**不得丢条目**。
+ */
+export function entryTimestampByBasis(
+  entry: Entry,
+  basis: TimelineTimeBasis,
+): number {
+  const raw =
+    basis === "fetched"
+      ? entry.createdAt || entry.publishedAt
+      : entry.publishedAt || entry.createdAt;
+  if (!raw) return 0;
   const parsed = Date.parse(raw);
   return Number.isNaN(parsed) ? 0 : parsed;
 }
@@ -171,22 +249,44 @@ export function formatClockTime(ms: number): string {
 }
 
 /** 日期分隔 / 每天粒度的标注：今天 / 昨天 / 9月16日 周二 */
+/** 中文数字（1→一、10→十、14→十四、24→二十四），用于「九月十四日」这类完整日期 */
+const CN_DIGITS = ["零", "一", "二", "三", "四", "五", "六", "七", "八", "九"];
+export function chineseNumber(value: number): string {
+  if (!Number.isInteger(value) || value <= 0 || value > 99) return String(value);
+  if (value < 10) return CN_DIGITS[value] ?? String(value);
+  if (value === 10) return "十";
+  const tens = Math.floor(value / 10);
+  const ones = value % 10;
+  const head = tens === 1 ? "十" : `${CN_DIGITS[tens]}十`;
+  return ones === 0 ? head : `${head}${CN_DIGITS[ones]}`;
+}
+
+/**
+ * 日期分隔行文案（用户 9-24）：要能一眼读出「几月几号」——
+ * 中文写成完整全称「九月十四日 周一」；今天/昨天在最前面带相对词
+ * （「今天 · 九月二十四日 周三」），吸顶时既知道是哪天、也知道是几号。
+ */
 export function formatDayLabel(
   ms: number,
   now: number,
   t: TranslateFunction,
   locale?: string,
 ): string {
+  const date = new Date(ms);
+  const isZh = (locale ?? "").toLowerCase().startsWith("zh");
+  const full = isZh
+    ? `${chineseNumber(date.getMonth() + 1)}月${chineseNumber(date.getDate())}日 周${"日一二三四五六"[date.getDay()]}`
+    : date.toLocaleDateString(locale, {
+        month: "long",
+        day: "numeric",
+        weekday: "short",
+      });
   const dayKey = localDayKey(ms);
-  if (dayKey === localDayKey(now)) return t("timeline.today");
+  if (dayKey === localDayKey(now)) return `${t("timeline.today")} · ${full}`;
   if (dayKey === localDayKey(now - 24 * 60 * 60 * 1000)) {
-    return t("timeline.yesterday");
+    return `${t("timeline.yesterday")} · ${full}`;
   }
-  return new Date(ms).toLocaleDateString(locale, {
-    month: "short",
-    day: "numeric",
-    weekday: "short",
-  });
+  return full;
 }
 
 /** 头节点（桶）的标注：按粒度给「桶名」，跨天时补上日期 */
@@ -212,6 +312,8 @@ export interface BuildTimelineOptions {
   locale?: string;
   /** 同一桶里最多平铺几张卡（默认 3） */
   maxPerBucket?: number;
+  /** 时间基准（默认发布时间 = 现状；抓取时间 = 本机抓取/刷新批次） */
+  timeBasis?: TimelineTimeBasis;
 }
 
 /**
@@ -230,10 +332,13 @@ export function buildTimelineRows(
     now = Date.now(),
     locale,
     maxPerBucket = TIMELINE_BUCKET_CARD_LIMIT,
+    timeBasis = DEFAULT_TIMELINE_TIME_BASIS,
   }: BuildTimelineOptions,
 ): TimelineRow[] {
+  const basis = resolveTimelineTimeBasis(timeBasis);
+  const stamp = (entry: Entry) => entryTimestampByBasis(entry, basis);
   const sorted = entries
-    .map((entry, index) => ({ entry, index, at: entryTimestamp(entry) }))
+    .map((entry, index) => ({ entry, index, at: stamp(entry) }))
     .sort((a, b) => (b.at - a.at) || (a.index - b.index));
 
   /** 先按桶分组，再决定每个桶里平铺几条、吸几条 */
@@ -322,9 +427,12 @@ export function buildTimelineRows(
 export function expandTimelineRows(
   rows: TimelineRow[],
   expandedClusterKeys: ReadonlySet<string>,
+  timeBasis: TimelineTimeBasis = DEFAULT_TIMELINE_TIME_BASIS,
 ): TimelineRow[] {
   if (expandedClusterKeys.size === 0) return rows;
 
+  const basis = resolveTimelineTimeBasis(timeBasis);
+  const stamp = (entry: Entry) => entryTimestampByBasis(entry, basis);
   const out: TimelineRow[] = [];
   for (const row of rows) {
     out.push(row);
@@ -337,8 +445,8 @@ export function expandTimelineRows(
         entry,
         side: index % 2 === 0 ? row.side : row.side === "left" ? "right" : "left",
         node: "minor",
-        label: formatClockTime(entryTimestamp(entry)),
-        shortLabel: formatClockTime(entryTimestamp(entry)),
+        label: formatClockTime(stamp(entry)),
+        shortLabel: formatClockTime(stamp(entry)),
         bucket: row.key,
         bucketCount: row.entries.length,
       });
