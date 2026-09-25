@@ -150,12 +150,14 @@ interface UISettings {
   entryColWidth: number;
   sidebarVisible: boolean;
   /**
-   * 图片视图的排布（28-7 收敛为两档，用户 2026-09-25）：
+   * 图片视图的排布（28-7 收敛为两档；31-1 增「照片墙」一档）：
    *  - grid = 网格（合并了原先的「瀑布流」与「网格」，具体样式看 gridStyle）
    *  - hover = 悬停大图
+   *  - wall = 照片墙（obsidianui art-gallery 原件：three.js 透镜网格，可拖拽平移；
+   *    铺的是照片本身、不按条目分组，见 components/picture-wall/）
    * 历史遗留值 "masonry" 仍可能出现（老数据），读取时按 `resolvePictureLayout()` 归一为 grid。
    */
-  pictureLayout: "grid" | "hover" | "masonry";
+  pictureLayout: "grid" | "hover" | "wall" | "masonry";
   /**
    * 28-7：网格档下的样式（用户：「合并网格应该只有两个选项」）：
    *  - "masonry"（默认）= 之前「瀑布流」的效果，按原图比例排
@@ -300,8 +302,10 @@ const STORAGE_SPEC = LS_KEYS.uiSettings;
  * 28-7：把历史遗留的 pictureLayout 归一。
  * 老数据里 "masonry" 表示「按原图比例那一档」，合并后它 = 网格档 + 样式 masonry。
  */
-export function resolvePictureLayout(layout: string): "grid" | "hover" {
-  return layout === "hover" ? "hover" : "grid";
+export function resolvePictureLayout(layout: string): "grid" | "hover" | "wall" {
+  if (layout === "hover") return "hover";
+  if (layout === "wall") return "wall";
+  return "grid";
 }
 
 /** 28-7：老数据里 "masonry" 对应网格档的 masonry 样式；"grid" 则看用户选的样式。 */
@@ -715,9 +719,12 @@ export function useUISettingActions() {
     setUISetting("cardImageSize", size);
   }, []);
 
-  const setPictureLayout = useCallback((layout: "grid" | "hover") => {
-    setUISetting("pictureLayout", layout);
-  }, []);
+  const setPictureLayout = useCallback(
+    (layout: "grid" | "hover" | "wall") => {
+      setUISetting("pictureLayout", layout);
+    },
+    [],
+  );
 
   /** 28-7：网格档下的样式（masonry = 之前瀑布流的效果 / square = 之前网格的效果） */
   const setGridStyle = useCallback((style: "masonry" | "square") => {

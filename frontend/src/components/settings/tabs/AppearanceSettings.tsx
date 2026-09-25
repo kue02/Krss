@@ -23,6 +23,7 @@ import {
   useUISettingActions,
   useUISettingKey,
   resolveGridStyle,
+  resolvePictureLayout,
   type CardImageSize,
   type HoverMultiImageConfig,
   type QuoteStyle,
@@ -233,6 +234,7 @@ export function AppearanceSettings() {
     floatWheel: hoverMultiImageSetting?.floatWheel ?? false,
     hSwipe: hoverMultiImageSetting?.hSwipe ?? false,
   };
+  const resolvedPictureLayout = resolvePictureLayout(pictureLayout);
   const gridStyle = resolveGridStyle(pictureLayout, useUISettingKey("gridStyle"));
   /** 29-1：通知视图正文放哪儿（false = 卡片内现状 / true = 悬停浮块） */
   const notificationBodyOnHoverRaw = useUISettingKey("notificationBodyOnHover");
@@ -996,15 +998,15 @@ export function AppearanceSettings() {
                     />
                   </SettingRow>
                 )}
-                {/* 图片视图档位（28-7 收敛为两档：网格 / 悬停大图）。
+                {/* 图片视图档位（28-7 收敛为两档：网格 / 悬停大图；31-1 增第三档「照片墙」）。
                     原先的「瀑布流」与「网格」合并成一档「网格」，两者的差别降为下面那条「样式」。 */}
                 {view === "picture" && (
                   <SettingRow label={t("appearance_view.picture_layout")}>
                     <SegmentedControl
                       className="shrink-0"
-                      value={pictureLayout === "hover" ? "hover" : "grid"}
+                      value={resolvedPictureLayout}
                       onValueChange={(value) =>
-                        setPictureLayout(value as "grid" | "hover")
+                        setPictureLayout(value as "grid" | "hover" | "wall")
                       }
                       options={[
                         {
@@ -1015,13 +1017,17 @@ export function AppearanceSettings() {
                           value: "hover",
                           label: t("appearance_view.picture_layout_hover"),
                         },
+                        {
+                          value: "wall",
+                          label: t("appearance_view.picture_layout_wall"),
+                        },
                       ]}
                     />
                   </SettingRow>
                 )}
                 {/* 28-7：网格档下的样式（用户「合并网格应该只有两个选项：默认的是之前瀑布流
                     的效果，另一个可选的是之前网格的效果」）。只在网格档显示。 */}
-                {view === "picture" && pictureLayout !== "hover" && (
+                {view === "picture" && resolvedPictureLayout === "grid" && (
                   <SettingRow label={t("appearance_view.grid_style")}>
                     <SegmentedControl
                       className="shrink-0"
@@ -1044,7 +1050,7 @@ export function AppearanceSettings() {
                 )}
                 {/* 28-7a：悬停大图档的尺寸自定义（用户 2026-09-25 要求这两项可设置，
                     预设来自两棵树：compact/small = 5179 现值，comfortable/large = 5175 那套） */}
-                {view === "picture" && pictureLayout === "hover" && (
+                {view === "picture" && resolvedPictureLayout === "hover" && (
                   <>
                     <SettingRow label={t("appearance_view.hover_row_height")}>
                       <SegmentedControl
