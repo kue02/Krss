@@ -49,12 +49,12 @@ export function RefreshTooltip({
   const [open, setOpen] = useState(false);
   const closeTimer = useRef<number | null>(null);
 
-  // 悬停开/关必须「热区连续 + 延迟关」：
-  // 之前 Trigger 与 Dialog 各自直接 onMouseEnter/Leave 开关，而 Popover.Content 的 offset 默认
-  // 是 8px —— 按钮和浮层之间留了一条 8px 缝隙。鼠标从按钮移向浮层会跨过它：leave 关掉浮层，
-  // 指针随即落回按钮又 enter 打开，如此往复 = 不停闪动（用户 9-25 反馈）。
-  // 现在 offset={0}，视觉间距改由浮层自身的内边距提供（padding 仍在浮层热区内，无缝），
-  // 关闭再加 250ms 延迟兜住手抖。
+  // 悬停开/关：靠「关闭延迟」防抖，**不能**把浮层贴到按钮上。
+  // 闪动根因：Trigger/Dialog 各自直接 onMouseEnter/Leave 开关，而 Popover.Content 的 offset
+  // 默认 8px —— 按钮与浮层之间那条 8px 缝隙，指针横穿时会先 leave 再 enter，往复即闪
+  // （用户 9-25）。解法是给关闭加 250ms 延迟：横穿 8px 远快于 250ms，缝隙不再是问题。
+  // ⚠️ 别改用 offset={0} 来「消除缝隙」：实测那样浮层会与按钮重叠（浮层顶 48 < 按钮底 52），
+  // 它盖在按钮上导致**点击刷新失效**（用户 9-25 反馈「点刷新没反应」）。
   const cancelClose = () => {
     if (closeTimer.current !== null) {
       window.clearTimeout(closeTimer.current);
@@ -91,8 +91,11 @@ export function RefreshTooltip({
       <Popover.Trigger onMouseEnter={openNow} onMouseLeave={scheduleClose}>
         {children}
       </Popover.Trigger>
-      {/* offset=0 + pt-2：把 8px 视觉间距做成浮层的内边距，鼠标全程在热区内，不再闪 */}
-      <Popover.Content placement="bottom" offset={0} className="w-80 pt-2">
+      {/* 关键：**必须非模态**（isNonModal，透传给 react-aria-components 的 Popover）。
+          默认是模态的 —— 打开时 react-aria 会给 #root 加 inert，整个应用立刻不可交互：
+          鼠标悬停能看到浮层、一刷新按钮就「没反应」（用户 9-25 反馈「点刷新没反应」）。
+          offset 保持默认 8px：贴到按钮上（offset=0）会让浮层盖住按钮，同样点不动。 */}
+      <Popover.Content placement="bottom" isNonModal className="w-80">
         <Popover.Dialog
           className="p-3"
           onMouseEnter={openNow}
