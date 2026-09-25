@@ -47,8 +47,13 @@ const DEFAULT_TRIGGERS: HoverMultiImageTriggers = {
     hSwipe: false,
 };
 
-/* 滚轮连发节流：触控板一次手势会打出几十个 wheel 事件，不节流会连翻好几张 */
-const WHEEL_MIN_INTERVAL_MS = 120;
+/* 无极滚动：滚轮累加连续位移（px），停后吸附到最近一张。
+ * 一格普通滚轮 deltaY≈100 × WHEEL_GAIN(1.0) = 100px ≈ 1/4 张（strip 宽 400px），
+ * 即系数×100/stripWidth ≈ 0.25，落在 1/5~1/3 区间；连续手感 + 180ms 吸附落位。 */
+const WHEEL_GAIN = 1.0;
+const SNAP_DELAY_MS = 180;
+/* jsdom 里 clientWidth 恒为 0，真机浮块宽 400px（compact 160px，用实测值优先） */
+const STRIP_WIDTH_FALLBACK = 400;
 
 /* 29-4 浮块 hover 不消失：照 RefreshTooltip 同款（关闭延迟 + 进入取消），
  * 进出场 scale 动效与鼠标跟随一字不动，只把「立刻藏」换成「延迟藏」。 */
@@ -103,6 +108,11 @@ export function HoverImg({ projects = defaultProjects, className, isContained = 
     const [activeRow, setActiveRow] = useState(-1);
     const [imgIndexes, setImgIndexes] = useState<Record<number, number>>({});
     const activeRowRef = useRef(-1);
+    /* 无极滚动：每行目标偏移 px（连续量）；imgIndexes 是它的四舍五入镜像（data-img-index 用） */
+    const offsetsRef = useRef<Record<number, number>>({});
+    const imgIndexesRef = useRef<Record<number, number>>({});
+    imgIndexesRef.current = imgIndexes;
+    const snapTimersRef = useRef<Record<number, number | undefined>>({});
     /* effect 里读最新值用的镜像（监听器只订阅一次，不跟 state 跑） */
     const countsRef = useRef<number[]>([]);
     countsRef.current = projects.map((p) => effectiveImages(p).length);
@@ -137,16 +147,92 @@ export function HoverImg({ projects = defaultProjects, className, isContained = 
             ease: "power3.out",
         });
 
+        /* 无极滚动的 strip 定位：gsap 补间直接改 DOM，React 不写 transform
+         *（避免重渲染掐死补间）。元素按行索引用 projectThumbnail 内查询，
+         * 因为 gsap.utils.toArray 的镜像数组在 React 重渲染后下标会错位。 */
+        const stripOfRow = (row: number): HTMLElement | null => {
+            const thumbs = projectThumbnail.querySelectorAll(".hover-img-thumbnail");
+            const thumb = thumbs[row] as HTMLElement | undefined;
+            return (thumb?.querySelector(".hover-img-multi") as HTMLElement | null) ?? null;
+        };
+        const stripWidthOf = (row: number): number => {
+            const w = stripOfRow(row)?.clientWidth ?? 0;
+            return w > 0 ? w : STRIP_WIDTH_FALLBACK;
+        };
+
+        /* hSwipe 专用离散步进（无极滚动不动它）：到头就停，不循环。
+         * strip 位移纯由 gsap 驱动（React 不写 transform，避免重渲染掐死补间），
+         * 这里直接 gsap.to 到目标张。 */
         const stepImage = (row: number, dir: 1 | -1) => {
             const n = countsRef.current[row] ?? 1;
             if (n <= 1) return;
-            setImgIndexes((prev) => {
-                const cur = prev[row] ?? 0;
-                /* 到头就停（不循环）：滚轮/滑动误触不会从末张跳回首张 */
-                const next = Math.min(n - 1, Math.max(0, cur + dir));
-                if (next === cur) return prev;
-                return { ...prev, [row]: next };
-            });
+            const cur = imgIndexesRef.current[row] ?? 0;
+            /* 到头就停（不循环）：滚轮/滑动误触不会从末张跳回首张 */
+            const next = Math.min(n - 1, Math.max(0, cur + dir));
+            if (next === cur) return;
+            const width = stripWidthOf(row);
+            offsetsRef.current[row] = next * width;
+            const strip = stripOfRow(row);
+            if (strip) {
+                gsap.to(strip, {
+                    x: -next * width,
+                    duration: 0.25,
+                    ease: "power2.out",
+                    overwrite: true,
+                });
+            }
+            setImgIndexes((prev) => ({ ...prev, [row]: next }));
+        };
+
+        /* 无极滚动：滚轮驱动连续位移 px（不丢事件），停 180ms 后吸附到最近一张 */
+        const scrollContinuous = (row: number, delta: number) => {
+            const n = countsRef.current[row] ?? 1;
+            if (row < 0 || n <= 1) return false;
+            const width = stripWidthOf(row);
+            const max = (n - 1) * width;
+            const base =
+                offsetsRef.current[row] ??
+                (imgIndexesRef.current[row] ?? 0) * width;
+            const offset = Math.min(max, Math.max(0, base + delta * WHEEL_GAIN));
+            offsetsRef.current[row] = offset;
+            const strip = stripOfRow(row);
+            if (strip) {
+                gsap.to(strip, {
+                    x: -offset,
+                    duration: 0.18,
+                    ease: "power2.out",
+                    overwrite: true,
+                });
+            }
+            /* data-img-index 取最近一张（小幅 wheel 下仍为 0，真机读数靠它） */
+            const nearest = Math.round(offset / width);
+            if (nearest !== (imgIndexesRef.current[row] ?? 0)) {
+                setImgIndexes((prev) => ({ ...prev, [row]: nearest }));
+            }
+            /* 重置吸附定时器：停下来 180ms 才落位 */
+            const prev_timer = snapTimersRef.current[row];
+            if (prev_timer !== undefined) window.clearTimeout(prev_timer);
+            snapTimersRef.current[row] = window.setTimeout(() => {
+                snapTimersRef.current[row] = undefined;
+                const cur_off = offsetsRef.current[row] ?? nearest * width;
+                const snapped =
+                    Math.min(max, Math.max(0, Math.round(cur_off / width))) * width;
+                offsetsRef.current[row] = snapped;
+                const el = stripOfRow(row);
+                if (el) {
+                    gsap.to(el, {
+                        x: -snapped,
+                        duration: 0.25,
+                        ease: "power2.out",
+                        overwrite: true,
+                    });
+                }
+                const snappedIdx = Math.round(snapped / width);
+                if (snappedIdx !== (imgIndexesRef.current[row] ?? 0)) {
+                    setImgIndexes((prev) => ({ ...prev, [row]: snappedIdx }));
+                }
+            }, SNAP_DELAY_MS);
+            return true;
         };
 
         const handleMouseMove = (e: MouseEvent) => {
@@ -195,7 +281,6 @@ export function HoverImg({ projects = defaultProjects, className, isContained = 
         projectsContainer.addEventListener("mouseleave", handleMouseLeave);
 
         const thumbMoveState = { lastX: 0, lastFlipAt: 0, tracking: false };
-        const lastFloatWheelAt = { at: 0 };
 
         /* 浮块进入/离开：进入取消关闭（RefreshTooltip 同款，250ms 延迟关），
          * 离开浮块才起延迟关闭。行上 handleMouseEnter 会立即 scale 1 重新打开。 */
@@ -204,7 +289,7 @@ export function HoverImg({ projects = defaultProjects, className, isContained = 
         projectThumbnail.addEventListener("mouseenter", handleThumbMouseEnter);
         projectThumbnail.addEventListener("mouseleave", handleThumbMouseLeave);
 
-        /* 29-4 floatWheel：鼠标移进浮块后滚轮 = 切图（行上的滚轮仍滚列表）。 */
+        /* 29-4 floatWheel：鼠标移进浮块后滚轮 = 无极连续位移（行上的滚轮仍滚列表）。 */
         const handleThumbWheel = (e: WheelEvent) => {
             if (!triggersRef.current.floatWheel) return;
             const row = activeRowRef.current;
@@ -212,11 +297,9 @@ export function HoverImg({ projects = defaultProjects, className, isContained = 
             if (row < 0 || n <= 1) return;
             e.preventDefault();
             e.stopPropagation();
-            const now = performance.now();
-            if (now - lastFloatWheelAt.at < WHEEL_MIN_INTERVAL_MS) return;
-            lastFloatWheelAt.at = now;
-            const dir: 1 | -1 = (e.deltaY || e.deltaX) > 0 ? 1 : -1;
-            stepImage(row, dir);
+            /* 纵向优先，横向滚轮也吃：连续 offset 不怕连发，不节流丢事件 */
+            const delta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+            scrollContinuous(row, delta);
         };
         projectThumbnail.addEventListener("wheel", handleThumbWheel, { passive: false });
 
@@ -245,8 +328,6 @@ export function HoverImg({ projects = defaultProjects, className, isContained = 
         projectThumbnail.addEventListener("mousemove", handleThumbMouseMove);
 
         const projectListeners: Array<() => void> = [];
-        /* 每行滚轮节流时间戳（触控板一次手势几十个事件，不节流连翻好几张） */
-        const lastWheelAt = new Map<number, number>();
 
         /* 29-4：行之间换行也先取消旧关闭——新行的 mouseenter 会立即 scale-1 打开，
          * 避免「从行 A 移到行 B 的瞬间」旧 timer 把浮块藏一下再打开（闪）。 */
@@ -270,7 +351,7 @@ export function HoverImg({ projects = defaultProjects, className, isContained = 
                 });
             };
 
-            /* 29-4 rowWheel：行上滚轮 = 切图。这一下必须不吃列表滚动 ——
+            /* 29-4 rowWheel：行上滚轮 = 无极连续位移。这一下必须不吃列表滚动 ——
              * wheel 默认是 passive 的（调 preventDefault 会被浏览器忽略并打 warning），
              * 所以这里用原生 addEventListener({ passive: false }) + preventDefault。
              * 开关关着 / 单图行直接 return：滚轮照常滚列表，不拦。 */
@@ -280,11 +361,9 @@ export function HoverImg({ projects = defaultProjects, className, isContained = 
                 if (n <= 1) return;
                 e.preventDefault();
                 e.stopPropagation();
-                const now = performance.now();
-                if (now - (lastWheelAt.get(index) ?? 0) < WHEEL_MIN_INTERVAL_MS) return;
-                lastWheelAt.set(index, now);
-                const dir: 1 | -1 = (e.deltaY || e.deltaX) > 0 ? 1 : -1;
-                stepImage(index, dir);
+                /* 纵向优先，横向滚轮也吃：连续 offset 接管“切几张”语义，不节流丢事件 */
+                const delta = Math.abs(e.deltaY) >= Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+                scrollContinuous(index, delta);
             };
 
             project.addEventListener("mouseenter", handleMouseEnter);
@@ -345,7 +424,9 @@ export function HoverImg({ projects = defaultProjects, className, isContained = 
                             </div>
                         );
                     }
-                    /* 多图：横向 strip，translateX(-i*100%) + CSS transition 切图 */
+                    /* 多图：横向 strip，位移纯由 gsap 的 x（px 连续量）驱动，
+                     * React 只写 data-img-index（= Math.round(offset/width)，真机读数靠它），
+                     * 不写 inline transform，避免重渲染掐死滚轮/吸附补间。 */
                     const cur = Math.min(imgIndexes[index] ?? 0, srcs.length - 1);
                     return (
                         <div className="hover-img-thumbnail" key={index}>
@@ -353,7 +434,6 @@ export function HoverImg({ projects = defaultProjects, className, isContained = 
                                 className="hover-img-multi"
                                 data-img-index={cur}
                                 data-img-count={srcs.length}
-                                style={{ transform: `translateX(${-cur * 100}%)` }}
                             >
                                 {srcs.map((src, si) => (
                                     /* eslint-disable-next-line @next/next/no-img-element */
