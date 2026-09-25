@@ -136,10 +136,19 @@ interface UISettings {
   entryColWidth: number;
   sidebarVisible: boolean;
   /**
-   * 图片视图的排布：masonry = 瀑布流（按原图比例，默认）/ grid = 等高正方格（对齐整齐）。
-   * 用户 2026-09-17 要求加这一档。
+   * 图片视图的排布（28-7 收敛为两档，用户 2026-09-25）：
+   *  - grid = 网格（合并了原先的「瀑布流」与「网格」，具体样式看 gridStyle）
+   *  - hover = 悬停大图
+   * 历史遗留值 "masonry" 仍可能出现（老数据），读取时按 `resolvePictureLayout()` 归一为 grid。
    */
-  pictureLayout: "masonry" | "grid" | "hover";
+  pictureLayout: "grid" | "hover" | "masonry";
+  /**
+   * 28-7：网格档下的样式（用户：「合并网格应该只有两个选项」）：
+   *  - "masonry"（默认）= 之前「瀑布流」的效果，按原图比例排
+   *  - "square" = 之前「网格」的效果，裁成等高正方格
+   * 注意：界面上那一档叫「瀑布流」时指的其实是前者；真正的 Pinterest 式瀑布流尚未实现。
+   */
+  gridStyle: "masonry" | "square";
   /**
    * 28-7a：图片视图「悬停大图」档的尺寸自定义（用户 2026-09-25）。
    * 两个维度各自二选一，互不绑定，可混搭：
@@ -151,17 +160,6 @@ interface UISettings {
    */
   hoverRowHeight: "compact" | "comfortable";
   hoverImageSize: "small" | "large";
-  /**
-   * 28-7c：网格档 / 瀑布流档各自的尺寸自定义（用户 2026-09-25「做两个可调项」）。
-   *  - gridColumns：网格档的列数，`auto` 走原有断点表；否则固定几列。
-   *  - masonryColumnWidth：瀑布流档的目标列宽（px），`auto` 走原有断点表；
-   *    否则列数 = 容器内容宽 ÷ 该值 —— 这是 Pinterest 的做法（列宽固定、列数随宽度变），
-   *    而原来的断点表是反过来的（列数固定、列宽拉伸）。
-   */
-  /* 注意：这两个键的值一律用字符串 —— sanitizeBag 会丢弃「类型与默认值不一致」的键，
-     默认值是字符串 "auto"，所以候选项也必须是字符串，不能写数字。 */
-  gridColumns: "auto" | "2" | "3" | "4" | "5" | "6";
-  masonryColumnWidth: "auto" | "180" | "220" | "260";
   /**
    * 文章视图第二栏的排布：list = 卡片列表（默认）；hover = 悬停大图（同图片视图第三档形态）。
    * reader-transition 批新增（用户 2026-09-25）。
@@ -275,6 +273,23 @@ const STORAGE_SPEC = LS_KEYS.uiSettings;
  * 用户拍板的理由：桌面 `feedColWidth=256`、`uiScale` 这类值同步到手机上直接没法用，
  * 所以「跨设备一致」只对共用那部分成立，尺寸类各设备自己一套。
  */
+/**
+ * 28-7：把历史遗留的 pictureLayout 归一。
+ * 老数据里 "masonry" 表示「按原图比例那一档」，合并后它 = 网格档 + 样式 masonry。
+ */
+export function resolvePictureLayout(layout: string): "grid" | "hover" {
+  return layout === "hover" ? "hover" : "grid";
+}
+
+/** 28-7：老数据里 "masonry" 对应网格档的 masonry 样式；"grid" 则看用户选的样式。 */
+export function resolveGridStyle(
+  layout: string,
+  style: "masonry" | "square" | undefined,
+): "masonry" | "square" {
+  if (style === "square" || style === "masonry") return style;
+  return layout === "grid" ? "square" : "masonry";
+}
+
 export const DEVICE_SCOPED_UI_KEYS = [
   "feedColWidth",
   "entryColWidth",
@@ -427,11 +442,10 @@ export const defaultUISettings: UISettings = {
   feedColWidth: 256,
   entryColWidth: 336,
   sidebarVisible: true,
-  pictureLayout: "masonry",
+  pictureLayout: "grid",
+  gridStyle: "masonry",
   hoverRowHeight: "compact",
   hoverImageSize: "small",
-  gridColumns: "auto",
-  masonryColumnWidth: "auto",
   articleLayout: "list",
   cardImageSize: "small",
   cardPreviewLines: 2,
@@ -652,8 +666,13 @@ export function useUISettingActions() {
     setUISetting("cardImageSize", size);
   }, []);
 
-  const setPictureLayout = useCallback((layout: "masonry" | "grid" | "hover") => {
+  const setPictureLayout = useCallback((layout: "grid" | "hover") => {
     setUISetting("pictureLayout", layout);
+  }, []);
+
+  /** 28-7：网格档下的样式（masonry = 之前瀑布流的效果 / square = 之前网格的效果） */
+  const setGridStyle = useCallback((style: "masonry" | "square") => {
+    setUISetting("gridStyle", style);
   }, []);
 
   /** 28-7a：悬停大图档的行高尺度（compact = 5179 默认 / comfortable = 5175 那套） */
@@ -665,22 +684,6 @@ export function useUISettingActions() {
   const setHoverImageSize = useCallback((value: "small" | "large") => {
     setUISetting("hoverImageSize", value);
   }, []);
-
-  /** 28-7c：网格档列数（auto = 原断点表） */
-  const setGridColumns = useCallback(
-    (value: "auto" | "2" | "3" | "4" | "5" | "6") => {
-      setUISetting("gridColumns", value);
-    },
-    [],
-  );
-
-  /** 28-7c：瀑布流档目标列宽（auto = 原断点表；否则按列宽反算列数 = Pinterest 做法） */
-  const setMasonryColumnWidth = useCallback(
-    (value: "auto" | "180" | "220" | "260") => {
-      setUISetting("masonryColumnWidth", value);
-    },
-    [],
-  );
 
   /** 文章视图第二栏的排布（reader-transition 批新增） */
   const setArticleLayout = useCallback((layout: ArticleLayout) => {
@@ -873,10 +876,9 @@ export function useUISettingActions() {
     toggleSidebarVisible,
     setCardImageSize,
     setPictureLayout,
+    setGridStyle,
     setHoverRowHeight,
     setHoverImageSize,
-    setGridColumns,
-    setMasonryColumnWidth,
     setArticleLayout,
     setCardPreviewLines,
     setEntryFontFamily,

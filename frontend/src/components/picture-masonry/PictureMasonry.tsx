@@ -23,7 +23,12 @@ import { PictureHoverList } from "@/components/picture-hover/PictureHoverList";
 import { useGeneralSettings } from "@/hooks/useGeneralSettings";
 import { useScrollToTop } from "@/hooks/useScrollToTop";
 import { useMasonryScrollMarkRead } from "./useMasonryScrollMarkRead";
-import { useUISettingKey, useUISettingActions } from "@/hooks/useUISettings";
+import {
+  useUISettingKey,
+  useUISettingActions,
+  resolvePictureLayout,
+  resolveGridStyle,
+} from "@/hooks/useUISettings";
 import { getEntryImages } from "@/lib/extract-images";
 import { EntryListHeader } from "@/components/entry-list/EntryListHeader";
 import { MobileDocumentHeader } from "@/components/layout/MobileDocumentHeader";
@@ -123,43 +128,25 @@ export function PictureMasonry({
 
   // 图片视图排布：瀑布流（默认）或等高正方格（用户 2026-09-17 要求可切）
   const pictureLayout = useUISettingKey("pictureLayout");
-  const isGrid = pictureLayout === "grid";
+  // 28-7：档位收敛为两档（grid / hover），「正方格 vs 原图比例」降为 grid 档下的样式
+  const resolvedLayout = resolvePictureLayout(pictureLayout);
+  const gridStyle = resolveGridStyle(pictureLayout, useUISettingKey("gridStyle"));
+  const isGrid = resolvedLayout === "grid" && gridStyle === "square";
   /** 第三档：hover-img（复用 obsidianui 组件），走普通列表而不是瀑布流虚拟滚动 */
-  const isHover = pictureLayout === "hover";
+  const isHover = resolvedLayout === "hover";
   /** 28-6：顶栏那颗档位切换（用户要求图片视图也加一个，三档循环） */
   const { setPictureLayout } = useUISettingActions();
   /** 28-7a：悬停大图档的尺寸预设（行高 / 浮块大小，用户要求可设置） */
   const hoverRowHeight = useUISettingKey("hoverRowHeight");
   const hoverImageSize = useUISettingKey("hoverImageSize");
-  /** 28-7c：网格档列数 / 瀑布流档目标列宽（两个可调项） */
-  const gridColumns = useUISettingKey("gridColumns");
-  const masonryColumnWidth = useUISettingKey("masonryColumnWidth");
   const handleTogglePictureLayout = useCallback(() => {
-    // 28-7c（用户：「上面那个循环按钮…还是三个」）：网格 → 瀑布流 → 悬停大图 三档循环。
-    setPictureLayout(
-      pictureLayout === "grid"
-        ? "masonry"
-        : pictureLayout === "masonry"
-          ? "hover"
-          : "grid",
-    );
-  }, [pictureLayout, setPictureLayout]);
-  const { currentColumn: autoColumn, isReady } = useMasonryColumn(
+    // 28-7（用户：「合并网格应该只有两个选项」）：档位两档循环 —— 网格 ⇄ 悬停大图。
+    setPictureLayout(resolvedLayout === "grid" ? "hover" : "grid");
+  }, [resolvedLayout, setPictureLayout]);
+  const { currentColumn, isReady } = useMasonryColumn(
     isMobile,
     scrollContainerRef,
-    // 28-7c：只有瀑布流档用「目标列宽」反算列数（Pinterest 做法）；网格档继续走断点表
-    pictureLayout === "masonry" && masonryColumnWidth !== "auto"
-      ? Number(masonryColumnWidth)
-      : undefined,
   );
-  /**
-   * 28-7c：最终列数。网格档若指定了固定列数就用它（这是「网格的两个可调项」之一），
-   * 其余情况沿用 useMasonryColumn 的自动值。
-   */
-  const currentColumn =
-    pictureLayout === "grid" && gridColumns !== "auto"
-      ? Number(gridColumns)
-      : autoColumn;
   const loadFromDB = useImageDimensionsStore((state) => state.loadFromDB);
   const clearFailed = useImageDimensionsStore((state) => state.clearFailed);
 
@@ -409,7 +396,7 @@ export function PictureMasonry({
           isTablet={isTablet}
           onToggleSidebar={onToggleSidebar}
           sidebarVisible={sidebarVisible}
-          pictureLayout={pictureLayout}
+          pictureLayout={resolvedLayout}
           onTogglePictureLayout={handleTogglePictureLayout}
         />
       </MobileDocumentHeader>
@@ -445,7 +432,7 @@ export function PictureMasonry({
           </div>
         ) : isReady ? (
           <VirtuosoMasonry
-            key={`${filterKey}-${pictureLayout}`}
+            key={`${filterKey}-${resolvedLayout}`}
             data={items}
             columnCount={currentColumn}
             ItemContent={MasonryItemContent}

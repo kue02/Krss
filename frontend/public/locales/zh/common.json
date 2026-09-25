@@ -968,13 +968,9 @@
     "hover_image_size": "悬停大图 · 图片大小",
     "hover_image_size_small": "小（400×250）",
     "hover_image_size_large": "大",
-    "grid_columns": "网格 · 列数",
-    "grid_columns_auto": "自动（默认）",
-    "masonry_column_width": "瀑布流 · 列宽",
-    "masonry_column_width_auto": "自动（默认）",
-    "masonry_column_width_narrow": "窄（180px）",
-    "masonry_column_width_mid": "中（220px）",
-    "masonry_column_width_wide": "宽（260px）"
+    "grid_style": "网格 · 样式",
+    "grid_style_masonry": "按原图比例（默认）",
+    "grid_style_square": "正方格"
   },
   "folder": {
     "create": "新增分类",

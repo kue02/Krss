@@ -30,11 +30,6 @@ function getCurrentColumn(width: number): number {
 export function useMasonryColumn(
   isMobile?: boolean,
   externalContainerRef?: RefObject<HTMLDivElement | null>,
-  /**
-   * 28-7c：目标列宽（px）。传了它就走 Pinterest 的做法 —— 列宽固定、列数 = 容器内容宽 ÷ 列宽；
-   * 不传则维持原行为（断点表定列数、列宽随容器拉伸）。
-   */
-  targetColumnWidth?: number,
 ): MasonryColumnState {
   const internalContainerRef = useRef<HTMLDivElement>(null);
   const containerRef = externalContainerRef ?? internalContainerRef;
@@ -55,11 +50,7 @@ export function useMasonryColumn(
       const paddingRight = Number.parseFloat(style.paddingRight) || 0;
       const contentWidth = container.clientWidth - paddingLeft - paddingRight;
 
-      const column = isMobile
-        ? 2
-        : targetColumnWidth
-          ? Math.max(2, Math.round(contentWidth / targetColumnWidth))
-          : getCurrentColumn(contentWidth);
+      const column = isMobile ? 2 : getCurrentColumn(contentWidth);
 
       setCurrentColumn((currentColumn) =>
         currentColumn === column ? currentColumn : column,
@@ -89,7 +80,7 @@ export function useMasonryColumn(
         cancelAnimationFrame(frameId);
       }
     };
-  }, [containerRef, isMobile, targetColumnWidth]);
+  }, [containerRef, isMobile]);
 
   return {
     containerRef,

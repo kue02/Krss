@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { ToggleButton } from "@heroui/react";
-import { Columns3, Filter, Images, LayoutGrid } from "lucide-react";
+import { Filter, Images, LayoutGrid } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { RefreshStatus } from "@/api";
 import { RefreshTooltip } from "./RefreshTooltip";
@@ -77,10 +77,10 @@ interface EntryListHeaderProps {
   articleLayout?: "list" | "hover";
   onToggleArticleLayout?: () => void;
   /**
-   * 28-6：图片视图的「展示方式」切换（瀑布流 → 网格 → 悬停大图 循环三档）。
+   * 28-7：图片视图的「展示方式」切换（网格 ⇄ 悬停大图，两档循环）。
    * 同上，不传则不渲染。
    */
-  pictureLayout?: "masonry" | "grid" | "hover";
+  pictureLayout?: "grid" | "hover";
   onTogglePictureLayout?: () => void;
 }
 
@@ -185,35 +185,29 @@ export function EntryListHeader({
           </button>
         )}
         {onTogglePictureLayout && (
-          /* 28-6 / 28-7c：图片视图档位循环 —— 网格 → 瀑布流 → 悬停大图 → 网格。
+          /* 28-7：图片视图档位循环 —— 网格 ⇄ 悬停大图。
              图标与提示都表达「点下去会变成什么」。 */
           <button
             type="button"
             onClick={onTogglePictureLayout}
             aria-label={t(
-              pictureLayout === "grid"
-                ? "appearance_view.picture_layout_masonry"
-                : pictureLayout === "masonry"
-                  ? "appearance_view.picture_layout_hover"
-                  : "appearance_view.picture_layout_grid",
+              pictureLayout === "hover"
+                ? "appearance_view.picture_layout_grid"
+                : "appearance_view.picture_layout_hover",
             )}
             {...{
               title: t(
-                pictureLayout === "grid"
-                  ? "appearance_view.picture_layout_masonry"
-                  : pictureLayout === "masonry"
-                    ? "appearance_view.picture_layout_hover"
-                    : "appearance_view.picture_layout_grid",
+                pictureLayout === "hover"
+                  ? "appearance_view.picture_layout_grid"
+                  : "appearance_view.picture_layout_hover",
               ),
             }}
             className="flex size-8 shrink-0 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95"
           >
-            {pictureLayout === "grid" ? (
-              <Columns3 className="size-4" />
-            ) : pictureLayout === "masonry" ? (
-              <Images className="size-4" />
-            ) : (
+            {pictureLayout === "hover" ? (
               <LayoutGrid className="size-4" />
+            ) : (
+              <Images className="size-4" />
             )}
           </button>
         )}

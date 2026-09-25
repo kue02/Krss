@@ -21,6 +21,7 @@ import { useAppearanceSettings } from "@/hooks/useAppearanceSettings";
 import {
   useUISettingActions,
   useUISettingKey,
+  resolveGridStyle,
   type CardImageSize,
   type QuoteStyle,
   type ScrollReadOverride,
@@ -214,16 +215,14 @@ export function AppearanceSettings() {
     setArticleLayout,
     setHoverRowHeight,
     setHoverImageSize,
-    setGridColumns,
-    setMasonryColumnWidth,
+    setGridStyle,
   } = useUISettingActions();
   const { data: appearanceSettings } = useAppearanceSettings();
   const pictureLayout = useUISettingKey("pictureLayout");
   const articleLayout = useUISettingKey("articleLayout");
   const hoverRowHeight = useUISettingKey("hoverRowHeight");
   const hoverImageSize = useUISettingKey("hoverImageSize");
-  const gridColumns = useUISettingKey("gridColumns");
-  const masonryColumnWidth = useUISettingKey("masonryColumnWidth");
+  const gridStyle = resolveGridStyle(pictureLayout, useUISettingKey("gridStyle"));
 
   const themeOptions = useMemo(
     () => [
@@ -956,20 +955,17 @@ export function AppearanceSettings() {
                     />
                   </SettingRow>
                 )}
-                {/* 图片视图：瀑布流 / 等高正方格（用户 2026-09-17 要求加这一档） */}
+                {/* 图片视图档位（28-7 收敛为两档：网格 / 悬停大图）。
+                    原先的「瀑布流」与「网格」合并成一档「网格」，两者的差别降为下面那条「样式」。 */}
                 {view === "picture" && (
                   <SettingRow label={t("appearance_view.picture_layout")}>
                     <SegmentedControl
                       className="shrink-0"
-                      value={pictureLayout}
+                      value={pictureLayout === "hover" ? "hover" : "grid"}
                       onValueChange={(value) =>
-                        setPictureLayout(value as "masonry" | "grid")
+                        setPictureLayout(value as "grid" | "hover")
                       }
                       options={[
-                        {
-                          value: "masonry",
-                          label: t("appearance_view.picture_layout_masonry"),
-                        },
                         {
                           value: "grid",
                           label: t("appearance_view.picture_layout_grid"),
@@ -982,53 +978,24 @@ export function AppearanceSettings() {
                     />
                   </SettingRow>
                 )}
-                {/* 28-7c：网格档列数 / 瀑布流档列宽 —— 两个可调项（用户「做两个可调项」），
-                    各自按当前档位显示。瀑布流那个按「列宽固定、列数随宽度变」实现 Pinterest 观感。 */}
-                {view === "picture" && pictureLayout === "grid" && (
-                  <SettingRow label={t("appearance_view.grid_columns")}>
+                {/* 28-7：网格档下的样式（用户「合并网格应该只有两个选项：默认的是之前瀑布流
+                    的效果，另一个可选的是之前网格的效果」）。只在网格档显示。 */}
+                {view === "picture" && pictureLayout !== "hover" && (
+                  <SettingRow label={t("appearance_view.grid_style")}>
                     <SegmentedControl
                       className="shrink-0"
-                      value={String(gridColumns)}
+                      value={gridStyle}
                       onValueChange={(value) =>
-                        setGridColumns(value as "auto" | "2" | "3" | "4" | "5" | "6")
-                      }
-                      options={[
-                        { value: "auto", label: t("appearance_view.grid_columns_auto") },
-                        { value: "2", label: "2" },
-                        { value: "3", label: "3" },
-                        { value: "4", label: "4" },
-                        { value: "5", label: "5" },
-                        { value: "6", label: "6" },
-                      ]}
-                    />
-                  </SettingRow>
-                )}
-                {view === "picture" && pictureLayout === "masonry" && (
-                  <SettingRow label={t("appearance_view.masonry_column_width")}>
-                    <SegmentedControl
-                      className="shrink-0"
-                      value={String(masonryColumnWidth)}
-                      onValueChange={(value) =>
-                        setMasonryColumnWidth(
-                          value as "auto" | "180" | "220" | "260",
-                        )
+                        setGridStyle(value as "masonry" | "square")
                       }
                       options={[
                         {
-                          value: "auto",
-                          label: t("appearance_view.masonry_column_width_auto"),
+                          value: "masonry",
+                          label: t("appearance_view.grid_style_masonry"),
                         },
                         {
-                          value: "180",
-                          label: t("appearance_view.masonry_column_width_narrow"),
-                        },
-                        {
-                          value: "220",
-                          label: t("appearance_view.masonry_column_width_mid"),
-                        },
-                        {
-                          value: "260",
-                          label: t("appearance_view.masonry_column_width_wide"),
+                          value: "square",
+                          label: t("appearance_view.grid_style_square"),
                         },
                       ]}
                     />
