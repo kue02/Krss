@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { ToggleButton } from "@heroui/react";
-import { Filter } from "lucide-react";
+import { Columns3, Filter, Images, LayoutGrid } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { RefreshStatus } from "@/api";
 import { RefreshTooltip } from "./RefreshTooltip";
@@ -71,10 +71,17 @@ interface EntryListHeaderProps {
   sidebarVisible?: boolean;
   /**
    * 28-1：文章视图的「展示方式」切换（卡片列表 ↔ 悬停大图）。
-   * 不传这两项就不渲染那颗按钮 —— 其它视图（图片 / 通知 / 社交媒体）行为不变。
+   * 不传这两项就不渲染那颗按钮 —— 其它视图行为不变。
+   * 28-6：按钮位置按用户要求放在**标题文字的右边**（不是标题左边）。
    */
   articleLayout?: "list" | "hover";
   onToggleArticleLayout?: () => void;
+  /**
+   * 28-6：图片视图的「展示方式」切换（瀑布流 → 网格 → 悬停大图 循环三档）。
+   * 同上，不传则不渲染。
+   */
+  pictureLayout?: "masonry" | "grid" | "hover";
+  onTogglePictureLayout?: () => void;
 }
 
 export function EntryListHeader({
@@ -100,6 +107,8 @@ export function EntryListHeader({
   sidebarVisible,
   articleLayout,
   onToggleArticleLayout,
+  pictureLayout,
+  onTogglePictureLayout,
 }: EntryListHeaderProps) {
   const { t } = useTranslation();
 
@@ -129,10 +138,29 @@ export function EntryListHeader({
             <MenuIcon className="size-5" />
           </button>
         )}
+        <div className="min-w-0">
+          <h2
+            className="truncate text-[0.9375rem] font-bold leading-tight cursor-pointer active:opacity-70 transition-opacity"
+            onClick={() => dispatchScrollToTop(scrollToTopScope)}
+          >
+            {title}
+          </h2>
+          {subtitle ? (
+            <span className="block truncate text-xs text-muted-foreground">
+              {subtitle}
+            </span>
+          ) : (
+            unreadCount > 0 && (
+              <span className="block truncate text-xs text-muted-foreground">
+                {t("entry.unread_count", { count: unreadCount })}
+              </span>
+            )
+          )}
+        </div>
+        {/* 28-1 / 28-6（用户：「把它放在右侧，右侧就是文字的右侧…不是右侧三个按钮的位置」）：
+            展示方式切换按钮，紧跟在标题文字右边；图标表达「点下去会变成什么」。
+            文章视图两档循环；图片视图三档循环（瀑布流 → 网格 → 悬停大图）。 */}
         {onToggleArticleLayout && (
-          /* 28-1（用户：「在文章视图左上角也加一个」）：与相邻那颗 32px 圆钮同款。
-             图标表达「点下去会变成什么」：当前是卡片列表 → 显示图片图标（切到悬停大图）；
-             当前是悬停大图 → 显示文本图标（切回卡片列表）。 */
           <button
             type="button"
             onClick={onToggleArticleLayout}
@@ -156,25 +184,37 @@ export function EntryListHeader({
             )}
           </button>
         )}
-        <div className="min-w-0">
-          <h2
-            className="truncate text-[0.9375rem] font-bold leading-tight cursor-pointer active:opacity-70 transition-opacity"
-            onClick={() => dispatchScrollToTop(scrollToTopScope)}
+        {onTogglePictureLayout && (
+          <button
+            type="button"
+            onClick={onTogglePictureLayout}
+            aria-label={t(
+              pictureLayout === "masonry"
+                ? "appearance_view.picture_layout_grid"
+                : pictureLayout === "grid"
+                  ? "appearance_view.picture_layout_hover"
+                  : "appearance_view.picture_layout_masonry",
+            )}
+            {...{
+              title: t(
+                pictureLayout === "masonry"
+                  ? "appearance_view.picture_layout_grid"
+                  : pictureLayout === "grid"
+                    ? "appearance_view.picture_layout_hover"
+                    : "appearance_view.picture_layout_masonry",
+              ),
+            }}
+            className="flex size-8 shrink-0 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95"
           >
-            {title}
-          </h2>
-          {subtitle ? (
-            <span className="block truncate text-xs text-muted-foreground">
-              {subtitle}
-            </span>
-          ) : (
-            unreadCount > 0 && (
-              <span className="block truncate text-xs text-muted-foreground">
-                {t("entry.unread_count", { count: unreadCount })}
-              </span>
-            )
-          )}
-        </div>
+            {pictureLayout === "grid" ? (
+              <LayoutGrid className="size-4" />
+            ) : pictureLayout === "hover" ? (
+              <Images className="size-4" />
+            ) : (
+              <Columns3 className="size-4" />
+            )}
+          </button>
+        )}
       </div>
 
       <div className="flex shrink-0 items-center gap-0.5">

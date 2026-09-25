@@ -563,9 +563,20 @@ export function setUISetting<K extends keyof UISettings>(
       },
     };
   } else {
+    // 28-6：非设备级键只该存 shared。但 device 段可能残留同名旧值 ——
+    // 合并规则是 {...shared, ...device[当前设备]}，device 覆盖 shared，
+    // 于是前端写进 shared 的值永远被那条残留压掉，表现为「切了没反应」。
+    // 这里在写 shared 的同时精确删掉两段里的同名键（不碰真正的设备级键）。
+    // 实例：服务端 device.desktop.pictureLayout 残留 'hover'，导致设置页与顶栏
+    // 切图片档位一律无效。
+    const cleanedDesktop = { ...cachedPackage.device.desktop };
+    const cleanedMobile = { ...cachedPackage.device.mobile };
+    delete cleanedDesktop[key as string];
+    delete cleanedMobile[key as string];
     cachedPackage = {
       ...cachedPackage,
       shared: { ...cachedPackage.shared, [key]: value },
+      device: { desktop: cleanedDesktop, mobile: cleanedMobile },
     };
   }
 

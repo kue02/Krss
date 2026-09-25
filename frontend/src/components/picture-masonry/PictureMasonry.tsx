@@ -23,7 +23,7 @@ import { PictureHoverList } from "@/components/picture-hover/PictureHoverList";
 import { useGeneralSettings } from "@/hooks/useGeneralSettings";
 import { useScrollToTop } from "@/hooks/useScrollToTop";
 import { useMasonryScrollMarkRead } from "./useMasonryScrollMarkRead";
-import { useUISettingKey } from "@/hooks/useUISettings";
+import { useUISettingKey, useUISettingActions } from "@/hooks/useUISettings";
 import { getEntryImages } from "@/lib/extract-images";
 import { EntryListHeader } from "@/components/entry-list/EntryListHeader";
 import { MobileDocumentHeader } from "@/components/layout/MobileDocumentHeader";
@@ -126,6 +126,17 @@ export function PictureMasonry({
   const isGrid = pictureLayout === "grid";
   /** 第三档：hover-img（复用 obsidianui 组件），走普通列表而不是瀑布流虚拟滚动 */
   const isHover = pictureLayout === "hover";
+  /** 28-6：顶栏那颗档位切换（用户要求图片视图也加一个，三档循环） */
+  const { setPictureLayout } = useUISettingActions();
+  const handleTogglePictureLayout = useCallback(() => {
+    setPictureLayout(
+      pictureLayout === "masonry"
+        ? "grid"
+        : pictureLayout === "grid"
+          ? "hover"
+          : "masonry",
+    );
+  }, [pictureLayout, setPictureLayout]);
   const { currentColumn, isReady } = useMasonryColumn(
     isMobile,
     scrollContainerRef,
@@ -379,6 +390,8 @@ export function PictureMasonry({
           isTablet={isTablet}
           onToggleSidebar={onToggleSidebar}
           sidebarVisible={sidebarVisible}
+          pictureLayout={pictureLayout}
+          onTogglePictureLayout={handleTogglePictureLayout}
         />
       </MobileDocumentHeader>
 
