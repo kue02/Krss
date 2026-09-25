@@ -92,10 +92,13 @@
   height: 250px;
 }
 
-/* 29-3/29-4：多图浮块。pointer-events 由 data-float-hover 控制：
- *   鼠标在行上时 auto（能进浮块，floatWheel/hSwipe 才有地方落）；
- *   浮块收起后回到 none（绝不挡列表点击/滚动，不出现滑不动的死区）。 */
-.krss-hover-img .hover-img-thumbnail-wrapper:not([data-float-hover="true"]) {
+/* 29-4：浮块 pointer-events。
+ * 默认（行上滚轮一切）= none：浮块是纯跟随预览，永不挡列表点击/滚动/行悬停，
+ * 不出现滑不动的死区，也不出现「浮块盖住行导致 hover 闪断」。
+ * 只有 floatWheel/hSwipe 任一开时，行悬停中才 auto（data-float-hover="true"，
+ * 由 HoverImg 按 activeRow 打）：鼠标能进浮块，滚轮/横滑才有地方落。
+ * 收起（activeRow=-1）立刻回 none。 */
+.krss-hover-img .hover-img-thumbnail-wrapper {
   pointer-events: none;
 }
 

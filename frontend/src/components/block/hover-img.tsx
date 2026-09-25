@@ -163,10 +163,8 @@ export function HoverImg({ projects = defaultProjects, className, isContained = 
             yToRef.current?.(y);
         };
 
-        /* 29-4：浮块上的监听（floatWheel / hSwipe 都靠「鼠标能进浮块」）。
-         * 注意 CSS 仍保持 pointer-events:none —— 浮块本身永不挡住列表点击/滚动；
-         * 浮块常驻 pointer 命中靠下面这组 mouseenter/leave（同 RefreshTooltip 的
-         * 关闭延迟模式），而 hover 不消失靠「行离开时延迟藏 + 浮块进入时取消」。 */
+        /* 29-4：浮块上的监听（floatWheel / hSwipe 都靠「鼠标能进浮块」——
+         * data-float-hover 只在两开关任一开时才 auto，默认 none 浮块纯跟随）。 */
         let hideTimer: number | undefined = undefined;
         const cancelHide = () => {
             if (hideTimer !== undefined) {
@@ -330,9 +328,10 @@ export function HoverImg({ projects = defaultProjects, className, isContained = 
                 className="hover-img-thumbnail-wrapper"
                 ref={thumbnailRef}
                 data-active-row={activeRow}
-                /* 29-4：行悬停中才允许指针进入浮块（floatWheel/hSwipe 落点），
-                 * 收起后回到 none，绝不挡列表。 */
-                data-float-hover={activeRow >= 0 ? "true" : "false"}
+                /* 29-4：floatWheel/hSwipe 任一开、且行悬停中，浮块才吃指针
+                 * （鼠标能进来，滚轮/横滑有地方落）；默认全 none：纯跟随预览，
+                 * 永不挡列表、不盖住行（盖住会导致行 hover 闪断）。 */
+                data-float-hover={activeRow >= 0 && (triggers.floatWheel || triggers.hSwipe) ? "true" : "false"}
                 style={isContained ? { position: "absolute" } : undefined}
             >
                 {projects.map((project, index) => {
