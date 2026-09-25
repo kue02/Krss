@@ -273,6 +273,21 @@ describe("AppearanceSettings 按视图设置", () => {
     );
   });
 
+  it("「长贴自动展开」在社交与通知视图出现（文章/图片视图不显示），默认关", () => {
+    render(<AppearanceSettings />);
+
+    // 社交 + 通知各一行，文章/图片没有（视图顺序 article/picture/notification/social → 通知在前）
+    expect(screen.getAllByText("appearance_view.expand_long")).toHaveLength(2);
+
+    const row = rowOf("appearance_view.expand_long", 0);
+    expect(row.querySelector("[data-value]")?.getAttribute("data-value")).toBe(
+      "off",
+    );
+    fireEvent.click(within(row).getByText("on"));
+
+    expect(setExpandLongForView).toHaveBeenCalledWith("notification", true);
+  });
+
   it("粒度与折叠行数只出现在通知视图（其余视图不显示）", () => {
     render(<AppearanceSettings />);
 

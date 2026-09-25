@@ -19,6 +19,8 @@ vi.mock("react-i18next", () => ({
 // 卡片里的右键菜单是条目那条共用菜单（含 react-query 依赖），这里不测它
 vi.mock("./EntryListItem", () => ({
   EntryContextMenuContent: () => null,
+  SOCIAL_COLLAPSED_PX: 300,
+  SOCIAL_CLIPPED_SLACK_PX: 8,
 }));
 
 vi.mock("@/stores/translation-store", () => ({
@@ -293,6 +295,154 @@ describe("NotificationTimeline · 折叠 / 展开（15-3）", () => {
       if (clientHeightDescriptor) {
         Object.defineProperty(HTMLElement.prototype, "clientHeight", clientHeightDescriptor);
       }
+    }
+  });
+});
+
+describe("NotificationTimeline · 长贴自动展开（与社交视图同语义）", () => {
+  /**
+   * jsdom 不做布局（scrollHeight 恒为 0）→ 用桩控制「自然高度」，
+   * 卡片上报的正是这个值，父级拿它判长贴（> 300px）。
+   */
+  function stubNaturalHeight(height: number) {
+    const descriptor = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "scrollHeight",
+    );
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get: () => height,
+    });
+    return () => {
+      if (descriptor) {
+        Object.defineProperty(
+          HTMLElement.prototype,
+          "scrollHeight",
+          descriptor,
+        );
+      }
+    };
+  }
+
+  /** 很长的正文（自然高度一定超 300px，判据走高度桩、不走字数） */
+  function longEntry(): Entry {
+    return entry("long", localIso(18, 14, 10), {
+      content: `<p>${"很长的正文 ".repeat(200)}</p>`,
+    });
+  }
+
+  it("开关关时按档位钳制（长贴也不展开）", () => {
+    const restore = stubNaturalHeight(800);
+    try {
+      const { container } = renderTimeline([longEntry()], {
+        collapse: "2",
+        autoExpandLong: false,
+      });
+      const body = container.querySelector<HTMLElement>("[data-timeline-body]");
+      expect(body?.dataset.timelineBody).toBe("2");
+      expect(body?.style.webkitLineClamp).toBe("2");
+    } finally {
+      restore();
+    }
+  });
+
+  it("开关开 + 长贴直接是展开态（正文全文容器 + 收起按钮，无需点击）", () => {
+    const restore = stubNaturalHeight(800);
+    try {
+      const { container } = renderTimeline([longEntry()], {
+        collapse: "2",
+        autoExpandLong: true,
+      });
+      // 展开态分支：正文级全文容器（data-timeline-full），不是预览钳制体
+      expect(
+        container.querySelector("[data-timeline-full='long']"),
+      ).not.toBeNull();
+      expect(container.querySelector("[data-timeline-body]")).toBeNull();
+      // 展开态的收起按钮在（文案 timeline.collapse），不出「展开全文」按钮
+      expect(container.querySelector("[data-timeline-expand]")).toBeNull();
+      // 右下角拖拽手柄在（展开态容器专属）
+      expect(
+        container.querySelector("[data-timeline-resize='long']"),
+      ).not.toBeNull();
+    } finally {
+      restore();
+    }
+  });
+
+  it("自动展开后点收起能收起且不再弹开（显式收起记忆）", () => {
+    const restore = stubNaturalHeight(800);
+    const rerenderSelect = vi.fn();
+    const rerenderClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    try {
+      const { container, rerender } = renderTimeline([longEntry()], {
+        collapse: "2",
+        autoExpandLong: true,
+      });
+      expect(
+        container.querySelector("[data-timeline-full='long']"),
+      ).not.toBeNull();
+      // 点展开态里的收起按钮
+      const collapse = container
+        .querySelector("[data-timeline-full='long']")!
+        .closest("[data-timeline-row]")!
+        .querySelector<HTMLButtonElement>("button")!;
+      fireEvent.click(collapse);
+      // 回到预览态：按档位钳制（自动展开的记忆只管「不再自动弹开」，
+      // 用户点「展开全文」仍可手动再展开）
+      expect(container.querySelector("[data-timeline-full='long']")).toBeNull();
+      const body = container.querySelector<HTMLElement>("[data-timeline-body]");
+      expect(body?.dataset.timelineBody).toBe("2");
+      // 同一高度值再报一遍（400ms 复测 / 重渲染）也不弹开
+      rerender(
+        <QueryClientProvider client={rerenderClient}>
+          <NotificationTimeline
+            entries={[longEntry()]}
+            feeds={new Map()}
+            selectedEntryId={null}
+            onSelectEntry={rerenderSelect}
+            granularity="hour"
+            collapse="2"
+            autoExpandLong
+            autoTranslate={false}
+            targetLanguage="zh-CN"
+          />
+        </QueryClientProvider>,
+      );
+      expect(container.querySelector("[data-timeline-full='long']")).toBeNull();
+    } finally {
+      restore();
+    }
+  });
+
+  it("开关开 + 短贴仍按档位钳制", () => {
+    const restore = stubNaturalHeight(40);
+    try {
+      const { container } = renderTimeline([longEntry()], {
+        collapse: "2",
+        autoExpandLong: true,
+      });
+      const body = container.querySelector<HTMLElement>("[data-timeline-body]");
+      expect(body?.dataset.timelineBody).toBe("2");
+      expect(body?.style.webkitLineClamp).toBe("2");
+    } finally {
+      restore();
+    }
+  });
+
+  it("高度没量出来前按短贴处理（不先展开再塌回）", () => {
+    const restore = stubNaturalHeight(0);
+    try {
+      const { container } = renderTimeline([longEntry()], {
+        collapse: "2",
+        autoExpandLong: true,
+      });
+      const body = container.querySelector<HTMLElement>("[data-timeline-body]");
+      expect(body?.dataset.timelineBody).toBe("2");
+      expect(body?.style.webkitLineClamp).toBe("2");
+    } finally {
+      restore();
     }
   });
 });
