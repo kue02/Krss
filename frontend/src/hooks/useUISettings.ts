@@ -299,6 +299,26 @@ export const DEVICE_SCOPED_UI_KEYS = [
 
 const DEVICE_SCOPED = new Set<string>(DEVICE_SCOPED_UI_KEYS);
 
+/**
+ * 28-8：改完**不弹**「已保存」的设置键（用户 2026-09-25 反馈）。
+ *
+ * 判据是「结果肉眼立即可见」：拖出来的列宽、切过去的档位与样式、拖出来的整体缩放 ——
+ * 用户看着界面就知道已经变了，每动一下弹一句只会刷屏（他说「轻轻调一下下面就弹个框，太频繁了」）。
+ * 需要确认自己有没有改成功的（开关、下拉、数值输入）仍然照弹。
+ */
+const SILENT_SAVE_UI_KEYS = new Set<string>([
+  // 拖宽度类
+  "feedColWidth",
+  "entryColWidth",
+  "uiScale",
+  // 切档位 / 切样式类
+  "pictureLayout",
+  "articleLayout",
+  "gridStyle",
+  "hoverRowHeight",
+  "hoverImageSize",
+]);
+
 /** 存储/同步的整包形状（与 `types/settings.ts` 的 UISettingsPackage 同形） */
 export interface UISettingsPackageShape {
   shared: Record<string, unknown>;
@@ -623,8 +643,9 @@ export function setUISetting<K extends keyof UISettings>(
   cachedSettings = flatFromPackage(cachedPackage, device);
   persistPackage(cachedPackage);
   emitChange();
-  // 12-7：即时型改动给一句「已保存」（App 订阅事件、带防抖后弹 toast）
-  notifySettingsSaved();
+  // 12-7：即时型改动给一句「已保存」（App 订阅事件、带防抖后弹 toast）。
+  // 28-8：但「结果肉眼立即可见」的那些不弹 —— 见 SILENT_SAVE_UI_KEYS。
+  if (!SILENT_SAVE_UI_KEYS.has(key as string)) notifySettingsSaved();
   // 21 批：本地立即生效之外，防抖后写服务端（跨设备一致）；失败会另弹一句可见的提示
   scheduleSettingsFlush("ui");
 }
