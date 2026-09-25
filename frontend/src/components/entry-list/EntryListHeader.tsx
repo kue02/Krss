@@ -8,6 +8,8 @@ import {
   CircleOutlineIcon,
   CircleFilledIcon,
   CheckCircleIcon,
+  FileTextIcon,
+  ImageIcon,
   MenuIcon,
   RefreshIcon,
   RefreshSpinner,
@@ -67,6 +69,12 @@ interface EntryListHeaderProps {
   isTablet?: boolean;
   onToggleSidebar?: () => void;
   sidebarVisible?: boolean;
+  /**
+   * 28-1：文章视图的「展示方式」切换（卡片列表 ↔ 悬停大图）。
+   * 不传这两项就不渲染那颗按钮 —— 其它视图（图片 / 通知 / 社交媒体）行为不变。
+   */
+  articleLayout?: "list" | "hover";
+  onToggleArticleLayout?: () => void;
 }
 
 export function EntryListHeader({
@@ -90,6 +98,8 @@ export function EntryListHeader({
   isTablet,
   onToggleSidebar,
   sidebarVisible,
+  articleLayout,
+  onToggleArticleLayout,
 }: EntryListHeaderProps) {
   const { t } = useTranslation();
 
@@ -117,6 +127,33 @@ export function EntryListHeader({
             className="flex size-11 shrink-0 items-center justify-center rounded-[var(--radius)] transition-all duration-200 ease-[var(--ease-ios)] hover:bg-item-hover active:scale-95 -ml-1.5"
           >
             <MenuIcon className="size-5" />
+          </button>
+        )}
+        {onToggleArticleLayout && (
+          /* 28-1（用户：「在文章视图左上角也加一个」）：与相邻那颗 32px 圆钮同款。
+             图标表达「点下去会变成什么」：当前是卡片列表 → 显示图片图标（切到悬停大图）；
+             当前是悬停大图 → 显示文本图标（切回卡片列表）。 */
+          <button
+            type="button"
+            onClick={onToggleArticleLayout}
+            aria-label={
+              articleLayout === "hover"
+                ? t("appearance_view.article_layout_list")
+                : t("appearance_view.article_layout_hover")
+            }
+            {...{
+              title:
+                articleLayout === "hover"
+                  ? t("appearance_view.article_layout_list")
+                  : t("appearance_view.article_layout_hover"),
+            }}
+            className="flex size-8 shrink-0 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95"
+          >
+            {articleLayout === "hover" ? (
+              <FileTextIcon className="size-4" />
+            ) : (
+              <ImageIcon className="size-4" />
+            )}
           </button>
         )}
         <div className="min-w-0">

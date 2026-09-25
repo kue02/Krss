@@ -45,7 +45,7 @@ import {
 } from "./deferred-removal";
 import { useEntryListScrollSurface } from "./scroll-surface";
 import { useEntryHotkeys } from "@/hooks/useEntryHotkeys";
-import { useUISettingKey } from "@/hooks/useUISettings";
+import { useUISettingKey, useUISettingActions } from "@/hooks/useUISettings";
 import {
   resolveTimelineCollapse,
   resolveTimelineGranularity,
@@ -281,6 +281,12 @@ export function EntryList({
    */
   const articleLayout = useUISettingKey("articleLayout");
   const isArticleHover = contentType === "article" && articleLayout === "hover";
+
+  /** 28-1：顶栏左上角那颗「卡片列表 ↔ 悬停大图」切换（只有文章视图会拿到它） */
+  const { setArticleLayout } = useUISettingActions();
+  const handleToggleArticleLayout = useCallback(() => {
+    setArticleLayout(articleLayout === "hover" ? "list" : "hover");
+  }, [articleLayout, setArticleLayout]);
   const timelineGranularity = resolveTimelineGranularity(
     useUISettingKey("timelineGranularityByView")?.[contentType],
   );
@@ -899,6 +905,10 @@ export function EntryList({
           isMobile={isMobile}
           onMenuClick={handleMenuClick}
           isTablet={isTablet}
+          articleLayout={contentType === "article" ? articleLayout : undefined}
+          onToggleArticleLayout={
+            contentType === "article" ? handleToggleArticleLayout : undefined
+          }
           onToggleSidebar={onToggleSidebar}
           sidebarVisible={sidebarVisible}
         />

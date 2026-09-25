@@ -141,6 +141,14 @@ interface ThreeColumnLayoutProps {
   className?: string;
   hideList?: boolean;
   showSidebar?: boolean;
+  /**
+   * 28-3：整块收起第三栏（正文区）。
+   *
+   * 用于文章视图的「悬停大图」档 —— 用户要求默认不显示第三栏、点击条目后
+   * 才像 Nextflux 那样推进来。收起时中栏（列表）自动占满剩余宽度。
+   * 其它视图 / 其它档位不传，行为与原来完全一致。
+   */
+  hideContent?: boolean;
 }
 
 export function ThreeColumnLayout({
@@ -150,6 +158,7 @@ export function ThreeColumnLayout({
   className,
   hideList = false,
   showSidebar = true,
+  hideContent = false,
 }: ThreeColumnLayoutProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [windowWidth, setWindowWidth] = useState(
@@ -280,13 +289,19 @@ export function ThreeColumnLayout({
         )}
       </div>
 
-      {/* List - middle column (Entry list) - hidden when hideList is true */}
+      {/* List - middle column (Entry list) - hidden when hideList is true。
+          28-3：hideContent（文章视图悬停大图档的收起态）时，第三栏被收走，
+          列表补上剩余宽度 —— 否则右边会留一大片空白。 */}
       {!hideList && (
         <>
           <div
             className={cn(
-              "flex h-full shrink-0 flex-col overflow-hidden bg-background safe-area-top w-[var(--entry-col-width)]",
+              "flex h-full flex-col overflow-hidden bg-background safe-area-top",
+              hideContent
+                ? "min-w-0 flex-1"
+                : "shrink-0 w-[var(--entry-col-width)]",
               !entryColResizable.isDragging &&
+                !hideContent &&
                 "transition-[width] duration-200",
             )}
           >
@@ -295,6 +310,7 @@ export function ThreeColumnLayout({
 
           {/* Second splitter */}
           {/* 12-15：第二栏这条保持原逻辑（悬浮才显示），不跟「显示分界限」设置走 */}
+          {!hideContent && (
           <PanelSplitter
             visibility="hover"
             isDragging={entryColResizable.isDragging}
@@ -302,17 +318,25 @@ export function ThreeColumnLayout({
             onTouchStart={entryColResizable.separatorProps.onTouchStart}
             onDoubleClick={handleEntryColDoubleClick}
           />
+          )}
         </>
       )}
 
-      {/* Content - right column (Entry content) —— Nextflux 风格：浮层圆角面板 */}
+      {/* Content - right column (Entry content) —— Nextflux 风格：浮层圆角面板。
+          28-3：hideContent 时**不卸载**，只把整列收成 0 宽 ——
+          卸载会让里面的转场包裹层一起重建，AnimatePresence 的 initial={false}
+          于是跳过入场动画，点击条目就没有「推进」了。收 0 宽则 pane 一直在，
+          点击时 key 由 empty 变 content，推进动画照常触发。 */}
       <main
         className={cn(
-          "flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-background safe-area-top p-0 sm:pt-2 sm:pr-2 sm:pb-2",
+          "flex h-full flex-col overflow-hidden bg-background safe-area-top p-0",
+          hideContent
+            ? "w-0 shrink-0 grow-0 overflow-hidden p-0 opacity-0 pointer-events-none"
+            : "min-w-0 flex-1 sm:pt-2 sm:pr-2 sm:pb-2",
           // 三栏时左边紧邻列表列（与页面同色，贴边看不出来）；
           // 两栏（社交媒体 / 图片 / 添加订阅）时左边直接是深色侧栏，不留间距的话
           // 圆角 + 边框会硬贴在侧栏上，所以这里补上和其余三边一致的 8px
-          hideList ? "sm:pl-2" : "sm:pl-0",
+          hideContent ? "" : hideList ? "sm:pl-2" : "sm:pl-0",
         )}
       >
         <div

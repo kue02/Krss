@@ -40,15 +40,32 @@ export function EntryContentTransition({
   const reduceMotion = useUISettingKey("reduceMotion");
 
   return (
-    <AnimatePresence initial={false}>
+    /**
+     * mode="wait" 而不是 Nextflux 桌面端的 popLayout：
+     * 本项目的第三栏是正常文档流，且「悬停大图」档下还伴随整列由 0 宽展开
+     * （见 ThreeColumnLayout 的 hideContent）—— 宽度与转场同时变化会让
+     * popLayout 的脱流测量失效，两个 pane 一起占流、各被压成一半（实测
+     * h 473,473 对 945）。wait 是「旧 pane 退完再进新 pane」，不依赖脱流，
+     * 在宽度变化下同样稳。空态 pane 的 exit 是瞬时的（见下），所以不等待。
+     * 内层（换文章）本来就是 Nextflux 的 mode="wait"，两层口径一致。
+     */
+    <AnimatePresence initial={false} mode="wait">
       <motion.div
         key={pushPaneKey(entryId)}
         className="h-full min-h-0 w-full"
         data-transition-pane={pushPaneKey(entryId)}
         initial={PUSH_INITIAL}
         animate={PUSH_ANIMATE}
-        exit={entryId ? PUSH_EXIT_WITH_ENTRY : { opacity: 0 }}
+        exit={
+          entryId
+            ? { ...PUSH_EXIT_WITH_ENTRY, transition: { ...PUSH_TRANSITION } }
+            : /* 空态（占位）退场不占观感：它在收起态本来就被收成 0 宽、看不见，
+                 瞬时退掉即可，免得 wait 下推进前先干等半秒。
+                 必须显式 type:"tween" —— spring 会忽略 duration，实测会拖到 945ms。 */
+              { opacity: 0, transition: { duration: 0, type: "tween" } }
+        }
         transition={reduceMotion ? { duration: 0 } : { ...PUSH_TRANSITION }}
+        style={{ willChange: "transform" }}
       >
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
