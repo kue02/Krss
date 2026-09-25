@@ -940,6 +940,7 @@
     "picture_layout": "Picture layout",
     "picture_layout_masonry": "Masonry",
     "picture_layout_grid": "Grid",
+    "picture_layout_hover": "Hover preview",
     "show_splitter": "Show divider (always visible)",
     "show_splitter_hint": "Turn off to stop drawing the line (the hover drag indicator is unaffected); column widths are kept",
     "timeline_granularity": "Time granularity",

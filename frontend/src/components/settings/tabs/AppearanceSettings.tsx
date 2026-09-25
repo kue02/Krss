@@ -939,6 +939,10 @@ export function AppearanceSettings() {
                           value: "grid",
                           label: t("appearance_view.picture_layout_grid"),
                         },
+                        {
+                          value: "hover",
+                          label: t("appearance_view.picture_layout_hover"),
+                        },
                       ]}
                     />
                   </SettingRow>

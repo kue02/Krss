@@ -19,6 +19,7 @@ import { flattenUniqueEntries } from "@/lib/entry-pagination";
 import { cn } from "@/lib/utils";
 import { useImageDimensionsStore } from "@/stores/image-dimensions-store";
 import { PictureItem } from "./PictureItem";
+import { PictureHoverList } from "@/components/picture-hover/PictureHoverList";
 import { useGeneralSettings } from "@/hooks/useGeneralSettings";
 import { useScrollToTop } from "@/hooks/useScrollToTop";
 import { useMasonryScrollMarkRead } from "./useMasonryScrollMarkRead";
@@ -123,6 +124,8 @@ export function PictureMasonry({
   // 图片视图排布：瀑布流（默认）或等高正方格（用户 2026-09-17 要求可切）
   const pictureLayout = useUISettingKey("pictureLayout");
   const isGrid = pictureLayout === "grid";
+  /** 第三档：hover-img（复用 obsidianui 组件），走普通列表而不是瀑布流虚拟滚动 */
+  const isHover = pictureLayout === "hover";
   const { currentColumn, isReady } = useMasonryColumn(
     isMobile,
     scrollContainerRef,
@@ -399,6 +402,10 @@ export function PictureMasonry({
             className={cn("p-4", !usesDocumentScroll && "h-full overflow-auto")}
           >
             <EmptyState />
+          </div>
+        ) : isReady && isHover ? (
+          <div className={cn("p-4", !usesDocumentScroll && "h-full overflow-auto")}>
+            <PictureHoverList items={items} />
           </div>
         ) : isReady ? (
           <VirtuosoMasonry

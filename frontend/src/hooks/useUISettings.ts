@@ -131,7 +131,7 @@ interface UISettings {
    * 图片视图的排布：masonry = 瀑布流（按原图比例，默认）/ grid = 等高正方格（对齐整齐）。
    * 用户 2026-09-17 要求加这一档。
    */
-  pictureLayout: "masonry" | "grid";
+  pictureLayout: "masonry" | "grid" | "hover";
   /** 列表卡片的缩略图档位（对齐 Nextflux 的卡片图尺寸） */
   cardImageSize: CardImageSize;
   /** 卡片摘要显示行数，0 = 不显示摘要 */
@@ -601,7 +601,7 @@ export function useUISettingActions() {
     setUISetting("cardImageSize", size);
   }, []);
 
-  const setPictureLayout = useCallback((layout: "masonry" | "grid") => {
+  const setPictureLayout = useCallback((layout: "masonry" | "grid" | "hover") => {
     setUISetting("pictureLayout", layout);
   }, []);
 

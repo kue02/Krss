@@ -937,6 +937,7 @@
     "picture_layout": "图片布局",
     "picture_layout_masonry": "瀑布流",
     "picture_layout_grid": "网格",
+    "picture_layout_hover": "悬停大图",
     "show_splitter": "显示分界限（平时也画这条线）",
     "show_splitter_hint": "关掉后不再画这条竖线（悬浮时的拖拽指示线不受影响），栏宽保留",
     "timeline_granularity": "时间粒度",
