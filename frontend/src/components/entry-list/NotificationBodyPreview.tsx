@@ -96,6 +96,7 @@ export function NotificationBodyPreview({
   onMouseEnter,
   onMouseLeave,
   anchorMode = "card-safe",
+  interactive = true,
 }: {
   /** null = 无悬停条目：浮块隐藏但不卸载 */
   entry: Entry | null;
@@ -109,6 +110,14 @@ export function NotificationBodyPreview({
   onMouseLeave: () => void;
   /** 32-2：落点模式（默认通知视图那套「不遮卡片」） */
   anchorMode?: AnchorMode;
+  /**
+   * 33-1：浮块吃不吃指针。
+   *  - `true`（默认，通知档）：`pointer-events: auto` —— 可以移进浮块滚正文/选文字；
+   *  - `false`（文章档）：**纯预览、彻底不吃指针** —— 指针永远落在下面的卡片上，
+   *    所以「一行一行扫过去」每次都能换内容，也不会因为浮块盖住而冻结/抢滚轮焦点；
+   *    要读全文/滚动/选中，点卡片进阅读区（那里有滚动条）。
+   */
+  interactive?: boolean;
 }) {
   const { t } = useTranslation();
   const floatRef = useRef<HTMLDivElement | null>(null);
@@ -259,7 +268,7 @@ export function NotificationBodyPreview({
       style={{
         width: "min(560px, 40vw)",
         maxHeight: "min(460px, 62vh)",
-        pointerEvents: visible ? "auto" : "none",
+        pointerEvents: visible && interactive ? "auto" : "none",
       }}
     >
       <div className="flex max-h-[inherit] flex-col p-3">
@@ -278,6 +287,12 @@ export function NotificationBodyPreview({
           </div>
         ) : null}
       </div>
+      {!interactive && (
+        /* 33-1：不吃指针 ⇒ 正文到底部会「截断」，给渐隐 + 一行说明，告诉用户点卡片去读 */
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 rounded-b-[10px] bg-gradient-to-t from-card via-card/95 to-transparent px-3 pb-2 pt-6 text-center text-[11.5px] text-muted-foreground">
+          {t("entry.preview_click_hint")}
+        </div>
+      )}
     </div>
   );
 }

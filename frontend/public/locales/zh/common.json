@@ -287,6 +287,7 @@
     "unstar": "取消星标",
     "no_content": "暂无内容",
     "loading": "加载中...",
+    "preview_click_hint": "点击卡片进入阅读",
     "untitled": "无标题",
     "unknown_feed": "未知订阅",
     "unread_count": "{{count}} 条未读",

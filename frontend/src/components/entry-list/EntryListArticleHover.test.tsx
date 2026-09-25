@@ -85,14 +85,17 @@ vi.mock("./NotificationBodyPreview", () => ({
   NotificationBodyPreview: ({
     entry,
     visible,
+    interactive,
   }: {
     entry: Entry | null;
     visible: boolean;
+    interactive?: boolean;
   }) => (
     <div
       data-testid="article-hover-body"
       data-visible={visible ? "true" : "false"}
       data-entry={entry?.id ?? ""}
+      data-interactive={interactive === false ? "false" : "true"}
     />
   ),
 }));
@@ -175,6 +178,8 @@ describe("文章视图 hover 档（reader-transition 批新增；31-2 改成悬�
 
     const float = screen.getByTestId("article-hover-body");
     expect(float.getAttribute("data-visible")).toBe("false");
+    // 33-1：文章档的浮块必须「不吃指针」，否则以指针为中心 ⇒ 指针永远在浮块里 ⇒ 卡住不切
+    expect(float.getAttribute("data-interactive")).toBe("false");
 
     // 悬停第 2 行 → 浮块可见且是「2」这一条
     fireEvent.mouseOver(screen.getByTestId("row-2"), {

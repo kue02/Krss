@@ -172,6 +172,43 @@ describe("通知视图 · 悬停正文档", () => {
     // 同一份组件在通知档仍是「挂指针右下 + 不遮卡片」（上一条用例的 172）
   });
 
+  it("33-1 文章档的浮块不吃指针：interactive=false + visible 时 pointerEvents 仍是 none", () => {
+    const view = render(
+      <NotificationBodyPreview
+        entry={entry("a", 14, 10)}
+        visible
+        anchor={{ x: 300, y: 130, cardTop: 100, cardBottom: 160 }}
+        feedName="f"
+        autoTranslate={false}
+        targetLanguage="zh-CN"
+        onMouseEnter={() => {}}
+        onMouseLeave={() => {}}
+        anchorMode="pointer"
+        interactive={false}
+      />,
+    );
+    const float = view.container.querySelector(FLOAT)!;
+    // 这是「以指针为中心」时唯一可行的组合：不吃指针 ⇒ 指针永远在卡片上 ⇒ 逐行切换/滚轮都归列表
+    expect((float as HTMLElement).style.pointerEvents).toBe("none");
+    // 通知档（默认 interactive）必须仍是 auto，才能移进去滚正文/选字
+    view.unmount();
+    const notif = render(
+      <NotificationBodyPreview
+        entry={entry("a", 14, 10)}
+        visible
+        anchor={{ x: 300, y: 130, cardTop: 100, cardBottom: 160 }}
+        feedName="f"
+        autoTranslate={false}
+        targetLanguage="zh-CN"
+        onMouseEnter={() => {}}
+        onMouseLeave={() => {}}
+      />,
+    );
+    expect(
+      (notif.container.querySelector(FLOAT) as HTMLElement).style.pointerEvents,
+    ).toBe("auto");
+  });
+
   it("默认档零变化：正文照旧在卡片里，不挂悬停标记", () => {
     const { container } = renderTimeline([entry("a", 14, 10)]);
     const card = cardOf(container);

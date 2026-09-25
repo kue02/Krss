@@ -287,6 +287,7 @@
     "unstar": "Unstar",
     "no_content": "No content available",
     "loading": "Loading...",
+    "preview_click_hint": "Click the card to read",
     "untitled": "Untitled",
     "unknown_feed": "Unknown Feed",
     "unread_count_one": "{{count}} unread",
