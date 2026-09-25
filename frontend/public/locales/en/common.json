@@ -971,6 +971,13 @@
     "hover_image_size": "Hover view · image size",
     "hover_image_size_small": "Small (400×250)",
     "hover_image_size_large": "Large",
+    "hover_multi_scope": "Applies to hover preview in both picture and article views (one shared list)",
+    "hover_multi_row_wheel": "Multi-image · row wheel",
+    "hover_multi_row_wheel_hint": "Scroll while hovering a list row to switch images (the list itself doesn't scroll)",
+    "hover_multi_float_wheel": "Multi-image · panel wheel",
+    "hover_multi_float_wheel_hint": "Scroll after moving into the floating panel to switch images (row wheel still scrolls the list)",
+    "hover_multi_hswipe": "Multi-image · horizontal swipe",
+    "hover_multi_hswipe_hint": "Swipe left / right for previous / next image",
     "grid_style": "Grid · style",
     "grid_style_masonry": "Original ratio (default)",
     "grid_style_square": "Square"

@@ -968,6 +968,13 @@
     "hover_image_size": "悬停大图 · 图片大小",
     "hover_image_size_small": "小（400×250）",
     "hover_image_size_large": "大",
+    "hover_multi_scope": "同时对「图片视图 · 悬停大图」与「文章视图 · 悬停大图」生效（两处共用同一个列表）",
+    "hover_multi_row_wheel": "多图切换 · 行上滚轮",
+    "hover_multi_row_wheel_hint": "鼠标停在列表那一行上滚轮 = 切图（这一下列表不滚动）",
+    "hover_multi_float_wheel": "多图切换 · 浮块上滚轮",
+    "hover_multi_float_wheel_hint": "鼠标移进浮块后再滚轮 = 切图（行上的滚轮仍滚列表）",
+    "hover_multi_hswipe": "多图切换 · 横向滑动",
+    "hover_multi_hswipe_hint": "鼠标左右滑动 = 上一张 / 下一张",
     "grid_style": "网格 · 样式",
     "grid_style_masonry": "按原图比例（默认）",
     "grid_style_square": "正方格"

@@ -19,10 +19,12 @@ import {
 } from "@/hooks/useTheme";
 import { useAppearanceSettings } from "@/hooks/useAppearanceSettings";
 import {
+  setUISetting,
   useUISettingActions,
   useUISettingKey,
   resolveGridStyle,
   type CardImageSize,
+  type HoverMultiImageConfig,
   type QuoteStyle,
   type ScrollReadOverride,
   type SidebarFeedAppearance,
@@ -222,6 +224,15 @@ export function AppearanceSettings() {
   const articleLayout = useUISettingKey("articleLayout");
   const hoverRowHeight = useUISettingKey("hoverRowHeight");
   const hoverImageSize = useUISettingKey("hoverImageSize");
+  const hoverMultiImageSetting = useUISettingKey(
+    "hoverMultiImage",
+  ) as HoverMultiImageConfig | undefined;
+  // 29-4：老数据可能缺 hoverMultiImage 键，按默认值兜底（与 DEFAULT_UI_SETTINGS 一致）
+  const hoverMultiImage: HoverMultiImageConfig = {
+    rowWheel: hoverMultiImageSetting?.rowWheel ?? true,
+    floatWheel: hoverMultiImageSetting?.floatWheel ?? false,
+    hSwipe: hoverMultiImageSetting?.hSwipe ?? false,
+  };
   const gridStyle = resolveGridStyle(pictureLayout, useUISettingKey("gridStyle"));
 
   const themeOptions = useMemo(
@@ -1045,6 +1056,57 @@ export function AppearanceSettings() {
                         ]}
                       />
                     </SettingRow>
+                  </>
+                )}
+                {/* 29-4：悬停大图档「一篇文章多图」的切换触发方式（用户 2026-09-25 原话：
+                    「3 个都做成可配置项」）—— 三个独立开关，可任意组合。
+                    图片视图与文章视图的悬停档共用同一个列表（PictureHoverList），两处都显示这一组。 */}
+                {((view === "picture" && pictureLayout === "hover") ||
+                  (view === "article" && articleLayout === "hover")) && (
+                  <>
+                    <div className="px-1 pt-2 text-xs text-muted-foreground">
+                      {t("appearance_view.hover_multi_scope")}
+                    </div>
+                    {(
+                      [
+                        {
+                          key: "rowWheel",
+                          label: "appearance_view.hover_multi_row_wheel",
+                          hint: "appearance_view.hover_multi_row_wheel_hint",
+                        },
+                        {
+                          key: "floatWheel",
+                          label: "appearance_view.hover_multi_float_wheel",
+                          hint: "appearance_view.hover_multi_float_wheel_hint",
+                        },
+                        {
+                          key: "hSwipe",
+                          label: "appearance_view.hover_multi_hswipe",
+                          hint: "appearance_view.hover_multi_hswipe_hint",
+                        },
+                      ] as const
+                    ).map((item) => (
+                      <SettingRow
+                        key={item.key}
+                        label={t(item.label)}
+                        hint={t(item.hint)}
+                      >
+                        <SegmentedControl
+                          className="shrink-0"
+                          value={hoverMultiImage[item.key] ? "on" : "off"}
+                          onValueChange={(value) =>
+                            setUISetting("hoverMultiImage", {
+                              ...hoverMultiImage,
+                              [item.key]: value === "on",
+                            } as HoverMultiImageConfig)
+                          }
+                          options={[
+                            { value: "on", label: t("appearance_view.on") },
+                            { value: "off", label: t("appearance_view.off") },
+                          ]}
+                        />
+                      </SettingRow>
+                    ))}
                   </>
                 )}
                 {/* 按视图覆盖只在总开关选了「按视图单独设」时出现 ——
