@@ -598,8 +598,9 @@ export function NotificationTimeline({
   const hoverMode = bodyOnHover && !coarsePointer;
 
   /**
-   * 29-1：悬停浮块状态 —— 卡片 enter 立开（锚点取 mouseenter 事件自带的坐标：
-   * 指针停在卡片上不动时也必须先出现在正确位置，不能等下一次 mousemove），
+   * 悬停浮块状态 —— 卡片 enter 立开（锚点取 mouseenter 事件自带的坐标：
+   * 指针停在卡片上不动时也必须先出现在正确位置，不能等下一次 mousemove；
+   * 浮块常挂，anchor 只做首帧兜底，跟随由浮块自己的 window mousemove 负责），
    * 卡片 leave / 浮块 leave 起 250ms 延迟关（RefreshTooltip 同款），浮块 enter 清 timer。
    */
   const [hoverAnchor, setHoverAnchor] = useState<{
@@ -626,7 +627,8 @@ export function NotificationTimeline({
     hoverCloseTimer.current = window.setTimeout(() => setHoverAnchor(null), 250);
   }, [cancelHoverClose]);
   useEffect(() => cancelHoverClose, [cancelHoverClose]);
-  // 换一批条目 / 退出悬停档时撤掉浮块（直接从 DOM 撤，不留透明层）
+  // 退出悬停档时藏浮块（常挂节点 entry=null + visible=false，不卸载）；
+  // 换一批条目后旧 id 找不到对应条目，浮块同样回到隐藏态
   useEffect(() => {
     if (!hoverMode) setHoverAnchor(null);
   }, [hoverMode, entries]);
@@ -1023,24 +1025,34 @@ export function NotificationTimeline({
           })}
         </div>
       ))}
-      {/* 29-1：悬停正文浮块 —— 移出后直接从 DOM 撤掉，不留透明层挡点击 */}
-      {hoverMode && hoverAnchor
+      {/* 悬停正文浮块 —— hoverMode 下常挂（无 key、不卸载）：换条目只换 entry，
+          无悬停时 entry=null + visible=false 藏起（scale 0 + 透明 + 点穿） */}
+      {hoverMode
         ? (() => {
-            const hoverEntry = entries.find((item) => item.id === hoverAnchor.id);
-            return hoverEntry ? (
+            const hoverEntry = hoverAnchor
+              ? (entries.find((item) => item.id === hoverAnchor.id) ?? null)
+              : null;
+            return (
               <NotificationBodyPreview
-                key={hoverEntry.id}
                 entry={hoverEntry}
-                anchor={{ x: hoverAnchor.x, y: hoverAnchor.y }}
+                visible={hoverEntry !== null}
+                anchor={
+                  hoverAnchor
+                    ? { x: hoverAnchor.x, y: hoverAnchor.y }
+                    : { x: 0, y: 0 }
+                }
                 feedName={
-                  feeds.get(hoverEntry.feedId)?.title ?? t("entry.unknown_feed")
+                  hoverEntry
+                    ? (feeds.get(hoverEntry.feedId)?.title ??
+                      t("entry.unknown_feed"))
+                    : ""
                 }
                 autoTranslate={autoTranslate}
                 targetLanguage={targetLanguage}
                 onMouseEnter={cancelHoverClose}
                 onMouseLeave={scheduleHoverClose}
               />
-            ) : null;
+            );
           })()
         : null}
     </div>

@@ -6,10 +6,13 @@ import { NotificationTimeline } from "./NotificationTimeline";
 import { resetDeferredRemovals } from "./deferred-removal";
 
 /**
- * 29-1（用户 2026-09-25）：通知视图「正文悬停档」。
+ * 通知视图「正文悬停档」。
  *
  * 口径：骨架（中轴/时间戳/节点/日期分段）两档完全一致，只挪正文 ——
  * 悬停档下卡片只剩「来源行 + 标题」，正文进浮块（可移入不消失）；默认档一字不改。
+ *
+ * 浮块语义：hoverMode 下常挂（无 key、不卸载），无悬停时
+ * `data-preview-visible="false"` 藏起；换条目只换 entry，DOM 节点不变。
  */
 
 vi.mock("react-i18next", () => ({
@@ -96,6 +99,12 @@ function renderTimeline(
 const cardOf = (container: HTMLElement) =>
   container.querySelector<HTMLElement>("[data-timeline-card]")!;
 
+const floatOf = (container: HTMLElement) =>
+  container.querySelector<HTMLElement>(FLOAT);
+
+const isFloatVisible = (float: HTMLElement | null) =>
+  float?.getAttribute("data-preview-visible") === "true";
+
 beforeEach(() => {
   // 只 fake Date 与 250ms 那对定时器：浮块的延迟关要用它断言
   vi.useFakeTimers({
@@ -110,13 +119,13 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("通知视图 · 悬停正文档（29-1）", () => {
+describe("通知视图 · 悬停正文档", () => {
   it("默认档零变化：正文照旧在卡片里，不挂悬停标记", () => {
     const { container } = renderTimeline([entry("a", 14, 10)]);
     const card = cardOf(container);
     expect(card.querySelector("[data-timeline-body]")).not.toBeNull();
     expect(card.getAttribute("data-body-on-hover")).toBeNull();
-    expect(container.querySelector(FLOAT)).toBeNull();
+    expect(floatOf(container)).toBeNull();
   });
 
   it("悬停档：卡片只剩来源行 + 标题，正文/展开按钮/展开容器/拖高手柄都没有", () => {
@@ -132,45 +141,91 @@ describe("通知视图 · 悬停正文档（29-1）", () => {
     // 标题与来源行仍在（只挪正文，不挪骨架）
     expect(card.textContent).toContain("title a");
     expect(card.getAttribute("data-entry-id")).toBe("a");
-    // 没悬浮就不该有浮块
-    expect(container.querySelector(FLOAT)).toBeNull();
+    // 没悬浮时浮块常挂但隐藏（不卸载，用 data-preview-visible 判可见）
+    const float = floatOf(container);
+    expect(float).not.toBeNull();
+    expect(isFloatVisible(float)).toBe(false);
   });
 
-  it("悬浮卡片 → 浮块带标题与正文；移出 250ms 才收；这期间进浮块就不收", () => {
+  it("悬浮卡片 → 浮块带标题与正文；移出 250ms 才藏；这期间进浮块就不藏", () => {
     const { container } = renderTimeline([entry("a", 14, 10)], {
       bodyOnHover: true,
     });
     const card = cardOf(container);
     fireEvent.mouseEnter(card);
 
-    const float = container.querySelector<HTMLElement>(FLOAT);
+    const float = floatOf(container);
     expect(float).not.toBeNull();
+    expect(isFloatVisible(float)).toBe(true);
     expect(float!.dataset.previewEntry).toBe("a");
     expect(float!.textContent).toContain("title a");
     const body = float!.querySelector<HTMLElement>("[data-preview-body]");
     expect(body).not.toBeNull();
     expect(body!.textContent).toContain("body a");
 
-    // 移出卡片：250ms 内还在（留出移进浮块的时间）
+    // 移出卡片：250ms 内还可见（留出移进浮块的时间）
     fireEvent.mouseLeave(card);
     act(() => {
       vi.advanceTimersByTime(200);
     });
-    expect(container.querySelector(FLOAT)).not.toBeNull();
+    expect(isFloatVisible(floatOf(container))).toBe(true);
 
-    // 进浮块 ⇒ 清掉关闭定时器，再过多久都不收
-    fireEvent.mouseEnter(container.querySelector(FLOAT)!);
+    // 进浮块 ⇒ 清掉关闭定时器，再过多久都不藏
+    fireEvent.mouseEnter(floatOf(container)!);
     act(() => {
       vi.advanceTimersByTime(600);
     });
-    expect(container.querySelector(FLOAT)).not.toBeNull();
+    expect(isFloatVisible(floatOf(container))).toBe(true);
 
-    // 从浮块移出 ⇒ 250ms 后收掉（浮块直接从 DOM 撤，不留透明层）
-    fireEvent.mouseLeave(container.querySelector(FLOAT)!);
+    // 从浮块移出 ⇒ 250ms 后藏起（节点仍在，常挂不卸载）
+    fireEvent.mouseLeave(floatOf(container)!);
     act(() => {
       vi.advanceTimersByTime(300);
     });
-    expect(container.querySelector(FLOAT)).toBeNull();
+    const hidden = floatOf(container);
+    expect(hidden).not.toBeNull();
+    expect(isFloatVisible(hidden)).toBe(false);
+  });
+
+  it("换条目不重新挂载：同一个 DOM 节点，data-preview-entry 跟着变", () => {
+    const { container } = renderTimeline(
+      [entry("a", 14, 10), entry("b", 14, 20)],
+      { bodyOnHover: true },
+    );
+    const cards = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-timeline-card]"),
+    );
+    expect(cards).toHaveLength(2);
+
+    const cardA = container.querySelector<HTMLElement>(
+      '[data-timeline-card][data-entry-id="a"]',
+    )!;
+    const cardB = container.querySelector<HTMLElement>(
+      '[data-timeline-card][data-entry-id="b"]',
+    )!;
+    expect(cardA).toBeDefined();
+    expect(cardB).toBeDefined();
+
+    fireEvent.mouseEnter(cardA!);
+    const first = floatOf(container);
+    expect(first).not.toBeNull();
+    expect(isFloatVisible(first)).toBe(true);
+    expect(first!.dataset.previewEntry).toBe("a");
+
+    // 从 A 移到 B：先离 A（起 250ms 延迟关），再进 B（取消关闭、换条目）
+    fireEvent.mouseLeave(cardA!);
+    fireEvent.mouseEnter(cardB!);
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+
+    const second = floatOf(container);
+    expect(second).not.toBeNull();
+    // 同一个 DOM 节点，没有重新挂载
+    expect(second).toBe(first);
+    expect(isFloatVisible(second)).toBe(true);
+    expect(second!.dataset.previewEntry).toBe("b");
+    expect(second!.textContent).toContain("body b");
   });
 
   it("关开关（bodyOnHover=false）时不挂浮块，即使鼠标悬浮", () => {
@@ -181,7 +236,7 @@ describe("通知视图 · 悬停正文档（29-1）", () => {
     act(() => {
       vi.advanceTimersByTime(300);
     });
-    expect(container.querySelector(FLOAT)).toBeNull();
+    expect(floatOf(container)).toBeNull();
   });
 
   it("触屏（hover: none）自动降级：开关开着也把正文留在卡片里", () => {
