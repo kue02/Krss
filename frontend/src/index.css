@@ -33,6 +33,17 @@
   --color-item-active: var(--item-active);
   --color-item-hover: var(--item-hover);
 
+  /* Skeleton 的流光动画：@heroui/styles 的 .skeleton--shimmer 用 animate-skeleton，
+     项目主题没定义这个变量 → Tailwind 生不出 animate-skeleton 类 → 所有 Skeleton
+     的流光都是静止的（实测 computed animation-name 为 none）。按 HeroUI 官方定义补回。 */
+  --animate-skeleton: skeleton 2s linear infinite;
+
+  @keyframes skeleton {
+    100% {
+      transform: translateX(200%);
+    }
+  }
+
   /* Border radius */
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);

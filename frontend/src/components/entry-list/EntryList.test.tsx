@@ -117,17 +117,20 @@ vi.mock("./NotificationTimeline", () => ({
     entries,
     granularity,
     collapse,
+    timeBasis,
     autoSingleSide,
   }: {
     entries: Entry[];
     granularity: string;
     collapse: string;
+    timeBasis?: string;
     autoSingleSide?: boolean;
   }) => (
     <div
       data-testid="notification-timeline"
       data-granularity={granularity}
       data-collapse={collapse}
+      data-time-basis={timeBasis}
       data-auto-single-side={autoSingleSide === false ? "off" : "on"}
       data-entry-ids={entries.map((entry) => entry.id).join(",")}
     />
@@ -1269,7 +1272,7 @@ describe("EntryList · 通知视图的时间线分支", () => {
   });
 
   afterEach(() => {
-    // 粒度/折叠/合一栏是按视图的设置：用例改过就还原，别影响别的文件
+    // 粒度/折叠/基准/合一栏是按视图的设置：用例改过就还原，别影响别的文件
     setUISetting("timelineGranularityByView", {
       article: "hour",
       picture: "hour",
@@ -1281,6 +1284,12 @@ describe("EntryList · 通知视图的时间线分支", () => {
       picture: "2",
       notification: "2",
       social: "2",
+    });
+    setUISetting("timelineTimeBasisByView", {
+      article: "published",
+      picture: "published",
+      notification: "published",
+      social: "published",
     });
     setUISetting("timelineSingleSideByView", {
       article: true,
@@ -1311,6 +1320,8 @@ describe("EntryList · 通知视图的时间线分支", () => {
     const timeline = () => screen.getByTestId("notification-timeline");
     expect(timeline().dataset.granularity).toBe("hour");
     expect(timeline().dataset.collapse).toBe("2");
+    // 时间基准默认发布时间（= 现状）
+    expect(timeline().dataset.timeBasis).toBe("published");
     // 窄栏合一栏默认开
     expect(timeline().dataset.autoSingleSide).toBe("on");
 
@@ -1357,6 +1368,27 @@ describe("EntryList · 通知视图的时间线分支", () => {
     const after = vi.mocked(useEntriesInfinite).mock.calls.at(-1)?.[0];
     expect(after).toEqual(before);
     expect(after).not.toHaveProperty("granularity");
+    view.unmount();
+  });
+
+  it("时间基准透传给时间线：默认发布时间，切抓取就跟（同样不重新请求）", () => {
+    const view = render(<EntryList {...defaultProps} contentType="notification" />);
+    const timeline = () => screen.getByTestId("notification-timeline");
+    expect(timeline().dataset.timeBasis).toBe("published");
+
+    const before = vi.mocked(useEntriesInfinite).mock.calls.at(-1)?.[0];
+    act(() => {
+      setUISetting("timelineTimeBasisByView", {
+        article: "published",
+        picture: "published",
+        notification: "fetched",
+        social: "published",
+      });
+    });
+    expect(timeline().dataset.timeBasis).toBe("fetched");
+    expect(vi.mocked(useEntriesInfinite).mock.calls.at(-1)?.[0]).toEqual(
+      before,
+    );
     view.unmount();
   });
 });

@@ -391,6 +391,8 @@ type RefreshStatus struct {
 	// 仅在刷新进行中有效，空闲时均为 0。
 	Total     int
 	Completed int
+	// StartedAt 本轮刷新开始时间（仅刷新中有效）—— 前端悬浮浮层算「已跑时长」用。
+	StartedAt *time.Time
 	// Trigger 最近一轮刷新是谁触发的：manual（点了刷新/强制拉取）或 auto（定时器）。
 	// 用户 12-17：自动刷新的结果不要弹框，改记进「自动刷新历史」。
 	Trigger string `json:"trigger,omitempty"`
@@ -444,6 +446,8 @@ type refreshService struct {
 	lastRefreshedAt *time.Time
 	progressTotal   int
 	progressDone    int
+	// refreshStartedAt 本轮刷新开始时间（仅刷新中有效）—— 前端悬浮浮层算「已跑时长」用。
+	refreshStartedAt *time.Time
 	// lastResults：最近一次刷新（全量或按范围）里每个订阅的结果。前端刷新完拿它渲染结果弹框。
 	lastResults []RefreshFeedResult
 	// fetchCfg 本轮刷新的并发/超时快照（来自 设置 → 高级 → 拉取）
@@ -503,11 +507,14 @@ func (s *refreshService) refreshAll(ctx context.Context, force bool, auto bool) 
 	if s.lastTrigger == "" {
 		s.lastTrigger = "manual"
 	}
+	startedAt := time.Now()
+	s.refreshStartedAt = &startedAt
 	s.mu.Unlock()
 
 	defer func() {
 		s.mu.Lock()
 		s.isRefreshing = false
+		s.refreshStartedAt = nil
 		s.mu.Unlock()
 	}()
 
@@ -569,6 +576,7 @@ func (s *refreshService) GetRefreshStatus() RefreshStatus {
 	if s.isRefreshing {
 		status.Total = s.progressTotal
 		status.Completed = s.progressDone
+		status.StartedAt = s.refreshStartedAt
 	}
 	return status
 }
@@ -609,6 +617,8 @@ func (s *refreshService) refreshFeeds(ctx context.Context, feedIDs []int64, forc
 		return ErrAlreadyRefreshing
 	}
 	s.isRefreshing = true
+	startedAt := time.Now()
+	s.refreshStartedAt = &startedAt
 	s.mu.Unlock()
 
 	defer func() {
@@ -616,6 +626,7 @@ func (s *refreshService) refreshFeeds(ctx context.Context, feedIDs []int64, forc
 		s.mu.Lock()
 		s.isRefreshing = false
 		s.lastRefreshedAt = &now
+		s.refreshStartedAt = nil
 		s.mu.Unlock()
 	}()
 

@@ -23,6 +23,7 @@ import {
   writeLocalValue,
   removeLocalValue,
 } from "@/lib/settings-storage";
+import { queryClient } from "@/lib/queryClient";
 import type {
   AISettings,
   AITestRequest,
@@ -599,10 +600,12 @@ export async function deleteFeeds(ids: string[]): Promise<void> {
  * 「同主机多久内不重复抓」的等待，整轮重抓。
  */
 export async function refreshAllFeeds(force = false): Promise<void> {
-  return request<void>("/api/feeds/refresh", {
+  const result = await request<void>("/api/feeds/refresh", {
     method: "POST",
     body: JSON.stringify({ force }),
   });
+  notifyRefreshStarted();
+  return result;
 }
 
 /** 只刷新指定订阅（按文件夹 / 单个源 / 某个视图刷新都用它） */
@@ -610,15 +613,36 @@ export async function refreshFeeds(
   ids: (string | number)[],
   force = false,
 ): Promise<void> {
-  return request<void>("/api/feeds/refresh", {
+  const result = await request<void>("/api/feeds/refresh", {
     method: "POST",
     body: JSON.stringify({ feedIds: ids.map(String), force }),
   });
+  notifyRefreshStarted();
+  return result;
+}
+
+/**
+ * 发起刷新后立刻让 `["refreshStatus"]` 重取一次。
+ *
+ * 刷新是后台跑的（POST 立刻 204），前端只能靠轮询状态接口感知进度。而
+ * `useRefreshStatus` 的轮询间隔是按**上一次已知状态**定的：空闲 15 秒、刷新中 2 秒
+ * —— 也就是说「从空闲切到刷新中」这一跳，最多要等 15 秒才会被前端发现。
+ * 十几秒的刷新（常见情况）在这期间早就跑完了，用户点完刷新去悬停刷新按钮，
+ * 看到的永远是「上次刷新 · N 源」那行固定摘要，逐源列表一帧都看不到
+ * （用户 9-25 反馈「刷新列表不会变动，固定就显示那几个」）。
+ *
+ * 放在 api 层而不是各调用点：刷新入口有中栏按钮、侧栏右键、设置页「全部刷新」、
+ * 自动刷新历史重试等 6 处，逐个加容易漏。
+ */
+function notifyRefreshStarted(): void {
+  void queryClient.invalidateQueries({ queryKey: ["refreshStatus"] });
 }
 
 export interface RefreshStatus {
   isRefreshing: boolean;
   lastRefreshedAt?: string;
+  /** 本轮刷新开始时间（仅刷新中返回）—— 悬浮浮层算「已跑时长」用 */
+  startedAt?: string;
   /** 本次刷新要刷的源数（仅刷新中返回） */
   total?: number;
   /** 最近一轮刷新是谁触发的：manual（手动）/ auto（定时器）—— 12-17 */
@@ -627,7 +651,7 @@ export interface RefreshStatus {
   completed?: number;
   /**
    * 最近一轮刷新里每个订阅的结果（用户 11-8：刷新完要告诉用户「一共更新了多少条」并能看明细）。
-   * 后端只在刷新结束后带上（刷新中不带）。
+   * 刷新中带上的是**已完成部分**（悬浮浮层逐源显示用）；空闲时是完整结果（刷新结果弹框用）。
    */
   results?: RefreshFeedResult[];
 }

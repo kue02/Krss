@@ -18,11 +18,14 @@ import {
   buildTimelineRows,
   expandTimelineRows,
   isSingleSideWidth,
+  resolveTimelineTimeBasis,
+  splitTimelineSections,
   timelineCollapseClampLines,
   type TimelineCollapse,
   type TimelineGranularity,
   type TimelineRow,
   type TimelineSide,
+  type TimelineTimeBasis,
 } from "@/lib/timeline-model";
 import type { Entry, Feed } from "@/types/api";
 
@@ -467,6 +470,8 @@ export interface NotificationTimelineProps {
   onCloseEntry?: () => void;
   granularity: TimelineGranularity;
   collapse: TimelineCollapse;
+  /** 26-2：时间基准（发布时间 / 抓取时间），默认发布时间 = 现状 */
+  timeBasis?: TimelineTimeBasis;
   /** 窄栏自动合一栏（默认开；关掉则始终左右交替） */
   autoSingleSide?: boolean;
   autoTranslate: boolean;
@@ -488,6 +493,7 @@ export function NotificationTimeline({
   onCloseEntry,
   granularity,
   collapse,
+  timeBasis,
   autoSingleSide = true,
   autoTranslate,
   targetLanguage,
@@ -498,6 +504,8 @@ export function NotificationTimeline({
   const width = useContainerWidth(containerRef);
   const singleSide = autoSingleSide && isSingleSideWidth(width);
   const clampLines = timelineCollapseClampLines(collapse);
+  /** 26-2：时间基准（缺值一律回发布时间 = 现状） */
+  const basis = resolveTimelineTimeBasis(timeBasis);
 
   const [expandedClusters, setExpandedClusters] = useState<ReadonlySet<string>>(
     () => new Set(),
@@ -592,10 +600,10 @@ export function NotificationTimeline({
     return () => cancelAnimationFrame(frame);
   }, [expandedSignature]);
 
-  // 换粒度 / 换列表时收起来，免得「展开态」跟着另一批数据走
+  // 换粒度 / 换基准 / 换列表时收起来，免得「展开态」跟着另一批数据走
   useEffect(() => {
     setExpandedClusters(new Set());
-  }, [granularity, entries]);
+  }, [granularity, timeBasis, entries]);
 
   const rows = useMemo(
     () =>
@@ -603,13 +611,24 @@ export function NotificationTimeline({
         granularity,
         t,
         locale: i18n.language,
+        timeBasis: basis,
       }),
-    [entries, granularity, t, i18n.language],
+    [entries, granularity, basis, t, i18n.language],
   );
 
   const displayRows = useMemo(
-    () => expandTimelineRows(rows, expandedClusters),
-    [rows, expandedClusters],
+    () => expandTimelineRows(rows, expandedClusters, basis),
+    [rows, expandedClusters, basis],
+  );
+
+  /**
+   * 按日期切段（用户 9-24 吸顶）：日期行的 sticky 必须限制在**自己那一段**里 ——
+   * 同容器里多个 `top: 0` 的 sticky 会互相重叠（实测 26 条全贴容器顶 = 整摞贴住），
+   * 套一层段容器之后才会「后一段顶掉前一段」。
+   */
+  const sections = useMemo(
+    () => splitTimelineSections(displayRows),
+    [displayRows],
   );
 
   /** 轴上的卡片（顺序即键盘吸附顺序） */
@@ -665,24 +684,20 @@ export function NotificationTimeline({
         style={{ left: singleSide ? SINGLE_SIDE_TIME_COLUMN : "50%" }}
       />
 
-      {displayRows.map((row) => {
-        if (row.kind === "date") {
-          return (
-            <div
-              key={row.key}
-              data-timeline-date={row.label}
-              className={cn(
-                "relative flex items-center py-3",
-                singleSide ? "justify-start pl-[86px]" : "justify-center",
-              )}
-            >
-              <span className="rounded-full bg-background px-2 text-[11.5px] font-semibold tabular-nums text-foreground">
-                {row.label}
-              </span>
-            </div>
-          );
-        }
+      {sections.map((section) => (
+        /* 每段一层容器 = sticky 的作用域：本段滚完，日期行被段底边推走，下一段接替 */
+        <div key={section.key} className="relative">
+          {/* 日期分隔行（用户 9-24 要吸顶 / 9-25 定形态：草图**变体 B 居中胶囊**）——
+              只有胶囊自己有底色/描边/投影，两侧不铺横条；浮动在列表上方，
+              卡片从下面穿过。仍旧是段内 sticky：本段滚完被段底推走，下一段接替。 */}
+          <div
+            data-timeline-date={section.label}
+            className="sticky top-2 z-10 mx-auto flex w-max items-center rounded-full border border-border bg-background/95 px-3 py-[3px] text-[11.5px] font-semibold tabular-nums shadow-[0_6px_16px_rgba(0,0,0,0.10)] backdrop-blur-md"
+          >
+            {section.label}
+          </div>
 
+          {section.rows.map((row) => {
         const dotLeft = singleSide ? `${SINGLE_SIDE_TIME_COLUMN}px` : "50%";
         const isLeft = row.side === "left";
 
@@ -808,7 +823,9 @@ export function NotificationTimeline({
             )}
           </div>
         );
-      })}
+          })}
+        </div>
+      ))}
     </div>
   );
 }

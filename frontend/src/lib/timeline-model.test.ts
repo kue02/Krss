@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   bucketStartMs,
   buildTimelineRows,
+  entryTimestampByBasis,
   expandTimelineRows,
   formatBucketLabel,
   formatClockTime,
@@ -9,6 +10,8 @@ import {
   localDayKey,
   resolveTimelineCollapse,
   resolveTimelineGranularity,
+  resolveTimelineTimeBasis,
+  splitTimelineSections,
   timelineCollapseClampLines,
   TIMELINE_SINGLE_SIDE_WIDTH,
   type TimelineRow,
@@ -146,10 +149,11 @@ describe("timeline-model · 行序列", () => {
       locale: "zh-CN",
     });
     const dates = rows.filter((row) => row.kind === "date");
+    // 用户 9-24：日期分隔要读到「几月几号」，今天/昨天带相对词前缀
     expect(dates.map((row) => (row.kind === "date" ? row.label : ""))).toEqual([
-      "timeline.today",
-      "timeline.yesterday",
-      expect.any(String),
+      "timeline.today · 9月18日 周五",
+      "timeline.yesterday · 9月17日 周四",
+      "9月16日 周三",
     ]);
     // 日期分隔插在当天的第一条之前
     expect(kinds(rows)).toEqual(["date", "entry", "date", "entry", "date", "entry"]);
@@ -185,7 +189,7 @@ describe("timeline-model · 行序列", () => {
     expect(majorsOf("minute")).toEqual(["14:47", "14:46", "14:12", "13:59"]);
     expect(majorsOf("quarter")).toEqual(["14:45", "14:00", "13:45"]);
     expect(majorsOf("hour")).toEqual(["14:00", "13:00"]);
-    expect(majorsOf("day")).toEqual(["timeline.today"]);
+    expect(majorsOf("day")).toEqual(["timeline.today · 9月18日 周五"]);
   });
 
   it("同一个桶太密集时吸成小节点 + 计数（每天档：6 条 → 3 张卡 + 一簇 3 条）", () => {
@@ -287,3 +291,176 @@ describe("timeline-model · 行序列", () => {
     expect(first?.kind === "entry" && first.shortLabel).toBe("09:00");
   });
 });
+
+describe("timeline-model · 时间基准两档（26-2）", () => {
+  const now = new Date(2026, 8, 18, 15, 0, 0).getTime();
+
+  it("认不出的基准一律回发布时间（现状）", () => {
+    expect(resolveTimelineTimeBasis("weekly")).toBe("published");
+    expect(resolveTimelineTimeBasis(undefined)).toBe("published");
+    expect(resolveTimelineTimeBasis("fetched")).toBe("fetched");
+    expect(resolveTimelineTimeBasis("published")).toBe("published");
+  });
+
+  it("published = publishedAt || createdAt；fetched = createdAt || publishedAt", () => {
+    const both = entry("x", localIso(2026, 9, 10, 9, 0), {
+      createdAt: localIso(2026, 9, 19, 8, 0),
+    });
+    // 发布时间档取文章自带时间（9-10），抓取档取本机抓回时间（9-19）
+    expect(entryTimestampByBasis(both, "published")).toBe(
+      new Date(localIso(2026, 9, 10, 9, 0)).getTime(),
+    );
+    expect(entryTimestampByBasis(both, "fetched")).toBe(
+      new Date(localIso(2026, 9, 19, 8, 0)).getTime(),
+    );
+  });
+
+  it("缺对应时间退回另一个，不得丢条目", () => {
+    const noPublished = entry("np", localIso(2026, 9, 19, 8, 0), {
+      publishedAt: undefined,
+    });
+    // 没有 publishedAt：两档都退回 createdAt
+    expect(entryTimestampByBasis(noPublished, "published")).toBe(
+      entryTimestampByBasis(noPublished, "fetched"),
+    );
+    expect(
+      buildTimelineRows([noPublished], {
+        granularity: "hour",
+        t,
+        now,
+        locale: "zh-CN",
+        timeBasis: "fetched",
+      }).filter((row) => row.kind === "entry"),
+    ).toHaveLength(1);
+  });
+
+  it("默认档 = 发布时间：不传 timeBasis 与 published 逐行一致（升级零变化）", () => {
+    const entries = [
+      entry("a", localIso(2026, 9, 18, 14, 10), {
+        createdAt: localIso(2026, 9, 19, 8, 0),
+      }),
+      entry("b", localIso(2026, 9, 17, 9, 10), {
+        createdAt: localIso(2026, 9, 19, 8, 5),
+      }),
+    ];
+    for (const granularity of ["hour", "day"] as const) {
+      const implicit = buildTimelineRows(entries, {
+        granularity,
+        t,
+        now,
+        locale: "zh-CN",
+      });
+      const explicit = buildTimelineRows(entries, {
+        granularity,
+        t,
+        now,
+        locale: "zh-CN",
+        timeBasis: "published",
+      });
+      expect(implicit).toEqual(explicit);
+    }
+  });
+
+  it("切抓取档：同批抓回的条目聚到同一天（分隔数变少），切回发布还原", () => {
+    const entries = [
+      entry("a", localIso(2026, 9, 10, 9, 0), {
+        createdAt: localIso(2026, 9, 19, 8, 0),
+      }),
+      entry("b", localIso(2026, 9, 8, 9, 0), {
+        createdAt: localIso(2026, 9, 19, 8, 2),
+      }),
+      entry("c", localIso(2026, 9, 7, 9, 0), {
+        createdAt: localIso(2026, 9, 19, 8, 5),
+      }),
+    ];
+    const pubDates = buildTimelineRows(entries, {
+      granularity: "day",
+      t,
+      now,
+      locale: "zh-CN",
+      timeBasis: "published",
+    }).filter((row) => row.kind === "date");
+    const fetchedDates = buildTimelineRows(entries, {
+      granularity: "day",
+      t,
+      now,
+      locale: "zh-CN",
+      timeBasis: "fetched",
+    }).filter((row) => row.kind === "date");
+    // 发布档散在三天，抓取档聚在同一天（抓取日）
+    expect(pubDates).toHaveLength(3);
+    expect(fetchedDates).toHaveLength(1);
+    expect(
+      fetchedDates[0]?.kind === "date" && fetchedDates[0].key,
+    ).toContain("2026-09-19");
+  });
+
+  it("展开簇的条目标注也走同一基准（传 timeBasis 进 expand）", () => {
+    const rows = buildTimelineRows(
+      ["a", "b", "c", "d", "e", "f"].map((id, index) =>
+        entry(id, localIso(2026, 9, 17, 20 - index, 0), {
+          createdAt: localIso(2026, 9, 19, 8, index),
+        }),
+      ),
+      { granularity: "day", t, now, locale: "zh-CN", timeBasis: "fetched" },
+    );
+    const cluster = rows.find((row) => row.kind === "cluster");
+    expect(cluster?.kind).toBe("cluster");
+    const expanded = expandTimelineRows(rows, new Set([cluster!.key]), "fetched");
+    const tail = expanded.slice(
+      expanded.findIndex((row) => row.kind === "cluster") + 1,
+    );
+    // 抓取档下摊出来的三条都按 createdAt 标注。
+    // 注意排序是 DESC（最新在上）：轴上是 f/e/d，被吸掉的是最旧的 c/b/a。
+    expect(
+      tail.map((row) => (row.kind === "entry" ? row.shortLabel : "x")),
+    ).toEqual(["08:02", "08:01", "08:00"]);
+  });
+});
+
+describe("timeline-model · 日期分段（吸顶的作用域）", () => {
+  it("按日期行切段：段头是日期、段内只剩内容行，一条不丢", () => {
+    const entries = [
+      entry("a", localIso(2026, 9, 18, 10, 0)),
+      entry("b", localIso(2026, 9, 17, 10, 0)),
+      entry("c", localIso(2026, 9, 16, 10, 0)),
+    ];
+    const today = new Date(localIso(2026, 9, 18, 12, 0)).getTime();
+    const rows = buildTimelineRows(entries, {
+      granularity: "hour",
+      t,
+      now: today,
+      locale: "zh-CN",
+    });
+    const sections = splitTimelineSections(rows);
+    expect(sections.map((section) => section.label)).toEqual([
+      "timeline.today · 9月18日 周五",
+      "timeline.yesterday · 9月17日 周四",
+      "9月16日 周三",
+    ]);
+    // 内容行一条不落：段内行的总数 = 原行序列里非日期行（类型上段内已不含日期行）
+    expect(sections.flatMap((section) => section.rows)).toHaveLength(
+      rows.filter((row) => row.kind !== "date").length,
+    );
+  });
+
+  it("首行不是日期行时兜底成一段，不丢行（半份数据也不炸）", () => {
+    const sections = splitTimelineSections([
+      {
+        kind: "entry",
+        key: "entry:x",
+        entry: entry("x", localIso(2026, 9, 18, 10, 0)),
+        side: "left",
+        node: "major",
+        label: "10:00",
+        shortLabel: "10:00",
+        bucket: "hour:2026-09-18T10",
+        bucketCount: 1,
+      },
+    ]);
+    expect(sections).toHaveLength(1);
+    expect(sections.at(0)?.label).toBe("");
+    expect(sections.at(0)?.rows).toHaveLength(1);
+  });
+});
+

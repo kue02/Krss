@@ -2,6 +2,8 @@ import { useTranslation } from "react-i18next";
 import { ToggleButton } from "@heroui/react";
 import { Filter } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { RefreshStatus } from "@/api";
+import { RefreshTooltip } from "./RefreshTooltip";
 import {
   CircleOutlineIcon,
   CircleFilledIcon,
@@ -57,6 +59,8 @@ interface EntryListHeaderProps {
   refreshTotal?: number;
   /** 本次刷新已完成的源数 */
   refreshCompleted?: number;
+  /** 后端轮询到的刷新状态（悬浮浮层用：进度/逐源结果/上次摘要） */
+  refreshStatus?: RefreshStatus;
   scrollToTopScope?: string;
   isMobile?: boolean;
   onMenuClick?: () => void;
@@ -79,6 +83,7 @@ export function EntryListHeader({
   isRefreshing = false,
   refreshTotal = 0,
   refreshCompleted = 0,
+  refreshStatus,
   scrollToTopScope,
   isMobile,
   onMenuClick,
@@ -137,6 +142,7 @@ export function EntryListHeader({
 
       <div className="flex shrink-0 items-center gap-0.5">
         {onRefresh && (
+          <RefreshTooltip status={refreshStatus}>
           <ContextMenu>
             <ContextMenuTrigger asChild>
               <button
@@ -168,6 +174,7 @@ export function EntryListHeader({
               )}
             </ContextMenuContent>
           </ContextMenu>
+          </RefreshTooltip>
         )}
         <button
           type="button"

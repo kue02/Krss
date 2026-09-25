@@ -12,6 +12,7 @@ import type { ScrollMarkReadTiming } from "@/components/entry-list/useScrollMark
 import type {
   TimelineCollapse,
   TimelineGranularity,
+  TimelineTimeBasis,
 } from "@/lib/timeline-model";
 
 export type CardImageSize = "none" | "small" | "large";
@@ -22,6 +23,8 @@ export type ViewScrollRead = Record<ContentType, ScrollReadOverride>;
 /** 第十五批：通知视图时间线的两个按视图设置（粒度 / 折叠行数） */
 export type ViewTimelineGranularity = Record<ContentType, TimelineGranularity>;
 export type ViewTimelineCollapse = Record<ContentType, TimelineCollapse>;
+/** 26-2：通知视图时间线的时间基准（发布时间 / 抓取时间），默认发布时间 = 现状 */
+export type ViewTimelineTimeBasis = Record<ContentType, TimelineTimeBasis>;
 export type QuoteStyle = "block" | "divider" | "card";
 /**
  * 已读/未读的全局统一标记（用户 11-14）：
@@ -213,6 +216,11 @@ interface UISettings {
    * 注意：**没有「切回列表」这一项** —— 通知视图只有时间线这一种形态（用户定案）。
    */
   timelineCollapseByView: ViewTimelineCollapse;
+  /**
+   * 26-2：通知视图时间线的**时间基准**（发布时间 / 抓取时间），默认发布时间。
+   * 放在 ByView 家族里是为了和「按视图设置」其他项同一套存储（只有 notification 会用到）。
+   */
+  timelineTimeBasisByView: ViewTimelineTimeBasis;
   /**
    * 窄栏自动合一栏（默认开）：时间线容器宽度 < 385px 时退化成单侧
    * （左时间列 + 右卡片），关掉则始终左右交替。
@@ -445,6 +453,13 @@ export const defaultUISettings: UISettings = {
     picture: "2",
     notification: "2",
     social: "2",
+  },
+  // 26-2：通知视图时间线的时间基准 —— 默认「发布时间」（= 现状，升级零变化）
+  timelineTimeBasisByView: {
+    article: "published",
+    picture: "published",
+    notification: "published",
+    social: "published",
   },
   // 窄栏自动合一栏（默认开）
   timelineSingleSideByView: {
@@ -738,6 +753,17 @@ export function useUISettingActions() {
     [],
   );
 
+  /** 26-2：通知视图时间线的时间基准（发布时间 / 抓取时间） */
+  const setTimelineTimeBasisForView = useCallback(
+    (view: ContentType, basis: TimelineTimeBasis) => {
+      setUISetting("timelineTimeBasisByView", {
+        ...getUISettings().timelineTimeBasisByView,
+        [view]: basis,
+      });
+    },
+    [],
+  );
+
   /** 窄栏自动合一栏（关掉则始终左右交替） */
   const setTimelineSingleSideForView = useCallback(
     (view: ContentType, enabled: boolean) => {
@@ -787,6 +813,7 @@ export function useUISettingActions() {
     setScrollReadTimingForView,
     setTimelineGranularityForView,
     setTimelineCollapseForView,
+    setTimelineTimeBasisForView,
     setTimelineSingleSideForView,
     resetToDefaults,
   };

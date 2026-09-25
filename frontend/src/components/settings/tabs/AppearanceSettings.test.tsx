@@ -8,6 +8,7 @@ const setScrollReadForView = vi.fn();
 const setScrollReadTimingForView = vi.fn();
 const setTimelineGranularityForView = vi.fn();
 const setTimelineCollapseForView = vi.fn();
+const setTimelineTimeBasisForView = vi.fn();
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: "zh" } }),
@@ -104,6 +105,12 @@ vi.mock("@/hooks/useUISettings", async () => {
       notification: "2",
       social: "2",
     },
+    timelineTimeBasisByView: {
+      article: "published",
+      picture: "published",
+      notification: "published",
+      social: "published",
+    },
     cardImageSize: "small",
     cardPreviewLines: 2,
     entryFontFamily: "system",
@@ -131,6 +138,7 @@ vi.mock("@/hooks/useUISettings", async () => {
       setScrollReadTimingForView,
       setTimelineGranularityForView,
       setTimelineCollapseForView,
+      setTimelineTimeBasisForView,
     }),
   };
 });
@@ -177,6 +185,7 @@ describe("AppearanceSettings 按视图设置", () => {
     setScrollReadTimingForView.mockClear();
     setTimelineGranularityForView.mockClear();
     setTimelineCollapseForView.mockClear();
+    setTimelineTimeBasisForView.mockClear();
     scrollReadState.mode = "perView";
   });
 
@@ -241,13 +250,37 @@ describe("AppearanceSettings 按视图设置", () => {
     expect(setTimelineCollapseForView).toHaveBeenCalledWith("notification", "full");
   });
 
+  /**
+   * 26-2：通知视图时间线的时间基准 —— 紧挨「时间粒度」，两档：发布时间（默认 = 现状）/
+   * 抓取时间（本机抓回 = 刷新批次）。
+   */
+  it("通知视图有「时间基准」两档，默认发布时间", () => {
+    render(<AppearanceSettings />);
+
+    expect(screen.getAllByText("appearance_view.timeline_time_basis")).toHaveLength(1);
+    const row = rowOf("appearance_view.timeline_time_basis");
+    // 两档都在，默认选中「发布时间」
+    expect(row.querySelector("[data-value]")?.getAttribute("data-value")).toBe(
+      "published",
+    );
+    expect(within(row).getByText("published")).not.toBeNull();
+    expect(within(row).getByText("fetched")).not.toBeNull();
+
+    fireEvent.click(within(row).getByText("fetched"));
+    expect(setTimelineTimeBasisForView).toHaveBeenCalledWith(
+      "notification",
+      "fetched",
+    );
+  });
+
   it("粒度与折叠行数只出现在通知视图（其余视图不显示）", () => {
     render(<AppearanceSettings />);
 
-    // 每个视图一组「显示分界限」，通知那组里才有这两行
+    // 每个视图一组「显示分界限」，通知那组里才有这三行
     expect(screen.getAllByText("appearance_view.show_splitter")).toHaveLength(4);
     expect(screen.getAllByText("appearance_view.timeline_granularity")).toHaveLength(1);
     expect(screen.getAllByText("appearance_view.timeline_collapse")).toHaveLength(1);
+    expect(screen.getAllByText("appearance_view.timeline_time_basis")).toHaveLength(1);
   });
 
   it("没有「切回列表 / 呈现方式」这类项（通知视图只有时间线一种形态）", () => {

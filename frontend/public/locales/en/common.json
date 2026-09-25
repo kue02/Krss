@@ -948,6 +948,10 @@
     "timeline_granularity_quarter": "Every 15 min",
     "timeline_granularity_hour": "Hourly",
     "timeline_granularity_day": "Daily",
+    "timeline_time_basis": "Time basis",
+    "timeline_time_basis_hint": "Published = the article's own time (current behavior); Fetched = when this machine pulled it (refresh batch)",
+    "timeline_time_basis_published": "Published",
+    "timeline_time_basis_fetched": "Fetched",
     "timeline_collapse": "Collapsed lines",
     "timeline_collapse_hint": "Cards start collapsed; “Show full text” expands in place (the timeline does not jump)",
     "timeline_single_side": "Collapse to single side",
@@ -1190,6 +1194,19 @@
     "copied": "Failure reason copied",
     "close": "Close",
     "item_skipped": "Skipped (backing off)"
+  },
+  "refresh_tooltip": {
+    "refreshing": "Refreshing · {{completed}} / {{total}}",
+    "trigger_manual": "Manual",
+    "trigger_auto": "Scheduled",
+    "elapsed": "{{count}}s elapsed",
+    "no_new": "No new entries",
+    "failed": "Failed · {{reason}}",
+    "skipped": "Skipped",
+    "pending": "{{count}} feeds still queued",
+    "view_report": "View full report",
+    "last_summary": "Last refresh {{at}} · {{count}} feeds · {{added}} new",
+    "never": "Not refreshed yet"
   },
   "common": {
     "loading": "Loading…"

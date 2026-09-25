@@ -49,6 +49,7 @@ import { useUISettingKey } from "@/hooks/useUISettings";
 import {
   resolveTimelineCollapse,
   resolveTimelineGranularity,
+  resolveTimelineTimeBasis,
 } from "@/lib/timeline-model";
 import { NotificationTimeline } from "./NotificationTimeline";
 import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
@@ -276,6 +277,10 @@ export function EntryList({
   );
   const timelineCollapse = resolveTimelineCollapse(
     useUISettingKey("timelineCollapseByView")?.[contentType],
+  );
+  /** 26-2：时间基准（发布时间默认 = 现状；抓取时间 = 刷新批次） */
+  const timelineTimeBasis = resolveTimelineTimeBasis(
+    useUISettingKey("timelineTimeBasisByView")?.[contentType],
   );
   /** 窄栏自动合一栏（默认开；关掉则始终左右交替） */
   const timelineAutoSingleSide =
@@ -880,6 +885,7 @@ export function EntryList({
           isRefreshing={showRefreshing}
           refreshTotal={shownTotal}
           refreshCompleted={shownCompleted}
+          refreshStatus={globalRefreshStatus}
           scrollToTopScope="entrylist"
           isMobile={isMobile}
           onMenuClick={handleMenuClick}
@@ -981,6 +987,7 @@ export function EntryList({
                   onCloseEntry={onCloseEntry}
                   granularity={timelineGranularity}
                   collapse={timelineCollapse}
+                  timeBasis={timelineTimeBasis}
                   autoSingleSide={timelineAutoSingleSide}
                   autoTranslate={autoTranslate}
                   targetLanguage={targetLanguage}

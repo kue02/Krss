@@ -5,8 +5,10 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
+import { ProgressBar, Skeleton } from "@heroui/react";
 import { cn } from "@/lib/utils";
 import { getProxiedImageUrl } from "@/lib/image-proxy";
 import { ArticleLinkContext } from "./article-image";
@@ -20,6 +22,18 @@ import { useVideoPreviewStore } from "@/stores/video-preview-store";
  *
  * 代理侧要配合支持：Range 请求（拖动进度条）与 video/* 的内容类型，
  * 见 backend/internal/service/proxy_service.go 的 FetchMedia。
+ *
+ * 封面 + 悬停（§2.25）：
+ * - 有 poster → poster 当封面，`preload="none"`（进页面零请求）；
+ * - 无 poster → 走 `/api/proxy` 拉视频，同时：
+ *   a) `preload="metadata"` 只拉头部（不是进页面就整段下载）；
+ *   b) src 加 `#t=0.1` 让浏览器**明确 seek 到 0.1s**，逼它解码首帧 ——
+ *      `preload="metadata"` 并不保证渲染首帧（Chromium 要等数据到齐才画），
+ *      实测清缓存后首次打开有 4~8s 只有空底、没有画面。
+ *   c) 帧没到之前压一层 HeroUI `Skeleton`，**不露纯白/纯黑空框**；帧到了再淡入。
+ * - 两者都拿不到（error）→ 中性底 + 「新窗口打开」出口。
+ * - 悬停 → 静音就地播放 + 底部细进度条；移开 → 暂停并 `load()` 回到封面。
+ * - 点击保持现状：打开大屏播放器（顺手把就地这路先 pause）。
  */
 interface ArticleVideoProps extends React.VideoHTMLAttributes<HTMLVideoElement> {
   src?: string;
@@ -31,24 +45,67 @@ export function ArticleVideo({
   poster,
   className,
   children,
+  // 只为了从 props 里摘掉 controls：源 HTML 常带它，就地只当封面/悬停预览
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   controls: _ignoredControls,
   ...props
 }: ArticleVideoProps) {
   const articleUrl = useContext(ArticleLinkContext);
   const openVideoPreview = useVideoPreviewStore((state) => state.open);
   const [hasError, setHasError] = useState(false);
+  const [hovering, setHovering] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  const hasPoster = Boolean(poster);
+  const [frameReady, setFrameReady] = useState(false);
 
   const proxiedSrc = useMemo(
     () => (src ? (getProxiedImageUrl(src, articleUrl) ?? src) : undefined),
     [src, articleUrl],
   );
+
+  // 无 poster 时补 `#t=0.1`：让浏览器 seek 到 0.1s 解码出首帧当封面。
+  // 已经带片段（#t=）的不重复加；有 poster 的也不需要。
+  const playableSrc = useMemo(() => {
+    if (!proxiedSrc || hasPoster) return proxiedSrc;
+    if (/#t=|#.*\bt=/.test(proxiedSrc)) return proxiedSrc;
+    return `${proxiedSrc}#t=0.1`;
+  }, [proxiedSrc, hasPoster]);
   const proxiedPoster = useMemo(
     () => (poster ? (getProxiedImageUrl(poster, articleUrl) ?? poster) : undefined),
     [poster, articleUrl],
   );
 
-  // 换了条目就重置错误态
-  useEffect(() => setHasError(false), [proxiedSrc]);
+  // 换了条目就重置错误态、悬停态与首帧态
+  useEffect(() => {
+    setHasError(false);
+    setHovering(false);
+    setProgress(0);
+    setFrameReady(false);
+  }, [proxiedSrc]);
+
+  // 悬停：静音就地播（首次悬停才拉流）；移开：暂停并回到封面。
+  // load() 会把视频重置回 poster/首帧；有 poster 时回到 poster，无 poster 回到首帧。
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || hasError) return;
+    if (hovering) {
+      video.muted = true;
+      void video.play().catch(() => {
+        // 自动播放被拦就保持封面态，不报错打扰用户
+      });
+    } else {
+      video.pause();
+      // 之前播过（currentTime > 0 或进度 > 0）才 load() 回封面；
+      // 刚挂载没播过时不调，避免无 poster 的 metadata 首帧被冲掉。
+      if (video.currentTime > 0 || progress > 0) {
+        setProgress(0);
+        video.load();
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hovering]);
 
   // <source> 子节点也要走代理（有些源用 source 而不是 video 的 src）
   const childNodes = Children.map(children, (child) => {
@@ -65,7 +122,16 @@ export function ArticleVideo({
 
   const handleOpen = () => {
     if (!proxiedSrc || hasError) return;
+    videoRef.current?.pause();
+    setHovering(false);
     openVideoPreview(proxiedSrc, proxiedPoster ?? null, proxiedSrc);
+  };
+
+  const handleTimeUpdate = (event: React.SyntheticEvent<HTMLVideoElement>) => {
+    const video = event.currentTarget;
+    if (video.duration > 0 && Number.isFinite(video.duration)) {
+      setProgress(video.currentTime / video.duration);
+    }
   };
 
   return (
@@ -73,27 +139,81 @@ export function ArticleVideo({
       {/* 就地只放封面 + 播放键，点开由大屏播放器播（用户反馈：卡片里的小视频没法拖动进度） */}
       <button
         type="button"
+        onMouseEnter={() => {
+          if (!hasError && proxiedSrc) setHovering(true);
+        }}
+        onMouseLeave={() => setHovering(false)}
+        onFocus={() => {
+          if (!hasError && proxiedSrc) setHovering(true);
+        }}
+        onBlur={() => setHovering(false)}
         onClick={(event) => {
           event.stopPropagation();
           handleOpen();
         }}
         aria-label="播放视频"
-        className="article-video group/video relative block w-full cursor-pointer overflow-hidden rounded-lg bg-black/90"
+        className="article-video group/video relative block w-full cursor-pointer overflow-hidden rounded-lg bg-secondary"
       >
-        {/* 源 HTML 常带 controls，这里丢掉：就地只当封面，点了开大屏播放器 */}
+        {/* 源 HTML 常带 controls，这里丢掉：就地只当封面/悬停预览，点了开大屏播放器 */}
         <video
-          src={childNodes ? undefined : proxiedSrc}
+          ref={videoRef}
+          src={childNodes ? undefined : playableSrc}
           poster={proxiedPoster}
           muted
           playsInline
-          preload="metadata"
+          disablePictureInPicture
+          preload={hasPoster ? "none" : "metadata"}
+          onLoadedData={() => setFrameReady(true)}
           onError={() => setHasError(true)}
-          className={cn("pointer-events-none size-full object-cover", className)}
+          onTimeUpdate={handleTimeUpdate}
+          className={cn(
+            "pointer-events-none size-full object-cover",
+            // 无 poster 时等首帧画出来再淡入，避免闪一下空底
+            !hasPoster && !frameReady ? "opacity-0" : "opacity-100",
+            "transition-opacity duration-300",
+            className,
+          )}
           {...props}
         >
           {childNodes}
         </video>
-        <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        {/* 首帧没到之前压一层骨架：不露纯白/纯黑空框（用户 §2.25 的原话就是嫌白/黑） */}
+        {!hasPoster && !frameReady && !hasError && (
+          <span
+            className="pointer-events-none absolute inset-0"
+            aria-hidden="true"
+            data-slot="article-video-skeleton"
+          >
+            {/* 底色用 HeroUI 文档推荐的 neutral 档：默认骨架色（oklab 0.9373/70%）压在纯白
+                卡片（--surface = oklch(100%)）上实测亮度 249，和纯白 253 肉眼分不出，
+                用户看到的还是「白框」。neutral-200/800 明暗自适应、对比明显。 */}
+            <Skeleton className="size-full rounded-none bg-zinc-300/90 dark:bg-zinc-700/90" />
+          </span>
+        )}
+        {/* 悬停播放中的底部细进度条（HeroUI ProgressBar） */}
+        {hovering && !hasError && (
+          <span className="pointer-events-none absolute inset-x-0 bottom-0 px-0">
+            <ProgressBar
+              aria-label="视频播放进度"
+              className="w-full"
+              size="sm"
+              maxValue={1}
+              value={progress}
+              data-slot="article-video-progress"
+            >
+              <ProgressBar.Track className="rounded-none bg-black/40">
+                <ProgressBar.Fill className="bg-white/90" />
+              </ProgressBar.Track>
+            </ProgressBar>
+          </span>
+        )}
+        {/* 播放键：播起来就淡出，回到封面再出现 */}
+        <span
+          className={cn(
+            "pointer-events-none absolute inset-0 flex items-center justify-center transition-opacity duration-200",
+            hovering && !hasError ? "opacity-0" : "opacity-100",
+          )}
+        >
           <span className="article-video-badge flex size-11 items-center justify-center rounded-full bg-black/55 backdrop-blur-sm transition-transform duration-200 group-hover/video:scale-105">
             <svg
               className="ml-0.5 size-5 text-white"

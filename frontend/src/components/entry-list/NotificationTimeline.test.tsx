@@ -163,8 +163,8 @@ describe("NotificationTimeline · 主干形态（15-1）", () => {
     const { container } = renderTimeline(entries);
     const dates = Array.from(container.querySelectorAll("[data-timeline-date]"));
     expect(dates.map((node) => (node as HTMLElement).dataset.timelineDate)).toEqual([
-      "timeline.today",
-      "timeline.yesterday",
+      "timeline.today · 9月18日 周五",
+      "timeline.yesterday · 9月17日 周四",
     ]);
     expect(dates.every((node) => node.querySelector("[data-entry-id]") === null)).toBe(true);
   });
@@ -414,5 +414,105 @@ describe("NotificationTimeline · 与列表的契约", () => {
         onSelectableEntriesChange.mock.calls.length - 1
       ]?.[0] as Entry[];
     expect(after.map((item) => item.id)).toEqual(["a", "b", "c", "d", "e", "f"]);
+  });
+});
+
+describe("NotificationTimeline · 日期吸顶（26-1 重做）", () => {
+  it("日期行原生 sticky：top-0 + z 层 + 全宽，行高与间距不变", () => {
+    const { container } = renderTimeline([
+      entry("a", localIso(18, 9, 0)),
+      entry("b", localIso(17, 9, 0)),
+    ]);
+    const dates = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-timeline-date]"),
+    );
+    expect(dates).toHaveLength(2);
+    for (const date of dates) {
+      // 原生 sticky 吸顶：无 scroll 监听、无 fixed，定位纯 CSS
+      expect(date.className).toContain("sticky");
+      // 悬浮位置略低于顶边（胶囊会「飘」在列表上方）
+      expect(date.className).toContain("top-2");
+      // 形态 = 居中胶囊（用户 9-25 在草图变体 A/B 里选了 B）：
+      // 只有胶囊自己有底色/描边/投影，两侧不铺横条
+      expect(date.className).toContain("rounded-full");
+      expect(date.className).toContain("mx-auto");
+      expect(date.className).toContain("w-max");
+      expect(date.className).toContain("border");
+      expect(date.className).not.toContain("justify-center");
+      expect(date.className).not.toContain("pl-[86px]");
+    }
+  });
+
+  it("日期行不挡卡片点击：自身不是按钮、无 pointer 事件拦截", () => {
+    const { container, onSelectEntry } = renderTimeline([
+      entry("a", localIso(18, 9, 0)),
+      entry("b", localIso(17, 9, 0)),
+    ]);
+    const dates = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-timeline-date]"),
+    );
+    // 日期行本身没有可点击语义（点它不该选中条目）
+    expect(dates.every((node) => node.tagName === "DIV")).toBe(true);
+    fireEvent.click(dates[0]!);
+    expect(onSelectEntry).not.toHaveBeenCalled();
+    // 卡片照样点得动
+    fireEvent.click(container.querySelector("[data-entry-id]")!);
+    expect(onSelectEntry).toHaveBeenCalledWith("a");
+  });
+});
+
+describe("NotificationTimeline · 时间基准两档（26-2 重做）", () => {
+  /** 同一批抓回（createdAt 同为 9-19 08:0x），发布时间散在 9-07→9-10 */
+  function fetchedBatch(): Entry[] {
+    return [
+      entry("a", localIso(10, 9, 0), { createdAt: localIso(19, 8, 0) }),
+      entry("b", localIso(8, 9, 0), { createdAt: localIso(19, 8, 2) }),
+      entry("c", localIso(7, 9, 0), { createdAt: localIso(19, 8, 5) }),
+    ];
+  }
+
+  it("默认 = 发布时间：不传 timeBasis 与 published 一致（升级零变化）", () => {
+    const entries = fetchedBatch();
+    const implicit = renderTimeline(entries, { granularity: "day" });
+    const published = renderTimeline(entries, {
+      granularity: "day",
+      timeBasis: "published",
+    });
+    const datesOf = (container: HTMLElement) =>
+      Array.from(container.querySelectorAll("[data-timeline-date]")).map(
+        (node) => (node as HTMLElement).dataset.timelineDate,
+      );
+    // 默认档按发布时间散成三天
+    expect(datesOf(implicit.container)).toHaveLength(3);
+    expect(datesOf(implicit.container)).toEqual(datesOf(published.container));
+    implicit.unmount();
+    published.unmount();
+  });
+
+  it("切抓取档：同批条目聚到抓取日（一个分隔），切回发布还原", () => {
+    const entries = fetchedBatch();
+    const fetched = renderTimeline(entries, {
+      granularity: "day",
+      timeBasis: "fetched",
+    });
+    const dates = Array.from(
+      fetched.container.querySelectorAll<HTMLElement>("[data-timeline-date]"),
+    );
+    // 抓取档下三个都落在 9-19（抓取日）→ 只有一个分隔
+    expect(dates).toHaveLength(1);
+    fetched.unmount();
+  });
+
+  it("缺时间的条目不丢：无 publishedAt 在两档下都在轴上", () => {
+    const noPublished = entry("np", localIso(19, 8, 0), {
+      publishedAt: undefined,
+    });
+    for (const timeBasis of ["published", "fetched"] as const) {
+      const view = renderTimeline([noPublished], { timeBasis });
+      expect(
+        view.container.querySelectorAll("[data-entry-id]"),
+      ).toHaveLength(1);
+      view.unmount();
+    }
   });
 });
