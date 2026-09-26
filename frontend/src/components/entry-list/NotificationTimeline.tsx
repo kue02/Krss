@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { stripHtml } from "@/lib/html-utils";
 import { FeedIcon } from "@/components/ui/feed-icon";
 import { ArticleContent } from "@/components/ui/article-content";
+import { NotificationBodyPreview } from "./NotificationBodyPreview";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import {
   EntryContextMenuContent,
@@ -138,6 +139,16 @@ interface TimelineCardProps {
   bucketCount: number;
   clampLines: number | null;
   expanded: boolean;
+  /** 29-1：正文悬停档 —— 卡片只留来源行 + 标题，不渲染正文/展开按钮/拖高手柄 */
+  bodyOnHover?: boolean;
+  onHoverEnter?: (
+    entryId: string,
+    x: number,
+    y: number,
+    cardTop: number,
+    cardBottom: number,
+  ) => void;
+  onHoverLeave?: () => void;
   /** 「长贴自动展开」：该条目是长贴时不钳制（与社交视图同一开关语义） */
   autoExpandLongEntry?: boolean;
   /** 把预览正文的自然高度上报给父级（= 不钳制时的渲染高度，长贴判据用） */
@@ -174,6 +185,9 @@ const TimelineCard = memo(function TimelineCard({
   bucketCount,
   clampLines,
   expanded,
+  bodyOnHover = false,
+  onHoverEnter,
+  onHoverLeave,
   autoExpandLongEntry = false,
   onNaturalHeightChange,
   onToggleExpand,
@@ -215,6 +229,8 @@ const TimelineCard = memo(function TimelineCard({
   // 口径与社交视图的 scrollHeight > 300 + 8 等价 —— 读的是同一段预览 DOM 的 scrollHeight，
   // 不摘 clamp、不改视觉、不挂常驻 observer（只量两次）。
   useEffect(() => {
+    // 29-1：悬停档下卡片里没有正文预览，不量自然高度、不判截断（不生效且不报错）
+    if (bodyOnHover) return undefined;
     const node2 = bodyRef.current;
     if (onNaturalHeightChange) {
       const report = () => onNaturalHeightChange(entry.id, node2?.scrollHeight ?? 0);
@@ -223,8 +239,10 @@ const TimelineCard = memo(function TimelineCard({
       return () => clearTimeout(retry);
     }
     return undefined;
-  }, [entry.id, previewText, clampLines, onNaturalHeightChange]);
+  }, [entry.id, previewText, clampLines, onNaturalHeightChange, bodyOnHover]);
   useEffect(() => {
+    // 29-1：悬停档下卡片里没有正文预览，不判截断
+    if (bodyOnHover) return undefined;
     const node2 = bodyRef.current;
     // 「长贴自动展开」命中的条目不再钳制：截断判定直接回短贴，展开按钮也不出
     if (!node2 || clampLines === null || autoExpandLongEntry) {
@@ -235,7 +253,7 @@ const TimelineCard = memo(function TimelineCard({
     measure();
     const retry = setTimeout(measure, 400);
     return () => clearTimeout(retry);
-  }, [previewText, clampLines, autoExpandLongEntry]);
+  }, [previewText, clampLines, autoExpandLongEntry, bodyOnHover]);
 
   const effectiveClampLines = autoExpandLongEntry ? null : clampLines;
   const canExpand = effectiveClampLines !== null;
@@ -286,7 +304,24 @@ const TimelineCard = memo(function TimelineCard({
           data-entry-id={entry.id}
           data-timeline-card={node}
           data-timeline-side={side}
+          data-body-on-hover={bodyOnHover ? "true" : undefined}
           onClick={() => onSelect(entry.id)}
+          onMouseEnter={
+            bodyOnHover
+              ? (event) => {
+                  // 带上卡片上下沿：落点要退到卡片下沿之下（标题不被遮）
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  onHoverEnter?.(
+                    entry.id,
+                    event.clientX,
+                    event.clientY,
+                    rect.top,
+                    rect.bottom,
+                  );
+                }
+              : undefined
+          }
+          onMouseLeave={bodyOnHover ? () => onHoverLeave?.() : undefined}
           className={cn(
             "group relative cursor-pointer overflow-hidden rounded-[10px] border p-2.5 transition-[background-color,border-color,box-shadow,opacity] duration-200",
             isSelected
@@ -345,9 +380,8 @@ const TimelineCard = memo(function TimelineCard({
             {displayTitle || t("entry.untitled")}
           </div>
 
-          {/* 24-8：展开态 = 正文级完整渲染（标题/图片/全文按阅读区管道排版），
-              居中可读宽度、固定高度容器 + 内部滚动 —— 再长的正文也不挤下面的条目 */}
-          {expanded && hasFullContent ? (
+          {/* 29-1：悬停档 = 来源行 + 标题，不再渲染正文预览/展开按钮/展开容器/拖高手柄 */}
+          {bodyOnHover ? null : expanded && hasFullContent ? (
             <div className="mt-2">
               <div className="mx-auto w-full max-w-[clamp(45ch,60vw,65ch)]">
                 <div className="relative">
@@ -505,6 +539,9 @@ export interface NotificationTimelineProps {
   autoSingleSide?: boolean;
   autoTranslate: boolean;
   targetLanguage: string;
+  /** 29-1：正文悬停档（默认 false = 现状一字不改）。
+   * true = 卡片只留来源行 + 标题，正文走悬浮块；触屏（hover: none）由内部自动降级回卡片内正文。 */
+  bodyOnHover?: boolean;
   /**
    * 把「轴上的卡片」（不含被吸进小节点的条目）回报给父级 ——
    * 键盘 j/k、↑/↓ 就在这些节点之间吸附，不会选到看不见的条目。
@@ -527,6 +564,7 @@ export function NotificationTimeline({
   autoSingleSide = true,
   autoTranslate,
   targetLanguage,
+  bodyOnHover = false,
   onSelectableEntriesChange,
 }: NotificationTimelineProps) {
   const { t, i18n } = useTranslation();
@@ -559,6 +597,59 @@ export function NotificationTimeline({
   );
   /** 26-2：时间基准（缺值一律回发布时间 = 现状） */
   const basis = resolveTimelineTimeBasis(timeBasis);
+
+  /**
+   * 29-1：触屏降级 —— `hover: none` 的设备没有悬停，正文必须留在卡片里，
+   * 即使开关开了也按现状渲染。
+   */
+  const [coarsePointer, setCoarsePointer] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const query = window.matchMedia("(hover: none)");
+    setCoarsePointer(query.matches);
+    const onChange = (event: MediaQueryListEvent) => setCoarsePointer(event.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
+  const hoverMode = bodyOnHover && !coarsePointer;
+
+  /**
+   * 悬停浮块状态 —— 卡片 enter 立开（锚点取 mouseenter 事件自带的坐标：
+   * 指针停在卡片上不动时也必须先出现在正确位置，不能等下一次 mousemove；
+   * 浮块常挂，anchor 只做首帧兜底，跟随由浮块自己的 window mousemove 负责），
+   * 卡片 leave / 浮块 leave 起 250ms 延迟关（RefreshTooltip 同款），浮块 enter 清 timer。
+   */
+  const [hoverAnchor, setHoverAnchor] = useState<{
+    id: string;
+    x: number;
+    y: number;
+    cardTop: number;
+    cardBottom: number;
+  } | null>(null);
+  const hoverCloseTimer = useRef<number | null>(null);
+  const cancelHoverClose = useCallback(() => {
+    if (hoverCloseTimer.current !== null) {
+      window.clearTimeout(hoverCloseTimer.current);
+      hoverCloseTimer.current = null;
+    }
+  }, []);
+  const openHover = useCallback(
+    (entryId: string, x: number, y: number, cardTop: number, cardBottom: number) => {
+      cancelHoverClose();
+      setHoverAnchor({ id: entryId, x, y, cardTop, cardBottom });
+    },
+    [cancelHoverClose],
+  );
+  const scheduleHoverClose = useCallback(() => {
+    cancelHoverClose();
+    hoverCloseTimer.current = window.setTimeout(() => setHoverAnchor(null), 250);
+  }, [cancelHoverClose]);
+  useEffect(() => cancelHoverClose, [cancelHoverClose]);
+  // 退出悬停档时藏浮块（常挂节点 entry=null + visible=false，不卸载）；
+  // 换一批条目后旧 id 找不到对应条目，浮块同样回到隐藏态
+  useEffect(() => {
+    if (!hoverMode) setHoverAnchor(null);
+  }, [hoverMode, entries]);
 
   const [expandedClusters, setExpandedClusters] = useState<ReadonlySet<string>>(
     () => new Set(),
@@ -796,14 +887,22 @@ export function NotificationTimeline({
       {sections.map((section) => (
         /* 每段一层容器 = sticky 的作用域：本段滚完，日期行被段底边推走，下一段接替 */
         <div key={section.key} className="relative">
-          {/* 日期分隔行（用户 9-24 要吸顶 / 9-25 定形态：草图**变体 B 居中胶囊**）——
-              只有胶囊自己有底色/描边/投影，两侧不铺横条；浮动在列表上方，
-              卡片从下面穿过。仍旧是段内 sticky：本段滚完被段底推走，下一段接替。 */}
+          {/* 日期分隔行（用户 9-24 要吸顶 / 9-25 居中胶囊 → 2423cda 全宽条 → 2026-09-25
+              复验后按用户「要最早那版：纯一行文字、无底色、无分隔线」回到 2423cda 之前那版）：
+              只有一行文字（solid `bg-background` 小 pill 保住字底、无描边无投影），
+              不加底条、不加分隔线、不加模糊 —— 唯一保留的是 `sticky top-0` 吸顶。
+              文字位置与胶囊前一致 —— 单栏左对齐到卡片列左缘（时间列 86px 之后）、交替布局居中。
+              仍是段内 sticky（本段滚完被段底推走，下一段接替），只有当前吸顶的那条会浮起。 */}
           <div
             data-timeline-date={section.label}
-            className="sticky top-2 z-10 mx-auto flex w-max items-center rounded-full border border-border bg-background/95 px-3 py-[3px] text-[11.5px] font-semibold tabular-nums shadow-[0_6px_16px_rgba(0,0,0,0.10)] backdrop-blur-md"
+            className={cn(
+              "sticky top-0 z-10 flex items-center py-3",
+              singleSide ? "justify-start pl-[86px]" : "justify-center",
+            )}
           >
-            {section.label}
+            <span className="rounded-full bg-background px-2 text-[11.5px] font-semibold tabular-nums text-foreground">
+              {section.label}
+            </span>
           </div>
 
           {section.rows.map((row) => {
@@ -855,15 +954,20 @@ export function NotificationTimeline({
             node={row.node}
             bucketCount={row.bucketCount}
             clampLines={clampLines}
-            autoExpandLongEntry={isAutoExpanded(entry.id)}
-            onNaturalHeightChange={handleNaturalHeightChange}
+            autoExpandLongEntry={hoverMode ? false : isAutoExpanded(entry.id)}
+            onNaturalHeightChange={hoverMode ? undefined : handleNaturalHeightChange}
             expanded={
-              expandedEntries.has(entry.id) ||
-              entry.id === selectedEntryId ||
-              isAutoExpanded(entry.id)
+              hoverMode
+                ? false
+                : expandedEntries.has(entry.id) ||
+                  entry.id === selectedEntryId ||
+                  isAutoExpanded(entry.id)
             }
             onToggleExpand={toggleEntry}
             onSelect={handleSelect}
+            bodyOnHover={hoverMode}
+            onHoverEnter={hoverMode ? openHover : undefined}
+            onHoverLeave={hoverMode ? scheduleHoverClose : undefined}
             onMarkAbove={
               onMarkAboveEntry
                 ? () => onMarkAboveEntry(entry.id)
@@ -939,6 +1043,41 @@ export function NotificationTimeline({
           })}
         </div>
       ))}
+      {/* 悬停正文浮块 —— hoverMode 下常挂（无 key、不卸载）：换条目只换 entry，
+          无悬停时 entry=null + visible=false 藏起（scale 0 + 透明 + 点穿） */}
+      {hoverMode
+        ? (() => {
+            const hoverEntry = hoverAnchor
+              ? (entries.find((item) => item.id === hoverAnchor.id) ?? null)
+              : null;
+            return (
+              <NotificationBodyPreview
+                entry={hoverEntry}
+                visible={hoverEntry !== null}
+                anchor={
+                  hoverAnchor
+                    ? {
+                        x: hoverAnchor.x,
+                        y: hoverAnchor.y,
+                        cardTop: hoverAnchor.cardTop,
+                        cardBottom: hoverAnchor.cardBottom,
+                      }
+                    : { x: 0, y: 0, cardTop: null, cardBottom: null }
+                }
+                feedName={
+                  hoverEntry
+                    ? (feeds.get(hoverEntry.feedId)?.title ??
+                      t("entry.unknown_feed"))
+                    : ""
+                }
+                autoTranslate={autoTranslate}
+                targetLanguage={targetLanguage}
+                onMouseEnter={cancelHoverClose}
+                onMouseLeave={scheduleHoverClose}
+              />
+            );
+          })()
+        : null}
     </div>
   );
 }

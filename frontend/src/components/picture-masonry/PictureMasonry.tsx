@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { useImageDimensionsStore } from "@/stores/image-dimensions-store";
 import { PictureItem } from "./PictureItem";
 import { PictureHoverList } from "@/components/picture-hover/PictureHoverList";
+import { PictureWall } from "@/components/picture-wall/PictureWall";
 import { useGeneralSettings } from "@/hooks/useGeneralSettings";
 import { useScrollToTop } from "@/hooks/useScrollToTop";
 import { useMasonryScrollMarkRead } from "./useMasonryScrollMarkRead";
@@ -134,14 +135,23 @@ export function PictureMasonry({
   const isGrid = resolvedLayout === "grid" && gridStyle === "square";
   /** 第三档：hover-img（复用 obsidianui 组件），走普通列表而不是瀑布流虚拟滚动 */
   const isHover = resolvedLayout === "hover";
+  /** 第四档（31-1）：照片墙（obsidianui art-gallery，three.js）——铺照片本身、不按条目分组 */
+  const isWall = resolvedLayout === "wall";
   /** 28-6：顶栏那颗档位切换（用户要求图片视图也加一个，三档循环） */
   const { setPictureLayout } = useUISettingActions();
   /** 28-7a：悬停大图档的尺寸预设（行高 / 浮块大小，用户要求可设置） */
   const hoverRowHeight = useUISettingKey("hoverRowHeight");
   const hoverImageSize = useUISettingKey("hoverImageSize");
   const handleTogglePictureLayout = useCallback(() => {
-    // 28-7（用户：「合并网格应该只有两个选项」）：档位两档循环 —— 网格 ⇄ 悬停大图。
-    setPictureLayout(resolvedLayout === "grid" ? "hover" : "grid");
+    // 28-7（用户：「合并网格应该只有两个选项」）时是两档循环；31-1 加「照片墙」后三档循环：
+    // 网格 → 悬停大图 → 照片墙 → 网格。
+    setPictureLayout(
+      resolvedLayout === "grid"
+        ? "hover"
+        : resolvedLayout === "hover"
+          ? "wall"
+          : "grid",
+    );
   }, [resolvedLayout, setPictureLayout]);
   const { currentColumn, isReady } = useMasonryColumn(
     isMobile,
@@ -422,6 +432,14 @@ export function PictureMasonry({
           >
             <EmptyState />
           </div>
+        ) : isReady && isWall ? (
+          /* 31-1：照片墙铺满内容区（不做 p-4 内边距 —— 原件是整块 WebGL 画布） */
+          <PictureWall
+            items={items}
+            className={
+              usesDocumentScroll ? "h-[70vh] min-h-96 w-full" : "h-full w-full"
+            }
+          />
         ) : isReady && isHover ? (
           <div className={cn("p-4", !usesDocumentScroll && "h-full overflow-auto")}>
             <PictureHoverList

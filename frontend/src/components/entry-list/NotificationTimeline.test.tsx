@@ -568,7 +568,7 @@ describe("NotificationTimeline · 与列表的契约", () => {
 });
 
 describe("NotificationTimeline · 日期吸顶（26-1 重做）", () => {
-  it("日期行原生 sticky：top-0 + z 层 + 全宽，行高与间距不变", () => {
+  it("日期行原生 sticky：top-0 + 纯一行文字（2026-09-25 回到最早那版：无底色、无分隔线）", () => {
     const { container } = renderTimeline([
       entry("a", localIso(18, 9, 0)),
       entry("b", localIso(17, 9, 0)),
@@ -580,16 +580,23 @@ describe("NotificationTimeline · 日期吸顶（26-1 重做）", () => {
     for (const date of dates) {
       // 原生 sticky 吸顶：无 scroll 监听、无 fixed，定位纯 CSS
       expect(date.className).toContain("sticky");
-      // 悬浮位置略低于顶边（胶囊会「飘」在列表上方）
-      expect(date.className).toContain("top-2");
-      // 形态 = 居中胶囊（用户 9-25 在草图变体 A/B 里选了 B）：
-      // 只有胶囊自己有底色/描边/投影，两侧不铺横条
-      expect(date.className).toContain("rounded-full");
-      expect(date.className).toContain("mx-auto");
-      expect(date.className).toContain("w-max");
-      expect(date.className).toContain("border");
-      expect(date.className).not.toContain("justify-center");
-      expect(date.className).not.toContain("pl-[86px]");
+      // 吸在自己的行位里（原来的位置），不是飘在列表上方的居中胶囊
+      expect(date.className).toContain("top-0");
+      expect(date.className).not.toContain("top-2");
+      // 最早那版形态：裸行 —— 不加半透底条、不加模糊、不加底部 inset 分隔线
+      expect(date.className).not.toContain("bg-background/85");
+      expect(date.className).not.toContain("backdrop-blur");
+      expect(date.style.boxShadow).toBe("");
+      expect(date.style.backgroundColor).toBe("");
+      // 用户 9-25：「原来是在条目标题上方」= 单栏左对齐到卡片列 / 交替居中
+      expect(date.className).not.toContain("rounded-full");
+      expect(date.className).not.toContain("mx-auto");
+      expect(date.className).not.toContain("w-max");
+      // 文字仍是原来那颗无描边无投影的小 pill（保住字底、不带外框）
+      const label = date.querySelector("span");
+      expect(label?.className).toContain("rounded-full");
+      expect(label?.className).toContain("bg-background");
+      expect(label?.className).not.toContain("border");
     }
   });
 

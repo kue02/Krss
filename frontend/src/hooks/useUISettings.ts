@@ -37,6 +37,18 @@ export type QuoteStyle = "block" | "divider" | "card";
  */
 export type ArticleLayout = "list" | "hover";
 /**
+ * 29-4（用户 2026-09-25）：「悬停大图」档下一篇文章多图时的切换触发方式。
+ * 三个独立开关，可任意组合（用户原话：「3 个都做成可配置项」）：
+ *  - rowWheel   鼠标停在那一行上滚轮 = 切图（这一下不吃列表滚动）
+ *  - floatWheel 鼠标移进浮块后滚轮 = 切图（行上的滚轮仍滚列表）
+ *  - hSwipe     鼠标横向滑动 = 上一张 / 下一张
+ */
+export type HoverMultiImageConfig = {
+  rowWheel: boolean;
+  floatWheel: boolean;
+  hSwipe: boolean;
+};
+/**
  * 已读/未读的全局统一标记（用户 11-14）：
  *   badge = HeroUI `Badge` 角标（**用户拍板的默认**）
  *   dot   = 小圆点（原来只有社交媒体视图有）
@@ -138,12 +150,14 @@ interface UISettings {
   entryColWidth: number;
   sidebarVisible: boolean;
   /**
-   * 图片视图的排布（28-7 收敛为两档，用户 2026-09-25）：
+   * 图片视图的排布（28-7 收敛为两档；31-1 增「照片墙」一档）：
    *  - grid = 网格（合并了原先的「瀑布流」与「网格」，具体样式看 gridStyle）
    *  - hover = 悬停大图
+   *  - wall = 照片墙（obsidianui art-gallery 原件：three.js 透镜网格，可拖拽平移；
+   *    铺的是照片本身、不按条目分组，见 components/picture-wall/）
    * 历史遗留值 "masonry" 仍可能出现（老数据），读取时按 `resolvePictureLayout()` 归一为 grid。
    */
-  pictureLayout: "grid" | "hover" | "masonry";
+  pictureLayout: "grid" | "hover" | "wall" | "masonry";
   /**
    * 28-7：网格档下的样式（用户：「合并网格应该只有两个选项」）：
    *  - "masonry"（默认）= 之前「瀑布流」的效果，按原图比例排
@@ -162,6 +176,15 @@ interface UISettings {
    */
   hoverRowHeight: "compact" | "comfortable";
   hoverImageSize: "small" | "large";
+  /** 29-4：悬停大图档「多图切换」的三个触发开关（默认只开行上滚轮） */
+  hoverMultiImage: HoverMultiImageConfig;
+  /**
+   * 29-1（用户 2026-09-25）：通知视图的正文放哪儿。
+   *  false（默认）= 现在这样：卡片里带正文预览 + 展开/收起；
+   *  true = 卡片只留「来源行 + 标题」，正文改成鼠标悬浮时弹浮块显示。
+   * 两种档的时间线骨架（中轴、时间戳、节点、日期分段、单栏/交替）完全一致。
+   */
+  notificationBodyOnHover: boolean;
   /**
    * 文章视图第二栏的排布：list = 卡片列表（默认）；hover = 悬停大图（同图片视图第三档形态）。
    * reader-transition 批新增（用户 2026-09-25）。
@@ -279,8 +302,10 @@ const STORAGE_SPEC = LS_KEYS.uiSettings;
  * 28-7：把历史遗留的 pictureLayout 归一。
  * 老数据里 "masonry" 表示「按原图比例那一档」，合并后它 = 网格档 + 样式 masonry。
  */
-export function resolvePictureLayout(layout: string): "grid" | "hover" {
-  return layout === "hover" ? "hover" : "grid";
+export function resolvePictureLayout(layout: string): "grid" | "hover" | "wall" {
+  if (layout === "hover") return "hover";
+  if (layout === "wall") return "wall";
+  return "grid";
 }
 
 /** 28-7：老数据里 "masonry" 对应网格档的 masonry 样式；"grid" 则看用户选的样式。 */
@@ -468,6 +493,8 @@ export const defaultUISettings: UISettings = {
   gridStyle: "masonry",
   hoverRowHeight: "compact",
   hoverImageSize: "small",
+  hoverMultiImage: { rowWheel: true, floatWheel: false, hSwipe: false },
+  notificationBodyOnHover: false,
   articleLayout: "list",
   cardImageSize: "small",
   cardPreviewLines: 2,
@@ -692,9 +719,12 @@ export function useUISettingActions() {
     setUISetting("cardImageSize", size);
   }, []);
 
-  const setPictureLayout = useCallback((layout: "grid" | "hover") => {
-    setUISetting("pictureLayout", layout);
-  }, []);
+  const setPictureLayout = useCallback(
+    (layout: "grid" | "hover" | "wall") => {
+      setUISetting("pictureLayout", layout);
+    },
+    [],
+  );
 
   /** 28-7：网格档下的样式（masonry = 之前瀑布流的效果 / square = 之前网格的效果） */
   const setGridStyle = useCallback((style: "masonry" | "square") => {

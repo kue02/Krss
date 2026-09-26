@@ -104,6 +104,22 @@
   object-fit: cover;
 }
 
+/* 29-3：同一条目多图时的横向 strip（无极滚动：gsap 直接驱动 x 做 px 连续位移 +
+   停 180ms 吸附，CSS 不写 transition，避免与补间打架；无箭头/圆点/页码）。
+   单图行不走这里，与原来一字一致。 */
+.hover-img-multi {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+.hover-img-multi img {
+  width: 100%;
+  height: 100%;
+  flex: none;
+  object-fit: cover;
+}
+
 /* Responsive */
 @media (max-width: 1024px) {
   .hover-img-project {

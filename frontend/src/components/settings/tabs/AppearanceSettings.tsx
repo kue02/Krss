@@ -19,10 +19,13 @@ import {
 } from "@/hooks/useTheme";
 import { useAppearanceSettings } from "@/hooks/useAppearanceSettings";
 import {
+  setUISetting,
   useUISettingActions,
   useUISettingKey,
   resolveGridStyle,
+  resolvePictureLayout,
   type CardImageSize,
+  type HoverMultiImageConfig,
   type QuoteStyle,
   type ScrollReadOverride,
   type SidebarFeedAppearance,
@@ -222,7 +225,20 @@ export function AppearanceSettings() {
   const articleLayout = useUISettingKey("articleLayout");
   const hoverRowHeight = useUISettingKey("hoverRowHeight");
   const hoverImageSize = useUISettingKey("hoverImageSize");
+  const hoverMultiImageSetting = useUISettingKey(
+    "hoverMultiImage",
+  ) as HoverMultiImageConfig | undefined;
+  // 29-4：老数据可能缺 hoverMultiImage 键，按默认值兜底（与 DEFAULT_UI_SETTINGS 一致）
+  const hoverMultiImage: HoverMultiImageConfig = {
+    rowWheel: hoverMultiImageSetting?.rowWheel ?? true,
+    floatWheel: hoverMultiImageSetting?.floatWheel ?? false,
+    hSwipe: hoverMultiImageSetting?.hSwipe ?? false,
+  };
+  const resolvedPictureLayout = resolvePictureLayout(pictureLayout);
   const gridStyle = resolveGridStyle(pictureLayout, useUISettingKey("gridStyle"));
+  /** 29-1：通知视图正文放哪儿（false = 卡片内现状 / true = 悬停浮块） */
+  const notificationBodyOnHoverRaw = useUISettingKey("notificationBodyOnHover");
+  const notificationBodyOnHover = notificationBodyOnHoverRaw ?? false;
 
   const themeOptions = useMemo(
     () => [
@@ -813,6 +829,33 @@ export function AppearanceSettings() {
                     不重新请求数据（分页仍是 limit+1） */}
                 {view === "notification" && (
                   <>
+                    {/* 29-1（用户 2026-09-25）：正文放哪儿 —— 卡片内（现状）或悬停浮块。
+                        骨架（中轴/时间戳/日期分段/单栏交替）两档完全一样，只挪正文。 */}
+                    <SettingRow
+                      label={t("appearance_view.notification_body")}
+                      hint={t("appearance_view.notification_body_hint")}
+                    >
+                      <SegmentedControl
+                        className="shrink-0"
+                        value={notificationBodyOnHover ? "hover" : "inline"}
+                        onValueChange={(value) =>
+                          setUISetting(
+                            "notificationBodyOnHover",
+                            value === "hover",
+                          )
+                        }
+                        options={[
+                          {
+                            value: "inline",
+                            label: t("appearance_view.notification_body_inline"),
+                          },
+                          {
+                            value: "hover",
+                            label: t("appearance_view.notification_body_hover"),
+                          },
+                        ]}
+                      />
+                    </SettingRow>
                     <SettingRow
                       label={t("appearance_view.timeline_granularity")}
                       hint={t("appearance_view.timeline_granularity_hint")}
@@ -955,15 +998,15 @@ export function AppearanceSettings() {
                     />
                   </SettingRow>
                 )}
-                {/* 图片视图档位（28-7 收敛为两档：网格 / 悬停大图）。
+                {/* 图片视图档位（28-7 收敛为两档：网格 / 悬停大图；31-1 增第三档「照片墙」）。
                     原先的「瀑布流」与「网格」合并成一档「网格」，两者的差别降为下面那条「样式」。 */}
                 {view === "picture" && (
                   <SettingRow label={t("appearance_view.picture_layout")}>
                     <SegmentedControl
                       className="shrink-0"
-                      value={pictureLayout === "hover" ? "hover" : "grid"}
+                      value={resolvedPictureLayout}
                       onValueChange={(value) =>
-                        setPictureLayout(value as "grid" | "hover")
+                        setPictureLayout(value as "grid" | "hover" | "wall")
                       }
                       options={[
                         {
@@ -974,13 +1017,17 @@ export function AppearanceSettings() {
                           value: "hover",
                           label: t("appearance_view.picture_layout_hover"),
                         },
+                        {
+                          value: "wall",
+                          label: t("appearance_view.picture_layout_wall"),
+                        },
                       ]}
                     />
                   </SettingRow>
                 )}
                 {/* 28-7：网格档下的样式（用户「合并网格应该只有两个选项：默认的是之前瀑布流
                     的效果，另一个可选的是之前网格的效果」）。只在网格档显示。 */}
-                {view === "picture" && pictureLayout !== "hover" && (
+                {view === "picture" && resolvedPictureLayout === "grid" && (
                   <SettingRow label={t("appearance_view.grid_style")}>
                     <SegmentedControl
                       className="shrink-0"
@@ -1003,7 +1050,7 @@ export function AppearanceSettings() {
                 )}
                 {/* 28-7a：悬停大图档的尺寸自定义（用户 2026-09-25 要求这两项可设置，
                     预设来自两棵树：compact/small = 5179 现值，comfortable/large = 5175 那套） */}
-                {view === "picture" && pictureLayout === "hover" && (
+                {view === "picture" && resolvedPictureLayout === "hover" && (
                   <>
                     <SettingRow label={t("appearance_view.hover_row_height")}>
                       <SegmentedControl
@@ -1045,6 +1092,57 @@ export function AppearanceSettings() {
                         ]}
                       />
                     </SettingRow>
+                  </>
+                )}
+                {/* 29-4：悬停大图档「一篇文章多图」的切换触发方式（用户 2026-09-25 原话：
+                    「3 个都做成可配置项」）—— 三个独立开关，可任意组合。
+                    31-2：文章视图的悬停档已改成「悬停正文」（不再走 hover-img），
+                    所以这一组只服务图片视图的悬停大图档。 */}
+                {view === "picture" && pictureLayout === "hover" && (
+                  <>
+                    <div className="px-1 pt-2 text-xs text-muted-foreground">
+                      {t("appearance_view.hover_multi_scope")}
+                    </div>
+                    {(
+                      [
+                        {
+                          key: "rowWheel",
+                          label: "appearance_view.hover_multi_row_wheel",
+                          hint: "appearance_view.hover_multi_row_wheel_hint",
+                        },
+                        {
+                          key: "floatWheel",
+                          label: "appearance_view.hover_multi_float_wheel",
+                          hint: "appearance_view.hover_multi_float_wheel_hint",
+                        },
+                        {
+                          key: "hSwipe",
+                          label: "appearance_view.hover_multi_hswipe",
+                          hint: "appearance_view.hover_multi_hswipe_hint",
+                        },
+                      ] as const
+                    ).map((item) => (
+                      <SettingRow
+                        key={item.key}
+                        label={t(item.label)}
+                        hint={t(item.hint)}
+                      >
+                        <SegmentedControl
+                          className="shrink-0"
+                          value={hoverMultiImage[item.key] ? "on" : "off"}
+                          onValueChange={(value) =>
+                            setUISetting("hoverMultiImage", {
+                              ...hoverMultiImage,
+                              [item.key]: value === "on",
+                            } as HoverMultiImageConfig)
+                          }
+                          options={[
+                            { value: "on", label: t("appearance_view.on") },
+                            { value: "off", label: t("appearance_view.off") },
+                          ]}
+                        />
+                      </SettingRow>
+                    ))}
                   </>
                 )}
                 {/* 按视图覆盖只在总开关选了「按视图单独设」时出现 ——

@@ -1,6 +1,12 @@
 import { useTranslation } from "react-i18next";
 import { ToggleButton } from "@heroui/react";
-import { Filter, Images, LayoutGrid } from "lucide-react";
+import {
+  Filter,
+  GalleryHorizontalEnd,
+  Images,
+  LayoutGrid,
+  LayoutList,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { RefreshStatus } from "@/api";
 import { RefreshTooltip } from "./RefreshTooltip";
@@ -9,7 +15,6 @@ import {
   CircleFilledIcon,
   CheckCircleIcon,
   FileTextIcon,
-  ImageIcon,
   MenuIcon,
   RefreshIcon,
   RefreshSpinner,
@@ -80,7 +85,7 @@ interface EntryListHeaderProps {
    * 28-7：图片视图的「展示方式」切换（网格 ⇄ 悬停大图，两档循环）。
    * 同上，不传则不渲染。
    */
-  pictureLayout?: "grid" | "hover";
+  pictureLayout?: "grid" | "hover" | "wall";
   onTogglePictureLayout?: () => void;
 }
 
@@ -111,6 +116,9 @@ export function EntryListHeader({
   onTogglePictureLayout,
 }: EntryListHeaderProps) {
   const { t } = useTranslation();
+  /* 顶栏那颗档位按钮：提示文案表达「点下去会变成什么」，所以取下一档的名字 */
+  const nextPictureLayoutKey =
+    pictureLayout === "grid" ? "hover" : pictureLayout === "hover" ? "wall" : "grid";
 
   return (
     <div className="flex h-14 items-center justify-between gap-4 px-4 shrink-0">
@@ -178,36 +186,32 @@ export function EntryListHeader({
             className="flex size-8 shrink-0 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95"
           >
             {articleLayout === "hover" ? (
-              <FileTextIcon className="size-4" />
+              /* 31-2：hover 档 = 悬停正文，点下去回到卡片列表 */
+              <LayoutList className="size-4" />
             ) : (
-              <ImageIcon className="size-4" />
+              /* 列表档：点下去是「悬停正文」 */
+              <FileTextIcon className="size-4" />
             )}
           </button>
         )}
         {onTogglePictureLayout && (
-          /* 28-7：图片视图档位循环 —— 网格 ⇄ 悬停大图。
-             图标与提示都表达「点下去会变成什么」。 */
+          /* 28-7：图片视图档位循环 —— 网格 → 悬停大图 → 照片墙（31-1 加第三档）。
+             图标画当前档，提示文案说「点下去会变成什么」。 */
           <button
             type="button"
             onClick={onTogglePictureLayout}
-            aria-label={t(
-              pictureLayout === "hover"
-                ? "appearance_view.picture_layout_grid"
-                : "appearance_view.picture_layout_hover",
-            )}
+            aria-label={t(`appearance_view.picture_layout_${nextPictureLayoutKey}`)}
             {...{
-              title: t(
-                pictureLayout === "hover"
-                  ? "appearance_view.picture_layout_grid"
-                  : "appearance_view.picture_layout_hover",
-              ),
+              title: t(`appearance_view.picture_layout_${nextPictureLayoutKey}`),
             }}
             className="flex size-8 shrink-0 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95"
           >
-            {pictureLayout === "hover" ? (
-              <LayoutGrid className="size-4" />
-            ) : (
+            {pictureLayout === "wall" ? (
+              <GalleryHorizontalEnd className="size-4" />
+            ) : pictureLayout === "hover" ? (
               <Images className="size-4" />
+            ) : (
+              <LayoutGrid className="size-4" />
             )}
           </button>
         )}
