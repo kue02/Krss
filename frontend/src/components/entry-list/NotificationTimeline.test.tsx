@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Entry } from "@/types/api";
 import { NotificationTimeline } from "./NotificationTimeline";
@@ -568,7 +568,7 @@ describe("NotificationTimeline · 与列表的契约", () => {
 });
 
 describe("NotificationTimeline · 日期吸顶（26-1 重做）", () => {
-  it("日期行原生 sticky：top-0 + 纯一行文字（2026-09-25 回到最早那版：无底色、无分隔线）", () => {
+  it("日期行原生 sticky：top-0 + 非吸顶时是纯一行文字（无底色、无分隔线）", () => {
     const { container } = renderTimeline([
       entry("a", localIso(18, 9, 0)),
       entry("b", localIso(17, 9, 0)),
@@ -598,6 +598,62 @@ describe("NotificationTimeline · 日期吸顶（26-1 重做）", () => {
       expect(label?.className).toContain("bg-background");
       expect(label?.className).not.toContain("border");
     }
+  });
+
+  it("33-2 只有正吸顶的那条日期行浮起（半透底 + 模糊 + 底部 1px 线），其余保持裸行", async () => {
+    const { container } = renderTimeline([
+      entry("a", localIso(18, 9, 0)),
+      entry("b", localIso(17, 9, 0)),
+      entry("c", localIso(16, 9, 0)),
+    ]);
+    const sections = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-timeline-section]"),
+    );
+    expect(sections.length).toBeGreaterThan(1);
+
+    const rect = (top: number, bottom: number) =>
+      ({
+        top,
+        bottom,
+        left: 0,
+        right: 0,
+        width: 0,
+        height: bottom - top,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    // 第一段正贴住吸顶线（日期行 top 0、段底还在线下方）；其余段整体在线下方
+    sections.forEach((section, index) => {
+      const dateRow = section.querySelector<HTMLElement>("[data-timeline-date]")!;
+      if (index === 0) {
+        dateRow.getBoundingClientRect = () => rect(0, 41);
+        section.getBoundingClientRect = () => rect(-200, 400);
+      } else {
+        dateRow.getBoundingClientRect = () => rect(320, 361);
+        section.getBoundingClientRect = () => rect(320, 900);
+      }
+    });
+
+    await act(async () => {
+      window.dispatchEvent(new Event("scroll"));
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    });
+
+    const rows = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-timeline-date]"),
+    );
+    // 吸顶那条：浮起样式（2423cda 那版）
+    expect(rows[0]!.getAttribute("data-timeline-date-stuck")).toBe("true");
+    expect(rows[0]!.className).toContain("bg-background/85");
+    expect(rows[0]!.className).toContain("backdrop-blur-md");
+    expect(rows[0]!.style.boxShadow).toContain("inset 0 -1px 0");
+    // 没吸顶的那条：一行没变（裸行）
+    expect(rows[1]!.getAttribute("data-timeline-date-stuck")).toBe("false");
+    expect(rows[1]!.className).not.toContain("bg-background/85");
+    expect(rows[1]!.className).not.toContain("backdrop-blur-md");
+    expect(rows[1]!.style.boxShadow).toBe("");
   });
 
   it("日期行不挡卡片点击：自身不是按钮、无 pointer 事件拦截", () => {

@@ -441,3 +441,42 @@ export function expandTimelineRows(
   }
   return out;
 }
+
+/** 33-2：一条日期行的吸顶探针（都是视口坐标，由调用方量好传进来） */
+export interface TimelineDateProbe {
+  /** 段 key，与 `sections` 一致 */
+  key: string;
+  /** 该段日期行 `getBoundingClientRect().top` */
+  dateTop: number;
+  /** 该段容器 `getBoundingClientRect().top` */
+  sectionTop: number;
+  /** 该段容器 `getBoundingClientRect().bottom` */
+  sectionBottom: number;
+}
+
+/**
+ * 33-2：算出「此刻正吸顶」的日期行（用户：「只有吸顶才会出现那个样式」）。
+ *
+ * 判据（三条同时成立）：
+ *  1. 日期行已贴到线上（`dateTop <= 线`）；
+ *  2. 所属段的段顶**严格**在线上方 —— 即这一段真的滚上去了；
+ *     （列表停在最顶上时，首段段顶正好等于线，这不算吸顶，行保持裸文字）
+ *  3. 所属段的段底仍在线下方 —— 这一段还没滚完（不是被上一段推走的那种）。
+ *
+ * 交班瞬间新旧两条会短暂同时成立（旧那条正被推出去、新那条刚贴上来），这是刻意的：
+ * 让旧的行保持浮起样式直到被完全盖住，不然交班时会闪一下透明。
+ */
+export function pickStuckDateKeys(
+  probes: readonly TimelineDateProbe[],
+  stickyLine: number,
+  epsilon = 0.5,
+): string[] {
+  return probes
+    .filter(
+      (probe) =>
+        probe.dateTop <= stickyLine + epsilon &&
+        probe.sectionTop < stickyLine - epsilon &&
+        probe.sectionBottom > stickyLine + epsilon,
+    )
+    .map((probe) => probe.key);
+}

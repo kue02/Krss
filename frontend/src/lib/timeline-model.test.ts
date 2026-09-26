@@ -7,6 +7,7 @@ import {
   formatBucketLabel,
   formatClockTime,
   isSingleSideWidth,
+  pickStuckDateKeys,
   localDayKey,
   resolveTimelineCollapse,
   resolveTimelineGranularity,
@@ -415,6 +416,49 @@ describe("timeline-model · 时间基准两档（26-2）", () => {
     expect(
       tail.map((row) => (row.kind === "entry" ? row.shortLabel : "x")),
     ).toEqual(["08:02", "08:01", "08:00"]);
+  });
+});
+
+describe("timeline-model · 吸顶判定（33-2 只有吸顶那条才有浮起样式）", () => {
+  it("只有正贴住线的那条算吸顶；还在线下方、以及已经滚过去的段，都不算", () => {
+    const probes = [
+      { key: "昨天", dateTop: -120, sectionTop: -700, sectionBottom: -8 }, // 整段滚过去了 → 不是它
+      { key: "今天", dateTop: 0, sectionTop: -500, sectionBottom: 620 }, // 段跨着线 + 行贴线 → 是它
+      { key: "更早", dateTop: 300, sectionTop: 300, sectionBottom: 900 }, // 还在线下方 → 不是它
+    ];
+    expect(pickStuckDateKeys(probes, 0)).toEqual(["今天"]);
+  });
+
+  it("交班瞬间两条都算：旧那条保持浮起直到被完全盖住（不闪透明）", () => {
+    const probes = [
+      { key: "22日", dateTop: -30, sectionTop: -900, sectionBottom: 12 }, // 正被推出去，段底刚过线
+      { key: "21日", dateTop: 0, sectionTop: -60, sectionBottom: 500 }, // 刚贴上来
+    ];
+    expect(pickStuckDateKeys(probes, 0)).toEqual(["22日", "21日"]);
+  });
+
+  it("一个都不贴（刚进列表 / 空列表）→ 空数组，调用方据此不挂任何样式", () => {
+    expect(pickStuckDateKeys([], 0)).toEqual([]);
+    expect(
+      pickStuckDateKeys([{ key: "今天", dateTop: 40, sectionTop: 40, sectionBottom: 800 }], 0),
+    ).toEqual([]);
+  });
+
+  it("列表停最顶上：首段段顶正好等于线 → 不算吸顶（行保持裸文字）", () => {
+    const probes = [
+      { key: "今天", dateTop: 0, sectionTop: 0, sectionBottom: 620 },
+      { key: "昨天", dateTop: 620, sectionTop: 620, sectionBottom: 1200 },
+    ];
+    expect(pickStuckDateKeys(probes, 0)).toEqual([]);
+  });
+
+  it("吸顶线非 0（容器滚动时用容器上沿）也成立", () => {
+    const probes = [
+      { key: "今天", dateTop: 64, sectionTop: -40, sectionBottom: 700 },
+      { key: "昨天", dateTop: 64.4, sectionTop: 64, sectionBottom: 980 },
+    ];
+    expect(pickStuckDateKeys(probes, 64)).toEqual(["今天"]);
+    expect(pickStuckDateKeys(probes, 0)).toEqual([]);
   });
 });
 
