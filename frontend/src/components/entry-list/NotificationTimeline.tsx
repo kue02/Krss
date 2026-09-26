@@ -23,6 +23,7 @@ import {
   buildTimelineRows,
   expandTimelineRows,
   isSingleSideWidth,
+  pickStuckDateKeys,
   resolveTimelineTimeBasis,
   splitTimelineSections,
   timelineCollapseClampLines,
@@ -859,6 +860,77 @@ export function NotificationTimeline({
     });
   }, []);
 
+  /**
+   * 33-2（用户 2026-09-26）：「把之前的通知视图的悬浮拿过来，放到吸顶那里，只有吸顶才会出现那个样式」。
+   * 口径：非吸顶的日期行仍是现在这版裸文字；**只有正贴住吸顶线的那条**才带上 2423cda 那版的
+   * 浮起背衬（`bg-background/85` + `backdrop-blur-md` + 底部 inset 1px 线），滚过去就还原。
+   * 判定交给纯函数 `pickStuckDateKeys`（可单测），这里只负责量 rect 与挂滚动监听。
+   */
+  const [stuckDateKeys, setStuckDateKeys] = useState<readonly string[]>([]);
+
+  useEffect(() => {
+    const root = containerRef.current;
+    if (!root) return;
+
+    // 吸顶线 = 滚动容器的上沿；找不到滚动容器（文档滚动 / jsdom）时按视口顶算
+    const findScroller = (): HTMLElement | null => {
+      let el: HTMLElement | null = root.parentElement;
+      while (el) {
+        const overflowY = window.getComputedStyle(el).overflowY;
+        if (/(auto|scroll|overlay)/.test(overflowY) && el.scrollHeight > el.clientHeight + 1) {
+          return el;
+        }
+        el = el.parentElement;
+      }
+      return null;
+    };
+    const scroller = findScroller();
+
+    const measure = () => {
+      const line = scroller ? scroller.getBoundingClientRect().top : 0;
+      const probes = Array.from(
+        root.querySelectorAll<HTMLElement>("[data-timeline-section]"),
+      ).map((sectionEl) => {
+        const sectionRect = sectionEl.getBoundingClientRect();
+        const dateEl = sectionEl.querySelector<HTMLElement>("[data-timeline-date]");
+        return {
+          key: sectionEl.dataset.timelineSection ?? "",
+          dateTop: dateEl
+            ? dateEl.getBoundingClientRect().top
+            : Number.POSITIVE_INFINITY,
+          sectionTop: sectionRect.top,
+          sectionBottom: sectionRect.bottom,
+        };
+      });
+      const next = pickStuckDateKeys(probes, line);
+      // 逐帧比一次：一样就返回原引用，避免滚动时把整条时间线重渲染
+      setStuckDateKeys((prev) =>
+        prev.length === next.length && prev.every((key, index) => key === next[index])
+          ? prev
+          : next,
+      );
+    };
+
+    let frame = 0;
+    const schedule = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        measure();
+      });
+    };
+
+    measure();
+    const target: HTMLElement | Window = scroller ?? window;
+    target.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      target.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+    };
+  }, [sections]);
+
   const toggleEntry = useCallback((entryId: string) => {
     setExpandedEntries((current) => {
       const next = new Set(current);
@@ -884,19 +956,28 @@ export function NotificationTimeline({
         style={{ left: singleSide ? SINGLE_SIDE_TIME_COLUMN : "50%" }}
       />
 
-      {sections.map((section) => (
+      {sections.map((section) => {
+        const dateStuck = stuckDateKeys.includes(section.key);
+        return (
         /* 每段一层容器 = sticky 的作用域：本段滚完，日期行被段底边推走，下一段接替 */
-        <div key={section.key} className="relative">
+        <div key={section.key} data-timeline-section={section.key} className="relative">
           {/* 日期分隔行（用户 9-24 要吸顶 / 9-25 居中胶囊 → 2423cda 全宽条 → 2026-09-25
               复验后按用户「要最早那版：纯一行文字、无底色、无分隔线」回到 2423cda 之前那版）：
               只有一行文字（solid `bg-background` 小 pill 保住字底、无描边无投影），
-              不加底条、不加分隔线、不加模糊 —— 唯一保留的是 `sticky top-0` 吸顶。
+              **非吸顶时**不加底条、不加分隔线、不加模糊 —— 保留 `sticky top-0` 吸顶；
+              33-2（用户 2026-09-26）：「只有吸顶才会出现那个样式」⇒ 正吸顶的那条（`dateStuck`）
+              才带上 2423cda 那版的浮起背衬（`bg-background/85` + `backdrop-blur-md` + 底部 inset 1px 线），
+              滚过去立刻还原成裸行。
               文字位置与胶囊前一致 —— 单栏左对齐到卡片列左缘（时间列 86px 之后）、交替布局居中。
               仍是段内 sticky（本段滚完被段底推走，下一段接替），只有当前吸顶的那条会浮起。 */}
           <div
             data-timeline-date={section.label}
+            data-timeline-date-stuck={dateStuck ? "true" : "false"}
+            style={dateStuck ? { boxShadow: "inset 0 -1px 0 var(--border)" } : undefined}
             className={cn(
-              "sticky top-0 z-10 flex items-center py-3",
+              "sticky top-0 z-10 flex items-center py-3 transition-[background-color,box-shadow] duration-200 ease-[var(--ease-ios)]",
+              // 33-2：只有正吸顶的那条浮起（半透底 + 模糊 + 底部 1px 线），非吸顶保持裸文字
+              dateStuck && "bg-background/85 backdrop-blur-md",
               singleSide ? "justify-start pl-[86px]" : "justify-center",
             )}
           >
@@ -1042,7 +1123,8 @@ export function NotificationTimeline({
         );
           })}
         </div>
-      ))}
+        );
+      })}
       {/* 悬停正文浮块 —— hoverMode 下常挂（无 key、不卸载）：换条目只换 entry，
           无悬停时 entry=null + visible=false 藏起（scale 0 + 透明 + 点穿） */}
       {hoverMode
