@@ -596,11 +596,13 @@ describe("NotificationTimeline · 日期吸顶（26-1 重做）", () => {
       const label = date.querySelector("span");
       expect(label?.className).toContain("rounded-full");
       expect(label?.className).toContain("bg-background");
-      expect(label?.className).not.toContain("border");
+      // 严格认「描边工具类」，别被 transition-[background-color,box-shadow,border-color] 里的
+      // "border-color" 骗到（截断式断言踩过一次）
+      expect(label?.className ?? "").not.toMatch(/(^|\s)border(-|\s|$)/);
     }
   });
 
-  it("33-2 只有正吸顶的那条日期行浮起（半透底 + 模糊 + 底部 1px 线），其余保持裸行", async () => {
+  it("33-2/34-2 只有正吸顶的那条浮起（浮起胶囊），其余保持素胶囊裸行", async () => {
     const { container } = renderTimeline([
       entry("a", localIso(18, 9, 0)),
       entry("b", localIso(17, 9, 0)),
@@ -644,16 +646,24 @@ describe("NotificationTimeline · 日期吸顶（26-1 重做）", () => {
     const rows = Array.from(
       container.querySelectorAll<HTMLElement>("[data-timeline-date]"),
     );
-    // 吸顶那条：浮起样式（2423cda 那版）
+    // 吸顶那条：文字胶囊自己变成 a96896d 那版浮起胶囊（描边 + 95% 底 + 模糊 + 投影）
     expect(rows[0]!.getAttribute("data-timeline-date-stuck")).toBe("true");
-    expect(rows[0]!.className).toContain("bg-background/85");
-    expect(rows[0]!.className).toContain("backdrop-blur-md");
-    expect(rows[0]!.style.boxShadow).toContain("inset 0 -1px 0");
-    // 没吸顶的那条：一行没变（裸行）
+    const stuckPill = rows[0]!.querySelector("span")!;
+    expect(stuckPill.className).toContain("border");
+    expect(stuckPill.className).toContain("bg-background/95");
+    expect(stuckPill.className).toContain("backdrop-blur-md");
+    expect(stuckPill.className).toContain("shadow-nf");
+    expect(stuckPill.className).toContain("rounded-full");
+    // 没吸顶的那条：还是那颗素的文字胶囊（无描边、无投影、无模糊）
     expect(rows[1]!.getAttribute("data-timeline-date-stuck")).toBe("false");
-    expect(rows[1]!.className).not.toContain("bg-background/85");
-    expect(rows[1]!.className).not.toContain("backdrop-blur-md");
-    expect(rows[1]!.style.boxShadow).toBe("");
+    const plainPill = rows[1]!.querySelector("span")!;
+    expect(plainPill.className).not.toContain("bg-background/95");
+    expect(plainPill.className).not.toContain("backdrop-blur-md");
+    expect(plainPill.className).not.toContain("shadow-nf");
+    expect(plainPill.className).toContain("bg-background px-2");
+    // 日期行本身两侧不铺横条（不是全宽背衬那版）
+    expect(rows[0]!.className).not.toContain("bg-background/85");
+    expect(rows[0]!.style.boxShadow).toBe("");
   });
 
   it("日期行不挡卡片点击：自身不是按钮、无 pointer 事件拦截", () => {

@@ -965,23 +965,35 @@ export function NotificationTimeline({
               复验后按用户「要最早那版：纯一行文字、无底色、无分隔线」回到 2423cda 之前那版）：
               只有一行文字（solid `bg-background` 小 pill 保住字底、无描边无投影），
               **非吸顶时**不加底条、不加分隔线、不加模糊 —— 保留 `sticky top-0` 吸顶；
-              33-2（用户 2026-09-26）：「只有吸顶才会出现那个样式」⇒ 正吸顶的那条（`dateStuck`）
-              才带上 2423cda 那版的浮起背衬（`bg-background/85` + `backdrop-blur-md` + 底部 inset 1px 线），
-              滚过去立刻还原成裸行。
+              33-2（用户 2026-09-26）：「只有吸顶才会出现那个样式」⇒ 只有正吸顶的那条（`dateStuck`）
+              才带上浮起样式，滚过去立刻还原。样式本身按用户二次校正取 **a96896d 那版胶囊**
+              （见下面 span 上的分支），不是全宽背衬。
               文字位置与胶囊前一致 —— 单栏左对齐到卡片列左缘（时间列 86px 之后）、交替布局居中。
               仍是段内 sticky（本段滚完被段底推走，下一段接替），只有当前吸顶的那条会浮起。 */}
           <div
             data-timeline-date={section.label}
             data-timeline-date-stuck={dateStuck ? "true" : "false"}
-            style={dateStuck ? { boxShadow: "inset 0 -1px 0 var(--border)" } : undefined}
             className={cn(
-              "sticky top-0 z-10 flex items-center py-3 transition-[background-color,box-shadow] duration-200 ease-[var(--ease-ios)]",
-              // 33-2：只有正吸顶的那条浮起（半透底 + 模糊 + 底部 1px 线），非吸顶保持裸文字
-              dateStuck && "bg-background/85 backdrop-blur-md",
+              "sticky top-0 z-10 flex items-center py-3",
               singleSide ? "justify-start pl-[86px]" : "justify-center",
             )}
           >
-            <span className="rounded-full bg-background px-2 text-[11.5px] font-semibold tabular-nums text-foreground">
+            {/* 34-2（用户 2026-09-26 二次校正）：「不是这个吸顶样式，是之前的胶囊悬浮吸顶样式」
+                ⇒ 负吸顶那条的文字胶囊本身变成 a96896d 那版浮起胶囊
+                （圆角 + 描边 + 95% 底 + 模糊 + 投影）；非吸顶仍是同一颗无描边无投影的素胶囊。
+                位置按用户先前锁定「回到条目标题上方」不变（单栏贴卡片列左缘 / 交替居中），
+                胶囊那版的 `mx-auto` 居中他当时否过；`top-2` 也没跟过来（吸顶瞬间不跳 8px）。 */}
+            <span
+              className={cn(
+                "rounded-full text-[11.5px] font-semibold tabular-nums text-foreground transition-[background-color,box-shadow,border-color] duration-200 ease-[var(--ease-ios)]",
+                dateStuck
+                  ? // 投影用项目自己的浮层令牌 shadow-nf：a96896d 那版写的是任意值
+                    // `shadow-[0_6px_16px_rgba(0,0,0,0.10)]`，实测在本项目的 Tailwind v4 里**不生效**
+                    // （探针元素上也只算出 Tailwind 的复位值），所以那版当时其实是无投影的
+                    "border border-border bg-background/95 px-3 py-[3px] shadow-nf backdrop-blur-md"
+                  : "bg-background px-2",
+              )}
+            >
               {section.label}
             </span>
           </div>
