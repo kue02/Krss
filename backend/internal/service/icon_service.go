@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -99,22 +100,170 @@ func (s *iconService) FetchAndSaveIcon(ctx context.Context, feedImageURL, siteUR
 	return s.FetchAndSaveIconForFeed(ctx, 0, feedImageURL, siteURL)
 }
 
+// resolveIconSite 决定「图标该向哪个站点要」。
+//
+// 28-1 的根因：以前这里直接把 siteURL 透传下去，而调用点（feed_service.Add / refresh_service）在
+// site_url 还没回填时会把**订阅地址本身**当 siteURL（feed_service.go:191「Use feed URL as fallback」）。
+// 对 RSSHub 订阅来说那就是 RSSHub 实例的地址，于是：
+//   - 文件名算成 `rsshub.wxhdj.xyz.png`（实例域名，不是频道）
+//   - 第 2 条候选「站点 /favicon.ico」直接命中实例自己的 logo
+// 25 条不同订阅因此共用同一个图标文件，看上去就是「这些源没有图标」。
+//
+// 现在分两步：
+//  1. 先把地址反解成**真实站点**：site_url 若指向 RSSHub/聚合实例，就从订阅路由（路径）反解上游站点。
+//  2. site_url 为空时，拿订阅地址自己按同样的路由表反解。
+// 反解不出就返回空 —— 这时宁可不抓，也不要拿聚合实例的 logo 冒充订阅图标
+// （与前端 feed-site.ts 的同一条口径：RSSHub 的 origin 是实例，不是主页）。
+func (s *iconService) resolveIconSite(ctx context.Context, feedID int64, siteURL string) string {
+	siteURL = strings.TrimSpace(siteURL)
+	if siteURL != "" {
+		if resolved := resolveRealSiteFromURL(siteURL); resolved != "" {
+			return resolved
+		}
+		// 是个普通站点（不是 RSSHub）→ 就用它
+		if !isAggregatorHost(siteURL) {
+			return siteURL
+		}
+		// 是 RSSHub 但这条路由认不出来：退回订阅地址反解一次，再不行就空
+	}
+
+	if feedID <= 0 {
+		return ""
+	}
+	feed, err := s.feeds.GetByID(ctx, feedID)
+	if err != nil || strings.TrimSpace(feed.URL) == "" {
+		return ""
+	}
+	return resolveRealSiteFromURL(feed.URL)
+}
+
+// isAggregatorHost 判这个地址是不是「RSSHub 这类聚合实例」—— 它们转发内容，但自己不是内容来源的站点。
+func isAggregatorHost(rawURL string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || parsed.Hostname() == "" {
+		return false
+	}
+	return strings.Contains(strings.ToLower(parsed.Hostname()), "rsshub")
+}
+
+// resolveRealSiteFromURL 按 RSSHub 路由反解上游站点；不是聚合实例则原样返回（规范化后）。
+// 表跟前端 src/lib/feed-site.ts 保持一致，只认「路径结构固定」的那几家，其余一律不猜。
+func resolveRealSiteFromURL(rawURL string) string {
+	rawURL = strings.TrimSpace(rawURL)
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Hostname() == "" {
+		return ""
+	}
+
+	if !isAggregatorHost(rawURL) {
+		return rawURL
+	}
+
+	// 订阅地址常带 RSSHub 的 key 等查询参数，只看路径
+	path := parsed.Path
+	for _, rule := range rsshubRouteRules {
+		if m := rule.re.FindStringSubmatch(path); m != nil {
+			if resolved := rule.resolve(m); resolved != "" {
+				return resolved
+			}
+		}
+	}
+	return "" // 是 RSSHub，但认不出上游站点 —— 别退回 origin（那是实例自己）
+}
+
+type rsshubRouteRule struct {
+	re      *regexp.Regexp
+	resolve func(m []string) string
+}
+
+// derefSiteURL 取可空的 site_url 字段（库里是 *string）。
+func derefSiteURL(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
+// hostOf 取地址里的主机名（小写）；解析不出来返回空。
+func hostOf(rawURL string) string {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(parsed.Hostname())
+}
+
+// iconFileHost 从图标文件名里取出它对应的站点主机名（`t.me.png` → `t.me`）。
+// 哈希命名的文件（RSS 头像那条路）没有主机名，返回空 —— 那是按 URL 存的，本来就对。
+func iconFileHost(iconPath string) string {
+	iconPath = filepath.Base(strings.TrimSpace(iconPath))
+	if isHashFilename(iconPath) {
+		return ""
+	}
+	for _, ext := range supportedIconExts {
+		if strings.HasSuffix(iconPath, ext) {
+			return strings.ToLower(strings.TrimSuffix(iconPath, ext))
+		}
+	}
+	return ""
+}
+
+// RSSHub 路由反解表：路径 → 上游真实站点。顺序无关（各自正则互斥）。
+var rsshubRouteRules = []rsshubRouteRule{
+	{re: regexp.MustCompile(`^/twitter/user/([^/]+)`), resolve: func(m []string) string { return "https://x.com/" + m[1] }},
+	{re: regexp.MustCompile(`^/twitter/keyword/([^/]+)`), resolve: func(m []string) string {
+		return "https://x.com/search?q=" + url.QueryEscape(m[1])
+	}},
+	{re: regexp.MustCompile(`^/telegram/channel/([^/]+)`), resolve: func(m []string) string { return "https://t.me/" + m[1] }},
+	{re: regexp.MustCompile(`^/telegram/user/([^/]+)`), resolve: func(m []string) string { return "https://t.me/" + m[1] }},
+	{re: regexp.MustCompile(`^/weibo/user/([^/]+)`), resolve: func(m []string) string { return "https://weibo.com/u/" + m[1] }},
+	{re: regexp.MustCompile(`^/bilibili/user/(?:video|dynamic)/([^/]+)`), resolve: func(m []string) string {
+		return "https://space.bilibili.com/" + m[1]
+	}},
+	{re: regexp.MustCompile(`^/zhihu/(?:people/)?(?:activities|posts)/([^/]+)`), resolve: func(m []string) string {
+		return "https://www.zhihu.com/people/" + m[1]
+	}},
+	{re: regexp.MustCompile(`^/youtube/(user|channel)/([^/]+)`), resolve: func(m []string) string {
+		return "https://www.youtube.com/" + m[1] + "/" + m[2]
+	}},
+	{re: regexp.MustCompile(`^/github/(?:repos|issue|pull)/([^/]+)(?:/([^/]+))?`), resolve: func(m []string) string {
+		if m[2] != "" {
+			return "https://github.com/" + m[1] + "/" + m[2]
+		}
+		return "https://github.com/" + m[1]
+	}},
+	{re: regexp.MustCompile(`^/xiaohongshu/user/([^/]+)`), resolve: func(m []string) string {
+		return "https://www.xiaohongshu.com/user/profile/" + m[1]
+	}},
+	{re: regexp.MustCompile(`^/douyin/user/([^/]+)`), resolve: func(m []string) string { return "https://www.douyin.com/user/" + m[1] }},
+	{re: regexp.MustCompile(`^/jike/user/([^/]+)`), resolve: func(m []string) string { return "https://web.okjike.com/u/" + m[1] }},
+}
+
 // FetchAndSaveIconForFeed 按来源（订阅）取代理抓图标：订阅 → 文件夹父级链 → 全局。
 // feedID <= 0 时退回全局那份（老行为）。
+//
+// 候选顺序（28-1 起，见 resolveIconSite）：
+//   1. RSS 自带的 <image>（Telegram 的频道头像就是它）
+//   2. **真实站点**（site_url / RSSHub 路由反解出的上游主页）的 favicon.ico → 首页 <link rel=icon>
+//   3. Google / DuckDuckGo favicon 服务（同样只打真实站点）
+// **绝不拿 RSSHub 实例自己的 favicon 当订阅图标** —— 那会让几十条不同订阅共用同一个文件，
+// 表现就是「一堆源看起来都没图标」（28-1：25/74 条共用 rsshub.wxhdj.xyz.png）。
 func (s *iconService) FetchAndSaveIconForFeed(ctx context.Context, feedID int64, feedImageURL, siteURL string) (string, error) {
 	feedImageURL = strings.TrimSpace(feedImageURL)
+	// 图标该向哪个站点要：RSSHub 之类的聚合实例不算「站点」，要换成它背后那个真实站点。
+	realSite := s.resolveIconSite(ctx, feedID, siteURL)
 
 	// Check if icon already exists before downloading
 	// For RSS image: check hash-based filename
-	// For favicon: check domain-based filename
+	// For favicon: check domain-based filename（只用真实站点去查，避免命中实例 favicon 的共享文件）
 	if feedImageURL != "" {
 		hash := sha256.Sum256([]byte(feedImageURL))
 		baseName := hex.EncodeToString(hash[:8])
 		if existing := s.findExistingIcon(baseName); existing != "" {
 			return existing, nil
 		}
-	} else if siteURL != "" {
-		if parsed, err := url.Parse(siteURL); err == nil && parsed.Hostname() != "" {
+	} else if realSite != "" {
+		if parsed, err := url.Parse(realSite); err == nil && parsed.Hostname() != "" {
 			baseName := filepath.Clean(parsed.Hostname())
 			if existing := s.findExistingIcon(baseName); existing != "" {
 				return existing, nil
@@ -128,6 +277,7 @@ func (s *iconService) FetchAndSaveIconForFeed(ctx context.Context, feedID int64,
 	// 3. 站点首页 HTML 里声明的 <link rel="icon|shortcut icon|apple-touch-icon">（都是拼不出来的地址）
 	// 4. Google Favicon API
 	// 5. DuckDuckGo Favicon API
+	// 28-1：2~5 全部只打「真实站点」（realSite），不再打 RSSHub 实例自己。
 	var urlsToTry []string
 	var isRSSImage bool
 
@@ -137,7 +287,7 @@ func (s *iconService) FetchAndSaveIconForFeed(ctx context.Context, feedID int64,
 	}
 
 	// Add local favicon.ico
-	if localURL := s.buildLocalFaviconURL(siteURL); localURL != "" {
+	if localURL := s.buildLocalFaviconURL(realSite); localURL != "" {
 		urlsToTry = append(urlsToTry, localURL)
 	}
 
@@ -151,7 +301,7 @@ func (s *iconService) FetchAndSaveIconForFeed(ctx context.Context, feedID int64,
 	// 25-2：站点把图标放在别处（CDN / 子路径 / 相对路径）时，唯一的出路是去读首页 HTML。
 	// 放在这里而不是拼进上面的列表，是为了**只有前面都没命中**才多花这一次首页请求。
 	if result == nil {
-		if declared := s.declaredIconURLs(ctx, siteURL, feedID); len(declared) > 0 {
+		if declared := s.declaredIconURLs(ctx, realSite, feedID); len(declared) > 0 {
 			result, successURL, lastErr = s.tryDownloadIconURLs(ctx, declared, feedID)
 		}
 	}
@@ -159,10 +309,10 @@ func (s *iconService) FetchAndSaveIconForFeed(ctx context.Context, feedID int64,
 	// 最后才轮到第三方 favicon 服务：自建环境（NAS 等）常年直连不可达，只能当兜底
 	if result == nil {
 		var fallbacks []string
-		if googleURL := s.buildFaviconURL(siteURL); googleURL != "" {
+		if googleURL := s.buildFaviconURL(realSite); googleURL != "" {
 			fallbacks = append(fallbacks, googleURL)
 		}
-		if ddgURL := s.buildDDGFaviconURL(siteURL); ddgURL != "" {
+		if ddgURL := s.buildDDGFaviconURL(realSite); ddgURL != "" {
 			fallbacks = append(fallbacks, ddgURL)
 		}
 		result, successURL, lastErr = s.tryDownloadIconURLs(ctx, fallbacks, feedID)
@@ -182,8 +332,8 @@ func (s *iconService) FetchAndSaveIconForFeed(ctx context.Context, feedID int64,
 		hash := sha256.Sum256([]byte(feedImageURL))
 		iconPath = hex.EncodeToString(hash[:8]) + "." + result.format.ext
 	} else {
-		// Favicon: domain-based filename
-		iconPath = iconFilename(siteURL, result.format.ext)
+		// Favicon: domain-based filename（用真实站点域名，28-1：不再用 RSSHub 实例域名）
+		iconPath = iconFilename(realSite, result.format.ext)
 		if iconPath == "" {
 			return "", nil
 		}
@@ -377,6 +527,18 @@ func (s *iconService) BackfillIcons(ctx context.Context) error {
 	for _, feed := range allFeeds {
 		if feed.IconPath == nil || *feed.IconPath == "" {
 			continue
+		}
+
+		// 28-1：图标文件名是聚合实例域名（rsshub.xxx.png）但这条订阅明明有真实站点 ⇒ 那是实例自己的 logo 冒充的。
+		// 典型现场：25 条不同订阅共用同一个 rsshub.*.png。清掉 icon_path 交给第 1 步按真实站点重抓。
+		if realSite := s.resolveIconSite(ctx, feed.ID, derefSiteURL(feed.SiteURL)); realSite != "" {
+			if savedHost := iconFileHost(*feed.IconPath); savedHost != "" && !isAggregatorHost(realSite) {
+				if realHost := hostOf(realSite); realHost != "" && realHost != savedHost {
+					logger.Info("icon is aggregator favicon, will refetch", "module", "service", "action", "backfill", "resource", "icon", "result", "stale", "feed_id", feed.ID, "feed_title", feed.Title, "saved_host", savedHost, "real_host", realHost)
+					feedsNeedRefetch = append(feedsNeedRefetch, feed.ID)
+					continue
+				}
+			}
 		}
 
 		// Validate path to prevent path traversal attacks
