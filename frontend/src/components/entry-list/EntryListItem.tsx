@@ -39,6 +39,11 @@ import { openFilterEditorForEntry } from "@/stores/filter-editor-store";
 import { useAutoReadable } from "@/hooks/useAutoReadable";
 import { stripDuplicatedTitle } from "@/lib/strip-duplicated-title";
 import { stripContentImages } from "@/lib/strip-content-images";
+import {
+  extractContentMedia,
+} from "@/lib/extract-content-media";
+import { getProxiedImageUrl } from "@/lib/image-proxy";
+import { SocialMediaGallery } from "@/components/entry-list/SocialMediaGallery";
 import { parseSocialSource } from "@/lib/social-source";
 import { removeContentSeparators } from "@/lib/social-content";
 import { copyToClipboard } from "@/stores/toast-store";
@@ -234,9 +239,6 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     const [isThumbLoaded, setIsThumbLoaded] = useState(false);
     // 24-4：代理图 401 先续期再重载一次（cookie 自愈），不行才隐藏
     const [thumbRecovered, setThumbRecovered] = useState(false);
-    const [recoveredThumbs, setRecoveredThumbs] = useState<Set<string>>(
-      () => new Set(),
-    );
     // 社交媒体视图：长贴是否已手动展开（Folo 的「显示更多」）
     const [bodyExpanded, setBodyExpanded] = useState(false);
     // 展开时先动画到实测高度，动画结束后再交回 auto（对齐 Folo 的 AutoResizeHeight）
@@ -359,12 +361,18 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
       [isSocialView, entry.url],
     );
 
-    // 社交媒体视图的图片行（加载失败的直接不显示，避免破图）
+    // 社交媒体视图的图片区（第四十二批）：按原图比例排版，替代旧的 112px 正方形横排。
+    // `extractContentMedia` 返回原始 URL + HTML 里的 width/height；store 缓存与
+    // onLoad 实测在 SocialMediaGallery 内部补（key 与图片视图同为原始 URL）。
+    const socialMedia = useMemo(
+      () => extractContentMedia(expandedContent, entry.url, entry.thumbnailUrl),
+      [expandedContent, entry.url, entry.thumbnailUrl],
+    );
+    // 大图查看器要的是**代理后**的 URL 列表（点缩略图传的下标要对得上）
     const openImagePreview = useImagePreviewStore((state) => state.open);
-  const [failedThumbs, setFailedThumbs] = useState<Set<string>>(() => new Set());
     const socialImages = useMemo(
-      () => getEntryImages(entry.thumbnailUrl, entry.content, entry.url),
-      [entry.thumbnailUrl, entry.content, entry.url],
+      () => socialMedia.map((m) => getProxiedImageUrl(m.src, entry.url)),
+      [socialMedia, entry.url],
     );
     // 「长贴自动展开」开启后不做折叠（按视图设置，由 EntryList 传进来）
     const bodyClamped = isContentClipped && !bodyExpanded && !autoExpandLong;
@@ -563,52 +571,14 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                   )}
                 </div>
 
-                {/* 图片：正文里已摘掉，这里排成一行缩略图（Folo 的 MediaGallery） */}
-                {socialImages.length > 0 && (
-                  <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-                    {socialImages
-                      .slice(0, 3)
-                      .filter((url) => !failedThumbs.has(url))
-                      .map((url, index) => (
-                        <button
-                          key={url}
-                          type="button"
-                          // 点缩略图开大图查看器（用户要求：卡片里也要能点开看大图）
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            openImagePreview(socialImages, index);
-                          }}
-                          className="shrink-0 cursor-zoom-in overflow-hidden rounded-lg bg-secondary"
-                          aria-label="查看大图"
-                        >
-                          <img
-                            src={recoveredThumbs.has(url) ? withProxyCacheBust(url) : url}
-                            alt=""
-                            width={112}
-                            height={112}
-                            loading="lazy"
-                            decoding="async"
-                            className="size-28 object-cover transition-transform duration-200 hover:scale-[1.03]"
-                            onError={() => {
-                              // 24-4：先续期 cookie 再重载一次，不行才隐藏
-                              if (
-                                isRecoverableProxyUrl(url) &&
-                                !recoveredThumbs.has(url)
-                              ) {
-                                void renewProxyCookie().finally(() =>
-                                  setRecoveredThumbs(
-                                    (prev) => new Set(prev).add(url),
-                                  ),
-                                );
-                                return;
-                              }
-                              setFailedThumbs((prev) => new Set(prev).add(url));
-                            }}
-                          />
-                        </button>
-                      ))}
-                  </div>
-                )}
+                {/* 图片区：按原图比例排版（第四十二批，取代旧的 112px 正方形横排）。
+                    折叠 300px +「显示更多」只作用在上面的正文，图片区在折叠容器外面
+                    —— 与 Folo 同构（social-media-item.tsx:132/148），所以高图不会被裁。 */}
+                <SocialMediaGallery
+                  media={socialMedia}
+                  articleUrl={entry.url}
+                  onOpenImage={openImagePreview}
+                />
 
                 {/* 悬停操作条（对齐 Folo 的 ActionBar）：默认透明，悬停/选中时浮出 */}
                 <div
