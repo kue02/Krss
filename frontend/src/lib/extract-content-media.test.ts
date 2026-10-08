@@ -8,6 +8,37 @@ import {
 } from "./extract-content-media";
 
 describe("extractContentMedia", () => {
+  it("引文（.rsshub-quote / blockquote）里的图片不进画廊", () => {
+    // 与 stripContentImages 同口径：引文内的图由 prose 原样渲染。
+    // 不同口径的后果是同一张图渲染两遍（正文里一张 + 画廊里又一张）。
+    const html = [
+      '<img width="828" height="1284" src="https://pbs.twimg.com/media/body.jpg">',
+      '<div class="rsshub-quote">引文: <img width="828" height="1284" src="https://pbs.twimg.com/media/quote.jpg"></div>',
+      '<blockquote><img src="https://pbs.twimg.com/media/q2.jpg"></blockquote>',
+    ].join("");
+    const result = extractContentMedia(html);
+    expect(result).toEqual([
+      { src: "https://pbs.twimg.com/media/body.jpg", width: 828, height: 1284 },
+    ]);
+  });
+
+  it("thumbnail 恰好是引文里的图时不进画廊", () => {
+    // 实锤：Telegram 条目 thumbnail_url == blockquote 里 App Store 预览图的 URL。
+    // media 被引文守卫清空后，thumbnail 兜底会把引文图在画廊区再渲染一遍。
+    const html = '<div class="rsshub-quote">浮世绘: <img src="https://t.me/q.jpg"></div>';
+    expect(extractContentMedia(html, undefined, "https://t.me/q.jpg")).toEqual([]);
+    // thumbnail 不在引文里时仍然进画廊（有些源的 thumbnail 不在正文里）
+    const html2 = '<div class="rsshub-quote">浮世绘: <img src="https://t.me/q.jpg"></div>';
+    expect(extractContentMedia(html2, undefined, "https://t.me/other.jpg")).toEqual([
+      { src: "https://t.me/other.jpg" },
+    ]);
+  });
+
+  it("整条都是引文时返回空（画廊整块不渲染）", () => {
+    const html = '<div class="rsshub-quote">浮世绘: <img src="https://pbs.twimg.com/media/a.jpg"><img src="https://pbs.twimg.com/media/b.jpg"></div>';
+    expect(extractContentMedia(html)).toEqual([]);
+  });
+
   it("读取 <img> 上的 width/height", () => {
     const html = '<p>文字</p><img width="1964" height="842" src="https://pbs.twimg.com/media/a.jpg">';
     const result = extractContentMedia(html);
