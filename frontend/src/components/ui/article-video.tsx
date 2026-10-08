@@ -2,17 +2,29 @@ import {
   Children,
   cloneElement,
   isValidElement,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { ProgressBar, Skeleton } from "@heroui/react";
+import { Slider, Skeleton } from "@heroui/react";
+import { Pause, Play, ExternalLink } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { getProxiedImageUrl } from "@/lib/image-proxy";
 import { ArticleLinkContext } from "./article-image";
 import { useVideoPreviewStore } from "@/stores/video-preview-store";
+
+/** 秒 → `m:ss`（视频控件两侧的时间；`0:07` 这种，不补零到时分） */
+function formatClock(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+  const total = Math.floor(seconds);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
 
 /**
  * 正文里的 <video>（社交源的视频几乎都是外链，例如 video.twimg.com）。
@@ -32,8 +44,8 @@ import { useVideoPreviewStore } from "@/stores/video-preview-store";
  *      实测清缓存后首次打开有 4~8s 只有空底、没有画面。
  *   c) 帧没到之前压一层 HeroUI `Skeleton`，**不露纯白/纯黑空框**；帧到了再淡入。
  * - 两者都拿不到（error）→ 中性底 + 「新窗口打开」出口。
- * - 悬停 → 静音就地播放 + 底部细进度条；移开 → 暂停并 `load()` 回到封面。
- * - 点击保持现状：打开大屏播放器（顺手把就地这路先 pause）。
+ * - 悬停 → 静音就地播放；底部控制条可**点击跳转 / 拖拽快进**（第四十二批 · §2.40-42-7）。
+ * - 点击画面（不是控制条）保持现状：打开大屏播放器（顺手把就地这路先 pause）。
  */
 interface ArticleVideoProps extends React.VideoHTMLAttributes<HTMLVideoElement> {
   src?: string;
@@ -51,10 +63,16 @@ export function ArticleVideo({
   ...props
 }: ArticleVideoProps) {
   const articleUrl = useContext(ArticleLinkContext);
+  const { t } = useTranslation();
   const openVideoPreview = useVideoPreviewStore((state) => state.open);
   const [hasError, setHasError] = useState(false);
   const [hovering, setHovering] = useState(false);
-  const [progress, setProgress] = useState(0);
+  /** 播放头（秒）。就地播放的实际位置；拖拽中由 Slider 的 onChange 先改它 */
+  const [position, setPosition] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [paused, setPaused] = useState(true);
+  /** 用户正在拖进度：这段时间不让 timeupdate 回写 position，否则两个值打架 */
+  const [scrubbing, setScrubbing] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const hasPoster = Boolean(poster);
@@ -77,11 +95,14 @@ export function ArticleVideo({
     [poster, articleUrl],
   );
 
-  // 换了条目就重置错误态、悬停态与首帧态
+  // 换了条目就重置错误态、悬停态与播放头
   useEffect(() => {
     setHasError(false);
     setHovering(false);
-    setProgress(0);
+    setPosition(0);
+    setDuration(0);
+    setPaused(true);
+    setScrubbing(false);
     setFrameReady(false);
   }, [proxiedSrc]);
 
@@ -92,15 +113,30 @@ export function ArticleVideo({
     if (!video || hasError) return;
     if (hovering) {
       video.muted = true;
-      void video.play().catch(() => {
-        // 自动播放被拦就保持封面态，不报错打扰用户
-      });
+      // 首次 play() 可能因为元素刚挂载、还没数据可播而 reject（AbortError）。
+      // 这种「不是用户拦的」失败要等 canplay 再补一次，否则用户明明悬停在上面
+      // 却永远停在封面、控制条也不出（真机复现：reading 页 hover 6s 毫无反应）。
+      const retry = () => {
+        if (!hovering) return;
+        void video.play().then(
+          () => setPaused(false),
+          () => setPaused(true),
+        );
+      };
+      void video.play().then(
+        () => setPaused(false),
+        () => {
+          setPaused(true);
+          video.addEventListener("canplay", retry, { once: true });
+        },
+      );
     } else {
       video.pause();
-      // 之前播过（currentTime > 0 或进度 > 0）才 load() 回封面；
+      setPaused(true);
+      // 之前播过（currentTime > 0）才 load() 回封面；
       // 刚挂载没播过时不调，避免无 poster 的 metadata 首帧被冲掉。
-      if (video.currentTime > 0 || progress > 0) {
-        setProgress(0);
+      if (video.currentTime > 0) {
+        setPosition(0);
         video.load();
       }
     }
@@ -127,18 +163,80 @@ export function ArticleVideo({
     openVideoPreview(proxiedSrc, proxiedPoster ?? null, proxiedSrc);
   };
 
-  const handleTimeUpdate = (event: React.SyntheticEvent<HTMLVideoElement>) => {
-    const video = event.currentTarget;
-    if (video.duration > 0 && Number.isFinite(video.duration)) {
-      setProgress(video.currentTime / video.duration);
+  /** duration 元数据到齐（首次 loadedmetadata / load() 之后也会再触发） */
+  const handleLoadedMetadata = () => {
+    const video = videoRef.current;
+    if (video && Number.isFinite(video.duration) && video.duration > 0) {
+      setDuration(video.duration);
     }
   };
 
+  const handleTimeUpdate = (event: React.SyntheticEvent<HTMLVideoElement>) => {
+    const video = event.currentTarget;
+    if (Number.isFinite(video.duration) && video.duration > 0) {
+      setDuration(video.duration);
+    }
+    // 拖拽中不跟随播放头回写，否则把手会被拽回去
+    if (!scrubbing) setPosition(video.currentTime);
+  };
+
+  /**
+   * 拖拽/点按进度条：HeroUI Slider 的 onChange 在**按下即跳、拖动持续**触发，
+   * 所以这里直接 seek —— 代理层对 Range 回 206（`proxy_service.go` FetchMedia），
+   * 边拖边播。`onChangeEnd` 只用来解 dragging 标志。
+   */
+  const seekTo = useCallback((next: number | number[]) => {
+    const value = Array.isArray(next) ? next[0] : next;
+    if (typeof value !== "number" || !Number.isFinite(value)) return;
+    setPosition(value);
+    const video = videoRef.current;
+    if (!video) return;
+    try {
+      video.currentTime = Math.min(value, video.duration || value);
+    } catch {
+      // 元数据还没到，currentTime 赋值会抛；忽略，等 loadedmetadata 后自然对齐
+    }
+  }, []);
+
+  /** 控制条上的播放/暂停：就地静音播 ↔ 暂停（不用回到封面）。
+   *
+   * 用 React 的 `paused` 状态判档，不读 `video.paused`：后者的真值只有在
+   * play/pause 事件真正派发后才更新，状态更新与事件之间有窗口；
+   * jsdom 下更是不随 mock 变化。状态是这个组件自己的真相，稳。 */
+  const togglePlayback = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || hasError) return;
+    if (paused) {
+      video.muted = true;
+      void video.play().then(
+        () => setPaused(false),
+        () => setPaused(true),
+      );
+    } else {
+      video.pause();
+      setPaused(true);
+    }
+  }, [hasError, paused]);
+
+  const handleExternalOpen = useCallback(
+    (event: React.MouseEvent) => {
+      event.stopPropagation();
+      window.open(src, "_blank", "noopener,noreferrer");
+    },
+    [src],
+  );
+
   return (
     <span className="my-2 block">
-      {/* 就地只放封面 + 播放键，点开由大屏播放器播（用户反馈：卡片里的小视频没法拖动进度） */}
-      <button
-        type="button"
+      {/* 就地只放封面 + 播放键，点开由大屏播放器播（用户反馈：卡片里的小视频没法拖动进度）。
+
+          容器是 `div[role=button]` 而不是 `<button>`：控制条里有真正的 `<button>`
+          （播放/暂停）与 `<a>`（新窗口），嵌在 `<button>` 里是**非法 HTML**，
+          键盘与读屏语义也会坏（React 也会就此告警）。role + tabIndex + Enter/Space
+          保留可点击与可聚焦的外层语义。 */}
+      <div
+        role="button"
+        tabIndex={0}
         onMouseEnter={() => {
           if (!hasError && proxiedSrc) setHovering(true);
         }}
@@ -146,8 +244,25 @@ export function ArticleVideo({
         onFocus={() => {
           if (!hasError && proxiedSrc) setHovering(true);
         }}
-        onBlur={() => setHovering(false)}
+        onBlur={(event) => {
+          // 焦点在控制条内部移动（点进度条/播放钮时焦点从容器转到里面的 input/button）
+          // 不算「离开」：否则一点进度条就把 hovering 关掉，控制条卸载、video 被 load() 冲回起点
+          const next = event.relatedTarget as HTMLElement | null;
+          if (next && event.currentTarget.contains(next)) return;
+          setHovering(false);
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          const target = event.target as HTMLElement;
+          // 焦点在控制条里时不劫持（让 Space 能滚、Enter 能点里面的按钮）
+          if (target.closest("[data-slot='article-video-controls']")) return;
+          event.preventDefault();
+          handleOpen();
+        }}
         onClick={(event) => {
+          // 点控制条（进度条/播放钮）不当作「打开大屏」——那些控件自己吃掉事件
+          const target = event.target as HTMLElement;
+          if (target.closest("[data-slot='article-video-controls']")) return;
           event.stopPropagation();
           handleOpen();
         }}
@@ -164,6 +279,7 @@ export function ArticleVideo({
           disablePictureInPicture
           preload={hasPoster ? "none" : "metadata"}
           onLoadedData={() => setFrameReady(true)}
+          onLoadedMetadata={handleLoadedMetadata}
           onError={() => setHasError(true)}
           onTimeUpdate={handleTimeUpdate}
           className={cn(
@@ -190,21 +306,73 @@ export function ArticleVideo({
             <Skeleton className="size-full rounded-none bg-zinc-300/90 dark:bg-zinc-700/90" />
           </span>
         )}
-        {/* 悬停播放中的底部细进度条（HeroUI ProgressBar） */}
-        {hovering && !hasError && (
-          <span className="pointer-events-none absolute inset-x-0 bottom-0 px-0">
-            <ProgressBar
-              aria-label="视频播放进度"
-              className="w-full"
-              size="sm"
-              maxValue={1}
-              value={progress}
+        {/* 悬停控制条（第四十二批 42-7 · HeroUI Slider）：可点击跳转 + 可拖拽快进。
+            之前这层是 `pointer-events-none` 的纯展示 ProgressBar（只有进度、没有手柄），
+            用户要「点/拖都能快进」。形态取草图「形态 2」：播放钮 + 常驻手柄 + 左右时间 +
+            新窗口出口，整条只占画面底部 ~44px。
+            duration 未知（metadata 没到）时不渲染 Slider —— 空的 range 没有可跳的刻度。 */}
+        {hovering && !hasError && duration > 0 && (
+          <span
+            data-slot="article-video-controls"
+            onClick={(event) => event.stopPropagation()}
+            className="absolute inset-x-0 bottom-0 flex items-center gap-2 bg-gradient-to-t from-black/60 to-transparent px-2 pb-1.5 pt-3"
+          >
+            <button
+              type="button"
+              onClick={togglePlayback}
+              aria-label={paused ? t("entry.video_play") : t("entry.video_pause")}
+              className="flex size-6 shrink-0 items-center justify-center rounded-[var(--radius)] text-white/90 transition-colors duration-200 hover:bg-white/20"
+            >
+              {paused ? (
+                <Play className="size-3.5 fill-current" />
+              ) : (
+                <Pause className="size-3.5 fill-current" />
+              )}
+            </button>
+
+            <Slider
+              className="min-w-0 flex-1"
+              minValue={0}
+              maxValue={duration}
+              step={0.1}
+              value={Math.min(position, duration)}
+              onChange={(next) => {
+                // HeroUI Slider 没有 onChangeStart；按下即跳、拖动持续都走 onChange，
+                // 所以在这里把 scrubbing 置 true，由 onChangeEnd 解开（见 seekTo 上方注释）
+                setScrubbing(true);
+                seekTo(next);
+              }}
+              onChangeEnd={(next) => {
+                setScrubbing(false);
+                seekTo(next);
+              }}
+              aria-label={t("entry.video_scrub_label")}
               data-slot="article-video-progress"
             >
-              <ProgressBar.Track className="rounded-none bg-black/40">
-                <ProgressBar.Fill className="bg-white/90" />
-              </ProgressBar.Track>
-            </ProgressBar>
+              {/* HeroUI v3 的 Slider 必须自己挂 Track/Fill/Thumb，只写 props 会渲染成空轨道 */}
+              <Slider.Track className="h-1 rounded-full bg-white/30">
+                <Slider.Fill className="rounded-full bg-white" />
+                <Slider.Thumb className="size-2.5 rounded-full bg-white shadow-md after:hidden" />
+              </Slider.Track>
+            </Slider>
+
+            <span className="shrink-0 text-[11px] leading-none tabular-nums text-white/90">
+              {formatClock(position)} / {formatClock(duration)}
+            </span>
+
+            {src && (
+              <a
+                href={src}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={t("entry.video_open_window")}
+                onClick={handleExternalOpen}
+                aria-label={t("entry.video_open_window")}
+                className="flex size-6 shrink-0 items-center justify-center rounded-[var(--radius)] text-white/90 transition-colors duration-200 hover:bg-white/20"
+              >
+                <ExternalLink className="size-3.5" />
+              </a>
+            )}
           </span>
         )}
         {/* 播放键：播起来就淡出，回到封面再出现 */}
@@ -225,7 +393,7 @@ export function ArticleVideo({
             </svg>
           </span>
         </span>
-      </button>
+      </div>
       {hasError && (
         // 播放不了的兜底出口：至少能点开原站看
         <a

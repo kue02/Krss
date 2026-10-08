@@ -43,6 +43,9 @@ function extractImagesFromHtml(html: string, articleUrl?: string): string[] {
 // Key: articleUrl + imageSrc, Value: React element
 const imageElementCache = new Map<string, React.ReactElement>();
 const IMAGE_CACHE_MAX_SIZE = 200;
+/** video 用同一个键规则单独一池：正文里的视频远少于图，20 足够覆盖一屏 */
+const videoElementCache = new Map<string, React.ReactElement>();
+const VIDEO_CACHE_MAX_SIZE = 20;
 
 // Simple LRU-like cleanup: remove oldest entries when cache exceeds max size
 function pruneImageCache() {
@@ -52,6 +55,16 @@ function pruneImageCache() {
       imageElementCache.size - IMAGE_CACHE_MAX_SIZE,
     );
     keysToDelete.forEach((key) => imageElementCache.delete(key));
+  }
+}
+
+function pruneVideoCache() {
+  if (videoElementCache.size > VIDEO_CACHE_MAX_SIZE) {
+    const keysToDelete = Array.from(videoElementCache.keys()).slice(
+      0,
+      videoElementCache.size - VIDEO_CACHE_MAX_SIZE,
+    );
+    keysToDelete.forEach((key) => videoElementCache.delete(key));
   }
 }
 
@@ -139,11 +152,26 @@ const ArticleContentBlockRenderer = memo(function ArticleContentBlockRenderer({
           return element;
         },
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        video: ({ node: _, ...props }) =>
-          createElement(
-            ArticleVideo,
-            props as React.ComponentProps<typeof ArticleVideo>,
-          ),
+        video: ({ node: _, ...props }) => {
+          const videoProps = props as React.ComponentProps<typeof ArticleVideo>;
+          const src = videoProps.src || "";
+          // 与 img 同理做元素缓存（key = articleUrl + src）。
+          // 不缓存的后果不仅是闪烁：`useAutoReadable` 拉到正文后 content 变化会让
+          // 这里的 useMemo 重算，video 节点被**新元素替换**——即使用户正悬停播放，
+          // 播放中的 <video> 会被卸载、换成一个从头开始的实例，悬停播放/进度条直接失效
+          // （真机复现：阅读页 hover 后 video 反复卸载，readyState 永远 0）。
+          const cacheKey = `${articleUrl || ""}-${src}`;
+          if (videoElementCache.has(cacheKey)) {
+            return videoElementCache.get(cacheKey)!;
+          }
+          const element = createElement(ArticleVideo, {
+            ...videoProps,
+            key: cacheKey,
+          });
+          videoElementCache.set(cacheKey, element);
+          pruneVideoCache();
+          return element;
+        },
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         a: ({ node: _, ...props }) =>
           createElement(ArticleLink, props as React.ComponentProps<"a">),
