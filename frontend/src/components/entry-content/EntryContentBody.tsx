@@ -1,17 +1,12 @@
 import type { RefCallback } from "react";
-import { useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { useCodeHighlight } from "@/hooks/useCodeHighlight";
-import { removeContentSeparators } from "@/lib/social-content";
-import { useUISettingKey } from "@/hooks/useUISettings";
-import { resolveReadingFontStack } from "@/lib/reading-fonts";
 import { useEntryMeta } from "@/hooks/useEntryMeta";
 import { isSafeUrl } from "@/lib/url";
-import { ArticleContent } from "@/components/ui/article-content";
 import type { ArticleContentBlock } from "@/components/ui/article-content";
 import { UserIcon, CalendarIcon, ClockIcon } from "@/components/ui/icons";
 import { AiSummaryBox } from "./AiSummaryBox";
 import { BackToTopButton } from "./BackToTopButton";
+import { ArticleProse } from "./ArticleProse";
 import { SocialAuthorHeader } from "./SocialAuthorHeader";
 import type { Entry } from "@/types/api";
 
@@ -45,24 +40,7 @@ export function EntryContentBody({
 }: EntryContentBodyProps) {
   const { t } = useTranslation();
   const { publishedLong, readingTime } = useEntryMeta(entry);
-  const entryFontFamily = useUISettingKey("entryFontFamily");
-  const entryFontSize = useUISettingKey("entryFontSize");
-  const entryLineHeight = useUISettingKey("entryLineHeight");
-  const readingFontStack = resolveReadingFontStack(entryFontFamily);
   const title = displayTitle ?? entry.title ?? t("entry.untitled");
-  const contentRef = useRef<HTMLDivElement>(null);
-
-  // Apply code highlighting after content renders
-  // 正文也走一遍规范化：去掉 <hr> 分隔线、把引文作者拆成单独一行（列表里已有，正文之前漏了）
-  const normalizedContent = useMemo(
-    () => removeContentSeparators(displayContent),
-    [displayContent],
-  );
-  useCodeHighlight(contentRef, highlightContent ?? displayContent ?? "");
-
-  const hasBlocks = !!displayBlocks && displayBlocks.length > 0;
-  const hasContent =
-    hasBlocks || (!!displayContent && displayContent.trim().length > 0);
 
   return (
     <div
@@ -122,33 +100,12 @@ export function EntryContentBody({
           error={summaryError}
         />
 
-        <div
-          ref={contentRef}
-          style={{
-            fontSize: `${entryFontSize}px`,
-            lineHeight: entryLineHeight,
-            ...(readingFontStack ? { fontFamily: readingFontStack } : {}),
-          }}
-          className="prose dark:prose-invert max-w-none hyphens-auto break-words reading-prose prose-img:!max-w-full prose-img:!h-auto prose-img:shadow-[0_4px_20px_rgba(0,0,0,0.08)] prose-video:!max-w-full prose-video:!h-auto prose-video:shadow-[0_4px_20px_rgba(0,0,0,0.08)] prose-figure:!max-w-full prose-a:underline prose-a:decoration-primary/30 prose-a:underline-offset-[3px] prose-a:break-words prose-blockquote:not-italic prose-blockquote:border-l-2 prose-blockquote:border-muted-foreground/30 prose-blockquote:bg-transparent prose-blockquote:text-foreground/85 prose-blockquote:py-1 prose-blockquote:pl-5 prose-blockquote:ml-0 prose-blockquote:rounded-none prose-th:bg-secondary/60 prose-code:bg-secondary/60 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:break-all prose-code:before:content-none prose-code:after:content-none prose-pre:p-0 prose-pre:rounded-lg prose-pre:border prose-pre:border-border prose-pre:overflow-hidden"
-        >
-          {hasContent ? (
-            hasBlocks ? (
-              <ArticleContent
-                blocks={displayBlocks ?? []}
-                articleUrl={entry.url}
-              />
-            ) : (
-              <ArticleContent
-                content={normalizedContent ?? ""}
-                articleUrl={entry.url}
-              />
-            )
-          ) : (
-            <div className="rounded-lg border border-dashed border-border p-8 text-center text-muted-foreground">
-              {t("entry.no_content")}
-            </div>
-          )}
-        </div>
+        <ArticleProse
+          content={displayContent}
+          blocks={displayBlocks}
+          articleUrl={entry.url}
+          highlightContent={highlightContent}
+        />
       </article>
       {scrollNode && <BackToTopButton scrollNode={scrollNode} />}
     </div>

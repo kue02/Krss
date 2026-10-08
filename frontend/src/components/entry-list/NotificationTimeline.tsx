@@ -6,7 +6,7 @@ import { Chip } from "@heroui/react";
 import { cn } from "@/lib/utils";
 import { stripHtml } from "@/lib/html-utils";
 import { FeedIcon } from "@/components/ui/feed-icon";
-import { ArticleContent } from "@/components/ui/article-content";
+import { ArticleProse } from "@/components/entry-content/ArticleProse";
 import { NotificationBodyPreview } from "./NotificationBodyPreview";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import {
@@ -393,13 +393,14 @@ const TimelineCard = memo(function TimelineCard({
                     data-timeline-full={entry.id}
                     data-timeline-full-height={fullHeight}
                     onClick={(event) => event.stopPropagation()}
-                    className="entry-content reading-prose prose prose-sm dark:prose-invert max-w-none break-words overflow-y-auto rounded-lg border border-border/60 p-3"
+                    className="entry-content overflow-y-auto rounded-lg border border-border/60 p-3"
                     style={{ height: fullHeight }}
                   >
-                    <ArticleContent
-                      content={entry.content ?? ""}
-                      articleUrl={entry.url}
-                    />
+                    {/* 38-2：展开容器渲染的就是**第三栏正文页那一套排版管道**
+                        （`ArticleProse`），不再是裸 `ArticleContent` + `prose-sm`
+                        硬编码 14px。外层自己保留 entry-content 的边框/滚动/固定高度，
+                        排版交给组件 —— 用户原话「去第三栏正文页，但最终在时间线展开容器中显示」。 */}
+                    <ArticleProse content={entry.content} articleUrl={entry.url} />
                   </div>
                   <span
                     data-timeline-resize={entry.id}
