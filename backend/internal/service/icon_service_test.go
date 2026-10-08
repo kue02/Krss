@@ -669,3 +669,244 @@ func TestIconService_FetchAndSaveIcon_SkipsPageWhenFaviconWorks(t *testing.T) {
 	require.NotEmpty(t, got)
 	require.Zero(t, atomic.LoadInt32(&pageHits), "favicon.ico 已经命中时不该再多抓一次首页 HTML")
 }
+
+// —— 28-1：RSSHub 订阅的图标不该是 RSSHub 实例自己的 logo ——
+//
+// 真实现场：74 条订阅里 25 条共用 rsshub.wxhdj.xyz.png（实例 favicon），
+// 其中 19 条明明有真实主站（t.me/s/…、x.com/…），看上去就是「一堆源没图标」。
+
+// stubAggregatorFaviconServer 造一台「RSSHub 实例」：根路径 /favicon.ico 给一个可辨识的 logo。
+// 上游站点用一个单独的真实主机名（形如 real-site-xxx）表示。
+func TestIconService_RSSHubFeed_DoesNotUseAggregatorFavicon(t *testing.T) {
+	instanceIcon := pngBytes(t, 32, 32)
+
+	var instanceFaviconHits int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&instanceFaviconHits, 1)
+		_, _ = w.Write(instanceIcon)
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = io.WriteString(w, `<html><head><link rel="icon" href="/favicon.ico"></head></html>`)
+	})
+	instance := httptest.NewServer(mux)
+	defer instance.Close()
+	instanceHost, err := url.Parse(instance.URL)
+	require.NoError(t, err)
+
+	// 这台「实例」的主机名里得带 rsshub，才会被当成聚合实例
+	rsshubHost := "rsshub." + instanceHost.Hostname()
+	feedURL := "https://" + rsshubHost + "/telegram/channel/some_channel?key=abc"
+
+	repo := &feedRepoStub{
+		getByIDFn: func(ctx context.Context, id int64) (model.Feed, error) {
+			return model.Feed{ID: id, URL: feedURL}, nil
+		},
+	}
+
+	// 上游站点 favicon 服务：把 t.me 的 /favicon.ico 指向可辨识的图标
+	upstreamIcon := pngBytes(t, 48, 48)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/favicon.ico" {
+			_, _ = w.Write(upstreamIcon)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer upstream.Close()
+
+	// 把「t.me」这个域名重定向到本地 upstream：替换掉真实 DNS
+	transport := rewriteHostTransport{
+		base:   thirdPartyBlockingTransport{base: http.DefaultTransport},
+		from:   "t.me",
+		toHost: upstreamHost(t, upstream.URL),
+	}
+	dataDir := t.TempDir()
+	svc := service.NewIconService(dataDir, repo, network.NewClientFactoryForTest(&http.Client{Transport: transport}), nil)
+
+	// site_url 是 RSSHub 实例地址（老代码路径），真实站点要靠路由反解出来
+	got, err := svc.FetchAndSaveIconForFeed(context.Background(), 42, "", feedURL)
+	require.NoError(t, err)
+
+	require.NotEqual(t, instanceHost.Hostname()+".png", got,
+		"图标不能是 RSSHub 实例自己的 favicon（那正是 25 条共用一个图标的根因）")
+	require.Equal(t, "t.me.png", got, "文件名要用真实站点域名 t.me")
+	require.Zero(t, atomic.LoadInt32(&instanceFaviconHits),
+		"连 RSSHub 实例的 /favicon.ico 都不该去打 —— 命中它就等于拿到实例 logo")
+}
+
+func upstreamHost(t *testing.T, rawURL string) string {
+	t.Helper()
+	parsed, err := url.Parse(rawURL)
+	require.NoError(t, err)
+	return parsed.Host
+}
+
+// rewriteHostTransport 把某个 host 的请求改写到本地测试服务器（保留路径/查询）。
+type rewriteHostTransport struct {
+	base   http.RoundTripper
+	from   string
+	toHost string
+}
+
+func (t rewriteHostTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if strings.EqualFold(req.URL.Hostname(), t.from) {
+		clone := req.Clone(req.Context())
+		clone.URL.Scheme = "http"
+		clone.URL.Host = t.toHost
+		clone.Host = ""
+		return t.base.RoundTrip(clone)
+	}
+	return t.base.RoundTrip(req)
+}
+
+// RSS 自带的 <image>（Telegram 频道头像）优先，且存成哈希名 —— 28-1 的第一档。
+func TestIconService_RSSImagePreferredOverAggregatorFavicon(t *testing.T) {
+	avatar := pngBytes(t, 64, 64)
+	avatarServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(avatar)
+	}))
+	defer avatarServer.Close()
+
+	instanceIcon := pngBytes(t, 32, 32)
+	var instanceHits int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&instanceHits, 1)
+		_, _ = w.Write(instanceIcon)
+	})
+	instance := httptest.NewServer(mux)
+	defer instance.Close()
+	instanceHost, err := url.Parse(instance.URL)
+	require.NoError(t, err)
+
+	avatarURL := avatarServer.URL + "/channel-avatar.jpg"
+	hash := sha256.Sum256([]byte(avatarURL))
+	expected := hex.EncodeToString(hash[:8]) + ".png"
+
+	dataDir := t.TempDir()
+	repo := &feedRepoStub{
+		getByIDFn: func(ctx context.Context, id int64) (model.Feed, error) {
+			return model.Feed{ID: id, URL: "https://rsshub." + instanceHost.Hostname() + "/telegram/channel/chan?key=abc"}, nil
+		},
+	}
+	svc := service.NewIconService(dataDir, repo, network.NewClientFactoryForTest(&http.Client{Transport: http.DefaultTransport}), nil)
+
+	got, err := svc.FetchAndSaveIconForFeed(context.Background(), 7, avatarURL, "")
+	require.NoError(t, err)
+	require.Equal(t, expected, got, "RSS <image> 是频道真头像，应存成按 URL 哈希命名的文件")
+	require.Zero(t, atomic.LoadInt32(&instanceHits), "拿到 RSS 头像后就不该再去打实例 favicon")
+
+	saved, err := os.ReadFile(filepath.Join(dataDir, "icons", expected))
+	require.NoError(t, err)
+	require.Equal(t, avatar, saved)
+}
+
+// 反解不出上游站点时宁可不抓，也不要拿实例 logo 冒充（与前端 feed-site.ts 同一条口径）。
+func TestIconService_RSSHubUnknownRoute_NoAggregatorIcon(t *testing.T) {
+	instanceIcon := pngBytes(t, 32, 32)
+	var instanceHits int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&instanceHits, 1)
+		_, _ = w.Write(instanceIcon)
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = io.WriteString(w, `<html><head><link rel="icon" href="/favicon.ico"></head></html>`)
+	})
+	instance := httptest.NewServer(mux)
+	defer instance.Close()
+	instanceHost, err := url.Parse(instance.URL)
+	require.NoError(t, err)
+
+	rsshubHost := "rsshub." + instanceHost.Hostname()
+	unknownRoute := "https://" + rsshubHost + "/some/unknown/route?key=abc"
+
+	dataDir := t.TempDir()
+	repo := &feedRepoStub{
+		getByIDFn: func(ctx context.Context, id int64) (model.Feed, error) {
+			return model.Feed{ID: id, URL: unknownRoute}, nil
+		},
+	}
+	transport := rewriteHostTransport{
+		base:   thirdPartyBlockingTransport{base: http.DefaultTransport},
+		from:   instanceHost.Hostname(),
+		toHost: instanceHost.Host,
+	}
+	svc := service.NewIconService(dataDir, repo, network.NewClientFactoryForTest(&http.Client{Transport: transport}), nil)
+
+	got, err := svc.FetchAndSaveIconForFeed(context.Background(), 9, "", unknownRoute)
+	require.NoError(t, err)
+	require.Empty(t, got, "认不出上游站点时应留空，由前端退回通用 RSS 图标，而不是显示实例 logo")
+	require.Zero(t, atomic.LoadInt32(&instanceHits), "根本不该去请求 RSSHub 实例")
+}
+
+// 回填时要把「图标其实是实例 logo」的存量行清掉重抓（28-1 自愈）。
+func TestIconService_BackfillRefetchesAggregatorIcon(t *testing.T) {
+	upstreamIcon := pngBytes(t, 48, 48)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/favicon.ico" {
+			_, _ = w.Write(upstreamIcon)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer upstream.Close()
+
+	rsshubHost := "rsshub.local"
+	siteURL := "https://t.me/some_channel"
+
+	var mu sync.Mutex
+	cleared := map[int64]string{}
+	refetched := map[int64]string{}
+
+	repo := &feedRepoStub{
+		listWithoutIconFn: func(context.Context) ([]model.Feed, error) {
+			// 第 1 步：被清掉 icon_path 的行（重新入列）
+			mu.Lock()
+			defer mu.Unlock()
+			feeds := make([]model.Feed, 0, len(cleared))
+			for id := range cleared {
+				feeds = append(feeds, model.Feed{ID: id, URL: rsshubHost + "/telegram/channel/some_channel?key=abc", SiteURL: &siteURL})
+			}
+			return feeds, nil
+		},
+		listFn: func(context.Context, *int64) ([]model.Feed, error) {
+			// 存量现场：icon_path = rsshub.local.png（实例域名），但 site_url 是真实频道
+			return []model.Feed{{
+				ID: 100, URL: rsshubHost + "/telegram/channel/some_channel?key=abc",
+				SiteURL: &siteURL, IconPath: strPtr(rsshubHost + ".png"),
+			}}, nil
+		},
+		updateIconPathFn: func(_ context.Context, id int64, iconPath string) error {
+			mu.Lock()
+			defer mu.Unlock()
+			if iconPath == "" {
+				cleared[id] = iconPath
+				return nil
+			}
+			refetched[id] = iconPath
+			return nil
+		},
+		getByIDFn: func(_ context.Context, id int64) (model.Feed, error) {
+			return model.Feed{ID: id, URL: rsshubHost + "/telegram/channel/some_channel?key=abc", SiteURL: &siteURL}, nil
+		},
+	}
+
+	transport := rewriteHostTransport{
+		base:   thirdPartyBlockingTransport{base: http.DefaultTransport},
+		from:   "t.me",
+		toHost: upstreamHost(t, upstream.URL),
+	}
+	dataDir := t.TempDir()
+	svc := service.NewIconService(dataDir, repo, network.NewClientFactoryForTest(&http.Client{Transport: transport}), nil)
+
+	require.NoError(t, svc.BackfillIcons(context.Background()))
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Contains(t, cleared, int64(100), "实例 logo 那行应被清掉 icon_path 交给重抓")
+	require.Equal(t, "t.me.png", refetched[100], "重抓后应拿到真实站点 t.me 的图标")
+}
