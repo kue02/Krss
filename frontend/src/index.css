@@ -942,13 +942,12 @@ body.mobile-document-scroll-locked {
   background-color: color-mix(in oklab, var(--foreground) 6%, transparent);
 }
 
-/* ---------------------------------------------------------------------------
+/* -------------------------------------------------------------------------
  * 社交卡片（列表预览）里的引文媒体尺寸。
  *
  * 故意放在所有 @layer 之外：Tailwind 的 utilities 层排在 components 之后，
- * prose 的 !h-auto / max-w-full 会把这里设的 112px 覆盖掉（实测显示成 112×168）。
+ * prose 的 !h-auto / max-w-full 会把这里设的尺寸覆盖掉。
  * 未分层的规则优先级高于任何 @layer —— 这也是本项目早先踩过的同一个坑。
- * 尺寸照 Folo 的 size-28（112px 方图）。
  * ------------------------------------------------------------------------ */
 /*
  * 12-11：引文里的媒体改成「并排 + 等比缩小」（用户原话：竖排显示、要像 Folo 那样并排；
@@ -959,6 +958,14 @@ body.mobile-document-scroll-locked {
  *  ② 原来写死 `width/height:112px` + `object-fit:cover` → 3:2 / 2:3 的图被裁成正方形。
  * 处理：把紧贴图片的 `<br>` 藏掉（不动正文里的其它换行），尺寸改成「框内等比缩放」
  * （width/height auto + max-w/max-h）—— 等比缩小、不裁剪。
+ *
+ * 42-8（2026-10-09）：112px 上限太小了 —— 引文里的 twitter 图被压成 72×112 / 112×61，
+ * 和正文画廊（SocialMediaGallery，铺满容器宽 + 按原图比例）完全两套观感（用户报的
+ * 「引文里面的图片没有我们上轮做的效果」）。
+ * 尺寸现在由 `fitQuotedMedia()` 在 HTML 预处理阶段算好写成内联 style：横图铺满引文宽、
+ * 竖长图按高度上限反算宽度（零裁切）。这里只留 `object-fit` 与圆角兜底。
+ * 原来的 112px 口径是 Folo 的 size-28 缩略图行，那条现在已经由正文下方的
+ * SocialMediaGallery 承担，引文内不该重复一套缩略图观感。
  */
 .entry-card .rsshub-quote img + br,
 .entry-card .rsshub-quote br:has(+ img),
@@ -969,15 +976,25 @@ body.mobile-document-scroll-locked {
 .entry-card .rsshub-quote img,
 .entry-card .rsshub-quote video,
 .entry-card .rsshub-quote .article-video {
+  /* 42-8（2026-10-09）：铺满引文内容宽 + 按原图比例、零裁切 ——
+     取代原来的 112px 缩略图口径（那套观感现在由正文下方的 SocialMediaGallery 承担）。
+
+     **必须是 width:auto 而不是 100%**：草图实测 `quote-media-fit.html`，
+     width:100% + max-height 时竖长图 828×1284 被压成 574×480 ⇒ ratio 1.196，
+     而原图是 0.645（横向撑变形）；width:auto 让两个 max 一起等比收，
+     828×1284 → 374×580（ratio 0.645）✓，1221×669 → 574×315（1.825）✓。
+
+     竖图因此不横向铺满（两侧留边），这与 Folo media-gallery.tsx:57-63 一致：
+     超高上限就按高度反算宽度，不裁切。 */
   width: auto;
   height: auto;
-  max-width: 112px;
-  max-height: 112px;
+  max-width: 100%;
+  max-height: min(66vh, 480px);
   object-fit: contain;
   border-radius: 8px;
-  display: inline-block;
-  vertical-align: top;
-  margin: 6px 6px 0 0;
+  display: block;
+  margin-inline: 0;
+  margin-block: 6px 0;
 }
 
 /* ---------------------------------------------------------------------------

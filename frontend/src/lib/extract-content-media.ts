@@ -100,13 +100,27 @@ export function extractContentMedia(
 ): ContentMedia[] {
   if (!html) return normalizeSingle(thumbnailUrl, baseUrl);
 
+  /** 引文（.rsshub-quote / blockquote）里的图片 key 集合。
+   *
+   *  与 `strip-content-images.ts` 同口径：引文内的图归引文自己，只有正文自己的图
+   *  才摘到画廊区。两个模块口径不一致的后果是同一张图渲染两遍（prose 里一张、
+   *  画廊里又一张）—— 用户 2026-10-09 报的「引文里的图没效果、下面大图还重复」。
+   *
+   *  **src 与 data-src 都收**：懒加载站会把真地址放 data-src 而 src 是占位图，
+   *  只收 src 会漏判（42-9：两处重复就是这样漏掉的）。 */
+  const quotedSrc = (src: string | null | undefined) =>
+    src ? (normalizeSrc(src, baseUrl) ?? src) : "";
+
   let media: ContentMedia[];
+  let doc: Document | null = null;
   try {
-    const doc = new DOMParser().parseFromString(html, "text/html");
+    const parsed = new DOMParser().parseFromString(html, "text/html");
+    doc = parsed;
     media = [];
     const seen = new Set<string>();
 
-    for (const img of Array.from(doc.querySelectorAll("img"))) {
+    for (const img of Array.from(parsed.querySelectorAll("img"))) {
+      if (img.closest(".rsshub-quote, blockquote")) continue;
       const src = normalizeSrc(img.getAttribute("src") ?? "", baseUrl);
       if (!src) continue;
       // 与 extract-images.ts 同口径：懒加载站会把真地址放 data-src
@@ -126,15 +140,35 @@ export function extractContentMedia(
     media = [];
   }
 
-  const thumb = thumbnailUrl
-    ? normalizeSrc(thumbnailUrl, baseUrl)
-    : null;
+  // 引文内的图（src + data-src 两种真实地址都收）—— 正文自己的图已摘进 media，
+  // 引文里的图归 prose 渲染；下面 thumbnail 兜底也据此跳过，避免同图渲染两遍
+  const quotedKeys = new Set<string>();
+  if (doc) {
+    for (const img of Array.from(
+      doc.querySelectorAll(".rsshub-quote img, blockquote img"),
+    )) {
+      for (const attr of ["src", "data-src", "data-lazy-src"]) {
+        const value = img.getAttribute(attr);
+        if (!value) continue;
+        const key = comparableKey(quotedSrc(value));
+        if (key) quotedKeys.add(key);
+      }
+    }
+  }
+
+  const thumb = thumbnailUrl ? normalizeSrc(thumbnailUrl, baseUrl) : null;
   if (thumb) {
     const key = comparableKey(thumb);
     // 命中正文 → 丢掉 thumbnail（正文那份才带尺寸）
     // 没命中 → 当第一张（有些源的 thumbnail 不在正文里）
     if (!media.some((m) => comparableKey(m.src) === key)) {
-      media.unshift({ src: thumb });
+      // thumbnail 恰好是引文里那张图时同样跳过：正文里已经渲染过它了，
+      // 兜底会把它在画廊区再渲染一遍（用户 2026-10-09 报的
+      // 「引文里的图在最下面还是重复出现」）。
+      // 实锤：Telegram 条目 thumbnail_url == blockquote 里 App Store 预览图的 URL。
+      if (!doc || !quotedKeys.has(key)) {
+        media.unshift({ src: thumb });
+      }
     }
   }
 
