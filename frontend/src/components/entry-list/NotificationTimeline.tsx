@@ -58,6 +58,14 @@ const TIME_GAP_AFTER_NODE = 3;
 /** 节点直径（px）—— 头节点 9 / 小节点 6，与效果图一致，时间戳的落位也按它算 */
 const TIMELINE_DOT_MAJOR = 9;
 const TIMELINE_DOT_MINOR = 6;
+/** 空集合常量：让 `useMemo` 在「开关关」时返回同一个引用，不至于每次渲染都造新 Set */
+const EMPTY_ID_SET: ReadonlySet<string> = new Set<string>();
+/**
+ * 40-2：「点空白收起所有展开容器」的自定义事件名。
+ * 触发方是 `EntryList` 的滚动视口（卡片列两侧的留白在时间线根之外，挂在那里才收得到），
+ * 监听方是本组件的根容器。导出成常量是为了两边不写错字符串。
+ */
+export const COLLAPSE_ALL_EVENT = "krss:notification-collapse-all";
 
 /**
  * 39-1：展开容器里挂的是**完整的正文页**（`EntryContent`），不是另做一套。
@@ -380,15 +388,19 @@ const TimelineCard = memo(function TimelineCard({
             </span>
           </div>
 
-          {/* 标题（时间戳在轴上、紧贴节点，所以卡片里不再重复时间） */}
-          <div
-            className={cn(
-              "mt-1 line-clamp-2 text-[13.5px] font-semibold leading-5 wrap-anywhere",
-              isUnread ? "text-foreground" : "text-muted-foreground",
-            )}
-          >
-            {displayTitle || t("entry.untitled")}
-          </div>
+          {/* 标题（时间戳在轴上、紧贴节点，所以卡片里不再重复时间）
+              40-1：展开态下**隐藏卡片标题** —— 展开容器里那个完整正文页自带 h1，
+              两份标题挨在一起是重复。悬停档不展开、标题必须留着。 */}
+          {bodyOnHover || !expanded ? (
+            <div
+              className={cn(
+                "mt-1 line-clamp-2 text-[13.5px] font-semibold leading-5 wrap-anywhere",
+                isUnread ? "text-foreground" : "text-muted-foreground",
+              )}
+            >
+              {displayTitle || t("entry.untitled")}
+            </div>
+          ) : null}
 
           {/* 29-1：悬停档 = 来源行 + 标题，不再渲染正文预览/展开按钮/展开容器/拖高手柄 */}
           {bodyOnHover ? null : expanded && hasFullContent ? (
@@ -714,6 +726,25 @@ export function NotificationTimeline({
       !manuallyCollapsed.has(entryId),
     [autoExpandLong, naturalHeights, manuallyCollapsed],
   );
+  /**
+   * 40-2：当前正被「长贴自动展开」撑开着的那些条目。
+   * 用 `naturalHeights` 现算（它是长贴判据的权威来源，见 `isAutoExpanded`），
+   * 「点空白收起全部」要把它们也一并收掉 —— 只清 `expandedEntries` 的话，
+   * 自动展开的那批下一次渲染又会被同一判据弹回来。
+   */
+  const autoExpandIds = useMemo(() => {
+    if (!autoExpandLong) return EMPTY_ID_SET;
+    const ids = new Set<string>();
+    for (const [id, height] of Object.entries(naturalHeights)) {
+      if (
+        height > SOCIAL_COLLAPSED_PX + SOCIAL_CLIPPED_SLACK_PX &&
+        !manuallyCollapsed.has(id)
+      ) {
+        ids.add(id);
+      }
+    }
+    return ids;
+  }, [autoExpandLong, naturalHeights, manuallyCollapsed]);
   // 24-8：每条展开容器的高度（默认 380，右下角手柄可拖）
   const [fullHeights, setFullHeights] = useState<Record<string, number>>({});
   const { mutate: markAsRead } = useMarkAsRead();
@@ -769,6 +800,35 @@ export function NotificationTimeline({
     },
     [selectedEntryId, onCloseEntry, autoExpandLong, naturalHeights],
   );
+
+  /**
+   * 40-2：点空白处把**所有**展开的容器收起来（事件由 `EntryList` 的滚动视口发，
+   * 因为卡片列两侧的留白在时间线根之外 —— 见 `COLLAPSE_ALL_EVENT`）。
+   *
+   * 展开有**三个**来源（见下面 TimelineCard 的 `expanded` 判据），三样都要清：
+   * `expandedEntries`（手动点开）+ `selectedEntryId`（点卡片进的那条）+ `isAutoExpanded`
+   * （「长贴自动展开」命中）。漏掉任何一个，点完空白还会有一半容器开着。
+   */
+  const handleCollapseAll = useCallback(() => {
+    if (expandedEntries.size === 0 && !selectedEntryId && autoExpandIds.size === 0) {
+      return;
+    }
+    setExpandedEntries(new Set<string>());
+    // 自动展开命中的那些要记「显式收起」，否则下一渲染又被同一判据弹开
+    setManuallyCollapsed((current) => {
+      const next = new Set(current);
+      for (const id of autoExpandIds) next.add(id);
+      return next.size === current.size ? current : next;
+    });
+    if (selectedEntryId) onCloseEntry?.();
+  }, [expandedEntries, selectedEntryId, autoExpandIds, onCloseEntry]);
+
+  useEffect(() => {
+    const node = containerRef?.current;
+    if (!node) return undefined;
+    node.addEventListener(COLLAPSE_ALL_EVENT, handleCollapseAll);
+    return () => node.removeEventListener(COLLAPSE_ALL_EVENT, handleCollapseAll);
+  }, [containerRef, handleCollapseAll]);
 
   // 展开后跟随：展开是纯向下生长、卡片顶部本身不动，所以只处理一种情况——
   // 卡片顶部被顶出视口上方时，把它拉回来（向上滚）；其他情况一律不动，
@@ -977,6 +1037,8 @@ export function NotificationTimeline({
       ref={containerRef}
       data-testid="notification-timeline"
       data-timeline-layout={singleSide ? "single" : "alternating"}
+      // 40-2：真正的「空白」在列表列两侧的留白里（在时间线根之外），所以收起全部的
+      // 触发由 `EntryList` 的滚动视口发事件，这里只监听（见下方 useEffect）。
       // 收窄到社交视图同款居中可读宽度（用户反馈：之前三栏中栏窄，现在两栏太宽）
       className="relative mx-auto w-full max-w-[clamp(45ch,60vw,65ch)]"
     >

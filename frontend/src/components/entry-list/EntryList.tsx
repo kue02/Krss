@@ -51,7 +51,10 @@ import {
   resolveTimelineGranularity,
   resolveTimelineTimeBasis,
 } from "@/lib/timeline-model";
-import { NotificationTimeline } from "./NotificationTimeline";
+import {
+  COLLAPSE_ALL_EVENT,
+  NotificationTimeline,
+} from "./NotificationTimeline";
 import { NotificationBodyPreview } from "./NotificationBodyPreview";
 import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
 import { useFilterViewStore } from "@/stores/filter-view-store";
@@ -1048,6 +1051,35 @@ export function EntryList({
         <div
           ref={containerRef}
           data-testid="entry-list-viewport"
+          /**
+           * 40-2：通知视图下「点空白处收起所有展开容器」。
+           * 挂在这个滚动视口上（而不是时间线根）是因为卡片列宽 `clamp(45ch,60vw,65ch)`
+           * 是居中的，自动展开时卡片把这一列占满 —— 用户点的「空白」是**列表列两侧的留白**，
+           * 那部分在时间线根元素之外，事件到不了它。
+           * 命中判定放在时间线那边（它才知道哪些元素算「卡片」）。
+           */
+          onClickCapture={(event) => {
+            if (!isNotificationTimeline) return;
+            const target = event.target as HTMLElement | null;
+            // 落在时间线行 / 卡片 / 展开容器上 → 是点条目，不是点空白
+            if (
+              target?.closest(
+                "[data-timeline-card], [data-timeline-row], [data-timeline-full]",
+              )
+            ) {
+              return;
+            }
+            // 底部「全部标记为已读」等自身可点的元素，别当成空白
+            if (target?.closest("button, a, [role=\"button\"]")) return;
+            // 事件要**直接派发在时间线根上**：自定义事件不会向下传播，
+            // 从视口派发的话时间线根（监听方）收不到。
+            const timelineRoot = event.currentTarget.querySelector(
+              "[data-testid=\"notification-timeline\"]",
+            );
+            timelineRoot?.dispatchEvent(
+              new CustomEvent(COLLAPSE_ALL_EVENT),
+            );
+          }}
           className={cn(
             "w-full overflow-x-hidden rounded-[inherit] [overflow-anchor:none]",
             usesDocumentScroll
