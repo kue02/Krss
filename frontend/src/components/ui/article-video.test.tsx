@@ -17,6 +17,12 @@ function mountVideo() {
 }
 
 describe("ArticleVideo 封面 + 悬停（§2.25）", () => {
+  /** 42-7：控制条要先有 duration（metadata 到齐）才渲染 Slider */
+  function primeDuration(video: HTMLVideoElement, duration = 30) {
+    Object.defineProperty(video, "duration", { value: duration, writable: true });
+    fireEvent.loadedMetadata(video);
+  }
+
   it("无 poster 时 preload=metadata（只拉头部、首帧当封面）", () => {
     const { video } = mountVideo();
     expect(video.getAttribute("preload")).toBe("metadata");
@@ -45,37 +51,118 @@ describe("ArticleVideo 封面 + 悬停（§2.25）", () => {
   });
 
   it("悬停 → 调 play；移开 → pause（回封面）", () => {
-    const { container } = mountVideo();
+    const { container, video } = mountVideo();
+    primeDuration(video);
     const btn = screen.getByRole("button", { name: "播放视频" });
 
     fireEvent.mouseEnter(btn);
     expect(playMock).toHaveBeenCalledTimes(1);
-    // 进度条出现
+    // 控制条出现
     expect(
-      container.querySelector('[data-slot="article-video-progress"]'),
+      container.querySelector('[data-slot="article-video-controls"]'),
     ).not.toBeNull();
 
     fireEvent.mouseLeave(btn);
     expect(pauseMock).toHaveBeenCalled();
-    // 回到封面：进度条收起
+    // 回到封面：控制条收起
     expect(
-      container.querySelector('[data-slot="article-video-progress"]'),
+      container.querySelector('[data-slot="article-video-controls"]'),
     ).toBeNull();
   });
 
-  it("timeupdate 推进进度值（0~1）", () => {
+  it("timeupdate 推进播放头（Slider 的值 = currentTime，maxValue = duration）", () => {
     const { container, video } = mountVideo();
     const btn = screen.getByRole("button", { name: "播放视频" });
     fireEvent.mouseEnter(btn);
+    primeDuration(video, 10);
 
-    Object.defineProperty(video, "duration", { value: 10, writable: true });
     Object.defineProperty(video, "currentTime", { value: 2.5, writable: true });
     fireEvent.timeUpdate(video);
 
     const bar = container.querySelector(
-      '[data-slot="article-video-progress"]',
+      '[data-slot="article-video-progress"] input[type="range"]',
     );
-    expect(bar?.getAttribute("aria-valuenow")).toBe("0.25");
+    expect(bar?.getAttribute("max")).toBe("10");
+    expect(bar?.getAttribute("value")).toBe("2.5");
+  });
+
+  it("duration 未到齐时不渲染 Slider（没有刻度可跳）", () => {
+    const { container } = mountVideo();
+    const btn = screen.getByRole("button", { name: "播放视频" });
+    fireEvent.mouseEnter(btn);
+    expect(
+      container.querySelector('[data-slot="article-video-controls"]'),
+    ).toBeNull();
+  });
+
+  it("拖拽进度条 → 直接 seek（currentTime 跟着改）", () => {
+    const { container, video } = mountVideo();
+    const btn = screen.getByRole("button", { name: "播放视频" });
+    fireEvent.mouseEnter(btn);
+    primeDuration(video, 30);
+
+    const range = container.querySelector(
+      '[data-slot="article-video-progress"] input[type="range"]',
+    ) as HTMLInputElement;
+    expect(range).not.toBeNull();
+
+    fireEvent.change(range, { target: { value: "21" } });
+    expect(video.currentTime).toBe(21);
+  });
+
+  it("控制条上的播放/暂停钮切 play/pause（不是打开大屏）", async () => {
+    const { container } = mountVideo();
+    fireEvent.mouseEnter(screen.getByRole("button", { name: "播放视频" }));
+    const video = container.querySelector("video") as HTMLVideoElement;
+    primeDuration(video);
+
+    // 测试环境没初始化 i18n，t() 回显 key —— 按 key 断言（组件里走的就是 t(...)）
+    // 悬停触发 play()，按钮要等 promise resolve 后才从「播放」翻成「暂停」
+    const pauseBtn = await screen.findByRole("button", {
+      name: "entry.video_pause",
+    });
+
+    pauseMock.mockClear();
+    fireEvent.click(pauseBtn);
+    expect(pauseMock).toHaveBeenCalled();
+    // 暂停后按钮翻回「播放」，控制条仍在（没被换成大屏播放器）
+    const playBtn = await screen.findByRole("button", {
+      name: "entry.video_play",
+    });
+    expect(playBtn).not.toBeNull();
+
+    playMock.mockClear();
+    fireEvent.click(playBtn);
+    expect(playMock).toHaveBeenCalledTimes(1);
+    expect(
+      container.querySelector('[data-slot="article-video-controls"]'),
+    ).not.toBeNull();
+  });
+
+  it("控制条里的按钮不是嵌套 button（外层是 div[role=button]）", () => {
+    const { container, video } = mountVideo();
+    fireEvent.mouseEnter(screen.getByRole("button", { name: "播放视频" }));
+    primeDuration(video);
+
+    const card = container.querySelector(".article-video") as HTMLElement;
+    expect(card.tagName).toBe("DIV");
+    expect(card.getAttribute("role")).toBe("button");
+    // 容器里不能有 button  descendant（非法嵌套）
+    expect(card.querySelector("button button")).toBeNull();
+    // 键盘可达
+    expect(card.getAttribute("tabindex")).toBe("0");
+  });
+
+  it("控制条按钮不吃卡片点击（不会误开大屏）", () => {
+    const { container, video } = mountVideo();
+    fireEvent.mouseEnter(screen.getByRole("button", { name: "播放视频" }));
+    primeDuration(video);
+
+    // 事件冒泡到容器时会被 closest(controls) 拦下 → 控制条仍在（没被换成大屏播放器）
+    fireEvent.click(screen.getByRole("button", { name: "entry.video_play" }));
+    expect(
+      container.querySelector('[data-slot="article-video-controls"]'),
+    ).not.toBeNull();
   });
 
   it("无 poster 时 src 补 #t=0.1（逼浏览器 seek 出首帧当封面）", () => {
