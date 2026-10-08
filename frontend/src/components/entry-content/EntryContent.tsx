@@ -21,16 +21,19 @@ import { OriginalSiteView } from "./OriginalSiteView";
 import { ReadingProgressBar } from "./ReadingProgressBar";
 import { deferUnreadRemovals } from "@/components/entry-list/deferred-removal";
 import { isPlainKey, isTypingTarget } from "@/lib/keyboard";
+import type { ContentType } from "@/types/api";
 
 interface EntryContentProps {
   entryId: string | null;
   isMobile?: boolean;
+  /** 37-1：当前中栏的内容类型。社交视图的正文页用「无标题 + 订阅源头像」的页头 */
+  contentType?: ContentType;
   onBack?: () => void;
   /** 28-5：桌面正文区左上角的关闭按钮（与移动端 onBack 同位置，图标用 X） */
   onClose?: () => void;
 }
 
-export function EntryContent({ entryId, isMobile, onBack, onClose }: EntryContentProps) {
+export function EntryContent({ entryId, isMobile, contentType, onBack, onClose }: EntryContentProps) {
   const { t } = useTranslation();
   const { data: entry, isLoading } = useEntry(entryId);
   const { data: aiSettings } = useAISettings();
@@ -211,6 +214,7 @@ export function EntryContent({ entryId, isMobile, onBack, onClose }: EntryConten
       <EntryContentBody
         entry={entry}
         displayTitle={displayTitle}
+        isSocial={contentType === "social"}
         scrollRef={scrollRef}
         scrollNode={scrollNode}
         displayContent={displayContent}

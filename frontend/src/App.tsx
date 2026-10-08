@@ -493,6 +493,7 @@ function AuthenticatedApp() {
           <LazyEntryContent
             key={selectedEntryId}
             entryId={selectedEntryId}
+            contentType={contentType}
             onClose={() => selectEntry(null)}
           />
         </Suspense>
@@ -507,6 +508,7 @@ function AuthenticatedApp() {
       <LazyEntryContent
         key={selectedEntryId}
         entryId={selectedEntryId}
+        contentType={contentType}
         isMobile
         onBack={showList}
       />
@@ -711,6 +713,7 @@ function AuthenticatedApp() {
                     <LazyEntryContent
                       key={selectedEntryId}
                       entryId={selectedEntryId}
+                      contentType={contentType}
                       onBack={() => selectEntry(null)}
                     />
                   </Suspense>
