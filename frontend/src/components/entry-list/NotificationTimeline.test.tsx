@@ -48,6 +48,11 @@ vi.mock("@/hooks/useUISettings", () => ({
   DEFAULT_UNREAD_BADGE: {},
 }));
 
+// 39-1：展开容器里挂的是**完整的正文页**（`EntryContent`），走 `lazy` 以保持阅读器
+// 不进首屏包（`EntryList` 是静态引入的，改静态 import 就等于把阅读器拖进首屏）。
+// 注意：**`vi.mock` 拦不住动态 `import()`**（已单独写用例验过），所以这里 mock 没用，
+// 只能同步断言「阅读器已挂上、正在加载」；正文真的渲染出来由浏览器真机验。
+
 function entry(id: string, publishedAt: string, extra: Partial<Entry> = {}): Entry {
   const date = new Date(publishedAt);
   return {
@@ -267,8 +272,11 @@ describe("NotificationTimeline · 折叠 / 展开（15-3）", () => {
       expect(full?.dataset.timelineFullHeight).toBe("380");
       expect(full?.style.height).toBe("380px");
       expect(full?.className).toContain("overflow-y-auto");
-      // 全文按阅读区管道排版（标题/正文都在里面，不再是纯文字预览）
-      expect(full?.textContent).toContain("body a");
+      // 39-1：容器里挂的是**完整的正文页**（`EntryContent`，走 `lazy`）。
+      // `vi.mock` 拦不住动态 `import()`、且 `lazy` 在 jsdom 里要等 import 落地才渲染，
+      // 所以这里同步断言只能验「阅读器已挂上」（正文真的渲染出来由浏览器真机验）；
+      // `data-timeline-reader` 是本批加的标记，真机也用它取数。
+      expect(full?.dataset.timelineReader).toBe("a");
       // 轴上的位置没变：还是同一行、同一行的节点还在
       expect(full!.closest("[data-timeline-row]")).toBe(rowBefore);
       expect(rowBefore?.querySelector("[data-timeline-dot]")).not.toBeNull();

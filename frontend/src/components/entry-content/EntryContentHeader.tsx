@@ -36,6 +36,12 @@ interface EntryContentHeaderProps {
   /** 是否正在阅读栏里加载原站（#13） */
   isOriginalSiteActive?: boolean;
   onToggleOriginalSite?: () => void;
+  /**
+   * 39-1：**内嵌模式**。第三栏那套是 `absolute inset-x-0 top-0` 盖在面板上；
+   * 内嵌在时间线展开容器里时，工具栏必须跟着宿主容器一起滚（`sticky top-0`），
+   * 否则展开容器一滚，工具栏就跟着正文滚走了、按钮点不到。
+   */
+  sticky?: boolean;
 }
 
 interface TranslationButtonState {
@@ -91,6 +97,7 @@ export function EntryContentHeader({
   onClose,
   isOriginalSiteActive = false,
   onToggleOriginalSite,
+  sticky = false,
 }: EntryContentHeaderProps) {
   const { t } = useTranslation();
   const safeUrl = entry.url && isSafeUrl(entry.url) ? entry.url : null;
@@ -99,7 +106,11 @@ export function EntryContentHeader({
   const readAction = readToggleAction(!entry.read);
 
   return (
-    <div className="absolute inset-x-0 top-0 z-20">
+    <div
+      className={cn(
+        sticky ? "sticky top-0 z-20" : "absolute inset-x-0 top-0 z-20",
+      )}
+    >
       {/* Background and Border Layer */}
       {/* 对齐 Nextflux ActionButtons：70% 底 + 小 blur + 细边框，无 mask 渐隐（48px 高的条加渐隐会把按钮下半截切淡） */}
       <div

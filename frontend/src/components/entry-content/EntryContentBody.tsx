@@ -15,6 +15,13 @@ interface EntryContentBodyProps {
   displayTitle?: string | null;
   /** 37-1/37-2：社交视图换成「无标题 + 订阅源头像」的页头（文章视图一行不动） */
   isSocial?: boolean;
+  /**
+   * 39-1：内嵌在别处的滚动容器里（通知视图的时间线展开容器）。
+   * 两处要变：① 外层不能再当滚动容器（否则和宿主容器**套两层滚动条**），
+   * ② 上下留白是第三栏为工具栏/回到顶部按钮预留的，内嵌时工具栏是 `sticky`
+   * 占自身流内高度的，不需要那么大。
+   */
+  embedded?: boolean;
   scrollRef: RefCallback<HTMLDivElement>;
   scrollNode?: HTMLDivElement | null;
   displayContent: string | null | undefined;
@@ -29,6 +36,7 @@ export function EntryContentBody({
   entry,
   displayTitle,
   isSocial = false,
+  embedded = false,
   scrollRef,
   scrollNode,
   displayContent,
@@ -45,9 +53,19 @@ export function EntryContentBody({
   return (
     <div
       ref={scrollRef}
-      className="entry-content-viewport flex-1 overflow-y-auto [overflow-anchor:none]"
+      className={
+        embedded
+          ? "entry-content-viewport [overflow-anchor:none]"
+          : "entry-content-viewport flex-1 overflow-y-auto [overflow-anchor:none]"
+      }
     >
-      <article className="entry-content nf-enter mx-auto w-full max-w-[clamp(45ch,60vw,65ch)] min-w-0 overflow-x-hidden px-4 pb-20 pt-16 sm:px-5 sm:pt-20">
+      <article
+        className={
+          embedded
+            ? "entry-content nf-enter mx-auto w-full max-w-[clamp(45ch,60vw,65ch)] min-w-0 overflow-x-hidden px-4 pb-6 pt-3 sm:px-5"
+            : "entry-content nf-enter mx-auto w-full max-w-[clamp(45ch,60vw,65ch)] min-w-0 overflow-x-hidden px-4 pb-20 pt-16 sm:px-5 sm:pt-20"
+        }
+      >
         {/* 37-2：社交视图不显示标题（社交条目的标题多半就是正文开头），作者行改用订阅源头像 */}
         {isSocial ? (
           <SocialAuthorHeader entry={entry} />

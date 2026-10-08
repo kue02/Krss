@@ -21,6 +21,7 @@ import { OriginalSiteView } from "./OriginalSiteView";
 import { ReadingProgressBar } from "./ReadingProgressBar";
 import { deferUnreadRemovals } from "@/components/entry-list/deferred-removal";
 import { isPlainKey, isTypingTarget } from "@/lib/keyboard";
+import { cn } from "@/lib/utils";
 import type { ContentType } from "@/types/api";
 
 interface EntryContentProps {
@@ -28,12 +29,30 @@ interface EntryContentProps {
   isMobile?: boolean;
   /** 37-1：当前中栏的内容类型。社交视图的正文页用「无标题 + 订阅源头像」的页头 */
   contentType?: ContentType;
+  /**
+   * 39-1：**内嵌模式** —— 渲染在别处的容器里（通知视图的时间线展开容器），而不是
+   * 自己占满一栏。此时：工具栏改成 `sticky` 顶在容器顶部、**不自带滚动容器**
+   * （滚动由宿主容器负责）、**不渲染大纲**（大纲由宿主挂在 `relative` 包装上，
+   * 因为 `EntryToc` 是 `absolute inset-y-0`，得对着可见区域而不是滚动内容）、
+   * **不渲染阅读进度条**（进度条锁在第三栏工具栏正下方，内嵌没有那个位置）。
+   */
+  embedded?: boolean;
+  /** 内嵌模式：宿主的滚动容器。用于判断「吸顶态」并驱动工具栏标题的浮出 */
+  containerRef?: React.RefObject<HTMLDivElement | null>;
   onBack?: () => void;
   /** 28-5：桌面正文区左上角的关闭按钮（与移动端 onBack 同位置，图标用 X） */
   onClose?: () => void;
 }
 
-export function EntryContent({ entryId, isMobile, contentType, onBack, onClose }: EntryContentProps) {
+export function EntryContent({
+  entryId,
+  isMobile,
+  contentType,
+  embedded = false,
+  containerRef,
+  onBack,
+  onClose,
+}: EntryContentProps) {
   const { t } = useTranslation();
   const { data: entry, isLoading } = useEntry(entryId);
   const { data: aiSettings } = useAISettings();
@@ -46,6 +65,23 @@ export function EntryContent({ entryId, isMobile, contentType, onBack, onClose }
   const [showOriginalSite, setShowOriginalSite] = useState(false);
 
   useScrollToTop(scrollNode, "entrycontent");
+
+  /**
+   * 39-1（内嵌模式）：宿主的滚动容器才是真正的滚动节点。
+   * `useEntryContentScroll` 的 `scrollRef/isAtTop` 是给「自己占一栏」那套用的，
+   * 内嵌时不能挂自己的滚动容器（会多出一层滚动条），所以吸顶态自己从宿主容器量。
+   */
+  const [embeddedAtTop, setEmbeddedAtTop] = useState(true);
+  useEffect(() => {
+    if (!embedded) return undefined;
+    const node = containerRef?.current;
+    if (!node) return undefined;
+    const update = () => setEmbeddedAtTop(node.scrollTop < 48);
+    update();
+    node.addEventListener("scroll", update, { passive: true });
+    return () => node.removeEventListener("scroll", update);
+  }, [embedded, containerRef, entryId]);
+  const headerAtTop = embedded ? embeddedAtTop : isAtTop;
 
   // Track entries marked as read to trigger list removal on switch
   const markedAsReadRef = useRef<Set<string>>(new Set());
@@ -108,14 +144,17 @@ export function EntryContent({ entryId, isMobile, contentType, onBack, onClose }
 
   // Mark as read when entry is loaded
   // Use skipInvalidate to prevent list item from disappearing immediately
+  // 39-1：内嵌模式下已读由宿主负责（时间线的 handleSelect 自己标），
+  // 这里再标一次会走两遍写库 + 两条 deferred 记录，所以整段跳过。
   useEffect(() => {
+    if (embedded) return;
     if (!entry || autoMarkedEntryRef.current === entry.id) return;
     autoMarkedEntryRef.current = entry.id;
     if (!entry.read) {
       markedAsReadRef.current.add(entry.id);
       markAsRead({ id: entry.id, read: true, skipInvalidate: true });
     }
-  }, [entry, markAsRead]);
+  }, [entry, markAsRead, embedded]);
 
   // 快捷键 g：切换阅读模式（原文 / Readability）
   useEffect(() => {
@@ -179,11 +218,16 @@ export function EntryContent({ entryId, isMobile, contentType, onBack, onClose }
   }
 
   return (
-    <div className="relative flex h-full w-full flex-col overflow-hidden">
+    <div
+      className={cn(
+        "relative flex w-full flex-col",
+        embedded ? "min-h-0" : "h-full overflow-hidden",
+      )}
+    >
       <EntryContentHeader
         entry={entry}
         displayTitle={displayTitle}
-        isAtTop={isAtTop}
+        isAtTop={headerAtTop}
         isReadableActive={isReadableActive}
         isLoading={isReadableLoading}
         error={readableError}
@@ -202,10 +246,13 @@ export function EntryContent({ entryId, isMobile, contentType, onBack, onClose }
         onClose={onClose}
         isOriginalSiteActive={showOriginalSite}
         onToggleOriginalSite={() => setShowOriginalSite((value) => !value)}
+        /** 39-1：内嵌时工具栏跟宿主容器一起滚（sticky），第三栏那套是 absolute 盖在面板上 */
+        sticky={embedded}
       />
       {/* 23-4：阅读进度条锁在工具栏（h-12 = 48px）正下方。
-          跟着真实滚动容器（正文那个元素滚动）走；看原站时滚的是 iframe，进度条没有意义 */}
-      {!showOriginalSite && (
+          跟着真实滚动容器（正文那个元素滚动）走；看原站时滚的是 iframe，进度条没有意义。
+          39-1：内嵌模式下没有「工具栏正下方」这个位置，跳过 */}
+      {!showOriginalSite && !embedded && (
         <ReadingProgressBar scrollNode={scrollNode} resetKey={entryId} />
       )}
       {showOriginalSite && entry.url ? (
@@ -215,8 +262,10 @@ export function EntryContent({ entryId, isMobile, contentType, onBack, onClose }
         entry={entry}
         displayTitle={displayTitle}
         isSocial={contentType === "social"}
-        scrollRef={scrollRef}
-        scrollNode={scrollNode}
+        /** 39-1：内嵌时用自己的滚动容器会多一层滚动条 —— 传 null，滚动归宿主 */
+        scrollRef={embedded ? noopRef : scrollRef}
+        scrollNode={embedded ? null : scrollNode}
+        embedded={embedded}
         displayContent={displayContent}
         displayBlocks={translatedContentBlocks}
         highlightContent={highlightContent}
@@ -225,10 +274,14 @@ export function EntryContent({ entryId, isMobile, contentType, onBack, onClose }
         summaryError={summaryError}
       />
       )}
-      <EntryToc scrollNode={scrollNode} entryId={entryId} />
+      {/* 39-1：大纲是 `absolute inset-y-0`，内嵌时要对着宿主容器的可见区域，
+          由宿主挂在自己的 `relative` 包装上并传 `containerRef` 过来 */}
+      {!embedded && <EntryToc scrollNode={scrollNode} entryId={entryId} />}
     </div>
   );
 }
+
+const noopRef: React.RefCallback<HTMLDivElement> = () => {};
 
 function EntryContentEmpty({ message }: { message: string }) {
   return (

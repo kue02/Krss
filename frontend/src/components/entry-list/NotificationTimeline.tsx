@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronUp, Star } from "lucide-react";
 import { Ripple } from "m3-ripple";
@@ -6,7 +6,7 @@ import { Chip } from "@heroui/react";
 import { cn } from "@/lib/utils";
 import { stripHtml } from "@/lib/html-utils";
 import { FeedIcon } from "@/components/ui/feed-icon";
-import { ArticleProse } from "@/components/entry-content/ArticleProse";
+import { EntryToc } from "@/components/entry-content/EntryToc";
 import { NotificationBodyPreview } from "./NotificationBodyPreview";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import {
@@ -58,6 +58,15 @@ const TIME_GAP_AFTER_NODE = 3;
 /** 节点直径（px）—— 头节点 9 / 小节点 6，与效果图一致，时间戳的落位也按它算 */
 const TIMELINE_DOT_MAJOR = 9;
 const TIMELINE_DOT_MINOR = 6;
+
+/**
+ * 39-1：展开容器里挂的是**完整的正文页**（`EntryContent`），不是另做一套。
+ * 用 `lazy` 保持 `App.tsx` 原本的代码分割（`LazyEntryContent`），别把阅读器拖进首屏包。
+ */
+const LazyEntryContent = lazy(async () => {
+  const module = await import("@/components/entry-content");
+  return { default: module.EntryContent };
+});
 
 function cnRow(singleSide: boolean): string {
   return cn(
@@ -393,14 +402,36 @@ const TimelineCard = memo(function TimelineCard({
                     data-timeline-full={entry.id}
                     data-timeline-full-height={fullHeight}
                     onClick={(event) => event.stopPropagation()}
-                    className="entry-content overflow-y-auto rounded-lg border border-border/60 p-3"
+                    className="relative overflow-y-auto rounded-lg border border-border/60"
+                    data-timeline-reader={entry.id}
                     style={{ height: fullHeight }}
                   >
-                    {/* 38-2：展开容器渲染的就是**第三栏正文页那一套排版管道**
-                        （`ArticleProse`），不再是裸 `ArticleContent` + `prose-sm`
-                        硬编码 14px。外层自己保留 entry-content 的边框/滚动/固定高度，
-                        排版交给组件 —— 用户原话「去第三栏正文页，但最终在时间线展开容器中显示」。 */}
-                    <ArticleProse content={entry.content} articleUrl={entry.url} />
+                    {/* 39-1：这里挂的是**完整的正文页**（`EntryContent` 内嵌模式）——
+                        工具栏（星标/已读/AI摘要/翻译/原网站/阅读模式/打开原文）、AI 摘要框、
+                        Readability/翻译管道全部与第三栏同一份实现，不是另做一套。
+                        外层只保留「固定高度 + 内部滚动 + 边框 + 大纲的定位基准」，
+                        滚动由这个容器负责（所以内嵌模式不挂自己的滚动容器）。
+                        `entry-content` 那个 class 由内层 `EntryContentBody` 的
+                        `<article class="entry-content">` 提供（`index.css` 的
+                        `.entry-content .prose` 变量/代码块/表格样式靠它）。 */}
+                    <Suspense
+                      fallback={
+                        <div className="animate-pulse space-y-3 p-4">
+                          <div className="h-4 w-3/4 rounded bg-secondary" />
+                          <div className="h-3 w-full rounded bg-secondary" />
+                          <div className="h-3 w-5/6 rounded bg-secondary" />
+                        </div>
+                      }
+                    >
+                      <LazyEntryContent
+                        key={entry.id}
+                        entryId={entry.id}
+                        contentType="notification"
+                        embedded
+                        containerRef={bodyRef}
+                      />
+                    </Suspense>
+                    <EntryToc scrollNode={bodyRef.current} entryId={entry.id} />
                   </div>
                   <span
                     data-timeline-resize={entry.id}
