@@ -117,7 +117,13 @@ const GalleryImage = memo(function GalleryImage({
   return (
     <button
       type="button"
-      onClick={onOpen}
+      onClick={(event) => {
+        // 点图只开大图查看器：不让点击冒泡到卡片根节点的 onClick，
+        // 否则会连带 selectEntry、把正文推进详情（与正文内图片的
+        // onClickCapture + stopPropagation 同一口径）。
+        event.stopPropagation();
+        onOpen?.();
+      }}
       data-slot="social-media-gallery-item"
       className={cn(
         "relative shrink-0 cursor-zoom-in overflow-hidden rounded-lg bg-secondary",
