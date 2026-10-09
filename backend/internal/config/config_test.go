@@ -39,7 +39,7 @@ func TestLoad_Defaults(t *testing.T) {
 	os.Unsetenv("KRSS_ENABLE_PPROF")
 
 	cfg := config.Load()
-	require.Equal(t, ":8080", cfg.Addr)
+	require.Equal(t, ":8090", cfg.Addr)
 	require.Equal(t, "data", cfg.DataDir)
 	require.Contains(t, cfg.DBPath, "krss.db")
 	require.Equal(t, "info", cfg.LogLevel)
