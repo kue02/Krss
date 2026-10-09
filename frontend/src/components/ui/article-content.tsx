@@ -79,12 +79,15 @@ type ArticleContentProps =
       blocks?: never;
       articleUrl?: string;
       className?: string;
+      /** 42-9：正文图片按容器宽自适应（社交视图/引文开启，文章视图维持 prose 原样） */
+      fitImages?: boolean;
     }
   | {
       content?: never;
       blocks: ArticleContentBlock[];
       articleUrl?: string;
       className?: string;
+      fitImages?: boolean;
     };
 
 /**
@@ -119,9 +122,12 @@ function ArticleTable({
 const ArticleContentBlockRenderer = memo(function ArticleContentBlockRenderer({
   content,
   articleUrl,
+  fitImages = false,
 }: {
   content: string;
   articleUrl?: string;
+  /** 42-9：正文图片按容器宽自适应（社交视图/引文开启，文章视图维持 prose 原样） */
+  fitImages?: boolean;
 }) {
   const renderedContent = useMemo(() => {
     if (!content) return null;
@@ -135,7 +141,9 @@ const ArticleContentBlockRenderer = memo(function ArticleContentBlockRenderer({
           // Use articleUrl + src as cache key
           // This ensures the same image is cached regardless of rendering mode
           // (string mode vs blocks mode), preventing flicker during translation
-          const cacheKey = `${articleUrl || ""}-${src}`;
+          // 42-9：fit 必须进 key —— 同一张图在文章视图（fit=false）与社交视图（fit=true）
+          // 是两种盒子，共用缓存会把先渲染的那种盒子错误复用到另一种。
+          const cacheKey = `${articleUrl || ""}-${src}-${fitImages ? "fit" : "raw"}`;
 
           // Reuse cached element to prevent re-creation during translation updates
           if (imageElementCache.has(cacheKey)) {
@@ -145,6 +153,7 @@ const ArticleContentBlockRenderer = memo(function ArticleContentBlockRenderer({
           // Create new element and cache it
           const element = createElement(ArticleImage, {
             ...imgProps,
+            fit: fitImages,
             key: cacheKey,
           });
           imageElementCache.set(cacheKey, element);
@@ -182,7 +191,7 @@ const ArticleContentBlockRenderer = memo(function ArticleContentBlockRenderer({
     });
 
     return result.toContent();
-  }, [content, articleUrl]);
+  }, [content, articleUrl, fitImages]);
 
   return <>{renderedContent}</>;
 });
@@ -192,7 +201,7 @@ const ArticleContentBlockRenderer = memo(function ArticleContentBlockRenderer({
  * This allows React to diff only the changed parts, keeping images stable
  */
 export function ArticleContent(props: ArticleContentProps) {
-  const { articleUrl, className } = props;
+  const { articleUrl, className, fitImages = false } = props;
   const openImagePreview = useImagePreviewStore((s) => s.open);
 
   // Extract all images from content upfront
@@ -246,12 +255,14 @@ export function ArticleContent(props: ArticleContentProps) {
                 key={block.key}
                 content={block.html}
                 articleUrl={articleUrl}
+                fitImages={fitImages}
               />
             ))
           ) : "content" in props ? (
             <ArticleContentBlockRenderer
               content={props.content}
               articleUrl={articleUrl}
+              fitImages={fitImages}
             />
           ) : null}
         </div>

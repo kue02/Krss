@@ -16,6 +16,7 @@ import {
   withProxyCacheBust,
 } from "@/lib/proxy-image-recovery";
 import { ImagePreviewContext } from "./article-content";
+import { useFittedImageBox } from "@/hooks/useFittedImageBox";
 
 // Context for passing article URL to resolve relative URLs and set Referer
 // eslint-disable-next-line react-refresh/only-export-components
@@ -32,6 +33,13 @@ interface ArticleImageProps {
   srcset?: string;
   sizes?: string;
   className?: string;
+  /**
+   * 42-9：按容器宽 + 原图比例自适应（引文与社交正文开启）。
+   *
+   * 与「外层那个引文框」无关 —— 引文内外的 `<img>` 走同一个组件，逻辑从此一套。
+   * 文章视图不传（保持 prose 的 `max-w-full h-auto` 原样）。
+   */
+  fit?: boolean;
 }
 
 /**
@@ -62,10 +70,19 @@ export const ArticleImage = memo(function ArticleImage({
   srcset,
   sizes,
   className,
+  fit = false,
   ...props
 }: ArticleImageProps & React.ImgHTMLAttributes<HTMLImageElement>) {
   const articleUrl = useContext(ArticleLinkContext);
   const imagePreviewContext = useContext(ImagePreviewContext);
+
+  // 42-9：自适应盒子（fit 关闭时 hook 内部全部短路，零开销）
+  const { containerRef, box, handleLoad: handleFitLoad } = useFittedImageBox({
+    src,
+    declaredWidth: width ? Number(width) : undefined,
+    declaredHeight: height ? Number(height) : undefined,
+    enabled: fit,
+  });
 
   // Compute proxied URLs first so we can check the cache
   const proxiedSrc = useMemo(
@@ -161,6 +178,7 @@ export const ArticleImage = memo(function ArticleImage({
 
   return (
     <img
+      ref={containerRef}
       src={recoveredSrc ?? proxiedSrc}
       srcSet={proxiedSrcset}
       sizes={sizes}
@@ -169,7 +187,10 @@ export const ArticleImage = memo(function ArticleImage({
       height={height}
       loading="lazy"
       decoding="async"
-      onLoad={handleLoad}
+      onLoad={(event) => {
+        handleFitLoad(event);
+        handleLoad();
+      }}
       onError={handleError}
       onClick={handleClick}
       className={cn(
@@ -179,6 +200,16 @@ export const ArticleImage = memo(function ArticleImage({
         imagePreviewContext && "cursor-zoom-in",
         className,
       )}
+      style={
+        box
+          ? {
+              width: `${box.width}px`,
+              height: `${box.height}px`,
+              maxWidth: "100%",
+              objectFit: "contain",
+            }
+          : undefined
+      }
       {...props}
     />
   );

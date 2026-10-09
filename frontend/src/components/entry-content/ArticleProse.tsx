@@ -29,6 +29,8 @@ interface ArticleProseProps {
   highlightContent?: string;
   /** 追加在 prose 类之后的 className（时间线展开容器传自己的边框/滚动/固定高度） */
   className?: string;
+  /** 42-9：正文图片按容器宽自适应（社交视图开启，文章视图维持 prose 原样） */
+  fitImages?: boolean;
 }
 
 export function ArticleProse({
@@ -37,6 +39,7 @@ export function ArticleProse({
   articleUrl,
   highlightContent,
   className,
+  fitImages = false,
 }: ArticleProseProps) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -75,11 +78,16 @@ export function ArticleProse({
     >
       {hasContent ? (
         hasBlocks ? (
-          <ArticleContent blocks={blocks ?? []} articleUrl={articleUrl} />
+          <ArticleContent
+            blocks={blocks ?? []}
+            articleUrl={articleUrl}
+            fitImages={fitImages}
+          />
         ) : (
           <ArticleContent
             content={normalizedContent ?? ""}
             articleUrl={articleUrl}
+            fitImages={fitImages}
           />
         )
       ) : (
