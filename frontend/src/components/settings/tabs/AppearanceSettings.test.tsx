@@ -4,8 +4,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const setFetchReadableForView = vi.fn();
 const setExpandLongForView = vi.fn();
 const setReduceMotion = vi.fn();
-const setScrollReadForView = vi.fn();
-const setScrollReadTimingForView = vi.fn();
 const setTimelineGranularityForView = vi.fn();
 const setTimelineCollapseForView = vi.fn();
 const setTimelineTimeBasisForView = vi.fn();
@@ -44,11 +42,13 @@ vi.mock("@/hooks/useAppearanceSettings", () => ({
 }));
 
 /**
- * 「滚动标已读」总开关形态：默认按 perView 跑（这样按视图覆盖的行可见），
- * 需要测 off 联动时改 scrollReadState.mode。
+ * 2026-10-09 改法 A：按视图「滚动标已读」合并成一行四档，
+ * 读写都走 useScrollReadSetting 的 perViewChoice / setPerViewChoice（不再是两个 useUISettingActions 的 setter）。
  */
 const scrollReadState = vi.hoisted(() => ({
   mode: "perView" as "off" | "on" | "perView",
+  perViewChoice: vi.fn(() => "inherit" as const),
+  setPerViewChoice: vi.fn(),
 }));
 
 vi.mock("@/hooks/useScrollReadSetting", () => ({
@@ -56,6 +56,10 @@ vi.mock("@/hooks/useScrollReadSetting", () => ({
     mode: scrollReadState.mode,
     resolveFor: () => true,
     globalOn: true,
+    perViewChoice: scrollReadState.perViewChoice,
+    setPerViewChoice: scrollReadState.setPerViewChoice,
+    overrideCount: 0,
+    anyViewEnabled: true,
   }),
 }));
 
@@ -134,8 +138,6 @@ vi.mock("@/hooks/useUISettings", async () => {
       setFetchReadableForView,
       setExpandLongForView,
       setReduceMotion,
-      setScrollReadForView,
-      setScrollReadTimingForView,
       setTimelineGranularityForView,
       setTimelineCollapseForView,
       setTimelineTimeBasisForView,
@@ -181,8 +183,8 @@ describe("AppearanceSettings 按视图设置", () => {
     setFetchReadableForView.mockClear();
     setExpandLongForView.mockClear();
     setReduceMotion.mockClear();
-    setScrollReadForView.mockClear();
-    setScrollReadTimingForView.mockClear();
+    scrollReadState.perViewChoice.mockClear();
+    scrollReadState.setPerViewChoice.mockClear();
     setTimelineGranularityForView.mockClear();
     setTimelineCollapseForView.mockClear();
     setTimelineTimeBasisForView.mockClear();
@@ -311,32 +313,28 @@ describe("AppearanceSettings 按视图设置", () => {
     }
   });
 
-  it("滚动标已读默认跟随通用", () => {
+  it("按视图「滚动标已读」一行四档，选「滚出顶部」写的是 perViewChoice", () => {
     render(<AppearanceSettings />);
 
-    const rows = screen.getAllByText("appearance_view.scroll_read");
-    expect(rows).toHaveLength(4);
-
+    // 一行四档：跟随通用 / 点开才标已读 / 滚出顶部 / 看到即已读
+    // （SegmentedControl 在这个测试里被 mock 成渲染 option.value，所以断言的是四档取值）
     const firstRow = rowOf("appearance_view.scroll_read");
-    fireEvent.click(within(firstRow).getByText("on"));
-    expect(setScrollReadForView).toHaveBeenCalledWith("article", "on");
+    for (const optionValue of ["inherit", "clickOnly", "scrollPast", "onVisible"]) {
+      expect(within(firstRow).getAllByText(optionValue).length).toBeGreaterThan(0);
+    }
+
+    fireEvent.click(within(firstRow).getByText("scrollPast"));
+    expect(scrollReadState.setPerViewChoice).toHaveBeenCalledWith(
+      "article",
+      "scrollPast",
+    );
   });
 
-  it("总开关关掉「滚动标已读」时，「已读判定」整行置灰并说明不生效", () => {
+  it("改法 A：总开关是「关」时按视图那一行照样在（不再被门控）", () => {
     scrollReadState.mode = "off";
     render(<AppearanceSettings />);
 
-    // 按视图的「滚动标已读」开关只有在 perView 模式才出现
-    expect(screen.queryAllByText("appearance_view.scroll_read")).toHaveLength(0);
-
-    // 判定行还在，但标记为不可用 + 原因
-    const row = rowOf("appearance_view.read_timing");
-    expect(row.getAttribute("aria-disabled")).toBe("true");
-    expect(
-      screen.getAllByText("appearance_view.read_timing_disabled").length,
-    ).toBeGreaterThan(0);
-
-    // 注：jsdom 不做命中测试，「点不动」是 pointer-events:none 的真实浏览器行为，
-    // 单元层只能断言 aria-disabled 与原因文案；「点不动」在 :5173 用真实鼠标验。
+    // 旧版要先去通用选「按视图单独设」才出现，现在四个视图的行常显
+    expect(screen.getAllByText("appearance_view.scroll_read")).toHaveLength(4);
   });
 });

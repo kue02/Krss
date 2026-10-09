@@ -38,8 +38,16 @@ export function GeneralSettings() {
 
   const settingsDisabled = isGeneralSettingsLoading || !generalSettings;
 
-  // 总开关的形态由 useScrollReadSetting 统一推导（没存过会按既有数据推导，行为不变）
-  const { mode: scrollReadMode } = useScrollReadSetting();
+  /**
+   * 「滚动标已读」的口径（2026-10-09 用户拍板改法 A）：
+   * 通用这一档只是**默认值**（后端 `markReadOnScroll`），按视图覆盖永远优先。
+   * 所以这里只需要三件事：默认是否开着 / 有几个视图被单独设过 / 还有没有任何视图会滚动标已读。
+   */
+  const {
+    globalOn: scrollReadGlobalOn,
+    overrideCount: scrollReadOverrideCount,
+    anyViewEnabled: scrollReadAnyEnabled,
+  } = useScrollReadSetting();
   /** 20-3：滚过的条目先别消失（默认开，见 useScrollMarkRead 的 deferRemoval） */
   const scrollReadDeferRemoval = useUISettingKey("scrollReadDeferRemoval");
 
@@ -98,18 +106,16 @@ export function GeneralSettings() {
   );
 
   /**
-   * 「滚动标已读」总开关（三态，2026-09-17 收口）：
-   * - 关 / 开 → 同时把后端那个布尔一起写掉，保证「跟随通用」与其它读者口径一致；
-   * - 按视图单独设 → 保持后端值不动（它就是各视图「跟随通用」的落点），
-   *   真正的每视图覆盖在外观 → 按视图设置里，只有选了这一档才会出现。
+   * 「滚动标已读」的默认档（2026-10-09 改法 A）：只有 关 / 开 两档 ——
+   * 它写的是**默认值**（后端那个布尔，没单独设置过的视图跟它走）；
+   * 单个视图的覆盖在 外观 → 按视图设置 里，改那边不会再动这个默认值。
    */
   const handleScrollReadModeChange = useCallback(
     async (mode: ScrollReadMode) => {
       setUISetting("scrollReadMode", mode);
       if (!generalSettings) return;
 
-      const nextBool =
-        mode === "on" ? true : mode === "off" ? false : markReadOnScroll;
+      const nextBool = mode === "on";
       if (nextBool === markReadOnScroll) return;
 
       setMarkReadOnScroll(nextBool);
@@ -196,21 +202,24 @@ export function GeneralSettings() {
             </div>
           </div>
           <SegmentedControl
-            value={scrollReadMode}
+            value={scrollReadGlobalOn ? "on" : "off"}
             onValueChange={(value) =>
               void handleScrollReadModeChange(value as ScrollReadMode)
             }
-            disabledValues={settingsDisabled ? ["off", "on", "perView"] : undefined}
+            disabledValues={settingsDisabled ? ["off", "on"] : undefined}
             options={[
               { value: "off", label: t("settings.scroll_read_off") },
               { value: "on", label: t("settings.scroll_read_on") },
-              { value: "perView", label: t("settings.scroll_read_per_view") },
             ]}
           />
         </div>
-        {scrollReadMode === "perView" && (
+        {/* 2026-10-09 改法 A：这一档不再有「按视图单独设」——单个视图在外观里直接改，
+            改了就自动生效，不用先来这里开门。有几个视图被单独设过就在下面说一句。 */}
+        {scrollReadOverrideCount > 0 && (
           <div className="mt-1 text-xs text-muted-foreground">
-            {t("settings.scroll_read_per_view_hint")}
+            {t("settings.scroll_read_per_view_count", {
+              count: scrollReadOverrideCount,
+            })}
           </div>
         )}
         {/* 20-3（用户 2026-09-18）：滚过的条目先别消失 —— 边滚边消失会把下面的条目往上顶 */}
@@ -220,9 +229,9 @@ export function GeneralSettings() {
               {t("settings.scroll_read_keep_visible")}
             </div>
             <div className="text-xs text-muted-foreground">
-              {scrollReadMode === "off"
-                ? t("settings.scroll_read_keep_visible_disabled")
-                : t("settings.scroll_read_keep_visible_description")}
+              {scrollReadAnyEnabled
+                ? t("settings.scroll_read_keep_visible_description")
+                : t("settings.scroll_read_keep_visible_disabled")}
             </div>
           </div>
           <Switch
@@ -230,7 +239,7 @@ export function GeneralSettings() {
             onCheckedChange={(checked) =>
               setUISetting("scrollReadDeferRemoval", checked)
             }
-            disabled={settingsDisabled || scrollReadMode === "off"}
+            disabled={settingsDisabled || !scrollReadAnyEnabled}
           />
         </div>
       </section>

@@ -27,12 +27,11 @@ import {
   type CardImageSize,
   type HoverMultiImageConfig,
   type QuoteStyle,
-  type ScrollReadOverride,
   type SidebarFeedAppearance,
   type UnreadStyle,
   type RadiusPreset,
 } from "@/hooks/useUISettings";
-import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
+import { useScrollReadSetting, type ScrollReadPerViewChoice } from "@/hooks/useScrollReadSetting";
 import { AccentColorPicker } from "@/components/settings/tabs/AccentColorPicker";
 import { UnreadBadgeCustomizer } from "@/components/settings/tabs/UnreadBadgeCustomizer";
 import { readingFonts } from "@/lib/reading-fonts";
@@ -180,10 +179,9 @@ export function AppearanceSettings() {
   const iconRadius = useUISettingKey("iconRadius");
   const unreadStyle = useUISettingKey("unreadStyle");
   const sidebarFeedAppearance = useUISettingKey("sidebarFeedAppearance");
-  const scrollReadByView = useUISettingKey("scrollReadByView");
-  // 「滚动标已读」总开关形态：perView 才显示下面的按视图覆盖；off 时判定项置灰
-  const { mode: scrollReadMode } = useScrollReadSetting();
-  const scrollReadTimingByView = useUISettingKey("scrollReadTimingByView");
+  // 2026-10-09 改法 A：按视图「滚动标已读」合并成一行四档 —— 四档的读写都收在 hook 里
+  const { perViewChoice: scrollReadPerViewChoice, setPerViewChoice } =
+    useScrollReadSetting();
   // 第十五批：通知视图时间线的两个按视图设置（粒度 / 折叠行数）+ 窄栏合一栏
   const timelineGranularityByView = useUISettingKey("timelineGranularityByView");
   const timelineCollapseByView = useUISettingKey("timelineCollapseByView");
@@ -203,8 +201,6 @@ export function AppearanceSettings() {
     setIconRadius,
     setUnreadStyle,
     setSidebarFeedAppearance,
-    setScrollReadForView,
-    setScrollReadTimingForView,
     setTimelineGranularityForView,
     setTimelineCollapseForView,
     setTimelineTimeBasisForView,
@@ -1145,42 +1141,27 @@ export function AppearanceSettings() {
                     ))}
                   </>
                 )}
-                {/* 按视图覆盖只在总开关选了「按视图单独设」时出现 ——
-                    否则这里能和通用里的总开关打架（用户 2026-09-17 要求收口） */}
-                {scrollReadMode === "perView" && (
-                  <SettingRow label={t("appearance_view.scroll_read")}>
-                    <SegmentedControl
-                      className="shrink-0"
-                      value={scrollReadByView[view]}
-                      onValueChange={(value) =>
-                        setScrollReadForView(view, value as ScrollReadOverride)
-                      }
-                      options={[
-                        { value: "inherit", label: t("appearance_view.inherit") },
-                        { value: "on", label: t("appearance_view.on") },
-                        { value: "off", label: t("appearance_view.off") },
-                      ]}
-                    />
-                  </SettingRow>
-                )}
-                {/* 已读判定时机：滚出顶部（默认）／看到即已读（对齐 Folo 的 useEntryMarkReadHandler）。
-                    总开关把「滚动标已读」关掉时这一项不再生效 → 置灰 + 说明原因（用户 2026-09-17 要求联动） */}
+                {/* 2026-10-09 改法 A（用户拍板）：原来两行（滚动标已读 / 已读判定）合并成一行四档 ——
+                    ① 不再要求先去通用选「按视图单独设」才显示（那一道强制取消了）；
+                    ② 不再逼用户在两个滚动时机里二选一 ——「点开才标已读」= 这个视图完全不随滚动标，
+                       只在你点开正文时标（正文一打开就会标，与这个设置无关，见 EntryContent.tsx）。
+                    四档的读写与「自动进 perView 形态」都收在 useScrollReadSetting 里。 */}
                 <SettingRow
-                  label={t("appearance_view.read_timing")}
-                  disabled={scrollReadMode === "off"}
-                  hint={
-                    scrollReadMode === "off"
-                      ? t("appearance_view.read_timing_disabled")
-                      : undefined
-                  }
+                  label={t("appearance_view.scroll_read")}
+                  hint={t("appearance_view.scroll_read_hint")}
                 >
                   <SegmentedControl
                     className="shrink-0"
-                    value={scrollReadTimingByView?.[view] ?? "scrollPast"}
+                    value={scrollReadPerViewChoice(view)}
                     onValueChange={(value) =>
-                      setScrollReadTimingForView(view, value as "scrollPast" | "onVisible")
+                      setPerViewChoice(view, value as ScrollReadPerViewChoice)
                     }
                     options={[
+                      { value: "inherit", label: t("appearance_view.inherit") },
+                      {
+                        value: "clickOnly",
+                        label: t("appearance_view.scroll_read_click_only"),
+                      },
                       { value: "scrollPast", label: t("appearance_view.timing_scroll_past") },
                       { value: "onVisible", label: t("appearance_view.timing_on_visible") },
                     ]}
