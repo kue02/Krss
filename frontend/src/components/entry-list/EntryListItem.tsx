@@ -544,7 +544,11 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                         }}
                         onTransitionEnd={() => setExpandTarget(null)}
                       >
-                        <ArticleContent content={socialBody} articleUrl={entry.url} />
+                        <ArticleContent
+                          content={socialBody}
+                          articleUrl={entry.url}
+                          fitImages
+                        />
                       </div>
 
                       {/* 显示更多：Folo 是「纯文字 + 下箭头」压在正文底部，不是一颗胶囊按钮 */}

@@ -123,6 +123,7 @@ export function EntryContentBody({
           blocks={displayBlocks}
           articleUrl={entry.url}
           highlightContent={highlightContent}
+          fitImages={isSocial}
         />
       </article>
       {scrollNode && <BackToTopButton scrollNode={scrollNode} />}
