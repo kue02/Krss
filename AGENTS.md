@@ -31,4 +31,4 @@
 - 提交规范：Conventional Commits + 简体中文标题；**只 `git add <具体路径>`**，不要 `-A`；`main` 历史只前进。
 - 迁移编号：21 过滤 / 25 视图图标 / 26 代理 / 27 MCP 已占用，新的从 28 起（与 `.hermes.md` 保持一致）。
 - 质量门：后端 `cd backend && make test && make lint`；前端 `cd frontend && bun run test`（退出码 0）+ `bunx tsc -b`。
-- 并行开工：用 git worktree，各自分支各自目录；`:8080` + 主库归主树，另一个用 `:8082` + 自己的库副本。
+- 并行开工：用 git worktree，各自分支各自目录；`:8090` + 主库归主树，另一个用 `:8082` + 自己的库副本。
