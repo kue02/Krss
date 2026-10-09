@@ -6,7 +6,7 @@ import path from "path";
 
 // 后端地址：并行开工时（另一条线占着 :8080）用 KRSS_DEV_BACKEND 指向自己的后端，例如
 //   KRSS_DEV_BACKEND=http://localhost:8082 bun run dev
-const backendOrigin = process.env.KRSS_DEV_BACKEND ?? "http://localhost:8080";
+const backendOrigin = process.env.KRSS_DEV_BACKEND ?? "http://localhost:8090";
 
 // https://vite.dev/config/
 export default defineConfig({

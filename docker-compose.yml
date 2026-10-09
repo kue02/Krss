@@ -3,7 +3,7 @@ services:
     image: ghcr.io/kue02/krss:latest
     container_name: krss
     ports:
-      - "8080:8080"
+      - "8090:8090"
     volumes:
       - ./data:/app/data
     environment:

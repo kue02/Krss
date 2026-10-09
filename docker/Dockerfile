@@ -27,12 +27,12 @@ COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh \
     && mkdir -p /app/data && chown -R krss:krss /app
 
-ENV KRSS_ADDR=:8080
+ENV KRSS_ADDR=:8090
 ENV KRSS_DATA_DIR=/app/data
 ENV KRSS_STATIC_DIR=/app/static
 ENV KRSS_LOG_LEVEL=info
 ENV TZ=Asia/Shanghai
 
-EXPOSE 8080
+EXPOSE 8090
 ENTRYPOINT ["entrypoint.sh"]
 CMD ["./krss-server"]
