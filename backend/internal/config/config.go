@@ -36,7 +36,7 @@ type Config struct {
 func Load() Config {
 	addr := os.Getenv("KRSS_ADDR")
 	if addr == "" {
-		addr = ":8080"
+		addr = ":8090"
 	}
 	dataDir := os.Getenv("KRSS_DATA_DIR")
 	if dataDir == "" {
