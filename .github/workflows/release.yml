@@ -182,7 +182,9 @@ jobs:
         env:
           # 用 gh CLI 必须显式给 token：原 action 会自己注入，run 步骤不会
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_NOTES_PATH: docs/releases/${{ steps.version.outputs.version }}.md
+          # 文件名带 v 前缀（docs/releases/v1.1.1.md），而 version 输出已剥掉 v
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_NOTES_PATH: docs/releases/v${RELEASE_VERSION}.md
         run: |
           if [ -s "$RELEASE_NOTES_PATH" ]; then
             # 人工撰写的分类更新说明（docs/releases/vX.Y.Z.md）；缺失时回落到自动生成
