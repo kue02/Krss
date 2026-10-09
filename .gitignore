@@ -15,8 +15,10 @@ data/
 *.db-wal
 *.opml
 
-# ── 开发文档与参照（本地用，不发版）─────────────────────────────
+# ── 开发文档与参照（本地用，不发版）──────────────────────────────
 docs/dev/
+# 例外：docs/releases/ 要入库 —— 里面是人工撰写的版本更新说明，GitHub Release 直接读它
+!docs/releases/
 .worktrees/
 docs/references/
 references/

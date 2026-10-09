@@ -179,6 +179,20 @@ jobs:
           docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ steps.version.outputs.image_name }}:${{ steps.version.outputs.version }}
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
-        with:
-          generate_release_notes: true
+        env:
+          # 用 gh CLI 必须显式给 token：原 action 会自己注入，run 步骤不会
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_NOTES_PATH: docs/releases/${{ steps.version.outputs.version }}.md
+        run: |
+          if [ -s "$RELEASE_NOTES_PATH" ]; then
+            # 人工撰写的分类更新说明（docs/releases/vX.Y.Z.md）；缺失时回落到自动生成
+            gh release create "$GITHUB_REF_NAME" \
+              --repo "${{ github.repository }}" \
+              --title "$GITHUB_REF_NAME" \
+              --notes-file "$RELEASE_NOTES_PATH"
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --repo "${{ github.repository }}" \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes
+          fi
