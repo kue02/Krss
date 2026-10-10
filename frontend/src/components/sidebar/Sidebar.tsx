@@ -49,7 +49,6 @@ import { useFilterViewStore } from "@/stores/filter-view-store";
 import { useSettingsModalStore, useProfileModalStore } from "@/stores/settings-modal-store";
 import { shortcutsHelp } from "@/stores/shortcuts-store";
 import { feedItemStyles, sidebarItemIconStyles } from "./styles";
-import { EditFeedDialog } from "@/components/settings/tabs/EditFeedDialog";
 import { RenameFolderDialog } from "./RenameFolderDialog";
 import { CreateFolderDialog } from "./CreateFolderDialog";
 import { FolderOverridesDialog } from "./FolderOverridesDialog";
@@ -58,12 +57,8 @@ import {
   useDeleteFolder,
   useUpdateFolderType,
 } from "@/hooks/useFolders";
-import {
-  useFeeds,
-  useDeleteFeed,
-  useUpdateFeed,
-  useUpdateFeedType,
-} from "@/hooks/useFeeds";
+import { useFeeds } from "@/hooks/useFeeds";
+import { useFeedMenuActions } from "@/hooks/useFeedMenuActions";
 import { useUnreadCounts, useStarredCount } from "@/hooks/useEntries";
 import {
   useAllCategoriesOpen,
@@ -157,7 +152,6 @@ export function Sidebar({
   const { user, logout } = useAuth();
   const setIsSettingsOpen = useSettingsModalStore((state) => state.setOpen);
   const setIsProfileOpen = useProfileModalStore((state) => state.setOpen);
-  const [editingFeed, setEditingFeed] = useState<Feed | null>(null);
   const [renamingFolder, setRenamingFolder] = useState<Folder | null>(null);
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
   /** 分类批量设置：非 null 表示正在给这个分类批量设置订阅 */
@@ -205,11 +199,19 @@ export function Sidebar({
 
   const { data: allFolders = [] } = useFolders();
   const { data: allFeeds = [] } = useFeeds();
-  const { mutate: deleteFeed } = useDeleteFeed();
   const { mutate: deleteFolder } = useDeleteFolder();
-  const { mutate: updateFeed } = useUpdateFeed();
-  const { mutate: updateFeedType } = useUpdateFeedType();
   const { mutate: updateFolderType } = useUpdateFolderType();
+  /**
+   * 订阅右键菜单行为 —— 唯一一份实现（`useFeedMenuActions`），第二栏条目菜单
+   * 调同一份（卡 B）。这里只管「行为入口」，弹窗本体照旧挂在下面。
+   */
+  const {
+    onRefresh: handleRefreshFeed,
+    onEdit: handleEditFeed,
+    onDelete: handleDeleteFeed,
+    onMoveToFolder: handleMoveToFolder,
+    onChangeType: handleChangeFeedType,
+  } = useFeedMenuActions();
 
   // Filter by content type - use animatedContentType to keep content in sync with animation
   const folders = useMemo(
@@ -223,55 +225,11 @@ export function Sidebar({
 
   const { data: unreadCountsData } = useUnreadCounts();
 
-  // Handlers for menu actions
-  const handleEditFeed = useCallback(
-    (feedId: string) => {
-      const feed = allFeeds.find((f) => f.id === feedId);
-      if (feed) setEditingFeed(feed);
-    },
-    [allFeeds],
-  );
-
-  const handleDeleteFeed = useCallback(
-    (feedId: string) => {
-      deleteFeed(feedId);
-    },
-    [deleteFeed],
-  );
-
   const handleDeleteFolder = useCallback(
     (folderId: string) => {
       deleteFolder(folderId);
     },
     [deleteFolder],
-  );
-
-  const handleMoveToFolder = useCallback(
-    (feedId: string, folderId: string | null) => {
-      const feed = allFeeds.find((f) => f.id === feedId);
-      if (!feed) return;
-
-      if (folderId !== null) {
-        const folder = folders.find((f) => f.id === folderId);
-        if (!folder || folder.type !== feed.type) {
-          return;
-        }
-      }
-
-      updateFeed({
-        id: feedId,
-        title: feed.title,
-        folderId: folderId ?? undefined,
-      });
-    },
-    [allFeeds, folders, updateFeed],
-  );
-
-  const handleChangeFeedType = useCallback(
-    (feedId: string, type: ContentType) => {
-      updateFeedType({ id: feedId, type });
-    },
-    [updateFeedType],
   );
 
   const handleChangeFolderType = useCallback(
@@ -490,24 +448,6 @@ export function Sidebar({
       void handleRefreshScope(ids, "view");
     },
     [feeds, handleRefreshScope],
-  );
-
-  // 侧栏右键「刷新」：只刷这一个源
-  const handleRefreshFeed = useCallback(
-    async (feedId: string) => {
-      try {
-        await refreshFeeds([feedId]);
-        queryClient.invalidateQueries({ queryKey: ["entries"] });
-        queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
-        queryClient.invalidateQueries({ queryKey: ["feeds"] });
-        // 12-10：立刻拉一次刷新状态，中栏进度条与结果弹框不用等下一轮轮询
-        queryClient.invalidateQueries({ queryKey: ["refreshStatus"] });
-        showToast(t("entry.refreshing_n_feeds", { count: 1 }));
-      } catch {
-        showToast(t("entry.refresh_failed"));
-      }
-    },
-    [queryClient, t],
   );
 
   // 文件夹重命名（右键菜单）
@@ -872,13 +812,9 @@ export function Sidebar({
           .map((feed) => feed.id)}
       />
 
-      <EditFeedDialog
-        feed={editingFeed}
-        open={editingFeed !== null}
-        onOpenChange={(open) => {
-          if (!open) setEditingFeed(null);
-        }}
-      />
+      {/* 编辑订阅弹窗已搬到 App 顶层（与设置弹窗平级，见 App.tsx）——
+          移动端 Sidebar 装在 Sheet 里会随手势卸载，弹窗挂里面会跟着消失。
+          开关走 editing-feed-store，第一栏与第二栏都能唤起。 */}
     </div>
   );
 }

@@ -1,16 +1,9 @@
 import { useState, useCallback, useMemo, useRef } from "react";
 import { Ripple } from "m3-ripple";
-import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import {
   ContextMenu,
   ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuLabel,
-  ContextMenuSeparator,
-  ContextMenuSub,
-  ContextMenuSubContent,
-  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import {
@@ -18,28 +11,14 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { BoltIcon, RssIcon, ErrorIcon } from "@/components/ui/icons";
-import { CONTENT_TYPE_ORDER, contentTypeMeta } from "@/lib/content-type-meta";
-import { FeedAvatar } from "@/components/ui/feed-avatar";
-import {
-  Copy,
-  ExternalLink,
-  FolderInput,
-  Globe,
-  Pencil,
-  RefreshCw,
-  Tags,
-  Trash2,
-} from "lucide-react";
+import { RssIcon, ErrorIcon } from "@/components/ui/icons";
+import { FeedContextMenuItems } from "@/components/feed/FeedContextMenuItems";
 import { ListBox, Label, Description } from "@heroui/react";
 import { useContextMenu } from "@/hooks/useContextMenu";
 import { resolveFeedSiteUrl } from "@/lib/feed-site";
 import { useUISettingKey } from "@/hooks/useUISettings";
-import { copyToClipboard } from "@/stores/toast-store";
-import { queryClient } from "@/lib/queryClient";
-import { openFilterEditorForFeed } from "@/stores/filter-editor-store";
 import { feedItemStyles, sidebarItemIconStyles, feedIconImageStyles } from "./styles";
-import type { ContentType, Feed, Folder } from "@/types/api";
+import type { ContentType, Folder } from "@/types/api";
 
 interface FeedItemProps {
   name: string;
@@ -123,7 +102,6 @@ export function FeedItem({
   onMoveToFolder,
   onChangeType,
 }: FeedItemProps) {
-  const { t } = useTranslation();
   // 「前往主站 / 复制主站地址」用（11-11）：优先订阅元数据，其次从 RSSHub 路由反解；都没有就藏起这两项
   const siteUrlResolved = useMemo(
     () => resolveFeedSiteUrl({ siteUrl, url: feedUrl }),
@@ -162,30 +140,6 @@ export function FeedItem({
   const contextMenuProps = useContextMenu({
     onContextMenu: handleContextMenu,
   });
-
-  /**
-   * 「为此订阅新建规则」：打开规则编辑器抽屉并预填 scope = 这个订阅。
-   *
-   * 编辑器只用到 feed.id / feed.title（见 stores/filter-editor-store），而 Sidebar 传下来的是
-   * 拆开的 name / feedId / feedUrl，所以先从 feeds 缓存里取完整对象（图标、类型等字段齐全），
-   * 缓存里还没有这个订阅时再按 props 组装一个够用的。
-   */
-  const handleNewRuleFromFeed = useCallback(() => {
-    const cached = queryClient
-      .getQueryData<Feed[]>(["feeds"])
-      ?.find((feed) => feed.id === feedId);
-
-    openFilterEditorForFeed(
-      cached ?? {
-        id: feedId,
-        title: name,
-        url: feedUrl ?? "",
-        type: "article",
-        createdAt: "",
-        updatedAt: "",
-      },
-    );
-  }, [feedId, feedUrl, name]);
 
   /** 行内容（图标 + 名称/源站 + 错误提示 + 未读数）：两套根共用 */
   const rowContent = (
@@ -269,122 +223,34 @@ export function FeedItem({
     </>
   );
 
-  /** 右键菜单内容：两套根共用 */
+  /**
+   * 右键菜单内容：两套根共用 —— 呈现与行为都收口在共享的 `FeedContextMenuItems`
+   *（卡 B：第二栏条目菜单渲染同一份）。外观/图标/文案/可用性条件一字不动，
+   * 只是实现从这里搬出去。
+   *
+   * 注意：这里按 props 组装一个够用的 Feed 传进去（图标、类型、siteUrl 等字段齐全），
+   * 「为此订阅新建规则」点开时共享组件会先从 feeds 缓存里取完整对象。
+   */
   const rowMenu = (
       <ContextMenuContent>
-        {/* 标题行：说清这是「哪个订阅」的菜单 —— Nextflux 的右键菜单顶部也有这么一行，
-            这里额外带上 favicon（用户要求：弹出框要有标题、项要有图标） */}
-        <ContextMenuLabel className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-medium text-muted-foreground">
-          <FeedAvatar iconPath={iconPath} size={16} rounded="circle" />
-          <span className="min-w-0 flex-1 truncate">{name}</span>
-        </ContextMenuLabel>
-        <ContextMenuSeparator />
-        {onRefresh && (
-          <ContextMenuItem onClick={() => onRefresh(feedId)}>
-            <RefreshCw className="size-4 shrink-0 text-muted-foreground" />
-            {t("actions.refresh")}
-          </ContextMenuItem>
-        )}
-        {onEdit && (
-          <ContextMenuItem onClick={() => onEdit(feedId)}>
-            <Pencil className="size-4 shrink-0 text-muted-foreground" />
-            {t("actions.edit")}
-          </ContextMenuItem>
-        )}
-        {onMoveToFolder && (
-          <ContextMenuSub>
-            <ContextMenuSubTrigger>
-              <FolderInput className="size-4 shrink-0 text-muted-foreground" />
-              {t("actions.move_to_folder")}
-            </ContextMenuSubTrigger>
-            <ContextMenuSubContent>
-              <ContextMenuItem onClick={() => onMoveToFolder(feedId, null)}>
-                <FolderInput className="size-4 shrink-0 text-muted-foreground" />
-                {t("actions.no_folder")}
-              </ContextMenuItem>
-              {folders.map((folder) => (
-                <ContextMenuItem
-                  key={folder.id}
-                  onClick={() => onMoveToFolder(feedId, folder.id)}
-                >
-                  {folder.name}
-                </ContextMenuItem>
-              ))}
-            </ContextMenuSubContent>
-          </ContextMenuSub>
-        )}
-        {onChangeType && (
-          <ContextMenuSub>
-            <ContextMenuSubTrigger>
-              <Tags className="size-4 shrink-0 text-muted-foreground" />
-              {t("actions.change_type")}
-            </ContextMenuSubTrigger>
-            <ContextMenuSubContent>
-              {/* 每个类型带自己的视图图标（与中栏切换器同一套映射，11-6） */}
-              {CONTENT_TYPE_ORDER.map((type) => {
-                const { icon: Icon, labelKey } = contentTypeMeta[type];
-                return (
-                  <ContextMenuItem
-                    key={type}
-                    onClick={() => onChangeType(feedId, type)}
-                  >
-                    <Icon className="size-4 shrink-0 text-muted-foreground" />
-                    {t(labelKey)}
-                  </ContextMenuItem>
-                );
-              })}
-            </ContextMenuSubContent>
-          </ContextMenuSub>
-        )}
-        {feedUrl && (
-          <ContextMenuItem
-            onClick={() => {
-              void copyToClipboard(feedUrl, t("actions.copied_feed_url"), t("actions.copy_failed"));
-            }}
-          >
-            <Copy className="size-4 shrink-0 text-muted-foreground" />
-            {t("actions.copy_feed_url")}
-          </ContextMenuItem>
-        )}
-        {/* 主站（用户 11-11）：能拿到主页地址才显示，拿不到就藏起来，不给假地址 */}
-        {siteUrlResolved && (
-          <>
-            <ContextMenuItem
-              onClick={() => {
-                window.open(siteUrlResolved, "_blank", "noopener,noreferrer");
-              }}
-            >
-              <ExternalLink className="size-4 shrink-0 text-muted-foreground" />
-              {t("actions.open_site")}
-            </ContextMenuItem>
-            <ContextMenuItem
-              onClick={() => {
-                void copyToClipboard(siteUrlResolved, t("actions.copied_site_url"), t("actions.copy_failed"));
-              }}
-            >
-              <Globe className="size-4 shrink-0 text-muted-foreground" />
-              {t("actions.copy_site_url")}
-            </ContextMenuItem>
-          </>
-        )}
-        {/* 规则入口与上面的订阅操作同组；删除是破坏性操作，仍单独分组压在下面 */}
-        <ContextMenuItem onClick={handleNewRuleFromFeed}>
-          <BoltIcon className="size-4 shrink-0 text-muted-foreground" />
-          {t("automation.rule_from_feed")}
-        </ContextMenuItem>
-        {onDelete && (
-          <>
-            {/* 删除是破坏性操作：单独一组，避免误点 */}
-            <ContextMenuSeparator />
-            <ContextMenuItem
-              className="text-destructive focus:text-destructive"
-              onClick={() => onDelete(feedId)}
-            >
-              <Trash2 className="size-4 shrink-0" />
-              {t("actions.delete")}
-            </ContextMenuItem>
-          </>
-        )}
+        <FeedContextMenuItems
+          feed={{
+            id: feedId,
+            title: name,
+            url: feedUrl ?? "",
+            siteUrl,
+            type: "article",
+            createdAt: "",
+            updatedAt: "",
+          }}
+          folders={folders}
+          label={name}
+          onRefresh={onRefresh}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onMoveToFolder={onMoveToFolder}
+          onChangeType={onChangeType}
+        />
       </ContextMenuContent>
   );
 
