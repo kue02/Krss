@@ -202,13 +202,18 @@ const ArticleContentBlockRenderer = memo(function ArticleContentBlockRenderer({
  */
 export function ArticleContent(props: ArticleContentProps) {
   const { articleUrl, className, fitImages = false } = props;
+  // 拆出「正则真正吃到的输入」。原来直接依赖 [props, articleUrl]：props 是父组件
+  // 每次渲染新建的对象 ⇒ 依赖永远不等 ⇒ 每帧都把整篇正文的正则扫描重跑一遍
+  // （实测文章视图里父组件随阅读进度条等状态重渲染，这条就在热路径上）。
+  const content = props.content;
+  const blocks = props.blocks;
   const openImagePreview = useImagePreviewStore((s) => s.open);
 
   // Extract all images from content upfront
   const images = useMemo(() => {
-    if ("blocks" in props && props.blocks) {
+    if (blocks) {
       const allImages: string[] = [];
-      for (const block of props.blocks) {
+      for (const block of blocks) {
         const blockImages = extractImagesFromHtml(block.html, articleUrl);
         for (const img of blockImages) {
           if (!allImages.includes(img)) {
@@ -217,11 +222,11 @@ export function ArticleContent(props: ArticleContentProps) {
         }
       }
       return allImages;
-    } else if ("content" in props && props.content) {
-      return extractImagesFromHtml(props.content, articleUrl);
+    } else if (content) {
+      return extractImagesFromHtml(content, articleUrl);
     }
     return [];
-  }, [props, articleUrl]);
+  }, [content, blocks, articleUrl]);
 
   const openPreview = useCallback(
     (src: string) => {
