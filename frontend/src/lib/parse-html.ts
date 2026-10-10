@@ -9,6 +9,7 @@ import rehypeStringify from "rehype-stringify";
 import { unified } from "unified";
 import { visit } from "unist-util-visit";
 import { NON_CONTENT_TAG_NAMES } from "./html-content-tags";
+import { rehypeLinkifyBareUrls } from "./rehype-linkify";
 
 export type ParseHtmlOptions = {
   components?: Components;
@@ -163,6 +164,9 @@ export function parseHtml(content: string, options?: ParseHtmlOptions) {
     .use(rehypeSanitize, rehypeSchema)
     .use(rehypeEmojiImages)
     .use(rehypeTrimEndBrElement)
+    // 45 批：裸 URL 链接化。必须排在 sanitize 之后 —— sanitize 按白名单剥属性，
+    // 前置生成 <a href> 会被剥掉；后置生成的才活得下来（见 rehype-linkify.ts 注释）
+    .use(rehypeLinkifyBareUrls)
     .use(rehypeStringify);
 
   // Parse and process the HTML
