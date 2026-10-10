@@ -182,16 +182,19 @@ jobs:
         env:
           # 用 gh CLI 必须显式给 token：原 action 会自己注入，run 步骤不会
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # 文件名带 v 前缀（docs/releases/v1.1.1.md），而 version 输出已剥掉 v
-          RELEASE_VERSION: ${{ steps.version.outputs.version }}
-          RELEASE_NOTES_PATH: docs/releases/v${RELEASE_VERSION}.md
         run: |
-          if [ -s "$RELEASE_NOTES_PATH" ]; then
+          # 路径在 shell 里拼：写在 env 值里的 `${VAR}` 既不会被 Actions 展开、
+          # bash 也不会递归展开（2026-10-10 v1.1.2 踩过 —— 路径永远匹配不到，
+          # 于是每次都回落到自动生成的提交历史）。
+          # 文件名带 v 前缀（docs/releases/v1.1.1.md），而 version 输出已剥掉 v。
+          VERSION="${{ steps.version.outputs.version }}"
+          NOTES="docs/releases/v${VERSION}.md"
+          if [ -s "$NOTES" ]; then
             # 人工撰写的分类更新说明（docs/releases/vX.Y.Z.md）；缺失时回落到自动生成
             gh release create "$GITHUB_REF_NAME" \
               --repo "${{ github.repository }}" \
               --title "$GITHUB_REF_NAME" \
-              --notes-file "$RELEASE_NOTES_PATH"
+              --notes-file "$NOTES"
           else
             gh release create "$GITHUB_REF_NAME" \
               --repo "${{ github.repository }}" \
