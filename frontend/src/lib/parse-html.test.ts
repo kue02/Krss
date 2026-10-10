@@ -65,6 +65,67 @@ describe("parse-html", () => {
     });
   });
 
+  describe("bare URL linkify (45)", () => {
+    it("把正文里的裸 URL 变成 <a>", () => {
+      const result = parseHtml(
+        "<p>看这个 https://github.com/WizisCool/oh-my-cpa 项目</p>",
+      );
+      const output = hastToHtml(result.hastTree);
+      expect(output).toContain('<a href="https://github.com/WizisCool/oh-my-cpa">');
+      expect(output).toContain("</a>");
+    });
+
+    it("报障条目原样：中文 + <br> + 裸 URL + <br> + <img>", () => {
+      const html =
+        '这是啥，外加一个可视化管理控制台。<br><br>https://github.com/WizisCool/oh-my-cpa<br><img width="2048" height="1399" src="https://pbs.twimg.com/media/HULC8jJaYAA_USP?format=jpg&amp;name=orig" referrerpolicy="no-referrer">';
+      const output = hastToHtml(parseHtml(html).hastTree);
+      expect(output).toContain('<a href="https://github.com/WizisCool/oh-my-cpa">');
+      // 图片必须没被插件搞坏
+      expect(output).toContain("<img");
+      expect(output).toContain("pbs.twimg.com/media/HULC8jJaYAA_USP");
+    });
+
+    it("尾标点不进 href，但留在链接外面", () => {
+      const output = hastToHtml(
+        parseHtml("<p>详见 https://www.appinn.com/eggs-26917/，谢谢。</p>").hastTree,
+      );
+      expect(output).toContain('<a href="https://www.appinn.com/eggs-26917/">');
+      expect(output).not.toContain("26917/，谢谢</a>");
+    });
+
+    it("已有 <a> 的正文不被重复包装（href 不变、只有一个 a 标签）", () => {
+      const html = '<p>见 <a href="https://a.com/x">https://a.com/x</a> 完</p>';
+      const output = hastToHtml(parseHtml(html).hastTree);
+      // 上游已经把链接文本包成 a 了：结果里应当还是**一个** a，不是两个
+      expect(output.match(/<a /g)).toHaveLength(1);
+      expect(output).toContain('href="https://a.com/x"');
+    });
+
+    it("<code>/<pre> 里的 URL 不链接化", () => {
+      const output = hastToHtml(
+        parseHtml("<pre><code>curl https://a.com/x</code></pre>").hastTree,
+      );
+      expect(output).not.toContain("<a ");
+      expect(output).toContain("curl https://a.com/x");
+    });
+
+    it("单个文本节点里有多个 URL 时全部链接化", () => {
+      const output = hastToHtml(
+        parseHtml("<p>甲 https://a.com/x 乙 https://b.dev/y</p>").hastTree,
+      );
+      const hrefs = [...output.matchAll(/href="([^"]+)"/g)].map((m) => m[1]);
+      expect(hrefs).toEqual(["https://a.com/x", "https://b.dev/y"]);
+      expect(output).toContain("甲");
+      expect(output).toContain("乙");
+    });
+
+    it("不上 scheme 的裸域名不猜（保持纯文本）", () => {
+      const output = hastToHtml(parseHtml("<p>访问 example.com 查看</p>").hastTree);
+      expect(output).not.toContain("<a ");
+      expect(output).toContain("example.com");
+    });
+  });
+
   describe("emoji image conversion", () => {
     it("should convert WordPress wp-smiley emoji image to native emoji", () => {
       const html =
