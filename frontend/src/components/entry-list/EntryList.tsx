@@ -11,6 +11,8 @@ import { useTranslation } from "react-i18next";
 import { useEntriesInfinite, useUnreadCounts, useMarkManyAsRead } from "@/hooks/useEntries";
 import { AlertDialog, Button } from "@heroui/react";
 import { useFeeds } from "@/hooks/useFeeds";
+import { useGeneralSettings } from "@/hooks/useGeneralSettings";
+import { useEntryPrefetch } from "@/hooks/useEntryPrefetch";
 import { useRefreshStatus } from "@/hooks/useRefreshStatus";
 import { queryClient } from "@/lib/queryClient";
 import { getRefreshStatus, refreshAllFeeds, refreshFeeds } from "@/api";
@@ -379,6 +381,14 @@ export function EntryList({
   >(null);
   const fetchReadableByView = useUISettingKey("fetchReadableByView");
   const expandLongByView = useUISettingKey("expandLongByView");
+  /**
+   * 进视口预载（用户 2026-10-10 原话）：订阅配了阅读模式 / 摘要 / 翻译的条目
+   * 一出现在列表视口内就后台跑，点开时命中后端缓存 ⇒ 打开即出。
+   * 关掉 = 回到今天「点开才发起请求」的行为。
+   */
+  const entryPrefetchEnabled = useUISettingKey("entryPrefetch") !== false;
+  const entryPrefetchConcurrency =
+    useUISettingKey("entryPrefetchConcurrency") ?? 3;
   // 「缺全文时自动抓取」只在文章类开放（设置里也只为文章渲染这一行）：
   // 实测对社交链接抓回的是 X 未登录落地页，比源内容还差。
   // 这里同时挡住存量设置里可能残留的 social=true。
@@ -485,6 +495,8 @@ export function EntryList({
     return map;
   }, [folders]);
 
+  const { data: generalSettings } = useGeneralSettings();
+
   /**
    * 22-3：渲染前把「已读但先别消失」的条目插回来。
    *
@@ -504,6 +516,28 @@ export function EntryList({
       mergeDeferredRemovals(flattenUniqueEntries(data?.pages)),
     [data, deferredRemovalVersion],
   );
+
+  /**
+   * 进视口预载：观察器挂在本列表的滚动容器上（root 与 `scroll-surface` 同一口径，
+   * 手机端是文档滚动 ⇒ root=null），条目行带 `data-entry-id`，命中就入队。
+   * 判定用的三态口径由 `entry-prefetch-plan` 照抄正文页，读写的位置也全是
+   * 正文页会读的地方（单条缓存 / 后端 AI 缓存 / translation-store）。
+   */
+  useEntryPrefetch({
+    entries,
+    feedsById: feedsMap,
+    context: {
+      autoReadability: generalSettings?.autoReadability ?? false,
+      autoSummary: aiSettings?.autoSummary ?? false,
+      autoTranslate: aiSettings?.autoTranslate ?? false,
+      targetLanguage,
+    },
+    intersectionRoot: scrollSurface.getIntersectionRoot(),
+    contentRootRef: containerRef,
+    enabled: entryPrefetchEnabled && isActive,
+    resetKey: scrollKey,
+    concurrency: entryPrefetchConcurrency,
+  });
 
   // 24-5：右键「标记上方为已读」—— 把这条之上的未读一次标掉。
   // 与菜单里「标为已读」同语义（直接写库、不推迟摘除），上面被标掉的当场消失。
