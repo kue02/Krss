@@ -9,6 +9,7 @@
 import type { Entry, Feed } from "@/types/api";
 import { needsTranslation } from "@/lib/language-detect";
 import { stripHtml } from "@/lib/html-utils";
+import { resolveEntryAutoTranslate } from "@/lib/auto-translate";
 import type { PrefetchTask } from "@/services/prefetch-queue";
 
 /** 三态的生效上下文（取自 useGeneralSettings / useAISettings） */
@@ -33,10 +34,9 @@ export interface PrefetchPlan {
  * 一条条目最终生效的三态。**口径照抄正文页**（`EntryContent.tsx:91-107`）：
  * - 阅读模式：订阅级 `readerMode` 覆盖 > 全局 `autoReadability`
  * - 摘要：条目级 `autoSummary`（规则动作 summarize 打的）最大 > 订阅级 > AI 全局
- * - 翻译：条目级 `autoTranslate` > AI 全局
- *   （注意正文页这一支没看订阅级 —— 订阅级的 autoTranslate 服务于**列表**的标题/摘要
- *   批量翻译（`EntryList.tsx` 的 `isAutoTranslateEnabled`），不是正文。
- *   预载必须跟正文页一致，否则会出现「预载了正文页却不用」的错位。）
+ * - 翻译：条目级 `autoTranslate` > 订阅级 > AI 全局（与摘要同一口径，
+ *   走 `lib/auto-translate.ts` 唯一一份解析器 —— 订阅级 2026-10-10 起也管正文了，
+ *   用户拍板「配置了翻译的跟配置了摘要的一样」）
  */
 export function resolvePrefetchPlan(
   entry: Pick<Entry, "autoSummary" | "autoTranslate">,
@@ -48,7 +48,12 @@ export function resolvePrefetchPlan(
     autoSummary: entry.autoSummary
       ? true
       : (feed?.autoSummary ?? context.autoSummary),
-    autoTranslate: entry.autoTranslate ?? context.autoTranslate,
+    // 翻译与摘要同一口径（条目级 > 订阅级 > 全局），走唯一一份解析器
+    autoTranslate: resolveEntryAutoTranslate({
+      entry,
+      feed,
+      aiSettings: context,
+    }),
   };
 }
 
