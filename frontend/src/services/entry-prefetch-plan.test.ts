@@ -92,16 +92,24 @@ describe("resolvePrefetchPlan", () => {
     ).toBe(false);
   });
 
-  it("翻译：条目级 > AI 全局；**不看**订阅级（那是列表标题/摘要的批量翻译）", () => {
+  it("翻译：条目级 > 订阅级 > AI 全局（与摘要同一口径）", () => {
     expect(
       resolvePrefetchPlan(entry({ autoTranslate: true }), undefined, ctx()).autoTranslate,
     ).toBe(true);
     expect(
       resolvePrefetchPlan(entry(), undefined, ctx({ autoTranslate: true })).autoTranslate,
     ).toBe(true);
-    // 订阅级 autoTranslate=true 但全局 false ⇒ 预载不跑（正文页也不会自动译）
+    // 订阅级 true：正文页现在也翻（用户 2026-10-10 拍板），预载必须跟着翻
     expect(
       resolvePrefetchPlan(entry(), feed({ autoTranslate: true }), ctx()).autoTranslate,
+    ).toBe(true);
+    // 订阅级 false 压过全局 true
+    expect(
+      resolvePrefetchPlan(
+        entry(),
+        feed({ autoTranslate: false }),
+        ctx({ autoTranslate: true }),
+      ).autoTranslate,
     ).toBe(false);
   });
 

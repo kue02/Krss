@@ -21,6 +21,7 @@ import { OriginalSiteView } from "./OriginalSiteView";
 import { ReadingProgressBar } from "./ReadingProgressBar";
 import { deferUnreadRemovals } from "@/components/entry-list/deferred-removal";
 import { isPlainKey, isTypingTarget } from "@/lib/keyboard";
+import { resolveEntryAutoTranslate } from "@/lib/auto-translate";
 import { cn } from "@/lib/utils";
 import type { ContentType } from "@/types/api";
 
@@ -88,10 +89,14 @@ export function EntryContent({
   // 自动「打开即已读」每篇文章只做一次：否则手动切回未读（快捷键 m）会被立刻改回已读
   const autoMarkedEntryRef = useRef<string | null>(null);
 
-  const autoTranslateRule = entry?.autoTranslate ?? false;
-  const autoTranslate = autoTranslateRule || (aiSettings?.autoTranslate ?? false);
-  const targetLanguage = aiSettings?.summaryLanguage ?? "zh-CN";
   const { data: feeds = [] } = useFeeds();
+  // #5/#8 订阅级覆盖 + 条目级规则标记，口径与 autoSummary 对齐（唯一解析器）
+  const autoTranslate = resolveEntryAutoTranslate({
+    entry,
+    feed: feeds.find((f) => f.id === entry?.feedId),
+    aiSettings,
+  });
+  const targetLanguage = aiSettings?.summaryLanguage ?? "zh-CN";
   // 订阅级覆盖优先（#8）：这个源单独设过「阅读模式 / 原文」就听它的，否则跟随全局
   const feedReaderMode = entry
     ? feeds.find((feed) => feed.id === entry.feedId)?.readerMode
