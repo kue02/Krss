@@ -200,6 +200,13 @@ interface UISettings {
   entryLineHeight: number;
   /** 社交媒体视图里，条目正文过短（只给摘要）时是否自动抓正文 */
   fetchReadableByView: ViewFlags;
+  /**
+   * 条目进列表视口就后台预载（阅读模式正文 / 摘要 / 翻译）—— 相当于打开路径的提前量。
+   * 关掉 = 回到「点开才发起请求」的行为。默认开。
+   */
+  entryPrefetch: boolean;
+  /** 预载并发上限（1–5，默认 3）；一屏几十条不能同时打出去 */
+  entryPrefetchConcurrency: number;
   /** 社交媒体视图里，长贴是否默认展开（不折叠） */
   expandLongByView: ViewFlags;
   /**
@@ -507,6 +514,9 @@ export const defaultUISettings: UISettings = {
     notification: false,
     social: false,
   },
+  // 进视口预载：默认开（用户 2026-10-10 原话「订阅条目出现在视口内时后台批量执行」）
+  entryPrefetch: true,
+  entryPrefetchConcurrency: 3,
   expandLongByView: {
     article: false,
     picture: false,
@@ -852,6 +862,19 @@ export function useUISettingActions() {
     [],
   );
 
+  /** 进视口预载总开关（关掉 = 回到「点开才发起请求」） */
+  const setEntryPrefetch = useCallback((enabled: boolean) => {
+    setUISetting("entryPrefetch", enabled);
+  }, []);
+
+  /** 预载并发上限（1–5）；面板上只给固定几档，不做自由输入 */
+  const setEntryPrefetchConcurrency = useCallback((value: number) => {
+    setUISetting(
+      "entryPrefetchConcurrency",
+      Math.min(5, Math.max(1, Math.round(value))),
+    );
+  }, []);
+
   const setScrollReadForView = useCallback(
     (view: ContentType, value: ScrollReadOverride) => {
       setUISetting("scrollReadByView", {
@@ -941,6 +964,8 @@ export function useUISettingActions() {
     setEntryFontSize,
     setEntryLineHeight,
     setFetchReadableForView,
+    setEntryPrefetch,
+    setEntryPrefetchConcurrency,
     setExpandLongForView,
     setSplitterVisibleForView,
     setReduceMotion,
