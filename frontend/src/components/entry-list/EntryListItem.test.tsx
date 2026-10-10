@@ -46,6 +46,23 @@ vi.mock("@/stores/translation-store", () => ({
   ) => selector({ getTranslation: () => undefined }),
 }));
 
+// 卡 B：订阅组行为（`useFeedMenuActions`）走 stub ——
+// 这里只验证「条目菜单里出现订阅组 / 无 feed 时不渲染」，行为本身由共享组件的单测覆盖。
+// 注：必须 mock，否则 hook 顶层的 useQueryClient 在无 Provider 的测试里直接抛错。
+const { feedMenuActions } = vi.hoisted(() => ({
+  feedMenuActions: {
+    onRefresh: vi.fn(),
+    onEdit: vi.fn(),
+    onDelete: vi.fn(),
+    onMoveToFolder: vi.fn(),
+    onChangeType: vi.fn(),
+  },
+}));
+
+vi.mock("@/hooks/useFeedMenuActions", () => ({
+  useFeedMenuActions: () => ({ ...feedMenuActions, folders: [] }),
+}));
+
 const entry: Entry = {
   id: "entry-1",
   feedId: "feed-1",
@@ -385,6 +402,94 @@ describe("EntryListItem", () => {
       );
 
       expect(screen.getByText("automation.muted_badge")).toBeTruthy();
+    });
+  });
+
+  describe("条目菜单里的订阅组（卡 B）", () => {
+    beforeEach(() => {
+      for (const fn of Object.values(feedMenuActions)) fn.mockClear();
+    });
+
+    it("有 feed 时菜单里出现订阅组（标题 + 订阅项）", () => {
+      render(
+        <EntryListItem
+          entry={entry}
+          feed={feed}
+          isSelected={false}
+          onClick={vi.fn()}
+        />,
+      );
+
+      fireEvent.contextMenu(screen.getByText("Entry title"));
+
+      // 订阅组标题行（t mock 直接返回 key）
+      expect(screen.getByText("entry.feed_menu_group")).toBeTruthy();
+      // 订阅项与第一栏同一套 key：刷新 / 新建规则 / 删除
+      expect(screen.getByText("actions.refresh")).toBeTruthy();
+      expect(screen.getByText("automation.rule_from_feed")).toBeTruthy();
+      expect(screen.getByText("actions.delete")).toBeTruthy();
+    });
+
+    it("订阅组的操作调的是传入的同一份行为（点刷新 → feedActions.onRefresh(feed.id)）", () => {
+      render(
+        <EntryListItem
+          entry={entry}
+          feed={feed}
+          isSelected={false}
+          onClick={vi.fn()}
+        />,
+      );
+
+      fireEvent.contextMenu(screen.getByText("Entry title"));
+      fireEvent.click(screen.getByText("actions.refresh"));
+
+      expect(feedMenuActions.onRefresh).toHaveBeenCalledWith(feed.id);
+    });
+
+    it("feed 有主站地址时订阅组里出现「前往主站 / 复制主站地址」", () => {
+      render(
+        <EntryListItem
+          entry={entry}
+          feed={{ ...feed, siteUrl: "https://example.com" }}
+          isSelected={false}
+          onClick={vi.fn()}
+        />,
+      );
+
+      fireEvent.contextMenu(screen.getByText("Entry title"));
+
+      expect(screen.getByText("actions.open_site")).toBeTruthy();
+      expect(screen.getByText("actions.copy_site_url")).toBeTruthy();
+    });
+
+    it("siteUrl 拿不到时那两项隐藏（siteUrl 为空 + 纯 feed 文件地址反解不出主站）", () => {
+      render(
+        <EntryListItem
+          entry={entry}
+          feed={{ ...feed, siteUrl: undefined }}
+          isSelected={false}
+          onClick={vi.fn()}
+        />,
+      );
+
+      fireEvent.contextMenu(screen.getByText("Entry title"));
+
+      // 订阅组本身在，但主站两项不在
+      expect(screen.getByText("entry.feed_menu_group")).toBeTruthy();
+      expect(screen.queryByText("actions.open_site")).toBeNull();
+      expect(screen.queryByText("actions.copy_site_url")).toBeNull();
+    });
+
+    it("没有 feed 时不渲染订阅组也不崩", () => {
+      render(
+        <EntryListItem entry={entry} isSelected={false} onClick={vi.fn()} />,
+      );
+
+      fireEvent.contextMenu(screen.getByText("Entry title"));
+
+      // 条目自己的项还在，订阅组不在
+      expect(screen.getByText("automation.rule_from_entry")).toBeTruthy();
+      expect(screen.queryByText("entry.feed_menu_group")).toBeNull();
     });
   });
 });

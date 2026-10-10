@@ -14,6 +14,8 @@ import {
   SOCIAL_CLIPPED_SLACK_PX,
   SOCIAL_COLLAPSED_PX,
 } from "./EntryListItem";
+import { useFeedMenuActions } from "@/hooks/useFeedMenuActions";
+import { useFolders } from "@/hooks/useFolders";
 import { UnreadIndicator, unreadRowClass } from "./unread-indicator";
 import { useMarkAsRead } from "@/hooks/useEntries";
 import { deferEntryRemoval } from "./deferred-removal";
@@ -219,6 +221,17 @@ const TimelineCard = memo(function TimelineCard({
 }: TimelineCardProps) {
   const { t } = useTranslation();
   const [iconError, setIconError] = useState(false);
+  /**
+   * 卡 B：订阅组行为 —— 唯一一份实现（`useFeedMenuActions`），与第一栏/条目列表同一份。
+   * folders 按这条订阅的类型过滤（与条目列表同口径）。
+   */
+  const feedMenu = useFeedMenuActions();
+  const { data: allFolders = [] } = useFolders();
+  const feedMenuFolders = useMemo(
+    () =>
+      feed ? allFolders.filter((folder) => folder.type === feed.type) : [],
+    [feed, allFolders],
+  );
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const [isClipped, setIsClipped] = useState(false);
   const unreadStyle = useUISettingKey("unreadStyle");
@@ -519,7 +532,13 @@ const TimelineCard = memo(function TimelineCard({
           )}
         </div>
       </ContextMenuTrigger>
-      <EntryContextMenuContent entry={entry} onMarkAbove={onMarkAbove} />
+      <EntryContextMenuContent
+        entry={entry}
+        feed={feed}
+        feedActions={feedMenu}
+        feedFolders={feedMenuFolders}
+        onMarkAbove={onMarkAbove}
+      />
     </ContextMenu>
   );
 });

@@ -757,11 +757,19 @@ export async function updateManyEntryReadStatus(
   });
 }
 
-export async function fetchReadableContent(id: string): Promise<string> {
+/**
+ * 抓正文（阅读模式）。抓完由后端落库 `readableContent`，重复调用幂等。
+ * `signal` 给预载用 —— 滚出视口时能把这趟请求掐掉。
+ */
+export async function fetchReadableContent(
+  id: string,
+  signal?: AbortSignal,
+): Promise<string> {
   const response = await request<{ readableContent: string }>(
     `/api/entries/${id}/fetch-readable`,
     {
       method: "POST",
+      signal,
     },
   );
   return response.readableContent;
