@@ -318,6 +318,7 @@
     "mark_read": "Mark as read",
     "mark_unread": "Mark as unread",
     "mark_above_read": "Mark above as read",
+    "feed_menu_group": "Feed: {{name}}",
     "reading_progress": "Reading progress",
     "close": "Close",
     "min_read": "{{mins}} min read",

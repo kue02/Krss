@@ -315,6 +315,7 @@
     "mark_read": "标为已读",
     "mark_unread": "标为未读",
     "mark_above_read": "标记上方为已读",
+    "feed_menu_group": "订阅：{{name}}",
     "reading_progress": "阅读进度",
     "close": "关闭",
     "min_read": "{{mins}} 分钟阅读",
