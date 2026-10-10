@@ -15,8 +15,8 @@ import {
 } from "@/services/entry-prefetch-plan";
 import type { Entry, Feed } from "@/types/api";
 
-const mockNeedsTranslation = vi.hoisted(() => vi.fn(() => true));
-vi.mock("@/lib/language-detect", () => ({
+const mockNeedsTranslation = vi.hoisted(() => vi.fn(async () => true));
+vi.mock("@/lib/language-detect-async", () => ({
   needsTranslation: mockNeedsTranslation,
 }));
 
@@ -185,17 +185,21 @@ describe("摘要 / 翻译的可行性判断", () => {
     ).toBe(false);
   });
 
-  it("原文已是目标语言就不预载翻译（省一次白跑的模型请求）", () => {
-    mockNeedsTranslation.mockReturnValue(false);
-    expect(translateWorthPrefetching(entry(), "zh-CN")).toBe(false);
-    mockNeedsTranslation.mockReturnValue(true);
-    expect(translateWorthPrefetching(entry(), "zh-CN")).toBe(true);
+  it("原文已是目标语言就不预载翻译（省一次白跑的模型请求）", async () => {
+    mockNeedsTranslation.mockResolvedValue(false);
+    await expect(translateWorthPrefetching(entry(), "zh-CN")).resolves.toBe(
+      false,
+    );
+    mockNeedsTranslation.mockResolvedValue(true);
+    await expect(translateWorthPrefetching(entry(), "zh-CN")).resolves.toBe(
+      true,
+    );
     // 没有任何正文 → 跳过
-    expect(
+    await expect(
       translateWorthPrefetching(
         entry({ content: undefined, readableContent: undefined }),
         "zh-CN",
       ),
-    ).toBe(false);
+    ).resolves.toBe(false);
   });
 });

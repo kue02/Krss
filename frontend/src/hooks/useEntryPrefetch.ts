@@ -102,7 +102,7 @@ export async function runEntryPrefetch(args: {
   // 3) 翻译：后端缓存 + 前端 translation-store（useAITranslation 打开时读后者）
   if (
     plan.autoTranslate &&
-    translateWorthPrefetching(entry, context.targetLanguage)
+    (await translateWorthPrefetching(entry, context.targetLanguage))
   ) {
     // 打开路径可能正在翻同一条（用户点得比预载快）—— 撞上就别重复跑模型；
     // 反过来预载先到、打开路径会订阅这里的转发事件（见 services/content-translation-inflight.ts）
