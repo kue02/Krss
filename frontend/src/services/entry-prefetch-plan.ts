@@ -7,7 +7,12 @@
  */
 
 import type { Entry, Feed } from "@/types/api";
-import { needsTranslation } from "@/lib/language-detect";
+// ⚠️ 必须走**异步**检测器：同步版 `@/lib/language-detect` 会静态引入 `eld/small`
+// （语言模型的 n-gram 表，源码 ~1.5 MB），而本模块在主包里（预载钩子引它）——
+// 一旦静态引它，整个 ELD 就进首屏包（实测主 chunk 0.76 MiB → 2.31 MiB，还会顶穿
+// PWA 预缓存上限让生产构建直接失败）。异步版内部是动态 import，ELD 单独成 chunk。
+// 拦这套的护栏测试：`src/lib/language-detect-import-policy.test.ts`。
+import { needsTranslation } from "@/lib/language-detect-async";
 import { stripHtml } from "@/lib/html-utils";
 import { resolveEntryAutoTranslate } from "@/lib/auto-translate";
 import type { PrefetchTask } from "@/services/prefetch-queue";
@@ -101,15 +106,18 @@ export function prefetchKey(entryId: string): string {
 /**
  * 摘要预载的可行性判断：目标语言就是原文语言时没必要跑一趟（对齐 useAITranslation
  * 打开路径里的 `needsTranslation` 判断，少一次白跑的模型请求）。
+ *
+ * 异步：语言检测走 `language-detect-async`（动态 import，见文件头注释），
+ * 不能让它进主包。
  */
 export function summaryWorthPrefetching(entry: Entry): boolean {
   return Boolean(entry.content || entry.readableContent);
 }
 
-export function translateWorthPrefetching(
+export async function translateWorthPrefetching(
   entry: Entry,
   targetLanguage: string,
-): boolean {
+): Promise<boolean> {
   if (!entry.content && !entry.readableContent) return false;
   const summary = entry.content ? stripHtml(entry.content).slice(0, 200) : null;
   return needsTranslation(entry.title || "", summary, targetLanguage);

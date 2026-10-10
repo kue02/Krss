@@ -9,6 +9,7 @@ import { useEntryPrefetch, runEntryPrefetch } from "@/hooks/useEntryPrefetch";
 import {
   attachContentTranslation,
   claimContentTranslation,
+  isContentTranslationInFlight,
   resetContentTranslationInFlight,
 } from "@/services/content-translation-inflight";
 import type { PrefetchContext, PrefetchPlan } from "@/services/entry-prefetch-plan";
@@ -25,7 +26,7 @@ const {
   mockStreamSummary: vi.fn(),
   mockStreamTranslateBlocks: vi.fn(),
   mockTranslationSet: vi.fn(),
-  mockNeedsTranslation: vi.fn(() => true),
+  mockNeedsTranslation: vi.fn(async () => true),
 }));
 
 vi.mock("@/api", () => ({
@@ -46,7 +47,7 @@ vi.mock("@/stores/translation-store", () => ({
   translationActions: { set: mockTranslationSet },
 }));
 
-vi.mock("@/lib/language-detect", () => ({
+vi.mock("@/lib/language-detect-async", () => ({
   needsTranslation: mockNeedsTranslation,
 }));
 
@@ -100,7 +101,7 @@ const run = (entryValue: Entry, planValue: PrefetchPlan, onReadable = vi.fn()) =
 describe("runEntryPrefetch", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockNeedsTranslation.mockReturnValue(true);
+    mockNeedsTranslation.mockResolvedValue(true);
     resetContentTranslationInFlight();
   });
 
@@ -202,7 +203,7 @@ describe("runEntryPrefetch", () => {
   });
 
   it("原文已是目标语言 → 不发翻译请求", async () => {
-    mockNeedsTranslation.mockReturnValue(false);
+    mockNeedsTranslation.mockResolvedValue(false);
     await run(entry(), plan({ autoTranslate: true }));
     expect(mockStreamTranslateBlocks).not.toHaveBeenCalled();
     expect(mockTranslationSet).not.toHaveBeenCalled();
@@ -249,21 +250,31 @@ describe("runEntryPrefetch", () => {
   });
 
   it("预载当发起方时把流事件转发给订阅方（打开路径照样逐块出）", async () => {
+    // 用闸门卡住流：先确认预载已经 claim（此时还没吐任何事件），
+    // 「此刻订阅」正好等价于「用户刚点开」，后面的事件一个都不会漏
+    let releaseStream!: () => void;
+    const streamGate = new Promise<void>((resolve) => {
+      releaseStream = resolve;
+    });
     mockStreamTranslateBlocks.mockImplementation(async function* () {
+      await streamGate;
       yield { blocks: [{ index: 0, html: "<p>一</p>", needTranslate: true }] };
       yield { index: 0, html: "<p>壹</p>" };
       yield { done: true };
     });
 
     const seen: Array<Record<string, unknown>> = [];
-    // 预载在翻译这一步是**同步** claim 的，所以这里「边跑边订阅」等价于
-    // 「用户此刻点开了这条」
     const running = run(entry(), plan({ autoTranslate: true }));
+    await vi.waitFor(() =>
+      expect(isContentTranslationInFlight("1", false, "zh-CN")).toBe(true),
+    );
+
     const attached = attachContentTranslation("1", false, "zh-CN", (event) =>
       seen.push(event as Record<string, unknown>),
     );
     expect(attached).not.toBeNull();
 
+    releaseStream();
     await running;
     await attached;
 
