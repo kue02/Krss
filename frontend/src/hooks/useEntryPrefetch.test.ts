@@ -6,6 +6,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook } from "@testing-library/react";
 import { useEntryPrefetch, runEntryPrefetch } from "@/hooks/useEntryPrefetch";
+import {
+  attachContentTranslation,
+  claimContentTranslation,
+  resetContentTranslationInFlight,
+} from "@/services/content-translation-inflight";
 import type { PrefetchContext, PrefetchPlan } from "@/services/entry-prefetch-plan";
 import type { Entry, Feed } from "@/types/api";
 
@@ -96,6 +101,7 @@ describe("runEntryPrefetch", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockNeedsTranslation.mockReturnValue(true);
+    resetContentTranslationInFlight();
   });
 
   it("三态全关：一个请求都不发", async () => {
@@ -221,6 +227,49 @@ describe("runEntryPrefetch", () => {
     expect(mockFetchReadable.mock.calls[0]![1]).toBe(controller.signal);
     expect(mockStreamSummary.mock.calls[0]![1]).toBe(controller.signal);
     expect(mockStreamTranslateBlocks.mock.calls[0]![1]).toBe(controller.signal);
+  });
+
+  it("打开路径正在翻同一条 ⇒ 预载不再发翻译请求（不重复跑模型）", async () => {
+    // 模拟「用户点得比预载快」：打开路径先 claim 了这条
+    const claim = claimContentTranslation("1", false, "zh-CN");
+    expect(claim).not.toBeNull();
+
+    await run(entry(), plan({ autoTranslate: true }));
+
+    expect(mockStreamTranslateBlocks).not.toHaveBeenCalled();
+    expect(mockTranslationSet).not.toHaveBeenCalled();
+
+    // 它收尾之后，同一个 key 可以重新 claim ⇒ 预载恢复正常
+    claim!.finish();
+    mockStreamTranslateBlocks.mockImplementation(async function* () {
+      yield { cached: true, content: "<p>译好的</p>" };
+    });
+    await run(entry(), plan({ autoTranslate: true }));
+    expect(mockStreamTranslateBlocks).toHaveBeenCalledTimes(1);
+  });
+
+  it("预载当发起方时把流事件转发给订阅方（打开路径照样逐块出）", async () => {
+    mockStreamTranslateBlocks.mockImplementation(async function* () {
+      yield { blocks: [{ index: 0, html: "<p>一</p>", needTranslate: true }] };
+      yield { index: 0, html: "<p>壹</p>" };
+      yield { done: true };
+    });
+
+    const seen: Array<Record<string, unknown>> = [];
+    // 预载在翻译这一步是**同步** claim 的，所以这里「边跑边订阅」等价于
+    // 「用户此刻点开了这条」
+    const running = run(entry(), plan({ autoTranslate: true }));
+    const attached = attachContentTranslation("1", false, "zh-CN", (event) =>
+      seen.push(event as Record<string, unknown>),
+    );
+    expect(attached).not.toBeNull();
+
+    await running;
+    await attached;
+
+    expect(seen).toHaveLength(3);
+    expect(seen[0]).toMatchObject({ blocks: expect.any(Array) });
+    expect(seen[1]).toMatchObject({ index: 0, html: "<p>壹</p>" });
   });
 });
 

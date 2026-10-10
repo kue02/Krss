@@ -15,6 +15,11 @@ import {
   translationActions,
 } from "@/stores/translation-store";
 import { translateArticlesBatch } from "@/services/translation-service";
+import {
+  attachContentTranslation,
+  claimContentTranslation,
+  type ContentTranslationEvent,
+} from "@/services/content-translation-inflight";
 import { showToast } from "@/stores/toast-store";
 import type { Entry } from "@/types/api";
 
@@ -164,8 +169,47 @@ export function useAITranslation({
     isTranslationForCurrentMode &&
     !!(translatedContentForCurrentMode || originalBlocks.length > 0);
 
+  /**
+   * 处理一个翻译流事件。**自己发的流**与**预载转发来的流**共用这一份 ——
+   * 两种来源的界面表现必须一致（逐块出、兜底提示只提示一次）。
+   * 返回 `true` = 命中后端缓存、流可以提前结束。
+   */
+  const applyTranslateEvent = useCallback(
+    (event: ContentTranslationEvent): boolean => {
+      if ("cached" in event) {
+        setTranslatedContent(event.content);
+        setOriginalBlocks([]);
+        setTranslatedBlocks(new Map());
+        return true;
+      }
+
+      if (isTranslateInit(event)) {
+        setOriginalBlocks(event.blocks);
+        return false;
+      }
+
+      if (isTranslateBlockResult(event)) {
+        if (event.fallback && !fallbackToastShownRef.current) {
+          fallbackToastShownRef.current = true;
+          showToast(t("entry.translate_fallback_hint"));
+        }
+        setTranslatedBlocks((prev) => {
+          const newMap = new Map(prev);
+          newMap.set(event.index, event.html);
+          return newMap;
+        });
+        return false;
+      }
+
+      // done / error 本身不改状态：收尾统一由流的结束（或订阅到的 done 承诺）负责
+      if (isTranslateDone(event) || isTranslateError(event)) return false;
+      return false;
+    },
+    [t],
+  );
+
   const generateTranslation = useCallback(
-    async (forReadability: boolean) => {
+    async (forReadability: boolean, options?: { allowAttach?: boolean }) => {
       if (!entry) return;
 
       const content = forReadability ? readableContent : entry.content;
@@ -187,6 +231,43 @@ export function useAITranslation({
       setTranslationMode(forReadability);
       translateRequestedRef.current = true;
 
+      // 别人（预载）正在翻同一条 ⇒ 只订阅它的事件，**不重复跑一遍模型**。
+      // 它结束时：store 里有结果就直接用；没有（失败 / 被取消）就落到下面自己补一次。
+      if (options?.allowAttach !== false) {
+        const attached = attachContentTranslation(
+          entry.id,
+          forReadability,
+          targetLanguage,
+          (event) => {
+            if (requestSeqRef.current !== requestSeq) return;
+            applyTranslateEvent(event);
+          },
+        );
+        if (attached) {
+          await attached;
+          if (requestSeqRef.current !== requestSeq) return;
+          const prefetched = translationActions.get(
+            entry.id,
+            targetLanguage,
+            forReadability,
+          );
+          if (prefetched?.content) {
+            setTranslatedContent(prefetched.content);
+            setIsTranslating(false);
+            isTranslatingRef.current = false;
+            return;
+          }
+          // 预载那条没成 —— 继续往下走「自己发」这条路（不再递归订阅自己）
+        }
+      }
+
+      // 自己当发起方：登记在途（预载撞上就不会再发一条），并把事件转发给订阅方
+      const claim = claimContentTranslation(
+        entry.id,
+        forReadability,
+        targetLanguage,
+      );
+
       const abortController = new AbortController();
       translateAbortRef.current = abortController;
 
@@ -206,37 +287,8 @@ export function useAITranslation({
             return;
           }
 
-          if ("cached" in event) {
-            setTranslatedContent(event.content);
-            setOriginalBlocks([]);
-            setTranslatedBlocks(new Map());
-            break;
-          }
-
-          if (isTranslateInit(event)) {
-            setOriginalBlocks(event.blocks);
-            continue;
-          }
-
-          if (isTranslateBlockResult(event)) {
-            if (event.fallback && !fallbackToastShownRef.current) {
-              fallbackToastShownRef.current = true;
-              showToast(t("entry.translate_fallback_hint"));
-            }
-            setTranslatedBlocks((prev) => {
-              const newMap = new Map(prev);
-              newMap.set(event.index, event.html);
-              return newMap;
-            });
-          }
-
-          if (isTranslateDone(event)) {
-            // Translation complete
-          }
-
-          if (isTranslateError(event)) {
-            // Handle error
-          }
+          claim?.emit(event);
+          if (applyTranslateEvent(event)) break;
         }
       } catch (err) {
         if (requestSeqRef.current !== requestSeq) {
@@ -247,6 +299,7 @@ export function useAITranslation({
         }
         return;
       } finally {
+        claim?.finish();
         if (requestSeqRef.current === requestSeq) {
           setIsTranslating(false);
           isTranslatingRef.current = false;
@@ -256,7 +309,7 @@ export function useAITranslation({
         }
       }
     },
-    [entry, readableContent],
+    [entry, readableContent, targetLanguage, applyTranslateEvent],
   );
 
   useEffect(() => {

@@ -22,6 +22,7 @@ import {
   isTranslateBlockResult,
 } from "@/api";
 import { PrefetchQueue } from "@/services/prefetch-queue";
+import { claimContentTranslation } from "@/services/content-translation-inflight";
 import {
   buildPrefetchTask,
   summaryWorthPrefetching,
@@ -103,50 +104,67 @@ export async function runEntryPrefetch(args: {
     plan.autoTranslate &&
     translateWorthPrefetching(entry, context.targetLanguage)
   ) {
-    let translated: string | null = null;
-    /** index → html；与 useAITranslation 的 `translatedBlocks` 同一套拼接口径 */
-    const blockIndexByPos: number[] = [];
-    const htmlByIndex = new Map<number, string>();
-
-    const stream = streamTranslateBlocks(
-      {
-        entryId: entry.id,
-        content,
-        title: entry.title ?? undefined,
-        isReadability: useReadable,
-      },
-      signal,
+    // 打开路径可能正在翻同一条（用户点得比预载快）—— 撞上就别重复跑模型；
+    // 反过来预载先到、打开路径会订阅这里的转发事件（见 services/content-translation-inflight.ts）
+    const claim = claimContentTranslation(
+      entry.id,
+      useReadable,
+      context.targetLanguage,
     );
-    for await (const event of stream) {
-      if ("cached" in event) {
-        translated = event.content;
-        break;
-      }
-      if (isTranslateInit(event)) {
-        blockIndexByPos.length = 0;
-        htmlByIndex.clear();
-        for (const block of event.blocks) {
-          blockIndexByPos.push(block.index);
-          htmlByIndex.set(block.index, block.html);
+    if (claim) {
+      let translated: string | null = null;
+      /** index → html；与 useAITranslation 的 `translatedBlocks` 同一套拼接口径 */
+      const blockIndexByPos: number[] = [];
+      const htmlByIndex = new Map<number, string>();
+
+      try {
+        const stream = streamTranslateBlocks(
+          {
+            entryId: entry.id,
+            content,
+            title: entry.title ?? undefined,
+            isReadability: useReadable,
+          },
+          signal,
+        );
+        for await (const event of stream) {
+          // 转发给订阅方（打开路径），它按与本地流完全相同的方式处理
+          claim.emit(event);
+          if ("cached" in event) {
+            translated = event.content;
+            break;
+          }
+          if (isTranslateInit(event)) {
+            blockIndexByPos.length = 0;
+            htmlByIndex.clear();
+            for (const block of event.blocks) {
+              blockIndexByPos.push(block.index);
+              htmlByIndex.set(block.index, block.html);
+            }
+            continue;
+          }
+          if (isTranslateBlockResult(event)) {
+            htmlByIndex.set(event.index, event.html);
+          }
         }
-        continue;
+      } finally {
+        // 成功 / 失败 / 被 abort 都要放掉：订阅方靠它决定「用转发来的结果」还是「自己补一次」
+        claim.finish();
       }
-      if (isTranslateBlockResult(event)) {
-        htmlByIndex.set(event.index, event.html);
+
+      if (!translated && blockIndexByPos.length > 0) {
+        translated = blockIndexByPos
+          .map((index) => htmlByIndex.get(index) ?? "")
+          .join("");
       }
-    }
-    if (!translated && blockIndexByPos.length > 0) {
-      translated = blockIndexByPos
-        .map((index) => htmlByIndex.get(index) ?? "")
-        .join("");
-    }
-    if (translated) {
-      translationActions.set(
-        entry.id,
-        context.targetLanguage,
-        { content: translated },
-        useReadable,
-      );
+      if (translated) {
+        translationActions.set(
+          entry.id,
+          context.targetLanguage,
+          { content: translated },
+          useReadable,
+        );
+      }
     }
   }
 }
