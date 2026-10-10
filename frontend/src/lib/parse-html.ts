@@ -111,67 +111,83 @@ function rehypeDropNonContentElements() {
 }
 
 /**
+ * 净化 schema：模块级单例。
+ *
+ * 原来在 `parseHtml()` 体内展开 defaultSchema 再拼数组/对象，**每次调用都重建一遍**
+ * （tagNames 数组、attributes 里 4 个数组全量复制）。每篇文章都要 parse 一次
+ * ⇒ 每篇都白付这份构建。schema 是纯只读配置，hast-util-sanitize 只读不写，
+ * 所以建一次复用即可，行为不变。
+ */
+const REHYPE_SCHEMA: Schema = { ...defaultSchema };
+REHYPE_SCHEMA.tagNames = [
+  ...REHYPE_SCHEMA.tagNames!,
+  "video",
+  "source",
+  "audio",
+  "figure",
+  "figcaption",
+  "details",
+  "summary",
+];
+
+REHYPE_SCHEMA.attributes = {
+  ...REHYPE_SCHEMA.attributes,
+  "*": [...REHYPE_SCHEMA.attributes!["*"]!, "style", "className"],
+  video: [
+    "src",
+    "poster",
+    "controls",
+    "autoplay",
+    "loop",
+    "muted",
+    "width",
+    "height",
+  ],
+  audio: ["src", "controls", "autoplay", "loop", "muted"],
+  source: ["src", "type"],
+  img: [
+    "src",
+    "alt",
+    "title",
+    "width",
+    "height",
+    "loading",
+    "srcset",
+    "sizes",
+    "className",
+  ],
+};
+
+/**
+ * 处理管线：模块级单例。
+ *
+ * `components` **不进管线**——它只喂给 toJsxRuntime（见函数末尾），unified 这条链
+ * 每次调用都在重建一个 processor 并 freeze（.use() 7 次 + freeze）。
+ * 这条链是纯配置：7 个插件的 attacher 都只在 freeze 时跑一次，transformer 内部
+ * 不跨文档保留可变状态（rehype-stringify 每次 transform 重新 toHtml 建 compiler）。
+ * 所以建一次复用。
+ */
+const BASE_PIPELINE = unified()
+  .use(rehypeParse, { fragment: true })
+  .use(rehypeDropNonContentElements)
+  .use(rehypeSanitize, REHYPE_SCHEMA)
+  .use(rehypeEmojiImages)
+  .use(rehypeTrimEndBrElement)
+  // 45 批：裸 URL 链接化。必须排在 sanitize 之后 —— sanitize 按白名单剥属性，
+  // 前置生成 <a href> 会被剥掉；后置生成的才活得下来（见 rehype-linkify.ts 注释）
+  .use(rehypeLinkifyBareUrls)
+  .use(rehypeStringify)
+  .freeze();
+
+/**
  * Parse HTML string to React components
  */
 export function parseHtml(content: string, options?: ParseHtmlOptions) {
   const { components } = options || {};
 
-  // Configure sanitization schema
-  const rehypeSchema: Schema = { ...defaultSchema };
-  rehypeSchema.tagNames = [
-    ...rehypeSchema.tagNames!,
-    "video",
-    "source",
-    "audio",
-    "figure",
-    "figcaption",
-    "details",
-    "summary",
-  ];
-
-  rehypeSchema.attributes = {
-    ...rehypeSchema.attributes,
-    "*": [...rehypeSchema.attributes!["*"]!, "style", "className"],
-    video: [
-      "src",
-      "poster",
-      "controls",
-      "autoplay",
-      "loop",
-      "muted",
-      "width",
-      "height",
-    ],
-    audio: ["src", "controls", "autoplay", "loop", "muted"],
-    source: ["src", "type"],
-    img: [
-      "src",
-      "alt",
-      "title",
-      "width",
-      "height",
-      "loading",
-      "srcset",
-      "sizes",
-      "className",
-    ],
-  };
-
-  // Build the processing pipeline
-  const pipeline = unified()
-    .use(rehypeParse, { fragment: true })
-    .use(rehypeDropNonContentElements)
-    .use(rehypeSanitize, rehypeSchema)
-    .use(rehypeEmojiImages)
-    .use(rehypeTrimEndBrElement)
-    // 45 批：裸 URL 链接化。必须排在 sanitize 之后 —— sanitize 按白名单剥属性，
-    // 前置生成 <a href> 会被剥掉；后置生成的才活得下来（见 rehype-linkify.ts 注释）
-    .use(rehypeLinkifyBareUrls)
-    .use(rehypeStringify);
-
   // Parse and process the HTML
-  const tree = pipeline.parse(content);
-  const hastTree = pipeline.runSync(tree, content);
+  const tree = BASE_PIPELINE.parse(content);
+  const hastTree = BASE_PIPELINE.runSync(tree, content);
 
   return {
     hastTree,
