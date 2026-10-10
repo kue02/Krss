@@ -4,9 +4,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { runEntryPrefetch } from "@/hooks/useEntryPrefetch";
+import { renderHook } from "@testing-library/react";
+import { useEntryPrefetch, runEntryPrefetch } from "@/hooks/useEntryPrefetch";
 import type { PrefetchContext, PrefetchPlan } from "@/services/entry-prefetch-plan";
-import type { Entry } from "@/types/api";
+import type { Entry, Feed } from "@/types/api";
 
 const {
   mockFetchReadable,
@@ -75,6 +76,12 @@ const plan = (over: Partial<PrefetchPlan> = {}): PrefetchPlan => ({
   autoTranslate: false,
   ...over,
 });
+
+const feed = (over: Partial<Feed> = {}): Feed =>
+  ({ id: "f1", title: "Feed", ...over }) as Feed;
+
+/** 造一个 contentRootRef（hook 只读 .current） */
+const refOf = (node: HTMLElement | null) => ({ current: node });
 
 const run = (entryValue: Entry, planValue: PrefetchPlan, onReadable = vi.fn()) =>
   runEntryPrefetch({
@@ -214,5 +221,184 @@ describe("runEntryPrefetch", () => {
     expect(mockFetchReadable.mock.calls[0]![1]).toBe(controller.signal);
     expect(mockStreamSummary.mock.calls[0]![1]).toBe(controller.signal);
     expect(mockStreamTranslateBlocks.mock.calls[0]![1]).toBe(controller.signal);
+  });
+});
+
+/**
+ * 视口触发判定（jsdom + 假 IntersectionObserver）。
+ *
+ * 补这个是因为真机实测踩到过：条目是**异步**渲染的，观察器挂载那一刻列表里
+ * 一行都没有，只在挂载时扫一次的话后面所有行永远不会被观测到（预载静默不发生）。
+ * 这里把「行在挂载之后才出现」钉成回归。
+ */
+describe("useEntryPrefetch 视口触发", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFetchReadable.mockResolvedValue("<p>full</p>");
+  });
+
+  /** 可手动触发回调的假 IntersectionObserver */
+  function installFakeIO() {
+    const instances: {
+      targets: Set<Element>;
+      cb: IntersectionObserverCallback;
+      opts: IntersectionObserverInit | undefined;
+      observed: Element[];
+    }[] = [];
+    const OrigIO = globalThis.IntersectionObserver;
+    globalThis.IntersectionObserver = class {
+      targets = new Set<Element>();
+      observed: Element[] = [];
+      constructor(
+        cb: IntersectionObserverCallback,
+        opts?: IntersectionObserverInit,
+      ) {
+        instances.push({
+          targets: this.targets,
+          cb,
+          opts,
+          observed: this.observed,
+        });
+      }
+      observe(el: Element) {
+        this.targets.add(el);
+        this.observed.push(el);
+      }
+      unobserve() {}
+      disconnect() {
+        this.targets.clear();
+      }
+      takeRecords() {
+        return [];
+      }
+    } as unknown as typeof IntersectionObserver;
+
+    return {
+      instances,
+      restore: () => {
+        globalThis.IntersectionObserver = OrigIO;
+      },
+      /** 触发某实例的回调（模拟目标进入视口） */
+      fire: (index: number, ids: string[]) => {
+        const inst = instances[index]!;
+        const entries = ids.map((id) => {
+          const el = document.createElement("div");
+          el.dataset.entryId = id;
+          return {
+            target: el,
+            isIntersecting: true,
+            intersectionRatio: 1,
+            boundingClientRect: {} as DOMRectReadOnly,
+            intersectionRect: {} as DOMRectReadOnly,
+            rootBounds: null,
+            time: 0,
+          } as unknown as IntersectionObserverEntry;
+        });
+        inst.cb(entries, {} as IntersectionObserver);
+      },
+    };
+  }
+
+  it("条目在挂载之后才渲染进列表 → 补挂观察器并预载", async () => {
+    const io = installFakeIO();
+    try {
+      const root = document.createElement("div");
+      document.body.append(root);
+      const ref = { current: root };
+      const loaded = [entry({ id: "a1" }), entry({ id: "a2" })];
+
+      // 第一次渲染：列表还是空的（query 没回来）
+      const view = renderHook(
+        ({ items }: { items: Entry[] }) =>
+          useEntryPrefetch({
+            entries: items,
+            feedsById: new Map([["f1", feed({ readerMode: true })]]),
+            context: { ...context, autoReadability: false },
+            intersectionRoot: null,
+            contentRootRef: ref,
+            enabled: true,
+            resetKey: "all",
+            concurrency: 2,
+          }),
+        { initialProps: { items: [] as Entry[] } },
+      );
+
+      // 第二次渲染：条目到了，行也渲染进 DOM 了
+      root.innerHTML =
+        '<div data-entry-id="a1"></div><div data-entry-id="a2"></div>';
+      view.rerender({ items: loaded });
+      view.unmount();
+
+      const observedIds = io.instances.flatMap((inst) =>
+        inst.observed.map((el) => (el as HTMLElement).dataset.entryId),
+      );
+      expect(observedIds).toContain("a1");
+      expect(observedIds).toContain("a2");
+    } finally {
+      io.restore();
+    }
+  });
+
+  it("行是后补进来的也不会被重复 observe（补扫按 DOM 节点去重）", async () => {
+    const io = installFakeIO();
+    try {
+      const root = document.createElement("div");
+      document.body.append(root);
+      root.innerHTML = '<div data-entry-id="a1"></div>';
+
+      const view = renderHook(
+        () =>
+          useEntryPrefetch({
+            entries: [entry({ id: "a1" })],
+            feedsById: new Map([["f1", feed({ readerMode: true })]]),
+            context,
+            intersectionRoot: null,
+            contentRootRef: refOf(root),
+            enabled: true,
+            resetKey: "all",
+          }),
+      );
+      view.rerender();
+      view.rerender();
+      view.unmount();
+
+      const a1Observed = io.instances.flatMap((inst) =>
+        inst.observed.map((el) => (el as HTMLElement).dataset.entryId),
+      ).filter((id) => id === "a1");
+      expect(a1Observed).toHaveLength(1);
+    } finally {
+      io.restore();
+    }
+  });
+
+  it("enabled=false：一个都不观察（在跑的全撤）", async () => {
+    const io = installFakeIO();
+    try {
+      const root = document.createElement("div");
+      document.body.append(root);
+      root.innerHTML = '<div data-entry-id="a1"></div>';
+
+      const view = renderHook(
+        () =>
+          useEntryPrefetch({
+            entries: [entry({ id: "a1" })],
+            feedsById: new Map(),
+            context,
+            intersectionRoot: null,
+            contentRootRef: refOf(root),
+            enabled: false,
+            resetKey: "all",
+          }),
+      );
+      view.unmount();
+
+      const observedCount = io.instances.reduce(
+        (n, inst) => n + inst.observed.length,
+        0,
+      );
+      expect(observedCount).toBe(0);
+    } finally {
+      io.restore();
+    }
   });
 });
