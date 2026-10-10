@@ -32,6 +32,8 @@ import { RefreshReportDialog } from "@/components/refresh/RefreshReportDialog";
 import { useRefreshReportWatcher } from "@/hooks/useRefreshReportWatcher";
 import { FilterEditorDialog } from "@/components/automation/FilterEditorDialog";
 import { SettingsModal, ProfileModal } from "@/components/settings";
+import { EditFeedDialog } from "@/components/settings/tabs/EditFeedDialog";
+import { useEditingFeedStore } from "@/stores/editing-feed-store";
 import {
   useSettingsModalStore,
   useProfileModalStore,
@@ -902,6 +904,11 @@ function App() {
   const setSettingsOpen = useSettingsModalStore((state) => state.setOpen);
   const isProfileOpen = useProfileModalStore((state) => state.open);
   const setProfileOpen = useProfileModalStore((state) => state.setOpen);
+  // 订阅「编辑」弹窗：挂在这里（与设置弹窗平级），不挂 Sidebar 里 ——
+  // 移动端 Sidebar 装在 Sheet 里，Sheet 一关 Sidebar 就卸载，挂里面的弹窗会跟着消失
+  //（2026-09-20 移动端设置滑不动同根因）。开关走 store，第一栏与第二栏都能唤起。
+  const editingFeed = useEditingFeedStore((state) => state.feed);
+  const closeEditingFeed = useEditingFeedStore((state) => state.close);
 
   return (
     <div className="app-shell">
@@ -920,6 +927,13 @@ function App() {
              */}
             <SettingsModal open={isSettingsOpen} onOpenChange={setSettingsOpen} />
             <ProfileModal open={isProfileOpen} onOpenChange={setProfileOpen} />
+            <EditFeedDialog
+              feed={editingFeed}
+              open={editingFeed !== null}
+              onOpenChange={(open) => {
+                if (!open) closeEditingFeed();
+              }}
+            />
             <Toaster />
             <RefreshReportDialog />
           </Router>

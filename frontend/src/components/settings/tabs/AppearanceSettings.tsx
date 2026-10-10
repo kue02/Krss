@@ -168,6 +168,10 @@ export function AppearanceSettings() {
   const entryFontSize = useUISettingKey("entryFontSize");
   const entryLineHeight = useUISettingKey("entryLineHeight");
   const fetchReadableByView = useUISettingKey("fetchReadableByView");
+  // 进视口预载（用户 2026-10-10 原话）：条目进列表视口就后台预载正文 / 摘要 / 翻译
+  const entryPrefetch = useUISettingKey("entryPrefetch") !== false;
+  const entryPrefetchConcurrency =
+    useUISettingKey("entryPrefetchConcurrency") ?? 3;
   const splitterVisibleByView = useUISettingKey("splitterVisibleByView");
   const expandLongByView = useUISettingKey("expandLongByView");
   const reduceMotion = useUISettingKey("reduceMotion");
@@ -190,6 +194,8 @@ export function AppearanceSettings() {
   const timelineSingleSideByView = useUISettingKey("timelineSingleSideByView");
   const {
     setFetchReadableForView,
+    setEntryPrefetch,
+    setEntryPrefetchConcurrency,
     setExpandLongForView,
     setSplitterVisibleForView,
     setReduceMotion,
@@ -659,6 +665,41 @@ export function AppearanceSettings() {
               ]}
             />
           </SettingRow>
+          {/* 进视口预载：默认开。关掉 = 回到「点开才发起请求」 */}
+          <SettingRow
+            label={t("appearance_reading.entry_prefetch")}
+            hint={t("appearance_reading.entry_prefetch_hint")}
+          >
+            <SegmentedControl
+              className="shrink-0"
+              value={entryPrefetch ? "on" : "off"}
+              onValueChange={(value) => setEntryPrefetch(value === "on")}
+              options={[
+                { value: "off", label: t("appearance_view.off") },
+                { value: "on", label: t("appearance_view.on") },
+              ]}
+            />
+          </SettingRow>
+          {entryPrefetch && (
+            <SettingRow
+              label={t("appearance_reading.entry_prefetch_concurrency")}
+              hint={t("appearance_reading.entry_prefetch_concurrency_hint")}
+            >
+              <SegmentedControl
+                className="shrink-0"
+                value={String(entryPrefetchConcurrency)}
+                onValueChange={(value) =>
+                  setEntryPrefetchConcurrency(Number(value))
+                }
+                options={[
+                  { value: "1", label: "1" },
+                  { value: "2", label: "2" },
+                  { value: "3", label: "3" },
+                  { value: "5", label: "5" },
+                ]}
+              />
+            </SettingRow>
+          )}
           <SettingRow label={t("appearance_reading.reduce_motion")}>
             <SegmentedControl
               className="shrink-0"

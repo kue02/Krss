@@ -33,6 +33,11 @@ import {
 } from "@/components/entry-list/unread-indicator";
 import { useMarkAsRead, useMarkAsStarred } from "@/hooks/useEntries";
 import { readToggleAction } from "@/components/entry-list/read-toggle-action";
+import {
+  FeedContextMenuItems,
+  type FeedMenuActions,
+} from "@/components/feed/FeedContextMenuItems";
+import { useFeedMenuActions } from "@/hooks/useFeedMenuActions";
 import { useUnmuteEntry, useFilters, useCreateFilterException } from "@/hooks/useFilters";
 import { showToast } from "@/stores/toast-store";
 import { openFilterEditorForEntry } from "@/stores/filter-editor-store";
@@ -55,7 +60,7 @@ import {
 import { useInView } from "@/hooks/useInView";
 import { ArticleContent } from "@/components/ui/article-content";
 import { resolveReadingFontStack } from "@/lib/reading-fonts";
-import type { Entry, Feed } from "@/types/api";
+import type { Entry, Feed, Folder } from "@/types/api";
 
 const URL_PATTERN = /\bhttps?:\/\/\S+/i;
 
@@ -143,13 +148,29 @@ function MutedBadge({ filterId }: { filterId?: string }) {
  *   - 「豁免这类内容」把误伤转成一条例外规则（顺序最前 + 反向动作）并立刻放行这一条；
  *   - 「按此条新建规则」永远可用，用作者/标题片段预填条件（见 filter-editor-store）。
  *
+ * 卡 B 再加一组「订阅：<名>」（`entry.feed_menu_group`）：这条所属订阅的那组操作，
+ * 与第一栏渲染同一份 `FeedContextMenuItems`（呈现与行为同一份，不照抄）。
+ * 拿不到 feed 时（条目没有 feed / feed 已删）整组不渲染。
+ *
  * 导出给通知视图的时间线卡片复用（同一套菜单，不写第二份）。
  */
 export function EntryContextMenuContent({
   entry,
+  feed,
+  feedActions,
+  feedFolders,
   onMarkAbove,
 }: {
   entry: Entry;
+  /**
+   * 卡 B：这条所属的订阅（调用方从 feedsMap 里拿现成的；时间线卡片同样传）。
+   * 拿不到（条目没有 feed / feed 已删）就不渲染订阅组，不崩。
+   */
+  feed?: Feed;
+  /** 订阅操作行为 —— 唯一一份实现（`useFeedMenuActions`），与第一栏同一份 */
+  feedActions?: FeedMenuActions;
+  /** 「移动到文件夹」子菜单的候选（按 feed.type 过滤好的） */
+  feedFolders?: Folder[];
   /** 24-5：把这条之上的未读一次标掉（调用方给，时间线卡片复用同一套菜单） */
   onMarkAbove?: () => void;
 }) {
@@ -206,6 +227,24 @@ export function EntryContextMenuContent({
         <Wand2 className="size-4 shrink-0 text-muted-foreground" />
         {t("automation.rule_from_entry")}
       </ContextMenuItem>
+      {/* 卡 B：订阅组 —— 条目操作与订阅操作用分隔线分开，标题行说清这是哪个订阅
+          （`t("entry.feed_menu_group", { name })`）；删除是破坏性操作，仍单独分组
+          压在最后（共享组件内部处理）。拿不到 feed 时整组不渲染。 */}
+      {feed && feedActions && (
+        <>
+          <ContextMenuSeparator />
+          <FeedContextMenuItems
+            feed={feed}
+            folders={feedFolders}
+            label={t("entry.feed_menu_group", { name: feed.title })}
+            onRefresh={feedActions.onRefresh}
+            onEdit={feedActions.onEdit}
+            onDelete={feedActions.onDelete}
+            onMoveToFolder={feedActions.onMoveToFolder}
+            onChangeType={feedActions.onChangeType}
+          />
+        </>
+      )}
     </ContextMenuContent>
   );
 }
@@ -245,6 +284,21 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     const [expandTarget, setExpandTarget] = useState<number | null>(null);
     const { mutate: markAsRead } = useMarkAsRead();
     const { mutate: markAsStarred } = useMarkAsStarred();
+    /**
+     * 卡 B：订阅组行为 —— 唯一一份实现（`useFeedMenuActions`），与第一栏同一份。
+     * folders 按这条订阅的类型过滤（与第一栏 `folders` 同口径：`Sidebar` 里按当前
+     * 内容类型过滤，这里按 `feed.type` 过滤 —— 同一条订阅类型固定，等价）。
+     */
+    const feedMenu = useFeedMenuActions();
+    const feedMenuFolders = useMemo(
+      () =>
+        feed
+          ? (feedMenu.folders ?? []).filter(
+              (folder) => folder.type === feed.type,
+            )
+          : [],
+      [feed, feedMenu.folders],
+    );
     const showIcon = feed?.iconPath && !iconError;
     const fallbackTitle = t("entry.untitled");
     const fallbackFeedName = t("entry.unknown_feed");
@@ -675,6 +729,9 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
           </ContextMenuTrigger>
           <EntryContextMenuContent
             entry={entry}
+            feed={feed}
+            feedActions={feedMenu}
+            feedFolders={feedMenuFolders}
             onMarkAbove={
               onMarkAboveEntry ? () => onMarkAboveEntry(entry.id) : undefined
             }
@@ -858,6 +915,9 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
         </ContextMenuTrigger>
         <EntryContextMenuContent
           entry={entry}
+          feed={feed}
+          feedActions={feedMenu}
+          feedFolders={feedMenuFolders}
           onMarkAbove={
             onMarkAboveEntry ? () => onMarkAboveEntry(entry.id) : undefined
           }

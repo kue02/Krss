@@ -147,6 +147,18 @@ export default defineConfig({
       "/icons": backendOrigin,
     },
   },
+  // 生产构建的本地预览：`bun run build && vite preview`。
+  // 不配 preview.proxy 的话 /api、/icons、/mcp 都不会转发，页面直接 404/SPA 兜底——
+  // 端到端测速（A/B）必须同 origin 才量得准，所以这里照 server.proxy 补一份。
+  // 只影响本地 `vite preview`，构建产物本身不受影响。
+  preview: {
+    port: 5188,
+    proxy: {
+      "/api": backendOrigin,
+      "/mcp": backendOrigin,
+      "/icons": backendOrigin,
+    },
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
