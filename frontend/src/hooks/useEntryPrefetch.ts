@@ -218,12 +218,18 @@ export function useEntryPrefetch({
   /**
    * 观察器：没有依赖数组 —— ref 的 `current` 变化不会触发重渲，靠这里每次渲染比对
    * 「节点 / 开关 / 列表作用域 / root」是否变化，变了才重挂。
+   *
+   * 目标没变时**只补挂新行、不重建观察器**：条目是异步到的（首屏 query 回来才渲染），
+   * 挂载那一刻列表里一行都没有，只扫一次的话后面所有行都不会被观测到 ——
+   * 补扫必须按 DOM 节点去重（`observedNodes`），而「这条已经预载过」按 entryId 记
+   * （`enqueued`），两者分开才不会因为补扫而重复预载。
    */
   const observedRef = useRef<{
     node: HTMLElement | null;
     root: HTMLElement | null;
     key: string;
     observer?: IntersectionObserver;
+    observedNodes: WeakSet<Element>;
   } | null>(null);
 
   useEffect(() => {
@@ -246,16 +252,29 @@ export function useEntryPrefetch({
       queue.cancelAll();
       return;
     }
-    if (sameTarget) return;
+
+    // 目标没变 = 只补挂新渲染出来的行。分岔在这里而不是下面：
+    // 下面的重建会把 `enqueued`（本次观察期已预载过）清空，等于让旧行再预载一次。
+    if (sameTarget && current) {
+      const observer = current.observer;
+      if (observer) {
+        for (const row of node.querySelectorAll<HTMLElement>("[data-entry-id]")) {
+          if (current.observedNodes.has(row)) continue;
+          current.observedNodes.add(row);
+          observer.observe(row);
+        }
+      }
+      return;
+    }
 
     // 换列表 / 换视图 / 换 root：在跑的一律撤掉（已完成的仍留在后端缓存里，不亏）
     queue.cancelAll();
     current?.observer?.disconnect();
 
-    const indexById = new Map<string, number>();
-    entriesRef.current.forEach((entry, index) => indexById.set(entry.id, index));
     /** 本次观察期里已经入过队的（滚出再滚回来不重复预载同一条） */
     const enqueued = new Set<string>();
+    /** 已挂上观察器的 DOM 节点（同一个 entryId 的新行仍要挂 —— 新行是新节点） */
+    const observedNodes = new WeakSet<Element>();
 
     const observer = new IntersectionObserver(
       (items) => {
@@ -265,7 +284,8 @@ export function useEntryPrefetch({
           if (!id || enqueued.has(id)) continue;
           enqueued.add(id);
 
-          const entry = entriesRef.current.find((candidate) => candidate.id === id);
+          const currentEntries = entriesRef.current;
+          const entry = currentEntries.find((candidate) => candidate.id === id);
           if (!entry) continue;
           const task = buildPrefetchTask({
             entry,
@@ -281,7 +301,12 @@ export function useEntryPrefetch({
               }),
           });
           if (!task) continue;
-          queue.enqueue([task], indexById.get(id) ?? Number.MAX_SAFE_INTEGER);
+          // 优先级取**此刻**列表里的位置（而不是挂载时那份快照 —— 那时列表还是空的）：
+          // 按视口顺序先进先出，先看到的条目先预载。
+          const index = currentEntries.findIndex(
+            (candidate) => candidate.id === id,
+          );
+          queue.enqueue([task], index >= 0 ? index : Number.MAX_SAFE_INTEGER);
         }
       },
       {
@@ -292,6 +317,7 @@ export function useEntryPrefetch({
     );
 
     for (const row of node.querySelectorAll<HTMLElement>("[data-entry-id]")) {
+      observedNodes.add(row);
       observer.observe(row);
     }
 
@@ -300,6 +326,7 @@ export function useEntryPrefetch({
       root: intersectionRoot,
       key: `${resetKey}\u00001`,
       observer,
+      observedNodes,
     };
   });
 
