@@ -896,9 +896,11 @@ func MatchConditions(entry EntryContext, conditions []model.FilterCondition, now
 	if len(conditions) == 0 {
 		return true
 	}
+	// 47-4：纯文本命中的备忘（按这次调用建一份，见 filter_text.go）
+	plain := &plainTextCache{}
 	result := false
 	for index, condition := range conditions {
-		value := evaluateCondition(entry, condition, now, ai)
+		value := evaluateCondition(entry, plain, condition, now, ai)
 		if index == 0 || condition.Logic == "" || condition.Logic == "and" {
 			if index == 0 {
 				result = value
@@ -933,25 +935,25 @@ func ResolveActions(matched bool, actions model.FilterActions) (model.FilterActi
 	return model.FilterActions{}, false
 }
 
-func evaluateCondition(entry EntryContext, condition model.FilterCondition, now time.Time, ai AIVerdictFunc) bool {
+func evaluateCondition(entry EntryContext, plain *plainTextCache, condition model.FilterCondition, now time.Time, ai AIVerdictFunc) bool {
 	var matched bool
 	switch condition.Field {
 	case model.FilterFieldTitle:
-		matched = matchText(entry.Title, condition)
+		matched = matchText(entry.Title, func() string { return plain.titleOf(entry.Title) }, condition)
 	case model.FilterFieldContent:
-		matched = matchText(entry.Content, condition)
+		matched = matchText(entry.Content, func() string { return plain.contentOf(entry.Content) }, condition)
 	case model.FilterFieldAuthor:
-		matched = matchText(entry.Author, condition)
+		matched = matchText(entry.Author, func() string { return plain.authorOf(entry.Author) }, condition)
 	case model.FilterFieldURL:
-		matched = matchText(entry.URL, condition)
+		matched = matchText(entry.URL, nil, condition)
 	case model.FilterFieldFeedTitle:
-		matched = matchText(entry.FeedTitle, condition)
+		matched = matchText(entry.FeedTitle, nil, condition)
 	case model.FilterFieldFeedURL:
-		matched = matchText(entry.FeedURL, condition)
+		matched = matchText(entry.FeedURL, nil, condition)
 	case model.FilterFieldFeedType:
-		matched = matchText(entry.FeedType, condition)
+		matched = matchText(entry.FeedType, nil, condition)
 	case model.FilterFieldFolder:
-		matched = matchText(entry.FolderName, condition)
+		matched = matchText(entry.FolderName, nil, condition)
 	case model.FilterFieldPublishedAt:
 		matched = matchDate(entry.PublishedAt, condition, now)
 	case model.FilterFieldHasThumbnail:
@@ -985,12 +987,48 @@ func matchAIRelevance(entry EntryContext, condition model.FilterCondition, ai AI
 	return verdict
 }
 
-func matchText(value string, condition model.FilterCondition) bool {
+// matchText 文本类条件的求值。
+//
+// `plain` = 「去标签纯文本」的惰性取值（nil 表示这个字段本来就是纯文本，不用再比一次）。
+// 47-4（用户 2026-10-12）：原始值没命中时再拿纯文本比一次，任一命中即算 ——
+// 带空格 / 跨标签的写法（`🥰 #机场 #推广`）这才可能命中；旧规则行为不变。
+func matchText(value string, plain func() string, condition model.FilterCondition) bool {
+	// 「为空 / 非空」仍只看原始值（改判据会让既有规则悄悄换语义）
 	switch condition.Operator {
 	case model.FilterOpIsEmpty:
 		return strings.TrimSpace(value) == ""
 	case model.FilterOpIsNotEmpty:
 		return strings.TrimSpace(value) != ""
+	}
+
+	if textMatches(value, condition) {
+		return true
+	}
+	if plain == nil {
+		return false
+	}
+	text := plain()
+	if text == "" || text == value {
+		return false
+	}
+	// 纯文本这一路按「压掉空白」的形态比：源里多一个空格、标签之间夹了换行或 `&nbsp;`
+	// 都还能命中（条件值同样压一遍，两边口径一致）
+	return textMatchesAliased(text, condition)
+}
+
+// textMatchesAliased 与 textMatches 同义，只是先把「比对双方」的空白压成单空格
+// （纯文本那一路专用；正则本身不动）。
+func textMatchesAliased(value string, condition model.FilterCondition) bool {
+	if condition.Operator == model.FilterOpRegex {
+		return textMatches(value, condition)
+	}
+	trimmed := condition
+	trimmed.Value = collapseSpace(condition.Value)
+	return textMatches(collapseSpace(value), trimmed)
+}
+
+func textMatches(value string, condition model.FilterCondition) bool {
+	switch condition.Operator {
 	case model.FilterOpRegex:
 		pattern, err := regexp.Compile(condition.Value)
 		if err != nil {
