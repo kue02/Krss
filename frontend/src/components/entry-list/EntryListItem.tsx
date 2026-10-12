@@ -50,7 +50,7 @@ import {
 import { getProxiedImageUrl } from "@/lib/image-proxy";
 import { SocialMediaGallery } from "@/components/entry-list/SocialMediaGallery";
 import { parseSocialSource } from "@/lib/social-source";
-import { removeContentSeparators } from "@/lib/social-content";
+import { removeContentSeparators, splitSocialQuote } from "@/lib/social-content";
 import { copyToClipboard } from "@/stores/toast-store";
 import {
   isRecoverableProxyUrl,
@@ -409,6 +409,16 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
       return removeContentSeparators(withoutDuplicate);
     }, [expandedContent, displayTitle, titleIsBodyPrefix]);
 
+    /**
+     * 47-5（用户 2026-10-12）：正文与引文是**两段**，顺序照来源 —— 卡片渲染顺序是
+     * 「正文（受 300px 折叠）→ 正文图片画廊 → 引文」，引文不再被夹在图片前面。
+     * 没有引文块时 `quote` 为空串，卡片与改动前逐像素一致。
+     */
+    const { body: socialBodyText, quote: socialQuote } = useMemo(
+      () => splitSocialQuote(socialBody),
+      [socialBody],
+    );
+
     // 社交平台与作者（从条目链接解析，用于显示 @handle）
     const socialSource = useMemo(
       () => (isSocialView ? parseSocialSource(entry.url) : null),
@@ -552,22 +562,35 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                   </div>
                 )}
 
-                {/* 正文：纯文字 + 300px 折叠（Folo 的 CollapsedSocialMediaItem） */}
+                {/* 正文：纯文字 + 300px 折叠（Folo 的 CollapsedSocialMediaItem）。
+                    47-5：这里只放「正文段」，引文段在下面的图片画廊之后再渲染。 */}
                 <div className="relative mt-1">
                   {inView ? (
                     <>
+                      {socialBodyText && (
                       <div
                         ref={expandedBodyRef}
                         // 卡片正文里的图片（含引文块内的）点开大图查看器。
                         // 用捕获阶段：卡片根节点自己有点击（选中条目），子元素的处理在卡片里没生效
                         onClickCapture={(event) => {
                           const target = event.target as HTMLElement;
-                          if (target.tagName !== "IMG") return;
-                          event.preventDefault();
-                          event.stopPropagation();
-                          const src = target.getAttribute("src") ?? "";
-                          const index = socialImages.findIndex((url) => url === src);
-                          openImagePreview(socialImages, index >= 0 ? index : 0);
+                          if (target.tagName === "IMG") {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            const src = target.getAttribute("src") ?? "";
+                            const index = socialImages.findIndex((url) => url === src);
+                            openImagePreview(socialImages, index >= 0 ? index : 0);
+                            return;
+                          }
+                          /**
+                           * 正文里的链接（47-2，用户 2026-10-12 报）：
+                           * 只挡冒泡，不 preventDefault —— 链接照常新开标签，
+                           * 但不要让点击回到卡片根的 `onClick → onClick(entry.id)`，
+                           * 否则点一下链接会连带把「正文」推进第三栏（与 §2.43-③ 图片那条同一口径）。
+                           * 用 `closest` 而不是 `tagName`：链接里常包着 `<span>` / `<b>` / `<img>`，
+                           * 直接点进去时 event.target 不是 `<a>` 本身。
+                           */
+                          if (target.closest("a")) event.stopPropagation();
                         }}
                         className={cn(
                           "entry-card entry-content prose prose-sm dark:prose-invert max-w-none break-words [&_img]:cursor-zoom-in",
@@ -599,11 +622,12 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                         onTransitionEnd={() => setExpandTarget(null)}
                       >
                         <ArticleContent
-                          content={socialBody}
+                          content={socialBodyText}
                           articleUrl={entry.url}
                           fitImages
                         />
                       </div>
+                      )}
 
                       {/* 显示更多：Folo 是「纯文字 + 下箭头」压在正文底部，不是一颗胶囊按钮 */}
                       {bodyClamped && (
@@ -637,6 +661,30 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                   articleUrl={entry.url}
                   onOpenImage={openImagePreview}
                 />
+
+                {/* 47-5（用户 2026-10-12）：引文段排在**正文图片之后**。
+                    用户原话「这两段的排序是根据来源顺序决定的」—— 原帖是
+                    「正文 → 正文图片 → 引文」，引文不再因为图片被抽成画廊而跑到图片上面。
+                    引文不跟着 300px 折叠（它已经在正文折叠区之外），排版与正文同一套字号/行高。 */}
+                {socialQuote && (
+                  <div
+                    data-social-quote=""
+                    className="entry-card entry-content prose prose-sm dark:prose-invert mt-3 max-w-none break-words [&_img]:cursor-zoom-in"
+                    style={{
+                      fontSize: `${Math.max(14, entryFontSize - 2)}px`,
+                      lineHeight: entryLineHeight,
+                      ...(readingFontStack
+                        ? { fontFamily: readingFontStack }
+                        : {}),
+                    }}
+                  >
+                    <ArticleContent
+                      content={socialQuote}
+                      articleUrl={entry.url}
+                      fitImages
+                    />
+                  </div>
+                )}
 
                 {/* 悬停操作条（对齐 Folo 的 ActionBar）：默认透明，悬停/选中时浮出 */}
                 <div

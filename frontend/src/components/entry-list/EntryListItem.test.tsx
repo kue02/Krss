@@ -254,6 +254,31 @@ describe("EntryListItem", () => {
       );
       expect(screen.queryByText("@op7418")).toBeNull();
     });
+
+    it("正文里的链接只开链接、不连带选中条目（47-2 回归）", () => {
+      const onClick = vi.fn();
+      render(
+        <EntryListItem
+          entry={{
+            ...socialEntry,
+            // Telegram / RSSHub 的正文普遍长这样：链接外面还套着 span 一类的壳
+            content:
+              '<p>看这个 <a href="https://example.com/x" target="_blank"><span>链接</span></a></p>',
+          }}
+          feed={feed}
+          isSelected={false}
+          onClick={onClick}
+          social
+        />,
+      );
+
+      fireEvent.click(screen.getByText("链接"));
+      expect(onClick).not.toHaveBeenCalled();
+
+      // 对照：点正文文字本身仍然要能选中条目（卡片的主点击区没被一起挡掉）
+      fireEvent.click(screen.getByText(/看这个/));
+      expect(onClick).toHaveBeenCalledWith("entry-1");
+    });
   });
 
   describe("已读 / 未读的样式不改变布局（BUG-2 回归）", () => {

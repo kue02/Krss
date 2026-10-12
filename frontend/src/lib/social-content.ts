@@ -47,6 +47,55 @@ function normalizeQuoteBlocks(doc: Document): void {
   }
 }
 
+/**
+ * 47-5（用户 2026-10-12）：把社交正文按「引文块」切成两段。
+ *
+ * 用户原话：「这个本质就是两段，一段正文，一段引文，这两个的排序是根据来源顺序决定的，
+ * 跟这两段里的图片无关」—— 卡片原先把整块 prose（正文 + 末尾引文）一起塞进 300px 折叠容器、
+ * 正文自己的图片被抽成画廊挂在**整块之后**，于是浏览器里看到的是「正文 → 引文 → 正文图片」，
+ * 与原帖顺序（正文 → 正文图片 → 引文）相反。
+ *
+ * 返回：
+ *   - `body`  = 第一个引文块**之前**的内容（含正文自己的文字，图片已被 `stripContentImages` 摘走）
+ *   - `quote` = 从第一个引文块起（含它后面的一切）的内容
+ * 没有引文块时 `quote` 是空串，调用方按「不分段」走原来的样子。
+ *
+ * 只在顶层子节点里找引文块：RSSHub 的 `.rsshub-quote` 与 Telegram 的 `<blockquote>` 都排在顶层
+ * （`normalizeQuoteBlocks` 也是这个口径）。引文块在开头（正文为空）时 `body` 为空串。
+ */
+export function splitSocialQuote(html: string | null | undefined): {
+  body: string;
+  quote: string;
+} {
+  if (!html) return { body: "", quote: "" };
+
+  try {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const nodes = Array.from(doc.body.childNodes);
+    const index = nodes.findIndex(
+      (node) =>
+        node.nodeType === 1 &&
+        ((node as Element).classList?.contains("rsshub-quote") ||
+          (node as Element).tagName === "BLOCKQUOTE"),
+    );
+    if (index < 0) return { body: html, quote: "" };
+
+    // 用容器序列化而不是读 `outerHTML`：文本节点没有 outerHTML，硬读会丢掉正文里的纯文字
+    const serialize = (list: ChildNode[]) => {
+      const container = doc.createElement("div");
+      for (const node of list) container.appendChild(node.cloneNode(true));
+      return container.innerHTML;
+    };
+
+    return {
+      body: serialize(nodes.slice(0, index)),
+      quote: serialize(nodes.slice(index)),
+    };
+  } catch {
+    return { body: html, quote: "" };
+  }
+}
+
 export function removeContentSeparators(
   html: string | null | undefined,
 ): string {
