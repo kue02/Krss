@@ -429,6 +429,96 @@ export function AISettings() {
     (!isBaseURLRequired || hasBaseURL) &&
     !requestOptionsError,
   );
+  /**
+   * 47-3（用户 2026-10-12）：**保存**不能跟着「模型配齐没」一起禁掉。
+   *
+   * 这一页除了提供商，还有「翻译通道 / 摘要语言 / 自动翻译」这些不依赖模型的设置；
+   * 选了免 key 的免费翻译通道（google / youdao）时本来就不需要 key 与模型，
+   * 原来保存按钮与测试共用 `canSubmit`，表现就是「选了免费翻译也存不上」。
+   * 「测试」要真去打模型，仍然必须配齐（并给出提示，见按钮上的 title）。
+   */
+  const canSave = !isSaving && !requestOptionsError;
+  const canTest = !isTesting && canSubmit;
+
+  /**
+   * 47-3：测试 / 保存两颗按钮 —— 用户 2026-10-12 要求放在「已保存的提供商」这一块里。
+   * 原来压在页面最下面，改完上面的「翻译通道」还得滚到底才够得着；
+   * 这一块本来就是这页的主控区（选提供商 / 设为当前使用 / 新增都在这里）。
+   */
+  const testAndSaveControls = (
+    <div className="flex flex-wrap items-center gap-3 pt-1">
+      <button
+        type="button"
+        onClick={handleSave}
+        disabled={!canSave}
+        className={cn(
+          "flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--radius)] px-4 text-sm font-medium transition-colors",
+          "bg-primary text-primary-foreground hover:bg-primary/90",
+          "disabled:cursor-not-allowed disabled:opacity-50",
+        )}
+      >
+        {isSaving ? (
+          <>
+            <div className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            <span>{t("ai_settings.saving")}</span>
+          </>
+        ) : (
+          <span>{t("ai_settings.save")}</span>
+        )}
+      </button>
+
+      <button
+        type="button"
+        onClick={handleTest}
+        disabled={!canTest}
+        title={canTest ? undefined : t("ai_settings.test_needs_model")}
+        className={cn(
+          "flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--radius)] px-4 text-sm font-medium transition-colors",
+          "bg-secondary hover:bg-secondary/80",
+          "disabled:cursor-not-allowed disabled:opacity-50",
+        )}
+      >
+        {isTesting ? (
+          <>
+            <div className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            <span>{t("ai_settings.testing")}</span>
+          </>
+        ) : (
+          <>
+            <svg
+              className="size-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M13 10V3L4 14h7v7l9-11h-7z"
+              />
+            </svg>
+            <span>{t("ai_settings.test")}</span>
+          </>
+        )}
+      </button>
+
+      {testResult && (
+        <span
+          className={cn(
+            "text-sm",
+            testResult.success
+              ? "text-green-600 dark:text-green-400"
+              : "text-destructive",
+          )}
+        >
+          {testResult.success
+            ? t("ai_settings.test_success") + "!"
+            : testResult.error}
+        </span>
+      )}
+    </div>
+  );
 
   return (
     <div className="space-y-1">
@@ -508,6 +598,8 @@ export function AISettings() {
             );
           })}
         </div>
+
+        {testAndSaveControls}
       </div>
 
       {/* Provider */}
@@ -808,78 +900,6 @@ export function AISettings() {
         />
       </div>
 
-      {/* Test & Save Buttons */}
-      <div className="flex flex-wrap items-center gap-3 pt-4">
-        <button
-          type="button"
-          onClick={handleTest}
-          disabled={isTesting || !canSubmit}
-          className={cn(
-            "flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--radius)] px-4 text-sm font-medium transition-colors",
-            "bg-secondary hover:bg-secondary/80",
-            "disabled:cursor-not-allowed disabled:opacity-50",
-          )}
-        >
-          {isTesting ? (
-            <>
-              <div className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-              <span>{t("ai_settings.testing")}</span>
-            </>
-          ) : (
-            <>
-              <svg
-                className="size-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 10V3L4 14h7v7l9-11h-7z"
-                />
-              </svg>
-              <span>{t("ai_settings.test")}</span>
-            </>
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={isSaving || !canSubmit}
-          className={cn(
-            "flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--radius)] px-4 text-sm font-medium transition-colors",
-            "bg-primary text-primary-foreground hover:bg-primary/90",
-            "disabled:cursor-not-allowed disabled:opacity-50",
-          )}
-        >
-          {isSaving ? (
-            <>
-              <div className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-              <span>{t("ai_settings.saving")}</span>
-            </>
-          ) : (
-            <span>{t("ai_settings.save")}</span>
-          )}
-        </button>
-
-        {testResult && (
-          <span
-            className={cn(
-              "text-sm",
-              testResult.success
-                ? "text-green-600 dark:text-green-400"
-                : "text-destructive",
-            )}
-          >
-            {testResult.success
-              ? t("ai_settings.test_success") + "!"
-              : testResult.error}
-          </span>
-        )}
-      </div>
 
       {/* Messages */}
       {error && (

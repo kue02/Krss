@@ -361,6 +361,7 @@
     "test_connection": "Test Connection",
     "testing": "Testing...",
     "test_success": "Connection successful",
+    "test_needs_model": "Fill in the model (and API key) first to test the connection",
     "test_failed": "Connection failed",
     "optional": "Optional",
     "required": "*",

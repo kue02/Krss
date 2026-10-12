@@ -283,9 +283,11 @@ func (h *SettingsHandler) UpdateAISettings(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
 	}
-	// 选了免 key 翻译通道时，可以完全不配模型（翻译能用，摘要才需要模型）
-	freeTranslateOnly := isFreeTranslateChannel(req.TranslateChannel) && req.Provider == "" && req.Model == ""
-	if !freeTranslateOnly {
+	// 选了免 key 翻译通道（google / youdao）时，provider / model 都不是必填：
+	// 翻译能用，摘要才需要模型。前端表单里的 provider 默认就是 openai（`settings_service.go`
+	// 的默认值）且总是随包提交，所以这里**只看翻译通道**，不再要求 provider/model 同时为空
+	// —— 原来的写法在前端永远不成立，表现成「选了免费翻译也存不上」（用户 2026-10-12 报 47-3）。
+	if !isFreeTranslateChannel(req.TranslateChannel) {
 		if req.Provider == "" {
 			return c.JSON(http.StatusBadRequest, errorResponse{Error: "provider is required"})
 		}

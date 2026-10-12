@@ -100,6 +100,65 @@ func TestSettingsHandler_UpdateAISettings_MissingBaseURLForOpenAI(t *testing.T) 
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
+// 47-3（用户 2026-10-12）：选了免 key 的免费翻译通道（google / youdao）时，
+// 没有模型 / 密钥也必须存得下来 —— 前端表单的 provider 默认就是 openai 且总会一起提交。
+func TestSettingsHandler_UpdateAISettings_FreeTranslateChannelWithoutModel(t *testing.T) {
+	for _, channel := range []string{"google", "youdao"} {
+		t.Run(channel, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockService := mock.NewMockSettingsService(ctrl)
+			h := handler.NewSettingsHandlerHelper(mockService, nil)
+
+			e := newTestEcho()
+			reqBody := map[string]interface{}{
+				"provider":         "openai",
+				"model":            "",
+				"translateChannel": channel,
+			}
+			req := newJSONRequest(http.MethodPut, "/settings/ai", reqBody)
+			c, rec := newTestContext(e, req)
+
+			mockService.EXPECT().
+				SetAISettings(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, settings *service.AISettings) error {
+					require.Equal(t, channel, settings.TranslateChannel)
+					return nil
+				})
+
+			mockService.EXPECT().
+				GetAISettings(gomock.Any()).
+				Return(&service.AISettings{Provider: "openai", TranslateChannel: channel}, nil)
+
+			err := h.UpdateAISettings(c)
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, rec.Code)
+		})
+	}
+}
+
+// 对照组：没选免费通道时，缺模型仍然要 400（不能连带把校验整体放松）
+func TestSettingsHandler_UpdateAISettings_ModelStillRequiredWithoutFreeChannel(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockSettingsService(ctrl)
+	h := handler.NewSettingsHandlerHelper(mockService, nil)
+
+	e := newTestEcho()
+	reqBody := map[string]interface{}{
+		"provider": "openai",
+		"model":    "",
+	}
+	req := newJSONRequest(http.MethodPut, "/settings/ai", reqBody)
+	c, rec := newTestContext(e, req)
+
+	err := h.UpdateAISettings(c)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
 func TestSettingsHandler_TestNetworkProxy_Disabled(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
