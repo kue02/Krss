@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { useLocation, useSearch } from "wouter";
 import { parseRoute, buildPath } from "@/lib/router";
+import { useUISettingKey, setUISetting } from "@/hooks/useUISettings";
 import type { ContentType } from "@/types/api";
 
 export type SelectionType =
@@ -41,9 +42,15 @@ export function useSelection(): UseSelectionReturn {
   const [location, navigate] = useLocation();
   const search = useSearch();
 
+  /**
+   * 47-1（用户 2026-10-12）：地址栏没带 `?unread` 时用「记住的那一档」——
+   * 默认 true（只显示未读），用户手动关掉后写回设置、下次打开仍是他上次那档。
+   */
+  const rememberedUnreadOnly = useUISettingKey("unreadOnly");
+
   const routeState = useMemo(
-    () => parseRoute(location, search),
-    [location, search],
+    () => parseRoute(location, search, rememberedUnreadOnly),
+    [location, search, rememberedUnreadOnly],
   );
 
   const selectAll = useCallback(
@@ -145,6 +152,8 @@ export function useSelection(): UseSelectionReturn {
         );
         return;
       }
+      // 47-1：中栏胶囊的「未读 / 全部」也是同一档选择，一起记住
+      setUISetting("unreadOnly", filter === "unread");
       navigate(
         buildPath(
           // 星标视图里点未读 / 全部 = 退出星标回普通列表（否则永远卡在星标里）
@@ -186,11 +195,15 @@ export function useSelection(): UseSelectionReturn {
   );
 
   const toggleUnreadOnly = useCallback(() => {
+    const next = !routeState.unreadOnly;
+    // 47-1：把这一档记下来（用户 2026-10-12 拍板「默认开 + 记住上次选择」）。
+    // 写设置与导航都做：设置管「下次打开」，导航管「当场这一屏」。
+    setUISetting("unreadOnly", next);
     navigate(
       buildPath(
         routeState.selection,
         routeState.entryId,
-        !routeState.unreadOnly,
+        next,
         routeState.contentType,
       ),
       { replace: true },

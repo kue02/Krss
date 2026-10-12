@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useLocation, useSearch } from "wouter";
 import { parseRoute, buildPath } from "@/lib/router";
+import { useUISettingKey } from "@/hooks/useUISettings";
 
 export type MobileView = "list" | "detail";
 
@@ -23,11 +24,15 @@ export function useMobileLayout() {
   );
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // 47-1：`?unread` 缺席时按「记住的那一档」兜底（与 useSelection 同一口径，
+  // 否则移动端从详情退回列表时会把这一档写错）
+  const rememberedUnreadOnly = useUISettingKey("unreadOnly");
+
   // Mobile view is derived from URL - if there's an entryId, show detail
   const mobileView: MobileView = useMemo(() => {
-    const routeState = parseRoute(location, search);
+    const routeState = parseRoute(location, search, rememberedUnreadOnly);
     return routeState.entryId ? "detail" : "list";
-  }, [location, search]);
+  }, [location, search, rememberedUnreadOnly]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -68,7 +73,7 @@ export function useMobileLayout() {
 
   // Navigate back to list by removing entryId from URL
   const showList = useCallback(() => {
-    const routeState = parseRoute(location, search);
+    const routeState = parseRoute(location, search, rememberedUnreadOnly);
     navigate(
       buildPath(
         routeState.selection,
@@ -77,7 +82,7 @@ export function useMobileLayout() {
         routeState.contentType,
       ),
     );
-  }, [location, search, navigate]);
+  }, [location, search, navigate, rememberedUnreadOnly]);
 
   const openSidebar = useCallback(() => setSidebarOpen(true), []);
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
