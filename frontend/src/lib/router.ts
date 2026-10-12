@@ -17,10 +17,25 @@ function parseContentType(value: string | null): ContentType {
 
 /**
  * Parse URL pathname and search params into route state
+ *
+ * `defaultUnreadOnly` = 地址栏没带 `?unread` 时用哪一档。
+ * 47-1（用户 2026-10-12）：默认改成「只显示未读」，且这一档由调用方从
+ * 界面设置（`useUISettingKey("unreadOnly")`）传进来 —— 用户手动关掉后
+ * 下次打开仍是他上次那档（toggling 会写回设置）。
  */
-export function parseRoute(pathname: string, search: string): RouteState {
+export function parseRoute(
+  pathname: string,
+  search: string,
+  defaultUnreadOnly = true,
+): RouteState {
   const params = new URLSearchParams(search);
-  const unreadOnly = params.get("unread") === "true";
+  const unreadParam = params.get("unread");
+  const unreadOnly =
+    unreadParam === "true"
+      ? true
+      : unreadParam === "false"
+        ? false
+        : defaultUnreadOnly;
   const contentType = parseContentType(params.get("type"));
 
   // Remove leading slash and split
@@ -110,8 +125,11 @@ export function buildPath(
   }
 
   const params = new URLSearchParams();
-  if (unreadOnly) {
-    params.set("unread", "true");
+  if (typeof unreadOnly === "boolean") {
+    // 47-1（用户 2026-10-12）：以前只在 true 时写参，「关」这一档靠缺席表达 ——
+    // 但缺席现在要按「记住的那一档」兜底，所以关也得显式写出来，
+    // 否则「点全部」会立刻被兜底值翻回未读（同一屏内自相矛盾）。
+    params.set("unread", unreadOnly ? "true" : "false");
   }
   if (selection.type === "starred") {
     // 20-2：默认档就是「只当前视图」，显式写出来（关掉时写 all）——

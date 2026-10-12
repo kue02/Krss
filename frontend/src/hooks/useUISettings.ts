@@ -194,6 +194,12 @@ interface UISettings {
   cardImageSize: CardImageSize;
   /** 卡片摘要显示行数，0 = 不显示摘要 */
   cardPreviewLines: number;
+  /**
+   * 47-1（用户 2026-10-12）：第二栏「只显示未读」那一档。
+   * 默认 `true`（打开就是未读优先）；用户手动切到「显示全部」时写回这里，
+   * 下次打开仍是他上次那档（地址栏没带 `?unread` 时按它兜底，见 `lib/router.ts`）。
+   */
+  unreadOnly: boolean;
   /** 正文排版（本地偏好，不进后端设置） */
   entryFontFamily: string;
   entryFontSize: number;
@@ -351,6 +357,8 @@ const SILENT_SAVE_UI_KEYS = new Set<string>([
   "gridStyle",
   "hoverRowHeight",
   "hoverImageSize",
+  // 47-1：切「只显示未读 / 显示全部」，列表当场就换了，不必再弹一句
+  "unreadOnly",
 ]);
 
 /** 存储/同步的整包形状（与 `types/settings.ts` 的 UISettingsPackage 同形） */
@@ -505,6 +513,8 @@ export const defaultUISettings: UISettings = {
   articleLayout: "list",
   cardImageSize: "small",
   cardPreviewLines: 2,
+  // 47-1（用户 2026-10-12）：打开就是「只显示未读」；切到「显示全部」会被记住
+  unreadOnly: true,
   entryFontFamily: "",
   entryFontSize: 16,
   entryLineHeight: 1.8,

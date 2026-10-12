@@ -8,7 +8,7 @@ describe("router", () => {
       expect(result).toEqual({
         selection: { type: "all" },
         entryId: null,
-        unreadOnly: false,
+        unreadOnly: true,
         contentType: "article",
       });
     });
@@ -18,7 +18,7 @@ describe("router", () => {
       expect(result).toEqual({
         selection: { type: "all" },
         entryId: null,
-        unreadOnly: false,
+        unreadOnly: true,
         contentType: "article",
       });
     });
@@ -28,7 +28,7 @@ describe("router", () => {
       expect(result).toEqual({
         selection: { type: "all" },
         entryId: "123",
-        unreadOnly: false,
+        unreadOnly: true,
         contentType: "article",
       });
     });
@@ -38,7 +38,7 @@ describe("router", () => {
       expect(result).toEqual({
         selection: { type: "feed", feedId: "456" },
         entryId: null,
-        unreadOnly: false,
+        unreadOnly: true,
         contentType: "article",
       });
     });
@@ -48,7 +48,7 @@ describe("router", () => {
       expect(result).toEqual({
         selection: { type: "feed", feedId: "456" },
         entryId: "789",
-        unreadOnly: false,
+        unreadOnly: true,
         contentType: "article",
       });
     });
@@ -58,7 +58,7 @@ describe("router", () => {
       expect(result).toEqual({
         selection: { type: "folder", folderId: "111" },
         entryId: null,
-        unreadOnly: false,
+        unreadOnly: true,
         contentType: "article",
       });
     });
@@ -68,7 +68,7 @@ describe("router", () => {
       expect(result).toEqual({
         selection: { type: "folder", folderId: "111" },
         entryId: "222",
-        unreadOnly: false,
+        unreadOnly: true,
         contentType: "article",
       });
     });
@@ -78,7 +78,7 @@ describe("router", () => {
       expect(result).toEqual({
         selection: { type: "starred", viewOnly: true },
         entryId: null,
-        unreadOnly: false,
+        unreadOnly: true,
         contentType: "article",
       });
     });
@@ -88,7 +88,7 @@ describe("router", () => {
       expect(result).toEqual({
         selection: { type: "starred", viewOnly: true },
         entryId: "333",
-        unreadOnly: false,
+        unreadOnly: true,
         contentType: "article",
       });
     });
@@ -96,6 +96,19 @@ describe("router", () => {
     it("should parse unread query parameter", () => {
       const result = parseRoute("/all", "unread=true");
       expect(result.unreadOnly).toBe(true);
+    });
+
+    // 47-1（用户 2026-10-12）：默认开 + 记住上次选择 —— 地址栏缺席时由调用方传进来的
+    // 「上次那档」兜底；显式参数两种写法都要认。
+    it("47-1：地址栏没带 unread 时用调用方给的默认档", () => {
+      expect(parseRoute("/all", "").unreadOnly).toBe(true);
+      expect(parseRoute("/all", "", false).unreadOnly).toBe(false);
+      expect(parseRoute("/all", "type=social", false).unreadOnly).toBe(false);
+    });
+
+    it("47-1：显式 unread=true / unread=false 压过默认档", () => {
+      expect(parseRoute("/all", "unread=true", false).unreadOnly).toBe(true);
+      expect(parseRoute("/all", "unread=false", true).unreadOnly).toBe(false);
     });
 
     it("should parse type query parameter", () => {
@@ -163,9 +176,15 @@ describe("router", () => {
       expect(buildPath({ type: "all" }, null, true)).toBe("/all?unread=true");
     });
 
+    // 47-1：地址栏缺席会按「记住的那一档」兜底，所以「关」也必须显式写出来
+    it("47-1：unreadOnly=false 也要显式写进地址栏", () => {
+      expect(buildPath({ type: "all" }, null, false)).toBe("/all?unread=false");
+      expect(buildPath({ type: "all" }, null, undefined)).toBe("/all");
+    });
+
     it("should add type query parameter", () => {
       expect(buildPath({ type: "all" }, null, false, "picture")).toBe(
-        "/all?type=picture",
+        "/all?unread=false&type=picture",
       );
     });
 
@@ -177,11 +196,11 @@ describe("router", () => {
 
     it("should always include contentType in URL when provided", () => {
       expect(buildPath({ type: "all" }, null, false, "article")).toBe(
-        "/all?type=article",
+        "/all?unread=false&type=article",
       );
       expect(
         buildPath({ type: "feed", feedId: "123" }, null, false, "picture"),
-      ).toBe("/feed/123?type=picture");
+      ).toBe("/feed/123?unread=false&type=picture");
       expect(
         buildPath(
           { type: "folder", folderId: "456" },
@@ -189,16 +208,16 @@ describe("router", () => {
           false,
           "notification",
         ),
-      ).toBe("/folder/456?type=notification");
+      ).toBe("/folder/456?unread=false&type=notification");
     });
 
     it("should include contentType with entry id", () => {
       expect(buildPath({ type: "all" }, "789", false, "picture")).toBe(
-        "/all/789?type=picture",
+        "/all/789?unread=false&type=picture",
       );
       expect(
         buildPath({ type: "feed", feedId: "123" }, "789", false, "picture"),
-      ).toBe("/feed/123/789?type=picture");
+      ).toBe("/feed/123/789?unread=false&type=picture");
     });
 
     it("should combine all parameters correctly", () => {
@@ -226,7 +245,7 @@ describe("router", () => {
           false,
           "picture",
         );
-        expect(path).toBe("/feed/123?type=picture");
+        expect(path).toBe("/feed/123?unread=false&type=picture");
       });
 
       it("should preserve notification type when navigating", () => {
@@ -236,7 +255,7 @@ describe("router", () => {
           false,
           "notification",
         );
-        expect(path).toBe("/folder/456?type=notification");
+        expect(path).toBe("/folder/456?unread=false&type=notification");
       });
 
       it("should preserve contentType when combined with unread filter", () => {
