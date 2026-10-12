@@ -267,3 +267,72 @@ func TestValidateFilterParams(t *testing.T) {
 	keepOnlyWithRead.Actions = model.FilterActions{KeepOnly: true, MarkRead: true}
 	require.NoError(t, service.ValidateFilterParams(keepOnlyWithRead))
 }
+
+// 47-4（用户 2026-10-12）：带空格 / 跨标签的文本条件要能命中。
+//
+// 报障条目（`t.me/zhetengsha/7200`）的正文尾部原文是
+// `<tg-emoji …><span class="emoji">🥰</span></tg-emoji> <a href="…?q=%23…">#机场</a> <a href="…">#推广</a>`，
+// 渲染出来是「🥰 #机场 #推广」，但两个标签之间夹着 `</a> <a href="…">` ⇒ 原来 contains 恒为 0。
+func TestMatchConditions_PlainTextFallbackForTagsAcrossMarkup(t *testing.T) {
+	entry := entryContextFixture()
+	entry.Content = `<p>尾巴</p><tg-emoji emoji-id="6327836885552991740"><span class="emoji">🥰</span></tg-emoji> ` +
+		`<a href="https://t.me/zhetengsha/7200?q=%23%E6%9C%BA%E5%9C%BA">#机场</a> ` +
+		`<a href="https://t.me/zhetengsha/7200?q=%23%E6%8E%A8%E5%B9%BF">#推广</a>`
+
+	now := time.Now()
+	contains := func(value string) bool {
+		return service.MatchConditions(entry, []model.FilterCondition{
+			{Field: model.FilterFieldContent, Operator: model.FilterOpContains, Value: value},
+		}, now, nil)
+	}
+
+	// 原话里那两种写法都要能命中
+	require.True(t, contains("🥰 #机场 #推广"), "emoji 与两个标签之间有标签包裹，纯文本应命中")
+	require.True(t, contains("#机场 #推广"), "两个标签之间夹着 </a> <a href>，纯文本应命中")
+	require.True(t, contains("#机场"), "单个标签照旧命中（原始 HTML 里就有）")
+
+	// 源里多一个空格 / 标签间夹换行也要命中（空白压成单空格后再比）
+	entrySpaced := entry
+	entrySpaced.Content = "<p>🥰</p><p>#机场</p><p>#推广</p>"
+	require.True(t, service.MatchConditions(entrySpaced, []model.FilterCondition{
+		{Field: model.FilterFieldContent, Operator: model.FilterOpContains, Value: "🥰 #机场 #推广"},
+	}, now, nil))
+
+	// 反证：纯文本里确实没有的内容仍然不命中（没把判据整体放松）
+	require.False(t, contains("#推广 #机场"), "顺序不同不算命中")
+	require.False(t, contains("不存在的词"))
+}
+
+// 纯文本那一路只加不换：原来靠 HTML 命中的规则行为必须一字不变
+func TestMatchConditions_RawHTMLMatchingStillWorks(t *testing.T) {
+	entry := entryContextFixture()
+	entry.Content = `<p>现价：<b>¥0.00</b></p><img src="https://x.com/a.jpg">`
+
+	now := time.Now()
+	htmlOnly := []model.FilterCondition{
+		{Field: model.FilterFieldContent, Operator: model.FilterOpContains, Value: `<img src=`},
+	}
+	require.True(t, service.MatchConditions(entry, htmlOnly, now, nil), "按 HTML 标记匹配的老规则不受影响")
+
+	plainAndHTML := []model.FilterCondition{
+		{Field: model.FilterFieldContent, Operator: model.FilterOpContains, Value: "现价：¥0.00"},
+	}
+	require.True(t, service.MatchConditions(entry, plainAndHTML, now, nil), "跨 <b> 标签的纯文本也能命中")
+
+	exactPlain := []model.FilterCondition{
+		{Field: model.FilterFieldContent, Operator: model.FilterOpExact, Value: "现价：¥0.00"},
+	}
+	require.True(t, service.MatchConditions(entry, exactPlain, now, nil), "exact 也走纯文本那一路")
+
+	regexPlain := []model.FilterCondition{
+		{Field: model.FilterFieldContent, Operator: model.FilterOpRegex, Value: `^现价：`},
+	}
+	require.True(t, service.MatchConditions(entry, regexPlain, now, nil), "正则能对上纯文本开头")
+
+	// is_empty 仍只看原始值（不因纯文本为空而翻案）
+	emptyHTML := entry
+	emptyHTML.Content = "<p></p>"
+	require.False(t, service.MatchConditions(emptyHTML, []model.FilterCondition{
+		{Field: model.FilterFieldContent, Operator: model.FilterOpIsEmpty},
+	}, now, nil))
+}
