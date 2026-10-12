@@ -32,6 +32,26 @@ function getSnapshot() {
 }
 
 export function showToast(message: string, durationMs = DURATION_MS): void {
+  // 49-3（用户 2026-10-12）：同一条文案**只留一个**。
+  //
+  // 背景：自动翻译这类「随状态反复发」的提示会在短时间内被多次触发（实测：打开一条
+  // 条目时同一条目被翻译两次，列表快速切换时每条各弹一次），原实现每次都往数组里
+  // 追加 ⇒ 屏幕上叠起十几条一模一样的胶囊（用户原话「正在自动翻译弹框太多了」）。
+  // 这里改成：已经有一条同文案 → 只把它的倒计时重置，不再新增。
+  const existing = toasts.find((toast) => toast.message === message);
+  if (existing) {
+    const timer = timers.get(existing.id);
+    if (timer) clearTimeout(timer);
+    timers.set(
+      existing.id,
+      setTimeout(() => dismissToast(existing.id), durationMs),
+    );
+    // 位置也重新排到最底（让它看起来是「刚刚又响了一次」，而不是被压在中间）
+    toasts = [...toasts.filter((toast) => toast.id !== existing.id), existing];
+    emit();
+    return;
+  }
+
   const id = nextId++;
   toasts = [...toasts, { id, message }];
   emit();
