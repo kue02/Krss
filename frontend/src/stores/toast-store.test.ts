@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { copyToClipboard, useToasts } from "./toast-store";
+import { copyToClipboard, showToast, useToasts } from "./toast-store";
 
 /**
  * 25-1 回归：普通用户用 `http://<NAS-IP>:8080`（**非安全上下文**）访问自建实例时，
@@ -107,5 +107,44 @@ describe("toast-store · copyToClipboard（25-1）", () => {
     const messages = result.current.map((toast) => toast.message);
     expect(messages).toContain("复制失败，请手动复制");
     expect(messages).not.toContain("已复制");
+  });
+});
+
+/**
+ * 49-3（用户 2026-10-12「正在自动翻译弹框太多了」）：
+ * 自动翻译这类提示会随状态反复发（实测打开一条条目会被触发两次、列表快速切换时每条各弹一次）。
+ * 原来每次都往数组里追加，屏幕上就叠起十几条一模一样的胶囊 ⇒ 同文案必须只留一条。
+ */
+describe("toast-store · 同文案合并（49-3）", () => {
+  it("连着弹同一条文案，只留一个 toast，并重置它的倒计时", () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = renderHook(() => useToasts());
+
+      act(() => {
+        showToast("正在自动翻译…");
+        showToast("正在自动翻译…");
+        showToast("正在自动翻译…");
+      });
+      expect(result.current.filter((t) => t.message === "正在自动翻译…")).toHaveLength(1);
+
+      // 不同文案仍然各留一条（合并只针对同一条）
+      act(() => showToast("已复制"));
+      const messages = result.current.map((t) => t.message);
+      expect(messages).toContain("已复制");
+      expect(messages.filter((m) => m === "正在自动翻译…")).toHaveLength(1);
+
+      // 倒计时被重置：到原定 1.8s 时仍在，再等一轮才消失
+      act(() => {
+        vi.advanceTimersByTime(1800);
+      });
+      expect(result.current.filter((t) => t.message === "正在自动翻译…").length).toBeLessThanOrEqual(1);
+      act(() => {
+        vi.advanceTimersByTime(2000);
+      });
+      expect(result.current.filter((t) => t.message === "正在自动翻译…")).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

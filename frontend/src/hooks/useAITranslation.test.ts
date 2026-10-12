@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import type { Entry } from "@/types/api";
 import { useAITranslation } from "./useAITranslation";
+import { dismissToast, useToasts } from "@/stores/toast-store";
 
 const {
   mockStreamTranslateBlocks,
@@ -265,6 +266,100 @@ describe("useAITranslation", () => {
 
     await waitFor(() => {
       expect(mockStreamTranslateBlocks).toHaveBeenCalledTimes(2);
+    });
+  });
+});
+/**
+ * 49-2 / 49-3 回归（用户 2026-10-12）：
+ * - 正文里的块翻失败时必须给可见原因（原来静默留原文 ⇒ 用户只看到「标题翻了、正文没翻」）
+ * - 「正在自动翻译…」同一条条目只弹一次（原来这条链路会为同一条目跑两遍，列表快速切换就叠一屏）
+ */
+function readToasts(): { id: number; message: string }[] {
+  const { result } = renderHook(() => useToasts());
+  return result.current;
+}
+
+function clearToasts(): void {
+  const { result } = renderHook(() => useToasts());
+  act(() => {
+    for (const toast of result.current) dismissToast(toast.id);
+  });
+}
+
+/** 测试环境没有初始化 i18n ⇒ t() 会退回 key；两种都认，避免断言绑死译文 */
+const isAutoTranslateToast = (message: string) =>
+  message.includes("auto_translate_on") || message.startsWith("正在自动翻译");
+const isFailureToast = (message: string) =>
+  message.includes("translate_blocks_failed") || message.includes("没译出来");
+
+describe("useAITranslation · 翻译提示与失败可见（49-2/49-3）", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockNeedsTranslation.mockReturnValue(true);
+    mockStoreGetTranslation.mockReturnValue(undefined);
+    mockTranslationActionsIsDisabled.mockReturnValue(false);
+    mockTranslateArticlesBatch.mockResolvedValue(undefined);
+    clearToasts();
+  });
+
+  it("同一条条目只弹一次「正在自动翻译…」", async () => {
+    // 实际链路：预载那条没落库时会「再自己发一次」⇒ 这一条条目会被翻译两次
+    mockStreamTranslateBlocks.mockImplementation(() =>
+      (async function* () {
+        yield { done: true };
+      })(),
+    );
+
+    const entry = createEntry("foreign normal content");
+    const { result } = renderHook(() =>
+      useAITranslation({
+        entry,
+        isReadableActive: false,
+        readableContent: null,
+        autoTranslate: true,
+        targetLanguage: "zh-CN",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(mockStreamTranslateBlocks).toHaveBeenCalled();
+      expect(result.current.isTranslating).toBe(false);
+    });
+    await waitFor(() => {
+      expect(readToasts().filter((toast) => isAutoTranslateToast(toast.message))).toHaveLength(1);
+    });
+  });
+
+  it("有块翻译失败时弹一条带原因的提示（不再静默）", async () => {
+    mockStreamTranslateBlocks.mockImplementation(() =>
+      (async function* () {
+        yield { index: 0, html: "<p>ok</p>" };
+        yield {
+          error:
+            "block 1: dial tcp 127.0.0.1:8000: connect: connection refused",
+        };
+        yield { done: true };
+      })(),
+    );
+
+    const entry = createEntry("foreign normal content");
+    renderHook(() =>
+      useAITranslation({
+        entry,
+        isReadableActive: false,
+        readableContent: null,
+        autoTranslate: true,
+        targetLanguage: "zh-CN",
+      }),
+    );
+
+    await waitFor(() => {
+      const failed = readToasts().filter((toast) => isFailureToast(toast.message));
+      expect(failed).toHaveLength(1);
+      // 原因要带出来（i18n 没初始化时至少 key 在，不绑死语言）
+      expect(failed.map((toast) => toast.message).join("")).toMatch(
+        /connection refused|translate_blocks_failed/,
+      );
     });
   });
 });

@@ -55,6 +55,21 @@ export function useAITranslation({
   );
   /** 免费通道失败→模型兜底：同一次翻译只提示一次 */
   const fallbackToastShownRef = useRef(false);
+  /**
+   * 49-3（用户 2026-10-12「正在自动翻译弹框太多了」）：
+   * 「正在自动翻译…」这一条**每条条目只弹一次** —— 原来每跑一遍自动翻译就弹一条，
+   * 而打开一条条目在实际链路上会被触发两次（预载那条没落库时会再自己发一次），
+   * 列表里快速切换条目就会叠起十几条一模一样的胶囊。
+   */
+  const autoTranslateToastShownRef = useRef(false);
+  /**
+   * 49-2（用户 2026-10-12「翻译只翻译了标题，正文没有翻译」）：
+   * 逐块翻译失败时必须**说出来**，不能静默留原文 —— 免费通道只吃纯文本，带内联标记
+   * （列表 / 代码）的块会交给模型；模型不可达时那些块就一直是原文，界面上看不出任何异常。
+   */
+  const failedBlockCountRef = useRef(0);
+  const lastTranslateErrorRef = useRef<string | null>(null);
+  const failureToastShownRef = useRef(false);
   const [originalBlocks, setOriginalBlocks] = useState<TranslateBlockData[]>(
     [],
   );
@@ -97,6 +112,10 @@ export function useAITranslation({
     translateRequestedRef.current = false;
     prevTranslateReadableRef.current = false;
     manuallyDisabledRef.current = false;
+    autoTranslateToastShownRef.current = false;
+    failedBlockCountRef.current = 0;
+    lastTranslateErrorRef.current = null;
+    failureToastShownRef.current = false;
   }, [entry?.id, cancelInFlightTranslation, clearTranslationState]);
 
   // Get cached translations from store
@@ -201,8 +220,16 @@ export function useAITranslation({
         return false;
       }
 
-      // done / error 本身不改状态：收尾统一由流的结束（或订阅到的 done 承诺）负责
-      if (isTranslateDone(event) || isTranslateError(event)) return false;
+      // 49-2：失败的块要记账（收尾时给一句可见提示），但不在这里改「已翻译」状态 ——
+      // 部分成功时其余块仍是有效译文，不能因为一块失败就把整篇打回原文。
+      if (isTranslateError(event)) {
+        failedBlockCountRef.current += 1;
+        lastTranslateErrorRef.current = event.error;
+        return false;
+      }
+
+      // done 本身不改状态：收尾统一由流的结束（或订阅到的 done 承诺）负责
+      if (isTranslateDone(event)) return false;
       return false;
     },
     [t],
@@ -230,6 +257,9 @@ export function useAITranslation({
       hasExistingTranslationRef.current = false;
       setTranslationMode(forReadability);
       translateRequestedRef.current = true;
+      // 49-2：每跑一次翻译重新记账（这次失败了要说，上次说过的不重复说）
+      failedBlockCountRef.current = 0;
+      lastTranslateErrorRef.current = null;
 
       // 别人（预载）正在翻同一条 ⇒ 只订阅它的事件，**不重复跑一遍模型**。
       // 它结束时：store 里有结果就直接用；没有（失败 / 被取消）就落到下面自己补一次。
@@ -305,6 +335,18 @@ export function useAITranslation({
           isTranslatingRef.current = false;
           if (translateAbortRef.current === abortController) {
             translateAbortRef.current = null;
+          }
+          // 49-2：有块没译出来就明说（用户口径「失败须给可见原因」）。
+          // 同一次翻译只提示一次；toast-store 现在也会把同文案合并成一条。
+          if (failedBlockCountRef.current > 0 && !failureToastShownRef.current) {
+            failureToastShownRef.current = true;
+            const reason = (lastTranslateErrorRef.current ?? "").slice(0, 60);
+            showToast(
+              t("entry.translate_blocks_failed", {
+                count: failedBlockCountRef.current,
+                reason,
+              }),
+            );
           }
         }
       }
@@ -427,8 +469,13 @@ export function useAITranslation({
       return;
     }
 
-    // 自动翻译也是「自己动起来」的，给个提示说明正在做什么
-    showToast(t("entry.auto_translate_on"));
+    // 自动翻译也是「自己动起来」的，给个提示说明正在做什么。
+    // 49-3：**每条条目只弹一次** —— 这条链路会为同一条目跑两遍（预载没落库时再自发一次），
+    // 列表里快速切换就会叠出一屏一模一样的胶囊（用户报的就是这个）。
+    if (!autoTranslateToastShownRef.current) {
+      autoTranslateToastShownRef.current = true;
+      showToast(t("entry.auto_translate_on"));
+    }
     generateTranslation(isReadableActive);
   }, [
     autoTranslate,

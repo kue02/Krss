@@ -333,6 +333,7 @@
     "original_site_loading": "正在加载原站…",
     "auto_readability_on": "已自动切换到阅读模式",
     "auto_translate_on": "正在自动翻译…",
+    "translate_blocks_failed": "有 {{count}} 段没译出来（{{reason}}）",
     "translate_fallback_hint": "部分段落走免费通道失败，已用模型兜底译出",
     "force_refresh": "强制拉取",
     "force_confirm_title": "强制拉取 {{count}} 个订阅？",

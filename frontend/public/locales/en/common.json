@@ -336,6 +336,7 @@
     "original_site_loading": "Loading original site…",
     "auto_readability_on": "Switched to reader mode automatically",
     "auto_translate_on": "Auto-translating…",
+    "translate_blocks_failed": "{{count}} block(s) failed to translate ({{reason}})",
     "translate_fallback_hint": "Some blocks failed on the free channel and were translated by the model instead",
     "force_refresh": "Force refresh",
     "force_confirm_title": "Force refresh {{count}} feeds?",
