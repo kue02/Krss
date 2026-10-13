@@ -273,10 +273,6 @@ func (s *aiService) GetSummaryLanguage(ctx context.Context) string {
 	return setting.Value
 }
 
-func (s *aiService) getAIConfig(ctx context.Context) (ai.Config, error) {
-	return s.getAIConfigForScene(ctx, SceneDefault)
-}
-
 // AIScene AI 的使用场景（50 批 1.2 分场景模型）：各场景可单独指定用哪份提供商配置。
 type AIScene string
 
