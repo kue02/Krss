@@ -344,6 +344,22 @@ func (s *aiService) getAIConfigForScene(ctx context.Context, scene AIScene) (ai.
 		return cfg, fmt.Errorf("AI model is not configured")
 	}
 
+	// 51 批 A5：平铺字段是「当前使用」那份的镜像；当前使用不可用时平铺 model 为空，
+	// 上面已经报「未配置」—— 但 activeProviderId 指向了不可用卡而平铺还留着旧值时，
+	// 用场景覆盖外的路径也要兜住：activeId 在列表里但没配模型 = 未配置。
+	if activeID := settingsMap["ai.active_provider_id"]; activeID != "" {
+		var saved []AIProviderConfig
+		if raw := settingsMap["ai.providers"]; raw != "" {
+			if err := json.Unmarshal([]byte(raw), &saved); err == nil {
+				for _, item := range saved {
+					if item.ID == activeID && item.Model == "" {
+						return cfg, fmt.Errorf("AI model is not configured")
+					}
+				}
+			}
+		}
+	}
+
 	if val := settingsMap["ai.request_options"]; val != "" {
 		var requestOptions map[string]any
 		if err := json.Unmarshal([]byte(val), &requestOptions); err != nil {

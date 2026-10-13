@@ -838,6 +838,7 @@ func (s *refreshService) refreshFeedWithCookie(ctx context.Context, feed model.F
 	// 14 批：每一试都走这条订阅**实际生效**的代理（订阅 → 文件夹父级链 → 全局，每轮现读）。
 	var resp *http.Response
 	var fetchErr error
+	var lastBodyHead []byte // 51 批 2：最后一次 4xx/5xx 的正文头（RSSHub 错误页归类用）
 	for attempt := 0; attempt < fetchMaxAttempts; attempt++ {
 		if attempt > 0 {
 			backoff := fetchRetryBackoffs[attempt-1]
@@ -866,8 +867,12 @@ func (s *refreshService) refreshFeedWithCookie(ctx context.Context, feed model.F
 			continue
 		}
 		if r.StatusCode == http.StatusTooManyRequests || r.StatusCode >= http.StatusInternalServerError {
+			// 51 批 2：先留一份正文头（RSSHub 错误页带真实失败原因），再丢弃重试 ——
+			// 否则重试耗尽后只剩「HTTP 503」，分不清是上游挂了还是实例不通
+			bodyHead, _ := io.ReadAll(io.LimitReader(r.Body, 256*1024))
 			_, _ = io.Copy(io.Discard, r.Body)
 			_ = r.Body.Close()
+			lastBodyHead = bodyHead
 			fetchErr = fmt.Errorf("HTTP %d", r.StatusCode)
 			continue
 		}
@@ -876,7 +881,9 @@ func (s *refreshService) refreshFeedWithCookie(ctx context.Context, feed model.F
 		break
 	}
 	if fetchErr != nil || resp == nil {
-		errMsg := fetchErr.Error()
+		// 51 批 2：RSSHub 源优先按正文头归类错误页（路由不存在/上游挂），
+		// 没有正文（连不上）才归为 unreachable；非 RSSHub 源原样透传
+		errMsg := classifyRSSHubFetchFailure(ctx, s.settings, feed.URL, fetchErr, lastBodyHead)
 		_ = s.feeds.UpdateErrorMessage(ctx, feed.ID, &errMsg)
 		s.recordFeedFailure(ctx, feed.ID)
 		return fetchErr
@@ -904,7 +911,12 @@ func (s *refreshService) refreshFeedWithCookie(ctx context.Context, feed model.F
 
 	if resp.StatusCode >= http.StatusBadRequest {
 		logger.Error("feed http error", "module", "service", "action", "refresh", "resource", "feed", "result", "failed", "feed_id", feed.ID, "feed_title", feed.Title, "status_code", resp.StatusCode)
-		errMsg := fmt.Sprintf("HTTP %d", resp.StatusCode)
+		// 51 批 2：RSSHub 错误页带着真正失败原因（路由不存在/上游挂），读出来归类而不是只存「HTTP 404」
+		var bodyHead []byte
+		if body, readErr := io.ReadAll(io.LimitReader(resp.Body, 256*1024)); readErr == nil {
+			bodyHead = body
+		}
+		errMsg := classifyRSSHubHTTPFailure(ctx, s.settings, feed.URL, resp.StatusCode, bodyHead)
 		_ = s.feeds.UpdateErrorMessage(ctx, feed.ID, &errMsg)
 		s.recordFeedFailure(ctx, feed.ID)
 		return nil
@@ -980,7 +992,12 @@ func (s *refreshService) refreshFeedWithFreshClient(ctx context.Context, feed mo
 
 	if resp.StatusCode >= http.StatusBadRequest {
 		logger.Error("feed http error", "module", "service", "action", "refresh", "resource", "feed", "result", "failed", "feed_id", feed.ID, "feed_title", feed.Title, "status_code", resp.StatusCode)
-		errMsg := fmt.Sprintf("HTTP %d", resp.StatusCode)
+		// 51 批 2：Anubis 重试路径的 HTTP 错误同样归类（RSSHub 错误页）
+		var bodyHead []byte
+		if body, readErr := io.ReadAll(io.LimitReader(resp.Body, 256*1024)); readErr == nil {
+			bodyHead = body
+		}
+		errMsg := classifyRSSHubHTTPFailure(ctx, s.settings, feed.URL, resp.StatusCode, bodyHead)
 		_ = s.feeds.UpdateErrorMessage(ctx, feed.ID, &errMsg)
 		s.recordFeedFailure(ctx, feed.ID)
 		return nil

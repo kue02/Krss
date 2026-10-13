@@ -45,7 +45,7 @@ interface FilterEditorStore {
   draft: FilterWritePayload | null;
   openNew: () => void;
   openNewView: () => void;
-  openEdit: (rule: FilterRule) => void;
+  openEdit: (rule: FilterRule, mergeNote?: string) => void;
   openWithPreset: (preset: FilterEditorPreset) => void;
   /** 自然语言建规则：把模型给的草稿填进编辑器，用户过一眼再保存 */
   openWithDraft: (draft: FilterDraft) => void;
@@ -97,12 +97,13 @@ export const useFilterEditorStore = create<FilterEditorStore>((set) => ({
       draft: emptyDraft(),
     }),
 
-  openEdit: (rule) =>
+  openEdit: (rule, mergeNote) =>
     set({
       open: true,
       editingId: rule.id,
       kind: rule.kind === "view" ? "view" : "rule",
-      draftNotes: null,
+      // 51 批 A7：右键「新建规则」命中已有规则时带「已并入」提示（复用 draftNotes 展示位）
+      draftNotes: mergeNote ?? null,
       draftWarnings: [],
       draft: {
         name: rule.name,
@@ -161,12 +162,67 @@ export const useFilterEditorStore = create<FilterEditorStore>((set) => ({
 }));
 
 /** 订阅右键 → 为此订阅新建规则 */
-export function openFilterEditorForFeed(feed: Feed): void {
+export function openFilterEditorForFeed(
+  feed: Feed,
+  existingRules?: FilterRule[],
+  mergeNotePrefix?: string,
+): void {
+  // 51 批 A7（用户拍板）：同订阅已有规则时不再新建，打开 position 最靠前的那条累加，
+  // 避免「每按一次右键就多一条单条件同订阅规则」的堆积。只算规则（kind=rule），
+  // 视图（kind=view）是筛选视图不是执行规则，不并。多选订阅（scopeIds）不算「钉在这个订阅」。
+  const reusable = (existingRules ?? [])
+    .filter(
+      (item) =>
+        (item.kind ?? "rule") === "rule" &&
+        item.scopeType === "feed" &&
+        item.scopeId === feed.id &&
+        !(item.scopeIds && item.scopeIds.length > 0),
+    )
+    .sort((a, b) => a.position - b.position)[0];
+  if (reusable) {
+    useFilterEditorStore
+      .getState()
+      .openEdit(reusable, formatMergeNote(mergeNotePrefix, reusable.name));
+    return;
+  }
   useFilterEditorStore.getState().openWithPreset({
     scopeType: "feed",
     scopeId: feed.id,
     name: feed.title ? `${feed.title}` : "",
   });
+}
+
+/** 51 批 A7：文件夹右键「为此文件夹新建规则」—— 同样的「已有则并入第一条」逻辑 */
+export function openFilterEditorForFolder(
+  folder: { id: string; name: string },
+  existingRules?: FilterRule[],
+  mergeNotePrefix?: string,
+): void {
+  const reusable = (existingRules ?? [])
+    .filter(
+      (item) =>
+        (item.kind ?? "rule") === "rule" &&
+        item.scopeType === "folder" &&
+        item.scopeId === folder.id,
+    )
+    .sort((a, b) => a.position - b.position)[0];
+  if (reusable) {
+    useFilterEditorStore
+      .getState()
+      .openEdit(reusable, formatMergeNote(mergeNotePrefix, reusable.name));
+    return;
+  }
+  useFilterEditorStore.getState().openWithPreset({
+    scopeType: "folder",
+    scopeId: folder.id,
+    name: folder.name,
+  });
+}
+
+/** 51 批 A7：并入提示 = 调用方给的前缀（i18n 在组件层做，store 保持可测试）+ 规则名 */
+function formatMergeNote(prefix: string | undefined, ruleName: string): string {
+  if (!prefix) return ruleName;
+  return `${prefix}《${ruleName}》`;
 }
 
 /** 条目侧 → 按此条新建规则（用作者或标题片段预填条件） */

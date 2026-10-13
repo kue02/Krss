@@ -4,6 +4,7 @@ import { AlertDialog, Button } from "@heroui/react";
 import { CheckCircle2, Copy, TriangleAlert } from "lucide-react";
 import { FeedAvatar } from "@/components/ui/feed-avatar";
 import { copyToClipboard } from "@/stores/toast-store";
+import { describeRefreshError } from "@/lib/refresh-error";
 import { useRefreshReportStore } from "@/stores/refresh-report-store";
 
 /**
@@ -65,7 +66,7 @@ export function RefreshReportDialog() {
                 <div className="mt-2 max-h-40 space-y-1 overflow-y-auto">
                   {report.failures.map((item) => (
                     <div key={item.feedId} className="text-xs text-destructive">
-                      {item.title}：{item.error}
+                      {item.title}：{describeRefreshError(item.error, t)}
                     </div>
                   ))}
                 </div>

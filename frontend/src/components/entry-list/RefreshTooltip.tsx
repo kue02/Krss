@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Popover, ProgressBar } from "@heroui/react";
 import { FeedAvatar } from "@/components/ui/feed-avatar";
 import type { RefreshFeedResult, RefreshStatus } from "@/api";
+import { describeRefreshError } from "@/lib/refresh-error";
 import {
   buildRefreshReport,
   useRefreshReportStore,
@@ -25,7 +26,7 @@ const MAX_ROWS = 8;
 
 function resultLabel(item: RefreshFeedResult, t: T): string {
   if (item.skipped) return t("refresh_tooltip.skipped");
-  if (item.error) return t("refresh_tooltip.failed", { reason: item.error });
+  if (item.error) return t("refresh_tooltip.failed", { reason: describeRefreshError(item.error, t) });
   const total = (item.new ?? 0) + (item.updated ?? 0);
   if (total <= 0) return t("refresh_tooltip.no_new");
   return `+${total}`;

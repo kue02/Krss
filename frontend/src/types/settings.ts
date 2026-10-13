@@ -13,6 +13,11 @@ export interface AIProviderConfig {
   model: string;
   apiKey: string;
   requestOptions?: RequestOptions | null;
+  /**
+   * 合成占位标记（51 批 1）：用户从没配过提供商时后端合成的 default —— 不是真实配置。
+   * 前端据此把「只剩占位」的状态显示成「无」；保存时后端会剥掉它，永不落库。
+   */
+  placeholder?: boolean;
 }
 
 export interface AISettings {

@@ -26,6 +26,7 @@ import { copyToClipboard } from "@/stores/toast-store";
 import { queryClient } from "@/lib/queryClient";
 import { openFilterEditorForFeed } from "@/stores/filter-editor-store";
 import type { ContentType, Feed, Folder } from "@/types/api";
+import type { FilterRule } from "@/types/filters";
 
 /**
  * 订阅右键菜单里那组「订阅操作」的**唯一一份行为入口**（与 `FeedContextMenuItems` 配对）。
@@ -79,13 +80,15 @@ export function FeedContextMenuItems({
    *
    * 编辑器只用到 feed.id / feed.title（见 stores/filter-editor-store），先从 feeds
    * 缓存里取完整对象，缓存里没有再用传进来的对象（第一栏按 props 组装的兜底）。
+   * 51 批 A7：同订阅已有规则时改为打开 position 最靠前的那条累加（杜绝堆积）。
    */
   const handleNewRuleFromFeed = () => {
     const cached = queryClient
       .getQueryData<Feed[]>(["feeds"])
       ?.find((item) => item.id === feed.id);
 
-    openFilterEditorForFeed(cached ?? feed);
+    const rules = queryClient.getQueryData<FilterRule[]>(["filters"]) ?? [];
+    openFilterEditorForFeed(cached ?? feed, rules, t("automation.rule_merged_note"));
   };
 
   return (

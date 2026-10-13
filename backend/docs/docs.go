@@ -3886,6 +3886,16 @@ const docTemplate = `{
                     "type": "object",
                     "additionalProperties": {}
                 },
+                "sceneAutomation": {
+                    "type": "string"
+                },
+                "sceneSummary": {
+                    "type": "string"
+                },
+                "sceneTranslate": {
+                    "description": "分场景模型覆盖（50 批 1.2）：空 = 跟随当前使用；provider:\u003cid\u003e / free（仅翻译）",
+                    "type": "string"
+                },
                 "summaryLanguage": {
                     "type": "string"
                 },
@@ -3935,6 +3945,16 @@ const docTemplate = `{
                 "requestOptions": {
                     "type": "object",
                     "additionalProperties": {}
+                },
+                "sceneAutomation": {
+                    "type": "string"
+                },
+                "sceneSummary": {
+                    "type": "string"
+                },
+                "sceneTranslate": {
+                    "description": "分场景模型覆盖（50 批 1.2）：空 = 跟随当前使用；provider:\u003cid\u003e / free（仅翻译）",
+                    "type": "string"
                 },
                 "summaryLanguage": {
                     "type": "string"
@@ -5341,6 +5361,10 @@ const docTemplate = `{
                 "ipStack": {
                     "type": "string"
                 },
+                "mode": {
+                    "description": "Mode 全局代理模式（50 批 2.2）：proxy（默认/旧行为）| smart（先直连不通再代理 + 按域记忆）",
+                    "type": "string"
+                },
                 "password": {
                     "type": "string"
                 },
@@ -5365,6 +5389,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "ipStack": {
+                    "type": "string"
+                },
+                "mode": {
+                    "description": "Mode 全局代理模式（50 批 2.2）：proxy（默认/旧行为）| smart（先直连不通再代理 + 按域记忆）",
                     "type": "string"
                 },
                 "password": {
@@ -5965,6 +5993,10 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
+                },
+                "placeholder": {
+                    "description": "Placeholder：合成占位（51 批 1）。老实例没有保存过提供商列表时，getAIProviders\n会用平铺字段合成一条 default —— 它不是用户配出来的真实提供商，前端据此把\n「只剩占位」的状态显示成「无」。保存路径会把它剥掉，永不落库。",
+                    "type": "boolean"
                 },
                 "provider": {
                     "type": "string"

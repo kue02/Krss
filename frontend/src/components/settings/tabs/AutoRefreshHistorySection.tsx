@@ -24,6 +24,7 @@ import {
   subscribeAutoRefreshHistory,
   type AutoRefreshRecord,
 } from "@/lib/auto-refresh-history";
+import { describeRefreshError } from "@/lib/refresh-error";
 
 /**
  * 设置 → 高级 · 自动刷新历史（第十九批重做，效果图
@@ -418,7 +419,7 @@ export function AutoRefreshHistorySection() {
                         <div key={group.reason} className="mb-1.5">
                           <div className="flex items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-secondary/40">
                             <MarqueeText
-                              text={group.reason}
+                              text={describeRefreshError(group.reason, t)}
                               className="min-w-0 flex-1 text-xs text-destructive"
                             />
                             <Chip
