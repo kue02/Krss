@@ -75,10 +75,13 @@ func main() {
 
 	// 代理按来源生效（14 批）：解析「订阅 → 文件夹父级链 → 全局」的生效代理。
 	// 先建它，再装到 ClientFactory 上 —— 抓取/图标/正文/免费翻译都按来源取。
-	proxySourceService := service.NewProxySourceService(feedRepo, folderRepo, settingsService)
+	// 50 批 2.2：智能档的域记忆（proxy_domain_memory，迁移 29）接给两边 ——
+	// 解析器用它编码 smart: 前缀，传输层用它学习/查询。
+	domainMemoryRepo := repository.NewProxyDomainMemoryRepository(dbConn)
+	proxySourceService := service.NewProxySourceService(feedRepo, folderRepo, settingsService).WithDomainMemory(domainMemoryRepo)
 
 	// Initialize client factory for proxy and IP stack support
-	clientFactory := network.NewClientFactory(settingsService, settingsService).WithSourceProxy(proxySourceService)
+	clientFactory := network.NewClientFactory(settingsService, settingsService).WithSourceProxy(proxySourceService).WithDomainMemory(newNetworkDomainMemory(domainMemoryRepo))
 
 	// Initialize Anubis solver for bypassing Anubis protection
 	anubisStore := anubis.NewStore(settingsRepo)
@@ -245,4 +248,28 @@ func mediaCacheBytes() int64 {
 		}
 	}
 	return mb << 20
+}
+
+// newNetworkDomainMemory 把仓储层的域记忆适配成 pkg/network 的形状（50 批 2.2）。
+// 读写失败都不外抛：记忆只是优化，不能因为它影响抓取。
+type networkDomainMemoryAdapter struct {
+	repo repository.ProxyDomainMemoryRepository
+}
+
+func newNetworkDomainMemory(repo repository.ProxyDomainMemoryRepository) network.DomainMemory {
+	return &networkDomainMemoryAdapter{repo: repo}
+}
+
+func (a *networkDomainMemoryAdapter) MemoryModeFor(ctx context.Context, host string) (string, bool) {
+	m, err := a.repo.Get(ctx, host)
+	if err != nil || m == nil {
+		return "", false
+	}
+	return m.Mode, true
+}
+
+func (a *networkDomainMemoryAdapter) Remember(ctx context.Context, host, mode string) {
+	if err := a.repo.Set(ctx, host, mode); err != nil {
+		logger.Warn("proxy domain memory write failed", "module", "network", "action", "remember", "resource", "smart-proxy", "host", host, "error", err)
+	}
 }

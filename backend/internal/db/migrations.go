@@ -552,6 +552,21 @@ func runMigrations(db *sql.DB) error {
 		return err
 	}
 
+	// Migration 29: 智能代理的域记忆（50 批 2.2）。
+	//   proxy_mode 加值 2=智能（同一列，无新列；见 model.ProxyModeSmart）—— 老值 0/1/NULL 全不受影响。
+	//   proxy_domain_memory —— 智能 = 「先直连，不通走代理」，结论按目标域记住：
+	//   直连成功记 direct；直连超时/失败而代理成功记 proxy。下次同域直接走记住的那条，不再每次先白等一次超时。
+	//   记忆可清空（网络页入口）；没有改动任何既有表 ⇒ 老库升级零变化。
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS proxy_domain_memory (
+			host TEXT PRIMARY KEY,
+			mode TEXT NOT NULL, -- 'direct' | 'proxy'
+			updated_at TEXT NOT NULL
+		)
+	`); err != nil {
+		return fmt.Errorf("create proxy_domain_memory table: %w", err)
+	}
+
 	return nil
 }
 

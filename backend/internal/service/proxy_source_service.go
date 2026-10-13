@@ -33,6 +33,11 @@ type ProxySourceService interface {
 
 	// Overview 给设置页「按来源覆盖」段与管理面板用：全局一份 + 所有文件夹/订阅 + 计数。
 	Overview(ctx context.Context) (*ProxySourceOverview, error)
+
+	// 智能档的域记忆（50 批 2.2）：列表给设置页展示，Clear 给「清空记忆」按钮。
+	// 没接记忆仓储（nil）时返回空/0，不报错。
+	DomainMemoryList(ctx context.Context) ([]repository.ProxyDomainMemory, error)
+	DomainMemoryClear(ctx context.Context) (int64, error)
 }
 
 // 生效来源（谁决定了这个结果）
@@ -42,10 +47,11 @@ const (
 	ProxySourceGlobal = "global"
 )
 
-// 生效结果（与 model.ProxyMode 对应）
+// 生效结果（与 model.ProxyMode 对应）；smart 的 URL 带 "smart:" 前缀，Mode 仍报 proxy/direct 之外的智能语义
 const (
 	proxyEffectiveProxy  = "proxy"
 	proxyEffectiveDirect = "direct"
+	proxyEffectiveSmart  = "smart"
 )
 
 // ProxyEffective 一个来源实际会怎么走。
@@ -64,13 +70,22 @@ type ProxyEffective struct {
 }
 
 type proxySourceService struct {
-	feeds    repository.FeedRepository
-	folders  repository.FolderRepository
-	settings SettingsService
+	feeds        repository.FeedRepository
+	folders      repository.FolderRepository
+	settings     SettingsService
+	domainMemory repository.ProxyDomainMemoryRepository // 智能档的域记忆（50 批 2.2）；nil = 不学习
 }
 
-func NewProxySourceService(feeds repository.FeedRepository, folders repository.FolderRepository, settings SettingsService) ProxySourceService {
+// 返回具体类型（不是接口）：WithDomainMemory 是可选装配链的一环，构造处一行接上；
+// 其余调用方仍当接口用。
+func NewProxySourceService(feeds repository.FeedRepository, folders repository.FolderRepository, settings SettingsService) *proxySourceService {
 	return &proxySourceService{feeds: feeds, folders: folders, settings: settings}
+}
+
+// WithDomainMemory 装上智能档的域记忆（构造处一行；nil = 卸掉，老测试不受影响）。
+func (s *proxySourceService) WithDomainMemory(m repository.ProxyDomainMemoryRepository) *proxySourceService {
+	s.domainMemory = m
+	return s
 }
 
 // ProxyURLForFeed 实现 pkg/network.SourceProxyProvider。
@@ -146,6 +161,9 @@ func (s *proxySourceService) decide(ctx context.Context, mode *model.ProxyMode, 
 		effective.Mode = proxyEffectiveDirect
 		return effective, true
 	}
+	if *mode == model.ProxyModeSmart {
+		return s.decideSmart(effective, cfg), true
+	}
 	effective.Mode = proxyEffectiveProxy
 	if cfg.Usable() {
 		effective.URL = cfg.URL()
@@ -162,12 +180,39 @@ func (s *proxySourceService) decide(ctx context.Context, mode *model.ProxyMode, 
 }
 
 // globalEffective 全局兜底：GetProxyURL() 非空 = 走代理，否则直连。
+// 50 批 2.2：全局模式选了 smart 时，把代理 URL 编码成 "smart:<url>" 下发 ——
+// pkg/network 认这个前缀：http 客户端走智能传输（先直连短探测→代理+学习），azure 会话保守直连。
 func (s *proxySourceService) globalEffective(ctx context.Context) ProxyEffective {
 	effective := ProxyEffective{Source: ProxySourceGlobal, Mode: proxyEffectiveDirect}
-	if url := s.settings.GetProxyURL(ctx); url != "" {
-		effective.Mode = proxyEffectiveProxy
-		effective.URL = url
+	url := s.settings.GetProxyURL(ctx)
+	if url == "" {
+		return effective
 	}
+	mode := s.settings.GetNetworkSettingsMode(ctx)
+	if mode == "smart" {
+		effective.Mode = proxyEffectiveSmart
+		effective.URL = "smart:" + url
+		return effective
+	}
+	effective.Mode = proxyEffectiveProxy
+	effective.URL = url
+	return effective
+}
+
+// decideSmart 智能档的生效结果：URL 编码成 "smart:<cfg 或全局>"；哪套地址都没有 = 智能退化成直连+学习。
+func (s *proxySourceService) decideSmart(effective ProxyEffective, cfg *model.ProxyOverrideConfig) ProxyEffective {
+	effective.Mode = proxyEffectiveSmart
+	if cfg.Usable() {
+		effective.URL = "smart:" + cfg.URL()
+		return effective
+	}
+	if globalURL := s.settings.GetProxyURL(context.Background()); globalURL != "" {
+		effective.URL = "smart:" + globalURL
+		return effective
+	}
+	// 没有任何代理可用：智能没得切，就是直连（Learning 仍会记 direct，行为可解释）
+	effective.Mode = proxyEffectiveDirect
+	effective.Missing = true
 	return effective
 }
 
@@ -306,15 +351,19 @@ func (u ProxyOverrideUpdate) Apply(mode *model.ProxyMode, cfg *model.ProxyOverri
 	return mode, cfg
 }
 
-// ProxyModeToString / ProxyModeFromString 三态与接口字符串互转。
+// ProxyModeToString / ProxyModeFromString 四态与接口字符串互转（50 批 2.2 加 smart）。
 func ProxyModeToString(mode *model.ProxyMode) string {
 	if mode == nil {
 		return "inherit"
 	}
-	if *mode == model.ProxyModeDirect {
+	switch *mode {
+	case model.ProxyModeDirect:
 		return "direct"
+	case model.ProxyModeSmart:
+		return "smart"
+	default:
+		return "proxy"
 	}
-	return "proxy"
 }
 
 // ProxyModeFromString 解析接口字符串；返回 (nil, true) = 明确要「跟随上级」。
@@ -327,6 +376,9 @@ func ProxyModeFromString(value string) (*model.ProxyMode, bool) {
 		return &mode, true
 	case "direct":
 		mode := model.ProxyModeDirect
+		return &mode, true
+	case "smart":
+		mode := model.ProxyModeSmart
 		return &mode, true
 	default:
 		return nil, false
@@ -379,4 +431,25 @@ func stringOrEmpty(value *string) string {
 		return ""
 	}
 	return *value
+}
+
+// DomainMemoryList 智能档的域记忆全量（设置页展示）。
+func (s *proxySourceService) DomainMemoryList(ctx context.Context) ([]repository.ProxyDomainMemory, error) {
+	if s.domainMemory == nil {
+		return nil, nil
+	}
+	return s.domainMemory.List(ctx)
+}
+
+// DomainMemoryClear 清空智能档的域记忆（用户主动「让它重新学」）。
+func (s *proxySourceService) DomainMemoryClear(ctx context.Context) (int64, error) {
+	if s.domainMemory == nil {
+		return 0, nil
+	}
+	n, err := s.domainMemory.Clear(ctx)
+	if err != nil {
+		return 0, err
+	}
+	logger.Info("proxy domain memory cleared", "module", "service", "action", "clear", "resource", "proxy", "result", "ok", "count", n)
+	return n, nil
 }

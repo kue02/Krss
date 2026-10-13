@@ -211,7 +211,22 @@
     "dirty_label_rsshub": "RSSHub",
     "dirty_label_profile": "Profile",
     "sync_failed_toast": "Failed to upload settings: {{reason}}",
-    "sync_failed_unknown": "network or server error"
+    "sync_failed_unknown": "network or server error",
+    "proxy_disabled_summary": "Proxy off · {{type}} {{host}}:{{port}} (click to edit)",
+    "proxy_disabled_empty": "Proxy off · no address yet (click to edit)",
+    "proxy_collapse": "Collapse",
+    "proxy_mode": "Proxy Mode",
+    "proxy_mode_description": "\"Always proxy\" routes everything through the proxy; \"Smart\" tries direct first, falls back to proxy, and remembers per-domain",
+    "proxy_mode_proxy": "Always proxy",
+    "proxy_mode_smart": "Smart",
+    "proxy_memory_title": "Smart proxy memory",
+    "proxy_memory_description": "Per-domain conclusions (direct/proxy); clearing makes it re-probe",
+    "proxy_memory_clear": "Clear memory",
+    "proxy_memory_cleared": "Cleared {{count}} entries",
+    "proxy_memory_clear_failed": "Failed to clear, try again",
+    "proxy_memory_mode_proxy": "proxy",
+    "proxy_memory_mode_direct": "direct",
+    "proxy_memory_empty": "No memory yet: it learns per domain on the next fetch"
   },
   "theme": {
     "system": "Follow System",
@@ -620,7 +635,16 @@
     "mcp_menu_redetect": "Re-detect transport",
     "mcp_menu_edit": "Edit",
     "mcp_menu_delete": "Delete",
-    "mcp_test_redetecting": "Detecting…"
+    "mcp_test_redetecting": "Detecting…",
+    "autosave_saving": "Saving…",
+    "autosave_saved": "Saved automatically",
+    "autosave_failed": "Auto-save failed — changes kept, will retry",
+    "scene_section": "Per-scene models",
+    "scene_hint": "Translation, summary and automation can each use a different provider; by default they all follow the active one above",
+    "scene_translate": "Translation",
+    "scene_summary": "Summary",
+    "scene_automation": "Automation (AI conditions / rule builder)",
+    "scene_follow": "Follow active provider"
   },
   "data_control": {
     "import_opml": "Import OPML",
@@ -1311,7 +1335,9 @@
     "folder_collapse": "Collapse feeds under “{{name}}”",
     "folder_expand": "Expand feeds under “{{name}}”",
     "collapsed_count": "{{count}} hidden",
-    "dialog_subtitle": "Feed → folder chain → global — the nearest layer wins"
+    "dialog_subtitle": "Feed → folder chain → global — the nearest layer wins",
+    "smart": "Smart",
+    "result_smart": "Smart"
   },
   "timeline": {
     "today": "Today",

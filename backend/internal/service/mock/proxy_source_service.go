@@ -12,6 +12,7 @@ package mock
 import (
 	context "context"
 	model "krss/backend/internal/model"
+	repository "krss/backend/internal/repository"
 	service "krss/backend/internal/service"
 	reflect "reflect"
 
@@ -40,6 +41,36 @@ func NewMockProxySourceService(ctrl *gomock.Controller) *MockProxySourceService 
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockProxySourceService) EXPECT() *MockProxySourceServiceMockRecorder {
 	return m.recorder
+}
+
+// DomainMemoryClear mocks base method.
+func (m *MockProxySourceService) DomainMemoryClear(ctx context.Context) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DomainMemoryClear", ctx)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DomainMemoryClear indicates an expected call of DomainMemoryClear.
+func (mr *MockProxySourceServiceMockRecorder) DomainMemoryClear(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DomainMemoryClear", reflect.TypeOf((*MockProxySourceService)(nil).DomainMemoryClear), ctx)
+}
+
+// DomainMemoryList mocks base method.
+func (m *MockProxySourceService) DomainMemoryList(ctx context.Context) ([]repository.ProxyDomainMemory, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DomainMemoryList", ctx)
+	ret0, _ := ret[0].([]repository.ProxyDomainMemory)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DomainMemoryList indicates an expected call of DomainMemoryList.
+func (mr *MockProxySourceServiceMockRecorder) DomainMemoryList(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DomainMemoryList", reflect.TypeOf((*MockProxySourceService)(nil).DomainMemoryList), ctx)
 }
 
 // Overview mocks base method.

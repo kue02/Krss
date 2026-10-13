@@ -95,6 +95,9 @@ func NewProxySourceHandler(sources service.ProxySourceService) *ProxySourceHandl
 
 func (h *ProxySourceHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/proxy/sources", h.List)
+	// 智能档的域记忆（50 批 2.2）：列表 + 清空
+	g.GET("/proxy/memory", h.MemoryList)
+	g.DELETE("/proxy/memory", h.MemoryClear)
 }
 
 // List 一览：全局一份 + 所有文件夹 + 所有订阅（都带「实际生效结果」）+ 计数。
@@ -112,4 +115,47 @@ func (h *ProxySourceHandler) List(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to list proxy sources"})
 	}
 	return c.JSON(http.StatusOK, overview)
+}
+
+// proxyMemoryItem 域记忆一条（对外只给域与结论，不给时间细节）。
+type proxyMemoryItem struct {
+	Host string `json:"host"`
+	Mode string `json:"mode"` // direct | proxy
+}
+
+// MemoryList GET /api/proxy/memory —— 智能档学到的「哪个域走直连/代理」。
+// @Summary List proxy domain memory
+// @Description 智能代理按域记下的结论（direct/proxy），供网络页展示
+// @Tags proxy
+// @Produce json
+// @Success 200 {array} proxyMemoryItem
+// @Router /proxy/memory [get]
+func (h *ProxySourceHandler) MemoryList(c echo.Context) error {
+	items, err := h.sources.DomainMemoryList(c.Request().Context())
+	if err != nil {
+		logger.Error("proxy memory list failed", "module", "handler", "action", "list", "resource", "proxy", "result", "failed", "error", err)
+		return c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to list proxy memory"})
+	}
+	out := make([]proxyMemoryItem, 0, len(items))
+	for _, m := range items {
+		out = append(out, proxyMemoryItem{Host: m.Host, Mode: m.Mode})
+	}
+	return c.JSON(http.StatusOK, out)
+}
+
+// MemoryClear DELETE /api/proxy/memory —— 清空记忆，让智能档重新学。
+// @Summary Clear proxy domain memory
+// @Description 清空智能代理的按域记忆；返回清掉的条数
+// @Tags proxy
+// @Produce json
+// @Success 200 {object} map[string]int64
+// @Failure 500 {object} errorResponse
+// @Router /proxy/memory [delete]
+func (h *ProxySourceHandler) MemoryClear(c echo.Context) error {
+	n, err := h.sources.DomainMemoryClear(c.Request().Context())
+	if err != nil {
+		logger.Error("proxy memory clear failed", "module", "handler", "action", "clear", "resource", "proxy", "result", "failed", "error", err)
+		return c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to clear proxy memory"})
+	}
+	return c.JSON(http.StatusOK, map[string]int64{"cleared": n})
 }

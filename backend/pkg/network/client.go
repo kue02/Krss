@@ -40,6 +40,7 @@ type ClientFactory struct {
 	proxyProvider   ProxyProvider
 	ipStackProvider IPStackProvider
 	sourceProxy     SourceProxyProvider // 按来源（订阅）取代理；nil = 老行为（只用全局那份）
+	domainMemory    DomainMemory        // 智能代理的域记忆（50 批 2.2）；nil = 不学习不查询
 	testTransport   http.RoundTripper   // For testing only
 	testHTTPClient  *http.Client        // For testing only
 }
@@ -53,6 +54,12 @@ func NewClientFactory(proxyProvider ProxyProvider, ipStackProvider IPStackProvid
 // 刻意不缓存：每次建客户端都问一次解析器 —— 「改完设置要立刻生效」（11-20 的规矩）。
 func (f *ClientFactory) WithSourceProxy(provider SourceProxyProvider) *ClientFactory {
 	f.sourceProxy = provider
+	return f
+}
+
+// WithDomainMemory 装上智能代理的域记忆（50 批 2.2；nil = 卸掉）。
+func (f *ClientFactory) WithDomainMemory(memory DomainMemory) *ClientFactory {
+	f.domainMemory = memory
 	return f
 }
 
@@ -108,7 +115,11 @@ func (f *ClientFactory) NewAzureSession(ctx context.Context, timeout time.Durati
 	session.ModifyConfig = useStandardCertificateVerification
 
 	proxyURL := f.proxyProvider.GetProxyURL(ctx)
-	if proxyURL != "" {
+	if rest, ok := strings.CutPrefix(proxyURL, smartMarker); ok {
+		// 智能档：azuretls 会话建好时还不知道目标域（连接级只能绑一套代理）——
+		// 保守不绑代理；真正按域挑路由 SmartTransport 那条链管（学习也只在那边发生）。
+		_ = rest
+	} else if proxyURL != "" {
 		_ = session.SetProxy(proxyURL)
 	}
 
@@ -150,7 +161,12 @@ func (f *ClientFactory) NewAzureSessionForFeed(ctx context.Context, feedID int64
 	session.ModifyConfig = useStandardCertificateVerification
 
 	if proxyURL := f.proxyURLForFeed(ctx, feedID); proxyURL != "" {
-		_ = session.SetProxy(proxyURL)
+		if _, ok := strings.CutPrefix(proxyURL, smartMarker); ok {
+			// 智能档（按来源）：azuretls 会话层做不到按域换腿 —— 保守直连；
+			// 正文抓取的按域路由与学习由 RSS 抓取链路的 SmartTransport 负责。
+		} else {
+			_ = session.SetProxy(proxyURL)
+		}
 	}
 
 	return session
@@ -192,7 +208,7 @@ func (f *ClientFactory) TestProxy(ctx context.Context, testURL string) error {
 
 // NewHTTPTransport creates an http.Transport with proxy configuration.
 // This is useful when you need to customize the http.Client (e.g., CheckRedirect).
-func (f *ClientFactory) NewHTTPTransport(ctx context.Context) *http.Transport {
+func (f *ClientFactory) NewHTTPTransport(ctx context.Context) http.RoundTripper {
 	proxyURL := f.proxyProvider.GetProxyURL(ctx)
 	ipStack := f.getIPStack(ctx)
 	return f.newTransport(proxyURL, ipStack)
@@ -227,7 +243,24 @@ func (f *ClientFactory) getIPStack(ctx context.Context) string {
 }
 
 // newTransport creates an http.Transport with proxy and IP stack configuration.
-func (f *ClientFactory) newTransport(proxyURL, ipStack string) *http.Transport {
+// 50 批 2.2：proxyURL 形如 "smart:<url>" 时走智能传输（先直连短探测 → 代理，按域记忆）。
+func (f *ClientFactory) newTransport(proxyURL, ipStack string) http.RoundTripper {
+	dialFunc := f.makeDialFunc(ipStack)
+
+	if rest, ok := strings.CutPrefix(proxyURL, smartMarker); ok {
+		// ":"后为空 = 没配代理：智能退化为「直连 + 学习」
+		var viaProxy http.RoundTripper
+		if rest != "" {
+			viaProxy = f.newPlainTransport(rest, ipStack)
+		}
+		return NewSmartTransport(newOneShotTransport(dialFunc, nil), viaProxy, f.domainMemory)
+	}
+
+	return f.newPlainTransport(proxyURL, ipStack)
+}
+
+// newPlainTransport 老的传输构造（直连或指定代理）。
+func (f *ClientFactory) newPlainTransport(proxyURL, ipStack string) http.RoundTripper {
 	dialFunc := f.makeDialFunc(ipStack)
 
 	if proxyURL == "" {
