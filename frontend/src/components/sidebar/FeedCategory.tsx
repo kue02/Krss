@@ -1,4 +1,5 @@
 import { useCallback, useRef, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
@@ -14,11 +15,13 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { ChevronIcon, FolderIcon } from "@/components/ui/icons";
-import { FolderCog, Pencil, RefreshCw, Tags, Trash2 } from "lucide-react";
+import { FolderCog, ListFilter, Pencil, RefreshCw, Tags, Trash2 } from "lucide-react";
 import { useContextMenu } from "@/hooks/useContextMenu";
 import { useCategoryState } from "@/hooks/useCategoryState";
 import { Ripple } from "m3-ripple";
 import { feedItemStyles, sidebarItemIconStyles } from "./styles";
+import { openFilterEditorForFolder } from "@/stores/filter-editor-store";
+import type { FilterRule } from "@/types/filters";
 import { contentTypeMeta } from "@/lib/content-type-meta";
 import type { ContentType } from "@/types/api";
 
@@ -86,6 +89,12 @@ export function FeedCategory({
   const contextMenuProps = useContextMenu({
     onContextMenu: handleContextMenu,
   });
+  const queryClient = useQueryClient();
+  /** 51 批 A7：为此文件夹新建规则 —— 已有同文件夹规则时并入 position 最靠前的那条 */
+  const handleNewRuleForFolder = () => {
+    const rules = queryClient.getQueryData<FilterRule[]>(["filters"]) ?? [];
+    openFilterEditorForFolder({ id: folderId, name }, rules, t("automation.rule_merged_note"));
+  };
 
   return (
     <div className={depth > 0 ? "ml-4 border-l border-border/50 pl-1" : undefined}>
@@ -136,6 +145,10 @@ export function FeedCategory({
           <span className="min-w-0 flex-1 truncate">{name}</span>
         </ContextMenuLabel>
         <ContextMenuSeparator />
+          <ContextMenuItem onClick={handleNewRuleForFolder}>
+            <ListFilter className="size-4 shrink-0 text-muted-foreground" />
+            {t("automation.rule_from_folder")}
+          </ContextMenuItem>
           {onRename && (
             <ContextMenuItem onClick={() => onRename(folderId)}>
               <Pencil className="size-4 shrink-0 text-muted-foreground" />

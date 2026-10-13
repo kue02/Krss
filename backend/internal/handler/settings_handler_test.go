@@ -88,9 +88,13 @@ func TestSettingsHandler_UpdateAISettings_MissingBaseURLForOpenAI(t *testing.T) 
 	h := handler.NewSettingsHandlerHelper(mockService, nil)
 
 	e := newTestEcho()
+	// 51 批 A6：providers 剥占位后非空才校验 —— 这条用例补一张真卡以命中 baseUrl 校验
 	reqBody := map[string]interface{}{
 		"provider": "openai",
 		"model":    "gpt-4",
+		"providers": []map[string]interface{}{
+			{"id": "p1", "provider": "openai", "model": "gpt-4"},
+		},
 	}
 	req := newJSONRequest(http.MethodPut, "/settings/ai", reqBody)
 	c, rec := newTestContext(e, req)
@@ -98,6 +102,29 @@ func TestSettingsHandler_UpdateAISettings_MissingBaseURLForOpenAI(t *testing.T) 
 	err := h.UpdateAISettings(c)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+// 51 批 A6：providers 删到 0（或只有占位卡）时，model 不再必填 —— 否则最后一张卡删不掉。
+func TestSettingsHandler_UpdateAISettings_EmptyProvidersAllowsNoModel(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockSettingsService(ctrl)
+	h := handler.NewSettingsHandlerHelper(mockService, nil)
+
+	e := newTestEcho()
+	reqBody := map[string]interface{}{
+		"provider": "openai",
+		"model":    "",
+	}
+	req := newJSONRequest(http.MethodPut, "/settings/ai", reqBody)
+	c, rec := newTestContext(e, req)
+
+	mockService.EXPECT().SetAISettings(gomock.Any(), gomock.Any()).Return(nil).Times(1)
+	mockService.EXPECT().GetAISettings(gomock.Any()).Return(&service.AISettings{}, nil).Times(1)
+	err := h.UpdateAISettings(c)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rec.Code)
 }
 
 // 47-3（用户 2026-10-12）：选了免 key 的免费翻译通道（google / youdao）时，
@@ -150,6 +177,9 @@ func TestSettingsHandler_UpdateAISettings_ModelStillRequiredWithoutFreeChannel(t
 	reqBody := map[string]interface{}{
 		"provider": "openai",
 		"model":    "",
+		"providers": []map[string]interface{}{
+			{"id": "p1", "provider": "openai", "model": ""},
+		},
 	}
 	req := newJSONRequest(http.MethodPut, "/settings/ai", reqBody)
 	c, rec := newTestContext(e, req)

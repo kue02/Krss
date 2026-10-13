@@ -303,7 +303,15 @@ func (h *SettingsHandler) UpdateAISettings(c echo.Context) error {
 	// 翻译能用，摘要才需要模型。前端表单里的 provider 默认就是 openai（`settings_service.go`
 	// 的默认值）且总是随包提交，所以这里**只看翻译通道**，不再要求 provider/model 同时为空
 	// —— 原来的写法在前端永远不成立，表现成「选了免费翻译也存不上」（用户 2026-10-12 报 47-3）。
-	if !isFreeTranslateChannel(req.TranslateChannel) {
+	// 51 批 A6：providers 剥掉占位后为空（用户删到 0 张，或零提供商态的整页快照）同样放行
+	// —— 「没有提供商」就没有「当前使用」，model 必然为空，拦它等于删不掉最后一张卡。
+	realProviderCount := 0
+	for _, p := range req.Providers {
+		if !p.Placeholder {
+			realProviderCount++
+		}
+	}
+	if !isFreeTranslateChannel(req.TranslateChannel) && realProviderCount > 0 {
 		if req.Provider == "" {
 			return c.JSON(http.StatusBadRequest, errorResponse{Error: "provider is required"})
 		}

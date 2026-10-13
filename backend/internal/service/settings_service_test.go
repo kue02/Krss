@@ -375,3 +375,53 @@ func TestSettingsService_GetProxyURL(t *testing.T) {
 		})
 	}
 }
+
+// 51 批 A5：当前使用不可用（缺模型/指向不存在的卡）时归空 = 「无」
+func TestSettingsService_ActiveProviderUsable(t *testing.T) {
+	repo := newSettingsRepoStub()
+	svc := service.NewSettingsService(repo, ai.NewRateLimiter(0))
+
+	// 用户库里那条真空卡：有 provider/baseUrl、没 model，还是 active
+	_ = svc.SetAISettings(context.Background(), &service.AISettings{
+		Provider:        "compatible",
+		BaseURL:         "adad",
+		Model:           "",
+		ActiveProviderID: "p1",
+		Providers: []service.AIProviderConfig{
+			{ID: "p1", Name: "新提供商", Provider: "compatible", BaseURL: "adad", Model: ""},
+		},
+	})
+
+	got, err := svc.GetAISettings(context.Background())
+	require.NoError(t, err)
+	require.Empty(t, got.ActiveProviderID, "缺模型的卡不能当当前使用")
+	// 卡还在（可编辑），但当前使用=无
+	require.Len(t, got.Providers, 1)
+
+	// 补上模型 → 立刻恢复为可用当前使用
+	_ = svc.SetAISettings(context.Background(), &service.AISettings{
+		Provider:        "compatible",
+		BaseURL:         "adad",
+		Model:           "openai/gpt-4o-mini",
+		ActiveProviderID: "p1",
+		Providers: []service.AIProviderConfig{
+			{ID: "p1", Name: "新提供商", Provider: "compatible", BaseURL: "adad", Model: "openai/gpt-4o-mini"},
+		},
+	})
+	got2, err := svc.GetAISettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "p1", got2.ActiveProviderID)
+
+	// activeId 指向不存在的卡 → 无
+	_ = svc.SetAISettings(context.Background(), &service.AISettings{
+		Provider:        "compatible",
+		Model:           "x",
+		ActiveProviderID: "ghost",
+		Providers: []service.AIProviderConfig{
+			{ID: "p1", Model: "openai/gpt-4o-mini"},
+		},
+	})
+	got3, err := svc.GetAISettings(context.Background())
+	require.NoError(t, err)
+	require.Empty(t, got3.ActiveProviderID, "指向不存在的卡 = 无")
+}

@@ -90,8 +90,12 @@ export function AISettings() {
 
   const [settings, setSettings] = useState<AISettingsType | null>(null);
   const [providers, setProviders] = useState<AIProviderConfig[]>([]);
-  const [activeProviderId, setActiveProviderId] = useState("default");
-  const [selectedProviderId, setSelectedProviderId] = useState("default");
+  const [activeProviderId, setActiveProviderId] = useState<string | null>("default");
+  const [selectedProviderId, setSelectedProviderId] = useState<string | null>("default");
+  /** 51 批 A2：「+ 添加」= 内联新建表单（不进列表、不落库），保存成功才生成卡片 */
+  const [creating, setCreating] = useState(false);
+  /** 新建态的名称（编辑态的名称绑在 providers[selected].name 上，新建态没有对应卡） */
+  const [createdName, setCreatedName] = useState("");
   const [isProbing, setIsProbing] = useState(false);
   const [modelChoices, setModelChoices] = useState<string[] | null>(null);
   const [requestOptionsText, setRequestOptionsText] = useState("");
@@ -152,12 +156,17 @@ export function AISettings() {
                 model: data.model,
                 apiKey: data.apiKey,
                 requestOptions: data.requestOptions,
+                placeholder: true,
               },
             ];
-      const active = data.activeProviderId || list[0]?.id || "default";
+      const placeholderOnly = list.length === 1 && list[0]?.placeholder === true;
+      // 51 批 A5：后端已把「不可用的当前使用」归成空串 —— 空串就是「无」，
+      // 不再用 list[0] 兜底填回（否则后端判的无又被前端选回一张空卡）。
+      // 仅剩合成占位（真·没配过）时同样不选中。
+      const active = data.activeProviderId || "";
       setProviders(list);
-      setActiveProviderId(active);
-      setSelectedProviderId(active);
+      setActiveProviderId(active || null);
+      setSelectedProviderId(placeholderOnly || !active ? null : active);
       setBaseline(
         providerFormSnapshotOf(
           data,
@@ -202,7 +211,11 @@ export function AISettings() {
 
   const handleSelectProvider = (id: string) => {
     if (!settings) return;
-    if (id === selectedProviderId) return;
+    // 51 批 A3：点已选中的卡 = 折叠（收起表单，选中保留）；再点重新展开
+    if (id === selectedProviderId) {
+      setSelectedProviderId(null);
+      return;
+    }
     const entry = providers.find((item) => item.id === id);
     if (!entry) return;
 
@@ -214,33 +227,105 @@ export function AISettings() {
     setTestResult(null);
   };
 
-  const handleAddProvider = () => {
+  /** 51 批 A2：「+ 添加」只进入内联新建态，不往列表里塞卡片 */
+  const handleStartCreate = () => {
     if (!settings) return;
-    const id = `provider-${Date.now()}`;
-    const entry: AIProviderConfig = {
-      id,
-      name: t("ai_settings.new_provider"),
+    setCreating(true);
+    setSelectedProviderId(null);
+    // 表单灌 compatible 空白默认值（51 批 A2 前的「+ 添加」行为，但不在列表里物化）
+    setCreatedName(t("ai_settings.new_provider"));
+    setSettings(applyProviderToForm(settings, {
+      id: "",
+      name: "",
       provider: "compatible",
       baseUrl: "",
       model: "",
       apiKey: "",
       requestOptions: {},
-    };
-    setProviders([...providers, entry]);
-    setSelectedProviderId(id);
-    setSettings(applyProviderToForm(settings, entry));
+    }));
     setRequestOptionsText("");
     setModelChoices(null);
     setSuccessMessage(null);
     setTestResult(null);
   };
 
-  const handleDeleteProvider = (id: string) => {
-    if (!settings || providers.length <= 1) return;
+  /** 51 批 A2：取消新建 —— 回到展开某张已有卡（有则第一张）或零选中态 */
+  const handleCancelCreate = () => {
+    setCreating(false);
+    const first = visibleProviders[0];
+    if (first) {
+      setSelectedProviderId(first.id);
+      setSettings((prev) =>
+        prev ? applyProviderToForm(prev, first) : prev,
+      );
+      setRequestOptionsText(formatRequestOptions(first.requestOptions));
+    }
+    setModelChoices(null);
+    setSuccessMessage(null);
+    setTestResult(null);
+  };
+
+  /** 51 批 A2：新建保存 —— 表单值物化成新卡，设为当前使用，一次落库 */
+  const handleCreateSave = async () => {
+    if (!settings || !requestOptionsResult.ok) return;
+    const id = `provider-${Date.now()}`;
+    const entry: AIProviderConfig = {
+      id,
+      name: createdName.trim(),
+      provider: settings.provider,
+      baseUrl: settings.baseUrl,
+      model: settings.model,
+      apiKey: settings.apiKey,
+      requestOptions: requestOptionsResult.value,
+    };
+    const list = [...providers, entry];
+    const payload: AISettingsType = {
+      ...settings,
+      provider: entry.provider,
+      apiKey: entry.apiKey,
+      baseUrl: entry.baseUrl,
+      model: entry.model,
+      requestOptions: entry.requestOptions ?? {},
+      providers: list,
+      activeProviderId: id,
+    };
+    setIsSaving(true);
+    setError(null);
+    setSuccessMessage(null);
+    try {
+      const saved = await updateAISettings(payload);
+      setSettings(saved);
+      setRequestOptionsText(formatRequestOptions(saved.requestOptions));
+      if (saved.providers) {
+        setProviders(saved.providers);
+      }
+      setActiveProviderId(saved.activeProviderId || id);
+      setSelectedProviderId(id);
+      setBaseline(providerFormSnapshotOf(saved, formatRequestOptions(saved.requestOptions), saved.providers ?? list));
+      setCreating(false);
+      setSuccessMessage(t("ai_settings.settings_saved"));
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message);
+      } else {
+        setError(t("ai_settings.failed_to_save"));
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+
+  // 51 批 A6：允许删到 0（零提供商是合法态），删最后一张也立即落库，
+  // 否则「删完不保存」下次打开又回来。剩余的卡里有可用的就把表单切过去。
+  const handleDeleteProvider = async (id: string) => {
+    if (!settings) return;
     const remaining = providers.filter((item) => item.id !== id);
     const nextActive =
-      activeProviderId === id ? (remaining[0]?.id ?? activeProviderId) : activeProviderId;
-    const nextSelected = selectedProviderId === id ? nextActive : selectedProviderId;
+      activeProviderId === id
+        ? (remaining.find((item) => item.model)?.id ?? null)
+        : activeProviderId;
+    const nextSelected = selectedProviderId === id ? (nextActive ?? null) : selectedProviderId;
 
     setProviders(remaining);
     setActiveProviderId(nextActive);
@@ -252,6 +337,34 @@ export function AISettings() {
       setRequestOptionsText(formatRequestOptions(target.requestOptions));
     }
     setSuccessMessage(null);
+
+    // 立即落库（平铺字段随 active 走；active 无 → 平铺清空，行为区依赖模型的控件随即禁用）
+    setIsSaving(true);
+    try {
+      const active = remaining.find((item) => item.id === nextActive) ?? null;
+      const saved = await updateAISettings({
+        ...settings,
+        provider: active ? active.provider : settings.provider,
+        apiKey: active ? active.apiKey : "",
+        baseUrl: active ? active.baseUrl : "",
+        model: active ? active.model : "",
+        requestOptions: active ? (active.requestOptions ?? {}) : requestOptionsResult.ok ? requestOptionsResult.value : {},
+        providers: remaining,
+        activeProviderId: nextActive ?? undefined,
+      });
+      // 平铺字段回写：hasUsableModel 等行为区禁用判定读的是它
+      setSettings(saved);
+      setRequestOptionsText(formatRequestOptions(saved.requestOptions));
+      setBaseline(providerFormSnapshotOf(saved, formatRequestOptions(saved.requestOptions), saved.providers ?? remaining));
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message);
+      } else {
+        setError(t("ai_settings.failed_to_save"));
+      }
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   /**
@@ -350,7 +463,7 @@ export function AISettings() {
         ? (active.requestOptions ?? {})
         : requestOptionsResult.value,
       providers: list,
-      activeProviderId: activeId,
+      activeProviderId: activeId ?? undefined,
     };
   };
 
@@ -478,6 +591,13 @@ export function AISettings() {
   // 顶部那句「当前使用：××（模型）」用
   const activeProvider =
     providers.find((item) => item.id === activeProviderId) ?? providers[0] ?? null;
+  /** 51 批 1：合成占位不是真实配置 —— 列表渲染与「当前使用」行都跳过它，只剩它时显示「无」 */
+  const visibleProviders = providers.filter((item) => !item.placeholder);
+  const placeholderOnly = visibleProviders.length === 0;
+  /** 51 批 A5：当前使用为空（后端归一化：activeId 指向缺模型的卡时归空）= 无可用提供商 */
+  const noUsableActive = !activeProviderId;
+  /** 51 批 A6：模型可用性（平铺 model 是「当前使用」的镜像）—— 行为区依赖模型的控件据此禁用 */
+  const hasUsableModel = !!settings.model.trim();
 
   const canSubmit = Boolean(
     settings.apiKey &&
@@ -515,18 +635,25 @@ export function AISettings() {
           <span className="text-sm font-medium">
             {t("ai_settings.providers")}
           </span>
-          {/* 平铺字段（真正发给模型的那份）由「当前使用」决定，所以这里明确写出来 */}
-          {activeProvider && (
+          {/* 平铺字段（真正发给模型的那份）由「当前使用」决定，所以这里明确写出来；
+              51 批 1：没配过任何提供商（只剩合成占位）时显示「无」而不是「openai · -」 */}
+          {placeholderOnly || noUsableActive ? (
             <span className="text-xs text-muted-foreground">
-              {t("ai_settings.current_provider", {
-                name: activeProvider.name || activeProvider.provider,
-                model: activeProvider.model || "-",
-              })}
+              {t("ai_settings.current_provider_none")}
             </span>
+          ) : (
+            activeProvider && (
+              <span className="text-xs text-muted-foreground">
+                {t("ai_settings.current_provider", {
+                  name: activeProvider.name || activeProvider.provider,
+                  model: activeProvider.model || "-",
+                })}
+              </span>
+            )
           )}
           <button
             type="button"
-            onClick={handleAddProvider}
+            onClick={handleStartCreate}
             className="rounded-[var(--radius)] border border-border px-2.5 py-1 text-xs text-foreground transition-colors duration-200 hover:bg-item-hover"
           >
             + {t("ai_settings.add_provider")}
@@ -534,7 +661,7 @@ export function AISettings() {
         </div>
 
         <div className="space-y-1.5">
-          {providers.map((item) => {
+          {visibleProviders.map((item) => {
             const isSelected = item.id === selectedProviderId;
             const isActive = item.id === activeProviderId;
             return (
@@ -584,16 +711,14 @@ export function AISettings() {
                       {t("ai_settings.active_badge")}
                     </span>
                   )}
-                  {providers.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteProvider(item.id)}
-                      title={t("actions.delete")}
-                      className="shrink-0 text-muted-foreground transition-colors duration-200 hover:text-destructive"
-                    >
-                      ×
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteProvider(item.id)}
+                    title={t("actions.delete")}
+                    className="shrink-0 text-muted-foreground transition-colors duration-200 hover:text-destructive"
+                  >
+                    ×
+                  </button>
                 </div>
 
                 {/* 展开的编辑表单（同一时刻只有一张卡展开；这些字段只属于这份提供商配置） */}
@@ -643,18 +768,23 @@ export function AISettings() {
                       <input
                         type="text"
                         value={
-                          providers.find((p) => p.id === selectedProviderId)
-                            ?.name ?? ""
+                          creating
+                            ? createdName
+                            : (providers.find((p) => p.id === selectedProviderId)?.name ?? "")
                         }
                         onChange={(event) => {
                           const value = event.target.value;
-                          setProviders((prev) =>
-                            prev.map((p) =>
-                              p.id === selectedProviderId
-                                ? { ...p, name: value }
-                                : p,
-                            ),
-                          );
+                          if (creating) {
+                            setCreatedName(value);
+                          } else {
+                            setProviders((prev) =>
+                              prev.map((p) =>
+                                p.id === selectedProviderId
+                                  ? { ...p, name: value }
+                                  : p,
+                              ),
+                            );
+                          }
                           setSuccessMessage(null);
                         }}
                         placeholder={t("ai_settings.provider_name_placeholder")}
@@ -876,6 +1006,89 @@ export function AISettings() {
             );
           })}
         </div>
+
+        {/* 51 批 A2：内联新建表单 —— 保存成功前不在列表里，未保存不落库 */}
+        {creating && (
+          <div className="rounded-md border border-primary border-dashed">
+            <div className="flex items-center gap-2 px-3 py-2">
+              <span className="rounded-full border border-primary/40 bg-primary/5 px-1.5 py-px text-[10px] text-primary">
+                {t("ai_settings.creating_badge")}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {t("ai_settings.creating_hint")}
+              </span>
+            </div>
+            <div className="space-y-2 border-t border-border px-3 pb-3 pt-2">
+              {/* 复用上面展开卡的字段渲染：这里手工列同款字段（绑定同一份 settings 表单） */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-medium">{t("ai_settings.provider")}</span>
+                <Select
+                  ariaLabel={t("ai_settings.provider")}
+                  value={settings.provider}
+                  onChange={(value) => handleChange("provider", value as AIProvider)}
+                  options={PROVIDERS}
+                  className="shrink-0 sm:w-48"
+                />
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-medium">{t("ai_settings.api_key")}</span>
+                <input
+                  type="password"
+                  value={settings.apiKey}
+                  onChange={(e) => handleChange("apiKey", e.target.value)}
+                  className={cn(inputClass, "shrink-0")}
+                />
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-medium">{t("ai_settings.provider_name")}</span>
+                <input
+                  type="text"
+                  value={createdName}
+                  onChange={(e) => setCreatedName(e.target.value)}
+                  placeholder={t("ai_settings.provider_name_placeholder")}
+                  className={cn(inputClass, "shrink-0")}
+                />
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-medium">
+                  {t("ai_settings.base_url")}
+                  {(settings.provider === "openai" || settings.provider === "compatible") && (
+                    <span className="text-xs text-destructive"> {t("ai_settings.required")}</span>
+                  )}
+                </span>
+                <input
+                  type="text"
+                  value={settings.baseUrl}
+                  onChange={(e) => handleChange("baseUrl", e.target.value)}
+                  className={cn(inputClass, "shrink-0")}
+                />
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-medium">{t("ai_settings.model")}</span>
+                <input
+                  type="text"
+                  value={settings.model}
+                  onChange={(e) => handleChange("model", e.target.value)}
+                  className={cn(inputClass, "min-w-0 flex-1 sm:w-auto")}
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={handleCreateSave}
+                  disabled={isSaving || !requestOptionsResult.ok}
+                  className="flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--radius)] bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {t("ai_settings.save")}
+                </button>
+                <button type="button" onClick={handleCancelCreate} className="btn-link text-xs">
+                  {t("actions.cancel")}
+                </button>
+                {error && <span className="text-xs text-destructive">{error}</span>}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* AI 行为（50 批 1：这一块自动保存，不用找保存按钮） */}
@@ -985,6 +1198,8 @@ export function AISettings() {
         <Switch
           checked={settings.autoSummary}
           onCheckedChange={(checked) => handleChange("autoSummary", checked)}
+          disabled={!hasUsableModel}
+          title={hasUsableModel ? undefined : t("ai_settings.needs_model_hint")}
           className="shrink-0"
         />
       </div>
@@ -1045,6 +1260,7 @@ export function AISettings() {
           value={settings.sceneSummary ?? ""}
           onChange={(value) => handleChange("sceneSummary", value)}
           options={sceneOptions}
+          disabled={!hasUsableModel}
           className="w-56 shrink-0"
         />
       </div>
@@ -1057,6 +1273,7 @@ export function AISettings() {
           value={settings.sceneAutomation ?? ""}
           onChange={(value) => handleChange("sceneAutomation", value)}
           options={sceneOptions}
+          disabled={!hasUsableModel}
           className="w-56 shrink-0"
         />
       </div>

@@ -27,6 +27,10 @@ type AIProviderConfig struct {
 	Model          string         `json:"model"`
 	APIKey         string         `json:"apiKey"`
 	RequestOptions map[string]any `json:"requestOptions,omitempty"`
+	// Placeholder：合成占位（51 批 1）。老实例没有保存过提供商列表时，getAIProviders
+	// 会用平铺字段合成一条 default —— 它不是用户配出来的真实提供商，前端据此把
+	// 「只剩占位」的状态显示成「无」。保存路径会把它剥掉，永不落库。
+	Placeholder bool `json:"placeholder,omitempty"`
 }
 
 // AISettings holds the AI configuration.
@@ -311,6 +315,9 @@ func (s *settingsService) GetAISettings(ctx context.Context) (*AISettings, error
 	if val, err := s.getString(ctx, keyAIActiveProvider); err == nil && val != "" {
 		settings.ActiveProviderID = val
 	}
+	// 51 批 A5：「当前使用」必须是可用配置（至少配了模型），否则视为无 ——
+	// 指向的卡缺模型时照常显示卡片，但「当前使用」行显示「无」、AI 请求不再拿它当配置。
+	settings.ActiveProviderID = s.usableActiveProviderID(settings.Providers, settings.ActiveProviderID, settings.Model)
 	if val, err := s.getString(ctx, keyAISceneTranslate); err == nil {
 		settings.SceneTranslate = val
 	}
@@ -354,12 +361,37 @@ func (s *settingsService) getAIProviders(ctx context.Context, settings *AISettin
 			Model:          settings.Model,
 			APIKey:         maskAPIKey(settings.APIKey),
 			RequestOptions: settings.RequestOptions,
+			// 51 批 1：合成占位（用户从没配过提供商时平铺字段也是空的），前端显示「无」。
+			// 老实例平铺字段里有真配置时不是占位 —— 那是唯一可用的配置，照常渲染卡片。
+			Placeholder: settings.Model == "" && settings.BaseURL == "" && settings.APIKey == "",
 		}}
 	}
 	for i := range saved {
 		saved[i].APIKey = maskAPIKey(saved[i].APIKey)
 	}
 	return saved
+}
+
+// usableActiveProviderID 归一化「当前使用」：指向的配置必须存在且配了模型（模型是出请求的硬前提），
+// 否则返回空串（= 无当前使用）。default 占位（列表里唯一的合成行）跟随平铺 model 判定。
+// 51 批 A5：删卡/新建半成品/老实例空平铺都可能落到「没有可用提供商」，统一在这里收口。
+func (s *settingsService) usableActiveProviderID(providers []AIProviderConfig, activeID, flatModel string) string {
+	for i := range providers {
+		if providers[i].ID != activeID {
+			continue
+		}
+		if providers[i].Model != "" {
+			return activeID
+		}
+		// 合成占位（default）的 Model 来自平铺字段
+		if providers[i].ID == "default" && flatModel != "" {
+			return activeID
+		}
+		return ""
+	}
+	// 指向的 id 不在列表里：若有任一可用配置也不自动顶上 —— 「当前使用」是显式选择，
+	// 但列表为空时没有「无」可指，直接无。
+	return ""
 }
 
 // SetAISettings updates the AI configuration.
@@ -526,9 +558,14 @@ func (s *settingsService) setAIProviders(ctx context.Context, settings *AISettin
 		if entry.ID == "" {
 			continue
 		}
+		// 51 批 1：合成占位永不落库 —— 前端整页快照里带着它，剥掉避免存成一张「真空卡」
+		if entry.Placeholder {
+			continue
+		}
 		if entry.APIKey == "" || isMaskedKey(entry.APIKey) {
 			entry.APIKey = storedKeys[entry.ID]
 		}
+		entry.Placeholder = false
 		list = append(list, entry)
 	}
 

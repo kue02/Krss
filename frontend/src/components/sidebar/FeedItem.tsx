@@ -15,7 +15,9 @@ import { RssIcon, ErrorIcon } from "@/components/ui/icons";
 import { FeedContextMenuItems } from "@/components/feed/FeedContextMenuItems";
 import { ListBox, Label, Description } from "@heroui/react";
 import { useContextMenu } from "@/hooks/useContextMenu";
+import { useTranslation } from "react-i18next";
 import { resolveFeedSiteUrl } from "@/lib/feed-site";
+import { describeRefreshError } from "@/lib/refresh-error";
 import { useUISettingKey } from "@/hooks/useUISettings";
 import { feedItemStyles, sidebarItemIconStyles, feedIconImageStyles } from "./styles";
 import type { ContentType, Folder } from "@/types/api";
@@ -102,6 +104,7 @@ export function FeedItem({
   onMoveToFolder,
   onChangeType,
 }: FeedItemProps) {
+  const { t } = useTranslation();
   // 「前往主站 / 复制主站地址」用（11-11）：优先订阅元数据，其次从 RSSHub 路由反解；都没有就藏起这两项
   const siteUrlResolved = useMemo(
     () => resolveFeedSiteUrl({ siteUrl, url: feedUrl }),
@@ -119,6 +122,11 @@ export function FeedItem({
     }
   }, [feedAppearance, siteUrlResolved]);
   const hasError = !!errorMessage;
+  // 51 批 2：RSSHub 失败分类的错误串翻译成人话（其余原样）
+  const errorTooltip = useMemo(
+    () => describeRefreshError(errorMessage, t),
+    [errorMessage, t],
+  );
   const triggerRef = useRef<HTMLSpanElement>(null);
 
   const handleContextMenu = useCallback(
@@ -211,7 +219,7 @@ export function FeedItem({
                     <ErrorIcon className="size-3.5 text-red-500" />
                   </span>
                 </TooltipTrigger>
-                <TooltipContent side="right">{errorMessage}</TooltipContent>
+                <TooltipContent side="right">{errorTooltip}</TooltipContent>
               </Tooltip>
             )}
           </div>
@@ -341,7 +349,7 @@ export function FeedItem({
                     <ErrorIcon className="size-3.5 text-red-500" />
                   </span>
                 </TooltipTrigger>
-                <TooltipContent side="right">{errorMessage}</TooltipContent>
+                <TooltipContent side="right">{errorTooltip}</TooltipContent>
               </Tooltip>
             )}
           </div>
