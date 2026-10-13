@@ -8,6 +8,8 @@ import (
 	"net/http/pprof"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -123,7 +125,10 @@ func main() {
 	refreshService := service.NewRefreshService(feedRepo, entryRepo, settingsService, iconService, clientFactory, anubisSolver, domainRateLimitService, filterService, mcpService)
 	opmlService := service.NewOPMLService(folderService, feedService, refreshService, iconService, folderRepo, feedRepo)
 
-	proxyService := service.NewProxyService(clientFactory, anubisSolver)
+	// 代理媒体磁盘缓存（50-2）：图片/音视频取过一次就落盘，第二次起不再出网。
+	// 缓存在 $KRSS_DATA_DIR/proxy-cache，上限可用 KRSS_MEDIA_CACHE_MB 调（默认 512MB）。
+	proxyService := service.NewProxyService(clientFactory, anubisSolver).
+		WithMediaCache(filepath.Join(cfg.DataDir, "proxy-cache"), mediaCacheBytes())
 	authService := service.NewAuthService(settingsRepo)
 
 	folderHandler := handler.NewFolderHandler(folderService, proxySourceService)
@@ -229,4 +234,15 @@ func startPprofServer(addr string) *http.Server {
 	}()
 
 	return server
+}
+
+// mediaCacheBytes 代理媒体缓存上限（KB→B），KRSS_MEDIA_CACHE_MB 可覆盖，默认 512MB。
+func mediaCacheBytes() int64 {
+	mb := int64(512)
+	if raw := os.Getenv("KRSS_MEDIA_CACHE_MB"); raw != "" {
+		if parsed, err := strconv.ParseInt(raw, 10, 64); err == nil && parsed > 0 {
+			mb = parsed
+		}
+	}
+	return mb << 20
 }

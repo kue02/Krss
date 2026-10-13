@@ -71,8 +71,13 @@ export const ArticleImage = memo(function ArticleImage({
   sizes,
   className,
   fit = false,
+  priority = false,
   ...props
-}: ArticleImageProps & React.ImgHTMLAttributes<HTMLImageElement>) {
+}: ArticleImageProps &
+  React.ImgHTMLAttributes<HTMLImageElement> & {
+    /** 50-2：首屏头几张图 —— 立刻开始请求、给高优先级，别等 lazy 的判定 */
+    priority?: boolean;
+  }) {
   const articleUrl = useContext(ArticleLinkContext);
   const imagePreviewContext = useContext(ImagePreviewContext);
 
@@ -185,7 +190,10 @@ export const ArticleImage = memo(function ArticleImage({
       alt={alt}
       width={width}
       height={height}
-      loading="lazy"
+      // 50-2：首屏那几张走 eager + 高优先级（文字是 HTML 里现成的所以秒出，
+      // 图片原来全 lazy ⇒ 要等浏览器判定进度才发请求，正是「图片要等很久」）
+      loading={priority ? "eager" : "lazy"}
+      fetchPriority={priority ? "high" : undefined}
       decoding="async"
       onLoad={(event) => {
         handleFitLoad(event);

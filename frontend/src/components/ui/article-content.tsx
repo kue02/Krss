@@ -42,6 +42,14 @@ function extractImagesFromHtml(html: string, articleUrl?: string): string[] {
 // Global cache for image elements to prevent re-creation during content updates
 // Key: articleUrl + imageSrc, Value: React element
 const imageElementCache = new Map<string, React.ReactElement>();
+/**
+ * 50-2：正文头几张图算「首屏」，走 eager + fetchpriority=high。
+ * 文字是 HTML 里现成的所以秒出，图片原来全是 loading="lazy" ⇒ 要等浏览器
+ * 判定「快进视口了」才发请求，用户看到的就是「字都出来了，图还在等」。
+ */
+const PRIORITY_IMAGE_COUNT = 3;
+/** 每次 parse 从头数（在 useMemo 里重置） */
+let imagePriorityIndex = 0;
 const IMAGE_CACHE_MAX_SIZE = 200;
 /** video 用同一个键规则单独一池：正文里的视频远少于图，20 足够覆盖一屏 */
 const videoElementCache = new Map<string, React.ReactElement>();
@@ -131,6 +139,8 @@ const ArticleContentBlockRenderer = memo(function ArticleContentBlockRenderer({
 }) {
   const renderedContent = useMemo(() => {
     if (!content) return null;
+    // 50-2：每次解析都从头数图片序号（判定首屏那几张）
+    imagePriorityIndex = 0;
 
     const result = parseHtml(content, {
       components: {
@@ -138,12 +148,16 @@ const ArticleContentBlockRenderer = memo(function ArticleContentBlockRenderer({
         img: ({ node: _, ...props }) => {
           const imgProps = props as React.ComponentProps<typeof ArticleImage>;
           const src = imgProps.src || "";
+          // 50-2：按解析顺序给头几张打 priority（首屏图 eager + fetchpriority=high）。
+          // 元素缓存键里带上它，换文档/换模式时不会把「高优先级」错用到别处。
+          const priority = imagePriorityIndex < PRIORITY_IMAGE_COUNT;
+          imagePriorityIndex += 1;
           // Use articleUrl + src as cache key
           // This ensures the same image is cached regardless of rendering mode
           // (string mode vs blocks mode), preventing flicker during translation
           // 42-9：fit 必须进 key —— 同一张图在文章视图（fit=false）与社交视图（fit=true）
           // 是两种盒子，共用缓存会把先渲染的那种盒子错误复用到另一种。
-          const cacheKey = `${articleUrl || ""}-${src}-${fitImages ? "fit" : "raw"}`;
+          const cacheKey = `${articleUrl || ""}-${src}-${fitImages ? "fit" : "raw"}-${priority ? "p" : "n"}`;
 
           // Reuse cached element to prevent re-creation during translation updates
           if (imageElementCache.has(cacheKey)) {
@@ -154,6 +168,7 @@ const ArticleContentBlockRenderer = memo(function ArticleContentBlockRenderer({
           const element = createElement(ArticleImage, {
             ...imgProps,
             fit: fitImages,
+            priority,
             key: cacheKey,
           });
           imageElementCache.set(cacheKey, element);
