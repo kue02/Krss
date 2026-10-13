@@ -449,18 +449,46 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 				defer func() { <-sem }() // Release semaphore
 
 				// 免 key 通道（Google / 有道）：只吃纯文本。
-				// 带内联标记（链接/图片/加粗/换行）的块交给模型，否则这些标记会被抹平
-				// —— 也就是「翻译破坏原文结构」那个问题
+				//
+				// 49-2b：带内联标记的块**不再一律甩给模型**。模型不可达时（本机 oMLX 没起）
+				// 原来那些块全部失败、静默留原文 ⇒ 用户看到「标题翻了、正文没翻」。
+				// 现在改成：把块里的文本节点抠出来一次翻完、再按原树回填 —— 标记（<b>/<a>/<ul>/<img>）
+				// 一个不动，只换文本。这样带标记的块在只有免费通道时也能翻出来。
 				fallbackFromFree := false
-				if ai.IsFreeTranslateChannel(freeChannel) && !ai.BlockHasInnerMarkup(b.HTML) {
-					plainText := strings.TrimSpace(ai.HTMLToText(b.HTML))
-					if plainText == "" {
+				if ai.IsFreeTranslateChannel(freeChannel) {
+					// 纯文本块：整段翻 + 按外层标签包回去（保持既有行为）
+					// 带标记的块：逐文本段翻 + 原树回填（标记保真）
+					segments := []string(nil)
+					var payload string
+					if ai.BlockHasInnerMarkup(b.HTML) {
+						segments = ai.SegmentTexts(b.HTML)
+						payload = ai.JoinSegments(segments)
+					} else {
+						payload = strings.TrimSpace(ai.HTMLToText(b.HTML))
+					}
+					if strings.TrimSpace(payload) == "" {
 						return
 					}
-					translatedText, freeErr := ai.TranslateFreeText(ctx, freeClient, freeChannel, plainText, language)
+
+					translatedText, freeErr := ai.TranslateFreeText(ctx, freeClient, freeChannel, payload, language)
 					if freeErr == nil {
-						// 译文按原文外层标签包回去，段落结构（<p>/<h2>）不能丢
-						result := TranslateBlockResult{Index: b.Index, HTML: ai.WrapFreeTranslation(b.HTML, translatedText)}
+						var html string
+						if segments != nil {
+							if parts, ok := ai.SplitSegments(translatedText, len(segments)); ok {
+								if applied, ok2 := ai.ApplySegmentedTranslation(b.HTML, parts); ok2 {
+									html = applied
+								}
+							}
+							if html == "" {
+								// 分隔符被翻译器改写了：退化成整段包壳（标记会丢，但至少有译文）
+								logger.Warn("segmented free translate fell back to whole-block wrap", "module", "service", "action", "translate", "resource", "ai", "result", "degraded", "entry_id", entryID, "block", b.Index, "segments", len(segments))
+								html = ai.WrapFreeTranslation(b.HTML, translatedText)
+							}
+						} else {
+							// 译文按原文外层标签包回去，段落结构（<p>/<h2>）不能丢
+							html = ai.WrapFreeTranslation(b.HTML, translatedText)
+						}
+						result := TranslateBlockResult{Index: b.Index, HTML: html}
 						resultsMu.Lock()
 						results = append(results, result)
 						resultsMu.Unlock()
