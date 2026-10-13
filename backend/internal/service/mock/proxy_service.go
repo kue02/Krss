@@ -82,3 +82,32 @@ func (mr *MockProxyServiceMockRecorder) FetchMedia(ctx, mediaURL, refererURL, ra
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchMedia", reflect.TypeOf((*MockProxyService)(nil).FetchMedia), ctx, mediaURL, refererURL, rangeHeader)
 }
+
+// MediaCacheStats mocks base method.
+func (m *MockProxyService) MediaCacheStats() (int, int64) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MediaCacheStats")
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].(int64)
+	return ret0, ret1
+}
+
+// MediaCacheStats indicates an expected call of MediaCacheStats.
+func (mr *MockProxyServiceMockRecorder) MediaCacheStats() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MediaCacheStats", reflect.TypeOf((*MockProxyService)(nil).MediaCacheStats))
+}
+
+// WithMediaCache mocks base method.
+func (m *MockProxyService) WithMediaCache(dir string, maxBytes int64) service.ProxyService {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "WithMediaCache", dir, maxBytes)
+	ret0, _ := ret[0].(service.ProxyService)
+	return ret0
+}
+
+// WithMediaCache indicates an expected call of WithMediaCache.
+func (mr *MockProxyServiceMockRecorder) WithMediaCache(dir, maxBytes any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WithMediaCache", reflect.TypeOf((*MockProxyService)(nil).WithMediaCache), dir, maxBytes)
+}

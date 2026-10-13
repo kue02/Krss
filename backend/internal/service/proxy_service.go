@@ -47,6 +47,10 @@ type ProxyResult struct {
 
 type ProxyService interface {
 	FetchImage(ctx context.Context, imageURL, refererURL string) (*ProxyResult, error)
+	// WithMediaCache 开启代理媒体磁盘缓存（50-2）。dir 为空则不缓存（测试/未配置时）。
+	WithMediaCache(dir string, maxBytes int64) ProxyService
+	// MediaCacheStats 当前缓存的文件数与总字节（没开缓存时全 0）。
+	MediaCacheStats() (files int, bytes int64)
 	// FetchMedia 与 FetchImage 同一条管线，但额外支持音视频类型与 Range 请求
 	// （正文里的 <video> 走代理，见 frontend/src/components/ui/article-video.tsx）
 	FetchMedia(ctx context.Context, mediaURL, refererURL, rangeHeader string) (*ProxyResult, error)
@@ -56,6 +60,9 @@ type ProxyService interface {
 type proxyService struct {
 	clientFactory *network.ClientFactory
 	anubis        AnubisSolver
+	// mediaCache 代理媒体（图片/音视频）的磁盘缓存：没有它每次都要重新出网取
+	// （实测同一张图连取三遍 0.708 / 0.967 / 0.669 s，一点没快）
+	mediaCache *mediaCache
 }
 
 func NewProxyService(clientFactory *network.ClientFactory, anubisSolver AnubisSolver) ProxyService {
@@ -74,10 +81,22 @@ func (s *proxyService) FetchImage(ctx context.Context, imageURL, refererURL stri
 }
 
 func (s *proxyService) FetchMedia(ctx context.Context, mediaURL, refererURL, rangeHeader string) (*ProxyResult, error) {
+	// 50-2：带 Range 的是 <video> 拖进度条，不缓存、也不查缓存（片段命中判断不值当）
+	cacheable := rangeHeader == "" && s.mediaCache != nil
+	if cacheable {
+		if hit, ok := s.mediaCache.Get(mediaURL); ok {
+			logger.Debug("proxy media cache hit", "module", "service", "action", "fetch", "resource", "proxy", "result", "ok", "host", safeHostLog(mediaURL))
+			return hit, nil
+		}
+	}
+
 	// 先用标准 HTTP 客户端：它能正确走「设置 → 网络」里配置的代理，也会自动跟随图床跳转
 	// （azuretls 会话在 HTTP 代理下会超时）
 	result, stdErr := s.fetchWithStandardClient(ctx, mediaURL, refererURL, rangeHeader)
 	if stdErr == nil {
+		if cacheable && result.StatusCode == http.StatusOK {
+			s.mediaCache.Put(mediaURL, result)
+		}
 		return result, nil
 	}
 
@@ -85,7 +104,36 @@ func (s *proxyService) FetchMedia(ctx context.Context, mediaURL, refererURL, ran
 
 	// 再退到 azuretls 会话（浏览器 TLS 指纹）：反爬 / Anubis 挑战的站点靠它
 	// （兜底这条路只做整段取，不带 Range）
-	return s.fetchImageWithRetry(ctx, mediaURL, refererURL, "", 0)
+	result, fallbackErr := s.fetchImageWithRetry(ctx, mediaURL, refererURL, "", 0)
+	if fallbackErr == nil && cacheable {
+		s.mediaCache.Put(mediaURL, result)
+	}
+	return result, fallbackErr
+}
+
+// WithMediaCache 挂上磁盘缓存（dir 空则不启用）。
+func (s *proxyService) WithMediaCache(dir string, maxBytes int64) ProxyService {
+	if dir == "" {
+		return s
+	}
+	s.mediaCache = newMediaCache(dir, maxBytes)
+	return s
+}
+
+// MediaCacheStats 当前缓存规模（排查/测试用）。
+func (s *proxyService) MediaCacheStats() (int, int64) {
+	return s.mediaCache.Stats()
+}
+
+// safeHostLog 日志用的主机名（拿不到就回原串的短版）
+func safeHostLog(rawURL string) string {
+	if parsed, err := url.Parse(rawURL); err == nil && parsed.Host != "" {
+		return parsed.Host
+	}
+	if len(rawURL) > 48 {
+		return rawURL[:48]
+	}
+	return rawURL
 }
 
 // fetchWithStandardClient 用 net/http 抓图：代理、跳转、cookie 都由标准栈处理。
