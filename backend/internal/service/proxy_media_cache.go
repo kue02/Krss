@@ -44,8 +44,7 @@ type mediaCache struct {
 	dir      string
 	maxBytes int64
 
-	mu    sync.Mutex // 只用来序列化 prune，别在读写文件时长期持有
-	total int64
+	mu sync.Mutex // 只用来序列化 prune，别在读写文件时长期持有
 }
 
 func newMediaCache(dir string, maxBytes int64) *mediaCache {
