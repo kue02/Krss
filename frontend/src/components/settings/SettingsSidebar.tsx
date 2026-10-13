@@ -214,7 +214,7 @@ export function SettingsSidebar({
     <div className="flex min-w-[180px] max-w-[200px] flex-col border-r border-border bg-sidebar px-2 py-6">
       {/* Logo */}
       <div className="mb-4 flex h-8 items-center gap-2 px-2 font-bold text-foreground">
-        // 24px 属「仅字母版」区间（brand-spec：32px 以上完整标志、24px 以下仅字母版）
+        {/* 24px 属「仅字母版」区间（brand-spec：32px 以上完整标志、24px 以下仅字母版） */}
         <img src="/logo-compact.svg" alt="Krss" className="size-6 rounded" />
         <span className="text-lg">Krss</span>
       </div>
