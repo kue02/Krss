@@ -47,6 +47,11 @@ type AISettings struct {
 	// 保存的提供商列表 + 当前使用哪一个（上面的 Provider/APIKey/... 始终等于当前使用的那份）
 	Providers        []AIProviderConfig `json:"providers"`
 	ActiveProviderID string             `json:"activeProviderId"`
+	// 分场景模型覆盖（50 批 1.2）：空串 = 跟随当前提供商的模型（默认，行为与原来一致）。
+	// 值形如 provider:<id>（用 providers 里那一份的 key/model）或 free（仅翻译场景 = 免费通道）。
+	SceneTranslate   string `json:"sceneTranslate"`
+	SceneSummary     string `json:"sceneSummary"`
+	SceneAutomation  string `json:"sceneAutomation"`
 }
 
 // GeneralSettings holds general application settings.
@@ -72,6 +77,9 @@ type NetworkSettings struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 	IPStack  string `json:"ipStack"` // default, ipv4, ipv6
+	// Mode 全局代理怎么用（50 批 2.2）：proxy = 全走代理（旧行为）；smart = 先直连不通再代理 + 按域记忆。
+	// 空 = proxy（老库零变化）。
+	Mode string `json:"mode"`
 }
 
 // AppearanceSettings holds appearance configuration.
@@ -150,6 +158,10 @@ const (
 	keyAIFallbackToModel  = "ai.fallback_to_model"
 	keyAIProviders        = "ai.providers"
 	keyAIActiveProvider   = "ai.active_provider_id"
+	// 分场景模型覆盖（50 批 1.2）：空 = 跟随当前提供商；provider:<id> = 用已保存的那份；free = 免费通道（仅翻译）
+	keyAISceneTranslate  = "ai.scene_translate"
+	keyAISceneSummary    = "ai.scene_summary"
+	keyAISceneAutomation = "ai.scene_automation"
 
 	keyFallbackUserAgent = "general.fallback_user_agent"
 	keyAutoReadability   = "general.auto_readability"
@@ -159,6 +171,7 @@ const (
 	// keyNotifyBarkURL 推送地址（含 key，属凭证 —— 只存用户库里，不进仓库/日志明文）
 	keyNotifyBarkURL = "notify.bark_url"
 	keyNetworkEnabled    = "network.proxy_enabled"
+	keyNetworkMode       = "network.proxy_mode" // "proxy" | "smart"；空 = proxy（旧行为）
 	keyNetworkType       = "network.proxy_type"
 	keyNetworkHost       = "network.proxy_host"
 	keyNetworkPort       = "network.proxy_port"
@@ -222,6 +235,8 @@ type SettingsService interface {
 	// GetProxyURL returns the formatted proxy URL (e.g., socks5://user:pass@host:port).
 	// Returns empty string if proxy is disabled.
 	GetProxyURL(ctx context.Context) string
+	// GetNetworkSettingsMode 全局代理模式（50 批 2.2）："proxy"（默认/旧行为）| "smart"。
+	GetNetworkSettingsMode(ctx context.Context) string
 	// GetIPStack returns the IP stack preference (default, ipv4, ipv6).
 	GetIPStack(ctx context.Context) string
 	// GetFetchSettings 拉取设置（频率/并发/超时），未配置的字段返回默认值。
@@ -296,37 +311,55 @@ func (s *settingsService) GetAISettings(ctx context.Context) (*AISettings, error
 	if val, err := s.getString(ctx, keyAIActiveProvider); err == nil && val != "" {
 		settings.ActiveProviderID = val
 	}
+	if val, err := s.getString(ctx, keyAISceneTranslate); err == nil {
+		settings.SceneTranslate = val
+	}
+	if val, err := s.getString(ctx, keyAISceneSummary); err == nil {
+		settings.SceneSummary = val
+	}
+	if val, err := s.getString(ctx, keyAISceneAutomation); err == nil {
+		settings.SceneAutomation = val
+	}
 
 	return settings, nil
 }
 
-// getAIProviders 读取已保存的提供商列表（密钥打码）。
-// 老实例没有这个列表时，用当前配置合成一条，保证前端至少有一份可编辑的配置。
-func (s *settingsService) getAIProviders(ctx context.Context, settings *AISettings) []AIProviderConfig {
+// getAIProvidersRaw 读取已保存的提供商列表原始值（密钥不打码 —— 只给保存路径用，别直接往外发）。
+// 老实例没有列表时合成一条 default，保证 provider:default 这种场景覆盖能解析。
+func (s *settingsService) getAIProvidersRaw(ctx context.Context) []AIProviderConfig {
 	raw, err := s.getString(ctx, keyAIProviders)
 	if err == nil && raw != "" {
 		var saved []AIProviderConfig
 		if jsonErr := json.Unmarshal([]byte(raw), &saved); jsonErr == nil && len(saved) > 0 {
-			for i := range saved {
-				saved[i].APIKey = maskAPIKey(saved[i].APIKey)
-			}
 			return saved
 		}
 	}
+	return []AIProviderConfig{{ID: "default"}}
+}
 
-	defaultProvider := settings.Provider
-	if defaultProvider == "" {
-		defaultProvider = ai.ProviderOpenAI
+// getAIProviders 读取已保存的提供商列表（密钥打码）。老实例没有这个列表时，
+// 用当前配置合成一条，保证前端至少有一份可编辑的配置。
+func (s *settingsService) getAIProviders(ctx context.Context, settings *AISettings) []AIProviderConfig {
+	saved := s.getAIProvidersRaw(ctx)
+	if len(saved) == 1 && saved[0].ID == "default" && saved[0].Provider == "" {
+		defaultProvider := settings.Provider
+		if defaultProvider == "" {
+			defaultProvider = ai.ProviderOpenAI
+		}
+		return []AIProviderConfig{{
+			ID:             "default",
+			Name:           defaultProvider,
+			Provider:       defaultProvider,
+			BaseURL:        settings.BaseURL,
+			Model:          settings.Model,
+			APIKey:         maskAPIKey(settings.APIKey),
+			RequestOptions: settings.RequestOptions,
+		}}
 	}
-	return []AIProviderConfig{{
-		ID:             "default",
-		Name:           defaultProvider,
-		Provider:       defaultProvider,
-		BaseURL:        settings.BaseURL,
-		Model:          settings.Model,
-		APIKey:         settings.APIKey,
-		RequestOptions: settings.RequestOptions,
-	}}
+	for i := range saved {
+		saved[i].APIKey = maskAPIKey(saved[i].APIKey)
+	}
+	return saved
 }
 
 // SetAISettings updates the AI configuration.
@@ -408,8 +441,58 @@ func (s *settingsService) SetAISettings(ctx context.Context, settings *AISetting
 		logger.Warn("ai settings update providers failed", "module", "service", "action", "update", "resource", "settings", "result", "failed", "error", err)
 		return err
 	}
+	// 分场景模型覆盖（50 批 1.2）：值形如 provider:<id> / free / 空；写之前核一遍 id 在不在已保存清单里，
+	// 不在（提供商被删、导入串进来）就落回空 = 跟随，别留一个永远解析不出的值。
+	// free（免 key 通道）只对翻译场景合法 —— 摘要/自动化给 free 直接 400。
+	sceneValues := []struct {
+		key string
+		val string
+		freeAllowed bool
+	}{
+		{keyAISceneTranslate, settings.SceneTranslate, true},
+		{keyAISceneSummary, settings.SceneSummary, false},
+		{keyAISceneAutomation, settings.SceneAutomation, false},
+	}
+	for _, scene := range sceneValues {
+		stored, err := s.resolveSceneSetting(ctx, scene.val, scene.freeAllowed)
+		if err != nil {
+			return fmt.Errorf("set %s: %w", scene.key, err)
+		}
+		if err := s.repo.Set(ctx, scene.key, stored); err != nil {
+			return fmt.Errorf("set %s: %w", scene.key, err)
+		}
+	}
 	logger.Info("ai settings updated", "module", "service", "action", "update", "resource", "settings", "result", "ok", "provider", settings.Provider, "model", settings.Model, "rate_limit", rateLimit)
 	return nil
+}
+
+// resolveSceneSetting 校验并归一化场景覆盖值：空/跟随 → ""；free → "free"（仅 freeAllowed）；
+// provider:<id> → id 在已保存清单里才原样返回，否则给空（按跟随处理）。
+func (s *settingsService) resolveSceneSetting(ctx context.Context, val string, freeAllowed bool) (string, error) {
+	val = strings.TrimSpace(val)
+	if val == "" {
+		return "", nil
+	}
+	if val == "free" {
+		if !freeAllowed {
+			return "", fmt.Errorf("%w: free channel is only valid for the translate scene", ErrInvalid)
+		}
+		return "free", nil
+	}
+	if after, ok := strings.CutPrefix(val, "provider:"); ok {
+		id := strings.TrimSpace(after)
+		if id == "" {
+			return "", nil
+		}
+		for _, item := range s.getAIProvidersRaw(ctx) {
+			if item.ID == id {
+				return "provider:" + id, nil
+			}
+		}
+		return "", nil
+	}
+	// free 对摘要/自动化不合法（免 key 通道只接翻译），其余未知值一律拒绝而不是静默清掉
+	return "", fmt.Errorf("%w: invalid scene setting %q", ErrInvalid, val)
 }
 
 // setAIProviders 保存提供商列表：打码的密钥沿用库里已存的值，当前使用的那个始终同步到 ai.api_key。
@@ -876,6 +959,9 @@ func (s *settingsService) GetNetworkSettings(ctx context.Context) (*NetworkSetti
 	if val, err := s.getString(ctx, keyNetworkIPStack); err == nil && val != "" {
 		settings.IPStack = val
 	}
+	if val, err := s.getString(ctx, keyNetworkMode); err == nil {
+		settings.Mode = val
+	}
 
 	return settings, nil
 }
@@ -896,6 +982,16 @@ func (s *settingsService) SetNetworkSettings(ctx context.Context, settings *Netw
 			logger.Warn("network settings update type failed", "module", "service", "action", "update", "resource", "settings", "result", "failed", "error", err)
 			return fmt.Errorf("set network type: %w", err)
 		}
+	}
+
+	// 全局模式（50 批 2.2）：只认 proxy / smart，其它按 proxy 存
+	mode := settings.Mode
+	if mode != "smart" {
+		mode = "proxy"
+	}
+	if err := s.repo.Set(ctx, keyNetworkMode, mode); err != nil {
+		logger.Warn("network settings update mode failed", "module", "service", "action", "update", "resource", "settings", "result", "failed", "error", err)
+		return fmt.Errorf("set network mode: %w", err)
 	}
 
 	if err := s.repo.Set(ctx, keyNetworkHost, settings.Host); err != nil {
@@ -940,6 +1036,18 @@ func (s *settingsService) GetIPStack(ctx context.Context) string {
 		return "default"
 	}
 	return val
+}
+
+// GetNetworkSettingsMode 全局代理模式（50 批 2.2）：空/未知 = "proxy"（旧行为）。
+func (s *settingsService) GetNetworkSettingsMode(ctx context.Context) string {
+	val, err := s.getString(ctx, keyNetworkMode)
+	if err != nil || val == "" {
+		return "proxy"
+	}
+	if val == "smart" {
+		return "smart"
+	}
+	return "proxy"
 }
 
 // GetProxyURL returns the formatted proxy URL (e.g., socks5://user:pass@host:port).
@@ -1245,6 +1353,9 @@ func importableSettingKeys() []string {
 		keyAITranslateChannel,
 		keyAIFallbackToModel,
 		keyAIActiveProvider,
+		keyAISceneTranslate,
+		keyAISceneSummary,
+		keyAISceneAutomation,
 		// 通用与拉取
 		keyFallbackUserAgent,
 		keyAutoReadability,
@@ -1256,6 +1367,7 @@ func importableSettingKeys() []string {
 		keyRefreshTimeoutSeconds,
 		// 网络（代理密码不在此列）
 		keyNetworkEnabled,
+		keyNetworkMode,
 		keyNetworkType,
 		keyNetworkHost,
 		keyNetworkPort,

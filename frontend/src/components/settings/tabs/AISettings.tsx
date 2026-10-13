@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSettingsDirty } from "@/stores/settings-dirty-store";
 import {
@@ -59,6 +59,9 @@ function isLoopbackBaseUrl(raw: string): boolean {
   );
 }
 
+/** 自动保存的防抖间隔（50 批 1：行为区整块自动保存，拍板 ~800ms） */
+const AUTO_SAVE_DELAY_MS = 800;
+
 export function AISettings() {
   const { t } = useTranslation();
 
@@ -104,6 +107,14 @@ export function AISettings() {
     message?: string;
     error?: string;
   } | null>(null);
+  /** 50 批 1：行为区自动保存的状态（行内反馈） */
+  const [autoSaveState, setAutoSaveState] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
+  /** 行为区自己的基线：与它的快照一致就不触发自动保存 */
+  const behaviorBaselineRef = useRef<string | null>(null);
+  /** 提供商表单有没有未保存改动（自动保存读到的是 ref，避免闭包过期） */
+  const providerDirtyRef = useRef(false);
   const isBaseURLRequired = settings
     ? settings.provider === "openai" || settings.provider === "compatible"
     : false;
@@ -128,9 +139,6 @@ export function AISettings() {
       const data = await getAISettings();
       setSettings(data);
       setRequestOptionsText(formatRequestOptions(data.requestOptions));
-      setBaseline(
-        JSON.stringify([data, formatRequestOptions(data.requestOptions)]),
-      );
 
       const list =
         data.providers && data.providers.length > 0
@@ -150,6 +158,14 @@ export function AISettings() {
       setProviders(list);
       setActiveProviderId(active);
       setSelectedProviderId(active);
+      setBaseline(
+        providerFormSnapshotOf(
+          data,
+          formatRequestOptions(data.requestOptions),
+          list,
+        ),
+      );
+      behaviorBaselineRef.current = behaviorSnapshotOf(data);
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
@@ -186,6 +202,7 @@ export function AISettings() {
 
   const handleSelectProvider = (id: string) => {
     if (!settings) return;
+    if (id === selectedProviderId) return;
     const entry = providers.find((item) => item.id === id);
     if (!entry) return;
 
@@ -395,11 +412,50 @@ export function AISettings() {
     }
   };
 
-  const aiDirty =
-    baseline !== null &&
-    settings !== null &&
-    JSON.stringify([settings, requestOptionsText]) !== baseline;
+  // 50 批 1：「未保存改动」只看提供商表单 —— 行为区自己自动保存，不再算进离开确认
+  const providerFormSnapshot = settings
+    ? providerFormSnapshotOf(settings, requestOptionsText, providers)
+    : null;
+  const providerDirty = baseline !== null && providerFormSnapshot !== baseline;
+  const aiDirty = providerDirty;
   useSettingsDirty("ai", aiDirty, t("settings.dirty_label_ai"), handleSave);
+
+  useEffect(() => {
+    providerDirtyRef.current = providerDirty;
+  }, [providerDirty]);
+
+  // ---------- 50 批 1：行为区自动保存（防抖 ~800ms，行内反馈；JSON 非法时不保存） ----------
+  const behaviorSnapshot = settings ? behaviorSnapshotOf(settings) : null;
+  useEffect(() => {
+    if (!settings || !behaviorSnapshot) return;
+    const baselineSnapshot = behaviorBaselineRef.current;
+    if (
+      baselineSnapshot === null ||
+      behaviorSnapshot === baselineSnapshot ||
+      !requestOptionsResult.ok ||
+      providerDirtyRef.current // 提供商表单有半成品：别把它一起带上去
+    ) {
+      return;
+    }
+    const timer = setTimeout(async () => {
+      const payload = buildSettingsPayload();
+      if (!payload) return;
+      setAutoSaveState("saving");
+      try {
+        const saved = await updateAISettings(payload);
+        setSettings(saved);
+        behaviorBaselineRef.current = behaviorSnapshotOf(saved);
+        setAutoSaveState("saved");
+        setTimeout(() => {
+          setAutoSaveState((state) => (state === "saved" ? "idle" : state));
+        }, 1500);
+      } catch {
+        setAutoSaveState("error");
+      }
+    }, AUTO_SAVE_DELAY_MS);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [behaviorSnapshot, requestOptionsResult.ok]);
 
   if (isLoading) {
     return (
@@ -440,89 +496,20 @@ export function AISettings() {
   const canSave = !isSaving && !requestOptionsError;
   const canTest = !isTesting && canSubmit;
 
-  /**
-   * 47-3：测试 / 保存两颗按钮 —— 用户 2026-10-12 要求放在「已保存的提供商」这一块里。
-   * 原来压在页面最下面，改完上面的「翻译通道」还得滚到底才够得着；
-   * 这一块本来就是这页的主控区（选提供商 / 设为当前使用 / 新增都在这里）。
-   */
-  const testAndSaveControls = (
-    <div className="flex flex-wrap items-center gap-3 pt-1">
-      <button
-        type="button"
-        onClick={handleSave}
-        disabled={!canSave}
-        className={cn(
-          "flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--radius)] px-4 text-sm font-medium transition-colors",
-          "bg-primary text-primary-foreground hover:bg-primary/90",
-          "disabled:cursor-not-allowed disabled:opacity-50",
-        )}
-      >
-        {isSaving ? (
-          <>
-            <div className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-            <span>{t("ai_settings.saving")}</span>
-          </>
-        ) : (
-          <span>{t("ai_settings.save")}</span>
-        )}
-      </button>
-
-      <button
-        type="button"
-        onClick={handleTest}
-        disabled={!canTest}
-        title={canTest ? undefined : t("ai_settings.test_needs_model")}
-        className={cn(
-          "flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--radius)] px-4 text-sm font-medium transition-colors",
-          "bg-secondary hover:bg-secondary/80",
-          "disabled:cursor-not-allowed disabled:opacity-50",
-        )}
-      >
-        {isTesting ? (
-          <>
-            <div className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-            <span>{t("ai_settings.testing")}</span>
-          </>
-        ) : (
-          <>
-            <svg
-              className="size-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M13 10V3L4 14h7v7l9-11h-7z"
-              />
-            </svg>
-            <span>{t("ai_settings.test")}</span>
-          </>
-        )}
-      </button>
-
-      {testResult && (
-        <span
-          className={cn(
-            "text-sm",
-            testResult.success
-              ? "text-green-600 dark:text-green-400"
-              : "text-destructive",
-          )}
-        >
-          {testResult.success
-            ? t("ai_settings.test_success") + "!"
-            : testResult.error}
-        </span>
-      )}
-    </div>
-  );
+  /** 分场景模型的下拉选项：跟随 + 已保存的提供商里配了模型的那些（免费通道走「翻译通道」行，不在这里重复） */
+  const sceneOptions = [
+    { value: "", label: t("ai_settings.scene_follow") },
+    ...providers
+      .filter((item) => item.model)
+      .map((item) => ({
+        value: `provider:${item.id}`,
+        label: `${item.name || item.provider} · ${item.model}`,
+      })),
+  ];
 
   return (
     <div className="space-y-1">
-      {/* 已保存的提供商 */}
+      {/* 已保存的提供商（50 批 1.1：紧凑卡列表，点卡片展开编辑，保存/测试跟在编辑卡底部） */}
       <div className="space-y-2 pb-2 pt-1">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-sm font-medium">
@@ -537,252 +524,376 @@ export function AISettings() {
               })}
             </span>
           )}
-          <div className="flex items-center gap-2">
-            {selectedProviderId !== activeProviderId && (
-              <button
-                type="button"
-                onClick={() => handleSetActiveProvider(selectedProviderId)}
-                className="rounded-[var(--radius)] border border-border px-2.5 py-1 text-xs text-foreground transition-colors duration-200 hover:bg-item-hover"
-              >
-                {t("ai_settings.set_active")}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={handleAddProvider}
-              className="rounded-[var(--radius)] border border-border px-2.5 py-1 text-xs text-foreground transition-colors duration-200 hover:bg-item-hover"
-            >
-              + {t("ai_settings.add_provider")}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleAddProvider}
+            className="rounded-[var(--radius)] border border-border px-2.5 py-1 text-xs text-foreground transition-colors duration-200 hover:bg-item-hover"
+          >
+            + {t("ai_settings.add_provider")}
+          </button>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="space-y-1.5">
           {providers.map((item) => {
             const isSelected = item.id === selectedProviderId;
             const isActive = item.id === activeProviderId;
             return (
-              <span
+              <div
                 key={item.id}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs transition-colors duration-200",
-                  isSelected
-                    ? "border-primary text-foreground"
-                    : "border-border text-muted-foreground hover:bg-item-hover",
+                  "rounded-md border transition-colors duration-200",
+                  isSelected ? "border-primary" : "border-border",
                 )}
               >
-                <button
-                  type="button"
-                  onClick={() => handleSelectProvider(item.id)}
-                  className="max-w-40 truncate"
-                  title={item.baseUrl || item.name}
-                >
-                  {item.name || item.provider}
-                </button>
-                {isActive && (
-                  <span className="text-[10px] text-primary">
-                    {t("ai_settings.active_badge")}
-                  </span>
-                )}
-                {providers.length > 1 && (
+                {/* 卡片行：点开编辑（再点已选中的那张不收起，避免误触折叠） */}
+                <div className="flex items-center gap-2 px-3 py-2">
                   <button
                     type="button"
-                    onClick={() => handleDeleteProvider(item.id)}
-                    title={t("actions.delete")}
-                    className="text-muted-foreground transition-colors duration-200 hover:text-destructive"
+                    onClick={() => handleSelectProvider(item.id)}
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    title={item.baseUrl || item.name}
                   >
-                    ×
+                    <svg
+                      className={cn(
+                        "size-3.5 shrink-0 text-muted-foreground transition-transform duration-200",
+                        isSelected && "rotate-90",
+                      )}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 5l7 7-7 7"
+                      />
+                    </svg>
+                    <span className="max-w-44 truncate text-sm font-medium">
+                      {item.name || item.provider}
+                    </span>
+                    <span className="shrink-0 rounded-full border border-border px-1.5 py-px text-[10px] text-muted-foreground">
+                      {item.provider}
+                    </span>
+                    <span className="min-w-0 truncate text-xs text-muted-foreground">
+                      {item.model || "-"}
+                    </span>
                   </button>
+                  {isActive && (
+                    <span className="shrink-0 text-[10px] text-primary">
+                      {t("ai_settings.active_badge")}
+                    </span>
+                  )}
+                  {providers.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteProvider(item.id)}
+                      title={t("actions.delete")}
+                      className="shrink-0 text-muted-foreground transition-colors duration-200 hover:text-destructive"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+
+                {/* 展开的编辑表单（同一时刻只有一张卡展开；这些字段只属于这份提供商配置） */}
+                {isSelected && (
+                  <div className="space-y-2 border-t border-border px-3 pb-3 pt-2">
+                    {/* Provider */}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-sm font-medium">
+                        {t("ai_settings.provider")}
+                      </span>
+                      <Select
+                        ariaLabel={t("ai_settings.provider")}
+                        value={settings.provider}
+                        onChange={(value) =>
+                          handleChange("provider", value as AIProvider)
+                        }
+                        options={PROVIDERS}
+                        className="shrink-0 sm:w-48"
+                      />
+                    </div>
+
+                    {/* API Key */}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-sm font-medium">
+                        {t("ai_settings.api_key")}
+                      </span>
+                      <input
+                        type="password"
+                        value={settings.apiKey}
+                        onChange={(e) => handleChange("apiKey", e.target.value)}
+                        placeholder={
+                          settings.provider === "openai"
+                            ? "sk-..."
+                            : settings.provider === "anthropic"
+                              ? "sk-ant-..."
+                              : t("ai_settings.enter_api_key")
+                        }
+                        className={cn(inputClass, "shrink-0")}
+                      />
+                    </div>
+
+                    {/* 名称 */}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-sm font-medium">
+                        {t("ai_settings.provider_name")}
+                      </span>
+                      <input
+                        type="text"
+                        value={
+                          providers.find((p) => p.id === selectedProviderId)
+                            ?.name ?? ""
+                        }
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setProviders((prev) =>
+                            prev.map((p) =>
+                              p.id === selectedProviderId
+                                ? { ...p, name: value }
+                                : p,
+                            ),
+                          );
+                          setSuccessMessage(null);
+                        }}
+                        placeholder={t("ai_settings.provider_name_placeholder")}
+                        className={cn(inputClass, "shrink-0")}
+                      />
+                    </div>
+
+                    {/* Base URL */}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-1 min-w-0">
+                        <span className="text-sm font-medium">
+                          {t("ai_settings.base_url")}
+                        </span>
+                        {isBaseURLRequired ? (
+                          <span className="text-xs text-destructive">
+                            {t("ai_settings.required")}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">
+                            {t("ai_settings.optional")}
+                          </span>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        value={settings.baseUrl}
+                        onChange={(e) => handleChange("baseUrl", e.target.value)}
+                        placeholder={
+                          settings.provider === "compatible"
+                            ? "https://openrouter.ai/api/v1"
+                            : settings.provider === "openai"
+                              ? "https://api.openai.com/v1"
+                              : t("ai_settings.leave_empty_for_default")
+                        }
+                        className={cn(inputClass, "shrink-0")}
+                      />
+                    </div>
+                    {isLoopbackBaseUrl(settings.baseUrl) && (
+                      <p className="text-xs text-muted-foreground">
+                        {t("ai_settings.loopback_hint")}
+                      </p>
+                    )}
+
+                    {/* 模型：输入框 + 探测并排；探测结果贴在下面（47 批的重排原样保留） */}
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={settings.model}
+                          onChange={(e) => handleChange("model", e.target.value)}
+                          placeholder={
+                            settings.provider === "openai"
+                              ? "gpt-4o"
+                              : settings.provider === "anthropic"
+                                ? "claude-sonnet-4-20250514"
+                                : t("ai_settings.model_example", {
+                                    example: "anthropic/claude-3.5-sonnet",
+                                  })
+                          }
+                          className={cn(inputClass, "min-w-0 flex-1 sm:w-auto")}
+                        />
+                        <button
+                          type="button"
+                          onClick={handleProbeModels}
+                          disabled={isProbing || !settings.baseUrl.trim()}
+                          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[var(--radius)] border border-border px-3 text-xs text-foreground transition-colors duration-200 hover:bg-item-hover disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {isProbing && (
+                            <span className="size-3 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-transparent" />
+                          )}
+                          {isProbing
+                            ? t("ai_settings.probing")
+                            : t("ai_settings.probe_models")}
+                        </button>
+                      </div>
+                      {modelChoices && modelChoices.length > 0 && (
+                        <div className="max-h-40 overflow-y-auto rounded-md border border-border p-1">
+                          {modelChoices.map((model) => (
+                            <button
+                              key={model}
+                              type="button"
+                              onClick={() => {
+                                handleChange("model", model);
+                                setModelChoices(null);
+                              }}
+                              className={cn(
+                                "block w-full truncate rounded px-2 py-1 text-left text-xs transition-colors duration-200 hover:bg-item-hover",
+                                model === settings.model
+                                  ? "text-primary"
+                                  : "text-muted-foreground",
+                              )}
+                            >
+                              {model}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 请求参数（属于这份提供商配置，随保存一起提交） */}
+                    <div className="space-y-2">
+                      <div className="min-w-0">
+                        <span className="text-sm font-medium">
+                          {t("ai_settings.request_options")}
+                        </span>
+                        <p className="text-xs text-muted-foreground">
+                          {t("ai_settings.request_options_hint")}
+                        </p>
+                      </div>
+                      <textarea
+                        value={requestOptionsText}
+                        onChange={(e) => {
+                          setRequestOptionsText(e.target.value);
+                          setSuccessMessage(null);
+                          setTestResult(null);
+                        }}
+                        placeholder={JSON.stringify({ key: "value" }, null, 2)}
+                        className={cn(
+                          "min-h-24 w-full rounded-field border bg-background px-3 py-2 font-mono text-xs focus:border-primary focus:outline-none",
+                          requestOptionsError
+                            ? "border-destructive"
+                            : "border-border",
+                        )}
+                        spellCheck={false}
+                      />
+                      {requestOptionsError && (
+                        <p className="text-xs text-destructive">
+                          {requestOptionsError}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* 保存 / 测试 / 设为当前使用 —— 只作用于提供商这一块（50 批 1：手动整体提交） */}
+                    <div className="flex flex-wrap items-center gap-3 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleSave}
+                        disabled={!canSave}
+                        className={cn(
+                          "flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--radius)] px-4 text-sm font-medium transition-colors",
+                          "bg-primary text-primary-foreground hover:bg-primary/90",
+                          "disabled:cursor-not-allowed disabled:opacity-50",
+                        )}
+                      >
+                        {isSaving ? (
+                          <>
+                            <div className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                            <span>{t("ai_settings.saving")}</span>
+                          </>
+                        ) : (
+                          <span>{t("ai_settings.save")}</span>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleTest}
+                        disabled={!canTest}
+                        title={canTest ? undefined : t("ai_settings.test_needs_model")}
+                        className={cn(
+                          "flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--radius)] px-4 text-sm font-medium transition-colors",
+                          "bg-secondary hover:bg-secondary/80",
+                          "disabled:cursor-not-allowed disabled:opacity-50",
+                        )}
+                      >
+                        {isTesting ? (
+                          <>
+                            <div className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                            <span>{t("ai_settings.testing")}</span>
+                          </>
+                        ) : (
+                          <>
+                            <svg
+                              className="size-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M13 10V3L4 14h7v7l9-11h-7z"
+                              />
+                            </svg>
+                            <span>{t("ai_settings.test")}</span>
+                          </>
+                        )}
+                      </button>
+
+                      {selectedProviderId !== activeProviderId && (
+                        <button
+                          type="button"
+                          onClick={() => handleSetActiveProvider(selectedProviderId)}
+                          className="h-8 rounded-[var(--radius)] border border-border px-2.5 text-xs text-foreground transition-colors duration-200 hover:bg-item-hover"
+                        >
+                          {t("ai_settings.set_active")}
+                        </button>
+                      )}
+
+                      {testResult && (
+                        <span
+                          className={cn(
+                            "text-sm",
+                            testResult.success
+                              ? "text-green-600 dark:text-green-400"
+                              : "text-destructive",
+                          )}
+                        >
+                          {testResult.success
+                            ? t("ai_settings.test_success") + "!"
+                            : testResult.error}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 )}
-              </span>
+              </div>
             );
           })}
         </div>
-
-        {testAndSaveControls}
       </div>
 
-      {/* Provider */}
-      <div className="flex flex-wrap items-center justify-between gap-2 py-2">
-        <span className="text-sm font-medium">{t("ai_settings.provider")}</span>
-        <Select
-          ariaLabel={t("ai_settings.provider")}
-          value={settings.provider}
-          onChange={(value) => handleChange("provider", value as AIProvider)}
-          options={PROVIDERS}
-          className="shrink-0 sm:w-48"
-        />
-      </div>
-
-      {/* API Key */}
-      <div className="flex flex-wrap items-center justify-between gap-2 py-2">
-        <span className="text-sm font-medium">{t("ai_settings.api_key")}</span>
-        <input
-          type="password"
-          value={settings.apiKey}
-          onChange={(e) => handleChange("apiKey", e.target.value)}
-          placeholder={
-            settings.provider === "openai"
-              ? "sk-..."
-              : settings.provider === "anthropic"
-                ? "sk-ant-..."
-                : t("ai_settings.enter_api_key")
-          }
-          className={cn(inputClass, "shrink-0")}
-        />
-      </div>
-
-      {/* 名称 */}
-      <div className="flex flex-wrap items-center justify-between gap-2 py-2">
-        <span className="text-sm font-medium">
-          {t("ai_settings.provider_name")}
-        </span>
-        <input
-          type="text"
-          value={providers.find((item) => item.id === selectedProviderId)?.name ?? ""}
-          onChange={(event) => {
-            const value = event.target.value;
-            setProviders((prev) =>
-              prev.map((item) =>
-                item.id === selectedProviderId ? { ...item, name: value } : item,
-              ),
-            );
-            setSuccessMessage(null);
-          }}
-          placeholder={t("ai_settings.provider_name_placeholder")}
-          className={cn(inputClass, "shrink-0")}
-        />
-      </div>
-
-      {/* Base URL */}
-      <div className="flex flex-wrap items-center justify-between gap-2 py-2">
-        <div className="flex items-center gap-1 min-w-0">
-          <span className="text-sm font-medium">
-            {t("ai_settings.base_url")}
-          </span>
-          {isBaseURLRequired ? (
-            <span className="text-xs text-destructive">
-              {t("ai_settings.required")}
-            </span>
-          ) : (
-            <span className="text-xs text-muted-foreground">
-              {t("ai_settings.optional")}
-            </span>
-          )}
-        </div>
-        <input
-          type="text"
-          value={settings.baseUrl}
-          onChange={(e) => handleChange("baseUrl", e.target.value)}
-          placeholder={
-            settings.provider === "compatible"
-              ? "https://openrouter.ai/api/v1"
-              : settings.provider === "openai"
-                ? "https://api.openai.com/v1"
-                : t("ai_settings.leave_empty_for_default")
-          }
-          className={cn(inputClass, "shrink-0")}
-        />
-        {isLoopbackBaseUrl(settings.baseUrl) && (
-          <p className="text-xs text-muted-foreground">
-            {t("ai_settings.loopback_hint")}
-          </p>
-        )}
-      </div>
-
-      {/* Model：标签单独一行，「输入框 + 探测模型」并排成一行（输入框吃剩余宽度），
-          探测结果紧贴在输入框下面，不再跟标签挤在一行里换行 */}
-      <div className="space-y-2 py-2">
-        <div className="flex flex-wrap items-baseline gap-2">
-          <span className="text-sm font-medium">{t("ai_settings.model")}</span>
-          <span className="text-xs text-muted-foreground">
-            {t("ai_settings.model_hint")}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            value={settings.model}
-            onChange={(e) => handleChange("model", e.target.value)}
-            placeholder={
-              settings.provider === "openai"
-                ? "gpt-4o"
-                : settings.provider === "anthropic"
-                  ? "claude-sonnet-4-20250514"
-                  : t("ai_settings.model_example", {
-                      example: "anthropic/claude-3.5-sonnet",
-                    })
-            }
-            className={cn(inputClass, "min-w-0 flex-1 sm:w-auto")}
-          />
-          <button
-            type="button"
-            onClick={handleProbeModels}
-            disabled={isProbing || !settings.baseUrl.trim()}
-            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[var(--radius)] border border-border px-3 text-xs text-foreground transition-colors duration-200 hover:bg-item-hover disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isProbing && (
-              <span className="size-3 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-transparent" />
-            )}
-            {isProbing ? t("ai_settings.probing") : t("ai_settings.probe_models")}
-          </button>
-        </div>
-        {modelChoices && modelChoices.length > 0 && (
-          <div className="max-h-40 overflow-y-auto rounded-md border border-border p-1">
-            {modelChoices.map((model) => (
-              <button
-                key={model}
-                type="button"
-                onClick={() => {
-                  handleChange("model", model);
-                  setModelChoices(null);
-                }}
-                className={cn(
-                  "block w-full truncate rounded px-2 py-1 text-left text-xs transition-colors duration-200 hover:bg-item-hover",
-                  model === settings.model
-                    ? "text-primary"
-                    : "text-muted-foreground",
-                )}
-              >
-                {model}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-
-      <div className="space-y-2 py-2">
-        <div className="min-w-0">
-          <span className="text-sm font-medium">
-            {t("ai_settings.request_options")}
-          </span>
-          <p className="text-xs text-muted-foreground">
-            {t("ai_settings.request_options_hint")}
-          </p>
-        </div>
-        <textarea
-          value={requestOptionsText}
-          onChange={(e) => {
-            setRequestOptionsText(e.target.value);
-            setSuccessMessage(null);
-            setTestResult(null);
-          }}
-          placeholder={JSON.stringify({ key: "value" }, null, 2)}
-          className={cn(
-            "min-h-32 w-full rounded-field border bg-background px-3 py-2 font-mono text-xs focus:border-primary focus:outline-none",
-            requestOptionsError ? "border-destructive" : "border-border",
-          )}
-          spellCheck={false}
-        />
-        {requestOptionsError && (
-          <p className="text-xs text-destructive">{requestOptionsError}</p>
-        )}
-      </div>
-
-      {/* AI Behavior Section */}
+      {/* AI 行为（50 批 1：这一块自动保存，不用找保存按钮） */}
       <div className="pb-1 pt-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-        AI
+        <div className="flex items-center gap-2">
+          <span>AI</span>
+          <span
+            className={cn(
+              "font-normal normal-case tracking-normal",
+              autoSaveState === "error" && "text-destructive",
+              autoSaveState === "saved" && "text-green-600 dark:text-green-400",
+            )}
+          >
+            {autoSaveState === "saving" && t("ai_settings.autosave_saving")}
+            {autoSaveState === "saved" && t("ai_settings.autosave_saved")}
+            {autoSaveState === "error" && t("ai_settings.autosave_failed")}
+          </span>
+        </div>
       </div>
 
       {/* Summary Language */}
@@ -901,6 +1012,55 @@ export function AISettings() {
       </div>
 
 
+
+      {/* 分场景模型（50 批 1.2）：翻译 / 摘要 / 自动化各自可用不同的提供商配置，默认跟随当前使用 */}
+      <div className="pb-1 pt-3">
+        <div className="flex flex-wrap items-baseline gap-2">
+          <span className="text-sm font-medium">
+            {t("ai_settings.scene_section")}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {t("ai_settings.scene_hint")}
+          </span>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 py-2">
+        <span className="text-sm font-medium">
+          {t("ai_settings.scene_translate")}
+        </span>
+        <Select
+          ariaLabel={t("ai_settings.scene_translate")}
+          value={settings.sceneTranslate ?? ""}
+          onChange={(value) => handleChange("sceneTranslate", value)}
+          options={sceneOptions}
+          className="w-56 shrink-0"
+        />
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 py-2">
+        <span className="text-sm font-medium">
+          {t("ai_settings.scene_summary")}
+        </span>
+        <Select
+          ariaLabel={t("ai_settings.scene_summary")}
+          value={settings.sceneSummary ?? ""}
+          onChange={(value) => handleChange("sceneSummary", value)}
+          options={sceneOptions}
+          className="w-56 shrink-0"
+        />
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 py-2">
+        <span className="text-sm font-medium">
+          {t("ai_settings.scene_automation")}
+        </span>
+        <Select
+          ariaLabel={t("ai_settings.scene_automation")}
+          value={settings.sceneAutomation ?? ""}
+          onChange={(value) => handleChange("sceneAutomation", value)}
+          options={sceneOptions}
+          className="w-56 shrink-0"
+        />
+      </div>
+
       {/* Messages */}
       {error && (
         <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -917,4 +1077,43 @@ export function AISettings() {
       <MCPServersSection />
     </div>
   );
+}
+
+/** 提供商表单的快照（50 批 1：dirty 只管这块 —— 行为区自己自动保存） */
+function providerFormSnapshotOf(
+  settings: AISettingsType,
+  requestOptionsText: string,
+  providers: AIProviderConfig[],
+): string {
+  return JSON.stringify([
+    settings.provider,
+    settings.apiKey,
+    settings.baseUrl,
+    settings.model,
+    requestOptionsText,
+    providers.map((item) => [
+      item.id,
+      item.name,
+      item.provider,
+      item.baseUrl,
+      item.model,
+      item.apiKey,
+      formatRequestOptions(item.requestOptions),
+    ]),
+  ]);
+}
+
+/** 行为区的快照（自动保存的比较对象；只含行为字段，提供商表单改动不触发它） */
+function behaviorSnapshotOf(settings: AISettingsType): string {
+  return JSON.stringify([
+    settings.summaryLanguage,
+    settings.translateChannel,
+    settings.fallbackToModel,
+    settings.autoTranslate,
+    settings.autoSummary,
+    settings.rateLimit,
+    settings.sceneTranslate ?? "",
+    settings.sceneSummary ?? "",
+    settings.sceneAutomation ?? "",
+  ]);
 }

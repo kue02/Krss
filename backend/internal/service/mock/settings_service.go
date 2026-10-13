@@ -174,6 +174,20 @@ func (mr *MockSettingsServiceMockRecorder) GetNetworkSettings(ctx any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNetworkSettings", reflect.TypeOf((*MockSettingsService)(nil).GetNetworkSettings), ctx)
 }
 
+// GetNetworkSettingsMode mocks base method.
+func (m *MockSettingsService) GetNetworkSettingsMode(ctx context.Context) string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetNetworkSettingsMode", ctx)
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// GetNetworkSettingsMode indicates an expected call of GetNetworkSettingsMode.
+func (mr *MockSettingsServiceMockRecorder) GetNetworkSettingsMode(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNetworkSettingsMode", reflect.TypeOf((*MockSettingsService)(nil).GetNetworkSettingsMode), ctx)
+}
+
 // GetProxyURL mocks base method.
 func (m *MockSettingsService) GetProxyURL(ctx context.Context) string {
 	m.ctrl.T.Helper()
