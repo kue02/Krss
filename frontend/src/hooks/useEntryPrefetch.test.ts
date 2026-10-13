@@ -6,45 +6,34 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook } from "@testing-library/react";
 import { useEntryPrefetch, runEntryPrefetch } from "@/hooks/useEntryPrefetch";
-import {
-  attachContentTranslation,
-  claimContentTranslation,
-  isContentTranslationInFlight,
-  resetContentTranslationInFlight,
-} from "@/services/content-translation-inflight";
 import type { PrefetchContext, PrefetchPlan } from "@/services/entry-prefetch-plan";
 import type { Entry, Feed } from "@/types/api";
 
 const {
   mockFetchReadable,
   mockStreamSummary,
-  mockStreamTranslateBlocks,
-  mockTranslationSet,
+  mockWarmTranslate,
+  mockWarmEntryImages,
   mockNeedsTranslation,
 } = vi.hoisted(() => ({
   mockFetchReadable: vi.fn(),
   mockStreamSummary: vi.fn(),
-  mockStreamTranslateBlocks: vi.fn(),
-  mockTranslationSet: vi.fn(),
+  mockWarmTranslate: vi.fn(async (_req: Record<string, unknown>) => true),
+  mockWarmEntryImages: vi.fn(),
   mockNeedsTranslation: vi.fn(async () => true),
 }));
 
+// 50-1 之后预载**不再开流**：只叫后端「后台翻好落缓存」。
+// 原来那套 streamTranslateBlocks + claim/转发 的接线已随之删除，
+// 这里的 mock 跟着换成 warmTranslate。
 vi.mock("@/api", () => ({
   fetchReadableContent: mockFetchReadable,
   streamSummary: mockStreamSummary,
-  streamTranslateBlocks: mockStreamTranslateBlocks,
-  isTranslateInit: (event: unknown) =>
-    typeof event === "object" && event !== null && "blocks" in event,
-  isTranslateBlockResult: (event: unknown) =>
-    typeof event === "object" &&
-    event !== null &&
-    "index" in event &&
-    "html" in event &&
-    !("blocks" in event),
+  warmTranslate: mockWarmTranslate,
 }));
 
-vi.mock("@/stores/translation-store", () => ({
-  translationActions: { set: mockTranslationSet },
+vi.mock("@/lib/warm-images", () => ({
+  warmEntryImages: mockWarmEntryImages,
 }));
 
 vi.mock("@/lib/language-detect-async", () => ({
@@ -102,14 +91,14 @@ describe("runEntryPrefetch", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockNeedsTranslation.mockResolvedValue(true);
-    resetContentTranslationInFlight();
   });
 
   it("三态全关：一个请求都不发", async () => {
     await run(entry(), plan());
     expect(mockFetchReadable).not.toHaveBeenCalled();
     expect(mockStreamSummary).not.toHaveBeenCalled();
-    expect(mockStreamTranslateBlocks).not.toHaveBeenCalled();
+    expect(mockWarmTranslate).not.toHaveBeenCalled();
+    expect(mockWarmEntryImages).not.toHaveBeenCalled();
   });
 
   it("阅读模式：抓正文 → 回写缓存 → 摘要/翻译用抓回来的正文", async () => {
@@ -151,71 +140,53 @@ describe("runEntryPrefetch", () => {
     });
   });
 
-  it("翻译命中后端缓存：直接写 translation-store（isReadability 与正文页一致）", async () => {
-    mockStreamTranslateBlocks.mockImplementation(async function* () {
-      yield { cached: true, content: "<p>译好的</p>" };
-    });
-
+  it("预载不写 translation-store，只叫后端预热缓存（50-1）", async () => {
     await run(
       entry({ readableContent: "<p>full</p>" }),
       plan({ autoTranslate: true }),
     );
 
-    expect(mockTranslationSet).toHaveBeenCalledWith(
-      "1",
-      "zh-CN",
-      { content: "<p>译好的</p>" },
-      false,
+    // 关键：预载不再自己拉流、不再往 store 写东西 —— 那条路会占住一条长连接
+    expect(mockWarmTranslate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entryId: "1",
+        isReadability: false,
+      }),
     );
   });
 
-  it("翻译走分块流：按块序拼回整篇再写 store", async () => {
-    mockStreamTranslateBlocks.mockImplementation(async function* () {
-      yield {
-        blocks: [
-          { index: 0, html: "<p>一</p>", needTranslate: true },
-          { index: 1, html: "<p>二</p>", needTranslate: true },
-        ],
-      };
-      yield { index: 1, html: "<p>贰</p>" };
-      yield { index: 0, html: "<p>壹</p>" };
-      yield { done: true };
+  it("阅读模式生效时，warm 用抓回来的正文且 isReadability=true（与打开路径同口径）", async () => {
+    mockFetchReadable.mockResolvedValue("<p>full</p>");
+
+    await run(
+      entry(),
+      plan({ readerMode: true, autoTranslate: true }),
+    );
+
+    expect(mockWarmTranslate.mock.calls[0]![0]).toMatchObject({
+      entryId: "1",
+      content: "<p>full</p>",
+      isReadability: true,
     });
-
-    await run(entry(), plan({ autoTranslate: true }));
-    expect(mockTranslationSet).toHaveBeenCalledWith(
-      "1",
-      "zh-CN",
-      { content: "<p>壹</p><p>贰</p>" },
-      false,
-    );
   });
 
-  it("翻译请求失败向上抛（交给队列退避重试），不写脏数据", async () => {
-    mockStreamTranslateBlocks.mockImplementation(async function* () {
-      yield { done: true };
-      throw new Error("network down");
-    });
-    await expect(run(entry(), plan({ autoTranslate: true }))).rejects.toThrow(
-      "network down",
-    );
-    expect(mockTranslationSet).not.toHaveBeenCalled();
+  it("warm 失败不向上抛（预载失败不该拖垮队列；点开时用户会自己发一次）", async () => {
+    mockWarmTranslate.mockRejectedValueOnce(new Error("network down"));
+    await expect(
+      run(entry(), plan({ autoTranslate: true })),
+    ).resolves.toBeUndefined();
   });
 
-  it("原文已是目标语言 → 不发翻译请求", async () => {
+  it("原文已是目标语言 → 连 warm 都不发", async () => {
     mockNeedsTranslation.mockResolvedValue(false);
     await run(entry(), plan({ autoTranslate: true }));
-    expect(mockStreamTranslateBlocks).not.toHaveBeenCalled();
-    expect(mockTranslationSet).not.toHaveBeenCalled();
+    expect(mockWarmTranslate).not.toHaveBeenCalled();
   });
 
-  it("把 AbortSignal 透传给三个请求（滚出视口能掐掉）", async () => {
+  it("把 AbortSignal 透给仍需流式的两个请求（滚出视口能掐掉）", async () => {
     const controller = new AbortController();
     mockFetchReadable.mockResolvedValue("<p>full</p>");
     mockStreamSummary.mockImplementation(() => summaryStream(["s"]));
-    mockStreamTranslateBlocks.mockImplementation(async function* () {
-      yield { cached: true, content: "<p>t</p>" };
-    });
 
     await runEntryPrefetch({
       entry: entry(),
@@ -227,60 +198,18 @@ describe("runEntryPrefetch", () => {
 
     expect(mockFetchReadable.mock.calls[0]![1]).toBe(controller.signal);
     expect(mockStreamSummary.mock.calls[0]![1]).toBe(controller.signal);
-    expect(mockStreamTranslateBlocks.mock.calls[0]![1]).toBe(controller.signal);
+    // warmTranslate 是「发起即结束」的一次性请求，不带 signal
+    expect(mockWarmTranslate).toHaveBeenCalled();
   });
 
-  it("打开路径正在翻同一条 ⇒ 预载不再发翻译请求（不重复跑模型）", async () => {
-    // 模拟「用户点得比预载快」：打开路径先 claim 了这条
-    const claim = claimContentTranslation("1", false, "zh-CN");
-    expect(claim).not.toBeNull();
-
+  it("顺带把正文头几张图 warm 进代理缓存（50-2）", async () => {
     await run(entry(), plan({ autoTranslate: true }));
-
-    expect(mockStreamTranslateBlocks).not.toHaveBeenCalled();
-    expect(mockTranslationSet).not.toHaveBeenCalled();
-
-    // 它收尾之后，同一个 key 可以重新 claim ⇒ 预载恢复正常
-    claim!.finish();
-    mockStreamTranslateBlocks.mockImplementation(async function* () {
-      yield { cached: true, content: "<p>译好的</p>" };
-    });
-    await run(entry(), plan({ autoTranslate: true }));
-    expect(mockStreamTranslateBlocks).toHaveBeenCalledTimes(1);
+    expect(mockWarmEntryImages).toHaveBeenCalledWith("<p>body</p>", "https://example.com/a");
   });
 
-  it("预载当发起方时把流事件转发给订阅方（打开路径照样逐块出）", async () => {
-    // 用闸门卡住流：先确认预载已经 claim（此时还没吐任何事件），
-    // 「此刻订阅」正好等价于「用户刚点开」，后面的事件一个都不会漏
-    let releaseStream!: () => void;
-    const streamGate = new Promise<void>((resolve) => {
-      releaseStream = resolve;
-    });
-    mockStreamTranslateBlocks.mockImplementation(async function* () {
-      await streamGate;
-      yield { blocks: [{ index: 0, html: "<p>一</p>", needTranslate: true }] };
-      yield { index: 0, html: "<p>壹</p>" };
-      yield { done: true };
-    });
-
-    const seen: Array<Record<string, unknown>> = [];
-    const running = run(entry(), plan({ autoTranslate: true }));
-    await vi.waitFor(() =>
-      expect(isContentTranslationInFlight("1", false, "zh-CN")).toBe(true),
-    );
-
-    const attached = attachContentTranslation("1", false, "zh-CN", (event) =>
-      seen.push(event as Record<string, unknown>),
-    );
-    expect(attached).not.toBeNull();
-
-    releaseStream();
-    await running;
-    await attached;
-
-    expect(seen).toHaveLength(3);
-    expect(seen[0]).toMatchObject({ blocks: expect.any(Array) });
-    expect(seen[1]).toMatchObject({ index: 0, html: "<p>壹</p>" });
+  it("不开自动翻译就不 warm 图片（别替用户瞎拉流量）", async () => {
+    await run(entry(), plan({ autoSummary: false, autoTranslate: false }));
+    expect(mockWarmEntryImages).not.toHaveBeenCalled();
   });
 });
 

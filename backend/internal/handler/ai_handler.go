@@ -51,7 +51,50 @@ func (h *AIHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/ai/summarize", h.Summarize)
 	g.POST("/ai/translate", h.Translate)
 	g.POST("/ai/translate/batch", h.TranslateBatch)
+	g.POST("/ai/translate/warm", h.WarmTranslate)
 	g.DELETE("/ai/cache", h.ClearCache)
+}
+
+// WarmTranslate 预载专用：把译文算出来落缓存，**立刻**返回，不占客户端连接（50-1）。
+//
+// 预载原先直接打流式接口，一条预载 = 一条长连接；浏览器同源 HTTP/1.1 只有 6 条并发，
+// 预载并发 3 + 正文 1 + 批次 1 就顶满，设置页和其他条目全被堵住（实测第 6 条时
+// /api/settings/ai 卡 45.6 秒）。这个接口把「算」和「等」拆开：客户端发起即结束。
+//
+// 202 表示已起后台任务；200 + cached 表示本来就翻好了。
+// @Summary Warm translation cache
+// @Description Start translating an entry in the background so a later open hits the cache. Returns immediately.
+// @Tags ai
+// @Accept json
+// @Produce json
+// @Param request body translateRequest true "Warm request"
+// @Success 200 {object} translateResponse "Already cached"
+// @Success 202 {object} translateResponse "Warming started"
+// @Failure 400 {object} errorResponse
+// @Failure 500 {object} errorResponse
+// @Router /ai/translate/warm [post]
+func (h *AIHandler) WarmTranslate(c echo.Context) error {
+	var req translateRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
+	}
+	if req.Content == "" {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "content is required"})
+	}
+	entryID, err := strconv.ParseInt(req.EntryID, 10, 64)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid entry ID"})
+	}
+
+	alreadyCached, err := h.service.WarmTranslation(c.Request().Context(), entryID, req.Content, req.Title, req.IsReadability)
+	if err != nil {
+		logger.Warn("ai warm translate request failed", "module", "handler", "action", "request", "resource", "ai", "result", "failed", "entry_id", entryID, "error", err)
+		return c.JSON(http.StatusInternalServerError, errorResponse{Error: err.Error()})
+	}
+	if alreadyCached {
+		return c.JSON(http.StatusOK, translateResponse{Cached: true})
+	}
+	return c.JSON(http.StatusAccepted, translateResponse{Cached: false})
 }
 
 // Summarize generates an AI summary of the content.
