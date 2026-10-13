@@ -6,7 +6,7 @@ import {
   useMemo,
   useEffect,
 } from "react";
-import { Router, useLocation, Redirect } from "wouter";
+import { Router, useLocation, useSearch, Redirect } from "wouter";
 import { useTranslation } from "react-i18next";
 import {
   SETTINGS_SAVED_EVENT,
@@ -34,6 +34,10 @@ import { FilterEditorDialog } from "@/components/automation/FilterEditorDialog";
 import { SettingsModal, ProfileModal } from "@/components/settings";
 import { EditFeedDialog } from "@/components/settings/tabs/EditFeedDialog";
 import { useEditingFeedStore } from "@/stores/editing-feed-store";
+import {
+  isSameSelection,
+  useFeedJumpBackStore,
+} from "@/stores/feed-jump-back-store";
 import {
   useSettingsModalStore,
   useProfileModalStore,
@@ -157,6 +161,12 @@ function EntryContentFallback() {
 
 function AuthenticatedApp() {
   const [location, navigate] = useLocation();
+  const search = useSearch();
+  /**
+   * 52-4：wouter 的 `location` 只是 pathname（`?unread&type` 不在里面）——
+   * 返回键要记的是「跳转前那一刻的完整地址」，所以这里把 search 拼上。
+   */
+  const fullLocation = search ? `${location}?${search}` : location;
   const {
     isMobile,
     isTablet,
@@ -311,6 +321,42 @@ function AuthenticatedApp() {
     },
     [selectFeed, closeSidebar],
   );
+
+  /**
+   * 52-4（用户第 4 条）：点条目的**订阅源名称 / 图标** → 第一栏选中该订阅。
+   *
+   * 与侧栏点击走同一个 `selectFeed`（所以高亮、列表、滚动位置都是那一套，不另开机制）。
+   * 差别只在：跳转前把「此刻的完整地址」记下来，列表头据此出返回按钮。
+   * 已经在同一个订阅上就不记（点了等于没跳，返回按钮会指向一个和现在一样的选中态）。
+   */
+  const handleJumpToFeed = useCallback(
+    (feedId: string) => {
+      if (!isSameSelection(selection, { type: "feed", feedId })) {
+        useFeedJumpBackStore.getState().remember(fullLocation, feedId);
+      }
+      closeSidebar();
+      selectFeed(feedId, { replace: true });
+    },
+    [selection, fullLocation, closeSidebar, selectFeed],
+  );
+
+  /** 返回 = 原样走回跳转前那个地址（selection 与当时打开的条目一起还原） */
+  const handleBackFromFeedJump = useCallback(() => {
+    const href = useFeedJumpBackStore.getState().previousHref;
+    useFeedJumpBackStore.getState().clear();
+    if (!href) return;
+    navigate(href, { replace: true });
+  }, [navigate]);
+
+  const jumpBackHref = useFeedJumpBackStore((state) => state.previousHref);
+  const jumpBackFromFeedId = useFeedJumpBackStore((state) => state.fromFeedId);
+
+  // 离开「那一次跳转落到的订阅」（改点侧栏、点了返回、跳到别的订阅）就把返回收掉，别残留
+  useEffect(() => {
+    if (selection.type !== "feed" || selection.feedId !== jumpBackFromFeedId) {
+      useFeedJumpBackStore.getState().clear();
+    }
+  }, [selection, jumpBackFromFeedId]);
 
   const handleSelectFolder = useCallback(
     (folderId: string) => {
@@ -576,6 +622,9 @@ function AuthenticatedApp() {
             onMarkAllRead={handleMarkAllRead}
             isMobile
             onMenuClick={openSidebar}
+            onSelectFeedFromEntry={handleJumpToFeed}
+            feedJumpBackHref={jumpBackHref}
+            onBackFromFeedJump={handleBackFromFeedJump}
           />
         </div>
       );
@@ -606,6 +655,9 @@ function AuthenticatedApp() {
               isMobile
               isActive={mobileView === "list"}
               onMenuClick={openSidebar}
+              onSelectFeedFromEntry={handleJumpToFeed}
+              feedJumpBackHref={jumpBackHref}
+              onBackFromFeedJump={handleBackFromFeedJump}
             />
           </section>
           {/* Detail remains an internal scroller and slides over the document list. */}
@@ -706,7 +758,10 @@ function AuthenticatedApp() {
                   isTablet={isTablet}
                   onToggleSidebar={toggleSidebarVisible}
                   sidebarVisible={sidebarVisible}
-                />
+                  onSelectFeedFromEntry={handleJumpToFeed}
+                  feedJumpBackHref={jumpBackHref}
+                  onBackFromFeedJump={handleBackFromFeedJump}
+                  />
               </section>
 
               {selectedEntryId && (
@@ -754,6 +809,9 @@ function AuthenticatedApp() {
               isTablet={isTablet}
               onToggleSidebar={toggleSidebarVisible}
               sidebarVisible={sidebarVisible}
+              onSelectFeedFromEntry={handleJumpToFeed}
+              feedJumpBackHref={jumpBackHref}
+              onBackFromFeedJump={handleBackFromFeedJump}
             />
           }
           hideList
@@ -787,6 +845,9 @@ function AuthenticatedApp() {
               isTablet={isTablet}
               onToggleSidebar={toggleSidebarVisible}
               sidebarVisible={sidebarVisible}
+              onSelectFeedFromEntry={handleJumpToFeed}
+              feedJumpBackHref={jumpBackHref}
+              onBackFromFeedJump={handleBackFromFeedJump}
             />
           }
           hideList
@@ -822,6 +883,9 @@ function AuthenticatedApp() {
             isTablet={isTablet}
             onToggleSidebar={toggleSidebarVisible}
             sidebarVisible={sidebarVisible}
+            onSelectFeedFromEntry={handleJumpToFeed}
+            feedJumpBackHref={jumpBackHref}
+            onBackFromFeedJump={handleBackFromFeedJump}
           />
         }
         content={entryContent}

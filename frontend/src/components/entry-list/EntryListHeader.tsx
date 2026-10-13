@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import type { RefreshStatus } from "@/api";
 import { RefreshTooltip } from "./RefreshTooltip";
 import {
+  BackIcon,
   CircleOutlineIcon,
   CircleFilledIcon,
   CheckCircleIcon,
@@ -87,11 +88,18 @@ interface EntryListHeaderProps {
    */
   pictureLayout?: "grid" | "hover" | "wall";
   onTogglePictureLayout?: () => void;
+  /**
+   * 52-4：从条目点源名跳进来的订阅 → 标题左边多一颗「返回」，
+   * 点了回到跳转前的样子（上一个选中是文件夹就回文件夹，正看着某条详情也一并还原）。
+   * 不传（没跳转过来）就不渲染 —— 与 articleLayout / pictureLayout 同一口径。
+   */
+  onBackFromFeedJump?: () => void;
 }
 
 export function EntryListHeader({
   title,
   subtitle,
+  onBackFromFeedJump,
   unreadCount,
   unreadOnly,
   onToggleUnreadOnly,
@@ -144,6 +152,21 @@ export function EntryListHeader({
             className="flex size-11 shrink-0 items-center justify-center rounded-[var(--radius)] transition-all duration-200 ease-[var(--ease-ios)] hover:bg-item-hover active:scale-95 -ml-1.5"
           >
             <MenuIcon className="size-5" />
+          </button>
+        )}
+        {onBackFromFeedJump && (
+          /* 52-4：与详情页那颗「返回」同一语汇（BackIcon + 文案），放在标题左边 */
+          <button
+            type="button"
+            onClick={onBackFromFeedJump}
+            title={t("entry.back_to_previous")}
+            className={cn(
+              "-ml-1.5 flex shrink-0 items-center gap-1 rounded-[var(--radius)] px-2 py-1",
+              "text-xs text-muted-foreground transition-colors duration-200",
+              "hover:bg-item-hover hover:text-foreground",
+            )}
+          >
+            <BackIcon className="size-4" />
           </button>
         )}
         <div className="min-w-0">

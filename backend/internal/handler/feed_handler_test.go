@@ -173,7 +173,8 @@ func TestFeedHandler_Update_Success(t *testing.T) {
 	require.Equal(t, "突出结论", *resp.SummaryPromptReminder)
 }
 
-func TestFeedHandler_Update_TitleRequired(t *testing.T) {
+// 52-3：空标题不再是 400 —— 语义是「恢复默认名称」，服务端自己算（前端保存按钮因此能点）。
+func TestFeedHandler_Update_EmptyTitleRestoresDefault(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -183,14 +184,36 @@ func TestFeedHandler_Update_TitleRequired(t *testing.T) {
 
 	e := newTestEcho()
 	req := newJSONRequest(http.MethodPut, "/feeds/123", map[string]interface{}{
+		"title": "   ",
 		"summaryPromptReminder": "突出结论",
 	})
 	c, rec := newTestContext(e, req)
 	setPathParams(c, map[string]string{"id": "123"})
 
+	mockService.EXPECT().
+		Update(gomock.Any(), int64(123), "   ", (*int64)(nil), gomock.Any()).
+		Return(model.Feed{ID: 123, Title: "少数派", Type: "article"}, nil)
+
 	err := h.Update(c)
 	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "少数派")
+}
 
+func TestFeedHandler_Update_InvalidID(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockFeedService(ctrl)
+	mockRefreshService := mock.NewMockRefreshService(ctrl)
+	h := handler.NewFeedHandlerHelper(mockService, mockRefreshService)
+
+	e := newTestEcho()
+	req := newJSONRequest(http.MethodPut, "/feeds/abc", map[string]interface{}{"title": "X"})
+	c, rec := newTestContext(e, req)
+	setPathParams(c, map[string]string{"id": "abc"})
+
+	require.NoError(t, h.Update(c))
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
 

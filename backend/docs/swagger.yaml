@@ -1253,6 +1253,11 @@ definitions:
         description: ReaderMode：正文打开方式，nil = 跟随全局；true = 阅读模式，false = 原文
         type: boolean
     type: object
+  internal_handler.updateFeedFolderRequest:
+    properties:
+      folderId:
+        type: string
+    type: object
   internal_handler.updateFeedRequest:
     properties:
       folderId:
@@ -1260,9 +1265,8 @@ definitions:
       summaryPromptReminder:
         type: string
       title:
+        description: Title 允许留空：空 = 「恢复默认名称」（52-3，服务端重抓取取名，不是 400）。
         type: string
-    required:
-    - title
     type: object
   internal_handler.updateFeedURLRequest:
     properties:
@@ -2892,6 +2896,34 @@ paths:
           schema:
             $ref: '#/definitions/internal_handler.errorResponse'
       summary: Update a feed
+      tags:
+      - feeds
+  /feeds/{id}/folder:
+    patch:
+      consumes:
+      - application/json
+      description: Change only the folder of a subscription (empty folderId = out
+        of any folder)
+      parameters:
+      - description: Feed ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Target folder
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.updateFeedFolderRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.feedResponse'
+      summary: Move a feed to a folder
       tags:
       - feeds
   /feeds/{id}/type:

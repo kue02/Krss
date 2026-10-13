@@ -289,7 +289,8 @@
     "choose_view": "放进哪个视图",
     "view_preview_hint": "真实内容试看",
     "view_preview_empty": "这个源暂时没有可试看的条目",
-    "view_preview_no_image": "前几条里没有图片，放进图片视图可能没有内容"
+    "view_preview_no_image": "前几条里没有图片，放进图片视图可能没有内容",
+    "auto_grouped": "已按网站域名自动分组到「{{name}}」（{{count}} 个订阅）"
   },
   "entry": {
     "toc": "目录",
@@ -352,7 +353,9 @@
     "translate_fallback_hint": "部分段落走免费通道失败，已用模型兜底译出",
     "force_refresh": "强制拉取",
     "force_confirm_title": "强制拉取 {{count}} 个订阅？",
-    "force_confirm_description": "这会忽略 etag / 上次更新时间，把范围内的订阅整轮重抓一遍（同主机冷却也跳过）。范围这么大，先确认一下是不是选错了。"
+    "force_confirm_description": "这会忽略 etag / 上次更新时间，把范围内的订阅整轮重抓一遍（同主机冷却也跳过）。范围这么大，先确认一下是不是选错了。",
+    "view_feed": "前往订阅 {{name}}",
+    "back_to_previous": "返回上一个选中"
   },
   "ai_settings": {
     "translate_channel": "翻译通道",
@@ -835,7 +838,8 @@
     "auto_summary": "自动摘要",
     "follow_global": "跟随全局",
     "on": "开",
-    "off": "关"
+    "off": "关",
+    "title_reset_hint": "留空 = 恢复默认名称（重新读取订阅自带标题，取不到时用站点域名）"
   },
   "entry_list": {
     "all_articles": "全部文章",

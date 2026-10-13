@@ -16,6 +16,7 @@ import {
   useImageFailed,
 } from "@/stores/image-dimensions-store";
 import { FeedIcon } from "@/components/ui/feed-icon";
+import { useEntrySourceJump } from "@/components/entry-list/entry-source-jump";
 import type { Entry, Feed } from "@/types/api";
 
 interface PictureItemProps {
@@ -25,6 +26,8 @@ interface PictureItemProps {
   square?: boolean;
   /** 图片视图里已加载的整条画廊：交给灯箱做「同条目内切图 → 切到头跳下一条目」 */
   gallery?: LightboxGalleryItem[];
+  /** 52-4：点格子底部的「源名 / 图标」→ 第一栏选中该订阅（与文章卡片同一行为） */
+  onSelectFeedFromEntry?: (feedId: string) => void;
 }
 
 // Default 3:4 vertical aspect ratio for uncached images
@@ -34,6 +37,7 @@ export const PictureItem = memo(function PictureItem({
   feed,
   square = false,
   gallery,
+  onSelectFeedFromEntry,
 }: PictureItemProps) {
   const { t } = useTranslation();
   const openLightbox = useLightboxStore((state) => state.open);
@@ -53,6 +57,8 @@ export const PictureItem = memo(function PictureItem({
   const imgRef = useRef<HTMLImageElement>(null);
 
   const showIcon = feed?.iconPath && !iconError;
+  /* 52-4：底部来源行的图标 + 源名可点（行为与文章卡片同一份） */
+  const { sourceProps } = useEntrySourceJump(feed, onSelectFeedFromEntry);
 
   /**
    * 缓存命中的图片不会再触发 onLoad（浏览器直接给 complete=true），
@@ -151,13 +157,28 @@ export const PictureItem = memo(function PictureItem({
             <img
               src={`/icons/${feed.iconPath}`}
               alt=""
-              className="mr-1.5 size-4 shrink-0 rounded-[var(--ui-icon-radius,4px)] object-contain"
+              {...sourceProps}
+              className={cn(
+                "mr-1.5 size-4 shrink-0 rounded-[var(--ui-icon-radius,4px)] object-contain",
+                sourceProps?.className,
+              )}
               onError={() => setIconError(true)}
             />
           ) : (
-            <FeedIcon className="mr-1.5 size-4 shrink-0 text-muted-foreground/50" />
+            <span
+              {...sourceProps}
+              className={cn(
+                "mr-1.5 flex size-4 shrink-0 items-center justify-center",
+                sourceProps?.className,
+              )}
+            >
+              <FeedIcon className="size-4 text-muted-foreground/50" />
+            </span>
           )}
-          <span className="truncate">
+          <span
+            {...sourceProps}
+            className={cn("truncate", sourceProps?.className)}
+          >
             {feed?.title || t("entry.unknown_feed")}
           </span>
           {publishedAt && (

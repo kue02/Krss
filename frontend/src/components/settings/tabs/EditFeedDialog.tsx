@@ -8,11 +8,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useUpdateFeed, useUpdateFeedAI } from "@/hooks/useFeeds";
+import { copyToClipboard } from "@/stores/toast-store";
 import { useUpdateFeedProxy, useProxySources } from "@/hooks/useProxySources";
 import { TriStateControl } from "@/components/ui/tri-state-control";
 import { ProxyEffectiveLine } from "@/components/settings/ProxyEffectiveLine";
 import { MCPSubscriptionWizard } from "@/components/settings/tabs/MCPSubscriptionWizard";
 import { cn } from "@/lib/utils";
+import { Copy } from "lucide-react";
 import type { Feed, ProxyEffective, ProxyMode } from "@/types/api";
 
 const SUMMARY_PROMPT_REMINDER_MAX_LENGTH = 2000;
@@ -71,9 +73,13 @@ export function EditFeedDialog({
     proxySources?.feeds.find((item) => item.id === feed?.id)?.effective ??
     null;
 
+  // 52-3：名称清空 = 恢复默认名称（后端重新抓一次取 feed 标题，抓不到退可读域名名）。
+  // 原先这里直接 `!title.trim()` 拦死，清空后保存按钮点不动。
+  const isResetToDefault = open && title.trim() === "";
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!feed || !title.trim() || reminderTooLong) return;
+    if (!feed || reminderTooLong) return;
 
     setError(null);
     try {
@@ -125,6 +131,7 @@ export function EditFeedDialog({
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              placeholder={feed?.title}
               className={cn(
                 "w-full rounded-field border border-border bg-background px-3 py-2 text-sm",
                 "focus:outline-none focus:ring-2 focus:ring-primary/50",
@@ -132,20 +139,49 @@ export function EditFeedDialog({
               )}
               autoFocus
             />
+            {/* 52-3：清空名称 = 存成默认名称（后端重抓取该源的 feed 标题） */}
+            {isResetToDefault && (
+              <p className="text-xs text-muted-foreground">
+                {t("feeds.title_reset_hint")}
+              </p>
+            )}
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium text-muted-foreground">
               {t("feeds.feed_url")}
               <span className="ml-2 text-xs">({t("feeds.url_readonly")})</span>
             </label>
-            <div
-              className={cn(
-                "w-full truncate rounded-field border border-border bg-secondary/50 px-3 py-2 text-sm",
-                "text-muted-foreground",
+            {/* 52-3（用户第 3 条）：URL 要能复制。只读展示 + 行尾复制钮（与右键「复制 Feed 地址」同一份文案） */}
+            <div className="flex items-center gap-2">
+              <div
+                className={cn(
+                  "min-w-0 flex-1 truncate rounded-field border border-border bg-secondary/50 px-3 py-2 text-sm",
+                  "text-muted-foreground",
+                )}
+                title={feed?.url}
+              >
+                {feed?.url}
+              </div>
+              {feed?.url && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void copyToClipboard(
+                      feed.url,
+                      t("actions.copied_feed_url"),
+                      t("actions.copy_failed"),
+                    )
+                  }
+                  title={t("actions.copy_feed_url")}
+                  className={cn(
+                    "flex size-9 shrink-0 items-center justify-center rounded-[var(--radius)]",
+                    "border border-border bg-background text-muted-foreground",
+                    "transition-colors hover:bg-secondary hover:text-foreground",
+                  )}
+                >
+                  <Copy className="size-4" />
+                </button>
               )}
-              title={feed?.url}
-            >
-              {feed?.url}
             </div>
           </div>
           {/* 16-14：MCP 订阅的取数配置入口（连接/工具 + 编辑按钮，进向导编辑模式） */}
@@ -294,9 +330,7 @@ export function EditFeedDialog({
             </button>
             <button
               type="submit"
-              disabled={
-                !title.trim() || reminderTooLong || updateFeed.isPending
-              }
+              disabled={reminderTooLong || updateFeed.isPending}
               className={cn(
                 "rounded-[var(--radius)] px-4 py-2 text-sm font-medium transition-colors",
                 "bg-primary text-primary-foreground hover:bg-primary/90",

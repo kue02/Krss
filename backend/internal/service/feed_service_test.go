@@ -389,6 +389,8 @@ func TestFeedService_Preview_InvalidURL(t *testing.T) {
 	require.ErrorIs(t, err, service.ErrInvalid)
 }
 
+// 52-2：feed 自身没有 title 时，预览与落库都**不再用整条订阅地址**当名称，
+// 改成可读名（这条样例 RSS 带了 <link>https://example.com</link> ⇒ 用主站域名）。
 func TestFeedService_Preview_EmptyTitleFallback(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -409,7 +411,8 @@ func TestFeedService_Preview_EmptyTitleFallback(t *testing.T) {
 	svc := service.NewFeedService(mock.NewMockFeedRepository(ctrl), mock.NewMockFolderRepository(ctrl), mock.NewMockEntryRepository(ctrl), nil, nil, clientFactory, nil, nil)
 	preview, err := svc.Preview(context.Background(), feedURL)
 	require.NoError(t, err)
-	require.Equal(t, feedURL, preview.Title)
+	require.Equal(t, "example.com", preview.Title)
+	require.NotEqual(t, feedURL, preview.Title, "默认名不该原样等于订阅地址")
 }
 
 func TestFeedService_Update_Delete_UpdateType_DeleteBatch(t *testing.T) {
@@ -422,8 +425,17 @@ func TestFeedService_Update_Delete_UpdateType_DeleteBatch(t *testing.T) {
 
 	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, nil, nil, nil)
 
-	_, err := svc.Update(context.Background(), 1, "", nil, nil)
-	require.ErrorIs(t, err, service.ErrInvalid)
+	// 52-3：空标题不再是 ErrInvalid —— 语义改成「恢复默认名称」。
+	// 这条订阅没有可抓的地址（URL 空）→ 退到库里已有的标题，不会存成空串。
+	mockFeeds.EXPECT().GetByID(gomock.Any(), int64(1)).Return(model.Feed{ID: 1, Title: "Old", Type: "article"}, nil)
+	mockFeeds.EXPECT().Update(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, feed model.Feed) (model.Feed, error) {
+			require.Equal(t, "Old", feed.Title)
+			return feed, nil
+		},
+	)
+	_, err := svc.Update(context.Background(), 1, "   ", nil, nil)
+	require.NoError(t, err)
 
 	folderID := int64(10)
 	// 先获取 feed
@@ -1013,12 +1025,15 @@ func TestFeedService_Update_SummaryPromptReminderClearAndValidate(t *testing.T) 
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 
 	existingReminder := "旧规则"
-	mockFeeds.EXPECT().GetByID(gomock.Any(), int64(1)).Return(model.Feed{
+	// 52-3 起 Update 第一步就取 feed（空标题要按这条订阅算默认名），
+	// 下面两次调用各要一次 GetByID —— 最后一次是超长校验，它在取完 feed 之后才报 ErrInvalid。
+	existingFeed := model.Feed{
 		ID:                    1,
 		Title:                 "Old",
 		Type:                  "article",
 		SummaryPromptReminder: &existingReminder,
-	}, nil)
+	}
+	mockFeeds.EXPECT().GetByID(gomock.Any(), int64(1)).Return(existingFeed, nil).Times(2)
 	mockFeeds.EXPECT().Update(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, feed model.Feed) (model.Feed, error) {
 			require.Nil(t, feed.SummaryPromptReminder)
@@ -1516,4 +1531,114 @@ func TestFeedService_UpdateMCPConfig(t *testing.T) {
 		ServerID: 7, Kind: "tool", ToolName: "search", Title: "x",
 	})
 	require.ErrorIs(t, err, service.ErrInvalid)
+}
+
+// 52-2：抓取失败时建出来的订阅，名称用**可读名**而不是整条订阅地址。
+// 用户报的现象就是这一条（RSSHub 某路由当时抓不通 → 订阅名变成一长串 URL）。
+func TestFeedService_Add_FetchFailureUsesReadableTitle(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockFeeds := mock.NewMockFeedRepository(ctrl)
+	feedURL := "https://rsshub.example.com/telegram/channel/ShadowrocketNews"
+	client := &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusInternalServerError,
+				Body:       io.NopCloser(strings.NewReader("")),
+				Header:     make(http.Header),
+				Request:    req,
+			}, nil
+		}),
+	}
+
+	var created model.Feed
+	mockFeeds.EXPECT().FindByURL(gomock.Any(), feedURL).Return(nil, nil)
+	mockFeeds.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, feed model.Feed) (model.Feed, error) {
+			created = feed
+			feed.ID = 555
+			return feed, nil
+		},
+	)
+
+	clientFactory := network.NewClientFactoryForTest(client)
+	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, clientFactory, nil, nil)
+	_, err := svc.Add(context.Background(), feedURL, nil, "", "notification")
+	require.NoError(t, err)
+
+	require.Equal(t, "t.me/ShadowrocketNews", created.Title)
+	require.NotEqual(t, feedURL, created.Title, "默认名不该原样等于订阅地址")
+	require.NotNil(t, created.ErrorMessage, "抓不通仍要留下错误信息（界面那行红字）")
+}
+
+// 52-3：编辑订阅时把名称清空 = 恢复默认名称（按拍板口径：重新抓一次取 feed 自带标题）。
+func TestFeedService_Update_EmptyTitleRefetchesFeedTitle(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockFeeds := mock.NewMockFeedRepository(ctrl)
+	feedURL := "https://example.com/rss"
+	client := &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(sampleRSS)), // <title>Test Feed</title>
+				Header:     make(http.Header),
+				Request:    req,
+			}, nil
+		}),
+	}
+
+	mockFeeds.EXPECT().GetByID(gomock.Any(), int64(7)).Return(model.Feed{
+		ID:    7,
+		Title: "用户自己起的名字",
+		URL:   feedURL,
+		Type:  "article",
+	}, nil)
+	mockFeeds.EXPECT().Update(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, feed model.Feed) (model.Feed, error) {
+			// 重抓取成功 → 用 feed 自带标题，而不是库里那个自定义名、更不是空串
+			require.Equal(t, "Test Feed", feed.Title)
+			return feed, nil
+		},
+	)
+
+	clientFactory := network.NewClientFactoryForTest(client)
+	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, clientFactory, nil, nil)
+	updated, err := svc.Update(context.Background(), 7, "  ", nil, nil)
+	require.NoError(t, err)
+	require.Equal(t, "Test Feed", updated.Title)
+}
+
+// 52-3 边界：抓不通时不能把名称写成空串（空标题会把第一栏那行渲染成空白）。
+func TestFeedService_Update_EmptyTitleFallsBackWhenFetchFails(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockFeeds := mock.NewMockFeedRepository(ctrl)
+	feedURL := "https://rsshub.example.com/telegram/channel/DeadRoute"
+	client := &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			return nil, errors.New("dial refused")
+		}),
+	}
+
+	mockFeeds.EXPECT().GetByID(gomock.Any(), int64(8)).Return(model.Feed{
+		ID:    8,
+		Title: "旧名字",
+		URL:   feedURL,
+		Type:  "notification",
+	}, nil)
+	mockFeeds.EXPECT().Update(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, feed model.Feed) (model.Feed, error) {
+			require.Equal(t, "t.me/DeadRoute", feed.Title)
+			return feed, nil
+		},
+	)
+
+	clientFactory := network.NewClientFactoryForTest(client)
+	svc := service.NewFeedService(mockFeeds, nil, nil, nil, nil, clientFactory, nil, nil)
+	_, err := svc.Update(context.Background(), 8, "", nil, nil)
+	require.NoError(t, err)
 }
