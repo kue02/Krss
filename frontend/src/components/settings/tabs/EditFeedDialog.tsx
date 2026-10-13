@@ -232,14 +232,17 @@ export function EditFeedDialog({
               </span>
               <TriStateControl
                 value={autoTranslate}
-                onChange={setAutoTranslate}
+                onChange={(v) => setAutoTranslate(v === "smart" ? null : v)}
               />
             </div>
             <div className="flex items-center justify-between gap-3">
               <span className="text-sm text-foreground">
                 {t("feeds.auto_summary")}
               </span>
-              <TriStateControl value={autoSummary} onChange={setAutoSummary} />
+              <TriStateControl
+                value={autoSummary}
+                onChange={(v) => setAutoSummary(v === "smart" ? null : v)}
+              />
             </div>
             {/* 正文打开方式：阅读模式（提取正文）/ 原文 */}
             <div className="flex items-center justify-between gap-3">
@@ -248,7 +251,7 @@ export function EditFeedDialog({
               </span>
               <TriStateControl
                 value={readerMode}
-                onChange={setReaderMode}
+                onChange={(v) => setReaderMode(v === "smart" ? null : v)}
                 onLabel={t("feeds.reader_mode_on")}
                 offLabel={t("feeds.reader_mode_off")}
               />

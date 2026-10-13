@@ -32,6 +32,8 @@ func newProxySources(t *testing.T, ctrl *gomock.Controller, globalURL string) (*
 	folders := repomock.NewMockFolderRepository(ctrl)
 	settings := mock.NewMockSettingsService(ctrl)
 	settings.EXPECT().GetProxyURL(gomock.Any()).Return(globalURL).AnyTimes()
+	// 50 批 2.2：全局兜底会问一次模式；老用例全按 "proxy"（旧行为）算
+	settings.EXPECT().GetNetworkSettingsMode(gomock.Any()).Return("proxy").AnyTimes()
 	return feeds, folders, service.NewProxySourceService(feeds, folders, settings)
 }
 
@@ -196,6 +198,7 @@ func TestProxySource_Overview(t *testing.T) {
 	folders := repomock.NewMockFolderRepository(ctrl)
 	settings := mock.NewMockSettingsService(ctrl)
 	settings.EXPECT().GetProxyURL(gomock.Any()).Return(globalProxyURL).AnyTimes()
+	settings.EXPECT().GetNetworkSettingsMode(gomock.Any()).Return("proxy").AnyTimes()
 	settings.EXPECT().GetNetworkSettings(gomock.Any()).Return(&service.NetworkSettings{
 		Enabled: true, Type: "http", Host: "global-proxy.local", Port: 7890, Password: "***",
 	}, nil)

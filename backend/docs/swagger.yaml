@@ -1068,6 +1068,14 @@ definitions:
       status:
         type: integer
     type: object
+  internal_handler.proxyMemoryItem:
+    properties:
+      host:
+        type: string
+      mode:
+        description: direct | proxy
+        type: string
+    type: object
   internal_handler.proxyOverrideRequest:
     properties:
       config:
@@ -1091,10 +1099,15 @@ definitions:
       lastRefreshedAt:
         type: string
       results:
-        description: Results 最近一轮刷新里每个订阅的结果（新/更新条数、失败原因）—— 刷新结果弹框用（用户 11-8）
+        description: |-
+          Results 最近一轮刷新里每个订阅的结果（新/更新条数、失败原因）—— 刷新结果弹框用（用户 11-8）
+          刷新中也带上**已完成部分**（前端悬浮浮层逐源显示用；轮询 2s 一次、只读小 JSON，重渲染成本可控）
         items:
           $ref: '#/definitions/krss_backend_internal_service.RefreshFeedResult'
         type: array
+      startedAt:
+        description: StartedAt 本轮刷新开始时间（仅刷新中有效）—— 前端悬浮浮层算「已跑时长」用
+        type: string
       total:
         description: 本次刷新进度：Total 待刷新源数、Completed 已完成数（仅刷新中有效）
         type: integer
@@ -1622,6 +1635,11 @@ definitions:
       ipStack:
         description: default, ipv4, ipv6
         type: string
+      mode:
+        description: |-
+          Mode 全局代理怎么用（50 批 2.2）：proxy = 全走代理（旧行为）；smart = 先直连不通再代理 + 按域记忆。
+          空 = proxy（老库零变化）。
+        type: string
       password:
         type: string
       port:
@@ -1887,6 +1905,41 @@ paths:
           schema:
             $ref: '#/definitions/internal_handler.errorResponse'
       summary: Batch translate articles
+      tags:
+      - ai
+  /ai/translate/warm:
+    post:
+      consumes:
+      - application/json
+      description: Start translating an entry in the background so a later open hits
+        the cache. Returns immediately.
+      parameters:
+      - description: Warm request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.translateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Already cached
+          schema:
+            $ref: '#/definitions/internal_handler.translateResponse'
+        "202":
+          description: Warming started
+          schema:
+            $ref: '#/definitions/internal_handler.translateResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: Warm translation cache
       tags:
       - ai
   /api/domain-rate-limits:
@@ -3764,6 +3817,40 @@ paths:
       summary: Import Status
       tags:
       - opml
+  /proxy/memory:
+    delete:
+      description: 清空智能代理的按域记忆；返回清掉的条数
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              format: int64
+              type: integer
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: Clear proxy domain memory
+      tags:
+      - proxy
+    get:
+      description: 智能代理按域记下的结论（direct/proxy），供网络页展示
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/internal_handler.proxyMemoryItem'
+            type: array
+      summary: List proxy domain memory
+      tags:
+      - proxy
   /proxy/sources:
     get:
       description: 代理按来源生效的一览：全局配置（密码掩码）+ 文件夹/订阅各自的覆盖与生效结果 + 计数

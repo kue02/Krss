@@ -23,7 +23,13 @@ export function ProxyEffectiveLine({
   if (!effective) return null;
 
   const isProxy = effective.mode === "proxy";
-  const result = isProxy ? t("proxy.result_proxy") : t("proxy.result_direct");
+  // 50 批 2.2：智能档显示成「智能 · …」——它是独立档位，不该被并进「走代理/直连」
+  const result =
+    effective.mode === "smart"
+      ? t("proxy.result_smart")
+      : isProxy
+        ? t("proxy.result_proxy")
+        : t("proxy.result_direct");
 
   let origin: string;
   switch (effective.source) {
@@ -42,9 +48,11 @@ export function ProxyEffectiveLine({
     <span
       className={cn(
         "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs",
-        isProxy
+        effective.mode === "smart"
           ? "border-primary/40 text-primary"
-          : "border-border text-muted-foreground",
+          : isProxy
+            ? "border-primary/40 text-primary"
+            : "border-border text-muted-foreground",
         className,
       )}
       data-slot="proxy-effective"

@@ -6,16 +6,19 @@ import (
 	"strings"
 )
 
-// ProxyMode 订阅 / 文件夹上的代理三态（与 auto_translate / reader_mode 同一套语汇）。
+// ProxyMode 订阅 / 文件夹上的代理多态（与 auto_translate / reader_mode 同一套语汇）。
 //
 //	nil（列 NULL）= 跟随上级：订阅 → 文件夹（含父级链）→ 全局
 //	ProxyModeProxy = 走代理
 //	ProxyModeDirect = 直连
+//	ProxyModeSmart = 智能（50 批 2.2）：先直连（短超时），不通走代理；按目标域记忆，下次直接走记住的那条
+//	（同一列加值，无新列；记忆落在 proxy_domain_memory 表，迁移 28）
 type ProxyMode int
 
 const (
 	ProxyModeDirect ProxyMode = 0
 	ProxyModeProxy  ProxyMode = 1
+	ProxyModeSmart  ProxyMode = 2
 )
 
 // ProxyOverrideConfig 某一层（订阅 / 文件夹）单独指定的一套代理。

@@ -353,16 +353,28 @@ function SourceRow({
           <ProxyEffectiveLine effective={effective} />
           <TriStateControl
             value={
-              override.mode === "inherit" ? null : override.mode === "proxy"
+              override.mode === "inherit"
+                ? null
+                : override.mode === "smart"
+                  ? "smart"
+                  : override.mode === "proxy"
             }
             onChange={(next) =>
               save({
-                mode: next === null ? "inherit" : next ? "proxy" : "direct",
+                mode:
+                  next === null
+                    ? "inherit"
+                    : next === "smart"
+                      ? "smart"
+                      : next
+                        ? "proxy"
+                        : "direct",
               })
             }
             inheritLabel={t("proxy.follow_parent")}
             onLabel={t("proxy.use_proxy")}
             offLabel={t("proxy.direct")}
+            extraOption={{ value: "smart", label: t("proxy.smart") }}
           />
           {/* 「这一条的代理设置」：行内图标按钮（lucide Settings2），与规则行 ⋯ / 角标自定义同一枚图标 */}
           <button

@@ -181,6 +181,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/ai/translate/warm": {
+            "post": {
+                "description": "Start translating an entry in the background so a later open hits the cache. Returns immediately.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ai"
+                ],
+                "summary": "Warm translation cache",
+                "parameters": [
+                    {
+                        "description": "Warm request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.translateRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Already cached",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.translateResponse"
+                        }
+                    },
+                    "202": {
+                        "description": "Warming started",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.translateResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/domain-rate-limits": {
             "get": {
                 "produces": [
@@ -3017,6 +3069,57 @@ const docTemplate = `{
                 }
             }
         },
+        "/proxy/memory": {
+            "get": {
+                "description": "智能代理按域记下的结论（direct/proxy），供网络页展示",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "proxy"
+                ],
+                "summary": "List proxy domain memory",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/internal_handler.proxyMemoryItem"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "清空智能代理的按域记忆；返回清掉的条数",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "proxy"
+                ],
+                "summary": "Clear proxy domain memory",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "integer",
+                                "format": "int64"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/proxy/sources": {
             "get": {
                 "description": "代理按来源生效的一览：全局配置（密码掩码）+ 文件夹/订阅各自的覆盖与生效结果 + 计数",
@@ -5330,6 +5433,18 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handler.proxyMemoryItem": {
+            "type": "object",
+            "properties": {
+                "host": {
+                    "type": "string"
+                },
+                "mode": {
+                    "description": "direct | proxy",
+                    "type": "string"
+                }
+            }
+        },
         "internal_handler.proxyOverrideRequest": {
             "type": "object",
             "properties": {
@@ -5365,11 +5480,15 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "results": {
-                    "description": "Results 最近一轮刷新里每个订阅的结果（新/更新条数、失败原因）—— 刷新结果弹框用（用户 11-8）",
+                    "description": "Results 最近一轮刷新里每个订阅的结果（新/更新条数、失败原因）—— 刷新结果弹框用（用户 11-8）\n刷新中也带上**已完成部分**（前端悬浮浮层逐源显示用；轮询 2s 一次、只读小 JSON，重渲染成本可控）",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/krss_backend_internal_service.RefreshFeedResult"
                     }
+                },
+                "startedAt": {
+                    "description": "StartedAt 本轮刷新开始时间（仅刷新中有效）—— 前端悬浮浮层算「已跑时长」用",
+                    "type": "string"
                 },
                 "total": {
                     "description": "本次刷新进度：Total 待刷新源数、Completed 已完成数（仅刷新中有效）",
@@ -6168,6 +6287,10 @@ const docTemplate = `{
                 },
                 "ipStack": {
                     "description": "default, ipv4, ipv6",
+                    "type": "string"
+                },
+                "mode": {
+                    "description": "Mode 全局代理怎么用（50 批 2.2）：proxy = 全走代理（旧行为）；smart = 先直连不通再代理 + 按域记忆。\n空 = proxy（老库零变化）。",
                     "type": "string"
                 },
                 "password": {

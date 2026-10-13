@@ -211,7 +211,22 @@
     "dirty_label_rsshub": "RSSHub",
     "dirty_label_profile": "个人资料",
     "sync_failed_toast": "设置上传失败：{{reason}}",
-    "sync_failed_unknown": "网络或服务端异常"
+    "sync_failed_unknown": "网络或服务端异常",
+    "proxy_disabled_summary": "代理已关闭 · {{type}} {{host}}:{{port}}（点开可编辑）",
+    "proxy_disabled_empty": "代理已关闭 · 还没填代理地址（点开可编辑）",
+    "proxy_collapse": "收起",
+    "proxy_mode": "代理模式",
+    "proxy_mode_description": "「全走代理」所有请求都经代理；「智能」先试直连，不通自动换代理并按域记住结论",
+    "proxy_mode_proxy": "全走代理",
+    "proxy_mode_smart": "智能",
+    "proxy_memory_title": "智能代理记忆",
+    "proxy_memory_description": "按域记住「直连还是代理」的结论；清空后会重新逐域探测",
+    "proxy_memory_clear": "清空记忆",
+    "proxy_memory_cleared": "已清空 {{count}} 条记忆",
+    "proxy_memory_clear_failed": "清空失败，请重试",
+    "proxy_memory_mode_proxy": "代理",
+    "proxy_memory_mode_direct": "直连",
+    "proxy_memory_empty": "还没有记忆：下次抓取时会按域自动学习"
   },
   "theme": {
     "system": "跟随系统",
@@ -617,7 +632,16 @@
     "mcp_menu_redetect": "重新探测传输",
     "mcp_menu_edit": "编辑",
     "mcp_menu_delete": "删除",
-    "mcp_test_redetecting": "探测中…"
+    "mcp_test_redetecting": "探测中…",
+    "autosave_saving": "保存中…",
+    "autosave_saved": "已自动保存",
+    "autosave_failed": "自动保存失败，改动还留着，稍后会再试",
+    "scene_section": "分场景模型",
+    "scene_hint": "翻译、摘要、自动化可以各用不同的提供商配置；默认全部跟随上面「当前使用」的那份",
+    "scene_translate": "翻译",
+    "scene_summary": "摘要",
+    "scene_automation": "自动化（AI 条件 / 建规则）",
+    "scene_follow": "跟随当前使用"
   },
   "data_control": {
     "import_opml": "导入 OPML",
@@ -1308,7 +1332,9 @@
     "folder_collapse": "收起「{{name}}」下的订阅",
     "folder_expand": "展开「{{name}}」下的订阅",
     "collapsed_count": "已收起 {{count}} 条",
-    "dialog_subtitle": "订阅 → 文件夹（含父级链）→ 全局，就近的那层说了算"
+    "dialog_subtitle": "订阅 → 文件夹（含父级链）→ 全局，就近的那层说了算",
+    "smart": "智能",
+    "result_smart": "智能"
   },
   "timeline": {
     "today": "今天",

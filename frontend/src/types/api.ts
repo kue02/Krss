@@ -44,8 +44,8 @@ export interface Feed {
 
 // ---------- 14 批：代理按来源生效 ----------
 
-/** 三态：跟随上级 / 走代理 / 直连 */
-export type ProxyMode = "inherit" | "proxy" | "direct";
+/** 四态：跟随上级 / 走代理 / 直连 / 智能（50 批 2.2：先直连不通再代理 + 按域记忆） */
+export type ProxyMode = "inherit" | "proxy" | "direct" | "smart";
 
 /** 某一层单独指定的一套代理（密码在接口返回里一律是掩码） */
 export interface ProxyOverrideConfig {
@@ -58,7 +58,7 @@ export interface ProxyOverrideConfig {
 
 /** 实际生效结果：决定它的那一层（feed/folder/global）与档位 */
 export interface ProxyEffective {
-  mode: "proxy" | "direct";
+  mode: "proxy" | "direct" | "smart";
   source: "feed" | "folder" | "global";
   sourceId?: string;
   sourceName?: string;
@@ -101,6 +101,14 @@ export interface ProxyGlobalConfig {
   /** 掩码 */
   password: string;
   ipStack?: string;
+  /** 全局代理模式（50 批 2.2）：proxy = 全走代理（旧行为）；smart = 先直连不通再代理 + 按域记忆 */
+  mode?: "proxy" | "smart";
+}
+
+/** 智能代理按域学到的结论（50 批 2.2） */
+export interface ProxyDomainMemoryItem {
+  host: string;
+  mode: "direct" | "proxy";
 }
 
 export interface ProxySourceOverview {

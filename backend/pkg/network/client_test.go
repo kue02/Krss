@@ -85,11 +85,13 @@ func TestClientFactory_NewHTTPTransport_Proxy(t *testing.T) {
 
 	tr := factory.NewHTTPTransport(context.Background())
 	require.NotNil(t, tr)
-	require.NotNil(t, tr.Proxy)
-	require.True(t, tr.DisableKeepAlives)
+	ht, ok := tr.(*http.Transport)
+	require.True(t, ok, "plain proxy transport should stay *http.Transport")
+	require.NotNil(t, ht.Proxy)
+	require.True(t, ht.DisableKeepAlives)
 
 	req := httptest.NewRequest(http.MethodGet, "http://example.com", nil)
-	pu, err := tr.Proxy(req)
+	pu, err := ht.Proxy(req)
 	require.NoError(t, err)
 	require.Equal(t, "http://proxy.local:8080", pu.String())
 }
@@ -100,8 +102,10 @@ func TestClientFactory_NewHTTPTransport_InvalidProxy(t *testing.T) {
 
 	tr := factory.NewHTTPTransport(context.Background())
 	require.NotNil(t, tr)
-	require.Nil(t, tr.Proxy)
-	require.True(t, tr.DisableKeepAlives)
+	ht, ok := tr.(*http.Transport)
+	require.True(t, ok)
+	require.Nil(t, ht.Proxy)
+	require.True(t, ht.DisableKeepAlives)
 }
 
 func TestClientFactory_NewHTTPTransport_SOCKS(t *testing.T) {
@@ -110,8 +114,10 @@ func TestClientFactory_NewHTTPTransport_SOCKS(t *testing.T) {
 
 	tr := factory.NewHTTPTransport(context.Background())
 	require.NotNil(t, tr)
-	require.Nil(t, tr.Proxy)
-	require.True(t, tr.DisableKeepAlives)
+	ht, ok := tr.(*http.Transport)
+	require.True(t, ok)
+	require.Nil(t, ht.Proxy)
+	require.True(t, ht.DisableKeepAlives)
 }
 
 func TestClientFactory_NewAzureSession(t *testing.T) {

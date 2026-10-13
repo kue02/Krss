@@ -15,7 +15,7 @@ import type {
   FeedProxyResponse,
   FolderProxyResponse,
   ProxyOverridePayload,
-  ProxySourceOverview,
+  ProxyDomainMemoryItem, ProxySourceOverview,
 } from "@/types/api";
 import {
   LS_KEYS,
@@ -528,6 +528,16 @@ export async function updateFolderProxy(
  */
 export async function getProxySources(): Promise<ProxySourceOverview> {
   return request<ProxySourceOverview>("/api/proxy/sources");
+}
+
+/** 智能代理按域学到的结论（50 批 2.2） */
+export async function getProxyMemory(): Promise<ProxyDomainMemoryItem[]> {
+  return request<ProxyDomainMemoryItem[]>("/api/proxy/memory");
+}
+
+/** 清空智能代理的域记忆，让它重新学；返回清掉的条数 */
+export async function clearProxyMemory(): Promise<{ cleared: number }> {
+  return request<{ cleared: number }>("/api/proxy/memory", { method: "DELETE" });
 }
 
 /** 合并前的一侧：这个订阅有几条、几条星标（给确认弹框显示「两边各有几条」） */
