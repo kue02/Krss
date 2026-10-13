@@ -351,7 +351,9 @@ export function useAITranslation({
         }
       }
     },
-    [entry, readableContent, targetLanguage, applyTranslateEvent],
+    // t 要进来：49-2 之后这个回调里会拼「有 N 段没译出来」的提示文案，
+    // 漏了它切语言时那条提示会停在旧语言上（eslint 也照实报）
+    [entry, readableContent, targetLanguage, applyTranslateEvent, t],
   );
 
   useEffect(() => {

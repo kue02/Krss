@@ -18,7 +18,7 @@ const {
 } = vi.hoisted(() => ({
   mockFetchReadable: vi.fn(),
   mockStreamSummary: vi.fn(),
-  mockWarmTranslate: vi.fn(async (_req: Record<string, unknown>) => true),
+  mockWarmTranslate: vi.fn(async () => true),
   mockWarmEntryImages: vi.fn(),
   mockNeedsTranslation: vi.fn(async () => true),
 }));
@@ -163,7 +163,7 @@ describe("runEntryPrefetch", () => {
       plan({ readerMode: true, autoTranslate: true }),
     );
 
-    expect(mockWarmTranslate.mock.calls[0]![0]).toMatchObject({
+    expect((mockWarmTranslate.mock.calls[0] as unknown[])[0]).toMatchObject({
       entryId: "1",
       content: "<p>full</p>",
       isReadability: true,
