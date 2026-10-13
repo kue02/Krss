@@ -161,6 +161,21 @@ func (mr *MockFeedServiceMockRecorder) MergePreview(ctx, sourceID, targetURL any
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MergePreview", reflect.TypeOf((*MockFeedService)(nil).MergePreview), ctx, sourceID, targetURL)
 }
 
+// MoveToFolder mocks base method.
+func (m *MockFeedService) MoveToFolder(ctx context.Context, id int64, folderID *int64) (model.Feed, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MoveToFolder", ctx, id, folderID)
+	ret0, _ := ret[0].(model.Feed)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// MoveToFolder indicates an expected call of MoveToFolder.
+func (mr *MockFeedServiceMockRecorder) MoveToFolder(ctx, id, folderID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MoveToFolder", reflect.TypeOf((*MockFeedService)(nil).MoveToFolder), ctx, id, folderID)
+}
+
 // Preview mocks base method.
 func (m *MockFeedService) Preview(ctx context.Context, feedURL string) (service.FeedPreview, error) {
 	m.ctrl.T.Helper()

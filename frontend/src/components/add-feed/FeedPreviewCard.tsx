@@ -348,95 +348,6 @@ export function FeedPreviewCard({
         </div>
       </div>
 
-      {/* Options Section */}
-      {showOptions && (
-        <div className="border-t border-border bg-secondary/30 px-4 py-4 space-y-4">
-          {/* Custom Title */}
-          <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-              {t("add_feed.custom_title")}
-            </label>
-            <input
-              type="text"
-              value={customTitle}
-              onChange={(e) => setCustomTitle(e.target.value)}
-              placeholder={feed.title}
-              className={cn(
-                "w-full rounded-field border border-border bg-background px-3 py-2 text-sm",
-                "placeholder:text-muted-foreground/60",
-                "focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20",
-              )}
-            />
-          </div>
-
-          {/* Folder */}
-          <div className="relative">
-            <label className="block text-xs font-medium text-muted-foreground mb-1.5">
-              {t("add_feed.folder")}
-            </label>
-            <input
-              ref={folderInputRef}
-              type="text"
-              value={folderInput}
-              onChange={(e) => setFolderInput(e.target.value)}
-              onFocus={() => setShowFolderDropdown(true)}
-              placeholder={t("add_feed.select_or_create_folder")}
-              className={cn(
-                "w-full rounded-field border border-border bg-background px-3 py-2 text-sm",
-                "placeholder:text-muted-foreground/60",
-                "focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20",
-              )}
-            />
-            {showFolderDropdown &&
-              (filteredFolders.length > 0 || isNewFolder) && (
-                <div
-                  ref={dropdownRef}
-                  className="absolute z-10 mt-1 w-full rounded-lg border border-border bg-background shadow-lg max-h-48 overflow-auto"
-                >
-                  {isNewFolder && (
-                    <button
-                      type="button"
-                      onClick={() => handleFolderSelect(folderInput.trim())}
-                      className={cn(
-                        "w-full px-3 py-2 text-left text-sm hover:bg-secondary",
-                        "flex items-center gap-2 text-primary",
-                      )}
-                    >
-                      <svg
-                        className="size-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 4v16m8-8H4"
-                        />
-                      </svg>
-                      {t("add_feed.create_folder", {
-                        name: folderInput.trim(),
-                      })}
-                    </button>
-                  )}
-                  {filteredFolders.map(({ folder, path }) => (
-                    <button
-                      key={folder.id}
-                      type="button"
-                      onClick={() => handleFolderSelect(path)}
-                      className="w-full px-3 py-2 text-left text-sm hover:bg-secondary flex items-center gap-2"
-                    >
-                      {getTypeIcon(folder.type)}
-                      <span>{path}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-          </div>
-        </div>
-      )}
-
       {/* 视图选择 + 真实内容试看（对齐 Folo：选择器在上、效果在下） */}
       <div className="space-y-3 border-t border-border px-4 py-4">
         <div className="flex items-baseline justify-between gap-2">
@@ -538,6 +449,96 @@ export function FeedPreviewCard({
           )}
         </button>
       </div>
+
+      {/* 选项面板（52-1）：展开在「更多选项」那颗按钮的**下方** —— 原先这块渲染在按钮行上面，
+          点一下是往上长，用户反馈「应该在下面展开」。 */}
+      {showOptions && (
+        <div className="border-t border-border bg-secondary/30 px-4 py-4 space-y-4">
+          {/* Custom Title */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+              {t("add_feed.custom_title")}
+            </label>
+            <input
+              type="text"
+              value={customTitle}
+              onChange={(e) => setCustomTitle(e.target.value)}
+              placeholder={feed.title}
+              className={cn(
+                "w-full rounded-field border border-border bg-background px-3 py-2 text-sm",
+                "placeholder:text-muted-foreground/60",
+                "focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20",
+              )}
+            />
+          </div>
+
+          {/* Folder */}
+          <div className="relative">
+            <label className="block text-xs font-medium text-muted-foreground mb-1.5">
+              {t("add_feed.folder")}
+            </label>
+            <input
+              ref={folderInputRef}
+              type="text"
+              value={folderInput}
+              onChange={(e) => setFolderInput(e.target.value)}
+              onFocus={() => setShowFolderDropdown(true)}
+              placeholder={t("add_feed.select_or_create_folder")}
+              className={cn(
+                "w-full rounded-field border border-border bg-background px-3 py-2 text-sm",
+                "placeholder:text-muted-foreground/60",
+                "focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20",
+              )}
+            />
+            {showFolderDropdown &&
+              (filteredFolders.length > 0 || isNewFolder) && (
+                <div
+                  ref={dropdownRef}
+                  className="absolute z-10 mt-1 w-full rounded-lg border border-border bg-background shadow-lg max-h-48 overflow-auto"
+                >
+                  {isNewFolder && (
+                    <button
+                      type="button"
+                      onClick={() => handleFolderSelect(folderInput.trim())}
+                      className={cn(
+                        "w-full px-3 py-2 text-left text-sm hover:bg-secondary",
+                        "flex items-center gap-2 text-primary",
+                      )}
+                    >
+                      <svg
+                        className="size-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 4v16m8-8H4"
+                        />
+                      </svg>
+                      {t("add_feed.create_folder", {
+                        name: folderInput.trim(),
+                      })}
+                    </button>
+                  )}
+                  {filteredFolders.map(({ folder, path }) => (
+                    <button
+                      key={folder.id}
+                      type="button"
+                      onClick={() => handleFolderSelect(path)}
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-secondary flex items-center gap-2"
+                    >
+                      {getTypeIcon(folder.type)}
+                      <span>{path}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

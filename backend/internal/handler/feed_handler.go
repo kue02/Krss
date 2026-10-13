@@ -65,7 +65,8 @@ type feedConflictResponse struct {
 }
 
 type updateFeedRequest struct {
-	Title                 string  `json:"title" binding:"required"`
+	// Title 允许留空：空 = 「恢复默认名称」（52-3，服务端重抓取取名，不是 400）。
+	Title                 string  `json:"title"`
 	FolderID              *string `json:"folderId"`
 	SummaryPromptReminder *string `json:"summaryPromptReminder"`
 }
@@ -209,6 +210,7 @@ func (h *FeedHandler) RegisterRoutes(g *echo.Group) {
 	g.PATCH("/feeds/:id/url", h.UpdateURL)
 	g.GET("/feeds/merge-preview", h.MergePreview)
 	g.POST("/feeds/:id/merge", h.MergeInto)
+	g.PATCH("/feeds/:id/folder", h.UpdateFolder)
 	g.PATCH("/feeds/:id/ai", h.UpdateAIOverrides)
 	g.PATCH("/feeds/:id/proxy", h.UpdateProxyOverride)
 	g.PATCH("/feeds/:id/mcp-config", h.UpdateMCPConfig)
@@ -377,9 +379,6 @@ func (h *FeedHandler) Update(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
 	}
-	if strings.TrimSpace(req.Title) == "" {
-		return c.JSON(http.StatusBadRequest, errorResponse{Error: "title is required"})
-	}
 	var folderID *int64
 	if req.FolderID != nil {
 		fid, err := strconv.ParseInt(*req.FolderID, 10, 64)
@@ -397,7 +396,49 @@ func (h *FeedHandler) Update(c echo.Context) error {
 	return c.JSON(http.StatusOK, toFeedResponse(feed))
 }
 
-// UpdateURL 改订阅地址（RSSHub 换实例域名等）。
+type updateFeedFolderRequest struct {
+	FolderID *string `json:"folderId"`
+}
+
+// UpdateFolder moves a feed to another folder (or out of any folder) **without**
+// touching its title —— 52-5 的自动分组要用它（走 Update 会白白重抓一次并可能覆盖用户起的名字）。
+//
+// @Summary Move a feed to a folder
+// @Description Change only the folder of a subscription (empty folderId = out of any folder)
+// @Tags feeds
+// @Accept json
+// @Produce json
+// @Param id path int true "Feed ID"
+// @Param request body updateFeedFolderRequest true "Target folder"
+// @Success 200 {object} feedResponse
+// @Router /feeds/{id}/folder [patch]
+func (h *FeedHandler) UpdateFolder(c echo.Context) error {
+	id, err := parseIDParam(c, "id")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
+	}
+	var req updateFeedFolderRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
+	}
+	var folderID *int64
+	if req.FolderID != nil && *req.FolderID != "" {
+		fid, err := strconv.ParseInt(*req.FolderID, 10, 64)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid folder ID"})
+		}
+		folderID = &fid
+	}
+	feed, err := h.service.MoveToFolder(c.Request().Context(), id, folderID)
+	if err != nil {
+		logger.Error("feed folder move failed", "module", "handler", "action", "move", "resource", "feed", "result", "failed", "feed_id", id, "error", err)
+		return writeServiceError(c, err)
+	}
+	logger.Info("feed folder moved", "module", "handler", "action", "move", "resource", "feed", "result", "ok", "feed_id", feed.ID)
+	return c.JSON(http.StatusOK, toFeedResponse(feed))
+}
+
+// UpdateURL 改订阅地址（RSSHub 换实例域名等场景）。
 //
 // @Summary Update feed URL
 // @Description Change the source URL of a subscription (e.g. switch RSSHub instance)

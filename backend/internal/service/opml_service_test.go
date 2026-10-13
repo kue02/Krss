@@ -222,6 +222,10 @@ func (s *feedServiceStub) Update(ctx context.Context, id int64, title string, fo
 	return model.Feed{}, nil
 }
 
+func (s *feedServiceStub) MoveToFolder(ctx context.Context, id int64, folderID *int64) (model.Feed, error) {
+	return model.Feed{}, nil
+}
+
 func (s *feedServiceStub) UpdateType(ctx context.Context, id int64, feedType string) error {
 	return nil
 }

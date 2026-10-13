@@ -289,7 +289,8 @@
     "choose_view": "Which view",
     "view_preview_hint": "Real entries",
     "view_preview_empty": "No entries to preview yet",
-    "view_preview_no_image": "No images in the first few entries — this feed may be empty in the pictures view"
+    "view_preview_no_image": "No images in the first few entries — this feed may be empty in the pictures view",
+    "auto_grouped": "Grouped by site domain into “{{name}}” ({{count}} feeds)"
   },
   "entry": {
     "toc": "Contents",
@@ -355,7 +356,9 @@
     "translate_fallback_hint": "Some blocks failed on the free channel and were translated by the model instead",
     "force_refresh": "Force refresh",
     "force_confirm_title": "Force refresh {{count}} feeds?",
-    "force_confirm_description": "This ignores etag / last-modified and refetches every feed in scope in one go (host cooldown is skipped too). That's a lot of feeds — confirm this wasn't a mis-selection."
+    "force_confirm_description": "This ignores etag / last-modified and refetches every feed in scope in one go (host cooldown is skipped too). That's a lot of feeds — confirm this wasn't a mis-selection.",
+    "view_feed": "Go to feed {{name}}",
+    "back_to_previous": "Back to previous selection"
   },
   "ai_settings": {
     "translate_channel": "Translation channel",
@@ -838,7 +841,8 @@
     "auto_summary": "Auto summary",
     "follow_global": "Global",
     "on": "On",
-    "off": "Off"
+    "off": "Off",
+    "title_reset_hint": "Leave empty to restore the default name (re-read the feed title, fall back to the site domain)"
   },
   "entry_list": {
     "all_articles": "All Articles",

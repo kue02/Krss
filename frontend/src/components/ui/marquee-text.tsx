@@ -12,10 +12,15 @@ import { cn } from "@/lib/utils";
 export function MarqueeText({
   text,
   className,
+  ...rest
 }: {
   text: string;
   className?: string;
-}) {
+  /**
+   * 52-4：把点击一类的属性透传到外层容器（源名可点 = 点它跳去该订阅）。
+   * 传了 `title` 就用它（覆盖默认的全文提示 —— 跳转提示里本来就带全名，不丢信息）。
+   */
+} & React.HTMLAttributes<HTMLSpanElement>) {
   const boxRef = useRef<HTMLSpanElement>(null);
   const innerRef = useRef<HTMLSpanElement>(null);
   const [distance, setDistance] = useState(0);
@@ -40,7 +45,8 @@ export function MarqueeText({
     <span
       ref={boxRef}
       className={cn("marquee block min-w-0 overflow-hidden", className)}
-      title={text}
+      title={rest.title ?? text}
+      {...rest}
     >
       <span
         ref={innerRef}

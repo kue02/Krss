@@ -18,6 +18,7 @@ import { getEntryImages } from "@/lib/extract-images";
 import { useImagePreviewStore } from "@/stores/image-preview-store";
 import { useTranslationStore } from "@/stores/translation-store";
 import { FeedIcon } from "@/components/ui/feed-icon";
+import { useEntrySourceJump } from "./entry-source-jump";
 import { MarqueeText } from "@/components/ui/marquee-text";
 import {
   ContextMenu,
@@ -85,6 +86,11 @@ interface EntryListItemProps {
   autoExpandLong?: boolean;
   /** 24-5：右键「标记上方为已读」（父级按当前列表顺序算上面有哪些） */
   onMarkAboveEntry?: (entryId: string) => void;
+  /**
+   * 52-4：点「订阅源名称 / 图标」→ 第一栏选中该订阅（行为见 `useEntrySourceJump`）。
+   * 不传则来源行保持原样不可点。
+   */
+  onSelectFeedFromEntry?: (feedId: string) => void;
   style?: React.CSSProperties;
   "data-index"?: number;
   "data-entry-id"?: string;
@@ -263,6 +269,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
       fetchReadable = false,
       autoExpandLong = false,
       onMarkAboveEntry,
+      onSelectFeedFromEntry,
       style,
       "data-index": dataIndex,
       "data-entry-id": dataEntryId,
@@ -337,6 +344,8 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     const displayTitle = translation?.title ?? entry.title;
     const displaySummary = translation?.summary ?? strippedContent;
     const displayFeedName = feed?.title || fallbackFeedName;
+    /* 52-4：来源行的「图标 + 源名」可点 → 第一栏选中该订阅（行为一份，见 useEntrySourceJump） */
+    const { sourceProps } = useEntrySourceJump(feed, onSelectFeedFromEntry);
     const titleContainsUrl = URL_PATTERN.test(displayTitle ?? "");
     const summaryContainsUrl = URL_PATTERN.test(displaySummary ?? "");
     const isSocialView = social;
@@ -495,11 +504,22 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                     height={32}
                     loading="lazy"
                     decoding="async"
-                    className="size-8 shrink-0 rounded-full object-cover"
+                    // 52-4：社交视图同样可点（头像 = 源图标）
+                    {...sourceProps}
+                    className={cn(
+                      "size-8 shrink-0 rounded-full object-cover",
+                      sourceProps?.className,
+                    )}
                     onError={() => setIconError(true)}
                   />
                 ) : (
-                  <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary text-muted-foreground/70">
+                  <div
+                    {...sourceProps}
+                    className={cn(
+                      "flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary text-muted-foreground/70",
+                      sourceProps?.className,
+                    )}
+                  >
                   {/* 源没给图标时，社交条目按平台给字形（Folo 这里显示作者头像） */}
                   {socialSource?.platform === "x" ? (
                     <svg
@@ -524,7 +544,13 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
               <div className="ml-2 min-w-0 flex-1">
                 {/* 作者行：源名 · @handle · 时间（Folo 这里 select-none，拖选只作用于正文） */}
                 <div className="flex select-none flex-wrap items-center gap-x-1 leading-6">
-                  <span className="truncate text-base font-semibold text-foreground">
+                  <span
+                    {...sourceProps}
+                    className={cn(
+                      "truncate text-base font-semibold text-foreground",
+                      sourceProps?.className,
+                    )}
+                  >
                     {displayFeedName}
                   </span>
                   {/* Folo 会在源名后面挂 @handle（可点进作者主页）；
@@ -840,16 +866,32 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                     height={20}
                     loading="lazy"
                     decoding="async"
-                    className="size-5 shrink-0 rounded-[var(--ui-icon-radius,3px)] object-contain"
+                    // 52-4：点图标 = 跳去这个订阅
+                    {...sourceProps}
+                    className={cn(
+                      "size-5 shrink-0 rounded-[var(--ui-icon-radius,3px)] object-contain",
+                      sourceProps?.className,
+                    )}
                     onError={() => setIconError(true)}
                   />
                 ) : (
-                  <FeedIcon className="size-5 shrink-0 text-muted-foreground/50" />
+                  /* FeedIcon 自己不收事件，包一层把点击挂上（尺寸不变，图标仍是 size-5） */
+                  <span
+                    {...sourceProps}
+                    className={cn(
+                      "flex size-5 shrink-0 items-center justify-center",
+                      sourceProps?.className,
+                    )}
+                  >
+                    <FeedIcon className="size-5 text-muted-foreground/50" />
+                  </span>
                 )}
               </UnreadIndicator>
               <MarqueeText
                 text={displayFeedName}
-                className="min-w-0 flex-1 font-bold"
+                // 52-4：点源名 = 跳去这个订阅（MarqueeText 已透传事件到外层容器）
+                {...sourceProps}
+                className={cn("min-w-0 flex-1 font-bold", sourceProps?.className)}
               />
               {publishedAt && (
                 <span

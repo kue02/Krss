@@ -210,8 +210,18 @@ export function FilterEditor({
     [t],
   );
 
-  const validate = (payload: FilterWritePayload): string | null => {
-    if (!payload.name.trim()) return t("automation.invalid");
+  /**
+   * 52-6（用户第 6 条「创建自动化时，如果没有输入标题，也是可以预览的」）：
+   * `requireName` 缺省 true（保存必须有名称），预览传 false —— 名称对 dry-run 没有任何意义，
+   * 条件/动作/范围这些「会影响命中结果」的校验一条都不能少。
+   */
+  const validate = (
+    payload: FilterWritePayload,
+    options?: { requireName?: boolean },
+  ): string | null => {
+    if (options?.requireName !== false && !payload.name.trim()) {
+      return t("automation.invalid");
+    }
     if (isView) {
       // 视图只筛条目：必须有条件，且不带任何动作
       if (payload.conditions.length === 0) return t("automation.view_needs_condition");
@@ -292,7 +302,8 @@ export function FilterEditor({
   }, [payloadSignature, isDirty, onPayloadChange]);
 
   const handlePreview = () => {
-    const error = validate(draft);
+    // 52-6：预览不要求名称（后端 /filters/preview 同步放开，见 ValidateFilterParamsBody）
+    const error = validate(draft, { requireName: false });
     setValidationError(error);
     if (error) return;
     preview.mutate(

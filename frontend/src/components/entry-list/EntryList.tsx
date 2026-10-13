@@ -99,6 +99,14 @@ interface EntryListProps {
   onToggleSidebar?: () => void;
   sidebarVisible?: boolean;
   isActive?: boolean;
+  /**
+   * 52-4：点条目的「订阅源名称/图标」→ 第一栏选中该订阅（由 App 透传 `selectFeed` 那条路）。
+   * 不传则来源行保持原样（不可点）—— 单测与其它调用点零变化。
+   */
+  onSelectFeedFromEntry?: (feedId: string) => void;
+  /** 52-4：这次跳来自哪个订阅（非 null 时列表头出「返回」） */
+  feedJumpBackHref?: string | null;
+  onBackFromFeedJump?: () => void;
 }
 
 export function EntryList({
@@ -118,7 +126,9 @@ export function EntryList({
   sidebarVisible,
   isActive = true,
   onToggleStarredViewOnly,
-
+  onSelectFeedFromEntry,
+  feedJumpBackHref,
+  onBackFromFeedJump,
 }: EntryListProps) {
   "use no memo";
 
@@ -989,6 +999,7 @@ export function EntryList({
         <EntryListHeader
           title={headerTitle}
           subtitle={headerSubtitle}
+          onBackFromFeedJump={feedJumpBackHref ? onBackFromFeedJump : undefined}
           unreadCount={unreadCount}
           unreadOnly={unreadOnly}
           onToggleUnreadOnly={onToggleUnreadOnly}
@@ -1152,6 +1163,7 @@ export function EntryList({
                   autoTranslate={autoTranslate}
                   targetLanguage={targetLanguage}
                   onSelectableEntriesChange={setTimelineSelectableEntries}
+                  onSelectFeedFromEntry={onSelectFeedFromEntry}
                 />
               ) : (
                 entries.map((entry, index) => (
@@ -1170,6 +1182,7 @@ export function EntryList({
                     social={isSocialView}
                     fetchReadable={fetchReadableEnabled}
                     autoExpandLong={expandLongByView?.[contentType] ?? false}
+                    onSelectFeedFromEntry={onSelectFeedFromEntry}
                   />
                 ))
               )}

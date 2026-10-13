@@ -47,6 +47,11 @@ interface PictureMasonryProps {
   isTablet?: boolean;
   onToggleSidebar?: () => void;
   sidebarVisible?: boolean;
+  /** 52-4：点格子里的「源名 / 图标」→ 第一栏选中该订阅 */
+  onSelectFeedFromEntry?: (feedId: string) => void;
+  /** 52-4：这次跳来自某个订阅时，列表头出「返回」 */
+  feedJumpBackHref?: string | null;
+  onBackFromFeedJump?: () => void;
 }
 
 interface MasonryItem {
@@ -92,6 +97,9 @@ export function PictureMasonry({
   isTablet,
   onToggleSidebar,
   sidebarVisible,
+  onSelectFeedFromEntry,
+  feedJumpBackHref,
+  onBackFromFeedJump,
 }: PictureMasonryProps) {
   const { t } = useTranslation();
   const params = selectionToParams(selection, contentType);
@@ -257,11 +265,12 @@ export function PictureMasonry({
             feed={item.feed}
             square={isGrid}
             gallery={gallery}
+            onSelectFeedFromEntry={onSelectFeedFromEntry}
           />
         </div>
       );
     },
-    [isGrid, gallery],
+    [isGrid, gallery, onSelectFeedFromEntry],
   );
 
   // Reset before passive scroll effects can inspect a previous view's position.
@@ -396,6 +405,7 @@ export function PictureMasonry({
       >
         <EntryListHeader
           title={title}
+          onBackFromFeedJump={feedJumpBackHref ? onBackFromFeedJump : undefined}
           unreadCount={unreadCount}
           unreadOnly={unreadOnly}
           onToggleUnreadOnly={onToggleUnreadOnly}

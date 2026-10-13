@@ -471,11 +471,23 @@ export async function createFeed(payload: {
 
 export async function updateFeed(
   id: string,
+  // title 留空 = 「恢复默认名称」（52-3）：服务端重新抓一次取 feed 标题，抓不到退可读域名名。
   payload: { title: string; folderId?: string; summaryPromptReminder?: string },
 ): Promise<Feed> {
   return request<Feed>(`/api/feeds/${id}`, {
     method: "PUT",
     body: JSON.stringify(payload),
+  });
+}
+
+/** 只挪文件夹、不动标题（52-5 自动分组用；走 updateFeed 会白白触发一次重抓取） */
+export async function moveFeedToFolder(
+  id: string,
+  folderId: string | null,
+): Promise<Feed> {
+  return request<Feed>(`/api/feeds/${id}/folder`, {
+    method: "PATCH",
+    body: JSON.stringify({ folderId: folderId ?? "" }),
   });
 }
 

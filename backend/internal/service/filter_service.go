@@ -419,7 +419,8 @@ func (s *filterService) CountViewMatches(ctx context.Context, contentType *strin
 }
 
 func (s *filterService) Preview(ctx context.Context, params FilterWriteParams, limit int) (FilterPreviewResult, error) {
-	if err := ValidateFilterParams(params); err != nil {
+	// 52-6：预览不要求名称（不落库），其余校验照旧
+	if err := ValidateFilterParamsBody(params); err != nil {
 		return FilterPreviewResult{}, err
 	}
 	if limit <= 0 || limit > 500 {
@@ -1427,7 +1428,7 @@ func scopeListFilter(params FilterWriteParams, limit int) repository.EntryListFi
 	return filter
 }
 
-// ValidateFilterParams 校验规则入参（Handler 与 Service 共用）。
+// ValidateFilterParams 校验规则入参（Handler 与 Service 共用）：含名称。
 func ValidateFilterParams(params FilterWriteParams) error {
 	if strings.TrimSpace(params.Name) == "" {
 		return ErrInvalidFilter
@@ -1435,6 +1436,13 @@ func ValidateFilterParams(params FilterWriteParams) error {
 	if len([]rune(strings.TrimSpace(params.Name))) > 60 {
 		return ErrInvalidFilter
 	}
+	return ValidateFilterParamsBody(params)
+}
+
+// ValidateFilterParamsBody 校验除名称以外的一切（52-6）。
+// 预览是 dry-run、不落库：名称对它没有任何意义，所以空名称也该能预览
+// （用户 52 批第 6 条「没有输入标题，也是可以预览的」）。条件/动作/范围的校验一条不少。
+func ValidateFilterParamsBody(params FilterWriteParams) error {
 	kind := params.Kind
 	if kind != "" && kind != model.FilterKindRule && kind != model.FilterKindView {
 		return ErrInvalidFilter

@@ -6,6 +6,7 @@ import { Chip } from "@heroui/react";
 import { cn } from "@/lib/utils";
 import { stripHtml } from "@/lib/html-utils";
 import { FeedIcon } from "@/components/ui/feed-icon";
+import { useEntrySourceJump } from "./entry-source-jump";
 import { EntryToc } from "@/components/entry-content/EntryToc";
 import { NotificationBodyPreview } from "./NotificationBodyPreview";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
@@ -175,6 +176,8 @@ interface TimelineCardProps {
   onNaturalHeightChange?: (entryId: string, height: number) => void;
   onToggleExpand: (entryId: string) => void;
   onSelect: (entryId: string) => void;
+  /** 52-4：点源名/图标 → 第一栏选中该订阅 */
+  onSelectFeedFromEntry?: (feedId: string) => void;
   /** 24-5：右键「标记上方为已读」（与卡片列表同一套菜单） */
   onMarkAbove?: () => void;
   /** 24-8：展开的正文容器高度（默认 380，右下角手柄可拖，钳制 200~70vh） */
@@ -212,6 +215,7 @@ const TimelineCard = memo(function TimelineCard({
   onNaturalHeightChange,
   onToggleExpand,
   onSelect,
+  onSelectFeedFromEntry,
   onMarkAbove,
   fullHeight,
   onFullHeightChange,
@@ -290,6 +294,8 @@ const TimelineCard = memo(function TimelineCard({
   const canExpand = effectiveClampLines !== null;
   const showToggle = canExpand && (isClipped || expanded);
   const feedName = feed?.title || t("entry.unknown_feed");
+  /* 52-4：点卡片的「源名 / 图标」→ 第一栏选中该订阅（与条目列表同一份行为） */
+  const { sourceProps } = useEntrySourceJump(feed, onSelectFeedFromEntry);
   // 24-8：展开态是「正文级完整渲染」而不是去掉 clamp —— 有全文才进展开容器
   const hasFullContent = !!entry.content?.trim();
 
@@ -374,14 +380,32 @@ const TimelineCard = memo(function TimelineCard({
                   height={18}
                   loading="lazy"
                   decoding="async"
-                  className="size-[18px] shrink-0 rounded-[var(--ui-icon-radius,3px)] object-contain"
+                  {...sourceProps}
+                  className={cn(
+                    "size-[18px] shrink-0 rounded-[var(--ui-icon-radius,3px)] object-contain",
+                    sourceProps?.className,
+                  )}
                   onError={() => setIconError(true)}
                 />
               ) : (
-                <FeedIcon className="size-[18px] shrink-0 text-muted-foreground/50" />
+                <span
+                  {...sourceProps}
+                  className={cn(
+                    "flex size-[18px] shrink-0 items-center justify-center",
+                    sourceProps?.className,
+                  )}
+                >
+                  <FeedIcon className="size-[18px] text-muted-foreground/50" />
+                </span>
               )}
             </UnreadIndicator>
-            <span className="min-w-0 truncate font-medium text-foreground/80">
+            <span
+              {...sourceProps}
+              className={cn(
+                "min-w-0 truncate font-medium text-foreground/80",
+                sourceProps?.className,
+              )}
+            >
               {feedName}
             </span>
             {bucketCount > 1 && node === "major" && (
@@ -606,6 +630,8 @@ export interface NotificationTimelineProps {
   /** 29-1：正文悬停档（默认 false = 现状一字不改）。
    * true = 卡片只留来源行 + 标题，正文走悬浮块；触屏（hover: none）由内部自动降级回卡片内正文。 */
   bodyOnHover?: boolean;
+  /** 52-4：点卡片的「源名 / 图标」→ 第一栏选中该订阅（与条目列表同一行为） */
+  onSelectFeedFromEntry?: (feedId: string) => void;
   /**
    * 把「轴上的卡片」（不含被吸进小节点的条目）回报给父级 ——
    * 键盘 j/k、↑/↓ 就在这些节点之间吸附，不会选到看不见的条目。
@@ -630,6 +656,7 @@ export function NotificationTimeline({
   targetLanguage,
   bodyOnHover = false,
   onSelectableEntriesChange,
+  onSelectFeedFromEntry,
 }: NotificationTimelineProps) {
   const { t, i18n } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -1171,6 +1198,7 @@ export function NotificationTimeline({
             }
             onToggleExpand={toggleEntry}
             onSelect={handleSelect}
+            onSelectFeedFromEntry={onSelectFeedFromEntry}
             bodyOnHover={hoverMode}
             onHoverEnter={hoverMode ? openHover : undefined}
             onHoverLeave={hoverMode ? scheduleHoverClose : undefined}

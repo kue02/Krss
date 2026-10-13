@@ -1686,6 +1686,47 @@ const docTemplate = `{
                 }
             }
         },
+        "/feeds/{id}/folder": {
+            "patch": {
+                "description": "Change only the folder of a subscription (empty folderId = out of any folder)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "feeds"
+                ],
+                "summary": "Move a feed to a folder",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Feed ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Target folder",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.updateFeedFolderRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.feedResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/feeds/{id}/type": {
             "patch": {
                 "description": "Change the content type of a feed (article/picture/notification/social)",
@@ -5710,11 +5751,16 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handler.updateFeedFolderRequest": {
+            "type": "object",
+            "properties": {
+                "folderId": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_handler.updateFeedRequest": {
             "type": "object",
-            "required": [
-                "title"
-            ],
             "properties": {
                 "folderId": {
                     "type": "string"
@@ -5723,6 +5769,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "title": {
+                    "description": "Title 允许留空：空 = 「恢复默认名称」（52-3，服务端重抓取取名，不是 400）。",
                     "type": "string"
                 }
             }

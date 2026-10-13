@@ -38,6 +38,10 @@ type FeedService interface {
 	Preview(ctx context.Context, feedURL string) (FeedPreview, error)
 	List(ctx context.Context, folderID *int64) ([]model.Feed, error)
 	Update(ctx context.Context, id int64, title string, folderID *int64, summaryPromptReminder *string) (model.Feed, error)
+	// MoveToFolder 只挪文件夹、不动标题（52-5 自动分组用）。
+	// 为什么不复用 Update：Update 的语义是「空标题=恢复默认名」（52-3），
+	// 而分组时标题原样保留 —— 走 Update 会白白重抓一次，还可能覆盖用户起的名字。
+	MoveToFolder(ctx context.Context, id int64, folderID *int64) (model.Feed, error)
 	UpdateType(ctx context.Context, id int64, feedType string) error
 	// UpdateURL 改订阅地址（RSSHub 实例换域名等场景）。
 	// 目标地址已被别的订阅占用时返回 *FeedURLConflictError（前端据此弹「确认合并」）。
@@ -139,9 +143,10 @@ func (s *feedService) Add(ctx context.Context, feedURL string, folderID *int64, 
 	if fetchErr != nil {
 		logger.Warn("feed fetch failed", "module", "service", "action", "fetch", "resource", "feed", "result", "failed", "host", network.ExtractHost(trimmedURL), "error", fetchErr)
 		// Fetch failed, create feed with error message
+		// 52-2：抓不通时不再把整条地址当名称，给可读名（主站域名 / 路由尾段）
 		finalTitle := strings.TrimSpace(titleOverride)
 		if finalTitle == "" {
-			finalTitle = trimmedURL
+			finalTitle = fallbackFeedTitle(trimmedURL, "")
 		}
 		errMsg := fetchErr.Error()
 		feed := model.Feed{
@@ -159,7 +164,8 @@ func (s *feedService) Add(ctx context.Context, feedURL string, folderID *int64, 
 		finalTitle = strings.TrimSpace(fetched.title)
 	}
 	if finalTitle == "" {
-		finalTitle = trimmedURL
+		// 52-2：feed 自身没有 title 时同样给可读名，不要退化成整条订阅地址
+		finalTitle = fallbackFeedTitle(trimmedURL, fetched.siteURL)
 	}
 
 	feed := model.Feed{
@@ -373,7 +379,8 @@ func (s *feedService) AddWithoutFetch(ctx context.Context, feedURL string, folde
 
 	finalTitle := strings.TrimSpace(titleOverride)
 	if finalTitle == "" {
-		finalTitle = trimmedURL
+		// 52-2：OPML 导入没带标题时同样给可读名
+		finalTitle = fallbackFeedTitle(trimmedURL, "")
 	}
 
 	feed := model.Feed{
@@ -409,7 +416,8 @@ func (s *feedService) Preview(ctx context.Context, feedURL string) (FeedPreview,
 
 	title := strings.TrimSpace(fetched.title)
 	if title == "" {
-		title = trimmedURL
+		// 52-2：预览卡上也别显示整条地址（添加时用户看到的就是这一行）
+		title = fallbackFeedTitle(trimmedURL, fetched.siteURL)
 	}
 	preview := FeedPreview{
 		URL:         trimmedURL,
@@ -457,26 +465,26 @@ func (s *feedService) List(ctx context.Context, folderID *int64) ([]model.Feed, 
 }
 
 func (s *feedService) Update(ctx context.Context, id int64, title string, folderID *int64, summaryPromptReminder *string) (model.Feed, error) {
-	trimmedTitle := strings.TrimSpace(title)
-	if trimmedTitle == "" {
-		return model.Feed{}, ErrInvalid
-	}
-
-	var normalizedReminder *string
-	var err error
-	if summaryPromptReminder != nil {
-		normalizedReminder, err = normalizeSummaryPromptReminder(*summaryPromptReminder)
-		if err != nil {
-			return model.Feed{}, err
-		}
-	}
-
 	feed, err := s.feeds.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return model.Feed{}, ErrNotFound
 		}
 		return model.Feed{}, fmt.Errorf("get feed: %w", err)
+	}
+
+	// 52-3：名称清空 = 恢复默认名称（用户拍板：重新抓一次取 feed 标题，抓不到退域名）。
+	trimmedTitle := strings.TrimSpace(title)
+	if trimmedTitle == "" {
+		trimmedTitle = s.defaultTitleFor(ctx, feed)
+	}
+
+	var normalizedReminder *string
+	if summaryPromptReminder != nil {
+		normalizedReminder, err = normalizeSummaryPromptReminder(*summaryPromptReminder)
+		if err != nil {
+			return model.Feed{}, err
+		}
 	}
 
 	// Check if folder is actually changing (value comparison, not pointer comparison)
@@ -515,6 +523,71 @@ func (s *feedService) Update(ctx context.Context, id int64, title string, folder
 	}
 	logger.Info("feed updated", "module", "service", "action", "update", "resource", "feed", "result", "ok", "feed_id", updated.ID, "feed_title", updated.Title)
 	return updated, nil
+}
+
+func (s *feedService) MoveToFolder(ctx context.Context, id int64, folderID *int64) (model.Feed, error) {
+	feed, err := s.feeds.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return model.Feed{}, ErrNotFound
+		}
+		return model.Feed{}, fmt.Errorf("get feed: %w", err)
+	}
+	if folderID != nil {
+		folder, err := s.folders.GetByID(ctx, *folderID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return model.Feed{}, ErrNotFound
+			}
+			return model.Feed{}, fmt.Errorf("check folder: %w", err)
+		}
+		// 与 Update 同一口径：订阅类型必须和文件夹类型一致，否则挪进去就看不见这条了
+		if folder.Type != feed.Type {
+			logger.Warn("feed type mismatch with folder type", "module", "service", "action", "move", "resource", "feed", "result", "failed", "feed_id", id, "folder_id", *folderID, "folder_type", folder.Type, "feed_type", feed.Type)
+			return model.Feed{}, ErrInvalid
+		}
+	}
+	feed.FolderID = folderID
+	updated, err := s.feeds.Update(ctx, feed)
+	if err != nil {
+		logger.Error("feed move failed", "module", "service", "action", "move", "resource", "feed", "result", "failed", "feed_id", id, "error", err)
+		return model.Feed{}, err
+	}
+	logger.Info("feed moved", "module", "service", "action", "move", "resource", "feed", "result", "ok", "feed_id", updated.ID, "folder_id", folderID)
+	return updated, nil
+}
+
+// defaultTitleFor 这条订阅的「默认名称」（52-3：用户把名称清空时用它）。
+// RSS 源按拍板口径**重新抓一次**取 feed 自带标题（慢 1~3 秒，准）；抓不到或 feed 没标题
+// 退可读域名名。MCP 源没有 HTTP 可抓，用它自己的默认名（`MCP · 工具名`）。
+// 任何分支都不会返回空 —— 空标题会把订阅行渲染成空白。
+func (s *feedService) defaultTitleFor(ctx context.Context, feed model.Feed) string {
+	if feed.IsMCP() {
+		if config, err := ParseMCPFeedConfig(feed.MCPConfig); err == nil {
+			if title := defaultMCPFeedTitle(config); title != "" {
+				return title
+			}
+		}
+		return fallbackFeedTitle(feed.URL, stringOrEmpty(feed.SiteURL))
+	}
+
+	if isValidURL(feed.URL) {
+		if fetched, fetchErr := s.fetchFeed(ctx, feed.URL); fetchErr == nil {
+			if title := strings.TrimSpace(fetched.title); title != "" {
+				return title
+			}
+			return fallbackFeedTitle(feed.URL, fetched.siteURL)
+		}
+	}
+
+	// 抓不通（或地址不合法）：库里已有的 site_url 优先，再退订阅地址域名
+	if title := fallbackFeedTitle(feed.URL, stringOrEmpty(feed.SiteURL)); title != "" {
+		return title
+	}
+	if current := strings.TrimSpace(feed.Title); current != "" {
+		return current
+	}
+	return "订阅"
 }
 
 // UpdateProxyOverride 写订阅级代理覆盖（迁移 26）。
