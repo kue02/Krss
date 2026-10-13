@@ -48,8 +48,6 @@ const imageElementCache = new Map<string, React.ReactElement>();
  * 判定「快进视口了」才发请求，用户看到的就是「字都出来了，图还在等」。
  */
 const PRIORITY_IMAGE_COUNT = 3;
-/** 每次 parse 从头数（在 useMemo 里重置） */
-let imagePriorityIndex = 0;
 const IMAGE_CACHE_MAX_SIZE = 200;
 /** video 用同一个键规则单独一池：正文里的视频远少于图，20 足够覆盖一屏 */
 const videoElementCache = new Map<string, React.ReactElement>();
@@ -139,8 +137,10 @@ const ArticleContentBlockRenderer = memo(function ArticleContentBlockRenderer({
 }) {
   const renderedContent = useMemo(() => {
     if (!content) return null;
-    // 50-2：每次解析都从头数图片序号（判定首屏那几张）
-    imagePriorityIndex = 0;
+    // 50-2：这次解析里按顺序数图片序号（判定首屏那几张要 eager/高优先级）。
+    // 局部变量而不是模块级：跨组件共享的计数器既会被并发解析串号，
+    // 也会踩 react-hooks 的「不允许改外部变量」规则。
+    let imagePriorityIndex = 0;
 
     const result = parseHtml(content, {
       components: {
