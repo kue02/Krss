@@ -6,7 +6,8 @@
  *   - 正文 → 后端 `readableContent` 落库 + 写进 react-query 的 `["entry", id]` 与
  *     `["entries"]` 缓存（打开时 `useEntry` 直接命中 ⇒ 零等待）
  *   - 摘要 → 后端 AI 缓存（打开时 `streamSummary` 直接回 `{cached:true}` 秒出）
- *   - 翻译 → 后端 AI 缓存 + `translation-store`（`useAITranslation` 打开时读后者）
+ *   - 翻译 → 只叫后端「后台翻好落缓存」（50-1：不占长连接；打开时流式接口命中缓存）
+ *   - 图片 → 头几张顺带 warm 进后端代理缓存（50-2）
  *
  * 全程静默：失败不弹 toast。打开路径上那两条「已自动开启阅读模式 / 正在翻译」
  * 的提示**原样保留** —— 那是「打开」这个动作的交代，不是预载的。
@@ -14,15 +15,9 @@
 
 import { useEffect, useRef, type RefObject } from "react";
 import { queryClient } from "@/lib/queryClient";
-import {
-  fetchReadableContent,
-  streamSummary,
-  streamTranslateBlocks,
-  isTranslateInit,
-  isTranslateBlockResult,
-} from "@/api";
+import { fetchReadableContent, streamSummary, warmTranslate } from "@/api";
 import { PrefetchQueue } from "@/services/prefetch-queue";
-import { claimContentTranslation } from "@/services/content-translation-inflight";
+import { warmEntryImages } from "@/lib/warm-images";
 import {
   buildPrefetchTask,
   summaryWorthPrefetching,
@@ -30,7 +25,6 @@ import {
   type PrefetchContext,
   type PrefetchPlan,
 } from "@/services/entry-prefetch-plan";
-import { translationActions } from "@/stores/translation-store";
 import type { Entry, Feed } from "@/types/api";
 
 /** 默认并发：正文抓取是网络往返，摘要/翻译是模型往返，都不适合一屏几十条齐发 */
@@ -99,73 +93,31 @@ export async function runEntryPrefetch(args: {
     for await (const _chunk of stream) void _chunk;
   }
 
-  // 3) 翻译：后端缓存 + 前端 translation-store（useAITranslation 打开时读后者）
+  // 3) 翻译（50-1 改法）
+  //
+  // 原来这里直接开一条 SSE 流、把它读完 —— 而 SSE 是**长连接**，浏览器对同源
+  // HTTP/1.1 只给 6 条并发。预载并发 3 + 正文 1 + 批次 1 就顶满，设置页与其他条目
+  // 全部排队（实测开到第 6 条时 /api/settings/ai 卡 45,630ms）。
+  //
+  // 现在只叫后端「后台翻好落缓存」，请求**立即返回**（202）；用户点开时流式接口
+  // 命中缓存直接吐 JSON，正文仍然只占 1 条连接。
   if (
     plan.autoTranslate &&
     (await translateWorthPrefetching(entry, context.targetLanguage))
   ) {
-    // 打开路径可能正在翻同一条（用户点得比预载快）—— 撞上就别重复跑模型；
-    // 反过来预载先到、打开路径会订阅这里的转发事件（见 services/content-translation-inflight.ts）
-    const claim = claimContentTranslation(
-      entry.id,
-      useReadable,
-      context.targetLanguage,
-    );
-    if (claim) {
-      let translated: string | null = null;
-      /** index → html；与 useAITranslation 的 `translatedBlocks` 同一套拼接口径 */
-      const blockIndexByPos: number[] = [];
-      const htmlByIndex = new Map<number, string>();
-
-      try {
-        const stream = streamTranslateBlocks(
-          {
-            entryId: entry.id,
-            content,
-            title: entry.title ?? undefined,
-            isReadability: useReadable,
-          },
-          signal,
-        );
-        for await (const event of stream) {
-          // 转发给订阅方（打开路径），它按与本地流完全相同的方式处理
-          claim.emit(event);
-          if ("cached" in event) {
-            translated = event.content;
-            break;
-          }
-          if (isTranslateInit(event)) {
-            blockIndexByPos.length = 0;
-            htmlByIndex.clear();
-            for (const block of event.blocks) {
-              blockIndexByPos.push(block.index);
-              htmlByIndex.set(block.index, block.html);
-            }
-            continue;
-          }
-          if (isTranslateBlockResult(event)) {
-            htmlByIndex.set(event.index, event.html);
-          }
-        }
-      } finally {
-        // 成功 / 失败 / 被 abort 都要放掉：订阅方靠它决定「用转发来的结果」还是「自己补一次」
-        claim.finish();
-      }
-
-      if (!translated && blockIndexByPos.length > 0) {
-        translated = blockIndexByPos
-          .map((index) => htmlByIndex.get(index) ?? "")
-          .join("");
-      }
-      if (translated) {
-        translationActions.set(
-          entry.id,
-          context.targetLanguage,
-          { content: translated },
-          useReadable,
-        );
-      }
+    try {
+      await warmTranslate({
+        entryId: entry.id,
+        content,
+        title: entry.title ?? undefined,
+        isReadability: useReadable,
+      });
+    } catch {
+      // 预载失败不该影响别的任务；用户点开时会照旧自己发一次
     }
+
+    // 50-2：顺带把正文头几张图也 warm 进代理缓存（后端落盘后，点开就是毫秒级）
+    warmEntryImages(content, entry.url);
   }
 }
 

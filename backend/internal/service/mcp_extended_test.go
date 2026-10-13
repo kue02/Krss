@@ -288,7 +288,7 @@ func newFakeOAuthAS(t *testing.T) *fakeOAuthAS {
 	mux.HandleFunc("/mcp", mcpHandler)
 	mux.HandleFunc("/mcp/.well-known/oauth-protected-resource", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"resource":               fake.mcpBaseURL,
+			"resource":              fake.mcpBaseURL,
 			"authorization_servers": []string{fake.server.URL + "/as"},
 		})
 	})
@@ -624,6 +624,9 @@ func (s *stubAIService) TranslateBatch(ctx context.Context, articles []service.B
 }
 func (s *stubAIService) ClearAllCache(ctx context.Context) (int64, int64, int64, error) {
 	return 0, 0, 0, nil
+}
+func (s *stubAIService) WarmTranslation(ctx context.Context, entryID int64, content, title string, isReadability bool) (bool, error) {
+	return true, nil
 }
 func (s *stubAIService) Complete(ctx context.Context, systemPrompt, content string) (string, error) {
 	return s.complete(ctx, systemPrompt, content)

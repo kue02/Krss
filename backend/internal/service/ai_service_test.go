@@ -198,13 +198,15 @@ type translationRepoStub struct {
 	deleteAllErr error
 	getErr       error
 	saveErr      error
+	// getResult：让「已缓存」这条分支可测（默认 nil 表示库里没有）
+	getResult *model.AITranslation
 }
 
 func (s *translationRepoStub) Get(ctx context.Context, entryID int64, isReadability bool, language string) (*model.AITranslation, error) {
 	if s.getErr != nil {
 		return nil, s.getErr
 	}
-	return nil, nil
+	return s.getResult, nil
 }
 
 func (s *translationRepoStub) Save(ctx context.Context, entryID int64, isReadability bool, language, content string) error {

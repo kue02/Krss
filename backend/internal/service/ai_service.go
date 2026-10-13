@@ -66,6 +66,11 @@ type AIService interface {
 	// TranslateBlocks parses HTML into blocks and translates them in parallel.
 	// Returns block info, a channel of results (in completion order), and an error channel.
 	TranslateBlocks(ctx context.Context, entryID int64, content, title string, isReadability bool) ([]TranslateBlockInfo, <-chan TranslateBlockResult, <-chan error, error)
+	// WarmTranslation 只负责「把译文算出来落缓存」，不往客户端推任何东西（50-1）。
+	// 预载用它取代流式请求：SSE 是长连接，浏览器同源 HTTP/1.1 只有 6 条并发，
+	// 预载各占一条会把普通请求（设置、其他条目）全部堵在门外（实测第 6 条时卡 45.6s）。
+	// 返回 alreadyCached=true 表示之前就翻好了；false 表示这次刚起后台任务。
+	WarmTranslation(ctx context.Context, entryID int64, content, title string, isReadability bool) (alreadyCached bool, err error)
 	// SaveTranslation saves a translation to cache.
 	SaveTranslation(ctx context.Context, entryID int64, isReadability bool, content string) error
 	// TranslateBatch translates multiple articles' titles and summaries.
@@ -90,6 +95,10 @@ type aiService struct {
 	rateLimiter         *ai.RateLimiter
 	// clientFactory：走「设置 → 网络」里配的代理（免 key 翻译通道要用；为 nil 时退回默认客户端）
 	clientFactory *network.ClientFactory
+	// 预载落缓存（WarmTranslation）的 single-flight 表：key = entryID|可读|语言。
+	// 没有它，预载滚动路过同一条目会重复翻好几遍（每遍都是真金白银的模型/通道调用）。
+	warmMu       sync.Mutex
+	warmInFlight map[string]struct{}
 }
 
 // NewAIService creates a new AI service.
@@ -332,6 +341,76 @@ func (s *aiService) ModelName(ctx context.Context) string {
 		return ""
 	}
 	return cfg.Model
+}
+
+// WarmTranslation 只把译文算出来落缓存，不向客户端推送（50-1）。
+//
+// 为什么要有它：预载原来直接用流式接口，而 SSE 是长连接 —— 浏览器对同源 HTTP/1.1
+// 只给 6 条并发（判定实验：开到第 6 条时 /api/settings/ai 卡了 45.6 秒）。预载各占
+// 一条、又因为是慢通道（有道逐段串行）迟迟不结束，结果设置页与其他条目全部排队。
+//
+// 现在预载只调它：立刻返回（202），译文在后台算，算完落进翻译缓存；
+// 用户真点开时流式接口命中缓存直接返回，正文仍然只占 1 条连接。
+//
+// 同一 (条目, 可读模式, 语言) 同时只允许一个后台任务（single-flight），
+// 否则预载滚动路过同一条目会重复翻好几遍。
+func (s *aiService) WarmTranslation(ctx context.Context, entryID int64, content, title string, isReadability bool) (bool, error) {
+	language := s.GetSummaryLanguage(ctx)
+
+	// 已经翻好了就直接说 cached，不起任务
+	if cached, err := s.translationRepo.Get(ctx, entryID, isReadability, language); err == nil && cached != nil && cached.Content != "" {
+		return true, nil
+	}
+
+	key := fmt.Sprintf("%d|%t|%s", entryID, isReadability, language)
+
+	s.warmMu.Lock()
+	if s.warmInFlight == nil {
+		s.warmInFlight = make(map[string]struct{})
+	}
+	if _, running := s.warmInFlight[key]; running {
+		s.warmMu.Unlock()
+		return false, nil // 已经在算了，别重复起
+	}
+	s.warmInFlight[key] = struct{}{}
+	s.warmMu.Unlock()
+
+	go func() {
+		defer func() {
+			s.warmMu.Lock()
+			delete(s.warmInFlight, key)
+			s.warmMu.Unlock()
+		}()
+
+		// 用 background ctx：预载是「用户没在看」的活，不该随那次 HTTP 请求结束被取消
+		ctx := context.Background()
+		_, resultCh, errCh, err := s.TranslateBlocks(ctx, entryID, content, title, isReadability)
+		if err != nil {
+			logger.Warn("ai warm translate start failed", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", entryID, "error", err)
+			return
+		}
+		// 把结果流抽干 —— TranslateBlocks 在「无错」时自己会把整篇落缓存，
+		// 这里只是等它跑完，不转发给任何人。
+		for resultCh != nil || errCh != nil {
+			select {
+			case _, ok := <-resultCh:
+				if !ok {
+					resultCh = nil
+				}
+			case err, ok := <-errCh:
+				if !ok {
+					errCh = nil
+					continue
+				}
+				if err != nil {
+					logger.Warn("ai warm translate block failed", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", entryID, "error", err)
+				}
+			}
+		}
+		logger.Info("ai warm translate finished", "module", "service", "action", "translate", "resource", "ai", "result", "ok", "entry_id", entryID)
+	}()
+
+	return false, nil
 }
 
 func (s *aiService) GetCachedTranslation(ctx context.Context, entryID int64, isReadability bool) (*model.AITranslation, error) {

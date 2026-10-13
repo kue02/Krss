@@ -1145,28 +1145,70 @@ function isTranslateError(event: TranslateEvent): event is TranslateError {
   return "error" in event;
 }
 
+/**
+ * 50-1：翻译流是**长连接**，而浏览器对同源 HTTP/1.1 只给 6 条并发。
+ * 判定实验（隔离栈实测）：同时开着 5 条翻译流时 /api/settings/ai 还要 35ms，
+ * 开到**第 6 条直接卡 45,630ms** —— 设置页与列表里其他条目全被堵在门外。
+ * 所以除了「预载改走 warm 不占连接」，这里再加一道闸门兜底：
+ * 任何时刻最多 2 条翻译流（正文 1 条 + 列表批次 1 条），其余排队。
+ */
+const MAX_CONCURRENT_TRANSLATE_STREAMS = 2;
+let activeTranslateStreams = 0;
+const translateStreamWaiters: Array<() => void> = [];
+
+async function acquireTranslateStreamSlot(): Promise<() => void> {
+  if (activeTranslateStreams >= MAX_CONCURRENT_TRANSLATE_STREAMS) {
+    await new Promise<void>((resolve) => translateStreamWaiters.push(resolve));
+  }
+  activeTranslateStreams += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    activeTranslateStreams -= 1;
+    translateStreamWaiters.shift()?.();
+  };
+}
+
+/** 预载用：让后端把译文算好落缓存，**立即返回**（202），不占客户端长连接。 */
+export async function warmTranslate(req: TranslateRequest): Promise<boolean> {
+  const response = await fetchWithAuth(`${API_BASE_URL}/api/ai/translate/warm`, {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+  // 200 = 本来就翻好了；202 = 已起后台任务。两种都算「预载已交代出去」
+  return response.ok;
+}
+
 export async function* streamTranslateBlocks(
   req: TranslateRequest,
   signal?: AbortSignal,
 ): AsyncGenerator<TranslateEvent | { cached: true; content: string }> {
-  const url = `${API_BASE_URL}/api/ai/translate`;
-  const response = await fetchWithAuth(url, {
-    method: "POST",
-    body: JSON.stringify(req),
-    signal,
-  });
+  const releaseSlot = await acquireTranslateStreamSlot();
+  try {
+    const url = `${API_BASE_URL}/api/ai/translate`;
+    const response = await fetchWithAuth(url, {
+      method: "POST",
+      body: JSON.stringify(req),
+      signal,
+    });
 
-  const contentType = response.headers.get("Content-Type") ?? "";
+    const contentType = response.headers.get("Content-Type") ?? "";
 
-  // Cached response returns JSON
-  if (contentType.includes("application/json")) {
-    const data = (await response.json()) as TranslateResponse;
-    yield { cached: true, content: data.content };
-    return;
+    // Cached response returns JSON
+    if (contentType.includes("application/json")) {
+      const data = (await response.json()) as TranslateResponse;
+      yield { cached: true, content: data.content };
+      return;
+    }
+
+    // SSE stream
+    yield* readSSEEvents<TranslateEvent>(response);
+  } finally {
+    // 成功 / 报错 / 被 abort（调用方 break 会触发 return()）都要放行，
+    // 否则一次意外会让后续所有翻译永远排在队里
+    releaseSlot();
   }
-
-  // SSE stream
-  yield* readSSEEvents<TranslateEvent>(response);
 }
 
 // Re-export type guards for use in components
