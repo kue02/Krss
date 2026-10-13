@@ -144,8 +144,8 @@ func (s *aiService) GetCachedSummary(ctx context.Context, entryID int64, isReada
 }
 
 func (s *aiService) Summarize(ctx context.Context, entryID int64, content, title string, isReadability bool) (<-chan string, <-chan error, error) {
-	// Get AI configuration
-	cfg, err := s.getAIConfig(ctx)
+	// Get AI configuration（50 批 1.2：摘要场景可用单独的提供商配置）
+	cfg, err := s.getAIConfigForScene(ctx, SceneSummary)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -274,6 +274,45 @@ func (s *aiService) GetSummaryLanguage(ctx context.Context) string {
 }
 
 func (s *aiService) getAIConfig(ctx context.Context) (ai.Config, error) {
+	return s.getAIConfigForScene(ctx, SceneDefault)
+}
+
+// AIScene AI 的使用场景（50 批 1.2 分场景模型）：各场景可单独指定用哪份提供商配置。
+type AIScene string
+
+const (
+	// SceneDefault 跟随「当前使用」的那份提供商（= 旧行为，也是所有场景键未配置时的兜底）。
+	SceneDefault AIScene = ""
+	// SceneTranslate 翻译（块翻译 / 列表翻译 / 预载）。
+	SceneTranslate AIScene = "translate"
+	// SceneSummary 摘要。
+	SceneSummary AIScene = "summary"
+	// SceneAutomation 自动化：AI 条件判定 + 用文字创建规则（后端同一个 Complete()）。
+	SceneAutomation AIScene = "automation"
+)
+
+// sceneSettingKey 场景 → settings KV 键。
+func sceneSettingKey(scene AIScene) string {
+	switch scene {
+	case SceneTranslate:
+		return "ai.scene_translate"
+	case SceneSummary:
+		return "ai.scene_summary"
+	case SceneAutomation:
+		return "ai.scene_automation"
+	default:
+		return ""
+	}
+}
+
+// getAIConfigForScene 按场景取 AI 配置：
+//   - 场景键为空（或解析不出）→ 平铺字段（当前使用的那份），与旧行为一致；
+//   - "free" → 免费翻译通道场景专用：返回空 Config，调用方按「免费通道可用」处理
+//     （实际走不走免费通道仍由 getFreeTranslateChannel 决定，这里只是不再要求配模型）；
+//   - "provider:<id>" → 用已保存清单里那一份的 provider/base_url/model/api_key/request_options。
+//
+// 实现上只是把平铺字段换掉，`ai.request_options` 等读取逻辑保持一份。
+func (s *aiService) getAIConfigForScene(ctx context.Context, scene AIScene) (ai.Config, error) {
 	var cfg ai.Config
 
 	// Batch fetch all ai.* settings in a single query
@@ -317,13 +356,58 @@ func (s *aiService) getAIConfig(ctx context.Context) (ai.Config, error) {
 		cfg.RequestOptions = requestOptions
 	}
 
+	// 场景覆盖（50 批 1.2）：在平铺配置解析完之后换掉指定字段。
+	// 键缺失/为空/解析不出都按「跟随当前使用」处理 —— 老库零变化。
+	key := sceneSettingKey(scene)
+	if key == "" {
+		return cfg, nil
+	}
+	override := settingsMap[key]
+	if override == "" || override == "free" {
+		// free：翻译场景走免费通道时调用方根本不会用这份配置；
+		// 摘要/自动化不该出现 free（保存侧已拦），真出现就按跟随处理。
+		return cfg, nil
+	}
+	if after, ok := strings.CutPrefix(override, "provider:"); ok {
+		id := strings.TrimSpace(after)
+		if id == "" {
+			return cfg, nil
+		}
+		raw := settingsMap["ai.providers"]
+		if raw == "" {
+			return cfg, nil
+		}
+		var saved []AIProviderConfig
+		if err := json.Unmarshal([]byte(raw), &saved); err != nil {
+			// 坏 JSON 当「没配」：退回跟随，别让整条翻译/摘要挂掉
+			return cfg, nil
+		}
+		for _, item := range saved {
+			if item.ID != id || item.Provider == "" {
+				continue
+			}
+			cfg.Provider = item.Provider
+			cfg.APIKey = item.APIKey
+			cfg.BaseURL = item.BaseURL
+			cfg.Model = item.Model
+			if item.RequestOptions != nil {
+				cfg.RequestOptions = item.RequestOptions
+			}
+			if cfg.Model == "" {
+				return cfg, fmt.Errorf("AI model is not configured for provider %q", item.Name)
+			}
+			return cfg, nil
+		}
+		// 清单里没有这个 id（提供商被删了）：按跟随处理，宁可用主模型也别直接失败
+		return cfg, nil
+	}
 	return cfg, nil
 }
 
 // Complete 实现过滤器侧的 AICompleter：给「AI 条件判定」与「自然语言建规则」一段补全能力。
 // 不流式、不进摘要/翻译缓存 —— 调用方自己管结果。
 func (s *aiService) Complete(ctx context.Context, systemPrompt, content string) (string, error) {
-	cfg, err := s.getAIConfig(ctx)
+	cfg, err := s.getAIConfigForScene(ctx, SceneAutomation)
 	if err != nil {
 		return "", err
 	}
@@ -334,9 +418,9 @@ func (s *aiService) Complete(ctx context.Context, systemPrompt, content string) 
 	return provider.Complete(ctx, systemPrompt, content)
 }
 
-// ModelName 当前配置的模型名（写进规则判定缓存，便于解释「这条是谁判的」）。
+// ModelName 当前场景配置的模型名（写进规则判定缓存，便于解释「这条是谁判的」）。
 func (s *aiService) ModelName(ctx context.Context) string {
-	cfg, err := s.getAIConfig(ctx)
+	cfg, err := s.getAIConfigForScene(ctx, SceneAutomation)
 	if err != nil {
 		return ""
 	}
@@ -458,11 +542,19 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 		}
 	}
 
-	// Get AI configuration
-	cfg, err := s.getAIConfig(ctx)
+	// Get AI configuration（50 批 1.2：翻译场景可用单独的提供商配置）
+	cfg, err := s.getAIConfigForScene(ctx, SceneTranslate)
 	if err != nil {
-		logger.Warn("ai translate get config failed", "module", "service", "action", "fetch", "resource", "ai", "result", "failed", "entry_id", entryID, "error", err)
-		return nil, nil, nil, err
+		// 50 批 1.2：翻译场景可以单独选「免费通道」。免费通道不需要 key/模型 ——
+		// 只要当前真的配了免费通道，配置缺失就不再是致命错误（每个块自己走免费翻，
+		// 失败了才需要模型兜底，那时 cfg 为空会按「没有模型可兜底」真报错）。
+		if ai.IsFreeTranslateChannel(s.getFreeTranslateChannel(ctx)) {
+			logger.Warn("ai translate scene has no model config, relying on free channel", "module", "service", "action", "translate", "resource", "ai", "result", "degraded", "entry_id", entryID, "error", err)
+			cfg = ai.Config{}
+		} else {
+			logger.Warn("ai translate get config failed", "module", "service", "action", "fetch", "resource", "ai", "result", "failed", "entry_id", entryID, "error", err)
+			return nil, nil, nil, err
+		}
 	}
 
 	// Get language setting
@@ -723,7 +815,7 @@ func (s *aiService) TranslateBatch(ctx context.Context, articles []BatchArticleI
 	}
 
 	if needsTranslation {
-		cfg, err = s.getAIConfig(ctx)
+		cfg, err = s.getAIConfigForScene(ctx, SceneTranslate)
 		if err != nil {
 			logger.Warn("ai batch translate get config failed", "module", "service", "action", "fetch", "resource", "ai", "result", "failed", "error", err)
 			return nil, nil, err

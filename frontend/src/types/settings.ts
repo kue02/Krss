@@ -32,6 +32,10 @@ export interface AISettings {
   /** 已保存的提供商列表；上面的 provider/apiKey/... 始终等于当前使用的那一份 */
   providers?: AIProviderConfig[];
   activeProviderId?: string;
+  /** 分场景模型覆盖（50 批 1.2）：空 = 跟随当前使用；provider:<id> = 用已保存的那份；free = 免费通道（仅翻译） */
+  sceneTranslate?: string;
+  sceneSummary?: string;
+  sceneAutomation?: string;
 }
 
 export interface AITestRequest {
@@ -72,6 +76,8 @@ export interface NetworkSettings {
   username: string;
   password: string;
   ipStack: IPStack;
+  /** 全局代理模式（50 批 2.2）：proxy = 全走代理（旧行为，默认）；smart = 先直连不通再代理 + 按域记忆 */
+  mode: "proxy" | "smart";
 }
 
 export interface NetworkTestRequest {

@@ -719,6 +719,10 @@ func (s *settingsServiceStub) SetNetworkSettings(ctx context.Context, settings *
 	return nil
 }
 
+func (s *settingsServiceStub) GetNetworkSettingsMode(_ context.Context) string {
+	return "proxy"
+}
+
 func (s *settingsServiceStub) GetProxyURL(ctx context.Context) string {
 	return s.proxyURL
 }

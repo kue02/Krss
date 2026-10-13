@@ -32,6 +32,10 @@ type aiSettingsResponse struct {
 	FallbackToModel  bool                       `json:"fallbackToModel"`
 	Providers        []service.AIProviderConfig `json:"providers"`
 	ActiveProviderID string                     `json:"activeProviderId"`
+	// 分场景模型覆盖（50 批 1.2）：空 = 跟随当前使用；provider:<id> / free（仅翻译）
+	SceneTranslate  string                     `json:"sceneTranslate"`
+	SceneSummary    string                     `json:"sceneSummary"`
+	SceneAutomation string                     `json:"sceneAutomation"`
 }
 
 type aiSettingsRequest struct {
@@ -50,6 +54,10 @@ type aiSettingsRequest struct {
 	FallbackToModel  bool                       `json:"fallbackToModel"`
 	Providers        []service.AIProviderConfig `json:"providers"`
 	ActiveProviderID string                     `json:"activeProviderId"`
+	// 分场景模型覆盖（50 批 1.2）：空 = 跟随当前使用；provider:<id> / free（仅翻译）
+	SceneTranslate  string                     `json:"sceneTranslate"`
+	SceneSummary    string                     `json:"sceneSummary"`
+	SceneAutomation string                     `json:"sceneAutomation"`
 }
 
 type aiTestRequest struct {
@@ -94,6 +102,8 @@ type networkSettingsResponse struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 	IPStack  string `json:"ipStack"`
+	// Mode 全局代理模式（50 批 2.2）：proxy（默认/旧行为）| smart（先直连不通再代理 + 按域记忆）
+	Mode string `json:"mode"`
 }
 
 type networkSettingsRequest struct {
@@ -104,6 +114,8 @@ type networkSettingsRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 	IPStack  string `json:"ipStack"`
+	// Mode 全局代理模式（50 批 2.2）：proxy（默认/旧行为）| smart（先直连不通再代理 + 按域记忆）
+	Mode string `json:"mode"`
 }
 
 type networkTestRequest struct {
@@ -264,6 +276,10 @@ func (h *SettingsHandler) GetAISettings(c echo.Context) error {
 
 		Providers:        settings.Providers,
 		ActiveProviderID: settings.ActiveProviderID,
+
+		SceneTranslate:   settings.SceneTranslate,
+		SceneSummary:     settings.SceneSummary,
+		SceneAutomation:  settings.SceneAutomation,
 	})
 }
 
@@ -310,6 +326,9 @@ func (h *SettingsHandler) UpdateAISettings(c echo.Context) error {
 		AutoSummary:      req.AutoSummary,
 		RateLimit:        req.RateLimit,
 		TranslateChannel: req.TranslateChannel,
+		SceneTranslate:   req.SceneTranslate,
+		SceneSummary:     req.SceneSummary,
+		SceneAutomation:  req.SceneAutomation,
 		FallbackToModel:  req.FallbackToModel,
 
 		Providers:        req.Providers,
@@ -564,6 +583,7 @@ func (h *SettingsHandler) GetNetworkSettings(c echo.Context) error {
 		Username: settings.Username,
 		Password: settings.Password,
 		IPStack:  settings.IPStack,
+		Mode:     settings.Mode,
 	})
 }
 
@@ -592,6 +612,7 @@ func (h *SettingsHandler) UpdateNetworkSettings(c echo.Context) error {
 		Username: req.Username,
 		Password: req.Password,
 		IPStack:  req.IPStack,
+		Mode:     req.Mode,
 	}
 
 	if err := h.service.SetNetworkSettings(c.Request().Context(), settings); err != nil {
