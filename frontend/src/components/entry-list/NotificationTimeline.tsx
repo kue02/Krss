@@ -8,6 +8,10 @@ import {
   TIMELINE_ROW_ESTIMATE_PX,
   useTimelineBatchMount,
 } from "./timeline-mount-batch";
+import {
+  type MeasureRetryRegistrar,
+  useMeasureRetryHub,
+} from "./timeline-measure-retry";
 import { stripHtml } from "@/lib/html-utils";
 import { FeedIcon } from "@/components/ui/feed-icon";
 import { useEntrySourceJump } from "./entry-source-jump";
@@ -178,6 +182,12 @@ interface TimelineCardProps {
   autoExpandLongEntry?: boolean;
   /** 把预览正文的自然高度上报给父级（= 不钳制时的渲染高度，长贴判据用） */
   onNaturalHeightChange?: (entryId: string, height: number) => void;
+  /**
+   * 把「400ms 后复测一次」注册进**父级共享的那一个**定时器（perf）。
+   * 返回值是注销函数，卡片的卸载 effect 直接把它当 cleanup 用。
+   * 身份必须稳定（父级 `useCallback` 空依赖），否则每张卡每次渲染都会重新量一遍。
+   */
+  registerMeasureRetry: MeasureRetryRegistrar;
   onToggleExpand: (entryId: string) => void;
   onSelect: (entryId: string) => void;
   /** 52-4：点源名/图标 → 第一栏选中该订阅 */
@@ -217,6 +227,7 @@ const TimelineCard = memo(function TimelineCard({
   onHoverLeave,
   autoExpandLongEntry = false,
   onNaturalHeightChange,
+  registerMeasureRetry,
   onToggleExpand,
   onSelect,
   onSelectFeedFromEntry,
@@ -267,18 +278,26 @@ const TimelineCard = memo(function TimelineCard({
   // 另把自然高度（= 不钳制时的渲染高度）上报给父级：父级拿它判「长贴」（> 300px），
   // 口径与社交视图的 scrollHeight > 300 + 8 等价 —— 读的是同一段预览 DOM 的 scrollHeight，
   // 不摘 clamp、不改视觉、不挂常驻 observer（只量两次）。
+  //
+  // perf：复测**不再**由卡片自己 `setTimeout(400)`。50 张卡 × 两处 = 100 个独立宏任务，
+  // 每个回调都读一次 scrollHeight 强制布局（真机 tracing TimerFire 合计 1017ms）。
+  // 现在把回调注册进父级共享的那一个定时器（`registerMeasureRetry`），卸载时摘掉。
   useEffect(() => {
     // 29-1：悬停档下卡片里没有正文预览，不量自然高度、不判截断（不生效且不报错）
     if (bodyOnHover) return undefined;
     const node2 = bodyRef.current;
-    if (onNaturalHeightChange) {
-      const report = () => onNaturalHeightChange(entry.id, node2?.scrollHeight ?? 0);
-      report();
-      const retry = setTimeout(report, 400);
-      return () => clearTimeout(retry);
-    }
-    return undefined;
-  }, [entry.id, previewText, clampLines, onNaturalHeightChange, bodyOnHover]);
+    if (!onNaturalHeightChange) return undefined;
+    const report = () => onNaturalHeightChange(entry.id, node2?.scrollHeight ?? 0);
+    report();
+    return registerMeasureRetry(report);
+  }, [
+    entry.id,
+    previewText,
+    clampLines,
+    onNaturalHeightChange,
+    bodyOnHover,
+    registerMeasureRetry,
+  ]);
   useEffect(() => {
     // 29-1：悬停档下卡片里没有正文预览，不判截断
     if (bodyOnHover) return undefined;
@@ -290,9 +309,14 @@ const TimelineCard = memo(function TimelineCard({
     }
     const measure = () => setIsClipped(node2.scrollHeight > node2.clientHeight + 1);
     measure();
-    const retry = setTimeout(measure, 400);
-    return () => clearTimeout(retry);
-  }, [previewText, clampLines, autoExpandLongEntry, bodyOnHover]);
+    return registerMeasureRetry(measure);
+  }, [
+    previewText,
+    clampLines,
+    autoExpandLongEntry,
+    bodyOnHover,
+    registerMeasureRetry,
+  ]);
 
   const effectiveClampLines = autoExpandLongEntry ? null : clampLines;
   const canExpand = effectiveClampLines !== null;
@@ -753,6 +777,13 @@ export function NotificationTimeline({
     },
     [cancelNaturalHeightFlush],
   );
+  /**
+   * 复测排程位（perf）：50 张卡 × 两处复测 = 100 个独立宏任务（真机 tracing
+   * TimerFire + TimerBase.run 合计 1017ms，每个回调读一次 scrollHeight 强制布局）。
+   * 现在卡片只把回调注册进来，**全表最多一个** `setTimeout`（详见该模块的注释）。
+   * 空依赖 ⇒ 身份永远不变，卡片不会因为父级重渲染而重新量一遍。
+   */
+  const registerMeasureRetry = useMeasureRetryHub();
   /** 26-2：时间基准（缺值一律回发布时间 = 现状） */
   const basis = resolveTimelineTimeBasis(timeBasis);
 
@@ -1329,6 +1360,7 @@ export function NotificationTimeline({
             clampLines={clampLines}
             autoExpandLongEntry={hoverMode ? false : isAutoExpanded(entry.id)}
             onNaturalHeightChange={hoverMode ? undefined : handleNaturalHeightChange}
+            registerMeasureRetry={registerMeasureRetry}
             expanded={
               hoverMode
                 ? false
