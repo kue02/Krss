@@ -124,16 +124,17 @@ func (s *entryService) List(ctx context.Context, params EntryListParams) ([]mode
 	}
 
 	filter := repository.EntryListFilter{
-		FeedID:       params.FeedID,
-		FolderID:     params.FolderID,
-		ContentType:  params.ContentType,
-		UnreadOnly:   params.UnreadOnly,
-		StarredOnly:  params.StarredOnly,
-		HasThumbnail: params.HasThumbnail,
-		IncludeMuted: params.IncludeMuted,
-		MutedOnly:    params.MutedOnly,
-		Limit:        limit,
-		Offset:       params.Offset,
+		FeedID:          params.FeedID,
+		FolderID:        params.FolderID,
+		ContentType:     params.ContentType,
+		UnreadOnly:      params.UnreadOnly,
+		StarredOnly:     params.StarredOnly,
+		HasThumbnail:    params.HasThumbnail,
+		IncludeMuted:    params.IncludeMuted,
+		MutedOnly:       params.MutedOnly,
+		Limit:           limit,
+		Offset:          params.Offset,
+		ContentTruncate: repository.ListContentTruncate,
 	}
 
 	entries, err := s.entries.List(ctx, filter)
@@ -167,13 +168,14 @@ func (s *entryService) listByView(ctx context.Context, viewID int64, params Entr
 
 	// 视图的作用域覆盖列表里的 feedId/folderId；其余筛选参数继续生效
 	scope := repository.EntryListFilter{
-		ContentType:  params.ContentType,
-		UnreadOnly:   params.UnreadOnly,
-		StarredOnly:  params.StarredOnly,
-		HasThumbnail: params.HasThumbnail,
-		IncludeMuted: params.IncludeMuted,
-		MutedOnly:    params.MutedOnly,
-		Limit:        viewScanLimit,
+		ContentType:     params.ContentType,
+		UnreadOnly:      params.UnreadOnly,
+		StarredOnly:     params.StarredOnly,
+		HasThumbnail:    params.HasThumbnail,
+		IncludeMuted:    params.IncludeMuted,
+		MutedOnly:       params.MutedOnly,
+		Limit:           viewScanLimit,
+		ContentTruncate: repository.ListContentTruncate,
 	}
 	switch view.ScopeType {
 	case model.FilterScopeFeed:

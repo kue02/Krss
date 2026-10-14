@@ -391,6 +391,8 @@ func (s *filterService) CountViewMatches(ctx context.Context, contentType *strin
 	candidates, err := s.entries.List(ctx, repository.EntryListFilter{
 		ContentType: contentType,
 		Limit:       viewCountScanLimit,
+		// 计数要拿全文做条件求值（ContentTruncate=0），readable_content 省掉（buildEntryContext 不用它）。
+		ContentTruncate: 0,
 	})
 	if err != nil {
 		return nil, err
