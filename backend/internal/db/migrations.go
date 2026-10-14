@@ -567,6 +567,18 @@ func runMigrations(db *sql.DB) error {
 		return fmt.Errorf("create proxy_domain_memory table: %w", err)
 	}
 
+	// Migration 30: 列表/搜索性能 —— ORDER BY published_at DESC, id DESC 的排序索引。
+	// List/Search 主查询都按 (published_at DESC, id DESC) 排序分页；此前无覆盖索引，
+	// 全表扫 + TEMP B-TREE 排序（limit=50 也要拖全文 content/readable_content）。
+	// 本迁移只加索引（CREATE IF NOT EXISTS，老库零风险）；content 截断见 EntryListFilter.ContentTruncate。
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_entries_published ON entries(published_at DESC, id DESC)`); err != nil {
+		return fmt.Errorf("create idx_entries_published: %w", err)
+	}
+	// 单订阅列表（WHERE feed_id=? + 同上排序）：左前缀命中 feed_id 且行内有序，SEARCH 直出、无 TEMP B-TREE。
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_entries_feed_published ON entries(feed_id, published_at DESC, id DESC)`); err != nil {
+		return fmt.Errorf("create idx_entries_feed_published: %w", err)
+	}
+
 	return nil
 }
 

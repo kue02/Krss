@@ -32,14 +32,15 @@ func TestEntryService_List_Success(t *testing.T) {
 
 	mockEntries.EXPECT().
 		List(ctx, repository.EntryListFilter{
-			FeedID:       nil,
-			FolderID:     nil,
-			ContentType:  nil,
-			UnreadOnly:   false,
-			StarredOnly:  false,
-			HasThumbnail: false,
-			Limit:        50,
-			Offset:       0,
+			FeedID:          nil,
+			FolderID:        nil,
+			ContentType:     nil,
+			UnreadOnly:      false,
+			StarredOnly:     false,
+			HasThumbnail:    false,
+			Limit:           50,
+			Offset:          0,
+			ContentTruncate: repository.ListContentTruncate,
 		}).
 		Return(expectedEntries, nil)
 
@@ -66,14 +67,15 @@ func TestEntryService_List_WithFeedID(t *testing.T) {
 
 	mockEntries.EXPECT().
 		List(ctx, repository.EntryListFilter{
-			FeedID:       &feedID,
-			FolderID:     nil,
-			ContentType:  nil,
-			UnreadOnly:   false,
-			StarredOnly:  false,
-			HasThumbnail: false,
-			Limit:        50,
-			Offset:       0,
+			FeedID:          &feedID,
+			FolderID:        nil,
+			ContentType:     nil,
+			UnreadOnly:      false,
+			StarredOnly:     false,
+			HasThumbnail:    false,
+			Limit:           50,
+			Offset:          0,
+			ContentTruncate: repository.ListContentTruncate,
 		}).
 		Return([]model.Entry{}, nil)
 
@@ -134,8 +136,9 @@ func TestEntryService_List_LimitClamp(t *testing.T) {
 	// Limit > 101 should be clamped to 101
 	mockEntries.EXPECT().
 		List(ctx, repository.EntryListFilter{
-			Limit:  101,
-			Offset: 0,
+			Limit:           101,
+			Offset:          0,
+			ContentTruncate: repository.ListContentTruncate,
 		}).
 		Return([]model.Entry{}, nil)
 
@@ -156,8 +159,9 @@ func TestEntryService_List_DefaultLimit(t *testing.T) {
 	// Limit <= 0 should default to 50
 	mockEntries.EXPECT().
 		List(ctx, repository.EntryListFilter{
-			Limit:  50,
-			Offset: 0,
+			Limit:           50,
+			Offset:          0,
+			ContentTruncate: repository.ListContentTruncate,
 		}).
 		Return([]model.Entry{}, nil)
 
@@ -200,8 +204,9 @@ func TestEntryService_List_RepositoryError(t *testing.T) {
 
 	mockEntries.EXPECT().
 		List(ctx, repository.EntryListFilter{
-			Limit:  50,
-			Offset: 0,
+			Limit:           50,
+			Offset:          0,
+			ContentTruncate: repository.ListContentTruncate,
 		}).
 		Return(nil, dbErr)
 
@@ -663,14 +668,15 @@ func TestEntryService_List_WithFilters(t *testing.T) {
 
 	mockEntries.EXPECT().
 		List(ctx, repository.EntryListFilter{
-			FeedID:       nil,
-			FolderID:     nil,
-			ContentType:  &contentType,
-			UnreadOnly:   true,
-			StarredOnly:  false,
-			HasThumbnail: true,
-			Limit:        20,
-			Offset:       10,
+			FeedID:          nil,
+			FolderID:        nil,
+			ContentType:     &contentType,
+			UnreadOnly:      true,
+			StarredOnly:     false,
+			HasThumbnail:    true,
+			Limit:           20,
+			Offset:          10,
+			ContentTruncate: repository.ListContentTruncate,
 		}).
 		Return([]model.Entry{}, nil)
 
