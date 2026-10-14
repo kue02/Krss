@@ -578,6 +578,16 @@ func runMigrations(db *sql.DB) error {
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_entries_feed_published ON entries(feed_id, published_at DESC, id DESC)`); err != nil {
 		return fmt.Errorf("create idx_entries_feed_published: %w", err)
 	}
+	// 未读计数（WHERE read=0 GROUP BY feed_id）：(read, feed_id) 让查询变 COVERING INDEX、无需回表。
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_entries_read_feed ON entries(read, feed_id)`); err != nil {
+		return fmt.Errorf("create idx_entries_read_feed: %w", err)
+	}
+	// 未读默认列表（WHERE read=0 AND muted=0 ORDER BY published_at DESC, id DESC）：
+	// 副本 EXPLAIN 验证：无此索引时 SCAN entries USING INDEX idx_entries_published（全索引扫+逐行过滤）；
+	// 加后 SEARCH ... USING INDEX (read=? AND muted=?)，行内已有序、无 TEMP B-TREE。
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_entries_unread_published ON entries(read, muted, published_at DESC, id DESC)`); err != nil {
+		return fmt.Errorf("create idx_entries_unread_published: %w", err)
+	}
 
 	return nil
 }
