@@ -1,7 +1,9 @@
 import { useCallback, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
 import { parseRoute, buildPath } from "@/lib/router";
 import { useUISettingKey, setUISetting } from "@/hooks/useUISettings";
+import { getEntry } from "@/api";
 import type { ContentType } from "@/types/api";
 
 export type SelectionType =
@@ -41,6 +43,7 @@ interface UseSelectionReturn {
 export function useSelection(): UseSelectionReturn {
   const [location, navigate] = useLocation();
   const search = useSearch();
+  const queryClient = useQueryClient();
 
   /**
    * 47-1（用户 2026-10-12）：地址栏没带 `?unread` 时用「记住的那一档」——
@@ -176,6 +179,14 @@ export function useSelection(): UseSelectionReturn {
 
   const selectEntry = useCallback(
     (entryId: string | null, options?: NavigateOptions) => {
+      if (entryId !== null) {
+        queryClient
+          .prefetchQuery({
+            queryKey: ["entry", entryId],
+            queryFn: () => getEntry(entryId),
+          })
+          .catch(() => {});
+      }
       navigate(
         buildPath(
           routeState.selection,
@@ -188,6 +199,7 @@ export function useSelection(): UseSelectionReturn {
     },
     [
       navigate,
+      queryClient,
       routeState.selection,
       routeState.unreadOnly,
       routeState.contentType,
