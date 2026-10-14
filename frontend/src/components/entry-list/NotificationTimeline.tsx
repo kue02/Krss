@@ -676,15 +676,90 @@ export function NotificationTimeline({
    *     （对齐社交视图的图片异步复测），没有常驻 ResizeObserver，不影响滚动。
    */
   const [naturalHeights, setNaturalHeights] = useState<Record<string, number>>({});
+  /**
+   * 合批（性能）：卡片的上报先进这个待处理 Map，**不**立刻 setState。
+   *
+   * 真机长任务：一次挂 50 张卡，每张上报一次 scrollHeight 就 `setNaturalHeights` 一轮
+   * → 整棵时间线跟着重渲染（切换视图时 @641ms 之后那一串长任务的来源）。上报现在有两
+   * 个出口把它折成**一次** setState：
+   *   1. 下面那个「每轮 commit 的 effect 阶段末尾」的 flush —— React 跑 passive effect
+   *      是**子先父后**，同一批挂载/更新的所有上报都先落进 Map，父级 effect 随后一次性
+   *      flush，所以挂载路径与改前一样是同步生效的（展开结果不变）；
+   *   2. 卡片 400ms 复测那类「父级本轮不重渲染」的上报，排一帧 rAF 兜底（排程位防重复
+   *      排程），同一帧内的多条上报合并成一次 setState。
+   * flush 先比 diff，全等就返回原引用 → 不发渲染。长贴判据（> 300px）与展开/钳制/悬停/
+   * 多选的业务判据一律没动。
+   */
+  const pendingHeightsRef = useRef<Map<string, number> | null>(null);
+  const heightFlushFrameRef = useRef<number | null>(null);
+  const cancelNaturalHeightFlush = useCallback(() => {
+    if (heightFlushFrameRef.current === null) return;
+    if (typeof cancelAnimationFrame === "function") {
+      cancelAnimationFrame(heightFlushFrameRef.current);
+    } else {
+      window.clearTimeout(heightFlushFrameRef.current);
+    }
+    heightFlushFrameRef.current = null;
+  }, []);
+  const flushPendingNaturalHeights = useCallback(() => {
+    cancelNaturalHeightFlush();
+    const pending = pendingHeightsRef.current;
+    if (!pending || pending.size === 0) return;
+    pendingHeightsRef.current = null;
+    setNaturalHeights((current) => {
+      let changed = false;
+      pending.forEach((height, entryId) => {
+        if (current[entryId] !== height) changed = true;
+      });
+      if (!changed) return current;
+      const next = { ...current };
+      pending.forEach((height, entryId) => {
+        next[entryId] = height;
+      });
+      return next;
+    });
+  }, [cancelNaturalHeightFlush]);
   const handleNaturalHeightChange = useCallback(
     (entryId: string, height: number) => {
-      setNaturalHeights((current) =>
-        current[entryId] === height
-          ? current
-          : { ...current, [entryId]: height },
-      );
+      let pending = pendingHeightsRef.current;
+      if (!pending) {
+        pending = new Map();
+        pendingHeightsRef.current = pending;
+      }
+      pending.set(entryId, height);
+      // 帧内只排一次程；本轮 commit 的 effect 末尾先跑到了就地 flush 并取消排程
+      if (heightFlushFrameRef.current !== null) return;
+      if (typeof requestAnimationFrame === "function") {
+        heightFlushFrameRef.current = requestAnimationFrame(() => {
+          heightFlushFrameRef.current = null;
+          flushPendingNaturalHeights();
+        });
+      } else {
+        heightFlushFrameRef.current = window.setTimeout(
+          () => {
+            heightFlushFrameRef.current = null;
+            flushPendingNaturalHeights();
+          },
+          16,
+        );
+      }
     },
-    [],
+    [flushPendingNaturalHeights],
+  );
+  // 每轮 commit 的 effect 阶段末尾兜一次：挂载/更新那一批上报全在同一趟 effect 里落进
+  // Map（子先父后），这里一次性 flush —— 不必等 rAF，展开结果与改前同步生效。
+  useEffect(() => {
+    if (pendingHeightsRef.current && pendingHeightsRef.current.size > 0) {
+      flushPendingNaturalHeights();
+    }
+  });
+  // 卸载时取消还没跑的排程并丢掉待处理值，免得 setState 打在已卸载的树上
+  useEffect(
+    () => () => {
+      cancelNaturalHeightFlush();
+      pendingHeightsRef.current = null;
+    },
+    [cancelNaturalHeightFlush],
   );
   /** 26-2：时间基准（缺值一律回发布时间 = 现状） */
   const basis = resolveTimelineTimeBasis(timeBasis);
