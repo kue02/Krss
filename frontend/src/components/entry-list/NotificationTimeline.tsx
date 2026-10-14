@@ -4,10 +4,6 @@ import { ChevronDown, ChevronUp, Star } from "lucide-react";
 import { Ripple } from "m3-ripple";
 import { Chip } from "@heroui/react";
 import { cn } from "@/lib/utils";
-import {
-  TIMELINE_ROW_ESTIMATE_PX,
-  useTimelineBatchMount,
-} from "./timeline-mount-batch";
 import { stripHtml } from "@/lib/html-utils";
 import { FeedIcon } from "@/components/ui/feed-icon";
 import { useEntrySourceJump } from "./entry-source-jump";
@@ -1037,63 +1033,6 @@ export function NotificationTimeline({
     [displayRows],
   );
 
-  /**
-   * 分批挂载用的**内容行全局序号**（0 起，按 `displayRows` 顺序数，日期分隔行不占号）：
-   * 批次跨日期段，段内行号不能直接拿来切片；而日期行必须恒挂载（吸顶分段的作用域与
-   * 分批无关，砍掉半段会让 sticky 塌形），所以这里只给段带上「首行的全局序号」，
-   * 渲染层据此算「这一段里哪些行还没到挂载位」，日期行一律照挂。
-   */
-  const batchedSections = useMemo(() => {
-    let cursor = 0;
-    return sections.map((section) => {
-      const startIndex = cursor;
-      cursor += section.rows.length;
-      return { ...section, startIndex };
-    });
-  }, [sections]);
-  const totalContentRows = batchedSections.reduce(
-    (sum, section) => sum + section.rows.length,
-    0,
-  );
-
-  /**
-   * 选中条目在内容行里的序号（-1 = 没有选中 / 不在轴上）。
-   *
-   * 为什么分批挂载还必须知道它：`EntryList` 的键盘吸附（j/k、↑/↓）走
-   * `useEntryHotkeys` 的 `revealEntry` —— `document.querySelector("[data-entry-id]")` +
-   * `scrollIntoView`，DOM 里还没有这张卡就什么都找不到、什么都不会滚。所以选中行
-   * （含它之前的所有行）**就地夹进首批**，不等空闲排程，键盘沿轴移动不会空转。
-   */
-  const selectedContentIndex = useMemo(() => {
-    if (!selectedEntryId) return -1;
-    let cursor = 0;
-    for (const section of batchedSections) {
-      for (const row of section.rows) {
-        if (row.kind === "entry" && row.entry.id === selectedEntryId) return cursor;
-        cursor += 1;
-      }
-    }
-    return -1;
-  }, [batchedSections, selectedEntryId]);
-
-  /**
-   * 分批挂载（perf）：首屏只同步挂首批，其余行按波次补挂。详见 `timeline-mount-batch.ts`。
-   *
-   * 批次标识 = 粒度 + 时间基准 + 这批条目的 id 串：换订阅 / 换一批条目 / 换粒度基准
-   * 都会重置回首批；展开小节点插进来的新行不重置（它靠 `mountAllNow` 立刻补挂，
-   * 见 `toggleCluster`）。
-   */
-  const mountBatchKey = useMemo(
-    () =>
-      `${granularity}\u0000${basis}\u0000${entries.map((item) => item.id).join("\u0000")}`,
-    [granularity, basis, entries],
-  );
-  const { mountedRows, mountAllNow } = useTimelineBatchMount(
-    totalContentRows,
-    mountBatchKey,
-    selectedContentIndex + 1,
-  );
-
   /** 轴上的卡片（顺序即键盘吸附顺序） */
   const selectableEntries = useMemo(
     () =>
@@ -1113,20 +1052,14 @@ export function NotificationTimeline({
     onSelectableEntriesChange(selectableEntries);
   }, [onSelectableEntriesChange, selectableEntries]);
 
-  const toggleCluster = useCallback(
-    (key: string) => {
-      setExpandedClusters((current) => {
-        const next = new Set(current);
-        if (next.has(key)) next.delete(key);
-        else next.add(key);
-        return next;
-      });
-      // 展开小节点 = 当场往轴上插几张卡。它们落在还没补挂的区间里的话，
-      // 用户点完「什么都没有」—— 所以展开时把剩下的行立刻挂完（收回不需要）。
-      mountAllNow();
-    },
-    [mountAllNow],
-  );
+  const toggleCluster = useCallback((key: string) => {
+    setExpandedClusters((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
 
   /**
    * 33-2（用户 2026-09-26）：「把之前的通知视图的悬浮拿过来，放到吸顶那里，只有吸顶才会出现那个样式」。
@@ -1226,16 +1159,8 @@ export function NotificationTimeline({
         style={{ left: singleSide ? SINGLE_SIDE_TIME_COLUMN : "50%" }}
       />
 
-      {batchedSections.map((section) => {
+      {sections.map((section) => {
         const dateStuck = stuckDateKeys.includes(section.key);
-        /* 分批挂载：本段已获准挂载的行 = 全局挂载位减去段首序号（夹到段长）。
-           还没轮到的行不建 DOM，但**要留一份等高空位**（估算高度见
-           `TIMELINE_ROW_ESTIMATE_PX`），否则补挂时整段往上顶 = 滚动位置跳。 */
-        const mountedInSection = Math.min(
-          section.rows.length,
-          Math.max(0, mountedRows - section.startIndex),
-        );
-        const pendingInSection = section.rows.length - mountedInSection;
         return (
         /* 每段一层容器 = sticky 的作用域：本段滚完，日期行被段底边推走，下一段接替 */
         <div key={section.key} data-timeline-section={section.key} className="relative">
@@ -1276,9 +1201,7 @@ export function NotificationTimeline({
             </span>
           </div>
 
-          {/* 分批挂载：只渲染拿到挂载位的那几行（其余行由下面的等高空位占着）。
-              卡片本体、props、判据一律不动 —— 变的只是「这一轮渲染几行」。 */}
-          {section.rows.slice(0, mountedInSection).map((row) => {
+          {section.rows.map((row) => {
         const dotLeft = singleSide ? `${SINGLE_SIDE_TIME_COLUMN}px` : "50%";
         const isLeft = row.side === "left";
 
@@ -1415,16 +1338,6 @@ export function NotificationTimeline({
           </div>
         );
           })}
-          {/* 还没拿到挂载位的行：留一份等高空位（行估算高度 × 剩余行数）。
-              不占位的话补挂时整段往上顶 = 滚动条长度与滚动位置跳一下。
-              `aria-hidden` + 无内容：它不是卡片，也不参与任何选择/标已读的 DOM 查询。 */}
-          {pendingInSection > 0 ? (
-            <div
-              aria-hidden="true"
-              data-timeline-pending-rows={pendingInSection}
-              style={{ height: pendingInSection * TIMELINE_ROW_ESTIMATE_PX }}
-            />
-          ) : null}
         </div>
         );
       })}
