@@ -51,6 +51,7 @@ export function useEntry(id: string | null) {
     queryKey: ["entry", id],
     queryFn: () => getEntry(id!),
     enabled: id !== null,
+    staleTime: 60_000,
   });
 }
 
@@ -126,8 +127,7 @@ export function useMarkAsRead() {
     onSuccess: (_, { skipInvalidate }) => {
       // Always update unread counts immediately
       queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
-      // 已读/星标都是视图条件里会用到的字段，命中数要跟着刷新
-      queryClient.invalidateQueries({ queryKey: ["viewCounts"] });
+      // viewCounts 靠 useViewCounts 自带 120s 自动刷，这里不手动 invalidate
       // Only invalidate entries if not skipped (e.g., not in lightbox/detail view)
       if (!skipInvalidate) {
         queryClient.invalidateQueries({ queryKey: ["entries"] });
@@ -207,8 +207,7 @@ export function useMarkManyAsRead() {
 
     onSuccess: (_, { skipInvalidate }) => {
       queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
-      // 已读/星标都是视图条件里会用到的字段，命中数要跟着刷新
-      queryClient.invalidateQueries({ queryKey: ["viewCounts"] });
+      // viewCounts 靠 useViewCounts 自带 120s 自动刷，这里不手动 invalidate
       if (!skipInvalidate) {
         queryClient.invalidateQueries({ queryKey: ["entries"] });
       }
@@ -299,7 +298,7 @@ export function useMarkAsStarred() {
         return { ...old, starred };
       });
       queryClient.invalidateQueries({ queryKey: ["starredCount"] });
-      queryClient.invalidateQueries({ queryKey: ["viewCounts"] });
+      // viewCounts 靠 useViewCounts 自带 120s 自动刷，这里不手动 invalidate
       queryClient.invalidateQueries({ queryKey: ["entries"] });
     },
   });

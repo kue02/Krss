@@ -1151,7 +1151,12 @@ describe("EntryList translation scheduling", () => {
 
     render(<EntryList {...defaultProps} selectedEntryId={null} />);
 
-    expect(mockRenderedEntryListItem.mock.calls.map(([id]) => id)).toEqual([
+    // 虚拟化后内部 onChange 会触发一次重渲染（行数不变），所以不断渲染调用次数，
+    // 只断 DOM 里每条去重后出现一次。
+    const rows = screen
+      .getByTestId("entry-list-viewport")
+      .querySelectorAll("[data-entry-id]");
+    expect(Array.from(rows).map((row) => row.getAttribute("data-entry-id"))).toEqual([
       "1",
       "2",
       "3",

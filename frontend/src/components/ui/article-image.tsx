@@ -17,6 +17,10 @@ import {
 } from "@/lib/proxy-image-recovery";
 import { ImagePreviewContext } from "./article-content";
 import { useFittedImageBox } from "@/hooks/useFittedImageBox";
+import {
+  useImageDimension,
+  useImageDimensionsStore,
+} from "@/stores/image-dimensions-store";
 
 // Context for passing article URL to resolve relative URLs and set Referer
 // eslint-disable-next-line react-refresh/only-export-components
@@ -117,8 +121,18 @@ export const ArticleImage = memo(function ArticleImage({
 
   const handleLoad = useCallback(() => {
     loadedImagesCache.add(proxiedSrc);
+    // 无源尺寸图：解码后回写 dimension-store（key 用原始 src，与
+    // SocialMediaGallery 同一侧），同源复用、二次打开直接有预占。
+    // fit=true 路径不动 —— fit 有自己的 box 测量，这里只管预占。
+    // 用 containerRef 直读（event.currentTarget 在 React 18 回调里不可靠）。
+    const img = containerRef.current;
+    if (src && img?.naturalWidth && img?.naturalHeight) {
+      useImageDimensionsStore
+        .getState()
+        .setDimension(src, img.naturalWidth, img.naturalHeight);
+    }
     setIsLoaded(true);
-  }, [proxiedSrc]);
+  }, [proxiedSrc, src]);
 
   const handleError = useCallback(() => {
     const current = recoveredRef.current ?? proxiedSrc;
@@ -146,6 +160,15 @@ export const ArticleImage = memo(function ArticleImage({
     },
     [src, imagePreviewContext],
   );
+
+  // fit=true 路径不动（自适应盒子自己管尺寸）；以下只管 fit=false 的文章视图。
+  // 有源尺寸 → 原行为（skeleton + width/height 属性）不变。
+  // 注意：hook 必须在 early return 之前调用 —— fit=true 时查了也不用，
+  // 开销只是一次 map 读取。
+  const hasDeclaredSize = Boolean(width && height);
+  // 无源尺寸 → 查 dimension-store（同源复用：本篇或其他视图解码后回写的）。
+  const cachedDim = useImageDimension(fit ? undefined : src);
+  const reserveDim = !hasDeclaredSize && cachedDim ? cachedDim : undefined;
 
   if (!src) return null;
 
@@ -178,8 +201,52 @@ export const ArticleImage = memo(function ArticleImage({
     );
   }
 
+  // 兜底预占：既无源尺寸、store 里也没有 → aspect-ratio 16/10 + 最小高度，
+  // 图片解码后回写 store，下次同源直接按真实比例预占。
+  // CLS 收益：加载前容器已有固定高度，不再是 0 高 → 图片撑开跳动。
+
   // Only show skeleton placeholder if we have dimensions
-  const showSkeleton = !isLoaded && width && height;
+  const showSkeleton = !isLoaded && (hasDeclaredSize || reserveDim);
+
+  // 无源尺寸 + 无缓存：包一层预占容器（图片本身保持 h-auto 原样）。
+  // 解码完成后容器高度由图片自然高度接管（minHeight 只在加载前生效）。
+  if (!fit && !hasDeclaredSize && !isLoaded) {
+    const ratio = reserveDim
+      ? `${reserveDim.width} / ${reserveDim.height}`
+      : "16 / 10";
+    return (
+      <span
+        data-slot="article-image-reserve"
+        className={cn(
+          "block w-full overflow-hidden rounded bg-secondary/30",
+          className,
+        )}
+        style={{ aspectRatio: ratio, minHeight: 120 }}
+      >
+        <img
+          ref={containerRef}
+          src={recoveredSrc ?? proxiedSrc}
+          srcSet={proxiedSrcset}
+          sizes={sizes}
+          alt={alt}
+          loading={priority ? "eager" : "lazy"}
+          fetchPriority={priority ? "high" : undefined}
+          decoding="async"
+          onLoad={() => {
+            handleLoad();
+          }}
+          onError={handleError}
+          onClick={handleClick}
+          className={cn(
+            "h-full w-full object-cover transition-opacity duration-200",
+            isLoaded ? "opacity-100" : "opacity-70",
+            imagePreviewContext && "cursor-zoom-in",
+          )}
+          {...props}
+        />
+      </span>
+    );
+  }
 
   return (
     <img

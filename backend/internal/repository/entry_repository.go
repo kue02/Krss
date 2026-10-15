@@ -28,6 +28,21 @@ type EntryListFilter struct {
 	MutedOnly    bool
 	Limit        int
 	Offset       int
+	// ContentTruncate 列表 content 截断字符数：0 = 全文；>0 则 SELECT 里 content 取 substr(content,1,N)。
+	// readable_content 在 List/Search 里一律不传（规则/视图求值只用 content，见 buildEntryContext；全文细读走 GetByID）。
+	ContentTruncate int
+}
+
+// ListContentTruncate 列表/搜索默认的 content 截断字符数：卡片只需要开头一点正文，全文细读走 GetByID。
+const ListContentTruncate = 2000
+
+// listContentExpr 返回 List/Search SELECT 里的 content 表达式：0 = 全文，否则 substr 截断。
+// readable_content 在 List/Search 里永远不选（列表/计数/预览都不消费它），调用方直接拼 NULL 占位，scanEntry 列数不变。
+func listContentExpr(truncate int) string {
+	if truncate > 0 {
+		return fmt.Sprintf("substr(e.content, 1, %d)", truncate)
+	}
+	return "e.content"
 }
 
 // EntryFilterState 过滤规则要写到条目上的标记（nil 表示该位不动）。
@@ -119,8 +134,9 @@ func (r *entryRepository) Search(ctx context.Context, keyword string, limit int)
 
 	pattern := "%" + escapeLikePattern(trimmed) + "%"
 	// muted = 0：被规则静音的条目在列表里默认隐藏，搜索口径必须一致（否则「搜得到、点开找不到」）
+	// content 取前 ListContentTruncate 字符（卡片够用，全文走 GetByID）；readable_content 不选（搜索/列表都不消费它，NULL 占位保 scan 列数）。
 	query := `
-		SELECT e.id, e.feed_id, e.hash, e.title, e.url, e.content, e.readable_content, e.thumbnail_url, e.author,
+		SELECT e.id, e.feed_id, e.hash, e.title, e.url, ` + listContentExpr(ListContentTruncate) + `, NULL, e.thumbnail_url, e.author,
 		       e.published_at, e.read, e.starred, e.muted, e.filter_id, e.auto_translate, e.auto_summary, e.created_at, e.updated_at
 		FROM entries e
 		WHERE e.muted = 0
@@ -161,8 +177,9 @@ func escapeLikePattern(input string) string {
 
 func (r *entryRepository) List(ctx context.Context, filter EntryListFilter) ([]model.Entry, error) {
 	var args []interface{}
+	// content 按 filter.ContentTruncate 截断（0=全文）；readable_content 一律不选（NULL 占位保 scan 列数）。
 	query := `
-		SELECT e.id, e.feed_id, e.hash, e.title, e.url, e.content, e.readable_content, e.thumbnail_url, e.author,
+		SELECT e.id, e.feed_id, e.hash, e.title, e.url, ` + listContentExpr(filter.ContentTruncate) + `, NULL, e.thumbnail_url, e.author,
 		       e.published_at, e.read, e.starred, e.muted, e.filter_id, e.auto_translate, e.auto_summary, e.created_at, e.updated_at
 		FROM entries e
 	`
