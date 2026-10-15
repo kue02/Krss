@@ -391,6 +391,8 @@ func (s *filterService) CountViewMatches(ctx context.Context, contentType *strin
 	candidates, err := s.entries.List(ctx, repository.EntryListFilter{
 		ContentType: contentType,
 		Limit:       viewCountScanLimit,
+		// 计数要拿全文做条件求值（ContentTruncate=0），readable_content 省掉（buildEntryContext 不用它）。
+		ContentTruncate: 0,
 	})
 	if err != nil {
 		return nil, err
@@ -1414,7 +1416,9 @@ func newWebhookEntry(entry model.Entry, feed model.Feed) FilterWebhookEntry {
 const viewCountScanLimit = 5000
 
 func scopeListFilter(params FilterWriteParams, limit int) repository.EntryListFilter {
-	filter := repository.EntryListFilter{Limit: limit, IncludeMuted: true}
+	// ContentTruncate 显式 0 = 全文：data-perf 实测 content 超 2000 字符的条目占 18.3%（487/2667），
+	// 截断会漏判（buildEntryContext 用 content 全文求值）；readable_content 在 List 里本就不选（NULL 占位），无需动。
+	filter := repository.EntryListFilter{Limit: limit, IncludeMuted: true, ContentTruncate: 0}
 	switch params.ScopeType {
 	case model.FilterScopeFeed:
 		if len(params.ScopeIDs) > 0 {

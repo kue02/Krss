@@ -39,6 +39,8 @@ import { selectionScrollKey, entryListScrollPositions } from "./scroll-key";
 import { useScrollToTop } from "@/hooks/useScrollToTop";
 import { MobileDocumentHeader } from "@/components/layout/MobileDocumentHeader";
 import { cn } from "@/lib/utils";
+import { useVirtualizedArticleList } from "./useVirtualizedArticleList";
+import { VirtualizedArticleList } from "./VirtualizedArticleList";
 import { useScrollMarkRead } from "./useScrollMarkRead";
 import {
   getDeferredRemovalsVersion,
@@ -579,6 +581,18 @@ export function EntryList({
   });
   // 列表滚上去以后，右上角浮出「当前序号 + 回到顶部」（对齐 Nextflux 的 Indicator）
   const [firstVisibleIndex, setFirstVisibleIndex] = useState(0);
+  /**
+   * 虚拟化只覆盖「标准文章列表扁平流」：article 内容类型 + list 档（非 hover 档）。
+   * 社交 / 通知时间线 / hover 浮层档都走原路径，一字不动。
+   */
+  const useVirtualList = contentType === "article" && !isArticleHover;
+  const virtualList = useVirtualizedArticleList({
+    enabled: useVirtualList,
+    scrollSurface,
+    scrollKey,
+    containerRef,
+    entries,
+  });
   useEffect(() => {
     const node = containerRef.current;
     if (!node) return;
@@ -1164,6 +1178,30 @@ export function EntryList({
                   targetLanguage={targetLanguage}
                   onSelectableEntriesChange={setTimelineSelectableEntries}
                   onSelectFeedFromEntry={onSelectFeedFromEntry}
+                />
+              ) : useVirtualList ? (
+                <VirtualizedArticleList
+                  virtualList={virtualList}
+                  entries={entries}
+                  renderItem={(entry, index) => (
+                    <EntryListItem
+                      feedUnreadCount={unreadCounts?.counts?.[entry.feedId]}
+                      key={entry.id}
+                      data-index={index}
+                      data-entry-id={entry.id}
+                      entry={entry}
+                      feed={feedsMap.get(entry.feedId)}
+                      isSelected={entry.id === selectedEntryId}
+                      onClick={handleSelectEntry}
+                      onMarkAboveEntry={handleMarkAboveEntry}
+                      autoTranslate={autoTranslate}
+                      targetLanguage={targetLanguage}
+                      social={isSocialView}
+                      fetchReadable={fetchReadableEnabled}
+                      autoExpandLong={expandLongByView?.[contentType] ?? false}
+                      onSelectFeedFromEntry={onSelectFeedFromEntry}
+                    />
+                  )}
                 />
               ) : (
                 entries.map((entry, index) => (

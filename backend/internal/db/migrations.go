@@ -567,6 +567,28 @@ func runMigrations(db *sql.DB) error {
 		return fmt.Errorf("create proxy_domain_memory table: %w", err)
 	}
 
+	// Migration 30: 列表/搜索性能 —— ORDER BY published_at DESC, id DESC 的排序索引。
+	// List/Search 主查询都按 (published_at DESC, id DESC) 排序分页；此前无覆盖索引，
+	// 全表扫 + TEMP B-TREE 排序（limit=50 也要拖全文 content/readable_content）。
+	// 本迁移只加索引（CREATE IF NOT EXISTS，老库零风险）；content 截断见 EntryListFilter.ContentTruncate。
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_entries_published ON entries(published_at DESC, id DESC)`); err != nil {
+		return fmt.Errorf("create idx_entries_published: %w", err)
+	}
+	// 单订阅列表（WHERE feed_id=? + 同上排序）：左前缀命中 feed_id 且行内有序，SEARCH 直出、无 TEMP B-TREE。
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_entries_feed_published ON entries(feed_id, published_at DESC, id DESC)`); err != nil {
+		return fmt.Errorf("create idx_entries_feed_published: %w", err)
+	}
+	// 未读计数（WHERE read=0 GROUP BY feed_id）：(read, feed_id) 让查询变 COVERING INDEX、无需回表。
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_entries_read_feed ON entries(read, feed_id)`); err != nil {
+		return fmt.Errorf("create idx_entries_read_feed: %w", err)
+	}
+	// 未读默认列表（WHERE read=0 AND muted=0 ORDER BY published_at DESC, id DESC）：
+	// 副本 EXPLAIN 验证：无此索引时 SCAN entries USING INDEX idx_entries_published（全索引扫+逐行过滤）；
+	// 加后 SEARCH ... USING INDEX (read=? AND muted=?)，行内已有序、无 TEMP B-TREE。
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_entries_unread_published ON entries(read, muted, published_at DESC, id DESC)`); err != nil {
+		return fmt.Errorf("create idx_entries_unread_published: %w", err)
+	}
+
 	return nil
 }
 
