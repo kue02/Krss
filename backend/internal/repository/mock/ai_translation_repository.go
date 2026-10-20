@@ -85,6 +85,21 @@ func (mr *MockAITranslationRepositoryMockRecorder) Get(ctx, entryID, isReadabili
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockAITranslationRepository)(nil).Get), ctx, entryID, isReadability, language)
 }
 
+// GetBatch mocks base method.
+func (m *MockAITranslationRepository) GetBatch(ctx context.Context, entryIDs []int64, isReadability bool, language string) (map[int64]*model.AITranslation, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetBatch", ctx, entryIDs, isReadability, language)
+	ret0, _ := ret[0].(map[int64]*model.AITranslation)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetBatch indicates an expected call of GetBatch.
+func (mr *MockAITranslationRepositoryMockRecorder) GetBatch(ctx, entryIDs, isReadability, language any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBatch", reflect.TypeOf((*MockAITranslationRepository)(nil).GetBatch), ctx, entryIDs, isReadability, language)
+}
+
 // Save mocks base method.
 func (m *MockAITranslationRepository) Save(ctx context.Context, entryID int64, isReadability bool, language, content string) error {
 	m.ctrl.T.Helper()

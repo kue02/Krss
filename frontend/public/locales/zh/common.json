@@ -355,7 +355,8 @@
     "force_confirm_title": "强制拉取 {{count}} 个订阅？",
     "force_confirm_description": "这会忽略 etag / 上次更新时间，把范围内的订阅整轮重抓一遍（同主机冷却也跳过）。范围这么大，先确认一下是不是选错了。",
     "view_feed": "前往订阅 {{name}}",
-    "back_to_previous": "返回上一个选中"
+    "back_to_previous": "返回上一个选中",
+    "machine_translated": "机器翻译"
   },
   "ai_settings": {
     "translate_channel": "翻译通道",

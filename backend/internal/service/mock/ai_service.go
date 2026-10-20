@@ -104,6 +104,21 @@ func (mr *MockAIServiceMockRecorder) GetCachedTranslation(ctx, entryID, isReadab
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCachedTranslation", reflect.TypeOf((*MockAIService)(nil).GetCachedTranslation), ctx, entryID, isReadability)
 }
 
+// GetCachedTranslations mocks base method.
+func (m *MockAIService) GetCachedTranslations(ctx context.Context, entryIDs []int64, isReadability bool) (map[int64]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetCachedTranslations", ctx, entryIDs, isReadability)
+	ret0, _ := ret[0].(map[int64]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetCachedTranslations indicates an expected call of GetCachedTranslations.
+func (mr *MockAIServiceMockRecorder) GetCachedTranslations(ctx, entryIDs, isReadability any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCachedTranslations", reflect.TypeOf((*MockAIService)(nil).GetCachedTranslations), ctx, entryIDs, isReadability)
+}
+
 // GetSummaryLanguage mocks base method.
 func (m *MockAIService) GetSummaryLanguage(ctx context.Context) string {
 	m.ctrl.T.Helper()

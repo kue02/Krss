@@ -1285,6 +1285,41 @@ export async function* streamBatchTranslate(
   yield* readNDJSONLines<BatchTranslateResult>(response);
 }
 
+/**
+ * 54-1：批量读**已缓存**的整篇译文（只读，绝不触发生成）。
+ *
+ * 社交视图 / 通知视图要在列表里直接显示译文，而列表里不能开
+ * `/ai/translate` 那条 SSE（长连接，同源 6 条并发上限，见 api/index.ts 里
+ * `MAX_CONCURRENT_TRANSLATE_STREAMS` 的注释与 §2.50 实测）。译文多半已由
+ * 滚动预载 `warmTranslate` 落库，所以这里只是把结果成批取回来。
+ *
+ * 没缓存的条目**不会出现在返回值里**（调用方按「没拿到就显示原文」处理）。
+ */
+export interface BatchCachedTranslationItem {
+  content: string;
+}
+
+export interface BatchCachedTranslationResponse {
+  translations: Record<string, BatchCachedTranslationItem>;
+  /** 后端实际用的目标语言（= ai.summary_language） */
+  language: string;
+}
+
+export async function fetchCachedTranslations(
+  entryIds: string[],
+  isReadability = false,
+  signal?: AbortSignal,
+): Promise<BatchCachedTranslationResponse> {
+  if (entryIds.length === 0) {
+    return { translations: {}, language: "" };
+  }
+  return request<BatchCachedTranslationResponse>("/api/ai/translations/batch", {
+    method: "POST",
+    body: JSON.stringify({ entryIds, isReadability }),
+    signal,
+  });
+}
+
 export interface ClearAICacheResponse {
   summaries: number;
   translations: number;
