@@ -23,6 +23,7 @@ import { useMarkAsRead } from "@/hooks/useEntries";
 import { deferEntryRemoval } from "./deferred-removal";
 import { useUISettingKey } from "@/hooks/useUISettings";
 import { useTranslationStore } from "@/stores/translation-store";
+import { resolveEntryAutoTranslate } from "@/lib/auto-translate";
 import {
   buildTimelineRows,
   expandTimelineRows,
@@ -244,7 +245,9 @@ const TimelineCard = memo(function TimelineCard({
   const isUnread = !entry.read;
 
   const translation = useTranslationStore((state) =>
-    autoTranslate && targetLanguage
+    // 54-7：与取数/预载同一份解析器（条目级 > 订阅级 > 全局），别只看全局开关
+    targetLanguage &&
+    resolveEntryAutoTranslate({ entry, feed, aiSettings: { autoTranslate } })
       ? state.getTranslation(entry.id, targetLanguage)
       : undefined,
   );
@@ -1379,6 +1382,7 @@ export function NotificationTimeline({
                       t("entry.unknown_feed"))
                     : ""
                 }
+                feed={hoverEntry ? feeds.get(hoverEntry.feedId) : undefined}
                 autoTranslate={autoTranslate}
                 targetLanguage={targetLanguage}
                 onMouseEnter={cancelHoverClose}

@@ -3,8 +3,9 @@ import { useTranslation } from "react-i18next";
 import gsap from "gsap";
 import { ArticleContent } from "@/components/ui/article-content";
 import { useTranslationStore } from "@/stores/translation-store";
+import { resolveEntryAutoTranslate } from "@/lib/auto-translate";
 import { MachineTranslatedBadge } from "./machine-translated-badge";
-import type { Entry } from "@/types/api";
+import type { Entry, Feed } from "@/types/api";
 
 /**
  * 通知视图 · 悬停正文浮块。
@@ -92,6 +93,7 @@ export function NotificationBodyPreview({
   visible,
   anchor,
   feedName,
+  feed,
   autoTranslate,
   targetLanguage,
   onMouseEnter,
@@ -105,6 +107,8 @@ export function NotificationBodyPreview({
   /** 进入卡片时的指针坐标 + 该卡片的上下沿（首帧落点兜底；卡片沿用于「不许盖住标题」） */
   anchor: { x: number; y: number; cardTop: number | null; cardBottom: number | null };
   feedName: string;
+  /** 订阅级 autoTranslate 覆盖（54-7：读数门与取数门必须同一口径） */
+  feed?: Feed;
   autoTranslate: boolean;
   targetLanguage: string;
   onMouseEnter: () => void;
@@ -123,7 +127,9 @@ export function NotificationBodyPreview({
   const { t } = useTranslation();
   const floatRef = useRef<HTMLDivElement | null>(null);
   const translation = useTranslationStore((state) =>
-    entry && autoTranslate && targetLanguage
+    entry &&
+    targetLanguage &&
+    resolveEntryAutoTranslate({ entry, feed, aiSettings: { autoTranslate } })
       ? state.getTranslation(entry.id, targetLanguage)
       : undefined,
   );

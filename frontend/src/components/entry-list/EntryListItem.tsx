@@ -17,6 +17,7 @@ import { stripHtml } from "@/lib/html-utils";
 import { getEntryImages } from "@/lib/extract-images";
 import { useImagePreviewStore } from "@/stores/image-preview-store";
 import { useTranslationStore } from "@/stores/translation-store";
+import { resolveEntryAutoTranslate } from "@/lib/auto-translate";
 import { FeedIcon } from "@/components/ui/feed-icon";
 import { useEntrySourceJump } from "./entry-source-jump";
 import { MarqueeText } from "@/components/ui/marquee-text";
@@ -317,7 +318,20 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     const entryLineHeight = useUISettingKey("entryLineHeight");
 
     const translation = useTranslationStore((state) =>
-      autoTranslate && targetLanguage
+      /**
+       * 54-7（用户 2026-10-20 报「设置了订阅翻译，列表里还是英文」）：
+       * 这里的门必须与**取数/预载**用同一份解析器（条目级 > 订阅级 > 全局），
+       * 不能只看全局 `autoTranslate`。
+       *
+       * 原来的形态：`useListTranslations` 按订阅级覆盖挑候选（feed.autoTranslate）
+       * 把译文写进了 store，而这里只认全局开关 —— 全局关着、只配了订阅级翻译时，
+       * 译文明明在 store 里却读不出来，卡片一直是原文。
+       */
+      targetLanguage && resolveEntryAutoTranslate({
+        entry,
+        feed,
+        aiSettings: { autoTranslate },
+      })
         ? state.getTranslation(entry.id, targetLanguage)
         : undefined,
     );
