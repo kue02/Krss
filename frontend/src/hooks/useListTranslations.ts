@@ -19,6 +19,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { fetchCachedTranslations } from "@/api";
 import { translationActions } from "@/stores/translation-store";
+import { resolveEntryAutoTranslate } from "@/lib/auto-translate";
 import type { Entry, Feed } from "@/types/api";
 
 /** 单批上限：与后端 `aiTranslationBatchLimit`（200）对齐，前端取 50 —— 一屏够用，
@@ -84,8 +85,16 @@ export function pickTranslationCandidates(
   const out: string[] = [];
   for (const entry of entries) {
     const feed = feedsById.get(entry.feedId);
-    // 与 entry-prefetch-plan 同一口径：订阅级覆盖 > 全局（条目级标记由正文页处理，这里先不短路）
-    const enabled = feed?.autoTranslate ?? autoTranslate;
+    /**
+     * 54-7：走**统一解析器**（条目级 > 订阅级 > 全局），与预载 / 卡片读数门同一份。
+     * 原来这里手写 `feed?.autoTranslate ?? autoTranslate`，漏掉了条目级标记
+     * （过滤规则动作 translate 打的），导致「规则命中该翻」的条目在列表里不翻。
+     */
+    const enabled = resolveEntryAutoTranslate({
+      entry,
+      feed,
+      aiSettings: { autoTranslate },
+    });
     if (!enabled) continue;
     if (!entry.content && !entry.readableContent) continue;
     if (translationActions.isDisabled(entry.id)) continue;
