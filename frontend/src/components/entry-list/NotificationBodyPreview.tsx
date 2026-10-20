@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import gsap from "gsap";
 import { ArticleContent } from "@/components/ui/article-content";
 import { useTranslationStore } from "@/stores/translation-store";
+import { MachineTranslatedBadge } from "./machine-translated-badge";
 import type { Entry } from "@/types/api";
 
 /**
@@ -127,6 +128,11 @@ export function NotificationBodyPreview({
       : undefined,
   );
   const displayTitle = entry ? (translation?.title ?? entry.title) : "";
+  /**
+   * 54-5：浮块正文同样优先显示译文（用户在列表里看到的是译文，悬停后不该退回原文）。
+   * 判据与卡片一致：store 里有整篇译文就用它。
+   */
+  const previewContent = entry ? (translation?.content ?? entry.content) : null;
 
   // 最新指针位置：anchor 变化（进新卡片）与每次 mousemove 都更新；
   // 显示瞬间按它落点，指针停着不动也不等下一次 mousemove。
@@ -272,18 +278,20 @@ export function NotificationBodyPreview({
       }}
     >
       <div className="flex max-h-[inherit] flex-col p-3">
-        <div className="shrink-0 text-[12px] font-medium text-muted-foreground">
-          {feedName}
+        <div className="flex shrink-0 items-center gap-1 text-[12px] font-medium text-muted-foreground">
+          <span>{feedName}</span>
+          {/* 54-5：浮块正文同样优先显示译文，那就同样要标明「这是机器翻译」 */}
+          {previewContent && translation?.content && <MachineTranslatedBadge />}
         </div>
         <div className="mt-0.5 shrink-0 text-[13.5px] font-semibold leading-5 text-foreground">
           {displayTitle || t("entry.untitled")}
         </div>
-        {entry?.content?.trim() ? (
+        {previewContent ? (
           <div
             data-preview-body=""
             className="entry-content reading-prose prose prose-sm dark:prose-invert mt-2 min-h-0 max-w-none flex-1 overflow-y-auto break-words"
           >
-            <ArticleContent content={entry.content} articleUrl={entry.url} />
+            <ArticleContent content={previewContent} articleUrl={entry?.url} />
           </div>
         ) : null}
       </div>

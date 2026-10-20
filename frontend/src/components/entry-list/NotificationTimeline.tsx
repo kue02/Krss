@@ -9,6 +9,7 @@ import { FeedIcon } from "@/components/ui/feed-icon";
 import { useEntrySourceJump } from "./entry-source-jump";
 import { EntryToc } from "@/components/entry-content/EntryToc";
 import { NotificationBodyPreview } from "./NotificationBodyPreview";
+import { MachineTranslatedBadge } from "./machine-translated-badge";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import {
   EntryContextMenuContent,
@@ -252,12 +253,20 @@ const TimelineCard = memo(function TimelineCard({
   /**
    * 折叠态显示**纯文字预览**（与「展开后仍是同一段文字、只是不再截断」同一份内容，
    * 就地展开因此只是把 clamp 摘掉，不会换一套 DOM、也不会把轴顶偏）。
+   *
+   * 54-4（用户 2026-10-20「在外面就能直接看到翻译后的内容」）：预览文字取
+   * **译文**优先。译文由 `useListTranslations` 批量从后端缓存读回（只读），没有
+   * 就照旧用原文 —— 卡片立刻可读，等预载落库后自然补上。
+   *
+   * 折叠行数、截断判定（`scrollHeight`）、展开容器里的完整正文页都不受影响：
+   * 这里只是把「同一段文字的来源」从原文换成译文。
    */
   const previewText = useMemo(() => {
-    const raw = entry.content ? stripHtml(entry.content) : "";
+    const source = translation?.content ?? entry.content;
+    const raw = source ? stripHtml(source) : "";
     const text = raw.replace(/\s+/g, " ").trim();
     return text || (displayTitle ?? "");
-  }, [entry.content, displayTitle]);
+  }, [entry.content, displayTitle, translation?.content]);
 
   // 折叠态下正文是否真的被截断（用 scrollHeight 判定，图片异步加载会改高度 → 复测一次）
   // 另把自然高度（= 不钳制时的渲染高度）上报给父级：父级拿它判「长贴」（> 300px），
@@ -416,6 +425,8 @@ const TimelineCard = memo(function TimelineCard({
               </Chip>
             )}
             <span className="ml-auto flex shrink-0 items-center gap-1">
+              {/* 54-5：预览文字显示的是译文时挂语言图标（判据 = store 里真有译文） */}
+              {translation?.content && <MachineTranslatedBadge />}
               {entry.starred && <Star className="size-3 fill-amber-500 text-amber-500" />}
               {entry.muted && (
                 <span className="rounded-[3px] border border-border/60 bg-secondary/40 px-1 py-px text-[10px] leading-4">
