@@ -13,6 +13,7 @@ import { AlertDialog, Button } from "@heroui/react";
 import { useFeeds } from "@/hooks/useFeeds";
 import { useGeneralSettings } from "@/hooks/useGeneralSettings";
 import { useEntryPrefetch } from "@/hooks/useEntryPrefetch";
+import { useListTranslations } from "@/hooks/useListTranslations";
 import { useRefreshStatus } from "@/hooks/useRefreshStatus";
 import { queryClient } from "@/lib/queryClient";
 import { getRefreshStatus, refreshAllFeeds, refreshFeeds } from "@/api";
@@ -549,6 +550,29 @@ export function EntryList({
     enabled: entryPrefetchEnabled && isActive,
     resetKey: scrollKey,
     concurrency: entryPrefetchConcurrency,
+  });
+
+  /**
+   * 54-2：把**已经翻好**的整篇译文批量取回来，喂给列表卡片。
+   *
+   * 与上面那个预载钩子是**分工**关系：
+   *   - `useEntryPrefetch` 负责「算」（warm，后台落缓存）；
+   *   - 本钩子负责「读」（只读缓存，绝不发翻译请求）。
+   * 社交视图与通知视图的卡片正文因此不用点进去就能是译文。
+   *
+   * 只在社媒 / 通知两处生效（用户 54 批原话就是这个范围）：文章视图的卡片
+   * 只有标题 + 摘要，标题本来就翻、摘要走另一条批量接口，这里不掺一脚。
+   */
+  useListTranslations({
+    entries,
+    feedsById: feedsMap,
+    autoTranslate: aiSettings?.autoTranslate ?? false,
+    targetLanguage,
+    enabled:
+      isActive &&
+      (isSocialView || isNotificationTimeline) &&
+      (autoTranslate || hasAutoTranslateOverride),
+    resetKey: scrollKey,
   });
 
   // 24-5：右键「标记上方为已读」—— 把这条之上的未读一次标掉。
