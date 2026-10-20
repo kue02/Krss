@@ -524,3 +524,51 @@ func TestAIService_GetCachedTranslations_RepoError(t *testing.T) {
 	require.Error(t, err, "仓储错误要透出，不许静默吞掉")
 	require.Nil(t, got)
 }
+
+/**
+ * 54-10（用户 2026-10-20）：只配了「免费翻译通道」（没配模型）时，
+ * 列表标题/摘要的批量翻译**不能 500**。
+ *
+ * 回归背景：原来 `TranslateBatch` 在 `getAIConfigForScene` 拿不到模型就直接报错返回，
+ * 而 `TranslateBlocks`（整篇正文）对免费通道有降级放行 ⇒ 表现是「正文能翻成中文、
+ * 标题一直是英文」。用户就是这么撞上的。
+ *
+ * 这里断言：配了免费通道 + 没有模型 ⇒ 不返回 error（会真的去请求免费通道；
+ * 本机无网时那次请求会失败，但**错误必须走 errCh**，而不是把整条链路 500 掉）。
+ */
+func TestAIService_TranslateBatch_FreeChannelWithoutModelDoesNotFailFast(t *testing.T) {
+	repo := newSettingsRepoStub()
+	repo.data["ai.translate_channel"] = "google"
+	repo.data["ai.summary_language"] = "zh-CN"
+	// 故意不配 ai.api_key / ai.model
+	listRepo := &listTranslationRepoStub{batchResult: map[int64]*model.AIListTranslation{}}
+	svc := service.NewAIService(&summaryRepoStub{}, &translationRepoStub{}, listRepo, repo, ai.NewRateLimiter(100))
+
+	resultCh, errCh, err := svc.TranslateBatch(context.Background(), []service.BatchArticleInput{
+		{ID: "1", Title: "Introducing our new inference framework", Summary: "Powering large scale inference."},
+	})
+	require.NoError(t, err, "配了免费通道就不该在入口处失败（这正是原来的 500）")
+
+	// 结果流要么出结果、要么出错误，但**不能**在入口直接拒绝
+	for range resultCh {
+	}
+	for range errCh {
+	}
+}
+
+/**
+ * 反证：既没配免费通道、又没配模型 ⇒ 仍然要在入口报错（不能静默什么都不做）。
+ * 保住「真没配置的时候要让用户看见」这条既有语义。
+ */
+func TestAIService_TranslateBatch_NoChannelNoModelFails(t *testing.T) {
+	repo := newSettingsRepoStub()
+	repo.data["ai.summary_language"] = "zh-CN"
+	// ai.translate_channel 留空 = 走模型；模型没配
+	listRepo := &listTranslationRepoStub{batchResult: map[int64]*model.AIListTranslation{}}
+	svc := service.NewAIService(&summaryRepoStub{}, &translationRepoStub{}, listRepo, repo, ai.NewRateLimiter(100))
+
+	_, _, err := svc.TranslateBatch(context.Background(), []service.BatchArticleInput{
+		{ID: "1", Title: "Some English title here"},
+	})
+	require.Error(t, err, "既没免费通道也没模型时应当报错")
+}

@@ -30,7 +30,7 @@ import {
   type EntryFilter,
 } from "./EntryListFilterPill";
 import { EntryListHeader } from "./EntryListHeader";
-import { needsTranslation as needsTranslationAsync } from "@/lib/language-detect-async";
+import { needsListTranslation as needsListTranslationAsync } from "@/lib/language-detect-async";
 import {
   translateArticlesBatch,
   cancelAllBatchTranslations,
@@ -880,7 +880,14 @@ export function EntryList({
       const session = translationSession.current;
       pendingDetection.current.add(entry.id);
 
-      void needsTranslationAsync(entry.title || "", summary, targetLanguage)
+      /**
+       * 54-10（用户 2026-10-20 报「标题没翻 / 社媒视图多出一行标题」的根因之一）：
+       * 这里原来用 `needsTranslation`（「这条要不要翻**正文**」），正文是中文就整体
+       * 返回 false ⇒ **英文标题永远不翻**。而列表里标题与正文是两个独立字段，
+       * 语言可以不一样（社交帖常见「中文正文 + 英文标题」）。
+       * 改成逐字段判定（`needsListTranslation`）：标题或摘要任一是外文就来翻。
+       */
+      void needsListTranslationAsync(entry.title || "", summary, targetLanguage)
         .then((shouldTranslate) => {
           if (translationSession.current !== session) return;
 

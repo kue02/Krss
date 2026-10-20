@@ -120,3 +120,48 @@ export function needsTranslation(
   // 3. Default: Assume needs translation if unable to determine
   return true;
 }
+
+/**
+ * 列表标题/摘要**各自**要不要翻（54-10）。
+ *
+ * 为什么不能复用 `needsTranslation`：那个函数回答的是「这**条**要不要翻正文」，
+ * 口径是「正文语言优先，正文够了就一票定生死」。而列表里的标题和摘要来自
+ * **两个不同的字段**，语言可以不一样 —— 典型就是社交帖：
+ * 正文已经被源站翻成中文了，标题却还是英文原文。用旧口径判 ⇒ 正文中文
+ * ⇒ 整体 `false` ⇒ 标题永远不翻，用户看到「中文正文 + 英文标题」。
+ *
+ * 这里改成**逐字段独立判定**：标题按标题的语言判、摘要按摘要的语言判，
+ * 两者互不影响。任一字段需要翻，就返回 true（调用方会把两个字段都送去翻，
+ * 后端只对确实不同的语言产出结果）。
+ */
+export function needsFieldTranslation(
+  text: string | null | undefined,
+  targetLanguage: string,
+): boolean {
+  if (!text) return false;
+  const clean = cleanTextForDetection(text);
+  // 太短的内容检测不可靠（「好的」「NB」这类）—— 判「不用翻」，免得白跑一趟模型
+  if (clean.length < 6) return false;
+
+  const detected = detectLanguage(clean);
+  if (!detected) return false; // 判不出来就别折腾（保持原文）
+  return detected !== getTargetLanguageCode(targetLanguage);
+}
+
+/**
+ * 列表一条条目里，**标题或摘要**是否有需要翻的（54-10）。
+ *
+ * - 标题是外文 ⇒ 要翻（这是用户在社媒视图里看到的那行标题）
+ * - 摘要（= 正文前 200 字）是外文 ⇒ 要翻（文章视图卡片摘要用）
+ * - 两者都是目标语言 ⇒ 不用翻（省一次批量请求）
+ */
+export function needsListTranslation(
+  title: string | null | undefined,
+  summary: string | null | undefined,
+  targetLanguage: string,
+): boolean {
+  return (
+    needsFieldTranslation(title, targetLanguage) ||
+    needsFieldTranslation(summary, targetLanguage)
+  );
+}

@@ -428,14 +428,25 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
       // 源的标题往往是「正文掐掉换行后的版本」：两边都去掉全部空白再比前缀，
       // 免得 stripHtml 不给 <br> 补空格导致比对失败
       const squash = (value: string) => value.replace(/\s+/g, "");
-      // 源的标题常在结尾用省略号截断，比对前去掉
-      const title = squash((displayTitle ?? "").replace(/(?:\.{2,}|…)\s*$/, ""));
-      // 54-3：正文换成译文时，这一比也要拿**译文正文**比 —— 否则「标题是正文开头」
-      // 在中英混比时永远判 false，同一句话会以译文标题 + 译文正文的形式出现两次。
-      const raw = squash(stripHtml(displayContent ?? ""));
+      /**
+       * 54-10（用户 2026-10-20 报「社交媒体视图多出来一行标题」）：
+       * 这一比必须用**同一语言的原文对原文**，不能用译文正文去比原文标题。
+       *
+       * 「标题是不是正文开头」是**源站的事实**，与翻不翻译无关。原来（54-3）改成拿
+       * `displayContent`（可能是中文译文）去比 `displayTitle`（标题译文没回来时是英文
+       * 原文）—— 中英永远比不中 ⇒ 恒为 false ⇒ 标题被当成「另一句话」多渲染一行，
+       * 于是卡片变成「英文标题 + 中文正文」，正是用户看到的样子。
+       *
+       * 现在固定用 `entry.title` 比 `entry.content`（源数据），结论稳定、与译文无关；
+       * 标题要不要显示译文由 `displayTitle` 自己负责（有译文标题就用译文）。
+       */
+      const title = squash(
+        (entry.title ?? "").replace(/(?:\.{2,}|…)\s*$/, ""),
+      );
+      const raw = squash(stripHtml(entry.content ?? ""));
       if (title.length < 6 || !raw) return false;
       return raw.startsWith(title);
-    }, [displayTitle, displayContent]);
+    }, [entry.title, entry.content]);
     /**
      * 正文正文：标题重复的开头只在「标题另渲染一份」时才剥掉。
      * 反之（标题就是正文开头、标题不渲染）必须留全文 —— 否则正文被剥掉一半，

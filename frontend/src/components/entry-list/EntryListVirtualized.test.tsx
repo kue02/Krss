@@ -57,6 +57,8 @@ vi.mock("@/lib/html-utils", () => ({
 
 vi.mock("@/lib/language-detect-async", () => ({
   needsTranslation: vi.fn(() => Promise.resolve(false)),
+  // 54-10：列表标题/摘要走逐字段判定
+  needsListTranslation: vi.fn(() => Promise.resolve(false)),
 }));
 
 vi.mock("@/services/translation-service", () => ({
