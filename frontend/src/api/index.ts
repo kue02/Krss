@@ -1313,7 +1313,7 @@ export async function fetchCachedTranslations(
   if (entryIds.length === 0) {
     return { translations: {}, language: "" };
   }
-  return request<BatchCachedTranslationResponse>("/ai/translations/batch", {
+  return request<BatchCachedTranslationResponse>("/api/ai/translations/batch", {
     method: "POST",
     body: JSON.stringify({ entryIds, isReadability }),
     signal,

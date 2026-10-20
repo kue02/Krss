@@ -162,9 +162,13 @@ export function useListTranslations({
           if (controller.signal.aborted) return;
           fetchedRef.current.set(batchKey(batch, false), Date.now());
           applyCachedTranslations(resp.translations, targetLanguage, false);
-        } catch {
-          // 批量读失败不该打扰用户：卡片照旧显示原文，下一轮再试。
-          // 不记指纹，所以下次触发会重试。
+        } catch (error) {
+          // 批量读失败不打扰用户（卡片照旧显示原文，下一轮再试），但**必须留痕**：
+          // 这条静默 catch 曾经吃掉过一个「路由少写 /api 前缀 → 404」的真 bug，
+          // 表现为「功能完全不生效、控制台一片安静」（54-6 实测踩到）。
+          if (import.meta.env.DEV) {
+            console.warn("[54] batch cached translations failed", error);
+          }
         }
       }
     })();
