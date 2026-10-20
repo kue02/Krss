@@ -848,11 +848,24 @@ func (s *aiService) TranslateBatch(ctx context.Context, articles []BatchArticleI
 		}
 	}
 
+	// 翻译通道：空 = 用配置的模型；google/youdao = 免 key 通道
+	// （54-10：与 TranslateBlocks 同一口径 —— 列表标题/摘要的批量翻译原来没有免费通道
+	//  分支，只配了免费通道（没配模型）时这里直接 500「AI model is not configured」，
+	//  于是正文能翻、标题一直是原文。见下面每个 goroutine 里的 freeChannel 分支。）
+	freeChannel := s.getFreeTranslateChannel(ctx)
+	freeClient := s.httpClientForTranslate(ctx, 0)
+
 	if needsTranslation {
 		cfg, err = s.getAIConfigForScene(ctx, SceneTranslate)
 		if err != nil {
-			logger.Warn("ai batch translate get config failed", "module", "service", "action", "fetch", "resource", "ai", "result", "failed", "error", err)
-			return nil, nil, err
+			// 与 TranslateBlocks 同一条放行：只要真的配了免费通道，缺模型配置就不是致命错误
+			if ai.IsFreeTranslateChannel(freeChannel) {
+				logger.Warn("ai batch translate scene has no model config, relying on free channel", "module", "service", "action", "translate", "resource", "ai", "result", "degraded", "error", err)
+				cfg = ai.Config{}
+			} else {
+				logger.Warn("ai batch translate get config failed", "module", "service", "action", "fetch", "resource", "ai", "result", "failed", "error", err)
+				return nil, nil, err
+			}
 		}
 	}
 
@@ -906,34 +919,72 @@ func (s *aiService) TranslateBatch(ctx context.Context, articles []BatchArticleI
 				defer wg.Done()
 				defer func() { <-sem }()
 
-				// Create provider for this goroutine
-				provider, err := ai.NewProvider(cfg)
-				if err != nil {
-					logger.Warn("ai batch translate provider create failed", "module", "service", "action", "fetch", "resource", "ai", "result", "failed", "provider", cfg.Provider, "model", cfg.Model, "error", err)
-					select {
-					case errCh <- fmt.Errorf("create provider: %w", err):
-					default:
+				/**
+				 * 单段文字翻译：**优先免费通道**，失败再回退模型（54-10）。
+				 *
+				 * 为什么不能只看模型：用户常见配置是「翻译通道 = Google 免费」且压根没填模型
+				 * （列表批量翻译原来在 getAIConfigForScene 就直接 500 了）。整篇正文走
+				 * TranslateBlocks 时对免费通道有降级，标题/摘要却没有 —— 表现就是
+				 * 「正文是中文、标题一直英文」。这里补上同一条免费通道。
+				 *
+				 * 回退规则与 TranslateBlocks 一致：
+				 *   - 没配免费通道 ⇒ 只走模型；
+				 *   - 免费通道失败 + 开了「自动切回模型」+ 真有模型 ⇒ 用模型兜底；
+				 *   - 否则按真失败上报（前端会保留原文，不会显示半截）。
+				 */
+				var provider ai.Provider
+				providerReady := false
+				getProvider := func() (ai.Provider, error) {
+					if providerReady {
+						return provider, nil
 					}
-					return
+					p, err := ai.NewProvider(cfg)
+					if err != nil {
+						return nil, err
+					}
+					provider = p
+					providerReady = true
+					return provider, nil
+				}
+
+				translateText := func(textType, text string) (string, error) {
+					if strings.TrimSpace(text) == "" {
+						return "", nil
+					}
+					if ai.IsFreeTranslateChannel(freeChannel) {
+						translated, freeErr := ai.TranslateFreeText(ctx, freeClient, freeChannel, text, language)
+						if freeErr == nil {
+							return strings.TrimSpace(translated), nil
+						}
+						// 免费通道失败：只有「配了模型 + 开了自动切回」才兜底
+						if !s.isModelFallbackEnabled(ctx) || cfg.Provider == "" || cfg.Model == "" {
+							return "", fmt.Errorf("translate %s via %s: %w (且没有配置模型可以兜底)", textType, freeChannel, freeErr)
+						}
+						logger.Warn("free batch translate failed, falling back to model", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", eID, "text_type", textType, "channel", freeChannel, "error", freeErr)
+					}
+
+					// 模型路径（免费通道没配 / 免费失败后兜底）
+					if err := s.rateLimiter.Wait(ctx); err != nil {
+						return "", fmt.Errorf("rate limit: %w", err)
+					}
+					p, err := getProvider()
+					if err != nil {
+						return "", err
+					}
+					translated, err := p.Complete(ctx, ai.GetTranslateTextPrompt(textType, language), ai.WrapInput(text))
+					if err != nil {
+						return "", err
+					}
+					return strings.TrimSpace(translated), nil
 				}
 
 				// Translate title
 				var translatedTitle *string
 				titleStr := ""
 				if a.Title != "" {
-					// Wait for rate limiter
-					if err := s.rateLimiter.Wait(ctx); err != nil {
-						logger.Warn("ai batch translate rate limit", "module", "service", "action", "fetch", "resource", "ai", "result", "failed", "entry_id", eID, "error", err)
-						select {
-						case errCh <- fmt.Errorf("rate limit: %w", err):
-						default:
-						}
-						return
-					}
-					titlePrompt := ai.GetTranslateTextPrompt("title", language)
-					wrappedTitle := ai.WrapInput(a.Title)
-					translated, err := provider.Complete(ctx, titlePrompt, wrappedTitle)
+					translated, err := translateText("title", a.Title)
 					if err != nil {
+						logger.Warn("ai batch translate title failed", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", eID, "error", err)
 						select {
 						case errCh <- fmt.Errorf("translate title for %s: %w", a.ID, err):
 						default:
@@ -948,19 +999,9 @@ func (s *aiService) TranslateBatch(ctx context.Context, articles []BatchArticleI
 				var translatedSummary *string
 				summaryStr := ""
 				if a.Summary != "" {
-					// Wait for rate limiter
-					if err := s.rateLimiter.Wait(ctx); err != nil {
-						logger.Warn("ai batch translate rate limit", "module", "service", "action", "fetch", "resource", "ai", "result", "failed", "entry_id", eID, "error", err)
-						select {
-						case errCh <- fmt.Errorf("rate limit: %w", err):
-						default:
-						}
-						return
-					}
-					summaryPrompt := ai.GetTranslateTextPrompt("summary", language)
-					wrappedSummary := ai.WrapInput(a.Summary)
-					translated, err := provider.Complete(ctx, summaryPrompt, wrappedSummary)
+					translated, err := translateText("summary", a.Summary)
 					if err != nil {
+						logger.Warn("ai batch translate summary failed", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", eID, "error", err)
 						select {
 						case errCh <- fmt.Errorf("translate summary for %s: %w", a.ID, err):
 						default:
