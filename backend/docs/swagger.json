@@ -226,6 +226,46 @@
                 }
             }
         },
+        "/ai/translations/batch": {
+            "post": {
+                "description": "Read already-cached full-content translations for many entries. Read-only: never triggers translation.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ai"
+                ],
+                "summary": "Batch read cached translations",
+                "parameters": [
+                    {
+                        "description": "Batch cached translation request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.batchCachedTranslationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.batchCachedTranslationResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/domain-rate-limits": {
             "get": {
                 "produces": [
@@ -4072,6 +4112,44 @@
             "properties": {
                 "exists": {
                     "type": "boolean"
+                }
+            }
+        },
+        "internal_handler.batchCachedTranslationItem": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.batchCachedTranslationRequest": {
+            "type": "object",
+            "properties": {
+                "entryIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "isReadability": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "internal_handler.batchCachedTranslationResponse": {
+            "type": "object",
+            "properties": {
+                "language": {
+                    "description": "Language 后端实际用的目标语言（= ai.summary_language），前端用来对齐缓存键",
+                    "type": "string"
+                },
+                "translations": {
+                    "description": "Translations 只含**已翻好**的条目；没缓存的条目不出现在这里（前端按原文处理）",
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/internal_handler.batchCachedTranslationItem"
+                    }
                 }
             }
         },

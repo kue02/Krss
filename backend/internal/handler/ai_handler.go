@@ -52,6 +52,7 @@ func (h *AIHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/ai/translate", h.Translate)
 	g.POST("/ai/translate/batch", h.TranslateBatch)
 	g.POST("/ai/translate/warm", h.WarmTranslate)
+	g.POST("/ai/translations/batch", h.CachedTranslations)
 	g.DELETE("/ai/cache", h.ClearCache)
 }
 
@@ -447,6 +448,90 @@ type clearCacheResponse struct {
 	Translations     int64 `json:"translations"`
 	ListTranslations int64 `json:"listTranslations"`
 }
+
+// batchCachedTranslationItem 单条缓存译文（响应体里的 value）
+type batchCachedTranslationItem struct {
+	Content string `json:"content"`
+}
+
+type batchCachedTranslationResponse struct {
+	// Translations 只含**已翻好**的条目；没缓存的条目不出现在这里（前端按原文处理）
+	Translations map[string]batchCachedTranslationItem `json:"translations"`
+	// Language 后端实际用的目标语言（= ai.summary_language），前端用来对齐缓存键
+	Language string `json:"language"`
+}
+
+type batchCachedTranslationRequest struct {
+	EntryIDs      []string `json:"entryIds"`
+	IsReadability bool     `json:"isReadability"`
+}
+
+// CachedTranslations 批量读**已缓存**的整篇译文（54-1）。
+//
+// 存在的理由：社交视图 / 通知视图要在列表里直接显示译文，而列表里绝不能开
+// `/ai/translate` 那条 SSE（长连接，同源 HTTP/1.1 只有 6 条并发，先把设置页
+// 和别的条目堵死 —— 见 §2.50 实测第 6 条卡 45.6s）。译文本来就已经被滚动预载
+// `POST /ai/translate/warm` 算好落库了，这里只是把结果批量取出来。
+//
+// 只读语义：不触发生成、不写库；没缓存的条目直接不返回，不报错。
+// @Summary Batch read cached translations
+// @Description Read already-cached full-content translations for many entries. Read-only: never triggers translation.
+// @Tags ai
+// @Accept json
+// @Produce json
+// @Param request body batchCachedTranslationRequest true "Batch cached translation request"
+// @Success 200 {object} batchCachedTranslationResponse
+// @Failure 400 {object} errorResponse
+// @Router /ai/translations/batch [post]
+func (h *AIHandler) CachedTranslations(c echo.Context) error {
+	var req batchCachedTranslationRequest
+	if err := c.Bind(&req); err != nil {
+		logger.Debug("ai cached translations invalid request", "module", "handler", "action", "request", "resource", "ai", "result", "failed", "error", err)
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
+	}
+	if len(req.EntryIDs) == 0 {
+		// 空列表不是错误：列表刚打开、还没有可见行时前端就会打这一发
+		return c.JSON(http.StatusOK, batchCachedTranslationResponse{
+			Translations: map[string]batchCachedTranslationItem{},
+			Language:     h.service.GetSummaryLanguage(c.Request().Context()),
+		})
+	}
+	// 上限与 repository 侧一致（200）：列表一屏远达不到，多传说明调用方算错了
+	if len(req.EntryIDs) > 200 {
+		logger.Debug("ai cached translations too many ids", "module", "handler", "action", "request", "resource", "ai", "result", "failed", "count", len(req.EntryIDs))
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "maximum 200 entries per request"})
+	}
+
+	ids := make([]int64, 0, len(req.EntryIDs))
+	for _, raw := range req.EntryIDs {
+		entryID, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			// 单个坏 id 不整单失败：跳过它，其余照常
+			continue
+		}
+		ids = append(ids, entryID)
+	}
+
+	ctx := c.Request().Context()
+	cached, err := h.service.GetCachedTranslations(ctx, ids, req.IsReadability)
+	if err != nil {
+		logger.Error("ai cached translations lookup failed", "module", "handler", "action", "fetch", "resource", "ai", "result", "failed", "count", len(ids), "error", err)
+		return c.JSON(http.StatusInternalServerError, errorResponse{Error: err.Error()})
+	}
+
+	translations := make(map[string]batchCachedTranslationItem, len(cached))
+	for entryID, content := range cached {
+		translations[strconv.FormatInt(entryID, 10)] = batchCachedTranslationItem{Content: content}
+	}
+
+	logger.Debug("ai cached translations served", "module", "handler", "action", "fetch", "resource", "ai", "result", "ok", "requested", len(ids), "hit", len(translations))
+
+	return c.JSON(http.StatusOK, batchCachedTranslationResponse{
+		Translations: translations,
+		Language:     h.service.GetSummaryLanguage(ctx),
+	})
+}
+
 
 // ClearCache deletes all AI cache data.
 // @Summary Clear AI cache

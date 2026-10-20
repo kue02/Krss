@@ -147,6 +147,31 @@ definitions:
       exists:
         type: boolean
     type: object
+  internal_handler.batchCachedTranslationItem:
+    properties:
+      content:
+        type: string
+    type: object
+  internal_handler.batchCachedTranslationRequest:
+    properties:
+      entryIds:
+        items:
+          type: string
+        type: array
+      isReadability:
+        type: boolean
+    type: object
+  internal_handler.batchCachedTranslationResponse:
+    properties:
+      language:
+        description: Language 后端实际用的目标语言（= ai.summary_language），前端用来对齐缓存键
+        type: string
+      translations:
+        additionalProperties:
+          $ref: '#/definitions/internal_handler.batchCachedTranslationItem'
+        description: Translations 只含**已翻好**的条目；没缓存的条目不出现在这里（前端按原文处理）
+        type: object
+    type: object
   internal_handler.batchTranslateRequest:
     properties:
       articles:
@@ -1970,6 +1995,33 @@ paths:
           schema:
             $ref: '#/definitions/internal_handler.errorResponse'
       summary: Warm translation cache
+      tags:
+      - ai
+  /ai/translations/batch:
+    post:
+      consumes:
+      - application/json
+      description: 'Read already-cached full-content translations for many entries.
+        Read-only: never triggers translation.'
+      parameters:
+      - description: Batch cached translation request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.batchCachedTranslationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.batchCachedTranslationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: Batch read cached translations
       tags:
       - ai
   /api/domain-rate-limits:

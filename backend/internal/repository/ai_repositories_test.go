@@ -123,3 +123,47 @@ func TestAIListTranslationRepository_GetBatchAndDelete(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, remaining, 1)
 }
+
+// ── 54-1：整篇译文的批量读 ─────────────────────────────────────────────
+
+func TestAITranslationRepository_GetBatch(t *testing.T) {
+	db := testutil.NewTestDB(t)
+	repo := repository.NewAITranslationRepository(db)
+	ctx := context.Background()
+
+	feedID := testutil.SeedFeed(t, db, model.Feed{Title: "F", URL: "u"})
+	e1 := testutil.SeedEntry(t, db, model.Entry{FeedID: feedID})
+	e2 := testutil.SeedEntry(t, db, model.Entry{FeedID: feedID})
+	e3 := testutil.SeedEntry(t, db, model.Entry{FeedID: feedID})
+
+	require.NoError(t, repo.Save(ctx, e1, false, "zh-CN", "译文一"))
+	require.NoError(t, repo.Save(ctx, e2, false, "zh-CN", "译文二"))
+	// e3 没缓存 ⇒ 结果里不出现
+	// 同一条目的可读模式译文是另一行，不能串到非可读查询里
+	require.NoError(t, repo.Save(ctx, e1, true, "zh-CN", "可读模式译文"))
+	// 别的语言也不能串进来
+	require.NoError(t, repo.Save(ctx, e2, false, "en-US", "english"))
+
+	got, err := repo.GetBatch(ctx, []int64{e1, e2, e3}, false, "zh-CN")
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	require.Equal(t, "译文一", got[e1].Content)
+	require.Equal(t, "译文二", got[e2].Content)
+	require.NotContains(t, got, e3)
+
+	// 可读模式单独一批
+	gotReadable, err := repo.GetBatch(ctx, []int64{e1, e2}, true, "zh-CN")
+	require.NoError(t, err)
+	require.Len(t, gotReadable, 1)
+	require.Equal(t, "可读模式译文", gotReadable[e1].Content)
+
+	// 重复 id 不炸、结果不变
+	gotDup, err := repo.GetBatch(ctx, []int64{e1, e1, e2}, false, "zh-CN")
+	require.NoError(t, err)
+	require.Len(t, gotDup, 2)
+
+	// 空入参返回空 map 且不报错
+	gotEmpty, err := repo.GetBatch(ctx, nil, false, "zh-CN")
+	require.NoError(t, err)
+	require.Empty(t, gotEmpty)
+}
