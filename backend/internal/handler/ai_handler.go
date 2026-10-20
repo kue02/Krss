@@ -532,7 +532,6 @@ func (h *AIHandler) CachedTranslations(c echo.Context) error {
 	})
 }
 
-
 // ClearCache deletes all AI cache data.
 // @Summary Clear AI cache
 // @Description Delete all AI-generated summaries and translations cache.
