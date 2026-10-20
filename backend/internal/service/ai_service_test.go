@@ -200,6 +200,9 @@ type translationRepoStub struct {
 	saveErr      error
 	// getResult：让「已缓存」这条分支可测（默认 nil 表示库里没有）
 	getResult *model.AITranslation
+	// batchResult / batchErr：批量读（54-1）
+	batchResult map[int64]*model.AITranslation
+	batchErr    error
 }
 
 func (s *translationRepoStub) Get(ctx context.Context, entryID int64, isReadability bool, language string) (*model.AITranslation, error) {
@@ -207,6 +210,16 @@ func (s *translationRepoStub) Get(ctx context.Context, entryID int64, isReadabil
 		return nil, s.getErr
 	}
 	return s.getResult, nil
+}
+
+func (s *translationRepoStub) GetBatch(ctx context.Context, entryIDs []int64, isReadability bool, language string) (map[int64]*model.AITranslation, error) {
+	if s.batchErr != nil {
+		return nil, s.batchErr
+	}
+	if s.batchResult != nil {
+		return s.batchResult, nil
+	}
+	return make(map[int64]*model.AITranslation), nil
 }
 
 func (s *translationRepoStub) Save(ctx context.Context, entryID int64, isReadability bool, language, content string) error {
@@ -482,4 +495,32 @@ func TestAIService_TranslateBlocks_NoCacheOnCancel(t *testing.T) {
 	// Verify no cache was saved (translationRepo.lastLanguage should be empty
 	// because SaveTranslation was never called due to ctx.Err() != nil check)
 	require.Empty(t, translationRepo.lastLanguage, "Should not save cache on cancelled context")
+}
+
+// ── 54-1：批量取已缓存译文 ─────────────────────────────────────────────
+
+func TestAIService_GetCachedTranslations(t *testing.T) {
+	repo := newSettingsRepoStub()
+	repo.data[service.KeyAISummaryLanguage] = "zh-CN"
+	translationRepo := &translationRepoStub{
+		batchResult: map[int64]*model.AITranslation{
+			1: {EntryID: 1, Content: "译文一"},
+			2: {EntryID: 2, Content: ""}, // 空内容不返回（免得前端拿到空串覆盖原文）
+		},
+	}
+	svc := service.NewAIService(&summaryRepoStub{}, translationRepo, &listTranslationRepoStub{}, repo, ai.NewRateLimiter(100))
+
+	got, err := svc.GetCachedTranslations(context.Background(), []int64{1, 2, 3}, false)
+	require.NoError(t, err)
+	require.Len(t, got, 1, "空 content 的条目不该出现在结果里")
+	require.Equal(t, "译文一", got[1])
+}
+
+func TestAIService_GetCachedTranslations_RepoError(t *testing.T) {
+	translationRepo := &translationRepoStub{batchErr: errors.New("db down")}
+	svc := service.NewAIService(&summaryRepoStub{}, translationRepo, &listTranslationRepoStub{}, newSettingsRepoStub(), ai.NewRateLimiter(100))
+
+	got, err := svc.GetCachedTranslations(context.Background(), []int64{1}, false)
+	require.Error(t, err, "仓储错误要透出，不许静默吞掉")
+	require.Nil(t, got)
 }

@@ -3,6 +3,7 @@ package handler_test
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"testing"
 
 	"krss/backend/internal/handler"
@@ -548,4 +549,149 @@ func TestAIHandler_Translate_CacheLookupError_ContinuesWithService(t *testing.T)
 	err := h.Translate(c)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+// ── 54-1：批量读已缓存译文 ─────────────────────────────────────────────
+
+func TestAIHandler_CachedTranslations_HitAndMiss(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockAIService(ctrl)
+	h := handler.NewAIHandlerHelper(mockService)
+
+	// 123 有缓存、456 没缓存（不返回）
+	mockService.EXPECT().
+		GetCachedTranslations(gomock.Any(), []int64{123, 456}, false).
+		Return(map[int64]string{123: "<p>译文</p>"}, nil)
+	mockService.EXPECT().
+		GetSummaryLanguage(gomock.Any()).
+		Return("zh-CN")
+
+	e := newTestEcho()
+	req := newJSONRequest(http.MethodPost, "/ai/translations/batch", map[string]interface{}{
+		"entryIds":      []string{"123", "456"},
+		"isReadability": false,
+	})
+	c, rec := newTestContext(e, req)
+
+	require.NoError(t, h.CachedTranslations(c))
+
+	var resp handler.BatchCachedTranslationResponse
+	assertJSONResponse(t, rec, http.StatusOK, &resp)
+	require.Equal(t, "<p>译文</p>", resp.Translations["123"].Content)
+	require.NotContains(t, resp.Translations, "456")
+	require.Equal(t, "zh-CN", resp.Language)
+}
+
+func TestAIHandler_CachedTranslations_EmptyIDsIsOK(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockAIService(ctrl)
+	h := handler.NewAIHandlerHelper(mockService)
+
+	// 空列表不该打 service（列表刚打开时前端就会发这一发）
+	mockService.EXPECT().
+		GetSummaryLanguage(gomock.Any()).
+		Return("zh-CN")
+
+	e := newTestEcho()
+	req := newJSONRequest(http.MethodPost, "/ai/translations/batch", map[string]interface{}{
+		"entryIds": []string{},
+	})
+	c, rec := newTestContext(e, req)
+
+	require.NoError(t, h.CachedTranslations(c))
+
+	var resp handler.BatchCachedTranslationResponse
+	assertJSONResponse(t, rec, http.StatusOK, &resp)
+	require.Empty(t, resp.Translations)
+}
+
+func TestAIHandler_CachedTranslations_SkipsInvalidIDs(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockAIService(ctrl)
+	h := handler.NewAIHandlerHelper(mockService)
+
+	// 坏 id 被跳过，只有合法 id 进 service
+	mockService.EXPECT().
+		GetCachedTranslations(gomock.Any(), []int64{123}, true).
+		Return(map[int64]string{123: "translated"}, nil)
+	mockService.EXPECT().
+		GetSummaryLanguage(gomock.Any()).
+		Return("zh-CN")
+
+	e := newTestEcho()
+	req := newJSONRequest(http.MethodPost, "/ai/translations/batch", map[string]interface{}{
+		"entryIds":      []string{"123", "not-a-number"},
+		"isReadability": true,
+	})
+	c, rec := newTestContext(e, req)
+
+	require.NoError(t, h.CachedTranslations(c))
+
+	var resp handler.BatchCachedTranslationResponse
+	assertJSONResponse(t, rec, http.StatusOK, &resp)
+	require.Equal(t, "translated", resp.Translations["123"].Content)
+}
+
+func TestAIHandler_CachedTranslations_TooManyIDs(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockAIService(ctrl)
+	h := handler.NewAIHandlerHelper(mockService)
+
+	ids := make([]string, 0, 201)
+	for i := 0; i < 201; i++ {
+		ids = append(ids, strconv.Itoa(i+1))
+	}
+
+	e := newTestEcho()
+	req := newJSONRequest(http.MethodPost, "/ai/translations/batch", map[string]interface{}{
+		"entryIds": ids,
+	})
+	c, rec := newTestContext(e, req)
+
+	require.NoError(t, h.CachedTranslations(c))
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestAIHandler_CachedTranslations_ServiceError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockAIService(ctrl)
+	h := handler.NewAIHandlerHelper(mockService)
+
+	mockService.EXPECT().
+		GetCachedTranslations(gomock.Any(), []int64{123}, false).
+		Return(nil, errors.New("db down"))
+
+	e := newTestEcho()
+	req := newJSONRequest(http.MethodPost, "/ai/translations/batch", map[string]interface{}{
+		"entryIds": []string{"123"},
+	})
+	c, rec := newTestContext(e, req)
+
+	require.NoError(t, h.CachedTranslations(c))
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
+}
+
+func TestAIHandler_CachedTranslations_InvalidBody(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockAIService(ctrl)
+	h := handler.NewAIHandlerHelper(mockService)
+
+	e := newTestEcho()
+	req := newJSONRequestRaw(http.MethodPost, "/ai/translations/batch", "{invalid json")
+	c, rec := newTestContext(e, req)
+
+	require.NoError(t, h.CachedTranslations(c))
+	require.Equal(t, http.StatusBadRequest, rec.Code)
 }

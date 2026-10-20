@@ -63,6 +63,11 @@ type AIService interface {
 
 	// GetCachedTranslation returns a cached translation if available.
 	GetCachedTranslation(ctx context.Context, entryID int64, isReadability bool) (*model.AITranslation, error)
+	// GetCachedTranslations 批量取整篇译文（54-1）：只读缓存、绝不触发翻译。
+	// 列表卡片要「在外面就看到译文」，而列表里不能开 SSE（同源 6 条并发，见 §2.50），
+	// 所以走这条只读的口子 —— 译文多半已由滚动预载 `WarmTranslation` 落库。
+	// 返回 entryID → 译文 HTML；没缓存过的条目不出现在结果里。
+	GetCachedTranslations(ctx context.Context, entryIDs []int64, isReadability bool) (map[int64]string, error)
 	// TranslateBlocks parses HTML into blocks and translates them in parallel.
 	// Returns block info, a channel of results (in completion order), and an error channel.
 	TranslateBlocks(ctx context.Context, entryID int64, content, title string, isReadability bool) ([]TranslateBlockInfo, <-chan TranslateBlockResult, <-chan error, error)
@@ -517,6 +522,23 @@ func (s *aiService) GetCachedTranslation(ctx context.Context, entryID int64, isR
 		return nil, err
 	}
 	return translation, nil
+}
+
+func (s *aiService) GetCachedTranslations(ctx context.Context, entryIDs []int64, isReadability bool) (map[int64]string, error) {
+	language := s.GetSummaryLanguage(ctx)
+	cached, err := s.translationRepo.GetBatch(ctx, entryIDs, isReadability, language)
+	if err != nil {
+		logger.Warn("ai translations batch lookup failed", "module", "service", "action", "fetch", "resource", "ai", "result", "failed", "error", err)
+		return nil, err
+	}
+	out := make(map[int64]string, len(cached))
+	for id, t := range cached {
+		if t == nil || t.Content == "" {
+			continue
+		}
+		out[id] = t.Content
+	}
+	return out, nil
 }
 
 func (s *aiService) SaveTranslation(ctx context.Context, entryID int64, isReadability bool, content string) error {
