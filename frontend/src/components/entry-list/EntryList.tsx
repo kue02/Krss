@@ -13,6 +13,7 @@ import { AlertDialog, Button } from "@heroui/react";
 import { useFeeds } from "@/hooks/useFeeds";
 import { useGeneralSettings } from "@/hooks/useGeneralSettings";
 import { useEntryPrefetch } from "@/hooks/useEntryPrefetch";
+import { useListTranslations } from "@/hooks/useListTranslations";
 import { useRefreshStatus } from "@/hooks/useRefreshStatus";
 import { queryClient } from "@/lib/queryClient";
 import { getRefreshStatus, refreshAllFeeds, refreshFeeds } from "@/api";
@@ -29,7 +30,7 @@ import {
   type EntryFilter,
 } from "./EntryListFilterPill";
 import { EntryListHeader } from "./EntryListHeader";
-import { needsTranslation as needsTranslationAsync } from "@/lib/language-detect-async";
+import { needsListTranslation as needsListTranslationAsync } from "@/lib/language-detect-async";
 import {
   translateArticlesBatch,
   cancelAllBatchTranslations,
@@ -551,6 +552,30 @@ export function EntryList({
     concurrency: entryPrefetchConcurrency,
   });
 
+  /**
+   * 54-9：**列表主动翻译**（社交 / 通知视图）。
+   *
+   * 用户 2026-10-20 原话：「就是要列表主动翻译，只限社交媒体、通知视图……直接在列表就看了」。
+   * 54-2 那一版是**只读缓存**（等滚动预载碰巧翻好），用户判为「等于没做」—— 因为列表里
+   * 绝大多数条目从来没被预载过，所以一直是原文。
+   *
+   * 现在本钩子自己发起翻译，但走的仍是**预载那条 warm 通道**（202 立即返回、后端后台翻），
+   * 绝不在列表里开 `/ai/translate` SSE（同源 6 条并发，§2.50 实测第 6 条卡 45.6 秒）；
+   * 翻好之后按 2.5s 轮询批量读缓存，读到就换到卡片上。
+   */
+  useListTranslations({
+    entries,
+    feedsById: feedsMap,
+    autoTranslate: aiSettings?.autoTranslate ?? false,
+    targetLanguage,
+    enabled:
+      isActive &&
+      (isSocialView || isNotificationTimeline) &&
+      (autoTranslate || hasAutoTranslateOverride),
+    resetKey: scrollKey,
+    concurrency: entryPrefetchConcurrency,
+  });
+
   // 24-5：右键「标记上方为已读」—— 把这条之上的未读一次标掉。
   // 与菜单里「标为已读」同语义（直接写库、不推迟摘除），上面被标掉的当场消失。
   const { mutate: markManyAsRead } = useMarkManyAsRead();
@@ -855,7 +880,14 @@ export function EntryList({
       const session = translationSession.current;
       pendingDetection.current.add(entry.id);
 
-      void needsTranslationAsync(entry.title || "", summary, targetLanguage)
+      /**
+       * 54-10（用户 2026-10-20 报「标题没翻 / 社媒视图多出一行标题」的根因之一）：
+       * 这里原来用 `needsTranslation`（「这条要不要翻**正文**」），正文是中文就整体
+       * 返回 false ⇒ **英文标题永远不翻**。而列表里标题与正文是两个独立字段，
+       * 语言可以不一样（社交帖常见「中文正文 + 英文标题」）。
+       * 改成逐字段判定（`needsListTranslation`）：标题或摘要任一是外文就来翻。
+       */
+      void needsListTranslationAsync(entry.title || "", summary, targetLanguage)
         .then((shouldTranslate) => {
           if (translationSession.current !== session) return;
 

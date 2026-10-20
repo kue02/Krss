@@ -358,7 +358,8 @@
     "force_confirm_title": "Force refresh {{count}} feeds?",
     "force_confirm_description": "This ignores etag / last-modified and refetches every feed in scope in one go (host cooldown is skipped too). That's a lot of feeds — confirm this wasn't a mis-selection.",
     "view_feed": "Go to feed {{name}}",
-    "back_to_previous": "Back to previous selection"
+    "back_to_previous": "Back to previous selection",
+    "machine_translated": "Machine-translated"
   },
   "ai_settings": {
     "translate_channel": "Translation channel",

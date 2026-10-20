@@ -4,6 +4,7 @@ package handler
 type SummarizeResponse = summarizeResponse
 type TranslateResponse = translateResponse
 type ClearCacheResponse = clearCacheResponse
+type BatchCachedTranslationResponse = batchCachedTranslationResponse
 type UpdateProfileResponse = updateProfileResponse
 type UserResponse = userResponse
 type DomainRateLimitResponse = domainRateLimitResponse

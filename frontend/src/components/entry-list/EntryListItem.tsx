@@ -17,6 +17,7 @@ import { stripHtml } from "@/lib/html-utils";
 import { getEntryImages } from "@/lib/extract-images";
 import { useImagePreviewStore } from "@/stores/image-preview-store";
 import { useTranslationStore } from "@/stores/translation-store";
+import { resolveEntryAutoTranslate } from "@/lib/auto-translate";
 import { FeedIcon } from "@/components/ui/feed-icon";
 import { useEntrySourceJump } from "./entry-source-jump";
 import { MarqueeText } from "@/components/ui/marquee-text";
@@ -60,6 +61,7 @@ import {
 } from "@/lib/proxy-image-recovery";
 import { useInView } from "@/hooks/useInView";
 import { ArticleContent } from "@/components/ui/article-content";
+import { MachineTranslatedBadge } from "./machine-translated-badge";
 import { resolveReadingFontStack } from "@/lib/reading-fonts";
 import type { Entry, Feed, Folder } from "@/types/api";
 
@@ -316,7 +318,20 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     const entryLineHeight = useUISettingKey("entryLineHeight");
 
     const translation = useTranslationStore((state) =>
-      autoTranslate && targetLanguage
+      /**
+       * 54-7（用户 2026-10-20 报「设置了订阅翻译，列表里还是英文」）：
+       * 这里的门必须与**取数/预载**用同一份解析器（条目级 > 订阅级 > 全局），
+       * 不能只看全局 `autoTranslate`。
+       *
+       * 原来的形态：`useListTranslations` 按订阅级覆盖挑候选（feed.autoTranslate）
+       * 把译文写进了 store，而这里只认全局开关 —— 全局关着、只配了订阅级翻译时，
+       * 译文明明在 store 里却读不出来，卡片一直是原文。
+       */
+      targetLanguage && resolveEntryAutoTranslate({
+        entry,
+        feed,
+        aiSettings: { autoTranslate },
+      })
         ? state.getTranslation(entry.id, targetLanguage)
         : undefined,
     );
@@ -391,7 +406,21 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     }, [inView, entry.id, cardImageSize]);
     const readingFontStack = resolveReadingFontStack(entryFontFamily);
     const expandedContent = autoReadable ?? entry.content ?? null;
-    const isExpanded = isSocialView && Boolean(expandedContent);
+    /**
+     * 54-3：卡片里的正文用**译文**（用户 2026-10-20 拍板「译文顶替原文」）。
+     *
+     * 取的是 `translation-store` 里那份整篇译文 —— 由 `useListTranslations` 批量
+     * 从后端缓存读回来（只读，不发翻译请求），或由正文页流式翻译后写入。
+     * 没有译文就照旧用原文：卡片立刻可读，等预载落库后自然补上。
+     *
+     * 注意这里**只换文字来源**，下面那条管线（摘图 → 去重复标题 → 拆引文 →
+     * 300px 折叠 → 图片画廊）一行不动：译文 HTML 与原文同构（后端按块回填、
+     * 标签属性一个不改），所以图片、引文、折叠行为都保持原样。
+     */
+    const translatedBody = translation?.content ?? null;
+    const displayContent = translatedBody ?? expandedContent;
+    const isExpanded = isSocialView && Boolean(displayContent);
+
     // 源常在正文开头重复标题，时间线里标题已单独渲染，去掉重复的首段；
     // 图片也从正文摘掉，交给下面的缩略图行（对齐 Folo 的 noMedia + MediaGallery）
     // 社交帖常把正文开头当成标题：这时不单独渲染标题，避免同一句话出现两次
@@ -399,24 +428,37 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
       // 源的标题往往是「正文掐掉换行后的版本」：两边都去掉全部空白再比前缀，
       // 免得 stripHtml 不给 <br> 补空格导致比对失败
       const squash = (value: string) => value.replace(/\s+/g, "");
-      // 源的标题常在结尾用省略号截断，比对前去掉
-      const title = squash((displayTitle ?? "").replace(/(?:\.{2,}|…)\s*$/, ""));
+      /**
+       * 54-10（用户 2026-10-20 报「社交媒体视图多出来一行标题」）：
+       * 这一比必须用**同一语言的原文对原文**，不能用译文正文去比原文标题。
+       *
+       * 「标题是不是正文开头」是**源站的事实**，与翻不翻译无关。原来（54-3）改成拿
+       * `displayContent`（可能是中文译文）去比 `displayTitle`（标题译文没回来时是英文
+       * 原文）—— 中英永远比不中 ⇒ 恒为 false ⇒ 标题被当成「另一句话」多渲染一行，
+       * 于是卡片变成「英文标题 + 中文正文」，正是用户看到的样子。
+       *
+       * 现在固定用 `entry.title` 比 `entry.content`（源数据），结论稳定、与译文无关；
+       * 标题要不要显示译文由 `displayTitle` 自己负责（有译文标题就用译文）。
+       */
+      const title = squash(
+        (entry.title ?? "").replace(/(?:\.{2,}|…)\s*$/, ""),
+      );
       const raw = squash(stripHtml(entry.content ?? ""));
       if (title.length < 6 || !raw) return false;
       return raw.startsWith(title);
-    }, [displayTitle, entry.content]);
+    }, [entry.title, entry.content]);
     /**
      * 正文正文：标题重复的开头只在「标题另渲染一份」时才剥掉。
      * 反之（标题就是正文开头、标题不渲染）必须留全文 —— 否则正文被剥掉一半，
      * 引用推文那种条目就只剩底下的引文了（用户报的「只显示引文内容」）。
      */
     const socialBody = useMemo(() => {
-      const base = stripContentImages(expandedContent);
+      const base = stripContentImages(displayContent);
       const withoutDuplicate = titleIsBodyPrefix
         ? base
         : stripDuplicatedTitle(base, displayTitle);
       return removeContentSeparators(withoutDuplicate);
-    }, [expandedContent, displayTitle, titleIsBodyPrefix]);
+    }, [displayContent, displayTitle, titleIsBodyPrefix]);
 
     /**
      * 47-5（用户 2026-10-12）：正文与引文是**两段**，顺序照来源 —— 卡片渲染顺序是
@@ -577,6 +619,10 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                   )}
                   {entry.starred && (
                     <Star className="ml-1 size-3.5 shrink-0 text-amber-500" />
+                  )}
+                  {/* 54-5：正文显示的是译文时挂个语言图标（判据 = store 里真有译文） */}
+                  {translatedBody && (
+                    <MachineTranslatedBadge className="ml-1" />
                   )}
                   {entry.muted && <MutedBadge filterId={entry.filterId} />}
                 </div>
