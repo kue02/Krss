@@ -3,7 +3,10 @@ name: Release
 on:
   push:
     tags:
+      # 三段 / 四段都算发版（1.1.6 / 1.1.6.1）。四段 tag 只出 :latest 与完整版本 tag，
+      # 不推 :x.y / :x 滚动 tag —— 否则 1.1.6.1 会把 1.1.6 的 :1.1 tag 顶掉。
       - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+.[0-9]+"
 
 env:
   REGISTRY: ghcr.io
@@ -158,21 +161,27 @@ jobs:
           VERSION=${GITHUB_REF_NAME#v}
           MAJOR=$(echo "$VERSION" | cut -d. -f1)
           MINOR=$(echo "$VERSION" | cut -d. -f1-2)
+          # 四段版本（1.1.6.1）是补丁之上的热修：只出 :latest 与 :1.1.6.1，
+          # 别去覆盖 :1.1 / :1 这两个滚动 tag（它们属于 1.1.6 那条线）。
+          PARTS=$(echo "$VERSION" | awk -F. '{print NF}')
           IMAGE_NAME_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "major=${MAJOR}" >> $GITHUB_OUTPUT
           echo "minor=${MINOR}" >> $GITHUB_OUTPUT
+          echo "parts=${PARTS}" >> $GITHUB_OUTPUT
           echo "image_name=${IMAGE_NAME_LOWER}" >> $GITHUB_OUTPUT
 
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
-          docker buildx imagetools create \
-            -t ${{ env.REGISTRY }}/${{ steps.version.outputs.image_name }}:latest \
-            -t ${{ env.REGISTRY }}/${{ steps.version.outputs.image_name }}:${{ steps.version.outputs.version }} \
-            -t ${{ env.REGISTRY }}/${{ steps.version.outputs.image_name }}:${{ steps.version.outputs.minor }} \
-            -t ${{ env.REGISTRY }}/${{ steps.version.outputs.image_name }}:${{ steps.version.outputs.major }} \
-            $(printf '${{ env.REGISTRY }}/${{ steps.version.outputs.image_name }}@sha256:%s ' *)
+          IMG=${{ env.REGISTRY }}/${{ steps.version.outputs.image_name }}
+          VER=${{ steps.version.outputs.version }}
+          if [ "${{ steps.version.outputs.parts }}" = "3" ]; then
+            TAGS="-t $IMG:latest -t $IMG:$VER -t $IMG:${{ steps.version.outputs.minor }} -t $IMG:${{ steps.version.outputs.major }}"
+          else
+            TAGS="-t $IMG:latest -t $IMG:$VER"
+          fi
+          docker buildx imagetools create $TAGS $(printf "$IMG@sha256:%s " *)
 
       - name: Inspect image
         run: |
