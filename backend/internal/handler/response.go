@@ -53,6 +53,12 @@ func writeServiceError(c echo.Context, err error) error {
 		return c.JSON(http.StatusConflict, errorResponse{Error: "conflict"})
 	case errors.Is(err, service.ErrFeedFetch):
 		return c.JSON(http.StatusBadGateway, errorResponse{Error: "feed fetch failed"})
+	case errors.Is(err, service.ErrPluginNotFound):
+		return c.JSON(http.StatusNotFound, errorResponse{Error: "plugin not found"})
+	case errors.Is(err, service.ErrPluginDisabled):
+		return c.JSON(http.StatusConflict, errorResponse{Error: "plugin disabled"})
+	case errors.Is(err, service.ErrPluginActionNotTestable):
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "plugin action not testable"})
 	default:
 		logger.Error("handler internal error", "module", "handler", "action", "request", "resource", "http", "result", "failed", "error", err)
 		return c.JSON(http.StatusInternalServerError, errorResponse{Error: "internal error"})

@@ -50,6 +50,7 @@ func TestNewRouter_RegistersRoutes(t *testing.T) {
 	mcpOutboundService := mock.NewMockMCPOutboundService(ctrl)
 	mcpHandler := handler.NewMCPHandler(mcpService, mcpOutboundService)
 	mcpEndpointHandler := handler.NewMCPEndpointHandler(mcpOutboundService)
+	pluginHandler := handler.NewPluginHandler(mock.NewMockPluginService(ctrl))
 
 	e := gh.NewRouter(
 		folderHandler,
@@ -66,6 +67,7 @@ func TestNewRouter_RegistersRoutes(t *testing.T) {
 		proxySourceHandler,
 		mcpHandler,
 		mcpEndpointHandler,
+		pluginHandler,
 		authService,
 		"",
 		true,
@@ -118,6 +120,7 @@ func TestNewRouter_SwaggerDisabled(t *testing.T) {
 	mcpOutboundService := mock.NewMockMCPOutboundService(ctrl)
 	mcpHandler := handler.NewMCPHandler(mcpService, mcpOutboundService)
 	mcpEndpointHandler := handler.NewMCPEndpointHandler(mcpOutboundService)
+	pluginHandler := handler.NewPluginHandler(mock.NewMockPluginService(ctrl))
 
 	e := gh.NewRouter(
 		folderHandler,
@@ -134,6 +137,7 @@ func TestNewRouter_SwaggerDisabled(t *testing.T) {
 		proxySourceHandler,
 		mcpHandler,
 		mcpEndpointHandler,
+		pluginHandler,
 		authService,
 		"",
 		false,
@@ -181,6 +185,7 @@ func TestNewRouter_LogoutRouteIsPublic(t *testing.T) {
 	mcpOutboundService := mock.NewMockMCPOutboundService(ctrl)
 	mcpHandler := handler.NewMCPHandler(mcpService, mcpOutboundService)
 	mcpEndpointHandler := handler.NewMCPEndpointHandler(mcpOutboundService)
+	pluginHandler := handler.NewPluginHandler(mock.NewMockPluginService(ctrl))
 
 	e := gh.NewRouter(
 		folderHandler,
@@ -197,6 +202,7 @@ func TestNewRouter_LogoutRouteIsPublic(t *testing.T) {
 		proxySourceHandler,
 		mcpHandler,
 		mcpEndpointHandler,
+		pluginHandler,
 		authService,
 		"",
 		false,

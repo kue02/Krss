@@ -1113,6 +1113,48 @@ definitions:
       status:
         type: integer
     type: object
+  internal_handler.pluginCatalogItem:
+    properties:
+      actions:
+        items:
+          $ref: '#/definitions/krss_backend_internal_plugin.ActionMeta'
+        type: array
+      builtin:
+        type: boolean
+      description:
+        type: string
+      enabled:
+        type: boolean
+      id:
+        type: string
+      name:
+        type: string
+      sections:
+        items:
+          $ref: '#/definitions/krss_backend_internal_plugin.SettingsSection'
+        type: array
+      version:
+        type: string
+    type: object
+  internal_handler.pluginCatalogResponse:
+    properties:
+      plugins:
+        items:
+          $ref: '#/definitions/internal_handler.pluginCatalogItem'
+        type: array
+    type: object
+  internal_handler.pluginEnabledRequest:
+    properties:
+      enabled:
+        type: boolean
+    type: object
+  internal_handler.pluginSettingsResponse:
+    properties:
+      values:
+        additionalProperties:
+          type: string
+        type: object
+    type: object
   internal_handler.proxyMemoryItem:
     properties:
       host:
@@ -1456,6 +1498,61 @@ definitions:
       type:
         type: string
       username:
+        type: string
+    type: object
+  krss_backend_internal_plugin.ActionMeta:
+    properties:
+      actionId:
+        type: string
+      enabled:
+        type: boolean
+      fields:
+        items:
+          $ref: '#/definitions/krss_backend_internal_plugin.Field'
+        type: array
+      label:
+        type: string
+      pluginId:
+        type: string
+      pluginName:
+        type: string
+    type: object
+  krss_backend_internal_plugin.Field:
+    properties:
+      help:
+        type: string
+      key:
+        type: string
+      label:
+        type: string
+      options:
+        items:
+          $ref: '#/definitions/krss_backend_internal_plugin.Option'
+        type: array
+      placeholder:
+        type: string
+      required:
+        type: boolean
+      type:
+        description: '"text" | "secret" | "select" | "bool"'
+        type: string
+    type: object
+  krss_backend_internal_plugin.Option:
+    properties:
+      label:
+        type: string
+      value:
+        type: string
+    type: object
+  krss_backend_internal_plugin.SettingsSection:
+    properties:
+      fields:
+        items:
+          $ref: '#/definitions/krss_backend_internal_plugin.Field'
+        type: array
+      id:
+        type: string
+      title:
         type: string
     type: object
   krss_backend_internal_service.AIProviderConfig:
@@ -2338,6 +2435,81 @@ paths:
       summary: Send test notification
       tags:
       - settings
+  /api/plugins:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.pluginCatalogResponse'
+      summary: 插件清单（含各插件声明的动作与设置段）
+      tags:
+      - plugins
+  /api/plugins/{id}:
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: 插件 id
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 启停
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.pluginEnabledRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.pluginCatalogResponse'
+      summary: 启用 / 停用一个插件
+      tags:
+      - plugins
+  /api/plugins/{id}/actions/{actionId}/test:
+    post:
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: integer
+            type: object
+      summary: 让插件动作自己发一条测试（Bark 发送测试推送）
+      tags:
+      - plugins
+  /api/plugins/{id}/settings:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.pluginSettingsResponse'
+      summary: 读插件设置（secret 字段掩码）
+      tags:
+      - plugins
+    put:
+      consumes:
+      - application/json
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.pluginSettingsResponse'
+      summary: 写插件设置（值为掩码 = 保持原值）
+      tags:
+      - plugins
   /api/proxy/image/{encoded}:
     get:
       description: Proxies external images to avoid triggering anti-crawling mechanisms

@@ -18,6 +18,7 @@ import (
 	"krss/backend/internal/db"
 	"krss/backend/internal/handler"
 	transport "krss/backend/internal/http"
+	"krss/backend/internal/plugin"
 	"krss/backend/internal/repository"
 	"krss/backend/internal/scheduler"
 	"krss/backend/internal/service"
@@ -151,7 +152,18 @@ func main() {
 	mcpHandler := handler.NewMCPHandler(mcpService, mcpOutboundService)
 	mcpEndpointHandler := handler.NewMCPEndpointHandler(mcpOutboundService)
 
-	router := transport.NewRouter(folderHandler, feedHandler, entryHandler, opmlHandler, iconHandler, proxyHandler, settingsHandler, aiHandler, authHandler, domainRateLimitHandler, filterHandler, proxySourceHandler, mcpHandler, mcpEndpointHandler, authService, cfg.StaticDir, cfg.EnableSwagger)
+	// 插件模块（55 批）：内置插件已在各自 init() 注册进 plugin.Default；用库里的启停记录覆盖默认值。
+	pluginRepo := repository.NewPluginRepository(dbConn)
+	pluginRegistry := plugin.Default
+	pluginService := service.NewPluginService(pluginRegistry, pluginRepo, settingsRepo)
+	// 启动即装载：表里没有的内置插件补进行（bark/rsshub 默认开 ⇒ 老实例行为零变化；demo 默认关）
+	if _, err := pluginService.Catalog(context.Background()); err != nil {
+		logger.Error("init plugins", "error", err)
+		os.Exit(1)
+	}
+	pluginHandler := handler.NewPluginHandler(pluginService)
+
+	router := transport.NewRouter(folderHandler, feedHandler, entryHandler, opmlHandler, iconHandler, proxyHandler, settingsHandler, aiHandler, authHandler, domainRateLimitHandler, filterHandler, proxySourceHandler, mcpHandler, mcpEndpointHandler, pluginHandler, authService, cfg.StaticDir, cfg.EnableSwagger)
 	pprofServer := startPprofServer(cfg.PprofAddr)
 
 	// 定时刷新：间隔来自设置（设置 → 高级 → 拉取），每轮重新读一次 —— 改完下一轮生效，不用重启

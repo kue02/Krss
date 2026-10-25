@@ -1,0 +1,199 @@
+package handler_test
+
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/labstack/echo/v4"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
+	"krss/backend/internal/handler"
+	"krss/backend/internal/plugin"
+	"krss/backend/internal/service"
+	"krss/backend/internal/service/mock"
+)
+
+// newPluginTestContext 起一个带 JSON body 的 echo 上下文（自包含，不改既有测试文件）。
+func newPluginTestContext(method, target string, body interface{}, paramNames ...string) (echo.Context, *httptest.ResponseRecorder) {
+	var reader *bytes.Reader
+	if body != nil {
+		raw, err := json.Marshal(body)
+		if err != nil {
+			panic(err)
+		}
+		reader = bytes.NewReader(raw)
+	} else {
+		reader = bytes.NewReader(nil)
+	}
+	req := httptest.NewRequest(method, target, reader)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e := echo.New()
+	c := e.NewContext(req, rec)
+	if len(paramNames) > 0 {
+		c.SetParamNames(paramNames...)
+	}
+	return c, rec
+}
+
+func demoCatalog() []plugin.CatalogItem {
+	return []plugin.CatalogItem{{
+		Meta:    plugin.Meta{ID: "demo", Name: "Demo", Description: "样板", Version: "1.0.0", Builtin: true},
+		Enabled: true,
+		Actions: []plugin.ActionMeta{{
+			PluginID: "demo", PluginName: "Demo", ActionID: "log", Label: "写一条调试日志（demo）", Enabled: true,
+			Fields: []plugin.Field{{Key: "note", Label: "附带一句话（可选）", Type: "text"}},
+		}},
+	}}
+}
+
+// TestPluginHandler_List 清单接口：200 且插件/动作元数据在位。
+func TestPluginHandler_List(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	svc := mock.NewMockPluginService(ctrl)
+	svc.EXPECT().Catalog(gomock.Any()).Return(demoCatalog(), nil)
+
+	h := handler.NewPluginHandler(svc)
+	c, rec := newPluginTestContext(http.MethodGet, "/api/plugins", nil)
+	require.NoError(t, h.List(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Plugins []struct {
+			ID      string `json:"id"`
+			Enabled bool   `json:"enabled"`
+			Actions []struct {
+				PluginID string `json:"pluginId"`
+				ActionID string `json:"actionId"`
+				Label    string `json:"label"`
+				Enabled  bool   `json:"enabled"`
+			} `json:"actions"`
+		} `json:"plugins"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Len(t, resp.Plugins, 1)
+	require.Equal(t, "demo", resp.Plugins[0].ID)
+	require.True(t, resp.Plugins[0].Enabled)
+	require.Len(t, resp.Plugins[0].Actions, 1)
+	require.Equal(t, "demo", resp.Plugins[0].Actions[0].PluginID)
+	require.Equal(t, "log", resp.Plugins[0].Actions[0].ActionID)
+	require.True(t, resp.Plugins[0].Actions[0].Enabled)
+}
+
+// TestPluginHandler_SetEnabled 启停：把 enabled=false 带给 service，回包反映新状态。
+func TestPluginHandler_SetEnabled(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	disabled := demoCatalog()
+	disabled[0].Enabled = false
+
+	svc := mock.NewMockPluginService(ctrl)
+	svc.EXPECT().SetEnabled(gomock.Any(), "demo", false).Return(disabled, nil)
+
+	h := handler.NewPluginHandler(svc)
+	c, rec := newPluginTestContext(http.MethodPatch, "/api/plugins/demo", map[string]bool{"enabled": false}, "id")
+	c.SetParamValues("demo")
+	require.NoError(t, h.SetEnabled(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"enabled":false`)
+}
+
+// TestPluginHandler_SetEnabled_NotFound 插件不存在 → 404（不是 500）。
+func TestPluginHandler_SetEnabled_NotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	svc := mock.NewMockPluginService(ctrl)
+	svc.EXPECT().SetEnabled(gomock.Any(), "ghost", true).Return(nil, service.ErrPluginNotFound)
+
+	h := handler.NewPluginHandler(svc)
+	c, rec := newPluginTestContext(http.MethodPatch, "/api/plugins/ghost", map[string]bool{"enabled": true}, "id")
+	c.SetParamValues("ghost")
+	require.NoError(t, h.SetEnabled(c))
+	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+// TestPluginHandler_GetSettings 读设置：secret 字段出接口是掩码。
+func TestPluginHandler_GetSettings(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	svc := mock.NewMockPluginService(ctrl)
+	svc.EXPECT().GetSettings(gomock.Any(), "bark").Return(
+		service.PluginSettingsResult{Values: map[string]string{"url": service.PluginMaskedValue}}, nil)
+
+	h := handler.NewPluginHandler(svc)
+	c, rec := newPluginTestContext(http.MethodGet, "/api/plugins/bark/settings", nil, "id")
+	c.SetParamValues("bark")
+	require.NoError(t, h.GetSettings(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Values map[string]string `json:"values"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, service.PluginMaskedValue, resp.Values["url"])
+}
+
+// TestPluginHandler_PutSettings 写设置：values 原样交给 service，回包仍是掩码。
+func TestPluginHandler_PutSettings(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	svc := mock.NewMockPluginService(ctrl)
+	svc.EXPECT().PutSettings(gomock.Any(), "bark", map[string]string{"url": "https://api.day.app/NEW"}).
+		Return(service.PluginSettingsResult{Values: map[string]string{"url": service.PluginMaskedValue}}, nil)
+
+	h := handler.NewPluginHandler(svc)
+	c, rec := newPluginTestContext(http.MethodPut, "/api/plugins/bark/settings",
+		map[string]map[string]string{"values": {"url": "https://api.day.app/NEW"}}, "id")
+	c.SetParamValues("bark")
+	require.NoError(t, h.PutSettings(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "••••••••")
+}
+
+// TestPluginHandler_TestAction 动作测试：成功 200；插件不存在 404。
+func TestPluginHandler_TestAction(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	svc := mock.NewMockPluginService(ctrl)
+	svc.EXPECT().TestAction(gomock.Any(), "bark", "notify").Return(nil)
+	svc.EXPECT().TestAction(gomock.Any(), "ghost", "notify").Return(service.ErrPluginNotFound)
+
+	h := handler.NewPluginHandler(svc)
+
+	c, rec := newPluginTestContext(http.MethodPost, "/api/plugins/bark/actions/notify/test", nil, "id", "actionId")
+	c.SetParamValues("bark", "notify")
+	require.NoError(t, h.TestAction(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"status":200`)
+
+	c2, rec2 := newPluginTestContext(http.MethodPost, "/api/plugins/ghost/actions/notify/test", nil, "id", "actionId")
+	c2.SetParamValues("ghost", "notify")
+	require.NoError(t, h.TestAction(c2))
+	require.Equal(t, http.StatusNotFound, rec2.Code)
+}
+
+// TestPluginHandler_Rescan 重新扫描：与 List 同一份 Catalog。
+func TestPluginHandler_Rescan(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	svc := mock.NewMockPluginService(ctrl)
+	svc.EXPECT().Catalog(gomock.Any()).Return(demoCatalog(), nil)
+
+	h := handler.NewPluginHandler(svc)
+	c, rec := newPluginTestContext(http.MethodPost, "/api/plugins/rescan", nil)
+	require.NoError(t, h.Rescan(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"id":"demo"`)
+}
