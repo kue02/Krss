@@ -583,10 +583,24 @@ func runMigrations(db *sql.DB) error {
 		return fmt.Errorf("create idx_entries_read_feed: %w", err)
 	}
 	// 未读默认列表（WHERE read=0 AND muted=0 ORDER BY published_at DESC, id DESC）：
-	// 副本 EXPLAIN 验证：无此索引时 SCAN entries USING INDEX idx_entries_published（全索引扫+逐行过滤）；
+	// 副本 EXPLAIN 验证：无此索引时 SCAN entries USING INDEX idx_entries_published（全索引扫 + 逐行过滤）；
 	// 加后 SEARCH ... USING INDEX (read=? AND muted=?)，行内已有序、无 TEMP B-TREE。
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_entries_unread_published ON entries(read, muted, published_at DESC, id DESC)`); err != nil {
 		return fmt.Errorf("create idx_entries_unread_published: %w", err)
+	}
+
+	// Migration 31: 插件表（55 批插件模块）。
+	// 本体只认「核心 = 阅读体验与管理」；Bark 推送 / RSSHub 适配这类特化能力做成内置插件，
+	// 启停走这一行。启动时 EnsureBuiltin 把内置插件补进行，默认 enabled=1 ⇒ 行为零变化。
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS plugins (
+			id TEXT PRIMARY KEY,
+			enabled INTEGER NOT NULL DEFAULT 1,
+			installed_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		)
+	`); err != nil {
+		return fmt.Errorf("create plugins table: %w", err)
 	}
 
 	return nil
