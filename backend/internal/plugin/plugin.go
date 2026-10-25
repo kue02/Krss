@@ -147,4 +147,8 @@ func SecretKeys(meta Meta, fields []Field) []string {
 var Default = NewRegistry()
 
 // MustRegister 向 Default 注册，失败即 panic（启动期硬失败）。
-func MustRegister(p Plugin) { if err := Default.Register(p); err != nil { panic(err) } }
+func MustRegister(p Plugin) {
+	if err := Default.Register(p); err != nil {
+		panic(err)
+	}
+}

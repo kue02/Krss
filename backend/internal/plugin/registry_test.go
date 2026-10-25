@@ -13,9 +13,9 @@ type fakeAction struct {
 	fired chan<- plugin.ActionRequest
 }
 
-func (a fakeAction) ID() string                              { return "log" }
-func (a fakeAction) Label() string                           { return "写一条日志" }
-func (a fakeAction) Fields() []plugin.Field                  { return nil }
+func (a fakeAction) ID() string             { return "log" }
+func (a fakeAction) Label() string          { return "写一条日志" }
+func (a fakeAction) Fields() []plugin.Field { return nil }
 func (a fakeAction) Execute(_ context.Context, req plugin.ActionRequest) error {
 	a.fired <- req
 	return nil
@@ -28,7 +28,7 @@ type fakePlugin struct {
 func (p fakePlugin) Meta() plugin.Meta {
 	return plugin.Meta{ID: "demo", Name: "Demo", Builtin: true}
 }
-func (p fakePlugin) Actions() []plugin.Action          { return []plugin.Action{p.action} }
+func (p fakePlugin) Actions() []plugin.Action                   { return []plugin.Action{p.action} }
 func (p fakePlugin) SettingsSections() []plugin.SettingsSection { return nil }
 func (p fakePlugin) EntryProcessors() []plugin.EntryProcessor   { return nil }
 func (p fakePlugin) FetchClassifiers() []plugin.FetchClassifier { return nil }

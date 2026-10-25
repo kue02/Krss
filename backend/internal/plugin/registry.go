@@ -27,8 +27,8 @@ type ActionMeta struct {
 // CatalogItem 一个插件的完整清单。
 type CatalogItem struct {
 	Meta
-	Enabled  bool             `json:"enabled"`
-	Actions  []ActionMeta     `json:"actions"`
+	Enabled  bool              `json:"enabled"`
+	Actions  []ActionMeta      `json:"actions"`
 	Sections []SettingsSection `json:"sections"`
 }
 
