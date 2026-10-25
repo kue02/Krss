@@ -112,12 +112,24 @@ type FilterActions struct {
 	// 「没填地址」不是配置错误，所以规范化时不会因为它为空而摘掉这个动作。
 	Notify    bool   `json:"notify"`
 	NotifyURL string `json:"notifyUrl,omitempty"`
+	// PluginActions 插件贡献的动作（55 批）。第一个真实插件是 bark 的「推送到手机」；
+	// 引擎 dispatch 时按 (plugin, action) 找执行器，插件没装 / 已停用会写进 last_error。
+	PluginActions []PluginActionRef `json:"pluginActions,omitempty"`
+}
+
+// PluginActionRef 规则对插件动作的一次引用（55 批插件模块）。
+// Config 是该动作自己的配置（插件在 Fields() 里声明形状），原样存、原样传给执行器。
+type PluginActionRef struct {
+	Plugin string            `json:"plugin"`
+	Action string            `json:"action"`
+	Config map[string]string `json:"config,omitempty"`
 }
 
 // IsEmpty 表示这条规则没有任何动作（视为无效规则）。
 func (a FilterActions) IsEmpty() bool {
 	return !a.Mute && !a.Unmute && !a.MarkRead && !a.MarkUnread && !a.Star && !a.Unstar &&
-		!a.KeepOnly && !a.Translate && !a.Summarize && !a.Webhook && !a.Notify
+		!a.KeepOnly && !a.Translate && !a.Summarize && !a.Webhook && !a.Notify &&
+		len(a.PluginActions) == 0
 }
 
 // AffectsMute 表示该动作组合会写入 muted 标记（静音或「只保留匹配」的落空分支）。

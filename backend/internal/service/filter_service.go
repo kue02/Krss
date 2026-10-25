@@ -1467,7 +1467,8 @@ func ValidateFilterParamsBody(params FilterWriteParams) error {
 	}
 	if normalizeKind(params.Kind) == model.FilterKindView {
 		// 视图不执行动作、只筛条目：动作必须为空（存库时也会被清掉），但必须至少有一个条件
-		if params.Actions != (model.FilterActions{}) {
+		// （FilterActions 含 slice 后不可比较，用 IsEmpty 表达「完全没有任何动作」）
+		if !params.Actions.IsEmpty() {
 			return ErrInvalidFilter
 		}
 		if len(params.Conditions) == 0 {
