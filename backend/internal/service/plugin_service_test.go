@@ -69,9 +69,19 @@ type fakeAction struct {
 	test    func(context.Context) error
 }
 
-func (a fakeAction) ID() string                              { if a.id != "" { return a.id }; return "log" }
-func (a fakeAction) Label() string                           { if a.label != "" { return a.label }; return "test action" }
-func (a fakeAction) Fields() []plugin.Field                  { return a.fields }
+func (a fakeAction) ID() string {
+	if a.id != "" {
+		return a.id
+	}
+	return "log"
+}
+func (a fakeAction) Label() string {
+	if a.label != "" {
+		return a.label
+	}
+	return "test action"
+}
+func (a fakeAction) Fields() []plugin.Field { return a.fields }
 func (a fakeAction) Execute(_ context.Context, req plugin.ActionRequest) error {
 	if a.execute != nil {
 		return a.execute(req)
@@ -92,8 +102,8 @@ type fakePluginWithAction struct {
 	action   plugin.Action
 }
 
-func (f fakePluginWithAction) Meta() plugin.Meta                       { return f.meta }
-func (f fakePluginWithAction) Actions() []plugin.Action                { return []plugin.Action{f.action} }
+func (f fakePluginWithAction) Meta() plugin.Meta        { return f.meta }
+func (f fakePluginWithAction) Actions() []plugin.Action { return []plugin.Action{f.action} }
 func (f fakePluginWithAction) SettingsSections() []plugin.SettingsSection {
 	if f.sections != nil {
 		return f.sections
@@ -110,7 +120,7 @@ type fakePluginRepo struct {
 	states map[string]bool
 }
 
-func newFakePluginRepo() *fakePluginRepo         { return &fakePluginRepo{states: make(map[string]bool)} }
+func newFakePluginRepo() *fakePluginRepo { return &fakePluginRepo{states: make(map[string]bool)} }
 func (r *fakePluginRepo) List(ctx context.Context) ([]repository.PluginState, error) {
 	var out []repository.PluginState
 	for id, enabled := range r.states {
@@ -175,8 +185,8 @@ func TestPutSettings_PlainTextField(t *testing.T) {
 
 	// Register a plugin with a plain field (not secret)
 	action := fakeAction{
-		id:   "notify",
-		label: "Notify",
+		id:     "notify",
+		label:  "Notify",
 		fields: []plugin.Field{{Key: "note", Type: "text"}}, // Plain text field
 	}
 	p := fakePluginWithAction{
@@ -208,7 +218,7 @@ func TestTestAction_DisabledPlugin(t *testing.T) {
 	fakeReg.states["demo"] = false
 
 	p := fakePluginWithAction{
-		meta:   plugin.Meta{ID: "demo", Name: "Demo", Builtin: true},
+		meta: plugin.Meta{ID: "demo", Name: "Demo", Builtin: true},
 		action: fakeAction{id: "test", test: func(ctx context.Context) error {
 			t.Fatal("disabled plugin test should not be called")
 			return nil
@@ -222,4 +232,49 @@ func TestTestAction_DisabledPlugin(t *testing.T) {
 	err := svc.TestAction(ctx, "demo", "test")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "plugin disabled")
+}
+
+// TestPutSettings_MaskedSecretKeepsOldValue 掩码回传 = 用户没改：库里必须保持原值。
+// 这条是安全行为——万一失效，前端会把 •••••••• 当成真值写进库，Bark 地址（带设备 key）直接报废。
+func TestPutSettings_MaskedSecretKeepsOldValue(t *testing.T) {
+	reg := plugin.NewRegistry()
+	fakeReg := newFakePluginRepo()
+	settingRepo := newSettingsStub()
+
+	p := fakePluginWithAction{
+		meta: plugin.Meta{ID: "bark", Name: "Bark", Builtin: true},
+		action: fakeAction{
+			id:     "notify",
+			label:  "Notify",
+			fields: []plugin.Field{{Key: "url", Type: "secret"}},
+		},
+	}
+	require.NoError(t, reg.Register(p))
+
+	svc := service.NewPluginService(reg, fakeReg, settingRepo)
+	ctx := context.Background()
+
+	// ① 先写真值
+	_, err := svc.PutSettings(ctx, "bark", map[string]string{"url": "https://api.day.app/REALKEY"})
+	require.NoError(t, err)
+
+	// ② 读出来必须是掩码（真值不外泄到前端）
+	values, err := svc.GetSettings(ctx, "bark")
+	require.NoError(t, err)
+	require.Equal(t, service.PluginMaskedValue, values.Values["url"])
+
+	// ③ 前端把掩码原样回传（没改这一项）：库里必须还是真值
+	_, err = svc.PutSettings(ctx, "bark", map[string]string{"url": service.PluginMaskedValue})
+	require.NoError(t, err)
+	got, err := settingRepo.Get(ctx, "plugin.bark.url")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	require.Equal(t, "https://api.day.app/REALKEY", got.Value, "掩码回传不许把 •••••••• 写进库")
+
+	// ④ 换成新真值要能写进去
+	_, err = svc.PutSettings(ctx, "bark", map[string]string{"url": "https://api.day.app/NEWKEY"})
+	require.NoError(t, err)
+	got, err = settingRepo.Get(ctx, "plugin.bark.url")
+	require.NoError(t, err)
+	require.Equal(t, "https://api.day.app/NEWKEY", got.Value)
 }

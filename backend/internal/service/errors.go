@@ -18,9 +18,9 @@ var (
 
 // PluginModuleError plugin 模块（55 批）。
 var (
-	ErrPluginNotFound            = errors.New("plugin not found")
-	ErrPluginDisabled            = errors.New("plugin disabled")
-	ErrPluginActionNotTestable   = errors.New("plugin action not testable")
+	ErrPluginNotFound          = errors.New("plugin not found")
+	ErrPluginDisabled          = errors.New("plugin disabled")
+	ErrPluginActionNotTestable = errors.New("plugin action not testable")
 )
 
 // FeedConflictError is returned when a feed URL already exists.
