@@ -271,7 +271,14 @@ function withTimeout(existing?: AbortSignal | null): AbortSignal | undefined {
     : existing;
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+/**
+ * 通用请求器。55-8 起对外导出：插件模块（src/plugins/api.ts）要复用同一套
+ * 地址拼接 / 认证头 / 超时与错误映射，别在那边另写一份 fetch。
+ */
+export async function request<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
   const url = `${API_BASE_URL}${path}`;
   const headers = new Headers(options.headers);
   const body = options.body;

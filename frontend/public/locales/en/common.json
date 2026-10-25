@@ -1041,6 +1041,21 @@
     "name_placeholder": "Folder name",
     "rename_failed": "Rename failed"
   },
+  "plugins": {
+    "title": "Plugins",
+    "intro": "Plugins add specialised capabilities (push delivery, RSSHub handling, per-feed tweaks). Once disabled, their settings section and automation actions stop working; rules that already reference them will show “plugin disabled” in the rule detail.",
+    "builtin": "Built-in",
+    "external": "External",
+    "install_hint": "To install: drop the plugin folder (plugin.json plus the executable) into the plugins/ directory of your data folder — no restart needed. To uninstall, delete that folder.",
+    "rescan": "Rescan plugin directory",
+    "rescanning": "Scanning…",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "settings": "Plugin settings",
+    "test_action": "Send test",
+    "test_ok": "Test succeeded",
+    "test_failed": "Test failed"
+  },
   "automation": {
     "title": "Automation",
     "subtitle": "Rules run after entries are stored and only affect newly fetched entries by default (use “Apply to history” to backfill); first match wins, order is priority.",

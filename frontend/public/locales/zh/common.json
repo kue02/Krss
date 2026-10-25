@@ -1038,6 +1038,21 @@
     "name_placeholder": "文件夹名称",
     "rename_failed": "重命名失败"
   },
+  "plugins": {
+    "title": "插件",
+    "intro": "插件提供特化能力（推送、RSSHub 适配、按订阅源的特别优化）。停用后，它的设置段与自动化动作一并失效；已有引用它的规则会在规则详情里看到「插件已停用」。",
+    "builtin": "内置",
+    "external": "外部",
+    "install_hint": "安装新插件：把插件文件夹（plugin.json + 可执行文件）放进数据目录的 plugins/ 下即可，无需重启 krss；卸载 = 删掉那个文件夹。",
+    "rescan": "重新扫描插件目录",
+    "rescanning": "扫描中…",
+    "enabled": "已启用",
+    "disabled": "已停用",
+    "settings": "插件设置",
+    "test_action": "发送测试",
+    "test_ok": "测试成功",
+    "test_failed": "测试失败"
+  },
   "automation": {
     "title": "自动化",
     "subtitle": "规则在抓取入库之后执行，默认只作用于刚入库的新条目（可用「回溯历史」补跑旧条目）；命中即停，顺序即优先级。",

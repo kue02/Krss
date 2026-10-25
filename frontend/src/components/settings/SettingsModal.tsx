@@ -15,6 +15,7 @@ import { DataControl } from "./tabs/DataControl";
 import { FeedsSettings } from "./tabs/FeedsSettings";
 import { FoldersSettings } from "./tabs/FoldersSettings";
 import { AISettings } from "./tabs/AISettings";
+import { PluginsSettings } from "./tabs/PluginsSettings";
 import { AutomationSettings } from "./tabs/AutomationSettings";
 import { NetworkSettings } from "./tabs/NetworkSettings";
 import { AdvancedSettings } from "./tabs/AdvancedSettings";
@@ -30,6 +31,7 @@ export type SettingsTab =
   | "network"
   | "appearance"
   | "ai"
+  | "plugins"
   | "data"
   | "feeds"
   | "folders"
@@ -48,6 +50,7 @@ export const SETTINGS_TAB_ORDER: SettingsTab[] = [
   "folders",
   "general",
   "ai",
+  "plugins",
   "automation",
   "network",
   "advanced",
@@ -60,6 +63,7 @@ export const SETTINGS_TAB_LABEL_KEYS: Record<SettingsTab, string> = {
   network: "settings.network",
   appearance: "settings.appearance",
   ai: "settings.ai",
+  plugins: "plugins.title",
   data: "settings.data",
   feeds: "settings.subscriptions",
   folders: "settings.folders",
@@ -175,6 +179,8 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
         return <AppearanceSettings />;
       case "ai":
         return <AISettings />;
+      case "plugins":
+        return <PluginsSettings />;
       case "automation":
         return <AutomationSettings />;
       case "data":
@@ -200,6 +206,8 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
         return t("settings.appearance");
       case "ai":
         return t("settings.ai");
+      case "plugins":
+        return t("plugins.title");
       case "automation":
         return t("automation.title");
       case "data":
