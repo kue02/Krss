@@ -16,6 +16,13 @@ var (
 	ErrUnknownSettingKey = errors.New("unknown setting key")
 )
 
+// PluginModuleError plugin 模块（55 批）。
+var (
+	ErrPluginNotFound            = errors.New("plugin not found")
+	ErrPluginDisabled            = errors.New("plugin disabled")
+	ErrPluginActionNotTestable   = errors.New("plugin action not testable")
+)
+
 // FeedConflictError is returned when a feed URL already exists.
 type FeedConflictError struct {
 	ExistingFeed model.Feed
