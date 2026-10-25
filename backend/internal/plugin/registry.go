@@ -58,7 +58,13 @@ func (r *Registry) Register(p Plugin) error {
 		return fmt.Errorf("plugin: 重复注册 %q", meta.ID)
 	}
 	r.plugins[meta.ID] = p
-	r.enabled[meta.ID] = true
+	// 首次启停位：Meta.DefaultEnabled 说了算；nil = 默认启用（稳定能力的口径）。
+	// DB 里有记录时由 LoadEnabled 覆盖（service.ensureBuiltin 负责落库）。
+	on := true
+	if meta.DefaultEnabled != nil {
+		on = *meta.DefaultEnabled
+	}
+	r.enabled[meta.ID] = on
 	for _, action := range p.Actions() {
 		if action.ID() == "" {
 			return fmt.Errorf("plugin %s: Action.ID() 不能为空", meta.ID)

@@ -20,6 +20,9 @@ type Meta struct {
 	Description string `json:"description"` // 一句话说明这个插件干什么
 	Version     string `json:"version"`
 	Builtin     bool   `json:"builtin"` // true = 随二进制分发（不可卸载，只能停用）
+	// DefaultEnabled 首次安装（表里没记录）时的启用位；nil = 默认启用（55-7a）。
+	// 稳定能力（bark/rsshub）留 nil ⇒ 老实例升级后行为零变化；样板/实验插件设 false。
+	DefaultEnabled *bool `json:"defaultEnabled,omitempty"`
 }
 
 // Field 插件声明的一个配置字段（设置段与规则动作共用；前端按 Type 动态渲染）。

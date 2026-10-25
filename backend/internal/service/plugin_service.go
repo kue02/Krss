@@ -47,6 +47,7 @@ func NewPluginService(registry *plugin.Registry, plugins repository.PluginReposi
 }
 
 // ensureBuiltin 把表里没有的内置插件补进行（默认启用 ⇒ 老实例升级后行为零变化）。
+// 首次落库的启用位按 Meta.DefaultEnabled：nil = 开；demo 这类样板设 false ⇒ 装而不启。
 func (s *pluginService) ensureBuiltin(ctx context.Context) error {
 	existing := make(map[string]bool)
 	states, err := s.plugins.List(ctx)
@@ -60,7 +61,11 @@ func (s *pluginService) ensureBuiltin(ctx context.Context) error {
 		if _, ok := existing[meta.ID]; ok {
 			continue
 		}
-		if err := s.plugins.Upsert(ctx, meta.ID, true); err != nil {
+		enabled := true
+		if meta.DefaultEnabled != nil {
+			enabled = *meta.DefaultEnabled
+		}
+		if err := s.plugins.Upsert(ctx, meta.ID, enabled); err != nil {
 			return err
 		}
 	}

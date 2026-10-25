@@ -19,6 +19,7 @@ import (
 	"krss/backend/internal/handler"
 	transport "krss/backend/internal/http"
 	"krss/backend/internal/plugin"
+	_ "krss/backend/internal/plugin/builtin/demo" // 内置插件：init() 自注册进 plugin.Default（55-7a）
 	"krss/backend/internal/repository"
 	"krss/backend/internal/scheduler"
 	"krss/backend/internal/service"
