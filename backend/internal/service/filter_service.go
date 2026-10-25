@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"krss/backend/internal/model"
+	"krss/backend/internal/plugin"
 	"krss/backend/internal/repository"
 	"krss/backend/pkg/logger"
 	"krss/backend/pkg/network"
@@ -23,6 +24,8 @@ const (
 	webhookErrorPrefix = "webhook 投递失败："
 	notifyErrorPrefix  = "推送失败："
 	aiErrorPrefix      = "AI 判定："
+	// pluginErrorPrefix 插件动作失败写进 last_error 的前缀（与 webhook / 推送同机制：成功清、失败记）。
+	pluginErrorPrefix = "插件动作失败："
 )
 
 var (
@@ -139,6 +142,7 @@ type filterService struct {
 	ai       AICompleter
 	webhook  FilterWebhookSender
 	notify   NotifyService
+	plugins  *plugin.Registry
 	governor *aiJudgeGovernor
 }
 
@@ -152,6 +156,8 @@ type FilterServiceDeps struct {
 	Webhook FilterWebhookSender
 	// Notify 推送通道（Bark）：nil = 推送不可用（规则会明确报错，不会静默成功）
 	Notify NotifyService
+	// Plugins 插件注册表（55 批）：nil = 本实例没接插件（测试里常见），dispatch 直接跳过。
+	Plugins *plugin.Registry
 }
 
 func NewFilterService(deps FilterServiceDeps) FilterService {
@@ -163,6 +169,7 @@ func NewFilterService(deps FilterServiceDeps) FilterService {
 		ai:       deps.AI,
 		webhook:  deps.Webhook,
 		notify:   deps.Notify,
+		plugins:  deps.Plugins,
 		governor: &aiJudgeGovernor{},
 	}
 }
@@ -616,6 +623,8 @@ func (s *filterService) ApplyToHistory(ctx context.Context, filterID int64, limi
 			s.dispatchWebhook(ctx, filter, feed, entry, effective, now)
 			// 推送同样是「要出网」的动作：异步发出，结果写回规则的 last_error
 			s.dispatchNotify(ctx, filter, feed, entry, effective, now)
+			// 插件动作（55 批）：同样异步，没装/停用/失败写 last_error
+			s.dispatchPluginActions(ctx, filter, feed, entry, effective, now)
 			stats[filter.ID]++
 			applied++
 			break
@@ -729,6 +738,7 @@ func (s *filterService) ApplyToEntries(ctx context.Context, feed model.Feed, ent
 			entry.ID = entryID
 			s.dispatchWebhook(ctx, filter, feed, entry, effective, now)
 			s.dispatchNotify(ctx, filter, feed, entry, effective, now)
+			s.dispatchPluginActions(ctx, filter, feed, entry, effective, now)
 			stats[filter.ID]++
 			applied++
 			// 首个命中即停：一条条目只由顺序最靠前的那条规则处理
@@ -1336,6 +1346,58 @@ func (s *filterService) clearNotifyFailure(ctx context.Context, filter model.Fil
 	}
 	if err := s.filters.ClearLastError(ctx, filter.ID); err != nil {
 		logger.Warn("clear filter notify error failed", "module", "service", "action", "update", "resource", "filter", "result", "failed", "filter_id", filter.ID, "error", err)
+	}
+}
+
+// filterPluginActionTimeout 插件动作执行超时（与 webhook/推送同档 10s）。
+const filterPluginActionTimeout = 10 * time.Second
+
+// dispatchPluginActions 把命中派给规则引用的插件动作（55 批）。
+// 与 webhook 同口径：异步执行不拖慢入库；插件没装 / 已停用 / 执行失败都写进规则 last_error，
+// 成功一次清掉自己上次留的原因。registry 为 nil（没接插件）时静默跳过。
+func (s *filterService) dispatchPluginActions(ctx context.Context, filter model.Filter, feed model.Feed, entry model.Entry, actions model.FilterActions, at time.Time) {
+	if s.plugins == nil {
+		return
+	}
+	for _, ref := range actions.PluginActions {
+		action, ok := s.plugins.LookupAction(ref.Plugin, ref.Action)
+		if !ok {
+			s.markPluginFailure(ctx, filter, fmt.Sprintf("插件 %s 未安装（或没有动作 %s）", ref.Plugin, ref.Action), at)
+			continue
+		}
+		if !s.plugins.Enabled(ref.Plugin) {
+			s.markPluginFailure(ctx, filter, fmt.Sprintf("插件 %s 已停用", ref.Plugin), at)
+			continue
+		}
+		// 响应一返回 ctx 就被取消，后台执行要脱离它（与 webhook 同一套理由）
+		runCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), filterPluginActionTimeout)
+		go func(ref model.PluginActionRef, action plugin.Action) {
+			defer cancel()
+			if err := action.Execute(runCtx, plugin.ActionRequest{
+				Filter: filter, Feed: feed, Entry: entry, Config: ref.Config,
+			}); err != nil {
+				s.markPluginFailure(runCtx, filter, fmt.Sprintf("插件 %s 的 %s：%s", ref.Plugin, ref.Action, err.Error()), time.Now())
+				return
+			}
+			s.clearPluginFailure(runCtx, filter)
+		}(ref, action)
+	}
+}
+
+func (s *filterService) markPluginFailure(ctx context.Context, filter model.Filter, reason string, at time.Time) {
+	if err := s.filters.SetLastError(ctx, filter.ID, pluginErrorPrefix+reason, at); err != nil {
+		logger.Warn("set filter plugin error failed", "module", "service", "action", "update", "resource", "filter", "result", "failed", "filter_id", filter.ID, "error", err)
+	}
+	logger.Warn("filter plugin action failed", "module", "service", "action", "plugin", "resource", "filter", "result", "failed", "filter_id", filter.ID, "reason", reason)
+}
+
+// clearPluginFailure 只清「上一次是插件动作报的错」，不碰 AI / webhook / 推送留下的原因。
+func (s *filterService) clearPluginFailure(ctx context.Context, filter model.Filter) {
+	if filter.LastError == nil || !strings.HasPrefix(*filter.LastError, pluginErrorPrefix) {
+		return
+	}
+	if err := s.filters.ClearLastError(ctx, filter.ID); err != nil {
+		logger.Warn("clear filter plugin error failed", "module", "service", "action", "update", "resource", "filter", "result", "failed", "filter_id", filter.ID, "error", err)
 	}
 }
 
