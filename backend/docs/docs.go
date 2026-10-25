@@ -5718,6 +5718,10 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "lastError": {
+                    "description": "LastError 外部插件最近一次故障（非空 ⇒ UI 显示「已崩溃 / 起不来」）",
+                    "type": "string"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -5726,6 +5730,10 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/krss_backend_internal_plugin.SettingsSection"
                     }
+                },
+                "transport": {
+                    "description": "Transport builtin（编译进二进制）| http（外部进程，即装即用）",
+                    "type": "string"
                 },
                 "version": {
                     "type": "string"

@@ -38,7 +38,8 @@ func TestRegistry_RegisterAndLookup(t *testing.T) {
 	r := plugin.NewRegistry()
 	require.NoError(t, r.Register(fakePlugin{action: fakeAction{fired: fired}}))
 
-	require.Equal(t, []plugin.Meta{{ID: "demo", Name: "Demo", Builtin: true}}, r.Plugins())
+	// 内置插件没自己写 Transport ⇒ 输出侧兜底 "builtin"（55-7b）
+	require.Equal(t, []plugin.Meta{{ID: "demo", Name: "Demo", Builtin: true, Transport: plugin.TransportBuiltin}}, r.Plugins())
 	action, ok := r.LookupAction("demo", "log")
 	require.True(t, ok)
 	require.Equal(t, "log", action.ID())
@@ -76,7 +77,23 @@ func TestRegistry_CatalogCarriesActions(t *testing.T) {
 	items := r.Catalog()
 	require.Len(t, items, 1)
 	require.Equal(t, "demo", items[0].ID)
+	require.Equal(t, plugin.TransportBuiltin, items[0].Transport)
 	require.Len(t, items[0].Actions, 1)
 	require.Equal(t, "demo.log", items[0].Actions[0].PluginID+"."+items[0].Actions[0].ActionID)
 	require.True(t, items[0].Actions[0].Enabled)
+}
+
+// TestRegistry_Unregister 外部插件停用 / 卸载要摘干净（插件、动作、启停位三项，55-7b）。
+func TestRegistry_Unregister(t *testing.T) {
+	r := plugin.NewRegistry()
+	require.NoError(t, r.Register(fakePlugin{action: fakeAction{fired: make(chan plugin.ActionRequest, 1)}}))
+
+	require.True(t, r.Unregister("demo"))
+	require.False(t, r.Unregister("demo"), "第二次摘除返回 false")
+	require.Empty(t, r.Catalog())
+	require.Empty(t, r.EnabledStates(), "启停位一并摘掉")
+	_, ok := r.LookupAction("demo", "log")
+	require.False(t, ok, "动作跟着插件一起摘掉（别留死进程的 dispatch 键）")
+	_, ok = r.Meta("demo")
+	require.False(t, ok)
 }

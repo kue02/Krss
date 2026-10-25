@@ -20,10 +20,19 @@ type Meta struct {
 	Description string `json:"description"` // 一句话说明这个插件干什么
 	Version     string `json:"version"`
 	Builtin     bool   `json:"builtin"` // true = 随二进制分发（不可卸载，只能停用）
+	// Transport 插件形态：builtin（编译进二进制）| http（外部进程，即装即用，55-7b）。
+	// 空值在 registry 输出侧兜底成 "builtin"（老内置插件不改自己的 Meta）。
+	Transport string `json:"transport,omitempty"`
 	// DefaultEnabled 首次安装（表里没记录）时的启用位；nil = 默认启用（55-7a）。
 	// 稳定能力（bark/rsshub）留 nil ⇒ 老实例升级后行为零变化；样板/实验插件设 false。
 	DefaultEnabled *bool `json:"defaultEnabled,omitempty"`
 }
+
+// Transport 插件形态取值（Meta.Transport）。
+const (
+	TransportBuiltin = "builtin" // 编译进 krss 二进制：改代码才需重启
+	TransportHTTP    = "http"    // 外部进程 + Unix socket：即装即用（55-7b）
+)
 
 // Field 插件声明的一个配置字段（设置段与规则动作共用；前端按 Type 动态渲染）。
 type Field struct {

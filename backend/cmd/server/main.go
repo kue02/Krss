@@ -156,8 +156,14 @@ func main() {
 	// 插件模块（55 批）：内置插件已在各自 init() 注册进 plugin.Default；用库里的启停记录覆盖默认值。
 	pluginRepo := repository.NewPluginRepository(dbConn)
 	pluginRegistry := plugin.Default
-	pluginService := service.NewPluginService(pluginRegistry, pluginRepo, settingsRepo)
-	// 启动即装载：表里没有的内置插件补进行（bark/rsshub 默认开 ⇒ 老实例行为零变化；demo 默认关）
+	// 外部插件宿主（55-7b）：$KRSS_DATA_DIR/plugins/<id>/ = manifest + 可执行，不重启即装即用。
+	pluginHost := service.NewPluginHost(pluginRegistry, pluginRepo, filepath.Join(cfg.DataDir, "plugins"))
+	// 每 5s 扫一次插件目录（不上 fsnotify）：丢个文件夹进去，5s 内就发现并拉起。
+	pluginWatchCtx, pluginWatchCancel := context.WithCancel(context.Background())
+	pluginHost.Watch(pluginWatchCtx, 5*time.Second)
+	pluginService := service.NewPluginService(pluginRegistry, pluginRepo, settingsRepo, service.WithPluginHost(pluginHost))
+	// 启动即装载：表里没有的内置插件补进行（bark/rsshub 默认开 ⇒ 老实例行为零变化；demo 默认关），
+	// 同时扫一遍插件目录把外部插件拉起来（Catalog 链上就带 ensureExternal）。
 	if _, err := pluginService.Catalog(context.Background()); err != nil {
 		logger.Error("init plugins", "error", err)
 		os.Exit(1)
@@ -191,6 +197,9 @@ func main() {
 		sched.Stop()
 		readabilityService.Close()
 		proxyService.Close()
+		// 外部插件子进程要跟着走（SIGTERM → 5s 宽限 → SIGKILL），不留孤儿进程。
+		pluginWatchCancel()
+		pluginHost.Stop()
 		cancelBackfill()
 
 		// Wait for backfill task to exit within shutdown deadline.

@@ -37,14 +37,38 @@ type pluginCatalogResponse struct {
 }
 
 type pluginCatalogItem struct {
-	ID          string                   `json:"id"`
-	Name        string                   `json:"name"`
-	Description string                   `json:"description"`
-	Version     string                   `json:"version"`
-	Builtin     bool                     `json:"builtin"`
-	Enabled     bool                     `json:"enabled"`
-	Actions     []plugin.ActionMeta      `json:"actions"`
-	Sections    []plugin.SettingsSection `json:"sections"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Version     string `json:"version"`
+	Builtin     bool   `json:"builtin"`
+	// Transport builtin（编译进二进制）| http（外部进程，即装即用）
+	Transport string                   `json:"transport"`
+	Enabled   bool                     `json:"enabled"`
+	Actions   []plugin.ActionMeta      `json:"actions"`
+	Sections  []plugin.SettingsSection `json:"sections"`
+	// LastError 外部插件最近一次故障（非空 ⇒ UI 显示「已崩溃 / 起不来」）
+	LastError string `json:"lastError,omitempty"`
+}
+
+// toCatalogItems 清单出参（三条路由共用一份映射，别各写一遍）。
+func toCatalogItems(items []plugin.CatalogItem) []pluginCatalogItem {
+	out := make([]pluginCatalogItem, 0, len(items))
+	for _, item := range items {
+		out = append(out, pluginCatalogItem{
+			ID:          item.ID,
+			Name:        item.Name,
+			Description: item.Description,
+			Version:     item.Version,
+			Builtin:     item.Builtin,
+			Transport:   item.Transport,
+			Enabled:     item.Enabled,
+			Actions:     item.Actions,
+			Sections:    item.Sections,
+			LastError:   item.LastError,
+		})
+	}
+	return out
 }
 
 type pluginSettingsResponse struct {
@@ -71,20 +95,7 @@ func (h *PluginHandler) List(c echo.Context) error {
 		logger.Error("plugin catalog failed", "module", "handler", "action", "list", "resource", "plugin", "result", "failed", "error", err)
 		return writeServiceError(c, err)
 	}
-	resp := pluginCatalogResponse{Plugins: make([]pluginCatalogItem, 0, len(items))}
-	for _, item := range items {
-		resp.Plugins = append(resp.Plugins, pluginCatalogItem{
-			ID:          item.ID,
-			Name:        item.Name,
-			Description: item.Description,
-			Version:     item.Version,
-			Builtin:     item.Builtin,
-			Enabled:     item.Enabled,
-			Actions:     item.Actions,
-			Sections:    item.Sections,
-		})
-	}
-	return c.JSON(http.StatusOK, resp)
+	return c.JSON(http.StatusOK, pluginCatalogResponse{Plugins: toCatalogItems(items)})
 }
 
 // SetEnabled godoc
@@ -106,20 +117,7 @@ func (h *PluginHandler) SetEnabled(c echo.Context) error {
 		logger.Error("plugin set enabled failed", "module", "handler", "action", "update", "resource", "plugin", "result", "failed", "id", c.Param("id"), "error", err)
 		return writeServiceError(c, err)
 	}
-	resp := pluginCatalogResponse{Plugins: make([]pluginCatalogItem, 0, len(items))}
-	for _, item := range items {
-		resp.Plugins = append(resp.Plugins, pluginCatalogItem{
-			ID:          item.ID,
-			Name:        item.Name,
-			Description: item.Description,
-			Version:     item.Version,
-			Builtin:     item.Builtin,
-			Enabled:     item.Enabled,
-			Actions:     item.Actions,
-			Sections:    item.Sections,
-		})
-	}
-	return c.JSON(http.StatusOK, resp)
+	return c.JSON(http.StatusOK, pluginCatalogResponse{Plugins: toCatalogItems(items)})
 }
 
 // GetSettings godoc
@@ -182,18 +180,5 @@ func (h *PluginHandler) Rescan(c echo.Context) error {
 		logger.Error("plugin rescan failed", "module", "handler", "action", "rescan", "resource", "plugin", "result", "failed", "error", err)
 		return writeServiceError(c, err)
 	}
-	resp := pluginCatalogResponse{Plugins: make([]pluginCatalogItem, 0, len(items))}
-	for _, item := range items {
-		resp.Plugins = append(resp.Plugins, pluginCatalogItem{
-			ID:          item.ID,
-			Name:        item.Name,
-			Description: item.Description,
-			Version:     item.Version,
-			Builtin:     item.Builtin,
-			Enabled:     item.Enabled,
-			Actions:     item.Actions,
-			Sections:    item.Sections,
-		})
-	}
-	return c.JSON(http.StatusOK, resp)
+	return c.JSON(http.StatusOK, pluginCatalogResponse{Plugins: toCatalogItems(items)})
 }

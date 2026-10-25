@@ -3,6 +3,7 @@ package plugin
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -30,6 +31,8 @@ type CatalogItem struct {
 	Enabled  bool              `json:"enabled"`
 	Actions  []ActionMeta      `json:"actions"`
 	Sections []SettingsSection `json:"sections"`
+	// LastError 外部插件最近一次故障原因（宿主填；非空 ⇒ UI 显示「崩溃 / 启动失败」）。
+	LastError string `json:"lastError,omitempty"`
 }
 
 func NewRegistry() *Registry {
@@ -118,6 +121,43 @@ func (r *Registry) Enabled(id string) bool {
 	return r.enabled[id]
 }
 
+// Unregister 摘除一个插件（外部插件停用 / 卸载 / 重装时用）。返回 false = 本来就不在。
+// 动作、启停位一并删干净，免得残留的 dispatch 键指向死进程。
+func (r *Registry) Unregister(id string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.plugins[id]; !ok {
+		return false
+	}
+	delete(r.plugins, id)
+	delete(r.enabled, id)
+	for key := range r.actions {
+		if pluginID, _, found := strings.Cut(key, "."); found && pluginID == id {
+			delete(r.actions, key)
+		}
+	}
+	return true
+}
+
+// Meta 查一个插件的元信息（transport 已兜底）；外部插件宿主用它区分两条轨。
+func (r *Registry) Meta(id string) (Meta, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	p, ok := r.plugins[id]
+	if !ok {
+		return Meta{}, false
+	}
+	return withTransport(p.Meta()), true
+}
+
+// withTransport 输出侧兜底：老内置插件没写 Transport ⇒ "builtin"。
+func withTransport(meta Meta) Meta {
+	if meta.Transport == "" {
+		meta.Transport = TransportBuiltin
+	}
+	return meta
+}
+
 // LookupAction 查动作本体，**不管启停**（引擎要区分「没装」与「停用」两种错误文案）。
 func (r *Registry) LookupAction(pluginID, actionID string) (Action, bool) {
 	r.mu.RLock()
@@ -132,7 +172,7 @@ func (r *Registry) Plugins() []Meta {
 	defer r.mu.RUnlock()
 	out := make([]Meta, 0, len(r.plugins))
 	for _, p := range r.plugins {
-		out = append(out, p.Meta())
+		out = append(out, withTransport(p.Meta()))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
@@ -144,7 +184,7 @@ func (r *Registry) Catalog() []CatalogItem {
 	defer r.mu.RUnlock()
 	out := make([]CatalogItem, 0, len(r.plugins))
 	for _, p := range r.plugins {
-		meta := p.Meta()
+		meta := withTransport(p.Meta())
 		item := CatalogItem{
 			Meta:     meta,
 			Enabled:  r.enabled[meta.ID],

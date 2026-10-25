@@ -3,10 +3,12 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"krss/backend/internal/plugin"
 	"krss/backend/internal/repository"
+	"krss/backend/pkg/logger"
 )
 
 // PluginMaskedValue 出接口的掩码（凭据不进前端、不进日志；照 MCP 的 ••••••••）。
@@ -40,10 +42,24 @@ type pluginService struct {
 	registry *plugin.Registry
 	plugins  repository.PluginRepository
 	settings repository.SettingsRepository
+	// host 外部插件宿主（55-7b）。nil = 只跑内置轨（老测试 / 纯内置部署）。
+	host *PluginHost
 }
 
-func NewPluginService(registry *plugin.Registry, plugins repository.PluginRepository, settings repository.SettingsRepository) PluginService {
-	return &pluginService{registry: registry, plugins: plugins, settings: settings}
+// PluginServiceOption 可选装配（不塞进必填参数，老调用点零改动）。
+type PluginServiceOption func(*pluginService)
+
+// WithPluginHost 挂上外部插件宿主：Catalog 时扫插件目录，启停联动起停进程，设置/动作测试路由过去。
+func WithPluginHost(host *PluginHost) PluginServiceOption {
+	return func(s *pluginService) { s.host = host }
+}
+
+func NewPluginService(registry *plugin.Registry, plugins repository.PluginRepository, settings repository.SettingsRepository, opts ...PluginServiceOption) PluginService {
+	svc := &pluginService{registry: registry, plugins: plugins, settings: settings}
+	for _, opt := range opts {
+		opt(svc)
+	}
+	return svc
 }
 
 // ensureBuiltin 把表里没有的内置插件补进行（默认启用 ⇒ 老实例升级后行为零变化）。
@@ -82,20 +98,63 @@ func (s *pluginService) Catalog(ctx context.Context) ([]plugin.CatalogItem, erro
 	if err := s.ensureBuiltin(ctx); err != nil {
 		return nil, err
 	}
-	return s.registry.Catalog(), nil
+	s.ensureExternal(ctx)
+	items := s.registry.Catalog()
+	if s.host != nil {
+		s.host.Decorate(items)
+	}
+	return items, nil
+}
+
+// ensureExternal 扫插件目录让外部插件收敛（即装即用；55-7b）。
+// 单个插件起不来不算清单接口的错（错在插件不在宿主）——宿主已把原因写进 state，Decorate 会带到清单里。
+func (s *pluginService) ensureExternal(ctx context.Context) {
+	if s.host == nil {
+		return
+	}
+	if err := s.host.Ensure(ctx); err != nil {
+		logger.Error("external plugin scan failed",
+			"module", "service", "action", "scan", "resource", "plugin", "result", "failed", "error", err)
+	}
+}
+
+// isExternal 这个 id 是不是外部插件（磁盘上有 manifest，或宿主正看护它）。
+func (s *pluginService) isExternal(id string) bool {
+	return s.host != nil && s.host.Has(id)
 }
 
 func (s *pluginService) SetEnabled(ctx context.Context, id string, enabled bool) ([]plugin.CatalogItem, error) {
 	if err := s.ensureBuiltin(ctx); err != nil {
 		return nil, err
 	}
-	if !s.registry.SetEnabled(id, enabled) {
+	s.ensureExternal(ctx)
+	external := s.isExternal(id)
+	if enabled {
+		// 外部插件停用时是「进程不在 + 注册表摘除」，所以先把它拉起来再改启停位。
+		if external {
+			if err := s.host.Start(ctx, id); err != nil {
+				return nil, err
+			}
+		}
+		if !s.registry.SetEnabled(id, true) {
+			return nil, ErrPluginNotFound
+		}
+		if err := s.plugins.Upsert(ctx, id, true); err != nil {
+			return nil, err
+		}
+		return s.Catalog(ctx)
+	}
+	if !s.registry.SetEnabled(id, false) {
 		return nil, ErrPluginNotFound
 	}
-	if err := s.plugins.Upsert(ctx, id, enabled); err != nil {
+	if err := s.plugins.Upsert(ctx, id, false); err != nil {
 		return nil, err
 	}
-	return s.registry.Catalog(), nil
+	// 停用 = 进程真的收走（SIGTERM → 宽限 → SIGKILL），再摘注册表。
+	if external {
+		s.host.StopPlugin(id)
+	}
+	return s.Catalog(ctx)
 }
 
 // settingsPrefix 插件设置键前缀（与 plugin.Settings 同一约定）。
@@ -126,6 +185,14 @@ func (s *pluginService) GetSettings(ctx context.Context, id string) (PluginSetti
 	if err := s.ensureBuiltin(ctx); err != nil {
 		return PluginSettingsResult{}, err
 	}
+	// 外部插件的设置在插件进程里（插件目录下的 settings.json），不走 krss 的 DB。
+	if s.isExternal(id) {
+		values, err := s.host.GetSettings(ctx, id)
+		if err != nil {
+			return PluginSettingsResult{}, err
+		}
+		return PluginSettingsResult{Values: s.maskRemoteSettings(id, values)}, nil
+	}
 	setting, err := s.settings.GetByPrefix(ctx, settingsPrefix(id))
 	if err != nil {
 		return PluginSettingsResult{}, err
@@ -143,9 +210,68 @@ func (s *pluginService) GetSettings(ctx context.Context, id string) (PluginSetti
 	return PluginSettingsResult{Values: values}, nil
 }
 
+// remoteSecretKeys 该插件 secret 字段的**裸键**（外部插件的设置值不带 plugin.<id>. 前缀）。
+func (s *pluginService) remoteSecretKeys(id string) map[string]bool {
+	prefix := settingsPrefix(id)
+	full := s.secretFieldKeys(id)
+	out := make(map[string]bool, len(full))
+	for key := range full {
+		out[strings.TrimPrefix(key, prefix)] = true
+	}
+	return out
+}
+
+// maskRemoteSettings 外部插件设置的出参掩码（与内置轨同一套 ••••••••）。
+func (s *pluginService) maskRemoteSettings(id string, values map[string]string) map[string]string {
+	secrets := s.remoteSecretKeys(id)
+	out := make(map[string]string, len(values))
+	for key, value := range values {
+		if secrets[key] && value != "" {
+			out[key] = PluginMaskedValue
+			continue
+		}
+		out[key] = value
+	}
+	return out
+}
+
+// remoteSettingsToWrite 把前端提交合并到插件现有设置上（掩码回传 = 这一项没改，保持原值）。
+// 外部插件的 PUT /settings 是整体替换，所以必须先读再合并。
+func (s *pluginService) remoteSettingsToWrite(ctx context.Context, id string, incoming map[string]string) (map[string]string, error) {
+	current, err := s.host.GetSettings(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	secrets := s.remoteSecretKeys(id)
+	out := make(map[string]string, len(current)+len(incoming))
+	for key, value := range current {
+		out[key] = value
+	}
+	for key, value := range incoming {
+		if strings.TrimSpace(key) == "" {
+			continue
+		}
+		if secrets[key] && IsMaskedPluginValue(value) {
+			continue
+		}
+		out[key] = value
+	}
+	return out, nil
+}
+
 func (s *pluginService) PutSettings(ctx context.Context, id string, values map[string]string) (PluginSettingsResult, error) {
 	if err := s.ensureBuiltin(ctx); err != nil {
 		return PluginSettingsResult{}, err
+	}
+	if s.isExternal(id) {
+		merged, err := s.remoteSettingsToWrite(ctx, id, values)
+		if err != nil {
+			return PluginSettingsResult{}, err
+		}
+		if _, err := s.host.PutSettings(ctx, id, merged); err != nil {
+			return PluginSettingsResult{}, err
+		}
+		return s.GetSettings(ctx, id)
 	}
 	secrets := s.secretFieldKeys(id)
 	for key, value := range values {
@@ -168,16 +294,22 @@ func (s *pluginService) TestAction(ctx context.Context, id, actionID string) err
 	if err := s.ensureBuiltin(ctx); err != nil {
 		return err
 	}
-	action, ok := s.registry.LookupAction(id, actionID)
+	a, ok := s.registry.LookupAction(id, actionID)
 	if !ok {
 		return ErrPluginNotFound
 	}
 	if !s.registry.Enabled(id) {
 		return ErrPluginDisabled
 	}
-	tester, ok := action.(plugin.ActionTester)
+	tester, ok := a.(plugin.ActionTester)
 	if !ok {
 		return ErrPluginActionNotTestable
 	}
-	return tester.Test(ctx)
+	if err := tester.Test(ctx); err != nil {
+		if errors.Is(err, plugin.ErrActionNotTestable) {
+			return ErrPluginActionNotTestable
+		}
+		return err
+	}
+	return nil
 }
