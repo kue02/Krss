@@ -246,6 +246,16 @@ func (h *PluginHost) syncLocked(ctx context.Context) error {
 			if _, running := h.procs[id]; running {
 				h.stopLocked(id)
 			}
+			// 停用 ≠ 消失：注册一个 manifest 空壳（无扩展点），保证清单里看得见、勾得回来。
+			// 真身（/meta 拿到的名字/动作/字段）在启用时由 registerLocked 摘壳换上。
+			// 壳没有动作 ⇒ 规则编辑器不会列出它的动作（停用的插件本就不该被引用）。
+			if _, ok := h.registry.Meta(id); !ok {
+				if err := h.registry.Register(newShellPlugin(manifest)); err != nil {
+					logger.Warn("register disabled plugin shell failed",
+						"module", "service", "action", "register", "resource", "plugin", "result", "failed",
+						"plugin_id", id, "error", err)
+				}
+			}
 			continue
 		}
 		if p, running := h.procs[id]; running {
@@ -371,6 +381,34 @@ func (h *PluginHost) Start(ctx context.Context, id string) error {
 	}
 	return h.startLocked(ctx, manifest)
 }
+
+// shellPlugin 停用的外部插件在清单里的占位：只有 manifest 元信息，没有任何扩展点。
+// 存在意义 = 「停用 ≠ 消失」：用户在设置页看得见它、勾得回来；启用时 registerLocked
+// 会摘掉这个壳、换上 /meta 问出来的真身。壳没有动作 ⇒ 规则编辑器不会列出它。
+type shellPlugin struct {
+	meta plugin.Meta
+}
+
+func newShellPlugin(manifest pluginManifest) plugin.Plugin {
+	name := strings.TrimSpace(manifest.Name)
+	if name == "" {
+		name = manifest.ID
+	}
+	return shellPlugin{meta: plugin.Meta{
+		ID:          manifest.ID,
+		Name:        name,
+		Description: "外部插件（已停用）——启用后才加载它的能力。",
+		Version:     manifest.Version,
+		Builtin:     false,
+		Transport:   plugin.TransportHTTP,
+	}}
+}
+
+func (p shellPlugin) Meta() plugin.Meta                          { return p.meta }
+func (p shellPlugin) Actions() []plugin.Action                   { return nil }
+func (p shellPlugin) SettingsSections() []plugin.SettingsSection { return nil }
+func (p shellPlugin) EntryProcessors() []plugin.EntryProcessor   { return nil }
+func (p shellPlugin) FetchClassifiers() []plugin.FetchClassifier { return nil }
 
 // startLocked spawn + 等就绪 + 注册 + 叫上看护。失败时也留 state（lastError 给 UI 看）。
 func (h *PluginHost) startLocked(ctx context.Context, manifest pluginManifest) error {

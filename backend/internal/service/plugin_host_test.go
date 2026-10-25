@@ -226,13 +226,19 @@ func TestPluginHost_DisableKillsProcess(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, repo.states["demo-ext"], "停用落库")
 	require.True(t, processGone(st.PID), "SIGTERM 后进程真的没了")
-	_, exists := reg.Meta("demo-ext")
-	require.False(t, exists, "停用 ⇒ 注册表摘除")
+	// 停用 ≠ 消失：壳还在册（清单看得见、勾得回来），但启停位是 false 且没有动作可引用
+	meta, exists := reg.Meta("demo-ext")
+	require.True(t, exists, "停用 ⇒ 壳留册（用户要能勾回来）")
+	require.False(t, reg.Enabled("demo-ext"))
+	require.Equal(t, plugin.TransportHTTP, meta.Transport)
+	_, hasAction := reg.LookupAction("demo-ext", "log")
+	require.False(t, hasAction, "壳没有动作 ⇒ 停用的插件不被规则引用")
 
 	// 停用状态下扫描不许把它拉起来（DB 说了算）
 	require.NoError(t, host.Ensure(ctx))
 	_, exists = reg.Meta("demo-ext")
-	require.False(t, exists, "DB 停用的插件不被扫描拉起")
+	require.True(t, exists, "DB 停用的插件保持壳在册")
+	require.True(t, processGone(st.PID), "停用的插件不被扫描拉起")
 
 	// 再启用 ⇒ 起新进程、重新在册
 	_, err = svc.SetEnabled(ctx, "demo-ext", true)
