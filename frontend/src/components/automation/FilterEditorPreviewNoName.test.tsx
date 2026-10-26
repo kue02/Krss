@@ -9,6 +9,15 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
+/**
+ * 56-14：编辑器底栏现在挂了插件插槽（内部要 react-query 的 Provider）。
+ * 这些用例只看预览/校验，不关心插件 —— 按「这个挂点没有贡献」打桩，
+ * 插槽不渲染、也就不需要给每个 render 套 Provider。
+ */
+vi.mock("@/plugins/useContributions", () => ({
+  useContributions: () => [],
+}));
+
 vi.mock("@/hooks/useFeeds", () => ({
   useFeeds: () => ({ data: [{ id: "feed-1", title: "少数派" }] }),
 }));

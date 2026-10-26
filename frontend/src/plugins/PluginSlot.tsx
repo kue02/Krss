@@ -33,10 +33,23 @@ export function PluginSlot({
   surface,
   selection,
   variant,
+  beforeInvoke,
 }: {
   surface: Surface;
   selection: PluginSelection;
   variant: "menu" | "toolbar";
+  /**
+   * 点击后、真正调用动作**之前**要做完的事（56-14）。
+   *
+   * 用在「插件动作必须作用在一个已经落库的对象上」的挂点：规则编辑器底栏的新规则还没有 id，
+   * 直接推就是一条没有规则的推送 —— 所以先保存，保存成功才继续。
+   *
+   * 约定：
+   *   - 成功 → 继续（返回值可带一份 selection 补丁，例如刚拿到的 `filterId`，与传入的合并）
+   *   - 抛错 → **什么都不做**（错误由调用方展示，这里不吞也不弹：插槽不知道文案）
+   *   - 不传 → 行为与 56-10 完全一致（直接弹表单 / 直接调用）
+   */
+  beforeInvoke?: () => Promise<void | PluginSelection>;
 }) {
   const contributions = useContributions(surface);
   const items = useMemo(
@@ -57,6 +70,7 @@ export function PluginSlot({
           item={item}
           selection={selection}
           variant={variant}
+          beforeInvoke={beforeInvoke}
         />
       ))}
     </>
@@ -85,24 +99,46 @@ function PluginSlotItem({
   item,
   selection,
   variant,
+  beforeInvoke,
 }: {
   item: PluginContribution;
   selection: PluginSelection;
   variant: "menu" | "toolbar";
+  beforeInvoke?: () => Promise<void | PluginSelection>;
 }) {
   const invoke = useInvokePluginAction(item);
+  /** 前置动作（保存）进行中：挡住重复点击，否则会保存两次 / 推两次 */
+  const [preparing, setPreparing] = useState(false);
 
   /**
-   * 点击顺序：要填参数 → 先弹表单；只要确认 → 先弹确认；都没有 → 直接调。
+   * 点击顺序：先做前置动作（如果有）→ 要填参数就先弹表单 → 只要确认就先弹确认 → 都没有直接调。
    * 前两种交给顶层 `PluginActionDialog`（菜单项点完就卸载了，状态留不住）。
+   *
+   * 前置动作抛错 = 调用方明确表示「这次别调」，直接收工（错误由调用方展示）。
    */
-  const run = () => {
+  const run = async () => {
+    let effective = selection;
+    if (beforeInvoke) {
+      setPreparing(true);
+      try {
+        const patch = await beforeInvoke();
+        // 前置动作可以带回新拿到的上下文（例如刚保存出来的 filterId）
+        if (patch) effective = { ...selection, ...patch };
+      } catch {
+        return;
+      } finally {
+        setPreparing(false);
+      }
+    }
+
     if (item.fields?.length || item.confirm) {
-      openPendingPluginAction({ contribution: item, selection });
+      openPendingPluginAction({ contribution: item, selection: effective });
       return;
     }
-    invoke.mutate({ selection });
+    invoke.mutate({ selection: effective });
   };
+
+  const busy = preparing || invoke.isPending;
 
   const content = (
     <>
@@ -116,7 +152,7 @@ function PluginSlotItem({
 
   if (variant === "menu") {
     return (
-      <ContextMenuItem onSelect={run} disabled={invoke.isPending}>
+      <ContextMenuItem onSelect={run} disabled={busy}>
         {content}
       </ContextMenuItem>
     );
@@ -127,8 +163,8 @@ function PluginSlotItem({
       size="sm"
       variant="ghost"
       onPress={run}
-      isDisabled={invoke.isPending}
-      isPending={invoke.isPending}
+      isDisabled={busy}
+      isPending={busy}
     >
       {content}
     </Button>

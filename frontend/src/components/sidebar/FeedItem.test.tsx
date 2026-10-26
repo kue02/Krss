@@ -12,6 +12,14 @@ vi.mock("react-i18next", () => ({
 
 // 第一栏订阅外观（用户 11-12）：默认只有名称；切成 name_and_site 才挂 @源站
 const uiSettings: Record<string, unknown> = { sidebarFeedAppearance: "default" };
+/**
+ * 56-13：订阅右键菜单末尾挂了插件插槽（内部要 react-query 的 Provider）。
+ * 这个用例集不关心插件 —— 按「这个挂点没有贡献」打桩，插槽不渲染、菜单项数不变。
+ */
+vi.mock("@/plugins/useContributions", () => ({
+  useContributions: () => [],
+}));
+
 vi.mock("@/hooks/useUISettings", async () => {
   const actual = await vi.importActual<typeof import("@/hooks/useUISettings")>(
     "@/hooks/useUISettings",

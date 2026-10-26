@@ -47,7 +47,12 @@ export function FilterEditorDialog() {
         ? t("automation.edit")
         : t("automation.new_rule");
 
-  const handleSubmit = (payload: FilterWritePayload) => {
+  /**
+   * 保存（56-14 起返回 Promise）：底栏插件按钮要「先保存再调用」，
+   * 新建规则时得等 create 回来拿到 id 才能推 —— 所以这里用 mutateAsync 并把 id 交回去。
+   * 失败时 reject（表单那边收掉异常，错误照旧由 create/update 的 isError 显示）。
+   */
+  const handleSubmit = async (payload: FilterWritePayload): Promise<string | void> => {
     const onSuccess = () => {
       showToast(
         editingId ? t("automation.saved") : t("automation.created_saved"),
@@ -55,10 +60,13 @@ export function FilterEditorDialog() {
       close();
     };
     if (editingId) {
-      update.mutate({ id: editingId, payload }, { onSuccess });
-      return;
+      await update.mutateAsync({ id: editingId, payload });
+      onSuccess();
+      return editingId;
     }
-    create.mutate(payload, { onSuccess });
+    const created = await create.mutateAsync(payload);
+    onSuccess();
+    return created?.id;
   };
 
   /** 所有关闭路径（取消按钮 / Esc / 点遮罩 / 右上关闭）都先过这里 */
@@ -101,6 +109,7 @@ export function FilterEditorDialog() {
                 <FilterEditor
                   key={`${editingId ?? "new"}:${kind}:${draft.scopeId ?? ""}`}
                   initial={draft}
+                  filterId={editingId ?? undefined}
                   kind={kind}
                   notes={draftNotes}
                   warnings={draftWarnings}
@@ -169,7 +178,10 @@ export function FilterEditorDialog() {
                     setConfirmLeave(false);
                     setDirty(false);
                     const payload = latestPayload.current;
-                    if (payload) handleSubmit(payload);
+                    if (payload) {
+                      // 失败时错误由 create/update 的 isError 显示，这里只收掉 rejection
+                      void handleSubmit(payload).catch(() => undefined);
+                    }
                   }}
                 >
                   {t("automation.unsaved_save")}

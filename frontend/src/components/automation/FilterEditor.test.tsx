@@ -1,13 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, cleanup, fireEvent, screen, act } from "@testing-library/react";
+import { render, cleanup, fireEvent, screen, act, waitFor } from "@testing-library/react";
 import { FilterEditor } from "./FilterEditor";
 import type { FilterWritePayload } from "@/types/filters";
-import type { PluginMeta } from "@/plugins/types";
+import type { PluginContribution, PluginMeta } from "@/plugins/types";
 
-const { previewMutate, fetchPluginsMock } = vi.hoisted(() => ({
-  previewMutate: vi.fn(),
-  fetchPluginsMock: vi.fn(),
-}));
+const { previewMutate, fetchPluginsMock, invokeMutate, footerContributions } =
+  vi.hoisted(() => ({
+    previewMutate: vi.fn(),
+    fetchPluginsMock: vi.fn(),
+    invokeMutate: vi.fn(),
+    /** 56-14：`filter.editor.footer` 这个挂点上的贡献（每个用例自己填） */
+    footerContributions: { current: [] as PluginContribution[] },
+  }));
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -15,6 +19,19 @@ vi.mock("react-i18next", () => ({
 
 /** 55-14：规则编辑器挂载时会拉插件清单（停用不渲染 / 动态字段都靠它） */
 vi.mock("@/plugins/api", () => ({ fetchPlugins: fetchPluginsMock }));
+
+/**
+ * 56-14：底栏插件插槽。只打桩「挂点上有哪些贡献」与「调用动作」两层，
+ * 插槽（先保存再调用）走真实实现 —— 要验的正是那层顺序。
+ */
+vi.mock("@/plugins/useContributions", () => ({
+  useContributions: (surface: string) =>
+    footerContributions.current.filter((item) => item.surface === surface),
+}));
+
+vi.mock("@/plugins/useInvokePluginAction", () => ({
+  useInvokePluginAction: () => ({ mutate: invokeMutate, isPending: false }),
+}));
 
 vi.mock("@/hooks/useFeeds", () => ({
   useFeeds: () => ({ data: [{ id: "feed-1", title: "少数派" }] }),
@@ -35,6 +52,8 @@ vi.mock("@/hooks/useFilters", () => ({
 afterEach(cleanup);
 beforeEach(() => {
   previewMutate.mockClear();
+  invokeMutate.mockReset();
+  footerContributions.current = [];
   fetchPluginsMock.mockReset();
   // 默认「没有插件」：老用例不看插件动作区，别让它们被异步清单影响
   fetchPluginsMock.mockResolvedValue([]);
@@ -466,5 +485,89 @@ describe("FilterEditor", () => {
         }),
       }),
     );
+  });
+});
+
+/**
+ * 56-14：规则编辑器底栏的「保存并推送」。
+ *
+ * 插件动作只能推**已经落库**的规则：新建规则时草稿还没有 id，直接 invoke 就会推一条
+ * 没有规则的推送。所以点插件按钮必须先保存（拿到新 id），保存成功才继续；
+ * 已有 id 的规则不重复保存。保存失败则什么都不做（错误由表单自己显示）。
+ */
+describe("FilterEditor × 插件底栏（56-14）", () => {
+  function footerContribution(): PluginContribution {
+    return {
+      plugin: "bark",
+      pluginName: "Bark 推送",
+      id: "push",
+      surface: "filter.editor.footer",
+      action: "notify",
+      label: "保存并推送（测试）",
+      selection: "none",
+    };
+  }
+
+  it("① 新建规则（还没有 id）→ 先保存，拿到新 id 后才 invoke", async () => {
+    const order: string[] = [];
+    const onSubmit = vi.fn(async () => {
+      order.push("save");
+      return "42";
+    });
+    invokeMutate.mockImplementation(() => {
+      order.push("invoke");
+    });
+    footerContributions.current = [footerContribution()];
+
+    render(
+      <FilterEditor initial={draft()} onSubmit={onSubmit} onCancel={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByText("保存并推送（测试）"));
+
+    await waitFor(() => expect(invokeMutate).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(["save", "invoke"]);
+    // 推的是刚落库的这条规则，而不是「没有规则的推送」
+    expect(invokeMutate.mock.calls[0]?.[0]).toEqual({
+      selection: { filterId: 42 },
+    });
+  });
+
+  it("② 已有规则（有 id）→ 不重复保存，直接 invoke", async () => {
+    const onSubmit = vi.fn();
+    footerContributions.current = [footerContribution()];
+
+    render(
+      <FilterEditor
+        filterId="7"
+        initial={draft()}
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByText("保存并推送（测试）"));
+
+    await waitFor(() => expect(invokeMutate).toHaveBeenCalledTimes(1));
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(invokeMutate.mock.calls[0]?.[0]).toEqual({
+      selection: { filterId: 7 },
+    });
+  });
+
+  it("③ 保存失败 → 不 invoke，也不抛未捕获异常", async () => {
+    const onSubmit = vi.fn(async () => {
+      throw new Error("保存失败");
+    });
+    footerContributions.current = [footerContribution()];
+
+    render(
+      <FilterEditor initial={draft()} onSubmit={onSubmit} onCancel={vi.fn()} />,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByText("保存并推送（测试）"));
+    });
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(invokeMutate).not.toHaveBeenCalled();
   });
 });

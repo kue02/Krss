@@ -13,6 +13,7 @@ import { Select } from "@/components/ui/select";
 import { ViewIconPicker } from "@/components/automation/ViewIconPicker";
 import { FeedScopePicker } from "@/components/automation/FeedScopePicker";
 import { PluginActionFields } from "@/components/automation/PluginActionFields";
+import { PluginSlot } from "@/plugins/PluginSlot";
 import { CONTENT_TYPE_ORDER } from "@/lib/content-type-meta";
 import type { ContentType } from "@/types/api";
 import { useFeeds } from "@/hooks/useFeeds";
@@ -37,6 +38,14 @@ import {
 
 interface FilterEditorProps {
   initial: FilterWritePayload;
+  /**
+   * 正在编辑的那条规则的 id（56-14）。新建时为 undefined。
+   *
+   * 编辑器要靠它决定两件事：底栏插件按钮的 selection 带不带 `filterId`、
+   * 以及点击时要不要先保存（没有 id 的草稿直接推 = 推一条没有规则的推送）。
+   * 它不在 `FilterWritePayload` 里 —— 那份形状是**原样发给后端**的写请求，多一个 id 就多一个脏字段。
+   */
+  filterId?: string;
   /** view = 「保存筛选视图」：同一套范围 + 条件，但没有动作区 */
   kind?: FilterKind;
   /** 自然语言建规则给出的解释（刚生成时显示一次） */
@@ -51,7 +60,14 @@ interface FilterEditorProps {
    * 因为只有它知道 kind/trim/视图清空动作这些规范化规则（buildPayload）。
    */
   onPayloadChange?: (payload: FilterWritePayload, dirty: boolean) => void;
-  onSubmit: (payload: FilterWritePayload) => void;
+  /**
+   * 保存。可以返回**保存后的规则 id**（56-14）：底栏的插件按钮要「先保存再调用」，
+   * 新建规则时正是靠这个返回值拿到刚生成 id 去推。同步返回 void / 什么都不返回 = 老行为。
+   * 失败请 reject（调用方会把异常收掉，错误照旧由 `saveError` 显示）。
+   */
+  onSubmit: (
+    payload: FilterWritePayload,
+  ) => Promise<string | void> | string | void;
   onCancel: () => void;
 }
 
@@ -116,6 +132,7 @@ function emptyCondition(): FilterCondition {
  */
 export function FilterEditor({
   initial,
+  filterId,
   kind = "rule",
   notes = null,
   warnings = [],
@@ -434,7 +451,11 @@ export function FilterEditor({
     );
   };
 
-  const handleSubmit = () => {
+  /**
+   * 校验 + 标红，返回「有没有问题」。保存按钮与底栏插件按钮（先保存）共用这一份，
+   * 两处口径必须一致，否则会出现「保存能过、推送被拦」这种自相矛盾。
+   */
+  const checkBeforeSave = (): boolean => {
     const error = validate(draft);
     setValidationError(error);
     // 必填却空着的那几栏标红（错误文案在底部，红框指到具体字段）
@@ -444,8 +465,35 @@ export function FilterEditor({
       grouped[key] = [...(grouped[key] ?? []), issue.field];
     }
     setInvalidPluginFields(grouped);
-    if (error) return;
-    onSubmit(buildPayload());
+    return Boolean(error);
+  };
+
+  const handleSubmit = () => {
+    if (checkBeforeSave()) return;
+    // 保存失败由 onSubmit 自己报（saveError）；这里只把 rejection 收掉，
+    // 不让一次点击变成未捕获的 Promise 拒绝（56-14 起 onSubmit 可能返回 Promise）
+    void Promise.resolve(onSubmit(buildPayload())).catch(() => undefined);
+  };
+
+  /**
+   * 底栏插件按钮的「先保存」（56-14）：确保这份草稿有一条落库的规则，返回它的 id。
+   *
+   * - 已经有 id（编辑既有规则）→ 直接用它，**不重复保存**；
+   * - 新建 → 校验后保存，id 取自 `onSubmit` 的返回值（外壳用 mutateAsync 拿得到）；
+   * - 校验不过 / 保存失败 → 抛错，`PluginSlot` 会因此放弃调用插件动作
+   *   （错误已经显示在表单里，不需要第二个提示）。
+   */
+  const saveDraft = async (): Promise<string | null> => {
+    if (filterId) return filterId;
+    if (checkBeforeSave()) throw new Error("invalid filter draft");
+    const savedId = await onSubmit(buildPayload());
+    return typeof savedId === "string" && savedId ? savedId : null;
+  };
+
+  /** 插件动作的 selection：id 转成后端 Selection.FilterID 认的数字（非数字就不带，别塞 NaN） */
+  const filterSelection = (id: string | null | undefined) => {
+    const numeric = Number(id);
+    return id && Number.isFinite(numeric) ? { filterId: numeric } : {};
   };
 
   const valuePlaceholder = (condition: FilterCondition): string => {
@@ -1115,6 +1163,15 @@ export function FilterEditor({
             : t("automation.preview")}
         </button>
         <div className="flex-1" />
+        {/* 56-14：插件往底栏加的按钮（这个挂点没有贡献就不占位）。
+            点击先走 beforeInvoke 保存这份草稿：新建规则时还没 id，直接推就是一条
+            「没有规则的推送」；保存成功才继续调用，返回的新 id 补进 selection。 */}
+        <PluginSlot
+          surface="filter.editor.footer"
+          variant="toolbar"
+          selection={filterSelection(filterId)}
+          beforeInvoke={async () => filterSelection(await saveDraft())}
+        />
         <button
           type="button"
           onClick={onCancel}
