@@ -133,8 +133,10 @@ func main() {
 	// MCP（16 批入向 / 17 批出向）共用同一套协议底座 internal/service/mcp。
 	mcpService := service.NewMCPService(mcpServerRepo, settingsService, clientFactory, aiService)
 	feedService := service.NewFeedService(feedRepo, folderRepo, entryRepo, iconService, settingsService, clientFactory, anubisSolver, filterService, mcpService)
-	// 条目列表要能按「保存筛选视图」（filters.kind = view）筛，所以 entryService 也拿到 filterRepo
-	entryService := service.NewEntryService(entryRepo, feedRepo, folderRepo, filterRepo)
+	// 条目列表要能按「保存筛选视图」（filters.kind = view）筛，所以 entryService 也拿到 filterRepo；
+	// 55-21：条目详情读取走插件阅读期处理（注册表没接上 = 老行为，原样返回）。
+	entryService := service.NewEntryService(entryRepo, feedRepo, folderRepo, filterRepo).
+		WithPlugins(pluginRegistry)
 	readabilityService := service.NewReadabilityService(entryRepo, clientFactory, anubisSolver)
 	domainRateLimitService := service.NewDomainRateLimitService(domainRateLimitRepo)
 	refreshService := service.NewRefreshService(feedRepo, entryRepo, settingsService, iconService, clientFactory, anubisSolver, domainRateLimitService, filterService, mcpService).

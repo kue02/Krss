@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"krss/backend/internal/model"
+	"krss/backend/internal/plugin"
 	"krss/backend/internal/repository"
 	"krss/backend/pkg/logger"
 )
@@ -48,6 +49,9 @@ type EntryService interface {
 	ClearReadabilityCache(ctx context.Context) (int64, error)
 	// ClearEntryCache deletes all unstarred entries
 	ClearEntryCache(ctx context.Context) (int64, error)
+	// WithPlugins 装上插件注册表（55-21：条目详情读取时跑阅读期处理器）。
+	// builder 形状照 RefreshService.WithPlugins：main.go 构造处一行接上，不传 = 老行为。
+	WithPlugins(registry *plugin.Registry) EntryService
 }
 
 type entryService struct {
@@ -56,6 +60,8 @@ type entryService struct {
 	folders repository.FolderRepository
 	// filters 只读用途：把「保存筛选视图」（filters.kind = view）的作用域与条件套到列表上
 	filters repository.FilterRepository
+	// plugins 阅读期处理器来源（55-21）；nil = 老行为（详情原样返回）。
+	plugins *plugin.Registry
 }
 
 func NewEntryService(
@@ -70,6 +76,39 @@ func NewEntryService(
 		folders: folders,
 		filters: filters,
 	}
+}
+
+// WithPlugins 装上插件注册表（55-21：条目详情读取时跑阅读期处理器）。
+// 用 builder 而不是加构造参数：既有 10+ 处测试调用点零改动，nil 就是老行为。
+func (s *entryService) WithPlugins(registry *plugin.Registry) EntryService {
+	s.plugins = registry
+	return s
+}
+
+// runEntryProcessors 阅读期处理（55 批）：插件对某类订阅源的特别优化落在这一层。
+// 铁律：处理器出错只记日志、返回原条目 —— 阅读体验不能被一个插件搞坏；
+// 也不写库（读路径 Pure），入库数据永远保持源站原样。
+func (s *entryService) runEntryProcessors(ctx context.Context, entry model.Entry) model.Entry {
+	if s.plugins == nil {
+		return entry
+	}
+	feed, err := s.feeds.GetByID(ctx, entry.FeedID)
+	if err != nil {
+		// 订阅源取不到（刚被删 / 数据不齐）：不认路，原样返回。
+		return entry
+	}
+	for _, processor := range s.plugins.EntryProcessors() {
+		if !processor.Matches(feed, entry) {
+			continue
+		}
+		processed, err := processor.Process(entry)
+		if err != nil {
+			logger.Warn("entry processor failed", "module", "service", "action", "process", "resource", "entry", "result", "failed", "processor", processor.ID(), "entry_id", entry.ID, "error", err)
+			continue
+		}
+		entry = processed
+	}
+	return entry
 }
 
 // Search 关键词检索（FTS5）。
@@ -261,7 +300,7 @@ func (s *entryService) GetByID(ctx context.Context, id int64) (model.Entry, erro
 		return model.Entry{}, err
 	}
 	logger.Debug("entry get", "module", "service", "action", "fetch", "resource", "entry", "result", "ok", "entry_id", id)
-	return entry, nil
+	return s.runEntryProcessors(ctx, entry), nil
 }
 
 // Unmute 取消单条条目的静音：清掉规则写的 muted/filter_id，并让它回到未读流里。

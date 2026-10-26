@@ -12,6 +12,7 @@ package mock
 import (
 	context "context"
 	model "krss/backend/internal/model"
+	plugin "krss/backend/internal/plugin"
 	service "krss/backend/internal/service"
 	reflect "reflect"
 
@@ -215,4 +216,18 @@ func (m *MockEntryService) Unmute(ctx context.Context, id int64) error {
 func (mr *MockEntryServiceMockRecorder) Unmute(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Unmute", reflect.TypeOf((*MockEntryService)(nil).Unmute), ctx, id)
+}
+
+// WithPlugins mocks base method.
+func (m *MockEntryService) WithPlugins(registry *plugin.Registry) service.EntryService {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "WithPlugins", registry)
+	ret0, _ := ret[0].(service.EntryService)
+	return ret0
+}
+
+// WithPlugins indicates an expected call of WithPlugins.
+func (mr *MockEntryServiceMockRecorder) WithPlugins(registry any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WithPlugins", reflect.TypeOf((*MockEntryService)(nil).WithPlugins), registry)
 }
