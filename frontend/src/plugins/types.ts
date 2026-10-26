@@ -5,6 +5,8 @@
  * 清单只管「是什么、开没开、声明了哪些动作与设置段」；设置段的界面是代码、随包发。
  */
 
+import type { Surface } from "./surfaces";
+
 /** 插件声明的一个设置字段（渲染成输入框 / 密码框 / 下拉 / 开关） */
 export interface PluginField {
   key: string;
@@ -57,3 +59,49 @@ export interface PluginSettings {
  * 回填这份值 = 「保持原值不变」，所以前端千万别把它当成真密码再存一遍其它字段。
  */
 export const PLUGIN_MASKED_VALUE = "••••••••";
+
+/*
+ * 界面贡献（56-4）。后端形状见 backend/internal/plugin/contribution.go 的 Contribution
+ * 与 GET /api/plugins/contributions 的 `{ surfaces: Record<Surface, Contribution[]> }`。
+ * 一条 contrib 说的是「哪个挂点上多一个按钮 / 菜单项 / 设置卡片」，点下去调用插件动作。
+ */
+
+/** 这条贡献需要什么选中态才可点（none = 随时可点；multi = 至少一条条目/订阅） */
+export type PluginSelectionMode = "none" | "single" | "multi";
+
+/** 调用动作时随附的上下文（宿主按 surface 填，插件拿到什么就在什么上做事） */
+export type PluginSelection = {
+  entryIds?: number[];
+  feedIds?: number[];
+  filterId?: number;
+  viewId?: number;
+  textRange?: { start: number; end: number; text: string };
+};
+
+/** 插件声明的一条界面贡献（宿主注入 plugin / pluginName，其余来自插件 manifest） */
+export type PluginContribution = {
+  plugin: string; // 宿主注入：来自哪个插件
+  pluginName?: string; // 宿主注入：插件显示名（后端可选回填）
+  id: string;
+  surface: Surface;
+  /** 空 = 追加；hide = 藏掉 target 指的那个宿主元素；replace = 顶掉它 */
+  op?: "" | "hide" | "replace";
+  target?: string;
+  action: string;
+  label: string;
+  icon?: string;
+  group?: string;
+  confirm?: string;
+  /** 点下去要填的参数（复用设置段那套字段渲染） */
+  fields?: PluginField[];
+  selection: PluginSelectionMode;
+  /** 动作跑完后要失效的前端 caches，例如 ["entries"] */
+  refresh?: string[];
+};
+
+/** 插件动作的返回：给一句提示 + 要刷新哪些 caches */
+export type PluginInvokeResult = {
+  message?: string;
+  level?: "success" | "error" | "info" | string;
+  refresh?: string[];
+};

@@ -4,6 +4,8 @@ import { Button, Chip } from "@heroui/react";
 import { fetchPlugins, rescanPlugins, setPluginEnabled } from "@/plugins/api";
 import type { PluginMeta } from "@/plugins/types";
 import { PLUGIN_SETTINGS_SECTIONS } from "@/plugins/registry";
+import { PLUGIN_CONTRIBUTIONS_QUERY_KEY } from "@/plugins/useContributions";
+import { queryClient } from "@/lib/queryClient";
 import { HeroSwitch } from "@/components/ui/hero-switch";
 
 /**
@@ -41,6 +43,11 @@ export function PluginsSettings() {
     setError(null);
     try {
       setPlugins(await rescanPlugins());
+      // 56-4：新扫进来的外部插件会带进自己的界面贡献（右键菜单 / 工具栏…），
+      // 停用也一样要它立刻从各挂点上消失 —— 这里让贡献表失效，挂点自己重拉一次。
+      void queryClient.invalidateQueries({
+        queryKey: PLUGIN_CONTRIBUTIONS_QUERY_KEY,
+      });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -54,6 +61,11 @@ export function PluginsSettings() {
     try {
       // PATCH 直接回整份清单：启停后不用再补一次 GET，也不会出现「勾了但卡片还是旧的」
       setPlugins(await setPluginEnabled(plugin.id, next));
+      // 56-4：启停改的正是「哪些插件在生效」，所以界面贡献跟着变 —— 不失效的话
+      // 停用插件后它的右键菜单项会挂在那儿，点了才发现后端已经拒绝。
+      void queryClient.invalidateQueries({
+        queryKey: PLUGIN_CONTRIBUTIONS_QUERY_KEY,
+      });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

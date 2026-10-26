@@ -1,5 +1,5 @@
 import { request } from "@/api";
-import type { PluginMeta, PluginSettings } from "./types";
+import type { PluginContribution, PluginMeta, PluginSettings } from "./types";
 
 /**
  * 插件 API（55-8）。
@@ -75,4 +75,19 @@ export function rescanPlugins(): Promise<PluginMeta[]> {
   return request<{ plugins: PluginMeta[] }>("/api/plugins/rescan", {
     method: "POST",
   }).then(normalizeList);
+}
+
+/**
+ * 界面贡献（56-4）：`{ surfaces: Record<Surface, Contribution[]> }`，按挂点分组。
+ *
+ * 一个插件停用后它的贡献项要从「所有挂点」里消失，所以这张表是全量的 ——
+ * 钩子那边一次拉完、按 surface 切片，别让每个挂点各打一次请求。
+ * 后端空 slice 同样会序列化成 `null`，这里统一摊成 `{}`。
+ */
+export function fetchPluginContributions(): Promise<
+  Record<string, PluginContribution[]>
+> {
+  return request<{ surfaces?: Record<string, PluginContribution[]> | null }>(
+    "/api/plugins/contributions",
+  ).then((data) => data.surfaces ?? {});
 }
