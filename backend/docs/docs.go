@@ -5178,12 +5178,6 @@ const docTemplate = `{
                 },
                 "markReadOnScroll": {
                     "type": "boolean"
-                },
-                "rsshubAccessKey": {
-                    "type": "string"
-                },
-                "rsshubBaseUrl": {
-                    "type": "string"
                 }
             }
         },
@@ -5198,13 +5192,6 @@ const docTemplate = `{
                 },
                 "markReadOnScroll": {
                     "type": "boolean"
-                },
-                "rsshubAccessKey": {
-                    "type": "string"
-                },
-                "rsshubBaseUrl": {
-                    "description": "RSSHub 自有实例（添加订阅时自动换域名用）——不回这两个字段的话界面每次打开都是空的",
-                    "type": "string"
                 }
             }
         },

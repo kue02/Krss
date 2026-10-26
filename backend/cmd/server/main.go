@@ -21,6 +21,7 @@ import (
 	"krss/backend/internal/plugin"
 	"krss/backend/internal/plugin/builtin/bark"   // 内置插件：Bark 推送（55-12）
 	_ "krss/backend/internal/plugin/builtin/demo" // 内置插件：init() 自注册进 plugin.Default（55-7a）
+	"krss/backend/internal/plugin/builtin/rsshub" // 内置插件：RSSHub 适配（55-18）
 	"krss/backend/internal/repository"
 	"krss/backend/internal/scheduler"
 	"krss/backend/internal/service"
@@ -112,6 +113,8 @@ func main() {
 	// bark 推送插件（55-12）：出网 client 用 clientFactory 建（继承代理，与 webhook 同一套路径），
 	// 设置存储给 settingsRepo（键 plugin.bark.url）。
 	bark.Configure(clientFactory.NewHTTPClient(context.Background(), 15*time.Second), settingsRepo)
+	// RSSHub 适配插件（55-18）：只要设置存储（键 plugin.rsshub.base_url / access_key），不出网。
+	rsshub.Configure(settingsRepo)
 	// 规则引擎：抓取入库之后跑，只改条目上的标记（muted / read / starred / auto-translate）。
 	// 本项目有两条入库路径（新订阅首次抓取、刷新），两条都要过规则，所以先建它再注入。
 	// AI 与 webhook 是 P2/P3 动作的依赖：AI 供「AI 条件」与「自然语言建规则」，

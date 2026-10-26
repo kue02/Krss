@@ -27,8 +27,6 @@ func TestSettingsHandler_UpdateGeneralSettings_InvalidURLIs400(t *testing.T) {
 		"fallbackUserAgent": "",
 		"autoReadability":   false,
 		"markReadOnScroll":  true,
-		"rsshubBaseUrl":     "",
-		"rsshubAccessKey":   "",
 		"barkUrl":           "api.day.app/notakey", // 少了 https://
 	})
 	c, rec := newTestContext(e, req)

@@ -33,9 +33,9 @@ type aiSettingsResponse struct {
 	Providers        []service.AIProviderConfig `json:"providers"`
 	ActiveProviderID string                     `json:"activeProviderId"`
 	// 分场景模型覆盖（50 批 1.2）：空 = 跟随当前使用；provider:<id> / free（仅翻译）
-	SceneTranslate  string                     `json:"sceneTranslate"`
-	SceneSummary    string                     `json:"sceneSummary"`
-	SceneAutomation string                     `json:"sceneAutomation"`
+	SceneTranslate  string `json:"sceneTranslate"`
+	SceneSummary    string `json:"sceneSummary"`
+	SceneAutomation string `json:"sceneAutomation"`
 }
 
 type aiSettingsRequest struct {
@@ -55,9 +55,9 @@ type aiSettingsRequest struct {
 	Providers        []service.AIProviderConfig `json:"providers"`
 	ActiveProviderID string                     `json:"activeProviderId"`
 	// 分场景模型覆盖（50 批 1.2）：空 = 跟随当前使用；provider:<id> / free（仅翻译）
-	SceneTranslate  string                     `json:"sceneTranslate"`
-	SceneSummary    string                     `json:"sceneSummary"`
-	SceneAutomation string                     `json:"sceneAutomation"`
+	SceneTranslate  string `json:"sceneTranslate"`
+	SceneSummary    string `json:"sceneSummary"`
+	SceneAutomation string `json:"sceneAutomation"`
 }
 
 type aiTestRequest struct {
@@ -78,17 +78,13 @@ type generalSettingsResponse struct {
 	FallbackUserAgent string `json:"fallbackUserAgent"`
 	AutoReadability   bool   `json:"autoReadability"`
 	MarkReadOnScroll  bool   `json:"markReadOnScroll"`
-	// RSSHub 自有实例（添加订阅时自动换域名用）——不回这两个字段的话界面每次打开都是空的
-	RSSHubBaseURL   string `json:"rsshubBaseUrl"`
-	RSSHubAccessKey string `json:"rsshubAccessKey"`
+	// 55-18：RSSHub 实例设置在插件里（GET/PUT /api/plugins/rsshub/settings），不再是通用字段。
 }
 
 type generalSettingsRequest struct {
 	FallbackUserAgent string `json:"fallbackUserAgent"`
 	AutoReadability   bool   `json:"autoReadability"`
 	MarkReadOnScroll  bool   `json:"markReadOnScroll"`
-	RSSHubBaseURL     string `json:"rsshubBaseUrl"`
-	RSSHubAccessKey   string `json:"rsshubAccessKey"`
 }
 
 type networkSettingsResponse struct {
@@ -274,9 +270,9 @@ func (h *SettingsHandler) GetAISettings(c echo.Context) error {
 		Providers:        settings.Providers,
 		ActiveProviderID: settings.ActiveProviderID,
 
-		SceneTranslate:   settings.SceneTranslate,
-		SceneSummary:     settings.SceneSummary,
-		SceneAutomation:  settings.SceneAutomation,
+		SceneTranslate:  settings.SceneTranslate,
+		SceneSummary:    settings.SceneSummary,
+		SceneAutomation: settings.SceneAutomation,
 	})
 }
 
@@ -449,8 +445,6 @@ func (h *SettingsHandler) GetGeneralSettings(c echo.Context) error {
 		FallbackUserAgent: settings.FallbackUserAgent,
 		AutoReadability:   settings.AutoReadability,
 		MarkReadOnScroll:  settings.MarkReadOnScroll,
-		RSSHubBaseURL:     settings.RSSHubBaseURL,
-		RSSHubAccessKey:   settings.RSSHubAccessKey,
 	})
 }
 
@@ -475,8 +469,6 @@ func (h *SettingsHandler) UpdateGeneralSettings(c echo.Context) error {
 		FallbackUserAgent: req.FallbackUserAgent,
 		AutoReadability:   req.AutoReadability,
 		MarkReadOnScroll:  req.MarkReadOnScroll,
-		RSSHubBaseURL:     req.RSSHubBaseURL,
-		RSSHubAccessKey:   req.RSSHubAccessKey,
 	}
 
 	if err := h.service.SetGeneralSettings(c.Request().Context(), settings); err != nil {

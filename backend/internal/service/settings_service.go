@@ -53,9 +53,9 @@ type AISettings struct {
 	ActiveProviderID string             `json:"activeProviderId"`
 	// 分场景模型覆盖（50 批 1.2）：空串 = 跟随当前提供商的模型（默认，行为与原来一致）。
 	// 值形如 provider:<id>（用 providers 里那一份的 key/model）或 free（仅翻译场景 = 免费通道）。
-	SceneTranslate   string `json:"sceneTranslate"`
-	SceneSummary     string `json:"sceneSummary"`
-	SceneAutomation  string `json:"sceneAutomation"`
+	SceneTranslate  string `json:"sceneTranslate"`
+	SceneSummary    string `json:"sceneSummary"`
+	SceneAutomation string `json:"sceneAutomation"`
 }
 
 // GeneralSettings holds general application settings.
@@ -63,10 +63,8 @@ type GeneralSettings struct {
 	FallbackUserAgent string `json:"fallbackUserAgent"`
 	AutoReadability   bool   `json:"autoReadability"`
 	MarkReadOnScroll  bool   `json:"markReadOnScroll"`
-	// RSSHub 适配：自有实例域名 + 可选 ACCESS_KEY，用于添加订阅时改写地址、
-	// 以及把已有订阅批量换到自己的实例
-	RSSHubBaseURL   string `json:"rsshubBaseUrl"`
-	RSSHubAccessKey string `json:"rsshubAccessKey"`
+	// 55-18：RSSHub 实例地址 / ACCESS_KEY 已搬进 rsshub 插件（键 plugin.rsshub.*），
+	// 本体通用设置不再认识它们 —— 特化能力不进核心。
 }
 
 // NetworkSettings holds network proxy configuration.
@@ -167,8 +165,6 @@ const (
 	keyFallbackUserAgent = "general.fallback_user_agent"
 	keyAutoReadability   = "general.auto_readability"
 	keyMarkReadOnScroll  = "general.mark_read_on_scroll"
-	keyRSSHubBaseURL     = "general.rsshub_base_url"
-	keyRSSHubAccessKey   = "general.rsshub_access_key"
 	keyNetworkEnabled    = "network.proxy_enabled"
 	keyNetworkMode       = "network.proxy_mode" // "proxy" | "smart"；空 = proxy（旧行为）
 	keyNetworkType       = "network.proxy_type"
@@ -472,8 +468,8 @@ func (s *settingsService) SetAISettings(ctx context.Context, settings *AISetting
 	// 不在（提供商被删、导入串进来）就落回空 = 跟随，别留一个永远解析不出的值。
 	// free（免 key 通道）只对翻译场景合法 —— 摘要/自动化给 free 直接 400。
 	sceneValues := []struct {
-		key string
-		val string
+		key         string
+		val         string
 		freeAllowed bool
 	}{
 		{keyAISceneTranslate, settings.SceneTranslate, true},
@@ -827,12 +823,6 @@ func (s *settingsService) GetGeneralSettings(ctx context.Context) (*GeneralSetti
 	}
 	settings.AutoReadability = s.getBool(ctx, keyAutoReadability)
 	settings.MarkReadOnScroll = s.getBool(ctx, keyMarkReadOnScroll)
-	if val, err := s.getString(ctx, keyRSSHubBaseURL); err == nil {
-		settings.RSSHubBaseURL = val
-	}
-	if val, err := s.getString(ctx, keyRSSHubAccessKey); err == nil {
-		settings.RSSHubAccessKey = val
-	}
 	return settings, nil
 }
 
@@ -909,20 +899,10 @@ func (s *settingsService) SetGeneralSettings(ctx context.Context, settings *Gene
 		markReadOnScrollVal = "true"
 	}
 
-	baseURL := strings.TrimRight(strings.TrimSpace(settings.RSSHubBaseURL), "/")
-	if baseURL != "" {
-		parsed, parseErr := url.Parse(baseURL)
-		if parseErr != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-			return ErrInvalid
-		}
-	}
-
 	if err := s.repo.SetMany(ctx, map[string]string{
 		keyFallbackUserAgent: settings.FallbackUserAgent,
 		keyAutoReadability:   autoReadabilityVal,
 		keyMarkReadOnScroll:  markReadOnScrollVal,
-		keyRSSHubBaseURL:     baseURL,
-		keyRSSHubAccessKey:   strings.TrimSpace(settings.RSSHubAccessKey),
 	}); err != nil {
 		logger.Warn("general settings update failed", "module", "service", "action", "update", "resource", "settings", "result", "failed", "error", err)
 		return fmt.Errorf("set general settings: %w", err)
@@ -1379,7 +1359,6 @@ func importableSettingKeys() []string {
 		keyFallbackUserAgent,
 		keyAutoReadability,
 		keyMarkReadOnScroll,
-		keyRSSHubBaseURL,
 		keyRefreshIntervalMinutes,
 		keyRefreshConcurrency,
 		keyRefreshPerHostConcurrency,
@@ -1411,7 +1390,6 @@ func excludedSettingKeys() []string {
 	return []string{
 		keyAIAPIKey,
 		keyAIProviders,
-		keyRSSHubAccessKey,
 		keyNetworkPassword,
 		keyUserPasswordHash,
 		keyUserJWTSecret,

@@ -866,7 +866,7 @@ func (s *refreshService) refreshFeedWithCookie(ctx context.Context, feed model.F
 	// 14 批：每一试都走这条订阅**实际生效**的代理（订阅 → 文件夹父级链 → 全局，每轮现读）。
 	var resp *http.Response
 	var fetchErr error
-	var lastBodyHead []byte // 51 批 2：最后一次 4xx/5xx 的正文头（RSSHub 错误页归类用）
+	var lastBodyHead []byte // 51 批 2 / 55 批：最后一次 4xx/5xx 的正文头（抓取失败分类器用）
 	for attempt := 0; attempt < fetchMaxAttempts; attempt++ {
 		if attempt > 0 {
 			backoff := fetchRetryBackoffs[attempt-1]
@@ -895,7 +895,7 @@ func (s *refreshService) refreshFeedWithCookie(ctx context.Context, feed model.F
 			continue
 		}
 		if r.StatusCode == http.StatusTooManyRequests || r.StatusCode >= http.StatusInternalServerError {
-			// 51 批 2：先留一份正文头（RSSHub 错误页带真实失败原因），再丢弃重试 ——
+			// 51 批 2：先留一份正文头（错误页里常带真实失败原因，分类器要用），再丢弃重试 ——
 			// 否则重试耗尽后只剩「HTTP 503」，分不清是上游挂了还是实例不通
 			bodyHead, _ := io.ReadAll(io.LimitReader(r.Body, 256*1024))
 			_, _ = io.Copy(io.Discard, r.Body)
