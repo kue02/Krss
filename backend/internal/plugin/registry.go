@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"krss/backend/pkg/logger"
 )
 
 // Registry 插件注册表。并发安全：启动时 Register，运行时读（dispatch 路径）。
@@ -233,5 +235,83 @@ func (r *Registry) FetchClassifiers() []FetchClassifier {
 		out = append(out, p.FetchClassifiers()...)
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].ID() < out[j].ID() })
+	return out
+}
+
+// PluginContributions 单个插件声明的界面贡献（已清洗；**不管启停** —— 设置页要能预览停用插件会加什么）。
+// 没装 / 没实现 ContributionsProvider 都返回空。
+func (r *Registry) PluginContributions(pluginID string) []Contribution {
+	r.mu.RLock()
+	p, ok := r.plugins[pluginID]
+	r.mu.RUnlock()
+	if !ok {
+		return nil
+	}
+	provider, ok := p.(ContributionsProvider)
+	if !ok {
+		return nil
+	}
+	return sanitizeContributions(pluginID, provider.Contributions())
+}
+
+// AllContributions 全部**已启用**插件贡献的界面项，按 surface 分组。
+// 组内按插件 id 排序（稳定输出，前端不会因 map 迭代顺序跳位）；没有贡献时返回空 map（不是 nil）。
+func (r *Registry) AllContributions() map[Surface][]Contribution {
+	ids := make([]string, 0, 4)
+	raw := make(map[string][]Contribution, 4)
+	r.mu.RLock()
+	for id, p := range r.plugins {
+		if !r.enabled[id] {
+			continue
+		}
+		provider, ok := p.(ContributionsProvider)
+		if !ok {
+			continue
+		}
+		ids = append(ids, id)
+		raw[id] = provider.Contributions()
+	}
+	r.mu.RUnlock()
+
+	sort.Strings(ids)
+	out := make(map[Surface][]Contribution, len(ids))
+	for _, id := range ids {
+		for _, item := range sanitizeContributions(id, raw[id]) {
+			out[item.Surface] = append(out[item.Surface], item)
+		}
+	}
+	return out
+}
+
+// sanitizeContributions 清掉插件写错的界面项：未知 surface / 没 action / 没 id / 同 surface 内 id 重复。
+// 丢弃一律留一条 warn（插件作者的错要能在日志里查到，不能静默少一个按钮）。
+func sanitizeContributions(pluginID string, items []Contribution) []Contribution {
+	out := make([]Contribution, 0, len(items))
+	seen := make(map[string]bool, len(items))
+	for _, item := range items {
+		key := string(item.Surface) + "|" + item.ID
+		reason := ""
+		switch {
+		case !IsSupportedSurface(item.Surface):
+			reason = "unsupported surface"
+		case strings.TrimSpace(item.Action) == "":
+			reason = "empty action"
+		case strings.TrimSpace(item.ID) == "":
+			reason = "empty id"
+		case seen[key]:
+			reason = "duplicate id in surface"
+		}
+		if reason != "" {
+			logger.Warn("plugin contribution dropped",
+				"module", "plugin", "action", "sanitize", "resource", "contribution", "result", "dropped",
+				"pluginId", pluginID, "id", item.ID, "surface", string(item.Surface), "reason", reason)
+			continue
+		}
+		seen[key] = true
+		if item.Selection == "" {
+			item.Selection = SelectionNone
+		}
+		out = append(out, item)
+	}
 	return out
 }
