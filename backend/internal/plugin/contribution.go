@@ -106,10 +106,21 @@ type InvokeRequest struct {
 	Filter    *model.Filter     `json:"filter,omitempty"`
 }
 
+// InvokeResult 界面直调的结果。Message/Level 给提示条，Refresh 让前端失效哪几块缓存，
+// Files 是「插件产出了一个文件」（导出场景；56-30 的 Obsidian 导出是第一个用户）。
 type InvokeResult struct {
-	Message string   `json:"message,omitempty"`
-	Level   string   `json:"level,omitempty"`
-	Refresh []string `json:"refresh,omitempty"`
+	Message string       `json:"message,omitempty"`
+	Level   string       `json:"level,omitempty"`
+	Refresh []string     `json:"refresh,omitempty"`
+	Files   []ExportFile `json:"files,omitempty"`
+}
+
+// ExportFile 插件导出的一份文件。内容由插件生成，宿主只负责命名与落盘/下载；
+// Filename 允许带子目录（如 "krss/2026-10-27 一只猫.md"），宿主按目录建。
+type ExportFile struct {
+	Filename string `json:"filename"`
+	Content  string `json:"content"`
+	MIME     string `json:"mime,omitempty"`
 }
 
 // UnmarshalJSON 让 selection 里的 id 同时接受 JSON 字符串与数字。

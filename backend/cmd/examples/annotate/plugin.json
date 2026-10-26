@@ -1,0 +1,48 @@
+{
+  "id": "annotate",
+  "name": "标注",
+  "version": "0.1.0",
+  "description": "在正文里高亮 / 记笔记，按条目导出 Markdown 到 Obsidian（外部插件样板）",
+  "transport": "http",
+  "entrypoint": "./annotate",
+  "autostart": true,
+  "permissions": ["entries:full", "feeds:read", "data", "export", "ui:custom"],
+  "contributions": [
+    {
+      "id": "highlight",
+      "surface": "entry.reader.body",
+      "action": "highlight",
+      "label": "高亮",
+      "icon": "star",
+      "selection": "single",
+      "refresh": ["decorations"]
+    },
+    {
+      "id": "note",
+      "surface": "entry.reader.body",
+      "action": "note",
+      "label": "写笔记",
+      "icon": "sparkles",
+      "selection": "single",
+      "fields": [{ "key": "text", "label": "笔记", "type": "text", "required": true }],
+      "refresh": ["decorations"]
+    },
+    {
+      "id": "export",
+      "surface": "entry.reader.toolbar",
+      "action": "export",
+      "label": "导出到 Obsidian",
+      "icon": "download",
+      "selection": "single"
+    }
+  ],
+  "views": [
+    {
+      "id": "annotations",
+      "label": "标注",
+      "icon": "star",
+      "kind": "custom",
+      "entry": "index.html"
+    }
+  ]
+}
