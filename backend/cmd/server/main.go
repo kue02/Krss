@@ -174,7 +174,10 @@ func main() {
 	// 每 5s 扫一次插件目录（不上 fsnotify）：丢个文件夹进去，5s 内就发现并拉起。
 	pluginWatchCtx, pluginWatchCancel := context.WithCancel(context.Background())
 	pluginHost.Watch(pluginWatchCtx, 5*time.Second)
-	pluginService := service.NewPluginService(pluginRegistry, pluginRepo, settingsRepo, service.WithPluginHost(pluginHost))
+	pluginService := service.NewPluginService(pluginRegistry, pluginRepo, settingsRepo,
+		service.WithPluginHost(pluginHost),
+		// 界面直调（56-5）要按选择补条目/订阅/规则明细；只读 GetByID，走现成仓储。
+		service.WithInvokeRepos(entryRepo, feedRepo, filterRepo))
 	// 启动即装载：表里没有的内置插件补进行（bark/rsshub 默认开 ⇒ 老实例行为零变化；demo 默认关），
 	// 同时扫一遍插件目录把外部插件拉起来（Catalog 链上就带 ensureExternal）。
 	if _, err := pluginService.Catalog(context.Background()); err != nil {

@@ -21,6 +21,10 @@ var (
 	ErrPluginNotFound          = errors.New("plugin not found")
 	ErrPluginDisabled          = errors.New("plugin disabled")
 	ErrPluginActionNotTestable = errors.New("plugin action not testable")
+	// 56-5 界面直调：动作没装 / 没实现 Invoker / 这个 surface 没声明它，三种错要让前端能分辨。
+	ErrPluginActionNotFound     = errors.New("plugin action not found")
+	ErrPluginActionNotInvokable = errors.New("plugin action is not invokable")
+	ErrPluginSurfaceUndeclared  = errors.New("plugin action is not declared for this surface")
 )
 
 // FeedConflictError is returned when a feed URL already exists.

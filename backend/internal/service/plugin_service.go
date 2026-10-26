@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 
+	"krss/backend/internal/model"
 	"krss/backend/internal/plugin"
 	"krss/backend/internal/repository"
 	"krss/backend/pkg/logger"
@@ -39,6 +40,8 @@ type PluginService interface {
 	// Contributions 全部已启用插件贡献的界面项（按 surface 分组、已清洗去重；没有就是空 map）。
 	// 只读内存注册表 —— 不带 ensureBuiltin/ensureExternal（启停位由 Catalog 那条链装载过）。
 	Contributions(ctx context.Context) map[plugin.Surface][]plugin.Contribution
+	// Invoke 界面直调一个插件动作（56-5）：校验 surface 声明与 selection，再按插件声明的权限裁剪上下文。
+	Invoke(ctx context.Context, pluginID, actionID string, req plugin.InvokeRequest) (plugin.InvokeResult, error)
 }
 
 type pluginService struct {
@@ -47,6 +50,24 @@ type pluginService struct {
 	settings repository.SettingsRepository
 	// host 外部插件宿主（55-7b）。nil = 只跑内置轨（老测试 / 纯内置部署）。
 	host *PluginHost
+	// 界面直调（56-5）需要的只读能力。nil = 不补明细（只把选择原样递给插件，不报错）。
+	entries InvokeEntryReader
+	feeds   InvokeFeedReader
+	filters InvokeFilterReader
+}
+
+// InvokeEntryReader / InvokeFeedReader / InvokeFilterReader 是界面直调需要的只读能力。
+// 故意只要 GetByID —— 与 repository 的同名方法形状一致，接线时直接传现有仓储即可。
+type InvokeEntryReader interface {
+	GetByID(ctx context.Context, id int64) (model.Entry, error)
+}
+
+type InvokeFeedReader interface {
+	GetByID(ctx context.Context, id int64) (model.Feed, error)
+}
+
+type InvokeFilterReader interface {
+	GetByID(ctx context.Context, id int64) (model.Filter, error)
 }
 
 // PluginServiceOption 可选装配（不塞进必填参数，老调用点零改动）。
@@ -55,6 +76,15 @@ type PluginServiceOption func(*pluginService)
 // WithPluginHost 挂上外部插件宿主：Catalog 时扫插件目录，启停联动起停进程，设置/动作测试路由过去。
 func WithPluginHost(host *PluginHost) PluginServiceOption {
 	return func(s *pluginService) { s.host = host }
+}
+
+// WithInvokeRepos 挂上界面直调用的只读仓储（56-5）。不挂也能跑：只是不补条目/订阅/规则明细。
+func WithInvokeRepos(entries InvokeEntryReader, feeds InvokeFeedReader, filters InvokeFilterReader) PluginServiceOption {
+	return func(s *pluginService) {
+		s.entries = entries
+		s.feeds = feeds
+		s.filters = filters
+	}
 }
 
 func NewPluginService(registry *plugin.Registry, plugins repository.PluginRepository, settings repository.SettingsRepository, opts ...PluginServiceOption) PluginService {
@@ -320,4 +350,125 @@ func (s *pluginService) TestAction(ctx context.Context, id, actionID string) err
 // Contributions 各 surface 的界面贡献（只含已启用插件；丢弃/去重/默认 selection 都在注册表那层做完）。
 func (s *pluginService) Contributions(_ context.Context) map[plugin.Surface][]plugin.Contribution {
 	return s.registry.AllContributions()
+}
+
+// invokeEntryLimit 一次直调最多补多少条条目明细（前端多选撑死几百条，取数不该跟着无限涨）。
+const invokeEntryLimit = 100
+
+// 权限名（Meta.Permissions 的合法值，只对外部插件生效）。
+const (
+	permEntriesRead = "entries:read"
+	permEntriesFull = "entries:full"
+	permFeedsRead   = "feeds:read"
+	permFiltersRead = "filters:read"
+)
+
+// findContribution 该插件是否在 surface 上声明了这个动作。
+func findContribution(items []plugin.Contribution, surface plugin.Surface, actionID string) (plugin.Contribution, bool) {
+	for _, item := range items {
+		if item.Surface == surface && item.Action == actionID {
+			return item, true
+		}
+	}
+	return plugin.Contribution{}, false
+}
+
+// Invoke 界面直调一个插件动作（56-5）。
+// 三道门：插件在不在/开没开 → 动作在不在 → 这个 surface 有没有声明它（界面能点的才算数）。
+func (s *pluginService) Invoke(ctx context.Context, pluginID, actionID string, req plugin.InvokeRequest) (plugin.InvokeResult, error) {
+	meta, ok := s.registry.Meta(pluginID)
+	if !ok {
+		return plugin.InvokeResult{}, ErrPluginNotFound
+	}
+	if !s.registry.Enabled(pluginID) {
+		return plugin.InvokeResult{}, ErrPluginDisabled
+	}
+	action, ok := s.registry.LookupAction(pluginID, actionID)
+	if !ok {
+		return plugin.InvokeResult{}, ErrPluginActionNotFound
+	}
+	contribution, found := findContribution(s.registry.PluginContributions(pluginID), req.Surface, actionID)
+	if !found {
+		return plugin.InvokeResult{}, ErrPluginSurfaceUndeclared
+	}
+	if contribution.Selection != plugin.SelectionNone && req.Selection.IsEmpty() {
+		return plugin.InvokeResult{}, ErrInvalid
+	}
+	invoker, ok := action.(plugin.Invoker)
+	if !ok {
+		return plugin.InvokeResult{}, ErrPluginActionNotInvokable
+	}
+	req.Plugin = pluginID
+	req.Action = actionID
+	req = s.enrichInvoke(ctx, meta, req)
+	return invoker.Invoke(ctx, req)
+}
+
+// enrichInvoke 按插件声明的权限补上下文（内置插件不裁剪，仍然补 —— 方便插件出文案）。
+// 取不到的条目跳过并 warn：一条条目查不到不该让整个动作失败。
+func (s *pluginService) enrichInvoke(ctx context.Context, meta plugin.Meta, req plugin.InvokeRequest) plugin.InvokeRequest {
+	if s.entries == nil && s.feeds == nil && s.filters == nil {
+		return req
+	}
+	granted := make(map[string]bool, len(meta.Permissions))
+	for _, perm := range meta.Permissions {
+		granted[perm] = true
+	}
+	// 内置插件编译在宿主里，本来就是同一份信任域 ⇒ 不裁剪。
+	allowed := func(perm string) bool { return meta.Builtin || granted[perm] }
+
+	if allowed(permEntriesRead) && s.entries != nil {
+		ids := req.Selection.EntryIDs
+		if len(ids) > invokeEntryLimit {
+			logger.Warn("plugin invoke entry selection truncated",
+				"module", "service", "action", "invoke", "resource", "plugin", "result", "partial",
+				"plugin", meta.ID, "requested", len(ids), "limit", invokeEntryLimit)
+			ids = ids[:invokeEntryLimit]
+		}
+		entries := make([]model.Entry, 0, len(ids))
+		for _, id := range ids {
+			entry, err := s.entries.GetByID(ctx, id)
+			if err != nil {
+				logger.Warn("plugin invoke entry lookup failed",
+					"module", "service", "action", "invoke", "resource", "plugin", "result", "skipped",
+					"plugin", meta.ID, "entry", id, "error", err)
+				continue
+			}
+			if !allowed(permEntriesFull) {
+				// 只有摘要权限：正文（含抓取后的可读正文）一律抹掉，其余字段保留。
+				entry.Content = nil
+				entry.ReadableContent = nil
+			}
+			entries = append(entries, entry)
+		}
+		req.Entries = entries
+	}
+
+	if allowed(permFeedsRead) && s.feeds != nil {
+		feeds := make([]model.Feed, 0, len(req.Selection.FeedIDs))
+		for _, id := range req.Selection.FeedIDs {
+			feed, err := s.feeds.GetByID(ctx, id)
+			if err != nil {
+				logger.Warn("plugin invoke feed lookup failed",
+					"module", "service", "action", "invoke", "resource", "plugin", "result", "skipped",
+					"plugin", meta.ID, "feed", id, "error", err)
+				continue
+			}
+			feeds = append(feeds, feed)
+		}
+		req.Feeds = feeds
+	}
+
+	if allowed(permFiltersRead) && s.filters != nil && req.Selection.FilterID != nil {
+		filter, err := s.filters.GetByID(ctx, *req.Selection.FilterID)
+		if err != nil {
+			logger.Warn("plugin invoke filter lookup failed",
+				"module", "service", "action", "invoke", "resource", "plugin", "result", "skipped",
+				"plugin", meta.ID, "filter", *req.Selection.FilterID, "error", err)
+		} else {
+			req.Filter = &filter
+		}
+	}
+
+	return req
 }

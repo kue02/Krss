@@ -11,6 +11,7 @@ package mock
 
 import (
 	context "context"
+	model "krss/backend/internal/model"
 	plugin "krss/backend/internal/plugin"
 	service "krss/backend/internal/service"
 	reflect "reflect"
@@ -86,6 +87,21 @@ func (mr *MockPluginServiceMockRecorder) GetSettings(ctx, id any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSettings", reflect.TypeOf((*MockPluginService)(nil).GetSettings), ctx, id)
 }
 
+// Invoke mocks base method.
+func (m *MockPluginService) Invoke(ctx context.Context, pluginID, actionID string, req plugin.InvokeRequest) (plugin.InvokeResult, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Invoke", ctx, pluginID, actionID, req)
+	ret0, _ := ret[0].(plugin.InvokeResult)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Invoke indicates an expected call of Invoke.
+func (mr *MockPluginServiceMockRecorder) Invoke(ctx, pluginID, actionID, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Invoke", reflect.TypeOf((*MockPluginService)(nil).Invoke), ctx, pluginID, actionID, req)
+}
+
 // PutSettings mocks base method.
 func (m *MockPluginService) PutSettings(ctx context.Context, id string, values map[string]string) (service.PluginSettingsResult, error) {
 	m.ctrl.T.Helper()
@@ -128,4 +144,121 @@ func (m *MockPluginService) TestAction(ctx context.Context, id, actionID string)
 func (mr *MockPluginServiceMockRecorder) TestAction(ctx, id, actionID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TestAction", reflect.TypeOf((*MockPluginService)(nil).TestAction), ctx, id, actionID)
+}
+
+// MockInvokeEntryReader is a mock of InvokeEntryReader interface.
+type MockInvokeEntryReader struct {
+	ctrl     *gomock.Controller
+	recorder *MockInvokeEntryReaderMockRecorder
+	isgomock struct{}
+}
+
+// MockInvokeEntryReaderMockRecorder is the mock recorder for MockInvokeEntryReader.
+type MockInvokeEntryReaderMockRecorder struct {
+	mock *MockInvokeEntryReader
+}
+
+// NewMockInvokeEntryReader creates a new mock instance.
+func NewMockInvokeEntryReader(ctrl *gomock.Controller) *MockInvokeEntryReader {
+	mock := &MockInvokeEntryReader{ctrl: ctrl}
+	mock.recorder = &MockInvokeEntryReaderMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockInvokeEntryReader) EXPECT() *MockInvokeEntryReaderMockRecorder {
+	return m.recorder
+}
+
+// GetByID mocks base method.
+func (m *MockInvokeEntryReader) GetByID(ctx context.Context, id int64) (model.Entry, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetByID", ctx, id)
+	ret0, _ := ret[0].(model.Entry)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetByID indicates an expected call of GetByID.
+func (mr *MockInvokeEntryReaderMockRecorder) GetByID(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByID", reflect.TypeOf((*MockInvokeEntryReader)(nil).GetByID), ctx, id)
+}
+
+// MockInvokeFeedReader is a mock of InvokeFeedReader interface.
+type MockInvokeFeedReader struct {
+	ctrl     *gomock.Controller
+	recorder *MockInvokeFeedReaderMockRecorder
+	isgomock struct{}
+}
+
+// MockInvokeFeedReaderMockRecorder is the mock recorder for MockInvokeFeedReader.
+type MockInvokeFeedReaderMockRecorder struct {
+	mock *MockInvokeFeedReader
+}
+
+// NewMockInvokeFeedReader creates a new mock instance.
+func NewMockInvokeFeedReader(ctrl *gomock.Controller) *MockInvokeFeedReader {
+	mock := &MockInvokeFeedReader{ctrl: ctrl}
+	mock.recorder = &MockInvokeFeedReaderMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockInvokeFeedReader) EXPECT() *MockInvokeFeedReaderMockRecorder {
+	return m.recorder
+}
+
+// GetByID mocks base method.
+func (m *MockInvokeFeedReader) GetByID(ctx context.Context, id int64) (model.Feed, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetByID", ctx, id)
+	ret0, _ := ret[0].(model.Feed)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetByID indicates an expected call of GetByID.
+func (mr *MockInvokeFeedReaderMockRecorder) GetByID(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByID", reflect.TypeOf((*MockInvokeFeedReader)(nil).GetByID), ctx, id)
+}
+
+// MockInvokeFilterReader is a mock of InvokeFilterReader interface.
+type MockInvokeFilterReader struct {
+	ctrl     *gomock.Controller
+	recorder *MockInvokeFilterReaderMockRecorder
+	isgomock struct{}
+}
+
+// MockInvokeFilterReaderMockRecorder is the mock recorder for MockInvokeFilterReader.
+type MockInvokeFilterReaderMockRecorder struct {
+	mock *MockInvokeFilterReader
+}
+
+// NewMockInvokeFilterReader creates a new mock instance.
+func NewMockInvokeFilterReader(ctrl *gomock.Controller) *MockInvokeFilterReader {
+	mock := &MockInvokeFilterReader{ctrl: ctrl}
+	mock.recorder = &MockInvokeFilterReaderMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockInvokeFilterReader) EXPECT() *MockInvokeFilterReaderMockRecorder {
+	return m.recorder
+}
+
+// GetByID mocks base method.
+func (m *MockInvokeFilterReader) GetByID(ctx context.Context, id int64) (model.Filter, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetByID", ctx, id)
+	ret0, _ := ret[0].(model.Filter)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetByID indicates an expected call of GetByID.
+func (mr *MockInvokeFilterReaderMockRecorder) GetByID(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByID", reflect.TypeOf((*MockInvokeFilterReader)(nil).GetByID), ctx, id)
 }
