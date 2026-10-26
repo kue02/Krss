@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { BackIcon, GlobeIcon } from "@/components/ui/icons";
 import { readToggleAction } from "@/components/entry-list/read-toggle-action";
 import { dispatchScrollToTop } from "@/hooks/useScrollToTop";
+import { PluginSlot } from "@/plugins/PluginSlot";
 import type { Entry } from "@/types/api";
 
 interface EntryContentHeaderProps {
@@ -371,6 +372,14 @@ export function EntryContentHeader({
               </svg>
             </a>
           )}
+
+          {/* 56-15：阅读器工具栏的插件挂点（`entry.reader.toolbar`）。选中态就是
+              正在读的这一条；`Entry.id` 本来就是字符串，不经过 `Number()`（56-12 口径）。 */}
+          <PluginSlot
+            surface="entry.reader.toolbar"
+            variant="toolbar"
+            selection={{ entryIds: [entry.id] }}
+          />
         </div>
       </div>
     </div>

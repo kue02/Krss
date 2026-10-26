@@ -1066,6 +1066,7 @@ export function EntryList({
           isMobile={isMobile}
           onMenuClick={handleMenuClick}
           isTablet={isTablet}
+          selectedEntryIds={selectedEntryId ? [selectedEntryId] : []}
           articleLayout={contentType === "article" ? articleLayout : undefined}
           onToggleArticleLayout={
             contentType === "article" ? handleToggleArticleLayout : undefined
