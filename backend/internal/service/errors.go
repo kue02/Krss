@@ -25,6 +25,9 @@ var (
 	ErrPluginActionNotFound     = errors.New("plugin action not found")
 	ErrPluginActionNotInvokable = errors.New("plugin action is not invokable")
 	ErrPluginSurfaceUndeclared  = errors.New("plugin action is not declared for this surface")
+	// 插件专属数据（56-19）：这个部署没挂数据仓储（plugin_data 表在、但没接进 service）。
+	// 单独一个错是为了让 500 日志一眼看出是装配漏了，而不是被当成插件的问题。
+	ErrPluginDataUnavailable = errors.New("plugin data storage is not available")
 )
 
 // FeedConflictError is returned when a feed URL already exists.

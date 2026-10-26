@@ -42,6 +42,15 @@ type PluginService interface {
 	Contributions(ctx context.Context) map[plugin.Surface][]plugin.Contribution
 	// Invoke 界面直调一个插件动作（56-5）：校验 surface 声明与 selection，再按插件声明的权限裁剪上下文。
 	Invoke(ctx context.Context, pluginID, actionID string, req plugin.InvokeRequest) (plugin.InvokeResult, error)
+	// 插件专属数据（56-19）—— 只能碰自己的 collection；停用的插件读写一律拒。
+	// 值是不透明字符串（插件自己的 JSON），本体不解析。
+	//   GetData 不存在 = ErrNotFound（404）；DeleteData 键不在 = ErrNotFound。
+	//   ListData 的 limit 缺省 200、上限 1000（超了收敛，不报错）。
+	GetData(ctx context.Context, pluginID, collection, key string) (string, error)
+	PutData(ctx context.Context, pluginID, collection, key, value string) error
+	DeleteData(ctx context.Context, pluginID, collection, key string) error
+	ListData(ctx context.Context, pluginID, collection, prefix string, limit int) (map[string]string, error)
+	DeleteDataCollection(ctx context.Context, pluginID, collection string) error
 }
 
 type pluginService struct {
@@ -54,6 +63,8 @@ type pluginService struct {
 	entries InvokeEntryReader
 	feeds   InvokeFeedReader
 	filters InvokeFilterReader
+	// data 插件专属数据（56-19，迁移 34 的表）。nil = 该部署没开这块（调用回 ErrPluginDataUnavailable）。
+	data repository.PluginDataRepository
 }
 
 // InvokeEntryReader / InvokeFeedReader / InvokeFilterReader 是界面直调需要的只读能力。
@@ -85,6 +96,12 @@ func WithInvokeRepos(entries InvokeEntryReader, feeds InvokeFeedReader, filters 
 		s.feeds = feeds
 		s.filters = filters
 	}
+}
+
+// WithPluginDataRepo 挂上插件专属数据仓储（56-19，迁移 34 的 plugin_data 表）。
+// 不挂 ⇒ GetData/PutData 等回 ErrPluginDataUnavailable（500），不会静默丢数据。
+func WithPluginDataRepo(data repository.PluginDataRepository) PluginServiceOption {
+	return func(s *pluginService) { s.data = data }
 }
 
 func NewPluginService(registry *plugin.Registry, plugins repository.PluginRepository, settings repository.SettingsRepository, opts ...PluginServiceOption) PluginService {

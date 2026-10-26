@@ -109,6 +109,8 @@ func main() {
 	// 规则引擎要拿它派发「插件动作」（推送 = bark 插件的 notify），所以必须建在 filterService 之前 ——
 	// 55-13 起本体不再有推送实现，注册表没接上就等于规则里的推送静默不执行。
 	pluginRepo := repository.NewPluginRepository(dbConn)
+	// 插件专属数据（56-19，迁移 34）：插件存自己东西的地方，一张三段式 KV 表。
+	pluginDataRepo := repository.NewPluginDataRepository(dbConn)
 	pluginRegistry := plugin.Default
 	// bark 推送插件（55-12）：出网 client 用 clientFactory 建（继承代理，与 webhook 同一套路径），
 	// 设置存储给 settingsRepo（键 plugin.bark.url）。
@@ -177,7 +179,9 @@ func main() {
 	pluginService := service.NewPluginService(pluginRegistry, pluginRepo, settingsRepo,
 		service.WithPluginHost(pluginHost),
 		// 界面直调（56-5）要按选择补条目/订阅/规则明细；只读 GetByID，走现成仓储。
-		service.WithInvokeRepos(entryRepo, feedRepo, filterRepo))
+		service.WithInvokeRepos(entryRepo, feedRepo, filterRepo),
+		// 插件专属数据（56-19）：/api/plugins/:id/data/... 的存储。
+		service.WithPluginDataRepo(pluginDataRepo))
 	// 启动即装载：表里没有的内置插件补进行（bark/rsshub 默认开 ⇒ 老实例行为零变化；demo 默认关），
 	// 同时扫一遍插件目录把外部插件拉起来（Catalog 链上就带 ensureExternal）。
 	if _, err := pluginService.Catalog(context.Background()); err != nil {

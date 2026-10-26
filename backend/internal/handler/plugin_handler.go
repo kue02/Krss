@@ -4,6 +4,7 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/labstack/echo/v4"
@@ -34,6 +35,13 @@ func (h *PluginHandler) RegisterRoutes(g *echo.Group) {
 	g.PUT("/plugins/:id/settings", h.PutSettings)
 	g.POST("/plugins/:id/actions/:actionId/test", h.TestAction)
 	g.POST("/plugins/:id/actions/:actionId/invoke", h.InvokePluginAction)
+	// 插件专属数据（56-19）。段数不同（整 collection 2 段 / 单键 3 段）⇒ 不会互相吃掉；
+	// 宿主只认「插件碰自己」：id 由路由给出，外部插件走 socket 时由宿主注入，插件填不了别人的。
+	g.GET("/plugins/:id/data/:collection", h.ListPluginData)
+	g.DELETE("/plugins/:id/data/:collection", h.DeletePluginDataCollection)
+	g.GET("/plugins/:id/data/:collection/:key", h.GetPluginData)
+	g.PUT("/plugins/:id/data/:collection/:key", h.PutPluginData)
+	g.DELETE("/plugins/:id/data/:collection/:key", h.DeletePluginData)
 }
 
 type pluginCatalogResponse struct {
@@ -267,4 +275,137 @@ func (h *PluginHandler) Rescan(c echo.Context) error {
 		return writeServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, pluginCatalogResponse{Plugins: toCatalogItems(items)})
+}
+
+// pluginDataValueResponse 单键出参：键 + 不透明值（插件自己的 JSON 字符串，本体不动）。
+type pluginDataValueResponse struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+// pluginDataListResponse collection 列举的出参（空 collection 是 {} 不是 null）。
+type pluginDataListResponse struct {
+	Values map[string]string `json:"values"`
+}
+
+// pluginDataPutRequest 写入入参：value 必须是字符串（插件自己序列化好的 JSON）。
+// 不接受任意 JSON 树 —— 本体不解析，原样存，免得「存进去一个对象、读出来是另一种串」。
+type pluginDataPutRequest struct {
+	Value string `json:"value"`
+}
+
+// ListPluginData godoc
+// @Summary 列插件某个 collection 的键值（?prefix= 过滤、?limit= 限条数，缺省 200 上限 1000）
+// @Tags plugins
+// @Produce json
+// @Param id path string true "插件 id"
+// @Param collection path string true "collection 名（^[a-z0-9_-]{1,32}$）"
+// @Param prefix query string false "只列以此开头的键（空 = 全部）"
+// @Param limit query int false "最多几条（缺省 200，上限 1000）"
+// @Success 200 {object} pluginDataListResponse
+// @Failure 400 {object} errorResponse
+// @Failure 404 {object} errorResponse
+// @Failure 409 {object} errorResponse "插件已停用"
+// @Router /api/plugins/{id}/data/{collection} [get]
+func (h *PluginHandler) ListPluginData(c echo.Context) error {
+	// limit 传垃圾值当缺省处理（别把「前端少填一个参数」变成 500）。
+	limit, err := strconv.Atoi(strings.TrimSpace(c.QueryParam("limit")))
+	if err != nil {
+		limit = 0
+	}
+	values, err := h.service.ListData(c.Request().Context(), c.Param("id"), c.Param("collection"),
+		c.QueryParam("prefix"), limit)
+	if err != nil {
+		logger.Error("plugin data list failed", "module", "handler", "action", "list", "resource", "plugin_data",
+			"result", "failed", "id", c.Param("id"), "collection", c.Param("collection"), "error", err)
+		return writeServiceError(c, err)
+	}
+	if values == nil {
+		values = map[string]string{}
+	}
+	return c.JSON(http.StatusOK, pluginDataListResponse{Values: values})
+}
+
+// GetPluginData godoc
+// @Summary 读插件自己存的一个键
+// @Tags plugins
+// @Produce json
+// @Param id path string true "插件 id"
+// @Param collection path string true "collection 名（^[a-z0-9_-]{1,32}$）"
+// @Param key path string true "键名（1..200 字节，特殊字符要 URL 编码）"
+// @Success 200 {object} pluginDataValueResponse
+// @Failure 400 {object} errorResponse
+// @Failure 404 {object} errorResponse "键不存在（或插件不存在）"
+// @Failure 409 {object} errorResponse "插件已停用"
+// @Router /api/plugins/{id}/data/{collection}/{key} [get]
+func (h *PluginHandler) GetPluginData(c echo.Context) error {
+	value, err := h.service.GetData(c.Request().Context(), c.Param("id"), c.Param("collection"), c.Param("key"))
+	if err != nil {
+		return writeServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, pluginDataValueResponse{Key: c.Param("key"), Value: value})
+}
+
+// PutPluginData godoc
+// @Summary 写 / 覆盖插件自己的一个键（同键再写 = 覆盖）
+// @Tags plugins
+// @Accept json
+// @Produce json
+// @Param id path string true "插件 id"
+// @Param collection path string true "collection 名（^[a-z0-9_-]{1,32}$）"
+// @Param key path string true "键名（1..200 字节）"
+// @Param body body pluginDataPutRequest true "值（字符串，≤256KB）"
+// @Success 200 {object} pluginDataValueResponse
+// @Failure 400 {object} errorResponse "collection / 键名不合规，或值超 256KB"
+// @Failure 404 {object} errorResponse
+// @Failure 409 {object} errorResponse "插件已停用"
+// @Router /api/plugins/{id}/data/{collection}/{key} [put]
+func (h *PluginHandler) PutPluginData(c echo.Context) error {
+	var req pluginDataPutRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
+	}
+	if err := h.service.PutData(c.Request().Context(), c.Param("id"), c.Param("collection"), c.Param("key"), req.Value); err != nil {
+		logger.Error("plugin data put failed", "module", "handler", "action", "put", "resource", "plugin_data",
+			"result", "failed", "id", c.Param("id"), "collection", c.Param("collection"), "key", c.Param("key"), "error", err)
+		return writeServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, pluginDataValueResponse{Key: c.Param("key"), Value: req.Value})
+}
+
+// DeletePluginData godoc
+// @Summary 删插件自己的一个键（键不在 = 404）
+// @Tags plugins
+// @Produce json
+// @Param id path string true "插件 id"
+// @Param collection path string true "collection 名（^[a-z0-9_-]{1,32}$）"
+// @Param key path string true "键名"
+// @Success 204
+// @Failure 400 {object} errorResponse
+// @Failure 404 {object} errorResponse
+// @Failure 409 {object} errorResponse "插件已停用"
+// @Router /api/plugins/{id}/data/{collection}/{key} [delete]
+func (h *PluginHandler) DeletePluginData(c echo.Context) error {
+	if err := h.service.DeleteData(c.Request().Context(), c.Param("id"), c.Param("collection"), c.Param("key")); err != nil {
+		return writeServiceError(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
+// DeletePluginDataCollection godoc
+// @Summary 删插件某个 collection 的全部键（幂等：空 collection 也 204）
+// @Tags plugins
+// @Produce json
+// @Param id path string true "插件 id"
+// @Param collection path string true "collection 名（^[a-z0-9_-]{1,32}$）"
+// @Success 204
+// @Failure 400 {object} errorResponse
+// @Failure 404 {object} errorResponse
+// @Failure 409 {object} errorResponse "插件已停用"
+// @Router /api/plugins/{id}/data/{collection} [delete]
+func (h *PluginHandler) DeletePluginDataCollection(c echo.Context) error {
+	if err := h.service.DeleteDataCollection(c.Request().Context(), c.Param("id"), c.Param("collection")); err != nil {
+		return writeServiceError(c, err)
+	}
+	return c.NoContent(http.StatusNoContent)
 }
