@@ -26,6 +26,9 @@ type Meta struct {
 	// DefaultEnabled 首次安装（表里没记录）时的启用位；nil = 默认启用（55-7a）。
 	// 稳定能力（bark/rsshub）留 nil ⇒ 老实例升级后行为零变化；样板/实验插件设 false。
 	DefaultEnabled *bool `json:"defaultEnabled,omitempty"`
+	// Permissions 是插件向宿主申请的数据能力；只对**外部插件**生效。
+	// 合法值：entries:read / entries:full / feeds:read / filters:read / data / export / network / ui:custom。
+	Permissions []string `json:"permissions,omitempty"`
 }
 
 // Transport 插件形态取值（Meta.Transport）。
