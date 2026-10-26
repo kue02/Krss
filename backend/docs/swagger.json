@@ -795,6 +795,71 @@
                 }
             }
         },
+        "/api/plugins/{id}/actions/{actionId}/invoke": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "plugins"
+                ],
+                "summary": "界面直调一个插件动作（按插件声明的权限补上下文）",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "插件 id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "动作 id",
+                        "name": "actionId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "挂点 + 选择 + 配置",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.pluginInvokeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/krss_backend_internal_plugin.InvokeResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "插件执行失败，error 里是插件给的可见原因",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/plugins/{id}/actions/{actionId}/test": {
             "post": {
                 "tags": [
@@ -5755,6 +5820,23 @@
                 }
             }
         },
+        "internal_handler.pluginInvokeRequest": {
+            "type": "object",
+            "properties": {
+                "config": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "selection": {
+                    "$ref": "#/definitions/krss_backend_internal_plugin.Selection"
+                },
+                "surface": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_handler.pluginSettingsResponse": {
             "type": "object",
             "properties": {
@@ -6407,6 +6489,23 @@
                 }
             }
         },
+        "krss_backend_internal_plugin.InvokeResult": {
+            "type": "object",
+            "properties": {
+                "level": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "refresh": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "krss_backend_internal_plugin.Option": {
             "type": "object",
             "properties": {
@@ -6415,6 +6514,32 @@
                 },
                 "value": {
                     "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_plugin.Selection": {
+            "type": "object",
+            "properties": {
+                "entryIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "feedIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "filterId": {
+                    "type": "integer"
+                },
+                "textRange": {
+                    "$ref": "#/definitions/krss_backend_internal_plugin.TextRange"
+                },
+                "viewId": {
+                    "type": "integer"
                 }
             }
         },
@@ -6459,6 +6584,20 @@
                 "SurfaceAppCommand",
                 "SurfaceViewToolbar"
             ]
+        },
+        "krss_backend_internal_plugin.TextRange": {
+            "type": "object",
+            "properties": {
+                "end": {
+                    "type": "integer"
+                },
+                "start": {
+                    "type": "integer"
+                },
+                "text": {
+                    "type": "string"
+                }
+            }
         },
         "krss_backend_internal_service.AIProviderConfig": {
             "type": "object",

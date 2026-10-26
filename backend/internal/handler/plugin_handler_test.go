@@ -2,10 +2,12 @@ package handler_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/labstack/echo/v4"
@@ -264,6 +266,102 @@ func TestPluginHandler_Contributions(t *testing.T) {
 	require.Equal(t, "demo-open", items[0].ID)
 	require.Equal(t, "open", items[0].Action)
 	require.Equal(t, plugin.SelectionNone, items[0].Selection, "宿主补的默认 selection 要出得去")
+}
+
+// TestPluginHandler_Invoke 界面直调：200 原样回插件结果；动作不存在 404；surface 未声明 400；插件执行失败 502 且带原因。
+func TestPluginHandler_Invoke(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	svc := mock.NewMockPluginService(ctrl)
+	svc.EXPECT().Invoke(gomock.Any(), "demo", "open", gomock.Any()).
+		DoAndReturn(func(_ context.Context, _, _ string, req plugin.InvokeRequest) (plugin.InvokeResult, error) {
+			// body 里的 surface / selection / config 要原样递给 service
+			require.Equal(t, plugin.SurfaceEntryContextMenu, req.Surface)
+			require.Equal(t, []int64{10}, req.Selection.EntryIDs)
+			require.Equal(t, "v", req.Config["k"])
+			return plugin.InvokeResult{Message: "ok"}, nil
+		})
+	svc.EXPECT().Invoke(gomock.Any(), "demo", "ghost", gomock.Any()).
+		Return(plugin.InvokeResult{}, service.ErrPluginActionNotFound)
+	svc.EXPECT().Invoke(gomock.Any(), "demo", "open", gomock.Any()).
+		Return(plugin.InvokeResult{}, service.ErrPluginSurfaceUndeclared)
+	svc.EXPECT().Invoke(gomock.Any(), "demo", "open", gomock.Any()).
+		Return(plugin.InvokeResult{}, errors.New("推送失败：目标地址不可达（api.day.app）"))
+
+	h := handler.NewPluginHandler(svc)
+	body := map[string]any{
+		"surface":   string(plugin.SurfaceEntryContextMenu),
+		"selection": map[string]any{"entryIds": []int64{10}},
+		"config":    map[string]string{"k": "v"},
+	}
+
+	call := func(actionID string) *httptest.ResponseRecorder {
+		c, rec := newPluginTestContext(http.MethodPost, "/api/plugins/demo/actions/"+actionID+"/invoke", body, "id", "actionId")
+		c.SetParamValues("demo", actionID)
+		require.NoError(t, h.InvokePluginAction(c))
+		return rec
+	}
+
+	// ① 正常：结果原样回给界面（插件自己给的文案）
+	rec := call("open")
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.JSONEq(t, `{"message":"ok"}`, rec.Body.String())
+
+	// ② 动作不存在 → 404
+	rec = call("ghost")
+	require.Equal(t, http.StatusNotFound, rec.Code)
+
+	// ③ 这个 surface 没声明 → 400
+	rec = call("open")
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+
+	// ④ 插件真执行失败 → 502 + 插件给的原因（不能只回 internal error）
+	rec = call("open")
+	require.Equal(t, http.StatusBadGateway, rec.Code)
+	var errBody struct {
+		Error string `json:"error"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &errBody))
+	require.Contains(t, errBody.Error, "api.day.app")
+}
+
+// TestPluginHandler_Invoke_BadBody 请求体不是 JSON → 400 统一错误（前端拿它当「参数坏了」）。
+func TestPluginHandler_Invoke_BadBody(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	svc := mock.NewMockPluginService(ctrl)
+	h := handler.NewPluginHandler(svc)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/plugins/demo/actions/open/invoke",
+		strings.NewReader("{not json"))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e := echo.New()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id", "actionId")
+	c.SetParamValues("demo", "open")
+
+	require.NoError(t, h.InvokePluginAction(c))
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.JSONEq(t, `{"error":"invalid request"}`, rec.Body.String())
+}
+
+// TestPluginHandler_InvokeRoute 路由在位：POST /api/plugins/:id/actions/:actionId/invoke 打到 InvokePluginAction。
+func TestPluginHandler_InvokeRoute(t *testing.T) {
+	e, _ := newContributionsServer(t)
+
+	rec := httptest.NewRecorder()
+	body := strings.NewReader(`{"surface":"app.command"}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/plugins/contrib-demo/actions/open/invoke", body)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	e.ServeHTTP(rec, req)
+
+	// contrib-demo 没装这个动作 ⇒ 走真 service 回 404 且带我们的错误文案
+	// （echo 自己的 404 是 {"message":"Not Found"} —— 有 "plugin action not found" 就证明路由打到了 handler）
+	require.Equal(t, http.StatusNotFound, rec.Code)
+	require.Contains(t, rec.Body.String(), "plugin action not found")
 }
 
 // TestPluginHandler_Contributions_Disabled 停用后 surfaces 必须是 {}（不是 null —— 前端要能直接遍历）。

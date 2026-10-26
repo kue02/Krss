@@ -1146,6 +1146,17 @@ definitions:
       enabled:
         type: boolean
     type: object
+  internal_handler.pluginInvokeRequest:
+    properties:
+      config:
+        additionalProperties:
+          type: string
+        type: object
+      selection:
+        $ref: '#/definitions/krss_backend_internal_plugin.Selection'
+      surface:
+        type: string
+    type: object
   internal_handler.pluginSettingsResponse:
     properties:
       values:
@@ -1577,12 +1588,40 @@ definitions:
         description: '"text" | "secret" | "select" | "bool"'
         type: string
     type: object
+  krss_backend_internal_plugin.InvokeResult:
+    properties:
+      level:
+        type: string
+      message:
+        type: string
+      refresh:
+        items:
+          type: string
+        type: array
+    type: object
   krss_backend_internal_plugin.Option:
     properties:
       label:
         type: string
       value:
         type: string
+    type: object
+  krss_backend_internal_plugin.Selection:
+    properties:
+      entryIds:
+        items:
+          type: integer
+        type: array
+      feedIds:
+        items:
+          type: integer
+        type: array
+      filterId:
+        type: integer
+      textRange:
+        $ref: '#/definitions/krss_backend_internal_plugin.TextRange'
+      viewId:
+        type: integer
     type: object
   krss_backend_internal_plugin.SettingsSection:
     properties:
@@ -1617,6 +1656,15 @@ definitions:
     - SurfaceSettingsSection
     - SurfaceAppCommand
     - SurfaceViewToolbar
+  krss_backend_internal_plugin.TextRange:
+    properties:
+      end:
+        type: integer
+      start:
+        type: integer
+      text:
+        type: string
+    type: object
   krss_backend_internal_service.AIProviderConfig:
     properties:
       apiKey:
@@ -2520,6 +2568,49 @@ paths:
           schema:
             $ref: '#/definitions/internal_handler.pluginCatalogResponse'
       summary: 启用 / 停用一个插件
+      tags:
+      - plugins
+  /api/plugins/{id}/actions/{actionId}/invoke:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 插件 id
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 动作 id
+        in: path
+        name: actionId
+        required: true
+        type: string
+      - description: 挂点 + 选择 + 配置
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.pluginInvokeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/krss_backend_internal_plugin.InvokeResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+        "502":
+          description: 插件执行失败，error 里是插件给的可见原因
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: 界面直调一个插件动作（按插件声明的权限补上下文）
       tags:
       - plugins
   /api/plugins/{id}/actions/{actionId}/test:

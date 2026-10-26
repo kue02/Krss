@@ -33,6 +33,7 @@ func (h *PluginHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/plugins/:id/settings", h.GetSettings)
 	g.PUT("/plugins/:id/settings", h.PutSettings)
 	g.POST("/plugins/:id/actions/:actionId/test", h.TestAction)
+	g.POST("/plugins/:id/actions/:actionId/invoke", h.InvokePluginAction)
 }
 
 type pluginCatalogResponse struct {
@@ -206,6 +207,55 @@ func (h *PluginHandler) TestAction(c echo.Context) error {
 	default:
 		return c.JSON(http.StatusBadGateway, errorResponse{Error: err.Error()})
 	}
+}
+
+// pluginInvokeRequest 界面直调的入参：哪个挂点、选了什么、动作自己的配置。
+type pluginInvokeRequest struct {
+	Surface   string            `json:"surface"`
+	Selection plugin.Selection  `json:"selection"`
+	Config    map[string]string `json:"config"`
+}
+
+// InvokePluginAction godoc
+// @Summary 界面直调一个插件动作（按插件声明的权限补上下文）
+// @Tags plugins
+// @Accept json
+// @Produce json
+// @Param id path string true "插件 id"
+// @Param actionId path string true "动作 id"
+// @Param body body pluginInvokeRequest true "挂点 + 选择 + 配置"
+// @Success 200 {object} plugin.InvokeResult
+// @Failure 400 {object} errorResponse
+// @Failure 404 {object} errorResponse
+// @Failure 502 {object} errorResponse "插件执行失败，error 里是插件给的可见原因"
+// @Router /api/plugins/{id}/actions/{actionId}/invoke [post]
+func (h *PluginHandler) InvokePluginAction(c echo.Context) error {
+	var req pluginInvokeRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
+	}
+	pluginID := strings.TrimSpace(c.Param("id"))
+	actionID := strings.TrimSpace(c.Param("actionId"))
+	result, err := h.service.Invoke(c.Request().Context(), pluginID, actionID, plugin.InvokeRequest{
+		Surface:   plugin.Surface(req.Surface),
+		Selection: req.Selection,
+		Config:    req.Config,
+	})
+	if err != nil {
+		logger.Error("plugin action invoke failed", "module", "handler", "action", "invoke", "resource", "plugin", "result", "failed", "id", pluginID, "actionId", actionID, "error", err)
+		switch {
+		case errors.Is(err, service.ErrPluginActionNotFound):
+			return c.JSON(http.StatusNotFound, errorResponse{Error: err.Error()})
+		case errors.Is(err, service.ErrPluginActionNotInvokable), errors.Is(err, service.ErrPluginSurfaceUndeclared):
+			return c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
+		case errors.Is(err, service.ErrPluginNotFound), errors.Is(err, service.ErrPluginDisabled), errors.Is(err, service.ErrInvalid):
+			return writeServiceError(c, err)
+		default:
+			// 插件真执行失败 → 502 并回插件给的原因（与 /test 同口径：用户要知道为什么没成）
+			return c.JSON(http.StatusBadGateway, errorResponse{Error: err.Error()})
+		}
+	}
+	return c.JSON(http.StatusOK, result)
 }
 
 // Rescan 手动重新扫描插件目录（55-7b：与 List 同一份 Catalog —— ensureExternal 就在 Catalog 链上，

@@ -59,6 +59,13 @@ func writeServiceError(c echo.Context, err error) error {
 		return c.JSON(http.StatusConflict, errorResponse{Error: "plugin disabled"})
 	case errors.Is(err, service.ErrPluginActionNotTestable):
 		return c.JSON(http.StatusBadRequest, errorResponse{Error: "plugin action not testable"})
+	// 56-5/56-6 界面直调：动作没装 / 没实现 Invoker / 这个挂点没声明。
+	case errors.Is(err, service.ErrPluginActionNotFound):
+		return c.JSON(http.StatusNotFound, errorResponse{Error: "plugin action not found"})
+	case errors.Is(err, service.ErrPluginActionNotInvokable):
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "plugin action is not invokable"})
+	case errors.Is(err, service.ErrPluginSurfaceUndeclared):
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "plugin action is not declared for this surface"})
 	default:
 		logger.Error("handler internal error", "module", "handler", "action", "request", "resource", "http", "result", "failed", "error", err)
 		return c.JSON(http.StatusInternalServerError, errorResponse{Error: "internal error"})
