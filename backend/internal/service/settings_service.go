@@ -1395,6 +1395,10 @@ func excludedSettingKeys() []string {
 		keyUserJWTSecret,
 		// 站点会话 cookie：按前缀整体排除（anubis.cookie.<host>）
 		"anubis.cookie.*",
+		// 插件密钥：**新增插件 secret 字段时同步这里**（有守门测试
+		// settings_plugin_secret_test.go 盯着：漏了会红，不用靠人记）。
+		// 地址里带设备 key，等同于凭证。
+		"plugin.bark.url",
 	}
 }
 

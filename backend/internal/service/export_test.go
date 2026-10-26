@@ -79,3 +79,6 @@ func BuildAISummarizeSystemPromptForTest(s AIService, ctx context.Context, entry
 
 // Export for testing
 var SliceByRange = sliceByRange
+
+// ExcludedSettingKeysForTest 导出排除名单（55-22 守门测试：插件 secret 键必须都在里面）。
+func ExcludedSettingKeysForTest() []string { return excludedSettingKeys() }
