@@ -320,7 +320,10 @@ export function createPluginBridge(options: PluginBridgeOptions): PluginBridge {
       }
       const found = outcome.value;
       if (!can("entries:full")) {
-        const { content: _content, readableContent: _readable, ...rest } = found;
+        // 抹掉正文两个字段，其余元信息照给（与后端 service.Invoke 的裁剪同口径）
+        const rest: Partial<Entry> = { ...found };
+        delete rest.content;
+        delete rest.readableContent;
         reply({ entry: rest });
         return;
       }

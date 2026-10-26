@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Modal } from "@heroui/react";
 import { cn } from "@/lib/utils";
@@ -71,20 +71,25 @@ export function SandboxFrame({
 }: SandboxFrameProps) {
   const { t } = useTranslation();
   const frameRef = useRef<HTMLIFrameElement | null>(null);
+  /** 现取 iframe 的 window：挂载前是 null，onLoad / 收消息时才一定在 */
+  const getFrameWindow = useCallback(
+    () => frameRef.current?.contentWindow ?? null,
+    [],
+  );
 
   /**
-   * 权限 / 条目 / 视图都从 ref 读：调用方大多在渲染里现造数组与对象（`permissions={["data"]}`），
-   * 直接进 `useMemo` 依赖会让 bridge 每帧重建、message 监听每帧重挂 —— 而 init 只在 load 时发一次，
-   * 重建没有任何收益。真正需要重建的只有 pluginId / 语言 / 导航回调。
+   * bridge 只在「身份类」输入变化时重建：pluginId / 语言 / 权限集合 / 当前条目与视图 / 导航回调。
+   *
+   * 依赖用**原始值**（权限拼成串、条目与视图拆成 id/title/url）而不是对象本身：调用方经常在
+   * 渲染里现造 `permissions={["data"]}` 或 entry 对象，直接进依赖会让 message 监听每帧重挂。
+   * 也因此这里不读 ref —— 渲染期读 ref 拿到的可能是上一帧的值（React 19 的 lint 规则也会挡）。
    */
-  const permissionsRef = useRef(permissions);
-  permissionsRef.current = permissions;
-  const entryRef = useRef(entry);
-  entryRef.current = entry;
-  const viewRef = useRef(view);
-  viewRef.current = view;
-  const navigateRef = useRef(onNavigate);
-  navigateRef.current = onNavigate;
+  const permissionsKey = (permissions ?? []).join(" ");
+  const entryId = entry?.id ?? "";
+  const entryTitle = entry?.title ?? "";
+  const entryUrl = entry?.url ?? "";
+  const viewId = view?.id ?? "";
+  const viewTitle = view?.title ?? "";
 
   /** 待确认的请求：`resolve` 是插件那条 `plugin:ui.confirm` 的回执出口 */
   const [confirmRequest, setConfirmRequest] = useState<
@@ -93,23 +98,50 @@ export function SandboxFrame({
   /** 当前待确认请求的出口。放 ref 里：卸载时也要能把它兑现（插件不该永远等回执） */
   const pendingConfirmRef = useRef<((ok: boolean) => void) | null>(null);
 
+  /** 把一条「插件想确认」变成宿主弹窗，并等用户点（回调里才碰 ref，渲染期不碰） */
+  const requestConfirm = useCallback(
+    ({ title, body }: { title: string; body?: string }) =>
+      new Promise<boolean>((resolve) => {
+        pendingConfirmRef.current = resolve;
+        setConfirmRequest({ title, body });
+      }),
+    [],
+  );
+
   const bridge = useMemo(
     () =>
+      // eslint-disable-next-line react-hooks/refs -- frameRef 只在 getFrameWindow 被调用时读（onLoad / 收到消息），渲染期不解引用
       createPluginBridge({
         pluginId,
-        permissions: permissionsRef.current,
-        frameWindow: () => frameRef.current?.contentWindow ?? null,
-        entry: entryRef.current,
-        view: viewRef.current,
+        permissions: permissionsKey ? permissionsKey.split(" ") : [],
+        frameWindow: getFrameWindow,
+        entry: entryId
+          ? {
+              id: entryId,
+              ...(entryTitle ? { title: entryTitle } : {}),
+              ...(entryUrl ? { url: entryUrl } : {}),
+            }
+          : undefined,
+        view: viewId
+          ? { id: viewId, ...(viewTitle ? { title: viewTitle } : {}) }
+          : undefined,
         locale,
-        confirm: ({ title: heading, body }) =>
-          new Promise<boolean>((resolve) => {
-            pendingConfirmRef.current = resolve;
-            setConfirmRequest({ title: heading, body });
-          }),
-        navigate: (target) => navigateRef.current?.(target),
+        confirm: requestConfirm,
+        navigate: onNavigate ? (target) => onNavigate(target) : undefined,
       }),
-    [pluginId, locale],
+    [
+      getFrameWindow,
+      requestConfirm,
+      pluginId,
+      locale,
+      permissionsKey,
+      entryId,
+      entryTitle,
+      entryUrl,
+      viewId,
+      viewTitle,
+      onNavigate,
+    ],
   );
 
   useEffect(() => {
