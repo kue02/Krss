@@ -134,7 +134,9 @@ func main() {
 	entryService := service.NewEntryService(entryRepo, feedRepo, folderRepo, filterRepo)
 	readabilityService := service.NewReadabilityService(entryRepo, clientFactory, anubisSolver)
 	domainRateLimitService := service.NewDomainRateLimitService(domainRateLimitRepo)
-	refreshService := service.NewRefreshService(feedRepo, entryRepo, settingsService, iconService, clientFactory, anubisSolver, domainRateLimitService, filterService, mcpService)
+	refreshService := service.NewRefreshService(feedRepo, entryRepo, settingsService, iconService, clientFactory, anubisSolver, domainRateLimitService, filterService, mcpService).
+		// 55-17：抓取失败分类走插件链（RSSHub 错误页归类在 rsshub 插件里）。
+		WithPlugins(pluginRegistry)
 	opmlService := service.NewOPMLService(folderService, feedService, refreshService, iconService, folderRepo, feedRepo)
 
 	// 代理媒体磁盘缓存（50-2）：图片/音视频取过一次就落盘，第二次起不再出网。

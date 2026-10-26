@@ -11,6 +11,7 @@ package mock
 
 import (
 	context "context"
+	plugin "krss/backend/internal/plugin"
 	service "krss/backend/internal/service"
 	reflect "reflect"
 
@@ -165,4 +166,18 @@ func (m *MockRefreshService) RefreshFeeds(ctx context.Context, feedIDs []int64) 
 func (mr *MockRefreshServiceMockRecorder) RefreshFeeds(ctx, feedIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RefreshFeeds", reflect.TypeOf((*MockRefreshService)(nil).RefreshFeeds), ctx, feedIDs)
+}
+
+// WithPlugins mocks base method.
+func (m *MockRefreshService) WithPlugins(registry *plugin.Registry) service.RefreshService {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "WithPlugins", registry)
+	ret0, _ := ret[0].(service.RefreshService)
+	return ret0
+}
+
+// WithPlugins indicates an expected call of WithPlugins.
+func (mr *MockRefreshServiceMockRecorder) WithPlugins(registry any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WithPlugins", reflect.TypeOf((*MockRefreshService)(nil).WithPlugins), registry)
 }

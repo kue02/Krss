@@ -17,6 +17,7 @@ import (
 
 	"krss/backend/internal/config"
 	"krss/backend/internal/model"
+	"krss/backend/internal/plugin"
 	"krss/backend/internal/repository"
 	"krss/backend/pkg/logger"
 	"krss/backend/pkg/network"
@@ -414,6 +415,9 @@ type RefreshService interface {
 	RefreshFeeds(ctx context.Context, feedIDs []int64) error
 	IsRefreshing() bool
 	GetRefreshStatus() RefreshStatus
+	// WithPlugins 装上插件注册表（55-17：抓取失败归类从这里拿能力）。
+	// builder 形状照 WithDomainMemory：main.go 构造处一行接上，不传 = 老行为。
+	WithPlugins(registry *plugin.Registry) RefreshService
 }
 
 // RefreshFeedResult 单个订阅在一次刷新里的结果（用户 11-8：刷新完要能告诉用户「哪个订阅更新了多少条」）。
@@ -440,7 +444,10 @@ type refreshService struct {
 	rateLimitSvc  DomainRateLimitService
 	filters       FilterService
 	// mcp 16 批（入向 MCP 订阅）：可选依赖 —— 没接 MCP 服务时 RSS 路径完全不受影响。
-	mcp             MCPService
+	mcp MCPService
+	// plugins 55 批：插件注册表（抓取失败分类等扩展点）。可选依赖 —— nil = 没接插件，
+	// 抓取失败按 HTTP 状态码原样透传（插件化之前的老行为）。
+	plugins         *plugin.Registry
 	mu              sync.Mutex
 	isRefreshing    bool
 	lastRefreshedAt *time.Time
@@ -473,6 +480,27 @@ func NewRefreshService(feeds repository.FeedRepository, entries repository.Entry
 		svc.mcp = m
 	}
 	return svc
+}
+
+// WithPlugins 装上插件注册表（55 批：抓取失败归类从这里拿能力）。
+// 用 builder 而不是加构造参数：既有 10+ 处测试调用点零改动，nil 就是老行为。
+func (s *refreshService) WithPlugins(registry *plugin.Registry) RefreshService {
+	s.plugins = registry
+	return s
+}
+
+// classifyFetchFailure 让已启用的抓取分类器过一遍；空串 = 没人认，调用方按原 err 透传。
+// 注册表没装（nil）或没有插件认领时返回空串 —— 与插件化之前的老行为一致。
+func (s *refreshService) classifyFetchFailure(ctx context.Context, feed model.Feed, statusCode int, bodyHead []byte, fetchErr error) string {
+	if s.plugins == nil {
+		return ""
+	}
+	for _, classifier := range s.plugins.FetchClassifiers() {
+		if msg := classifier.Classify(ctx, feed, statusCode, bodyHead, fetchErr); msg != "" {
+			return msg
+		}
+	}
+	return ""
 }
 
 func (s *refreshService) RefreshAll(ctx context.Context) error {
@@ -881,9 +909,12 @@ func (s *refreshService) refreshFeedWithCookie(ctx context.Context, feed model.F
 		break
 	}
 	if fetchErr != nil || resp == nil {
-		// 51 批 2：RSSHub 源优先按正文头归类错误页（路由不存在/上游挂），
-		// 没有正文（连不上）才归为 unreachable；非 RSSHub 源原样透传
-		errMsg := classifyRSSHubFetchFailure(ctx, s.settings, feed.URL, fetchErr, lastBodyHead)
+		// 51 批 2 / 55 批：失败归类先问插件（RSSHub 错误页归类已搬进 rsshub 插件），
+		// 没人认就原样透传 —— 与「插件没装」的老行为一致。
+		errMsg := s.classifyFetchFailure(ctx, feed, 0, lastBodyHead, fetchErr)
+		if errMsg == "" {
+			errMsg = fetchErr.Error()
+		}
 		_ = s.feeds.UpdateErrorMessage(ctx, feed.ID, &errMsg)
 		s.recordFeedFailure(ctx, feed.ID)
 		return fetchErr
@@ -911,12 +942,16 @@ func (s *refreshService) refreshFeedWithCookie(ctx context.Context, feed model.F
 
 	if resp.StatusCode >= http.StatusBadRequest {
 		logger.Error("feed http error", "module", "service", "action", "refresh", "resource", "feed", "result", "failed", "feed_id", feed.ID, "feed_title", feed.Title, "status_code", resp.StatusCode)
-		// 51 批 2：RSSHub 错误页带着真正失败原因（路由不存在/上游挂），读出来归类而不是只存「HTTP 404」
+		// 51 批 2 / 55 批：错误页带着真正失败原因（路由不存在/上游挂），交给插件归类，
+		// 而不是只存「HTTP 404」
 		var bodyHead []byte
 		if body, readErr := io.ReadAll(io.LimitReader(resp.Body, 256*1024)); readErr == nil {
 			bodyHead = body
 		}
-		errMsg := classifyRSSHubHTTPFailure(ctx, s.settings, feed.URL, resp.StatusCode, bodyHead)
+		errMsg := s.classifyFetchFailure(ctx, feed, resp.StatusCode, bodyHead, nil)
+		if errMsg == "" {
+			errMsg = fmt.Sprintf("HTTP %d", resp.StatusCode)
+		}
 		_ = s.feeds.UpdateErrorMessage(ctx, feed.ID, &errMsg)
 		s.recordFeedFailure(ctx, feed.ID)
 		return nil
@@ -992,12 +1027,15 @@ func (s *refreshService) refreshFeedWithFreshClient(ctx context.Context, feed mo
 
 	if resp.StatusCode >= http.StatusBadRequest {
 		logger.Error("feed http error", "module", "service", "action", "refresh", "resource", "feed", "result", "failed", "feed_id", feed.ID, "feed_title", feed.Title, "status_code", resp.StatusCode)
-		// 51 批 2：Anubis 重试路径的 HTTP 错误同样归类（RSSHub 错误页）
+		// 51 批 2 / 55 批：Anubis 重试路径的 HTTP 错误同样交给插件归类（错误页）
 		var bodyHead []byte
 		if body, readErr := io.ReadAll(io.LimitReader(resp.Body, 256*1024)); readErr == nil {
 			bodyHead = body
 		}
-		errMsg := classifyRSSHubHTTPFailure(ctx, s.settings, feed.URL, resp.StatusCode, bodyHead)
+		errMsg := s.classifyFetchFailure(ctx, feed, resp.StatusCode, bodyHead, nil)
+		if errMsg == "" {
+			errMsg = fmt.Sprintf("HTTP %d", resp.StatusCode)
+		}
 		_ = s.feeds.UpdateErrorMessage(ctx, feed.ID, &errMsg)
 		s.recordFeedFailure(ctx, feed.ID)
 		return nil
