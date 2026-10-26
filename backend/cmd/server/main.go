@@ -19,6 +19,7 @@ import (
 	"krss/backend/internal/handler"
 	transport "krss/backend/internal/http"
 	"krss/backend/internal/plugin"
+	"krss/backend/internal/plugin/builtin/bark"   // 内置插件：Bark 推送（55-12）
 	_ "krss/backend/internal/plugin/builtin/demo" // 内置插件：init() 自注册进 plugin.Default（55-7a）
 	"krss/backend/internal/repository"
 	"krss/backend/internal/scheduler"
@@ -156,6 +157,9 @@ func main() {
 	// 插件模块（55 批）：内置插件已在各自 init() 注册进 plugin.Default；用库里的启停记录覆盖默认值。
 	pluginRepo := repository.NewPluginRepository(dbConn)
 	pluginRegistry := plugin.Default
+	// bark 推送插件（55-12）：出网 client 用 clientFactory 建（继承代理，与 webhook 同一套路径），
+	// 设置存储给 settingsRepo（键 plugin.bark.url）。与本体 notify 共存到 55-13 删除为止。
+	bark.Configure(clientFactory.NewHTTPClient(context.Background(), 15*time.Second), settingsRepo)
 	// 外部插件宿主（55-7b）：$KRSS_DATA_DIR/plugins/<id>/ = manifest + 可执行，不重启即装即用。
 	pluginHost := service.NewPluginHost(pluginRegistry, pluginRepo, filepath.Join(cfg.DataDir, "plugins"))
 	// 每 5s 扫一次插件目录（不上 fsnotify）：丢个文件夹进去，5s 内就发现并拉起。
