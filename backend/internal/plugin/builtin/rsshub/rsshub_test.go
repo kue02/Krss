@@ -191,8 +191,9 @@ func TestSettingsSections_Shape(t *testing.T) {
 		fields[f.Key] = f
 	}
 	require.Equal(t, "text", fields["base_url"].Type)
-	require.Equal(t, "secret", fields["access_key"].Type)
-	require.Equal(t, []string{"plugin.rsshub.access_key"}, plugin.SecretKeys(Plugin{}.Meta(), sections[0].Fields))
+	// access_key 有意用 text：前端要拿明文把它拼进订阅地址（secret 会读成掩码）。
+	require.Equal(t, "text", fields["access_key"].Type)
+	require.Empty(t, plugin.SecretKeys(Plugin{}.Meta(), sections[0].Fields))
 }
 
 func TestMeta_Defaults(t *testing.T) {

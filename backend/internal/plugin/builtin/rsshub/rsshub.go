@@ -77,11 +77,15 @@ func (Plugin) SettingsSections() []plugin.SettingsSection {
 				Help:        "添加订阅时 RSSHub 地址会自动换到该实例；「预览」可把现有订阅一键换过去。",
 			},
 			{
-				Key:         "access_key",
-				Label:       "ACCESS_KEY（可选）",
-				Type:        "secret",
+				Key:   "access_key",
+				Label: "ACCESS_KEY（可选）",
+				// 这里用 text 而不是 secret：ACCESS_KEY 要被**前端**拿去拼进新订阅地址
+				// （plugins/rsshub/useRssHubRewrite → key 参数），secret 字段读出来是掩码，
+				// 拼进地址会把 key=•••••••• 写进订阅 URL，密码等于被写坏。55-18 之前
+				// 通用设置也是明文返回这一项，语义不变。
+				Type:        "text",
 				Placeholder: "ACCESS_KEY",
-				Help:        "非空时作为 key 参数写入地址；属凭证，只存在你自己的库里。",
+				Help:        "非空时作为 key 参数写入地址；属凭证，只存在你自己的库里（导出设置不含插件键）。",
 			},
 		},
 	}}
