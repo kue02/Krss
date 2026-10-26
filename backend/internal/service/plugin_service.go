@@ -46,6 +46,9 @@ type PluginService interface {
 	// UIAssets 一个插件自带界面资源的入口（56-24）：内置插件给 embed.FS、外部插件给 socket 代理。
 	// 插件不存在 / 停用 / 没声明 ui:custom 分别回 ErrPluginNotFound / ErrPluginDisabled / ErrPluginUIUndeclared。
 	UIAssets(ctx context.Context, pluginID string) (PluginUIAssets, error)
+	// Views 全部已启用插件注册的视图（56-27）：视图切换器一份数据。
+	// 清洗（custom 要 ui:custom、kind 兜底、同插件去重）、按 plugin id 排序、注入 plugin 都在注册表那层。
+	Views(ctx context.Context) []plugin.View
 	// Invoke 界面直调一个插件动作（56-5）：校验 surface 声明与 selection，再按插件声明的权限裁剪上下文。
 	Invoke(ctx context.Context, pluginID, actionID string, req plugin.InvokeRequest) (plugin.InvokeResult, error)
 	// 插件专属数据（56-19）—— 只能碰自己的 collection；停用的插件读写一律拒。

@@ -797,6 +797,26 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/plugins/views": {
+            "get": {
+                "description": "只含**已启用**插件；按插件 id 排序，宿主注入 plugin 字段。\ncustom 视图必须声明 ui:custom 且带 entry，否则被注册表丢弃（防绕过 /ui/ 门禁）。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "plugins"
+                ],
+                "summary": "插件注册的视图（视图切换器一份数据）",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.pluginViewsResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/plugins/{id}": {
             "patch": {
                 "consumes": [
@@ -6294,6 +6314,17 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handler.pluginViewsResponse": {
+            "type": "object",
+            "properties": {
+                "views": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_plugin.View"
+                    }
+                }
+            }
+        },
         "internal_handler.proxyMemoryItem": {
             "type": "object",
             "properties": {
@@ -7077,6 +7108,72 @@ const docTemplate = `{
                 },
                 "text": {
                     "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_plugin.View": {
+            "type": "object",
+            "properties": {
+                "entry": {
+                    "description": "custom 用：iframe 入口",
+                    "type": "string"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "description": "\"declarative\" | \"custom\"",
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "layout": {
+                    "description": "list|grid|timeline",
+                    "type": "string"
+                },
+                "open": {
+                    "description": "\"\"|reader|external",
+                    "type": "string"
+                },
+                "plugin": {
+                    "description": "宿主注入",
+                    "type": "string"
+                },
+                "query": {
+                    "$ref": "#/definitions/krss_backend_internal_plugin.ViewQuery"
+                }
+            }
+        },
+        "krss_backend_internal_plugin.ViewQuery": {
+            "type": "object",
+            "properties": {
+                "feedIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "search": {
+                    "type": "string"
+                },
+                "sort": {
+                    "type": "string"
+                },
+                "starred": {
+                    "type": "boolean"
+                },
+                "types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "unread": {
+                    "type": "boolean"
                 }
             }
         },

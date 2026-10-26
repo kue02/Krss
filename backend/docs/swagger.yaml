@@ -1190,6 +1190,13 @@ definitions:
           type: string
         type: object
     type: object
+  internal_handler.pluginViewsResponse:
+    properties:
+      views:
+        items:
+          $ref: '#/definitions/krss_backend_internal_plugin.View'
+        type: array
+    type: object
   internal_handler.proxyMemoryItem:
     properties:
       host:
@@ -1714,6 +1721,51 @@ definitions:
         type: integer
       text:
         type: string
+    type: object
+  krss_backend_internal_plugin.View:
+    properties:
+      entry:
+        description: custom 用：iframe 入口
+        type: string
+      icon:
+        type: string
+      id:
+        type: string
+      kind:
+        description: '"declarative" | "custom"'
+        type: string
+      label:
+        type: string
+      layout:
+        description: list|grid|timeline
+        type: string
+      open:
+        description: '""|reader|external'
+        type: string
+      plugin:
+        description: 宿主注入
+        type: string
+      query:
+        $ref: '#/definitions/krss_backend_internal_plugin.ViewQuery'
+    type: object
+  krss_backend_internal_plugin.ViewQuery:
+    properties:
+      feedIds:
+        items:
+          type: integer
+        type: array
+      search:
+        type: string
+      sort:
+        type: string
+      starred:
+        type: boolean
+      types:
+        items:
+          type: string
+        type: array
+      unread:
+        type: boolean
     type: object
   krss_backend_internal_service.AIProviderConfig:
     properties:
@@ -2991,6 +3043,21 @@ paths:
           schema:
             $ref: '#/definitions/internal_handler.pluginContributionsResponse'
       summary: 各插入位置（surface）上可用的插件界面项
+      tags:
+      - plugins
+  /api/plugins/views:
+    get:
+      description: |-
+        只含**已启用**插件；按插件 id 排序，宿主注入 plugin 字段。
+        custom 视图必须声明 ui:custom 且带 entry，否则被注册表丢弃（防绕过 /ui/ 门禁）。
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.pluginViewsResponse'
+      summary: 插件注册的视图（视图切换器一份数据）
       tags:
       - plugins
   /api/proxy/image/{encoded}:

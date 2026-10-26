@@ -248,6 +248,20 @@ func (mr *MockPluginServiceMockRecorder) UIAssets(ctx, pluginID any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UIAssets", reflect.TypeOf((*MockPluginService)(nil).UIAssets), ctx, pluginID)
 }
 
+// Views mocks base method.
+func (m *MockPluginService) Views(ctx context.Context) []plugin.View {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Views", ctx)
+	ret0, _ := ret[0].([]plugin.View)
+	return ret0
+}
+
+// Views indicates an expected call of Views.
+func (mr *MockPluginServiceMockRecorder) Views(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Views", reflect.TypeOf((*MockPluginService)(nil).Views), ctx)
+}
+
 // MockInvokeEntryReader is a mock of InvokeEntryReader interface.
 type MockInvokeEntryReader struct {
 	ctrl     *gomock.Controller

@@ -32,6 +32,7 @@ func (h *PluginHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/plugins", h.List)
 	// 清单里的固定段：必须在 /plugins/:id 之前注册
 	g.GET("/plugins/contributions", h.ListContributions)
+	g.GET("/plugins/views", h.ListViews)
 	g.PATCH("/plugins/:id", h.SetEnabled)
 	g.GET("/plugins/:id/settings", h.GetSettings)
 	g.PUT("/plugins/:id/settings", h.PutSettings)
@@ -111,6 +112,11 @@ type pluginContributionsResponse struct {
 	Surfaces map[plugin.Surface][]plugin.Contribution `json:"surfaces"`
 }
 
+// pluginViewsResponse 插件注册的视图。空时是 []（handler 负责兜底，不是 null）。
+type pluginViewsResponse struct {
+	Views []plugin.View `json:"views"`
+}
+
 // ListContributions godoc
 // @Summary 各插入位置（surface）上可用的插件界面项
 // @Tags plugins
@@ -123,6 +129,23 @@ func (h *PluginHandler) ListContributions(c echo.Context) error {
 		surfaces = map[plugin.Surface][]plugin.Contribution{}
 	}
 	return c.JSON(http.StatusOK, pluginContributionsResponse{Surfaces: surfaces})
+}
+
+// ListViews godoc
+// @Summary 插件注册的视图（视图切换器一份数据）
+// @Description 只含**已启用**插件；按插件 id 排序，宿主注入 plugin 字段。
+// @Description custom 视图必须声明 ui:custom 且带 entry，否则被注册表丢弃（防绕过 /ui/ 门禁）。
+// @Tags plugins
+// @Produce json
+// @Success 200 {object} pluginViewsResponse
+// @Router /api/plugins/views [get]
+func (h *PluginHandler) ListViews(c echo.Context) error {
+	views := h.service.Views(c.Request().Context())
+	if views == nil {
+		// 没有视图时是 []（不是 null）：前端直接遍历/渲染，不必判空
+		views = []plugin.View{}
+	}
+	return c.JSON(http.StatusOK, pluginViewsResponse{Views: views})
 }
 
 // List godoc

@@ -256,6 +256,88 @@ func (r *Registry) Decorators() []NamedDecorator {
 	return out
 }
 
+// AllViews 全部**已启用**插件注册的视图（56-27；按 plugin id 排序、宿主注入 Plugin）。
+// 清洗规则（丢一条就留一条 warn，插件作者的错要能在日志里查到）：
+//   - kind 空 / 非法 ⇒ 降级成 declarative（视图还在，只是按宿主的方式画）；
+//   - kind=custom 却没声明 ui:custom ⇒ 丢弃（自定义视图 = 沙箱 iframe 入口，权限绕不过去）；
+//   - kind=custom 但 Entry 空 ⇒ 丢弃（装了也打不开）；
+//   - 没 id / 同插件内 id 重复 ⇒ 丢弃。
+func (r *Registry) AllViews() []View {
+	type pluginViews struct {
+		items []View
+		// customAllowed 该插件是否声明了 ui:custom（在锁内取，免得注册/停用并发时读到半截）
+		customAllowed bool
+	}
+	r.mu.RLock()
+	ids := make([]string, 0, len(r.plugins))
+	raw := make(map[string]pluginViews, len(r.plugins))
+	for id, p := range r.plugins {
+		if !r.enabled[id] {
+			continue
+		}
+		provider, ok := p.(ViewProvider)
+		if !ok {
+			continue
+		}
+		ids = append(ids, id)
+		raw[id] = pluginViews{
+			items:         provider.Views(),
+			customAllowed: DeclaresPermission(withTransport(p.Meta()), PermissionUICustom),
+		}
+	}
+	r.mu.RUnlock()
+
+	sort.Strings(ids)
+	out := make([]View, 0, len(ids))
+	for _, id := range ids {
+		entry := raw[id]
+		out = append(out, sanitizeViews(id, entry.items, entry.customAllowed)...)
+	}
+	return out
+}
+
+// sanitizeViews 清洗一个插件注册的视图并注入归属插件。
+func sanitizeViews(pluginID string, items []View, customAllowed bool) []View {
+	out := make([]View, 0, len(items))
+	seen := make(map[string]bool, len(items))
+	for _, item := range items {
+		key := strings.TrimSpace(item.ID)
+		reason := ""
+		switch strings.TrimSpace(item.Kind) {
+		case "", ViewKindDeclarative:
+			item.Kind = ViewKindDeclarative
+		case ViewKindCustom:
+			item.Kind = ViewKindCustom
+			// custom 的两种丢法：没权限（想绕过 /ui/ 门禁）、没入口（装了也打不开）
+			if !customAllowed {
+				reason = "custom view without ui:custom"
+			} else if strings.TrimSpace(item.Entry) == "" {
+				reason = "custom view without entry"
+			}
+		default:
+			// 未知 kind 不丢视图，只降级：插件可能写的是未来形态，先按宿主会的画
+			item.Kind = ViewKindDeclarative
+		}
+		if reason == "" && (key == "" || seen[key]) {
+			reason = "empty id"
+			if key != "" {
+				reason = "duplicate id"
+			}
+		}
+		if reason != "" {
+			logger.Warn("plugin view dropped",
+				"module", "plugin", "action", "sanitize", "resource", "view", "result", "dropped",
+				"pluginId", pluginID, "id", item.ID, "kind", item.Kind, "reason", reason)
+			continue
+		}
+		seen[key] = true
+		// 归属插件由宿主注入，插件声明时不必（也不该）自己填。
+		item.Plugin = pluginID
+		out = append(out, item)
+	}
+	return out
+}
+
 // FetchClassifiers 全部**已启用**插件的抓取失败归类器。
 func (r *Registry) FetchClassifiers() []FetchClassifier {
 	r.mu.RLock()
