@@ -613,6 +613,41 @@ func runMigrations(db *sql.DB) error {
 		return err
 	}
 
+	// Migration 33: RSSHub 适配搬进 rsshub 插件（55-18）。
+	//   general.rsshub_base_url → plugin.rsshub.base_url
+	//   general.rsshub_access_key → plugin.rsshub.access_key
+	// 旧键留着不删；没配过就不写（不造空键）。
+	if err := migrateRSSHubToPluginSettings(db); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// migrateRSSHubToPluginSettings 把本体通用设置里的 RSSHub 实例配置复制到插件键（迁移 33）。
+// 只补不覆盖：插件键已有值（用户在新界面里改过）就一个字不动 —— 与迁移 32 的
+// 「老键每次启动回写」不同，这里 DO NOTHING。
+func migrateRSSHubToPluginSettings(db *sql.DB) error {
+	copies := []struct{ from, to string }{
+		{"general.rsshub_base_url", "plugin.rsshub.base_url"},
+		{"general.rsshub_access_key", "plugin.rsshub.access_key"},
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	for _, c := range copies {
+		var oldValue string
+		if err := db.QueryRow(`SELECT value FROM settings WHERE key = ?`, c.from).Scan(&oldValue); err != nil {
+			continue // 没配过：不写空键
+		}
+		if strings.TrimSpace(oldValue) == "" {
+			continue
+		}
+		if _, err := db.Exec(`
+			INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+			ON CONFLICT(key) DO NOTHING
+		`, c.to, oldValue, now); err != nil {
+			return fmt.Errorf("copy %s: %w", c.from, err)
+		}
+	}
 	return nil
 }
 
