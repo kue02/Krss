@@ -46,6 +46,13 @@ func Configure(client *http.Client, settings plugin.SettingsStore) {
 // Plugin Bark 推送插件。
 type Plugin struct{}
 
+// 编译期确认三个扩展点都在（少了哪个，注册期 / 界面直调期才会炸，太晚）。
+var (
+	_ plugin.Plugin                = Plugin{}
+	_ plugin.ContributionsProvider = Plugin{}
+	_ plugin.Invoker               = Plugin{}
+)
+
 func (Plugin) Meta() plugin.Meta {
 	return plugin.Meta{
 		ID:          "bark",
@@ -62,6 +69,60 @@ func (Plugin) settings() plugin.Settings {
 }
 
 func (Plugin) Actions() []plugin.Action { return []plugin.Action{notifyAction{}} }
+
+// Contributions 把「推送」从只服务自动化，扩展成界面上随时能用。
+// 三条都落到已有的 notify 动作上——界面直调与规则命中走同一条发送路径，不另造动作。
+func (Plugin) Contributions() []plugin.Contribution {
+	return []plugin.Contribution{
+		{
+			ID: "push-entry", Surface: plugin.SurfaceEntryContextMenu, Action: "notify",
+			Label: "推送到手机（Bark）", Icon: "bell", Selection: plugin.SelectionSingle,
+			Refresh: []string{"entries"},
+		},
+		{
+			ID: "push-feed", Surface: plugin.SurfaceFeedContextMenu, Action: "notify",
+			Label: "推送这条订阅的最新条目", Icon: "bell", Selection: plugin.SelectionSingle,
+		},
+		{
+			ID: "push-on-save", Surface: plugin.SurfaceFilterEditorFooter, Action: "notify",
+			Label: "保存并推送到手机", Icon: "bell", Selection: plugin.SelectionNone,
+		},
+	}
+}
+
+// Invoke 界面直调：对选中的条目逐条推。报文与地址两层逻辑全部复用 notifyAction.Execute，
+// 差别只有「没有规则」——规则名取 req.Config["ruleName"]，宿主没给就记「手动推送」。
+func (Plugin) Invoke(ctx context.Context, req plugin.InvokeRequest) (plugin.InvokeResult, error) {
+	if len(req.Entries) == 0 {
+		// v1 不替宿主去库里补明细（Selection 里只有 id 时说明调用方没拿到条目，属于调用错误）。
+		return plugin.InvokeResult{}, errors.New("没有选中条目")
+	}
+	ruleName := strings.TrimSpace(req.Config["ruleName"])
+	if ruleName == "" {
+		ruleName = "手动推送"
+	}
+	// 来源标题按 FeedID 对齐（右键菜单可能一次带多条订阅）；对不上就留空，body 只剩规则名。
+	feeds := make(map[int64]model.Feed, len(req.Feeds))
+	for _, feed := range req.Feeds {
+		feeds[feed.ID] = feed
+	}
+	action := notifyAction{}
+	for _, entry := range req.Entries {
+		err := action.Execute(ctx, plugin.ActionRequest{
+			Filter: model.Filter{Name: ruleName},
+			Feed:   feeds[entry.FeedID],
+			Entry:  entry,
+			Config: req.Config, // 里面的 url 就是「规则地址」那一层，空则走插件全局地址
+		})
+		if err != nil {
+			return plugin.InvokeResult{}, err // 错误已打码，原样上抛给宿主
+		}
+	}
+	return plugin.InvokeResult{
+		Message: fmt.Sprintf("已推送 %d 条", len(req.Entries)),
+		Level:   "success",
+	}, nil
+}
 
 // SettingsSections 设置弹窗「插件」页里的推送段（全局地址；测试按钮走动作测试接口）。
 func (Plugin) SettingsSections() []plugin.SettingsSection {
