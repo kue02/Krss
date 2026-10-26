@@ -302,7 +302,26 @@ func (c *RemoteClient) classify(ctx context.Context, id string, feed model.Feed,
 type remotePlugin struct {
 	client *RemoteClient
 	meta   metaResponse
+	// 以下三项来自**宿主的 manifest**（plugin.json），不是插件自报的 /meta：
+	// 界面贡献、视图、权限都属于「宿主信任边界」，以磁盘上的文件为准。
+	manifestContributions []Contribution
+	manifestViews         []View
+	manifestPermissions   []string
 }
+
+// WithManifest 把 manifest 里声明的界面贡献 / 视图 / 权限挂到适配器上。
+// 没有这一步，外部插件写了 plugin.json 也不会出现在右键菜单、视图切换器里，
+// 权限裁剪也会把它的 entries:full 当成没申请（56-31）。
+func (p *remotePlugin) WithManifest(contributions []Contribution, views []View, permissions []string) *remotePlugin {
+	p.manifestContributions = contributions
+	p.manifestViews = views
+	p.manifestPermissions = permissions
+	return p
+}
+
+func (p *remotePlugin) Contributions() []Contribution { return p.manifestContributions }
+
+func (p *remotePlugin) Views() []View { return p.manifestViews }
 
 func (p *remotePlugin) Meta() Meta {
 	return Meta{
@@ -312,6 +331,7 @@ func (p *remotePlugin) Meta() Meta {
 		Version:     p.meta.Version,
 		Builtin:     false,
 		Transport:   TransportHTTP,
+		Permissions: p.manifestPermissions,
 	}
 }
 
@@ -386,4 +406,57 @@ func (c *remoteFetchClassifier) ID() string { return c.id }
 
 func (c *remoteFetchClassifier) Classify(ctx context.Context, feed model.Feed, statusCode int, bodyHead []byte, fetchErr error) string {
 	return c.client.classify(ctx, c.id, feed, statusCode, bodyHead, fetchErr)
+}
+
+// AttachManifest 给外部插件适配器挂上 manifest 声明（界面贡献 / 视图 / 权限）。
+// 宿主拿到的 Plugin 是接口，WithManifest 在包内，所以用这个函数做类型断言；
+// 非外部插件（内置、壳、占位）原样返回，不影响。
+func AttachManifest(p Plugin, contributions []Contribution, views []View, permissions []string) Plugin {
+	if remote, ok := p.(*remotePlugin); ok {
+		return remote.WithManifest(contributions, views, permissions)
+	}
+	return p
+}
+
+// invokeAction 把界面直调转给插件进程（56-31）。
+// 与 executeAction 的区别：要回 InvokeResult（toast 文案 / 刷新键 / 导出文件），而不只是「成功/失败」。
+func (c *RemoteClient) invokeAction(ctx context.Context, actionID string, req InvokeRequest) (InvokeResult, error) {
+	var out struct {
+		InvokeResult
+		Error string `json:"error"`
+	}
+	path := "/actions/" + actionID + "/invoke"
+	if err := c.do(ctx, http.MethodPost, path, req, &out); err != nil {
+		return InvokeResult{}, err
+	}
+	if out.Error != "" {
+		return InvokeResult{}, errors.New(out.Error)
+	}
+	return out.InvokeResult, nil
+}
+
+// Invoke 让外部插件的动作支持界面直调（与内置同形）。
+// 不做类型断言兜底：插件没实现 Invoker 时由插件侧回 400「action not invokable」。
+func (a *remoteAction) Invoke(ctx context.Context, req InvokeRequest) (InvokeResult, error) {
+	return a.client.invokeAction(ctx, a.meta.ActionID, req)
+}
+
+// Decorate 让外部插件的正文装饰能力与内置同形（56-31）。
+// 插件没实现 RenderDecorator 时 SDK 回空数组 ⇒ 这里得到空切片，宿主不会画任何东西。
+func (p *remotePlugin) Decorate(ctx context.Context, req DecorateRequest) ([]Decoration, error) {
+	return p.client.decorate(ctx, req)
+}
+
+func (c *RemoteClient) decorate(ctx context.Context, req DecorateRequest) ([]Decoration, error) {
+	var out struct {
+		Decorations []Decoration `json:"decorations"`
+		Error       string       `json:"error"`
+	}
+	if err := c.do(ctx, http.MethodPost, "/decorate", req, &out); err != nil {
+		return nil, err
+	}
+	if out.Error != "" {
+		return nil, errors.New(out.Error)
+	}
+	return out.Decorations, nil
 }

@@ -276,3 +276,41 @@ func processGone(pid int) bool {
 	err := syscall.Kill(pid, 0)
 	return err == syscall.ESRCH
 }
+
+// TestPluginHost_ManifestDeclaresUI 外部插件的界面贡献 / 视图 / 权限只认 manifest（56-31）：
+// 插件进程自报的 /meta 不算，磁盘上的 plugin.json 才是宿主信任边界。
+func TestPluginHost_ManifestDeclaresUI(t *testing.T) {
+	ctx := context.Background()
+	pluginsDir := shortTempDir(t)
+	reg := plugin.NewRegistry()
+	repo := newFakePluginRepo()
+	host := newTestHost(t, pluginsDir, reg, repo)
+	require.NoError(t, host.Ensure(ctx))
+
+	dir := filepath.Join(pluginsDir, "demo-ext")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	raw, err := os.ReadFile(pluginsrvBinary(t))
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "demo-ext"), raw, 0o755))
+	manifest := `{"id":"demo-ext","name":"Demo 外部插件","version":"1.0.0","transport":"http","entrypoint":"./demo-ext","autostart":true,
+	  "permissions":["entries:read","data"],
+	  "contributions":[{"id":"log-entry","surface":"entry.contextmenu","action":"log","label":"记一条日志","selection":"single"}],
+	  "views":[{"id":"demo","label":"演示","kind":"declarative","layout":"list"}]}`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "plugin.json"), []byte(manifest), 0o644))
+
+	require.NoError(t, host.Ensure(ctx))
+	require.True(t, reg.Enabled("demo-ext"), "安装即启用")
+
+	items := reg.AllContributions()[plugin.SurfaceEntryContextMenu]
+	require.Len(t, items, 1, "manifest 里声明的界面贡献要进清单")
+	require.Equal(t, "demo-ext", items[0].Plugin, "归属由宿主注入")
+	require.Equal(t, "log", items[0].Action)
+
+	views := reg.AllViews()
+	require.Len(t, views, 1, "manifest 里声明的视图要进清单")
+	require.Equal(t, "demo-ext", views[0].Plugin)
+
+	meta, ok := reg.Meta("demo-ext")
+	require.True(t, ok)
+	require.Equal(t, []string{"entries:read", "data"}, meta.Permissions, "权限也要从 manifest 带出来")
+}

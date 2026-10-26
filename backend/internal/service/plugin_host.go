@@ -57,6 +57,11 @@ type pluginManifest struct {
 	Entrypoint   string   `json:"entrypoint"`
 	Autostart    bool     `json:"autostart"`
 	Capabilities []string `json:"capabilities"`
+	// 56-31：界面贡献 / 视图 / 权限以 manifest 为准（宿主信任边界在磁盘文件上，
+	// 不信插件进程自报的 /meta）；内置轨用代码声明，外部轨用这份声明。
+	Permissions   []string            `json:"permissions"`
+	Contributions []plugin.Contribution `json:"contributions"`
+	Views         []plugin.View         `json:"views"`
 }
 
 // PluginHostState 一个外部插件的运行时状态（排障 / 测试 / 未来 UI 用）。
@@ -518,6 +523,8 @@ func (h *PluginHost) registerLocked(p *externalPluginProcess) error {
 	if err != nil {
 		return fmt.Errorf("读 /meta 失败: %w", err)
 	}
+	// 56-31：外部插件的界面贡献 / 视图 / 权限只认 manifest —— 插件进程自报的不算。
+	remote = plugin.AttachManifest(remote, p.manifest.Contributions, p.manifest.Views, p.manifest.Permissions)
 	h.registry.Unregister(p.id) // 幂等：换一份适配器（旧 client 可能已死）
 	if err := h.registry.Register(remote); err != nil {
 		return fmt.Errorf("注册外部插件失败: %w", err)

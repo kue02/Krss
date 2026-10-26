@@ -104,6 +104,7 @@ func (s *server) routes() *http.ServeMux {
 	mux.HandleFunc("/actions/", s.action)
 	mux.HandleFunc("/entry-processors/", s.entryProcessor)
 	mux.HandleFunc("/fetch-classifiers/", s.fetchClassifier)
+	mux.HandleFunc("/decorate", s.decorate)
 	mux.HandleFunc("/ui/", s.uiAsset)
 	return mux
 }
@@ -215,6 +216,24 @@ func (s *server) action(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, map[string]string{})
+	case "invoke":
+		// 56-31：界面直调（右键菜单/工具栏/正文浮动条）。动作没实现 plugin.Invoker 就 400。
+		invoker, ok := target.(plugin.Invoker)
+		if !ok {
+			writeError(w, http.StatusBadRequest, errors.New("action not invokable"))
+			return
+		}
+		var req plugin.InvokeRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+		result, err := invoker.Invoke(r.Context(), req)
+		if err != nil {
+			writeJSON(w, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, result)
 	case "test":
 		tester, ok := target.(plugin.ActionTester)
 		if !ok {
@@ -342,4 +361,29 @@ func (f *fileSettings) Replace(values map[string]string) error {
 		return err
 	}
 	return os.WriteFile(f.path, raw, 0o600)
+}
+
+// decorate 正文装饰（56-31）：把「哪一段、什么样式」交回宿主画。
+// 插件没实现 RenderDecorator 时回空数组而不是报错 —— 宿主对每个启用插件都会问一遍，
+// 报错会变成每条目每次阅读都刷一条 warning。
+func (s *server) decorate(w http.ResponseWriter, r *http.Request) {
+	decorator, ok := s.plugin.(plugin.RenderDecorator)
+	if !ok {
+		writeJSON(w, map[string]any{"decorations": []plugin.Decoration{}})
+		return
+	}
+	var req plugin.DecorateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	items, err := decorator.Decorate(r.Context(), req)
+	if err != nil {
+		writeJSON(w, map[string]string{"error": err.Error()})
+		return
+	}
+	if items == nil {
+		items = []plugin.Decoration{}
+	}
+	writeJSON(w, map[string]any{"decorations": items})
 }
