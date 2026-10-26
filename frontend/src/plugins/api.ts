@@ -1,5 +1,11 @@
 import { request } from "@/api";
-import type { PluginContribution, PluginMeta, PluginSettings } from "./types";
+import type {
+  PluginContribution,
+  PluginInvokeResult,
+  PluginMeta,
+  PluginSelection,
+  PluginSettings,
+} from "./types";
 
 /**
  * 插件 API（55-8）。
@@ -90,4 +96,29 @@ export function fetchPluginContributions(): Promise<
   return request<{ surfaces?: Record<string, PluginContribution[]> | null }>(
     "/api/plugins/contributions",
   ).then((data) => data.surfaces ?? {});
+}
+
+/**
+ * 调用插件动作（56-8）：`POST /api/plugins/:id/actions/:actionId/invoke`。
+ *
+ * 与 `/test` 的区别：`/test` 是设置页里「发一条测试」、只回状态码；这里带 `surface` +
+ * `selection`，插件知道自己是在哪个挂点上、对哪几条条目/订阅被点的，返回值里还可能带
+ * 「要刷新的前端缓存」(`refresh`)，由调用方的 hook 统一失效。
+ *
+ * 路径参数一律 encodeURIComponent：插件 id 来自 manifest 文件名，动作 id 来自插件代码，
+ * 都可能带 `.` / 空格 / 中文，不转义会把路径拼断（后端路由按段匹配，断掉就是 404）。
+ */
+export function invokePluginAction(
+  plugin: string,
+  action: string,
+  body: {
+    surface: string;
+    selection: PluginSelection;
+    config?: Record<string, string>;
+  },
+): Promise<PluginInvokeResult> {
+  return request<PluginInvokeResult>(
+    `/api/plugins/${encodeURIComponent(plugin)}/actions/${encodeURIComponent(action)}/invoke`,
+    { method: "POST", body: JSON.stringify(body) },
+  ).then((data) => data ?? {});
 }
