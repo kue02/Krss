@@ -2,11 +2,13 @@ package db
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"krss/backend/internal/hashutil"
+	"krss/backend/internal/model"
 	"krss/backend/internal/urlutil"
 )
 
@@ -603,6 +605,88 @@ func runMigrations(db *sql.DB) error {
 		return fmt.Errorf("create plugins table: %w", err)
 	}
 
+	// Migration 32: 「推送」动作搬进 bark 插件（55 批）。
+	//   filters.actions.notify=true → pluginActions[{plugin:"bark",action:"notify",config:{url:原 notifyUrl}}]
+	//   notify.bark_url → 复制到 plugin.bark.url（旧键留着不删，回滚还用得着）
+	// 没有 notify 的规则一个字不动；解析不了的老数据跳过（迁移不能把规则搞坏）。
+	if err := migrateNotifyToBarkPlugin(db); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// migrateNotifyToBarkPlugin 把本体「推送」动作改写成 bark 插件引用（迁移 32）。
+func migrateNotifyToBarkPlugin(db *sql.DB) error {
+	var oldURL string
+	if err := db.QueryRow(`SELECT value FROM settings WHERE key = 'notify.bark_url'`).Scan(&oldURL); err == nil {
+		oldURL = strings.TrimSpace(oldURL)
+	}
+	if oldURL != "" {
+		now := time.Now().UTC().Format(time.RFC3339)
+		if _, err := db.Exec(`
+			INSERT INTO settings (key, value, updated_at) VALUES ('plugin.bark.url', ?, ?)
+			ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+		`, oldURL, now); err != nil {
+			return fmt.Errorf("copy notify.bark_url: %w", err)
+		}
+	}
+
+	rows, err := db.Query(`SELECT id, actions FROM filters`)
+	if err != nil {
+		return fmt.Errorf("load filters: %w", err)
+	}
+	type rewrite struct {
+		id      int64
+		actions string
+	}
+	var pending []rewrite
+	for rows.Next() {
+		var item rewrite
+		if err := rows.Scan(&item.id, &item.actions); err != nil {
+			rows.Close()
+			return err
+		}
+		var actions model.FilterActions
+		if err := json.Unmarshal([]byte(item.actions), &actions); err != nil {
+			continue // 老数据解析不了：不动它
+		}
+		if !actions.Notify {
+			continue
+		}
+		// 已经迁过（幂等）：pluginActions 里已有 bark.notify 就不再叠
+		migrated := false
+		for _, ref := range actions.PluginActions {
+			if ref.Plugin == "bark" && ref.Action == "notify" {
+				migrated = true
+			}
+		}
+		if migrated {
+			continue
+		}
+		url := actions.NotifyURL
+		actions.Notify = false
+		actions.NotifyURL = ""
+		actions.PluginActions = append(actions.PluginActions, model.PluginActionRef{
+			Plugin: "bark", Action: "notify", Config: map[string]string{"url": url},
+		})
+		updated, err := json.Marshal(actions)
+		if err != nil {
+			continue
+		}
+		pending = append(pending, rewrite{id: item.id, actions: string(updated)})
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+
+	for _, item := range pending {
+		if _, err := db.Exec(`UPDATE filters SET actions = ? WHERE id = ?`, item.actions, item.id); err != nil {
+			return fmt.Errorf("rewrite filter %d actions: %w", item.id, err)
+		}
+	}
 	return nil
 }
 
