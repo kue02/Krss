@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isRssHubUrl, rewriteRssHubUrl } from "@/lib/rsshub";
+import { isRssHubUrl, rewriteRssHubUrl } from "./rsshub";
 
 describe("isRssHubUrl", () => {
   it("认得公共实例与自建实例", () => {

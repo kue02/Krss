@@ -27,9 +27,17 @@ vi.mock("@/api", () => ({
     fallbackUserAgent: "",
     autoReadability: false,
     markReadOnScroll: false,
-    rsshubBaseUrl: "",
-    rsshubAccessKey: "",
   }),
+}));
+
+// RSSHub 实例地址现在读插件设置（55-18）；这些用例不测改写，给空值即可
+vi.mock("@/plugins/api", () => ({
+  fetchPluginSettings: vi.fn().mockResolvedValue({}),
+  savePluginSettings: vi.fn(),
+  testPluginAction: vi.fn(),
+  fetchPlugins: vi.fn().mockResolvedValue([]),
+  setPluginEnabled: vi.fn(),
+  rescanPlugins: vi.fn(),
 }));
 
 describe("useAddFeed", () => {

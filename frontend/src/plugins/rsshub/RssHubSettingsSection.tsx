@@ -6,14 +6,15 @@ import {
   getFeedMergePreview,
   mergeFeed,
   updateFeedUrl,
-  updateGeneralSettings,
   type FeedMergeSide,
 } from "@/api";
 import { useFeeds } from "@/hooks/useFeeds";
-import { useGeneralSettings } from "@/hooks/useGeneralSettings";
-import { rewriteRssHubUrl } from "@/lib/rsshub";
+import { fetchPluginSettings, savePluginSettings } from "@/plugins/api";
+import { rewriteRssHubUrl } from "./rsshub";
 import { queryClient } from "@/lib/queryClient";
 import { showToast } from "@/stores/toast-store";
+
+const PLUGIN_ID = "rsshub";
 
 interface PendingRewrite {
   feedId: string;
@@ -29,13 +30,15 @@ interface MergeConflict extends PendingRewrite {
 }
 
 /**
- * RSSHub 适配：填自有实例地址（可带 ACCESS_KEY）。
- * - 之后添加订阅时，RSSHub 地址会自动换到该实例
+ * RSSHub 适配插件设置段（55-18 从「设置 → 通用」的 RSSHubSettings 搬来，随插件发）。
+ *
+ * 存的是**插件自己的设置**（键 plugin.rsshub.base_url / access_key），不再是通用设置的字段：
+ * 迁移 33 已经把 general.rsshub_* 的老值复制过来，老用户不用重填。
+ * - 之后添加订阅时，RSSHub 地址会自动换到该实例（plugins/rsshub/useRssHubRewrite）
  * - 「预览」列出会被改写的现有订阅，「应用」一次性换掉
  */
-export function RSSHubSettings() {
+export function RssHubSettingsSection() {
   const { t } = useTranslation();
-  const { data: generalSettings } = useGeneralSettings();
   const { data: feeds = [] } = useFeeds();
   const [baseUrl, setBaseUrl] = useState("");
   const [accessKey, setAccessKey] = useState("");
@@ -47,17 +50,34 @@ export function RSSHubSettings() {
     conflicts: MergeConflict[];
   } | null>(null);
 
-  useEffect(() => {
-    if (!generalSettings) return;
-    /* eslint-disable react-hooks/set-state-in-effect */
-    setBaseUrl(generalSettings.rsshubBaseUrl ?? "");
-    setAccessKey(generalSettings.rsshubAccessKey ?? "");
-    /* eslint-enable react-hooks/set-state-in-effect */
-  }, [generalSettings]);
+  // 已保存的值单独留一份：脏判断与「保存后回填服务端口径」都靠它
+  const [saved, setSaved] = useState({ baseUrl: "", accessKey: "" });
 
-  const savedBaseUrl = generalSettings?.rsshubBaseUrl ?? "";
-  const savedAccessKey = generalSettings?.rsshubAccessKey ?? "";
-  const isDirty = baseUrl !== savedBaseUrl || accessKey !== savedAccessKey;
+  useEffect(() => {
+    let alive = true;
+    fetchPluginSettings(PLUGIN_ID)
+      .then((values) => {
+        if (!alive) return;
+        const stored = {
+          baseUrl: values.base_url ?? "",
+          accessKey: values.access_key ?? "",
+        };
+        /* eslint-disable react-hooks/set-state-in-effect */
+        setBaseUrl(stored.baseUrl);
+        setAccessKey(stored.accessKey);
+        setSaved(stored);
+        /* eslint-enable react-hooks/set-state-in-effect */
+      })
+      .catch(() => {
+        // 读不出来就当没配过：页面还能填、能存，不给红字（与 bark 段的处理一致）
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const isDirty =
+    baseUrl !== saved.baseUrl || accessKey !== saved.accessKey;
   // 12-7：把「这一页有未保存改动」登记给设置弹窗（切页/关闭时问一句）
   useSettingsDirty("rsshub", isDirty, t("settings.dirty_label_rsshub"), () => handleSave());
 
@@ -73,17 +93,21 @@ export function RSSHubSettings() {
   }, [accessKey, baseUrl, feeds]);
 
   const handleSave = useCallback(async () => {
-    if (!generalSettings) return;
-
     setIsSaving(true);
     try {
-      // 整体展开现有设置再覆盖本块字段：通用设置是整体 PUT，漏字段会把别人刚存的擦掉
-      await updateGeneralSettings({
-        ...generalSettings,
-        rsshubBaseUrl: baseUrl.trim(),
-        rsshubAccessKey: accessKey.trim(),
+      const values = await savePluginSettings(PLUGIN_ID, {
+        base_url: baseUrl.trim(),
+        access_key: accessKey.trim(),
       });
-      queryClient.invalidateQueries({ queryKey: ["generalSettings"] });
+      const stored = {
+        baseUrl: values.base_url ?? "",
+        accessKey: values.access_key ?? "",
+      };
+      setBaseUrl(stored.baseUrl);
+      setAccessKey(stored.accessKey);
+      setSaved(stored);
+      // 添加订阅页读的是同一份插件设置（useRssHubRewrite），保存后立刻拿到新值
+      queryClient.invalidateQueries({ queryKey: ["pluginSettings", PLUGIN_ID] });
       setShowPreview(false);
       showToast(t("settings.rsshub_saved"));
     } catch {
@@ -91,7 +115,7 @@ export function RSSHubSettings() {
     } finally {
       setIsSaving(false);
     }
-  }, [accessKey, baseUrl, generalSettings, t]);
+  }, [accessKey, baseUrl, t]);
 
   /** 真正执行：plain 直接换地址；conflicts 按用户拍板决定「合并」还是「跳过」 */
   const runRewrites = useCallback(

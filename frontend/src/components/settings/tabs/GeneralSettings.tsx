@@ -10,7 +10,6 @@ import { useGeneralSettings } from "@/hooks/useGeneralSettings";
 import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
 import { setUISetting, useUISettingKey, type ScrollReadMode } from "@/hooks/useUISettings";
 import { setUILang } from "@/lib/ui-lang";
-import { RSSHubSettings } from "./RSSHubSettings";
 
 type Language = "zh" | "en";
 
@@ -148,8 +147,6 @@ export function GeneralSettings() {
 
   return (
     <div className="space-y-6">
-      <RSSHubSettings />
-
       {/* Language Section */}
       <section>
         <div className="flex flex-wrap items-center justify-between gap-2">
