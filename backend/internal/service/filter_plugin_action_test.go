@@ -2,6 +2,8 @@ package service_test
 
 import (
 	"context"
+	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -97,6 +99,58 @@ func TestApplyToEntries_DispatchesPluginAction(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("2 秒内没收到插件动作执行")
 	}
+}
+
+// 插件动作执行失败：原因写进规则 last_error（可见，不静默）；下一次成功要把这条错误清掉。
+// （55-13 从旧的 dispatchNotify 用例搬来的语义：出网动作失败必须留痕、成功必须清痕。）
+func TestApplyToEntries_PluginActionFailureWritesLastErrorThenSuccessClears(t *testing.T) {
+	var fail atomic.Bool
+	fail.Store(true)
+	registry := newDemoPluginRegistry(t, func(plugin.ActionRequest) error {
+		if fail.Load() {
+			return errors.New("HTTP 500 boom（目标 api.day.app）")
+		}
+		return nil
+	})
+
+	fixture := newPluginActionFixture(t, registry)
+	feed := fixture.seedFeed(t, "来源", "article")
+	entry := fixture.seedEntry(t, feed.ID, "h-plugin-3", "krss 会失败", timePtr(time.Now()))
+
+	rule := fixture.create(t, service.FilterWriteParams{
+		Name:       "插件会报错的规则",
+		ScopeType:  model.FilterScopeFeed,
+		ScopeID:    &feed.ID,
+		Conditions: []model.FilterCondition{{Field: model.FilterFieldTitle, Operator: model.FilterOpContains, Value: "krss"}},
+		Actions: model.FilterActions{PluginActions: []model.PluginActionRef{{
+			Plugin: "demo", Action: "log",
+		}}},
+	})
+
+	ctx := context.Background()
+	_, err := fixture.service.ApplyToEntries(ctx, feed, []model.Entry{entry})
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		got, getErr := fixture.filters.GetByID(ctx, rule.ID)
+		return getErr == nil && got.LastError != nil
+	}, 3*time.Second, 20*time.Millisecond, "插件动作失败要写进 last_error")
+
+	got, err := fixture.filters.GetByID(ctx, rule.ID)
+	require.NoError(t, err)
+	require.Contains(t, *got.LastError, "插件动作失败：")
+	require.Contains(t, *got.LastError, "HTTP 500 boom", "下游原因要带回来（用户才知道为什么没推出去）")
+
+	// 修好之后再命中一次：上一次插件留的错要被清掉
+	fail.Store(false)
+	entry2 := fixture.seedEntry(t, feed.ID, "h-plugin-4", "krss 这次成功", timePtr(time.Now()))
+	_, err = fixture.service.ApplyToEntries(ctx, feed, []model.Entry{entry2})
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		got, getErr := fixture.filters.GetByID(ctx, rule.ID)
+		return getErr == nil && got.LastError == nil
+	}, 3*time.Second, 20*time.Millisecond, "成功一次要清掉自己上次留的原因")
 }
 
 // 插件停用：不执行，且把原因写进规则 last_error（可见，不静默）。

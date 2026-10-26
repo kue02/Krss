@@ -1,4 +1,5 @@
 import type { ComponentType } from "react";
+import { BarkNotifySection } from "./bark/BarkNotifySection";
 
 /**
  * 插件 id → 设置段组件。
@@ -7,6 +8,9 @@ import type { ComponentType } from "react";
  * 后端只负责说「我有哪些段、每段要有哪些字段、值存成什么样」，长什么样由这里定。
  *
  * 新插件在这里登记一行；没登记但插件已启用时，页面只显示清单卡片、不显示设置段
- * （不会坏，只是这一段还没做）。bark / RSSHub 适配的段落在 Phase B / C 补。
+ * （不会坏，只是这一段还没做）。RSSHub 适配的段落在 Phase C 补。
  */
-export const PLUGIN_SETTINGS_SECTIONS: Record<string, ComponentType> = {};
+export const PLUGIN_SETTINGS_SECTIONS: Record<string, ComponentType> = {
+  // 55-13：Bark 推送地址从「设置 → 通用」搬到这里（键 plugin.bark.url）
+  bark: BarkNotifySection,
+};

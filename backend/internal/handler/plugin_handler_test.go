@@ -3,6 +3,7 @@ package handler_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -160,7 +161,7 @@ func TestPluginHandler_PutSettings(t *testing.T) {
 	require.Contains(t, rec.Body.String(), "••••••••")
 }
 
-// TestPluginHandler_TestAction 动作测试：成功 200；插件不存在 404。
+// TestPluginHandler_TestAction 动作测试：成功 200；插件不存在 404；没配地址 400；真投递失败 502 且带原因。
 func TestPluginHandler_TestAction(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -168,6 +169,9 @@ func TestPluginHandler_TestAction(t *testing.T) {
 	svc := mock.NewMockPluginService(ctrl)
 	svc.EXPECT().TestAction(gomock.Any(), "bark", "notify").Return(nil)
 	svc.EXPECT().TestAction(gomock.Any(), "ghost", "notify").Return(service.ErrPluginNotFound)
+	svc.EXPECT().TestAction(gomock.Any(), "bark", "notify").Return(service.ErrInvalid)
+	svc.EXPECT().TestAction(gomock.Any(), "bark", "notify").
+		Return(errors.New("先填全局推送地址再测试（HTTP 500，目标 api.day.app）"))
 
 	h := handler.NewPluginHandler(svc)
 
@@ -181,6 +185,23 @@ func TestPluginHandler_TestAction(t *testing.T) {
 	c2.SetParamValues("ghost", "notify")
 	require.NoError(t, h.TestAction(c2))
 	require.Equal(t, http.StatusNotFound, rec2.Code)
+
+	// 没配地址 / 动作不可测 → 400（前端据此提示「先填地址」）
+	c3, rec3 := newPluginTestContext(http.MethodPost, "/api/plugins/bark/actions/notify/test", nil, "id", "actionId")
+	c3.SetParamValues("bark", "notify")
+	require.NoError(t, h.TestAction(c3))
+	require.Equal(t, http.StatusBadRequest, rec3.Code)
+
+	// 真投递失败 → 502 + 插件给的原因（不能只回 internal error，用户要知道为什么没发出去）
+	c4, rec4 := newPluginTestContext(http.MethodPost, "/api/plugins/bark/actions/notify/test", nil, "id", "actionId")
+	c4.SetParamValues("bark", "notify")
+	require.NoError(t, h.TestAction(c4))
+	require.Equal(t, http.StatusBadGateway, rec4.Code)
+	var body struct {
+		Error string `json:"error"`
+	}
+	require.NoError(t, json.Unmarshal(rec4.Body.Bytes(), &body))
+	require.Contains(t, body.Error, "api.day.app")
 }
 
 // TestPluginHandler_Rescan 重新扫描：与 List 同一份 Catalog。

@@ -647,16 +647,21 @@ func migrateNotifyToBarkPlugin(db *sql.DB) error {
 			rows.Close()
 			return err
 		}
-		var actions model.FilterActions
-		if err := json.Unmarshal([]byte(item.actions), &actions); err != nil {
+		var legacy struct {
+			model.FilterActions
+			// 55-13：notify / notifyUrl 已从本体模型删除，但迁移必须还能读懂老库里的这两个键
+			Notify    bool   `json:"notify"`
+			NotifyURL string `json:"notifyUrl"`
+		}
+		if err := json.Unmarshal([]byte(item.actions), &legacy); err != nil {
 			continue // 老数据解析不了：不动它
 		}
-		if !actions.Notify {
+		if !legacy.Notify {
 			continue
 		}
 		// 已经迁过（幂等）：pluginActions 里已有 bark.notify 就不再叠
 		migrated := false
-		for _, ref := range actions.PluginActions {
+		for _, ref := range legacy.PluginActions {
 			if ref.Plugin == "bark" && ref.Action == "notify" {
 				migrated = true
 			}
@@ -664,9 +669,8 @@ func migrateNotifyToBarkPlugin(db *sql.DB) error {
 		if migrated {
 			continue
 		}
-		url := actions.NotifyURL
-		actions.Notify = false
-		actions.NotifyURL = ""
+		url := legacy.NotifyURL
+		actions := legacy.FilterActions
 		actions.PluginActions = append(actions.PluginActions, model.PluginActionRef{
 			Plugin: "bark", Action: "notify", Config: map[string]string{"url": url},
 		})

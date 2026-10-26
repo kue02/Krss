@@ -27,9 +27,10 @@ func TestFilterActions_IsEmpty_CountsPluginActions(t *testing.T) {
 }
 
 func TestFilterActions_OldJSONWithoutPluginActions(t *testing.T) {
-	// 老数据（没有 pluginActions 键）必须能解析且行为不变
+	// 老数据（55-13 之前的 notify / notifyUrl 键）必须仍能解析且不炸：这两个键已被模型删掉，
+	// 反序列化时直接忽略（真正的改写发生在迁移 32，不在模型层）。
 	var back model.FilterActions
 	require.NoError(t, json.Unmarshal([]byte(`{"notify":true,"notifyUrl":"https://api.day.app/OLD"}`), &back))
-	require.True(t, back.Notify)
 	require.Empty(t, back.PluginActions)
+	require.True(t, back.IsEmpty(), "只有已废弃的 notify 键 = 没有动作")
 }

@@ -22,7 +22,6 @@ import (
 // 规则的 last_error 用前缀区分来源：只清掉「上一次属于自己」的那条，别互相覆盖。
 const (
 	webhookErrorPrefix = "webhook 投递失败："
-	notifyErrorPrefix  = "推送失败："
 	aiErrorPrefix      = "AI 判定："
 	// pluginErrorPrefix 插件动作失败写进 last_error 的前缀（与 webhook / 推送同机制：成功清、失败记）。
 	pluginErrorPrefix = "插件动作失败："
@@ -126,9 +125,6 @@ type FilterService interface {
 	ListMatches(ctx context.Context, filterID int64, limit int) ([]model.FilterMatch, error)
 	// ParseNaturalLanguage 用 AI 把一句人话翻成规则草稿（不落库；由编辑器确认后再保存）。
 	ParseNaturalLanguage(ctx context.Context, text string) (FilterDraft, error)
-	// TestNotify 按当前设置发一条测试推送（设置页「发送测试推送」用），走的是与规则同一条通道，
-	// 所以它通了就说明地址、代理、出网都对。
-	TestNotify(ctx context.Context) (int, error)
 	// CreateException 条目级「豁免这类内容」：建一条顺序最靠前、只做反向动作的例外规则，
 	// 并把这一条立刻放回未读流。
 	CreateException(ctx context.Context, entryID int64) (model.Filter, error)
@@ -141,7 +137,6 @@ type filterService struct {
 	folders  repository.FolderRepository
 	ai       AICompleter
 	webhook  FilterWebhookSender
-	notify   NotifyService
 	plugins  *plugin.Registry
 	governor *aiJudgeGovernor
 }
@@ -154,8 +149,6 @@ type FilterServiceDeps struct {
 	Folders repository.FolderRepository
 	AI      AICompleter
 	Webhook FilterWebhookSender
-	// Notify 推送通道（Bark）：nil = 推送不可用（规则会明确报错，不会静默成功）
-	Notify NotifyService
 	// Plugins 插件注册表（55 批）：nil = 本实例没接插件（测试里常见），dispatch 直接跳过。
 	Plugins *plugin.Registry
 }
@@ -168,7 +161,6 @@ func NewFilterService(deps FilterServiceDeps) FilterService {
 		folders:  deps.Folders,
 		ai:       deps.AI,
 		webhook:  deps.Webhook,
-		notify:   deps.Notify,
 		plugins:  deps.Plugins,
 		governor: &aiJudgeGovernor{},
 	}
@@ -621,9 +613,7 @@ func (s *filterService) ApplyToHistory(ctx context.Context, filterID int64, limi
 				logger.Warn("record filter match failed", "module", "service", "action", "record", "resource", "filter", "result", "failed", "filter_id", filter.ID, "entry_id", entry.ID, "error", err)
 			}
 			s.dispatchWebhook(ctx, filter, feed, entry, effective, now)
-			// 推送同样是「要出网」的动作：异步发出，结果写回规则的 last_error
-			s.dispatchNotify(ctx, filter, feed, entry, effective, now)
-			// 插件动作（55 批）：同样异步，没装/停用/失败写 last_error
+			// 插件动作（55 批）：同样异步，没装/停用/失败写 last_error（推送就是 bark 插件的动作）
 			s.dispatchPluginActions(ctx, filter, feed, entry, effective, now)
 			stats[filter.ID]++
 			applied++
@@ -734,10 +724,9 @@ func (s *filterService) ApplyToEntries(ctx context.Context, feed model.Feed, ent
 			}); err != nil {
 				logger.Warn("record filter match failed", "module", "service", "action", "record", "resource", "filter", "result", "failed", "filter_id", filter.ID, "entry_id", entryID, "error", err)
 			}
-			// webhook / 推送是「要出网」的动作：异步投递，结果写回规则的 last_error
+			// webhook / 插件动作是「要出网」的动作：异步投递，结果写回规则的 last_error
 			entry.ID = entryID
 			s.dispatchWebhook(ctx, filter, feed, entry, effective, now)
-			s.dispatchNotify(ctx, filter, feed, entry, effective, now)
 			s.dispatchPluginActions(ctx, filter, feed, entry, effective, now)
 			stats[filter.ID]++
 			applied++
@@ -1286,69 +1275,6 @@ func (s *filterService) markWebhookFailure(ctx context.Context, filter model.Fil
 	logger.Warn("filter webhook delivery failed", "module", "service", "action", "webhook", "resource", "filter", "result", "failed", "filter_id", filter.ID, "reason", reason)
 }
 
-// dispatchNotify 把一次命中推给手机（Bark 兼容）：异步发出、不拖慢入库。
-// 地址取「规则里填的」优先，留空则跟随设置里的全局推送地址；失败把原因写回规则的 last_error。
-func (s *filterService) dispatchNotify(ctx context.Context, filter model.Filter, feed model.Feed, entry model.Entry, actions model.FilterActions, at time.Time) {
-	if !actions.Notify {
-		return
-	}
-	if s.notify == nil {
-		s.markNotifyFailure(ctx, filter, "服务未启用推送通道", at)
-		return
-	}
-	target := strings.TrimSpace(actions.NotifyURL)
-	if target == "" {
-		target = s.notify.GlobalURL(ctx)
-	}
-	if target == "" {
-		s.markNotifyFailure(ctx, filter, "规则没填推送地址，设置里也没有全局推送地址", at)
-		return
-	}
-
-	payload, err := MarshalFilterNotify(BuildFilterNotifyPayload(filter, feed, entry))
-	if err != nil {
-		s.markNotifyFailure(ctx, filter, "构造推送内容失败："+err.Error(), at)
-		return
-	}
-
-	sendCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), filterNotifyTimeout)
-	go func() {
-		defer cancel()
-		status, sendErr := s.notify.Send(sendCtx, target, payload)
-		if sendErr != nil {
-			s.markNotifyFailure(sendCtx, filter, fmt.Sprintf("%s（HTTP %d，目标 %s）", redactNotifyTarget(sendErr.Error(), target), status, network.ExtractHost(target)), time.Now())
-			return
-		}
-		s.clearNotifyFailure(sendCtx, filter)
-	}()
-}
-
-// redactNotifyTarget 把错误里出现的推送地址换成主机名 —— 推送地址里带设备 key（凭证），
-// 而这条原因会写进 last_error、也会进日志，不能把 key 带出去。
-func redactNotifyTarget(message, target string) string {
-	if target == "" || !strings.Contains(message, target) {
-		return message
-	}
-	return strings.ReplaceAll(message, target, network.ExtractHost(target))
-}
-
-func (s *filterService) markNotifyFailure(ctx context.Context, filter model.Filter, reason string, at time.Time) {
-	if err := s.filters.SetLastError(ctx, filter.ID, notifyErrorPrefix+reason, at); err != nil {
-		logger.Warn("set filter notify error failed", "module", "service", "action", "update", "resource", "filter", "result", "failed", "filter_id", filter.ID, "error", err)
-	}
-	logger.Warn("filter notify failed", "module", "service", "action", "notify", "resource", "filter", "result", "failed", "filter_id", filter.ID, "reason", reason)
-}
-
-// clearNotifyFailure 只清掉「上一次是推送报的错」，不碰 AI / webhook 留下的原因。
-func (s *filterService) clearNotifyFailure(ctx context.Context, filter model.Filter) {
-	if filter.LastError == nil || !strings.HasPrefix(*filter.LastError, notifyErrorPrefix) {
-		return
-	}
-	if err := s.filters.ClearLastError(ctx, filter.ID); err != nil {
-		logger.Warn("clear filter notify error failed", "module", "service", "action", "update", "resource", "filter", "result", "failed", "filter_id", filter.ID, "error", err)
-	}
-}
-
 // filterPluginActionTimeout 插件动作执行超时（与 webhook/推送同档 10s）。
 const filterPluginActionTimeout = 10 * time.Second
 
@@ -1399,34 +1325,6 @@ func (s *filterService) clearPluginFailure(ctx context.Context, filter model.Fil
 	if err := s.filters.ClearLastError(ctx, filter.ID); err != nil {
 		logger.Warn("clear filter plugin error failed", "module", "service", "action", "update", "resource", "filter", "result", "failed", "filter_id", filter.ID, "error", err)
 	}
-}
-
-// TestNotify 发一条测试推送（设置 → 自动化页那个按钮）。没有地址就返回 ErrInvalid，
-// 投递失败把下游的话带回去（失败要给可见原因，不能只报「没成功」）。
-func (s *filterService) TestNotify(ctx context.Context) (int, error) {
-	if s.notify == nil {
-		return 0, errNotifySenderDisabled
-	}
-	target := s.notify.GlobalURL(ctx)
-	if target == "" {
-		return 0, ErrInvalid
-	}
-	payload, err := MarshalFilterNotify(FilterNotifyPayload{
-		Title: "Krss 测试推送",
-		Body:  "能看到这条，说明推送通道已经通了",
-		Group: "Krss 自动化",
-	})
-	if err != nil {
-		return 0, fmt.Errorf("build test notify: %w", err)
-	}
-
-	sendCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), filterNotifyTimeout)
-	defer cancel()
-	status, sendErr := s.notify.Send(sendCtx, target, payload)
-	if sendErr != nil {
-		return status, errors.New(redactNotifyTarget(sendErr.Error(), target))
-	}
-	return status, nil
 }
 
 // clearWebhookFailure 只清掉「上一次是 webhook 报的错」，不碰 AI 判定留下的原因。

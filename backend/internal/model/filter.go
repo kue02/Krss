@@ -107,11 +107,6 @@ type FilterActions struct {
 	// Webhook：命中后把这一条 POST 给外部地址（WebhookURL），投递失败会写在规则的 last_error 上。
 	Webhook    bool   `json:"webhook"`
 	WebhookURL string `json:"webhookUrl,omitempty"`
-	// Notify：命中后推一条到手机（Bark 兼容）。
-	// NotifyURL 留空 = 跟随设置里的全局推送地址（notify.bark_url）—— 与 webhook 不同，
-	// 「没填地址」不是配置错误，所以规范化时不会因为它为空而摘掉这个动作。
-	Notify    bool   `json:"notify"`
-	NotifyURL string `json:"notifyUrl,omitempty"`
 	// PluginActions 插件贡献的动作（55 批）。第一个真实插件是 bark 的「推送到手机」；
 	// 引擎 dispatch 时按 (plugin, action) 找执行器，插件没装 / 已停用会写进 last_error。
 	PluginActions []PluginActionRef `json:"pluginActions,omitempty"`
@@ -128,7 +123,7 @@ type PluginActionRef struct {
 // IsEmpty 表示这条规则没有任何动作（视为无效规则）。
 func (a FilterActions) IsEmpty() bool {
 	return !a.Mute && !a.Unmute && !a.MarkRead && !a.MarkUnread && !a.Star && !a.Unstar &&
-		!a.KeepOnly && !a.Translate && !a.Summarize && !a.Webhook && !a.Notify &&
+		!a.KeepOnly && !a.Translate && !a.Summarize && !a.Webhook &&
 		len(a.PluginActions) == 0
 }
 

@@ -104,14 +104,20 @@ func main() {
 	}()
 
 	folderService := service.NewFolderService(folderRepo, feedRepo)
+	// 插件注册表（55 批）：内置插件在各自 init() 注册进 plugin.Default；用库里的启停记录覆盖默认值。
+	// 规则引擎要拿它派发「插件动作」（推送 = bark 插件的 notify），所以必须建在 filterService 之前 ——
+	// 55-13 起本体不再有推送实现，注册表没接上就等于规则里的推送静默不执行。
+	pluginRepo := repository.NewPluginRepository(dbConn)
+	pluginRegistry := plugin.Default
+	// bark 推送插件（55-12）：出网 client 用 clientFactory 建（继承代理，与 webhook 同一套路径），
+	// 设置存储给 settingsRepo（键 plugin.bark.url）。
+	bark.Configure(clientFactory.NewHTTPClient(context.Background(), 15*time.Second), settingsRepo)
 	// 规则引擎：抓取入库之后跑，只改条目上的标记（muted / read / starred / auto-translate）。
 	// 本项目有两条入库路径（新订阅首次抓取、刷新），两条都要过规则，所以先建它再注入。
 	// AI 与 webhook 是 P2/P3 动作的依赖：AI 供「AI 条件」与「自然语言建规则」，
 	// webhook 用统一的网络层（继承代理设置）出网投递（所以 aiService 得先于它建好）。
 	aiService := service.NewAIServiceWithFeedContext(aiSummaryRepo, aiTranslationRepo, aiListTranslationRepo, settingsRepo, rateLimiter, entryRepo, feedRepo, clientFactory)
 	webhookClient := clientFactory.NewHTTPClient(context.Background(), 15*time.Second)
-	// 推送通道（Bark）：与 webhook 共用同一套「POST JSON 出网」语义，只是 UA 不同便于分辨
-	notifyService := service.NewNotifyService(settingsRepo, service.NewHTTPNotifier(webhookClient))
 	filterService := service.NewFilterService(service.FilterServiceDeps{
 		Filters: filterRepo,
 		Entries: entryRepo,
@@ -119,7 +125,7 @@ func main() {
 		Folders: folderRepo,
 		AI:      aiService,
 		Webhook: service.NewHTTPWebhookSender(webhookClient),
-		Notify:  notifyService,
+		Plugins: pluginRegistry,
 	})
 	// MCP（16 批入向 / 17 批出向）共用同一套协议底座 internal/service/mcp。
 	mcpService := service.NewMCPService(mcpServerRepo, settingsService, clientFactory, aiService)
@@ -154,12 +160,8 @@ func main() {
 	mcpHandler := handler.NewMCPHandler(mcpService, mcpOutboundService)
 	mcpEndpointHandler := handler.NewMCPEndpointHandler(mcpOutboundService)
 
-	// 插件模块（55 批）：内置插件已在各自 init() 注册进 plugin.Default；用库里的启停记录覆盖默认值。
-	pluginRepo := repository.NewPluginRepository(dbConn)
-	pluginRegistry := plugin.Default
-	// bark 推送插件（55-12）：出网 client 用 clientFactory 建（继承代理，与 webhook 同一套路径），
-	// 设置存储给 settingsRepo（键 plugin.bark.url）。与本体 notify 共存到 55-13 删除为止。
-	bark.Configure(clientFactory.NewHTTPClient(context.Background(), 15*time.Second), settingsRepo)
+	// 插件模块（55 批）：注册表与 bark 装配已在规则引擎之前完成（见 filterService 上方），
+	// 这里只把外部插件宿主接上。
 	// 外部插件宿主（55-7b）：$KRSS_DATA_DIR/plugins/<id>/ = manifest + 可执行，不重启即装即用。
 	pluginHost := service.NewPluginHost(pluginRegistry, pluginRepo, filepath.Join(cfg.DataDir, "plugins"))
 	// 每 5s 扫一次插件目录（不上 fsnotify）：丢个文件夹进去，5s 内就发现并拉起。

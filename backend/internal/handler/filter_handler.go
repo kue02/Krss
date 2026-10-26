@@ -30,7 +30,6 @@ func (h *FilterHandler) RegisterRoutes(g *echo.Group) {
 	// 注意：/filters/parse 与 /filters/exception 是固定段，必须排在 /filters/:id 之前
 	g.POST("/filters/parse", h.ParseNaturalLanguage)
 	g.POST("/filters/exception", h.CreateException)
-	g.POST("/notify/test", h.TestNotify)
 	g.PATCH("/filters/:id", h.Update)
 	g.DELETE("/filters/:id", h.Delete)
 	g.POST("/filters/preview", h.Preview)
@@ -62,9 +61,9 @@ type filterActionsPayload struct {
 	Summarize  bool   `json:"summarize"`
 	Webhook    bool   `json:"webhook"`
 	WebhookURL string `json:"webhookUrl,omitempty"`
-	// Notify：命中后推一条到手机（Bark 兼容；地址留空 = 跟随设置里的全局推送地址）
-	Notify    bool   `json:"notify"`
-	NotifyURL string `json:"notifyUrl,omitempty"`
+	// PluginActions 插件贡献的动作（55 批；bark 的「推送到手机」等）。
+	// 必须在这层出/入都带上，否则编辑器改一条规则再保存会把推送动作悄悄丢掉。
+	PluginActions []model.PluginActionRef `json:"pluginActions,omitempty"`
 }
 
 type filterWriteRequest struct {
@@ -195,33 +194,6 @@ type filterDraftResponse struct {
 
 type filterExceptionRequest struct {
 	EntryID string `json:"entryId"`
-}
-
-type notifyTestResponse struct {
-	Status int `json:"status"`
-}
-
-// TestNotify 发一条测试推送（设置页「发送测试推送」按钮）。
-//
-// 挂在过滤处理器下是因为推送就是**过滤动作的通道**（notify 动作），走的是同一条发送路径——
-// 会真出网，所以能一并验证代理与地址是否可用。没配地址明确回 400，投递失败回 502 并带上下游原话。
-//
-// @Summary Send test notification
-// @Description Send a test push via the configured notify channel (Bark)
-// @Tags settings
-// @Produce json
-// @Success 200 {object} notifyTestResponse
-// @Router /api/notify/test [post]
-func (h *FilterHandler) TestNotify(c echo.Context) error {
-	status, err := h.service.TestNotify(c.Request().Context())
-	if err != nil {
-		if errors.Is(err, service.ErrInvalid) {
-			return c.JSON(http.StatusBadRequest, errorResponse{Error: "notify url not configured"})
-		}
-		logger.Warn("test notify failed", "module", "handler", "action", "notify", "resource", "settings", "result", "failed", "error", err)
-		return c.JSON(http.StatusBadGateway, errorResponse{Error: err.Error()})
-	}
-	return c.JSON(http.StatusOK, notifyTestResponse{Status: status})
 }
 
 // List returns all filter rules ordered by position.
@@ -531,7 +503,7 @@ func (h *FilterHandler) RevertImpact(c echo.Context) error {
 				Translate:  item.Actions.Translate,
 				Summarize:  item.Actions.Summarize,
 				Webhook:    item.Actions.Webhook,
-				Notify:     item.Actions.Notify,
+				PluginActions: item.Actions.PluginActions,
 			},
 		}
 	}
@@ -793,8 +765,7 @@ func toActionsPayload(actions model.FilterActions) filterActionsPayload {
 		Summarize:  actions.Summarize,
 		Webhook:    actions.Webhook,
 		WebhookURL: actions.WebhookURL,
-		Notify:     actions.Notify,
-		NotifyURL:  actions.NotifyURL,
+		PluginActions: actions.PluginActions,
 	}
 }
 
@@ -811,7 +782,33 @@ func toFilterActions(payload filterActionsPayload) model.FilterActions {
 		Summarize:  payload.Summarize,
 		Webhook:    payload.Webhook,
 		WebhookURL: strings.TrimSpace(payload.WebhookURL),
-		Notify:     payload.Notify,
-		NotifyURL:  strings.TrimSpace(payload.NotifyURL),
+		PluginActions: sanitizePluginActions(payload.PluginActions),
 	}
+}
+
+// sanitizePluginActions 插件动作入参整理：插件/动作 id 去空格，配置值去两端空格（空 map 归一成 nil）。
+func sanitizePluginActions(refs []model.PluginActionRef) []model.PluginActionRef {
+	if len(refs) == 0 {
+		return nil
+	}
+	out := make([]model.PluginActionRef, 0, len(refs))
+	for _, ref := range refs {
+		pluginID := strings.TrimSpace(ref.Plugin)
+		actionID := strings.TrimSpace(ref.Action)
+		if pluginID == "" || actionID == "" {
+			continue
+		}
+		config := make(map[string]string, len(ref.Config))
+		for key, value := range ref.Config {
+			config[key] = strings.TrimSpace(value)
+		}
+		if len(config) == 0 {
+			config = nil
+		}
+		out = append(out, model.PluginActionRef{Plugin: pluginID, Action: actionID, Config: config})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

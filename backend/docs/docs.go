@@ -724,26 +724,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/notify/test": {
-            "post": {
-                "description": "Send a test push via the configured notify channel (Bark)",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "settings"
-                ],
-                "summary": "Send test notification",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/internal_handler.notifyTestResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/api/plugins": {
             "get": {
                 "produces": [
@@ -817,6 +797,24 @@ const docTemplate = `{
                             "additionalProperties": {
                                 "type": "integer"
                             }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "投递失败，error 里是插件给的可见原因（地址已打码）",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
                         }
                     }
                 }
@@ -4722,12 +4720,12 @@ const docTemplate = `{
                 "mute": {
                     "type": "boolean"
                 },
-                "notify": {
-                    "description": "Notify：命中后推一条到手机（Bark 兼容；地址留空 = 跟随设置里的全局推送地址）",
-                    "type": "boolean"
-                },
-                "notifyUrl": {
-                    "type": "string"
+                "pluginActions": {
+                    "description": "PluginActions 插件贡献的动作（55 批；bark 的「推送到手机」等）。\n必须在这层出/入都带上，否则编辑器改一条规则再保存会把推送动作悄悄丢掉。",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_model.PluginActionRef"
+                    }
                 },
                 "star": {
                     "type": "boolean"
@@ -5175,9 +5173,6 @@ const docTemplate = `{
                 "autoReadability": {
                     "type": "boolean"
                 },
-                "barkUrl": {
-                    "type": "string"
-                },
                 "fallbackUserAgent": {
                     "type": "string"
                 },
@@ -5197,10 +5192,6 @@ const docTemplate = `{
             "properties": {
                 "autoReadability": {
                     "type": "boolean"
-                },
-                "barkUrl": {
-                    "description": "BarkURL 推送地址（自动化规则的「推送到手机」没单独填地址时用它）",
-                    "type": "string"
                 },
                 "fallbackUserAgent": {
                     "type": "string"
@@ -5686,14 +5677,6 @@ const docTemplate = `{
                 },
                 "success": {
                     "type": "boolean"
-                }
-            }
-        },
-        "internal_handler.notifyTestResponse": {
-            "type": "object",
-            "properties": {
-                "status": {
-                    "type": "integer"
                 }
             }
         },
@@ -6267,6 +6250,23 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "mode": {
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_model.PluginActionRef": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string"
+                },
+                "config": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "plugin": {
                     "type": "string"
                 }
             }

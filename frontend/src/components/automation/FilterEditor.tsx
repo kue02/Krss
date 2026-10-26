@@ -51,8 +51,11 @@ interface FilterEditorProps {
   onCancel: () => void;
 }
 
-/** 正反成对的动作（勾了正就禁用反，同一条规则里互斥）；xxxUrl 不是开关，排除在外 */
-type ActionKey = Exclude<keyof FilterActions, "webhookUrl" | "notifyUrl">;
+/** 正反成对的动作（勾了正就禁用反，同一条规则里互斥）；xxxUrl / 插件动作不是开关，排除在外 */
+type ActionKey = Exclude<
+  keyof FilterActions,
+  "webhookUrl" | "pluginActions"
+>;
 
 const ACTION_PAIRS: { positive: ActionKey; negative: ActionKey }[] = [
   { positive: "mute", negative: "unmute" },
@@ -72,7 +75,6 @@ const ACTION_LABEL_KEYS: Record<string, string> = {
   translate: "action_translate",
   summarize: "action_summarize",
   webhook: "action_webhook",
-  notify: "action_notify",
 };
 
 /** 三态维度（静音 / 已读 / 星标）的行标签 */
@@ -88,7 +90,6 @@ const ACTION_HINT_KEYS: Record<string, string> = {
   translate: "translate_hint",
   summarize: "summarize_hint",
   webhook: "webhook_hint",
-  notify: "notify_hint",
 };
 
 const inputClass = cn(
@@ -784,37 +785,6 @@ export function FilterEditor({
                 {t("automation.action_group_external")}
               </Fieldset.Legend>
             <div className="grid grid-cols-[88px_minmax(0,1fr)] items-center gap-x-3 gap-y-[7px]">
-              <div className="contents">
-                <span
-                  className="text-xs text-muted-foreground"
-                  title={t(`automation.${ACTION_HINT_KEYS["notify"]}`)}
-                >
-                  {t("automation.action_notify")}
-                </span>
-                <HeroSwitch
-                  aria-label={t("automation.action_notify")}
-                  isSelected={Boolean(draft.actions.notify)}
-                  onChange={(checked) =>
-                    update({ actions: { ...draft.actions, notify: checked } })
-                  }
-                />
-              </div>
-              {draft.actions.notify && (
-                <input
-                  type="text"
-                  value={draft.actions.notifyUrl ?? ""}
-                  onChange={(event) =>
-                    update({
-                      actions: {
-                        ...draft.actions,
-                        notifyUrl: event.target.value,
-                      },
-                    })
-                  }
-                  placeholder={t("automation.notify_url_placeholder")}
-                  className={cn(inputClass, "col-start-2")}
-                />
-              )}
               <div className="contents">
                 <span
                   className="text-xs text-muted-foreground"

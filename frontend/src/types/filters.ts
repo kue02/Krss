@@ -93,10 +93,16 @@ export interface FilterActions {
   /** 命中后把这一条 POST 给外部地址（要出网） */
   webhook?: boolean;
   webhookUrl?: string;
-  /** 命中后推一条到手机（Bark 兼容；要出网） */
-  notify?: boolean;
-  /** 推送地址；留空 = 跟随「设置 → 通用」里的全局推送地址 */
-  notifyUrl?: string;
+  /** 插件贡献的动作（55 批）：由插件声明字段，后端按 (plugin, action) 派给执行器。
+   *  编辑器原样带进带出 —— 少带这一项，保存时就会把推送动作丢掉。 */
+  pluginActions?: PluginActionRef[];
+}
+
+/** 规则对某个插件动作的一次引用（形状见后端 model.PluginActionRef） */
+export interface PluginActionRef {
+  plugin: string;
+  action: string;
+  config?: Record<string, string>;
 }
 
 export interface FilterRule {

@@ -1,20 +1,30 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSettingsDirty } from "@/stores/settings-dirty-store";
-import { ApiError, testNotify, updateGeneralSettings } from "@/api";
-import { useGeneralSettings } from "@/hooks/useGeneralSettings";
-import { queryClient } from "@/lib/queryClient";
+import { ApiError } from "@/api";
+import {
+  fetchPluginSettings,
+  savePluginSettings,
+  testPluginAction,
+} from "@/plugins/api";
 
 /**
- * 推送（Bark）：自动化规则的「推送到手机」动作没单独填地址时，走这里的全局地址。
+ * 推送（Bark）插件设置段（55-13 从「设置 → 通用」的 NotifySettings 搬来）。
  *
- * 地址里带着设备 key（属凭证），只存在你自己的库里 —— 保存走通用设置接口，测试推送走
- * /api/notify/test，与规则命中时是同一条发送路径，所以它通了就说明地址、代理、出网都对。
+ * 地址是**插件自己的设置**（键 plugin.bark.url），不再是通用设置的一个字段：
+ * 读出接口给的是掩码（地址带设备 key，属凭证），原样回存 = 保持原值不变。
+ * 测试按钮走插件的动作测试接口 `/api/plugins/bark/actions/notify/test` ——
+ * 与规则命中时是同一条发送路径，所以它通了就说明地址、代理、出网都对。
  */
-export function NotifySettings() {
+const PLUGIN_ID = "bark";
+const ACTION_ID = "notify";
+/** 与后端 service.PluginMaskedValue 一致：读到这个值表示「已存过，但看不到明文」 */
+const MASKED_VALUE = "••••••••";
+
+export function BarkNotifySection() {
   const { t } = useTranslation();
-  const { data: generalSettings } = useGeneralSettings();
   const [url, setUrl] = useState("");
+  const [savedUrl, setSavedUrl] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [status, setStatus] = useState<{
@@ -23,49 +33,62 @@ export function NotifySettings() {
   } | null>(null);
 
   useEffect(() => {
-    if (!generalSettings) return;
-    /* eslint-disable-next-line react-hooks/set-state-in-effect */
-    setUrl(generalSettings.barkUrl ?? "");
-  }, [generalSettings]);
+    let alive = true;
+    fetchPluginSettings(PLUGIN_ID)
+      .then((values) => {
+        if (!alive) return;
+        const stored = values.url ?? "";
+        setUrl(stored);
+        setSavedUrl(stored);
+      })
+      .catch((error: unknown) => {
+        if (!alive) return;
+        setStatus({
+          kind: "error",
+          text: error instanceof Error ? error.message : String(error),
+        });
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
-  const savedUrl = generalSettings?.barkUrl ?? "";
   const isDirty = url.trim() !== savedUrl;
-  // 12-7：把「这一页有未保存改动」登记给设置弹窗（切页/关闭时问一句）
-  useSettingsDirty("notify", isDirty, t("settings.dirty_label_notify"), () => handleSave());
 
-  const save = useCallback(
-    async (nextUrl: string) => {
-      if (!generalSettings) return;
-      // 通用设置是整体 PUT：先展开现有值再覆盖本块字段，别把别人刚存的擦掉
-      await updateGeneralSettings({ ...generalSettings, barkUrl: nextUrl });
-      queryClient.invalidateQueries({ queryKey: ["generalSettings"] });
-    },
-    [generalSettings],
-  );
+  const save = useCallback(async (nextUrl: string): Promise<string> => {
+    const values = await savePluginSettings(PLUGIN_ID, { url: nextUrl });
+    const stored = values.url ?? "";
+    setUrl(stored);
+    setSavedUrl(stored);
+    return stored;
+  }, []);
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);
     setStatus(null);
     try {
       await save(url.trim());
-      setStatus({ kind: "ok", text: t("settings.notify_saved") });
+      setStatus({ kind: "ok", text: t("plugins.bark.saved") });
     } catch (error) {
       setStatus({
         kind: "error",
         text:
           error instanceof ApiError
             ? error.message
-            : t("settings.notify_save_failed"),
+            : t("plugins.bark.save_failed"),
       });
     } finally {
       setIsSaving(false);
     }
   }, [save, t, url]);
 
+  // 12-7：把「这一段有未保存改动」登记给设置弹窗（切页/关闭时问一句）
+  useSettingsDirty("bark", isDirty, t("plugins.bark.dirty_label"), handleSave);
+
   const handleTest = useCallback(async () => {
     // 没填地址也不把按钮置灰 —— 点了没反应是最难查的失败；这里给一句可见原因
     if (!url.trim() && !savedUrl) {
-      setStatus({ kind: "error", text: t("settings.notify_test_no_url") });
+      setStatus({ kind: "error", text: t("plugins.bark.test_no_url") });
       return;
     }
     setIsTesting(true);
@@ -75,21 +98,18 @@ export function NotifySettings() {
       if (isDirty) {
         await save(url.trim());
       }
-      const result = await testNotify();
-      setStatus({
-        kind: "ok",
-        text: t("settings.notify_test_ok", { status: result.status }),
-      });
+      await testPluginAction(PLUGIN_ID, ACTION_ID);
+      setStatus({ kind: "ok", text: t("plugins.bark.test_ok") });
     } catch (error) {
       if (error instanceof ApiError && error.status === 400) {
-        setStatus({ kind: "error", text: t("settings.notify_test_no_url") });
+        setStatus({ kind: "error", text: t("plugins.bark.test_no_url") });
       } else {
         setStatus({
           kind: "error",
           text:
             error instanceof ApiError
-              ? t("settings.notify_test_failed", { reason: error.message })
-              : t("settings.notify_test_failed", {
+              ? t("plugins.bark.test_failed", { reason: error.message })
+              : t("plugins.bark.test_failed", {
                   reason: (error as Error).message,
                 }),
         });
@@ -97,14 +117,14 @@ export function NotifySettings() {
     } finally {
       setIsTesting(false);
     }
-  }, [isDirty, save, t, url]);
+  }, [isDirty, save, t, url, savedUrl]);
 
   return (
     <section className="space-y-3">
       <div className="min-w-0">
-        <div className="text-sm font-medium">{t("settings.notify_label")}</div>
+        <div className="text-sm font-medium">{t("plugins.bark.label")}</div>
         <div className="text-xs text-muted-foreground">
-          {t("settings.notify_description")}
+          {t("plugins.bark.description")}
         </div>
       </div>
 
@@ -130,7 +150,7 @@ export function NotifySettings() {
           disabled={isTesting}
           className="rounded-full border border-border px-3.5 py-1.5 text-xs font-medium transition-colors duration-200 hover:bg-item-hover disabled:opacity-50"
         >
-          {isTesting ? t("settings.notify_testing") : t("settings.notify_test")}
+          {isTesting ? t("plugins.bark.testing") : t("plugins.bark.test")}
         </button>
         {status && (
           <span
@@ -146,8 +166,11 @@ export function NotifySettings() {
       </div>
 
       <div className="text-xs text-muted-foreground">
-        {t("settings.notify_hint")}
+        {t("plugins.bark.hint")}
       </div>
     </section>
   );
 }
+
+/** 掩码值导出给单测用（后端漏掩码时这条测试会先炸，不靠肉眼） */
+export { MASKED_VALUE };

@@ -464,11 +464,13 @@ definitions:
         type: boolean
       mute:
         type: boolean
-      notify:
-        description: Notify：命中后推一条到手机（Bark 兼容；地址留空 = 跟随设置里的全局推送地址）
-        type: boolean
-      notifyUrl:
-        type: string
+      pluginActions:
+        description: |-
+          PluginActions 插件贡献的动作（55 批；bark 的「推送到手机」等）。
+          必须在这层出/入都带上，否则编辑器改一条规则再保存会把推送动作悄悄丢掉。
+        items:
+          $ref: '#/definitions/krss_backend_internal_model.PluginActionRef'
+        type: array
       star:
         type: boolean
       summarize:
@@ -761,8 +763,6 @@ definitions:
     properties:
       autoReadability:
         type: boolean
-      barkUrl:
-        type: string
       fallbackUserAgent:
         type: string
       markReadOnScroll:
@@ -776,9 +776,6 @@ definitions:
     properties:
       autoReadability:
         type: boolean
-      barkUrl:
-        description: BarkURL 推送地址（自动化规则的「推送到手机」没单独填地址时用它）
-        type: string
       fallbackUserAgent:
         type: string
       markReadOnScroll:
@@ -1107,11 +1104,6 @@ definitions:
         type: string
       success:
         type: boolean
-    type: object
-  internal_handler.notifyTestResponse:
-    properties:
-      status:
-        type: integer
     type: object
   internal_handler.pluginCatalogItem:
     properties:
@@ -1491,6 +1483,17 @@ definitions:
         description: MaxPages 最多追几页；MaxItems 最多收几条（双上限，先到先停）。
         type: integer
       mode:
+        type: string
+    type: object
+  krss_backend_internal_model.PluginActionRef:
+    properties:
+      action:
+        type: string
+      config:
+        additionalProperties:
+          type: string
+        type: object
+      plugin:
         type: string
     type: object
   krss_backend_internal_model.ProxyOverrideConfig:
@@ -2428,19 +2431,6 @@ paths:
       summary: Update folder proxy override
       tags:
       - folders
-  /api/notify/test:
-    post:
-      description: Send a test push via the configured notify channel (Bark)
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/internal_handler.notifyTestResponse'
-      summary: Send test notification
-      tags:
-      - settings
   /api/plugins:
     get:
       produces:
@@ -2488,6 +2478,18 @@ paths:
             additionalProperties:
               type: integer
             type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+        "502":
+          description: 投递失败，error 里是插件给的可见原因（地址已打码）
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
       summary: 让插件动作自己发一条测试（Bark 发送测试推送）
       tags:
       - plugins

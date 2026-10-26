@@ -2,6 +2,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -163,13 +164,27 @@ func (h *PluginHandler) PutSettings(c echo.Context) error {
 // @Summary 让插件动作自己发一条测试（Bark 发送测试推送）
 // @Tags plugins
 // @Success 200 {object} map[string]int
+// @Failure 404 {object} errorResponse
+// @Failure 409 {object} errorResponse
+// @Failure 502 {object} errorResponse "投递失败，error 里是插件给的可见原因（地址已打码）"
 // @Router /api/plugins/{id}/actions/{actionId}/test [post]
 func (h *PluginHandler) TestAction(c echo.Context) error {
-	if err := h.service.TestAction(c.Request().Context(), strings.TrimSpace(c.Param("id")), strings.TrimSpace(c.Param("actionId"))); err != nil {
-		logger.Error("plugin action test failed", "module", "handler", "action", "test", "resource", "plugin", "result", "failed", "id", c.Param("id"), "error", err)
-		return writeServiceError(c, err)
+	err := h.service.TestAction(c.Request().Context(), strings.TrimSpace(c.Param("id")), strings.TrimSpace(c.Param("actionId")))
+	if err == nil {
+		return c.JSON(http.StatusOK, map[string]int{"status": http.StatusOK})
 	}
-	return c.JSON(http.StatusOK, map[string]int{"status": http.StatusOK})
+	logger.Error("plugin action test failed", "module", "handler", "action", "test", "resource", "plugin", "result", "failed", "id", c.Param("id"), "error", err)
+	// 没有地址 / 动作不可测这类「用户要改配置」的错 → 400；
+	// 其余（真出网失败）→ 502 并回插件给的原因，与旧的 /api/notify/test 同口径
+	// （只回 internal error 的话用户看不到为什么发不出去）。
+	switch {
+	case errors.Is(err, service.ErrInvalid), errors.Is(err, service.ErrPluginActionNotTestable):
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
+	case errors.Is(err, service.ErrPluginNotFound), errors.Is(err, service.ErrPluginDisabled):
+		return writeServiceError(c, err)
+	default:
+		return c.JSON(http.StatusBadGateway, errorResponse{Error: err.Error()})
+	}
 }
 
 // Rescan 手动重新扫描插件目录（55-7b：与 List 同一份 Catalog —— ensureExternal 就在 Catalog 链上，

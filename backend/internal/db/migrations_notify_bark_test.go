@@ -45,7 +45,7 @@ func TestMigrate_NotifyToBarkPlugin(t *testing.T) {
 	require.JSONEq(t, `{
 		"mute":false,"unmute":false,"markRead":false,"markUnread":false,
 		"star":false,"unstar":false,"keepOnly":false,"translate":false,"summarize":false,
-		"webhook":false,"notify":false,
+		"webhook":false,
 		"pluginActions":[{"plugin":"bark","action":"notify","config":{"url":"https://api.day.app/RULEKEY"}}]
 	}`, actions)
 
