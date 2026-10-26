@@ -134,6 +134,32 @@ func TestPluginService_Invoke(t *testing.T) {
 		require.Equal(t, int64(1), got.Feeds[0].ID)
 	})
 
+	t.Run("条目右键只有 entryIds 也要反推订阅", func(t *testing.T) {
+		var got plugin.InvokeRequest
+		action := &invokeAction{id: "open", got: &got}
+		p := &invokePlugin{
+			meta:    plugin.Meta{ID: "demo", Name: "Demo", Builtin: true},
+			actions: []plugin.Action{action},
+			contributions: []plugin.Contribution{{
+				ID: "demo-open", Surface: plugin.SurfaceEntryContextMenu, Action: "open",
+				Label: "用 Demo 打开", Selection: plugin.SelectionSingle,
+			}},
+		}
+		entries := &invokeEntryRepo{entries: map[int64]model.Entry{
+			10: {ID: 10, FeedID: 1, Title: stringPtr("标题")},
+		}}
+		feeds := &invokeFeedRepo{feeds: map[int64]model.Feed{1: {ID: 1, Title: "订阅"}}}
+		svc := newInvokeService(t, p, entries, feeds, nil)
+
+		_, err := svc.Invoke(ctx, "demo", "open", plugin.InvokeRequest{
+			Surface:   plugin.SurfaceEntryContextMenu,
+			Selection: plugin.Selection{EntryIDs: []int64{10}},
+		})
+		require.NoError(t, err)
+		require.Len(t, got.Feeds, 1, "没给 feedIds 时要按条目的 FeedID 反推，否则插件拿不到来源名")
+		require.Equal(t, int64(1), got.Feeds[0].ID)
+	})
+
 	t.Run("插件停用", func(t *testing.T) {
 		action := &invokeAction{id: "open"}
 		p := &invokePlugin{

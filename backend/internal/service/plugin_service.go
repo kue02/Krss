@@ -445,8 +445,25 @@ func (s *pluginService) enrichInvoke(ctx context.Context, meta plugin.Meta, req 
 	}
 
 	if allowed(permFeedsRead) && s.feeds != nil {
-		feeds := make([]model.Feed, 0, len(req.Selection.FeedIDs))
+		// 订阅来源有两种来路：调用方直接给了 feedIds（订阅右键），
+		// 或者只给了 entryIds（条目右键）——后者要按条目的 FeedID 反推，
+		// 否则插件拿不到来源名，推送正文会缺「来源 · 」那一段。
+		feedIDs := make([]int64, 0, len(req.Selection.FeedIDs)+len(req.Entries))
+		seenFeed := make(map[int64]bool, len(req.Selection.FeedIDs)+len(req.Entries))
 		for _, id := range req.Selection.FeedIDs {
+			if !seenFeed[id] {
+				seenFeed[id] = true
+				feedIDs = append(feedIDs, id)
+			}
+		}
+		for _, entry := range req.Entries {
+			if !seenFeed[entry.FeedID] {
+				seenFeed[entry.FeedID] = true
+				feedIDs = append(feedIDs, entry.FeedID)
+			}
+		}
+		feeds := make([]model.Feed, 0, len(feedIDs))
+		for _, id := range feedIDs {
 			feed, err := s.feeds.GetByID(ctx, id)
 			if err != nil {
 				logger.Warn("plugin invoke feed lookup failed",
