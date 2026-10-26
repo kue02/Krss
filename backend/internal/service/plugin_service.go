@@ -40,6 +40,9 @@ type PluginService interface {
 	// Contributions 全部已启用插件贡献的界面项（按 surface 分组、已清洗去重；没有就是空 map）。
 	// 只读内存注册表 —— 不带 ensureBuiltin/ensureExternal（启停位由 Catalog 那条链装载过）。
 	Contributions(ctx context.Context) map[plugin.Surface][]plugin.Contribution
+	// Decorations 聚合所有启用插件的正文装饰（56-21）：单个插件 300ms 超时，出错/超时只跳过并 warn，
+	// 绝不阻塞阅读；条目查不到或没挂条目读端回空数组（不是错误）。
+	Decorations(ctx context.Context, entryID int64) ([]plugin.Decoration, error)
 	// Invoke 界面直调一个插件动作（56-5）：校验 surface 声明与 selection，再按插件声明的权限裁剪上下文。
 	Invoke(ctx context.Context, pluginID, actionID string, req plugin.InvokeRequest) (plugin.InvokeResult, error)
 	// 插件专属数据（56-19）—— 只能碰自己的 collection；停用的插件读写一律拒。

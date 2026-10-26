@@ -258,6 +258,13 @@ definitions:
       deleted:
         type: integer
     type: object
+  internal_handler.entryDecorationsResponse:
+    properties:
+      decorations:
+        items:
+          $ref: '#/definitions/krss_backend_internal_plugin.Decoration'
+        type: array
+    type: object
   internal_handler.entryListResponse:
     properties:
       entries:
@@ -1590,6 +1597,27 @@ definitions:
       target:
         type: string
     type: object
+  krss_backend_internal_plugin.Decoration:
+    properties:
+      color:
+        type: string
+      data:
+        additionalProperties:
+          type: string
+        type: object
+      end:
+        type: integer
+      id:
+        type: string
+      plugin:
+        description: 宿主注入
+        type: string
+      start:
+        type: integer
+      style:
+        description: highlight|underline|note
+        type: string
+    type: object
   krss_backend_internal_plugin.Field:
     properties:
       help:
@@ -2324,6 +2352,31 @@ paths:
       summary: Update a domain rate limit
       tags:
       - domain-rate-limits
+  /api/entries/{id}/decorations:
+    get:
+      description: |-
+        区间偏移以「正文纯文本」为基准（rune 计数，HTML 已由宿主剥掉）；单个插件 300ms 超时，
+        出错/超时/越界一律跳过，返回的永远只是能画的那些。
+      parameters:
+      - description: Entry ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.entryDecorationsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: 一条条目的正文装饰（各启用插件声明的段落样式区间）
+      tags:
+      - entries
   /api/entries/search:
     get:
       description: Full-text search over entries (title/content/author/url) via FTS5

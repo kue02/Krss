@@ -223,6 +223,29 @@ func (r *Registry) EntryProcessors() []EntryProcessor {
 	return out
 }
 
+// Decorators 全部**已启用**插件的正文装饰器（按插件 ID 排序，顺序稳定）。
+// 没实现 RenderDecorator 的插件跳过（装饰是可选能力，不该逼每个插件都写一遍）。
+func (r *Registry) Decorators() []NamedDecorator {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	ids := make([]string, 0, len(r.plugins))
+	for id, p := range r.plugins {
+		if !r.enabled[id] {
+			continue
+		}
+		if _, ok := p.(RenderDecorator); !ok {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	out := make([]NamedDecorator, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, NamedDecorator{PluginID: id, Decorator: r.plugins[id].(RenderDecorator)})
+	}
+	return out
+}
+
 // FetchClassifiers 全部**已启用**插件的抓取失败归类器。
 func (r *Registry) FetchClassifiers() []FetchClassifier {
 	r.mu.RLock()

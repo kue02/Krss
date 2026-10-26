@@ -72,6 +72,21 @@ func (mr *MockPluginServiceMockRecorder) Contributions(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Contributions", reflect.TypeOf((*MockPluginService)(nil).Contributions), ctx)
 }
 
+// Decorations mocks base method.
+func (m *MockPluginService) Decorations(ctx context.Context, entryID int64) ([]plugin.Decoration, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Decorations", ctx, entryID)
+	ret0, _ := ret[0].([]plugin.Decoration)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Decorations indicates an expected call of Decorations.
+func (mr *MockPluginServiceMockRecorder) Decorations(ctx, entryID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Decorations", reflect.TypeOf((*MockPluginService)(nil).Decorations), ctx, entryID)
+}
+
 // DeleteData mocks base method.
 func (m *MockPluginService) DeleteData(ctx context.Context, pluginID, collection, key string) error {
 	m.ctrl.T.Helper()

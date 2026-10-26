@@ -42,6 +42,10 @@ func (h *PluginHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/plugins/:id/data/:collection/:key", h.GetPluginData)
 	g.PUT("/plugins/:id/data/:collection/:key", h.PutPluginData)
 	g.DELETE("/plugins/:id/data/:collection/:key", h.DeletePluginData)
+	// 正文装饰聚合（56-21）：路由按业务挂在 /entries/:id 下（阅读器取装饰的入口），
+	// 聚合逻辑却属插件域（要注册表 + 各插件），所以由 PluginHandler 注册 ——
+	// 为它把 PluginService 塞进 EntryHandler 要动 NewEntryHandler/NewRouter 的签名与既有测试，不值当。
+	g.GET("/entries/:id/decorations", h.ListEntryDecorations)
 }
 
 type pluginCatalogResponse struct {
@@ -408,4 +412,35 @@ func (h *PluginHandler) DeletePluginDataCollection(c echo.Context) error {
 		return writeServiceError(c, err)
 	}
 	return c.NoContent(http.StatusNoContent)
+}
+
+// entryDecorationsResponse 一条条目的正文装饰。空时是 []（不是 null）—— 阅读器直接遍历，不必判空。
+type entryDecorationsResponse struct {
+	Decorations []plugin.Decoration `json:"decorations"`
+}
+
+// ListEntryDecorations godoc
+// @Summary 一条条目的正文装饰（各启用插件声明的段落样式区间）
+// @Description 区间偏移以「正文纯文本」为基准（rune 计数，HTML 已由宿主剥掉）；单个插件 300ms 超时，
+// @Description 出错/超时/越界一律跳过，返回的永远只是能画的那些。
+// @Tags entries
+// @Produce json
+// @Param id path int true "Entry ID"
+// @Success 200 {object} entryDecorationsResponse
+// @Failure 400 {object} errorResponse
+// @Router /api/entries/{id}/decorations [get]
+func (h *PluginHandler) ListEntryDecorations(c echo.Context) error {
+	id, err := parseIDParam(c, "id")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid id"})
+	}
+	items, err := h.service.Decorations(c.Request().Context(), id)
+	if err != nil {
+		logger.Error("entry decorations failed", "module", "handler", "action", "decorate", "resource", "entry", "result", "failed", "entry_id", id, "error", err)
+		return writeServiceError(c, err)
+	}
+	if items == nil {
+		items = []plugin.Decoration{}
+	}
+	return c.JSON(http.StatusOK, entryDecorationsResponse{Decorations: items})
 }

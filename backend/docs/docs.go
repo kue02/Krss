@@ -424,6 +424,41 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/entries/{id}/decorations": {
+            "get": {
+                "description": "区间偏移以「正文纯文本」为基准（rune 计数，HTML 已由宿主剥掉）；单个插件 300ms 超时，\n出错/超时/越界一律跳过，返回的永远只是能画的那些。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "entries"
+                ],
+                "summary": "一条条目的正文装饰（各启用插件声明的段落样式区间）",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Entry ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.entryDecorationsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/feeds/merge-preview": {
             "get": {
                 "description": "Preview merging a subscription into the one that already owns the target URL",
@@ -4791,6 +4826,17 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handler.entryDecorationsResponse": {
+            "type": "object",
+            "properties": {
+                "decorations": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_plugin.Decoration"
+                    }
+                }
+            }
+        },
         "internal_handler.entryListResponse": {
             "type": "object",
             "properties": {
@@ -6794,6 +6840,37 @@ const docTemplate = `{
                     "$ref": "#/definitions/krss_backend_internal_plugin.Surface"
                 },
                 "target": {
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_plugin.Decoration": {
+            "type": "object",
+            "properties": {
+                "color": {
+                    "type": "string"
+                },
+                "data": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "end": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "plugin": {
+                    "description": "宿主注入",
+                    "type": "string"
+                },
+                "start": {
+                    "type": "integer"
+                },
+                "style": {
+                    "description": "highlight|underline|note",
                     "type": "string"
                 }
             }
