@@ -31,6 +31,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { RefreshReportDialog } from "@/components/refresh/RefreshReportDialog";
 import { useRefreshReportWatcher } from "@/hooks/useRefreshReportWatcher";
 import { FilterEditorDialog } from "@/components/automation/FilterEditorDialog";
+import { PluginActionDialog } from "@/plugins/PluginSlot";
 import { SettingsModal, ProfileModal } from "@/components/settings";
 import { EditFeedDialog } from "@/components/settings/tabs/EditFeedDialog";
 import { useEditingFeedStore } from "@/stores/editing-feed-store";
@@ -983,6 +984,9 @@ function App() {
             <UpdateNotice />
             {/* 规则编辑器：设置页/订阅右键/条目右键都靠 filter-editor-store 唤起它 */}
             <FilterEditorDialog />
+            {/* 插件动作的弹窗（参数表单 / 确认）：同样必须在顶层 ——
+                右键菜单一点就卸载，挂在菜单项里的弹窗会跟着消失 */}
+            <PluginActionDialog />
             {/*
              * 设置 / 资料弹窗挂在这里（与侧栏 Sheet 平级），不挂在 Sidebar 里 ——
              * 移动端 Sidebar 装在 Sheet 里，Sheet 一关 Sidebar 就卸载，
