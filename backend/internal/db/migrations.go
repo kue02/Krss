@@ -621,6 +621,35 @@ func runMigrations(db *sql.DB) error {
 		return err
 	}
 
+	// Migration 34: 插件专属数据（56-17）—— 一张三段式 KV 表，插件自己起 collection 名放东西。
+	// 本体不为每个插件各开一张表：插件是即装即用的（外部插件丢目录就上），
+	// 它的存储需求不该逼着宿主改 schema。复合主键 (plugin_id, collection, key)
+	// ⇒ 同键重写是覆盖不是插新行；索引支持「列/删整 collection」。
+	if err := migratePluginData(db); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// migratePluginData 建插件专属数据表（迁移 34）。
+// 建表 + 索引都是 IF NOT EXISTS，重跑幂等（已有数据一个字节不动）。
+func migratePluginData(db *sql.DB) error {
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS plugin_data (
+			plugin_id  TEXT NOT NULL,
+			collection TEXT NOT NULL,
+			key        TEXT NOT NULL,
+			value      TEXT NOT NULL,
+			updated_at INTEGER NOT NULL,
+			PRIMARY KEY (plugin_id, collection, key)
+		)
+	`); err != nil {
+		return fmt.Errorf("create plugin_data table: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_plugin_data_collection ON plugin_data (plugin_id, collection)`); err != nil {
+		return fmt.Errorf("create idx_plugin_data_collection: %w", err)
+	}
 	return nil
 }
 
