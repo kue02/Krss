@@ -490,11 +490,8 @@ export function FilterEditor({
     return typeof savedId === "string" && savedId ? savedId : null;
   };
 
-  /** 插件动作的 selection：id 转成后端 Selection.FilterID 认的数字（非数字就不带，别塞 NaN） */
-  const filterSelection = (id: string | null | undefined) => {
-    const numeric = Number(id);
-    return id && Number.isFinite(numeric) ? { filterId: numeric } : {};
-  };
+  /** 插件动作的 selection：id 原样传字符串（int64 走 JS number 会丢精度，后端 Selection 两种都认） */
+  const filterSelection = (id: string | null | undefined) => (id ? { filterId: id } : {});
 
   const valuePlaceholder = (condition: FilterCondition): string => {
     if (condition.field === "ai_relevance") {

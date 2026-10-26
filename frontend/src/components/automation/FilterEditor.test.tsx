@@ -529,7 +529,7 @@ describe("FilterEditor × 插件底栏（56-14）", () => {
     expect(order).toEqual(["save", "invoke"]);
     // 推的是刚落库的这条规则，而不是「没有规则的推送」
     expect(invokeMutate.mock.calls[0]?.[0]).toEqual({
-      selection: { filterId: 42 },
+      selection: { filterId: "42" },
     });
   });
 
@@ -550,7 +550,7 @@ describe("FilterEditor × 插件底栏（56-14）", () => {
     await waitFor(() => expect(invokeMutate).toHaveBeenCalledTimes(1));
     expect(onSubmit).not.toHaveBeenCalled();
     expect(invokeMutate.mock.calls[0]?.[0]).toEqual({
-      selection: { filterId: 7 },
+      selection: { filterId: "7" },
     });
   });
 

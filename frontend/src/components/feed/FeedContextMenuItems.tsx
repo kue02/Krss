@@ -214,7 +214,7 @@ export function FeedContextMenuItems({
       <PluginSlot
         surface="feed.contextmenu"
         variant="menu"
-        selection={{ feedIds: [Number(feed.id)] }}
+        selection={{ feedIds: [feed.id] }}
       />
     </>
   );

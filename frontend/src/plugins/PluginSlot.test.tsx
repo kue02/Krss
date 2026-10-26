@@ -63,7 +63,7 @@ function contribution(
 /** 插槽 + 弹窗宿主（线上也是分开挂的：宿主在 App 顶层） */
 function renderSlot(
   variant: "menu" | "toolbar",
-  selection: PluginSelection = { entryIds: [1] },
+  selection: PluginSelection = { entryIds: ["1"] },
 ) {
   const slot = (
     <PluginSlot
@@ -131,7 +131,7 @@ describe("PluginSlot", () => {
       contribution({ id: "single-only", label: "只处理单条", selection: "single" }),
       contribution({ id: "any", action: "any", label: "随时可用", selection: "none" }),
     ];
-    renderSlot("menu", { entryIds: [1, 2] });
+    renderSlot("menu", { entryIds: ["1", "2"] });
     openMenu();
 
     expect(screen.queryByText("只处理单条")).toBeNull();
@@ -155,7 +155,7 @@ describe("PluginSlot", () => {
         ],
       }),
     ];
-    renderSlot("menu", { entryIds: [7] });
+    renderSlot("menu", { entryIds: ["7"] });
     openMenu();
     fireEvent.click(screen.getByText("加一条备注"));
 
@@ -172,7 +172,7 @@ describe("PluginSlot", () => {
     fireEvent.click(screen.getByText("actions.confirm"));
     expect(mutateMock).toHaveBeenCalledTimes(1);
     expect(mutateMock.mock.calls[0]?.[0]).toEqual({
-      selection: { entryIds: [7] },
+      selection: { entryIds: ["7"] },
       config: { note: "先看这段" },
     });
   });
@@ -186,7 +186,7 @@ describe("PluginSlot", () => {
         confirm: "确定要清空吗？",
       }),
     ];
-    renderSlot("toolbar", { entryIds: [3] });
+    renderSlot("toolbar", { entryIds: ["3"] });
     fireEvent.click(screen.getByText("清空这条的缓存"));
 
     expect(screen.getByText("确定要清空吗？")).toBeTruthy();

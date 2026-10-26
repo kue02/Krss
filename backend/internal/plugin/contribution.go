@@ -2,6 +2,9 @@ package plugin
 
 import (
 	"context"
+	"encoding/json"
+	"strconv"
+	"strings"
 
 	"krss/backend/internal/model"
 )
@@ -107,4 +110,80 @@ type InvokeResult struct {
 	Message string   `json:"message,omitempty"`
 	Level   string   `json:"level,omitempty"`
 	Refresh []string `json:"refresh,omitempty"`
+}
+
+// UnmarshalJSON 让 selection 里的 id 同时接受 JSON 字符串与数字。
+// 前端 id 是 int64 的字符串形式（19 位）——走 number 会丢精度
+// （实测 2114685590489272320 变成 ...300，插件就会去操作错条目），
+// 所以宿主一律发字符串；手写 curl / 第三方插件发数字也认。
+func (s *Selection) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		EntryIDs  []json.RawMessage `json:"entryIds"`
+		FeedIDs   []json.RawMessage `json:"feedIds"`
+		FilterID  json.RawMessage   `json:"filterId"`
+		ViewID    json.RawMessage   `json:"viewId"`
+		TextRange *TextRange        `json:"textRange"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	entryIDs, err := parseIDList(raw.EntryIDs)
+	if err != nil {
+		return err
+	}
+	feedIDs, err := parseIDList(raw.FeedIDs)
+	if err != nil {
+		return err
+	}
+	filterID, err := parseIDPtr(raw.FilterID)
+	if err != nil {
+		return err
+	}
+	viewID, err := parseIDPtr(raw.ViewID)
+	if err != nil {
+		return err
+	}
+	*s = Selection{
+		EntryIDs:  entryIDs,
+		FeedIDs:   feedIDs,
+		FilterID:  filterID,
+		ViewID:    viewID,
+		TextRange: raw.TextRange,
+	}
+	return nil
+}
+
+func parseIDList(items []json.RawMessage) ([]int64, error) {
+	if len(items) == 0 {
+		return nil, nil
+	}
+	out := make([]int64, 0, len(items))
+	for _, item := range items {
+		id, err := parseID(item)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, nil
+}
+
+func parseIDPtr(item json.RawMessage) (*int64, error) {
+	text := strings.TrimSpace(string(item))
+	if text == "" || text == "null" {
+		return nil, nil
+	}
+	id, err := parseID(item)
+	if err != nil {
+		return nil, err
+	}
+	return &id, nil
+}
+
+func parseID(item json.RawMessage) (int64, error) {
+	text := strings.Trim(strings.TrimSpace(string(item)), `"`)
+	if text == "" {
+		return 0, nil
+	}
+	return strconv.ParseInt(text, 10, 64)
 }

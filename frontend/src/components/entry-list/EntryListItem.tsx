@@ -268,7 +268,7 @@ export function EntryContextMenuContent({
       <PluginSlot
         surface="entry.contextmenu"
         variant="menu"
-        selection={{ entryIds: [Number(entry.id)] }}
+        selection={{ entryIds: [entry.id] }}
       />
     </ContextMenuContent>
   );

@@ -70,11 +70,13 @@ export const PLUGIN_MASKED_VALUE = "••••••••";
 export type PluginSelectionMode = "none" | "single" | "multi";
 
 /** 调用动作时随附的上下文（宿主按 surface 填，插件拿到什么就在什么上做事） */
+// 注意：id 一律用字符串。后端 id 是 int64（19 位），走 JS number 会丢精度
+// （实测 2114685590489272320 变成 ...300，插件会去操作错条目）。
 export type PluginSelection = {
-  entryIds?: number[];
-  feedIds?: number[];
-  filterId?: number;
-  viewId?: number;
+  entryIds?: string[];
+  feedIds?: string[];
+  filterId?: string;
+  viewId?: string;
   textRange?: { start: number; end: number; text: string };
 };
 

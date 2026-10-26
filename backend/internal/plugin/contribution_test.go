@@ -1,6 +1,7 @@
 package plugin_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -39,4 +40,23 @@ func TestSelection(t *testing.T) {
 	require.False(t, plugin.Selection{ViewID: &viewID}.IsEmpty())
 
 	require.False(t, plugin.Selection{TextRange: &plugin.TextRange{Start: 0, End: 2, Text: "ab"}}.IsEmpty())
+}
+
+// TestSelection_UnmarshalAcceptsStringIDs 宿主发字符串 id（int64 安全），
+// 手写 curl 发数字也得认；19 位 id 必须原样还原。
+func TestSelection_UnmarshalAcceptsStringIDs(t *testing.T) {
+	var got plugin.Selection
+	require.NoError(t, json.Unmarshal([]byte(`{"entryIds":["2114685590489272320"],"feedIds":[1],"filterId":"2100484683115532288","viewId":2}`), &got))
+	require.Equal(t, []int64{2114685590489272320}, got.EntryIDs)
+	require.Equal(t, []int64{1}, got.FeedIDs)
+	require.NotNil(t, got.FilterID)
+	require.Equal(t, int64(2100484683115532288), *got.FilterID)
+	require.NotNil(t, got.ViewID)
+	require.Equal(t, int64(2), *got.ViewID)
+}
+
+// TestSelection_UnmarshalRejectsGarbage 非数字 id 要报错，不能静默变 0。
+func TestSelection_UnmarshalRejectsGarbage(t *testing.T) {
+	var got plugin.Selection
+	require.Error(t, json.Unmarshal([]byte(`{"entryIds":["abc"]}`), &got))
 }

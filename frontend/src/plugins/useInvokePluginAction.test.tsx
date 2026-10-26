@@ -28,7 +28,7 @@ const contribution: PluginContribution = {
   refresh: ["entries"],
 };
 
-const selection = { entryIds: [1, 2] };
+const selection = { entryIds: ["1", "2"] };
 
 function setup(item: PluginContribution = contribution) {
   const queryClient = new QueryClient({
