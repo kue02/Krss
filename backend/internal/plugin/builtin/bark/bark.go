@@ -137,31 +137,33 @@ const (
 	notifyBodyLimit  = 120
 )
 
-// BuildNotifyPayload 从一次命中构造推送内容。
-// 标题 = 规则名（它会显示在锁屏第一行）；正文 = 来源 · 条目标题；group = 规则名；url = 条目链接。
+// BuildNotifyPayload 构造推送报文。**口径必须与本体 NotifyService 逐字节一致**（55-13 搬走时
+// 用户可见行为零变化）：title = 条目标题（空则「（无标题）」）；body = 来源 · 规则「名字」；
+// url = 条目链接；group 固定「Krss 自动化」。改动前先 `git show 8089049^:backend/internal/service/notify_service.go` 对照。
 func BuildNotifyPayload(filter model.Filter, feed model.Feed, entry model.Entry) NotifyPayload {
-	group := truncateRunes(strings.TrimSpace(filter.Name), notifyBodyLimit)
-	title := truncateRunes(strings.TrimSpace(filter.Name), notifyTitleLimit)
+	title := ""
+	if entry.Title != nil {
+		title = strings.TrimSpace(*entry.Title)
+	}
 	if title == "" {
-		title = "Krss 推送"
-	}
-	entryTitle := "（无标题）"
-	if entry.Title != nil && strings.TrimSpace(*entry.Title) != "" {
-		entryTitle = strings.TrimSpace(*entry.Title)
-	}
-	body := entryTitle
-	if feedTitle := strings.TrimSpace(feed.Title); feedTitle != "" {
-		body = feedTitle + " · " + entryTitle
+		title = "（无标题）"
 	}
 	link := ""
 	if entry.URL != nil {
 		link = strings.TrimSpace(*entry.URL)
 	}
+	parts := make([]string, 0, 2)
+	if feedTitle := strings.TrimSpace(feed.Title); feedTitle != "" {
+		parts = append(parts, feedTitle)
+	}
+	if filterName := strings.TrimSpace(filter.Name); filterName != "" {
+		parts = append(parts, "规则「"+filterName+"」")
+	}
 	return NotifyPayload{
-		Title: title,
-		Body:  truncateRunes(body, notifyBodyLimit),
+		Title: truncateRunes(title, notifyTitleLimit),
+		Body:  truncateRunes(strings.Join(parts, " · "), notifyBodyLimit),
 		URL:   link,
-		Group: group,
+		Group: "Krss 自动化",
 	}
 }
 

@@ -154,10 +154,12 @@ func TestNotifyAction_PayloadAndUserAgent(t *testing.T) {
 		Group string `json:"group"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(got.body), &payload))
-	require.Equal(t, "krss 推送", payload.Title)
-	require.Equal(t, "少数派 · 新文章", payload.Body)
+	// 口径与本体 NotifyService 逐字节一致（55-13 搬走时行为零变化）：
+	// title = 条目标题；body = 来源 · 规则「名字」；group 固定「Krss 自动化」。
+	require.Equal(t, "新文章", payload.Title)
+	require.Equal(t, "少数派 · 规则「krss 推送」", payload.Body)
 	require.Equal(t, "https://example.com/1", payload.URL)
-	require.Equal(t, "krss 推送", payload.Group)
+	require.Equal(t, "Krss 自动化", payload.Group)
 }
 
 // TestNotifyAction_PayloadTruncation 报文过长要截断（手机上太长反而看不清）。
@@ -184,7 +186,7 @@ func TestNotifyAction_PayloadTruncation(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte((*calls)[0].body), &payload))
 	require.Len(t, []rune(payload.Title), 60, "标题截 60 个字符")
 	require.Len(t, []rune(payload.Body), 120, "正文截 120 个字符")
-	require.Len(t, []rune(payload.Group), 120)
+	require.Equal(t, "Krss 自动化", payload.Group, "group 是固定串，不随规则名截断")
 }
 
 // TestActionTest ⑥ 设置页「发送测试」：没地址先报错；有地址发一条测试报文。
