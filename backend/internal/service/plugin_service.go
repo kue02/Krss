@@ -36,6 +36,9 @@ type PluginService interface {
 	PutSettings(ctx context.Context, id string, values map[string]string) (PluginSettingsResult, error)
 	// TestAction 让动作自己发一条测试（Bark「发送测试推送」）。
 	TestAction(ctx context.Context, id, actionID string) error
+	// Contributions 全部已启用插件贡献的界面项（按 surface 分组、已清洗去重；没有就是空 map）。
+	// 只读内存注册表 —— 不带 ensureBuiltin/ensureExternal（启停位由 Catalog 那条链装载过）。
+	Contributions(ctx context.Context) map[plugin.Surface][]plugin.Contribution
 }
 
 type pluginService struct {
@@ -312,4 +315,9 @@ func (s *pluginService) TestAction(ctx context.Context, id, actionID string) err
 		return err
 	}
 	return nil
+}
+
+// Contributions 各 surface 的界面贡献（只含已启用插件；丢弃/去重/默认 selection 都在注册表那层做完）。
+func (s *pluginService) Contributions(_ context.Context) map[plugin.Surface][]plugin.Contribution {
+	return s.registry.AllContributions()
 }

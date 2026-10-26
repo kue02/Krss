@@ -27,6 +27,8 @@ func (h *PluginHandler) RegisterRoutes(g *echo.Group) {
 	// echo 虽以静态优先，固定段靠前是本项目的明规则）
 	g.POST("/plugins/rescan", h.Rescan)
 	g.GET("/plugins", h.List)
+	// 清单里的固定段：必须在 /plugins/:id 之前注册
+	g.GET("/plugins/contributions", h.ListContributions)
 	g.PATCH("/plugins/:id", h.SetEnabled)
 	g.GET("/plugins/:id/settings", h.GetSettings)
 	g.PUT("/plugins/:id/settings", h.PutSettings)
@@ -82,6 +84,25 @@ type pluginSettingsRequest struct {
 
 type pluginEnabledRequest struct {
 	Enabled bool `json:"enabled"`
+}
+
+// pluginContributionsResponse 各 surface 的界面贡献。surfaces 为空时是 {}（handler 负责初始化 map）。
+type pluginContributionsResponse struct {
+	Surfaces map[plugin.Surface][]plugin.Contribution `json:"surfaces"`
+}
+
+// ListContributions godoc
+// @Summary 各插入位置（surface）上可用的插件界面项
+// @Tags plugins
+// @Produce json
+// @Success 200 {object} pluginContributionsResponse
+// @Router /api/plugins/contributions [get]
+func (h *PluginHandler) ListContributions(c echo.Context) error {
+	surfaces := h.service.Contributions(c.Request().Context())
+	if surfaces == nil {
+		surfaces = map[plugin.Surface][]plugin.Contribution{}
+	}
+	return c.JSON(http.StatusOK, pluginContributionsResponse{Surfaces: surfaces})
 }
 
 // List godoc

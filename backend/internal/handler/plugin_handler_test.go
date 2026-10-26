@@ -218,3 +218,62 @@ func TestPluginHandler_Rescan(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Contains(t, rec.Body.String(), `"id":"demo"`)
 }
+
+// contributionsPlugin test-only 假插件：只声明一条合法的右键菜单项。
+type contributionsPlugin struct{}
+
+func (contributionsPlugin) Meta() plugin.Meta {
+	return plugin.Meta{ID: "contrib-demo", Name: "Contrib Demo", Builtin: true}
+}
+func (contributionsPlugin) Actions() []plugin.Action                   { return nil }
+func (contributionsPlugin) SettingsSections() []plugin.SettingsSection { return nil }
+func (contributionsPlugin) EntryProcessors() []plugin.EntryProcessor   { return nil }
+func (contributionsPlugin) FetchClassifiers() []plugin.FetchClassifier { return nil }
+func (contributionsPlugin) Contributions() []plugin.Contribution {
+	return []plugin.Contribution{
+		{ID: "demo-open", Surface: plugin.SurfaceEntryContextMenu, Action: "open", Label: "用 Demo 打开"},
+	}
+}
+
+// newContributionsServer 真注册表 + 真 service 挂到 echo 上（本组用例要验「注册 → 启用 → 停用」整条链，
+// 用 mock 只能验 handler 转手）。repos 传 nil —— Contributions 只读注册表，不碰库。
+func newContributionsServer(t *testing.T) (*echo.Echo, *plugin.Registry) {
+	t.Helper()
+	registry := plugin.NewRegistry()
+	require.NoError(t, registry.Register(contributionsPlugin{}))
+	e := echo.New()
+	handler.NewPluginHandler(service.NewPluginService(registry, nil, nil)).RegisterRoutes(e.Group("/api"))
+	return e, registry
+}
+
+// TestPluginHandler_Contributions 启用的插件贡献 → 200 且按 surface 分组可见。
+// 走真 HTTP 请求顺带证明 /plugins/contributions 没被 /plugins/:id 吃掉。
+func TestPluginHandler_Contributions(t *testing.T) {
+	e, _ := newContributionsServer(t)
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/plugins/contributions", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Surfaces map[string][]plugin.Contribution `json:"surfaces"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	items := resp.Surfaces[string(plugin.SurfaceEntryContextMenu)]
+	require.Len(t, items, 1)
+	require.Equal(t, "demo-open", items[0].ID)
+	require.Equal(t, "open", items[0].Action)
+	require.Equal(t, plugin.SelectionNone, items[0].Selection, "宿主补的默认 selection 要出得去")
+}
+
+// TestPluginHandler_Contributions_Disabled 停用后 surfaces 必须是 {}（不是 null —— 前端要能直接遍历）。
+func TestPluginHandler_Contributions_Disabled(t *testing.T) {
+	e, registry := newContributionsServer(t)
+	require.True(t, registry.SetEnabled("contrib-demo", false))
+
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/plugins/contributions", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotContains(t, rec.Body.String(), "null", "空结果不许序列化成 null")
+	require.JSONEq(t, `{"surfaces":{}}`, rec.Body.String())
+}

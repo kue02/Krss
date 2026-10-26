@@ -743,6 +743,25 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/plugins/contributions": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "plugins"
+                ],
+                "summary": "各插入位置（surface）上可用的插件界面项",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.pluginContributionsResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/plugins/{id}": {
             "patch": {
                 "consumes": [
@@ -5721,6 +5740,20 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handler.pluginContributionsResponse": {
+            "type": "object",
+            "properties": {
+                "surfaces": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/definitions/krss_backend_internal_plugin.Contribution"
+                        }
+                    }
+                }
+            }
+        },
         "internal_handler.pluginEnabledRequest": {
             "type": "object",
             "properties": {
@@ -6304,6 +6337,53 @@ const docTemplate = `{
                 }
             }
         },
+        "krss_backend_internal_plugin.Contribution": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string"
+                },
+                "confirm": {
+                    "type": "string"
+                },
+                "fields": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_plugin.Field"
+                    }
+                },
+                "group": {
+                    "type": "string"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "op": {
+                    "type": "string"
+                },
+                "refresh": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "selection": {
+                    "type": "string"
+                },
+                "surface": {
+                    "$ref": "#/definitions/krss_backend_internal_plugin.Surface"
+                },
+                "target": {
+                    "type": "string"
+                }
+            }
+        },
         "krss_backend_internal_plugin.Field": {
             "type": "object",
             "properties": {
@@ -6361,6 +6441,31 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "krss_backend_internal_plugin.Surface": {
+            "type": "string",
+            "enum": [
+                "entry.contextmenu",
+                "entry.list.toolbar",
+                "entry.reader.toolbar",
+                "entry.reader.body",
+                "feed.contextmenu",
+                "filter.editor.footer",
+                "settings.section",
+                "app.command",
+                "view.toolbar"
+            ],
+            "x-enum-varnames": [
+                "SurfaceEntryContextMenu",
+                "SurfaceEntryListToolbar",
+                "SurfaceEntryReaderToolbar",
+                "SurfaceEntryReaderBody",
+                "SurfaceFeedContextMenu",
+                "SurfaceFilterEditorFooter",
+                "SurfaceSettingsSection",
+                "SurfaceAppCommand",
+                "SurfaceViewToolbar"
+            ]
         },
         "krss_backend_internal_service.AIProviderConfig": {
             "type": "object",

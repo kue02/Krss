@@ -1132,6 +1132,15 @@ definitions:
           $ref: '#/definitions/internal_handler.pluginCatalogItem'
         type: array
     type: object
+  internal_handler.pluginContributionsResponse:
+    properties:
+      surfaces:
+        additionalProperties:
+          items:
+            $ref: '#/definitions/krss_backend_internal_plugin.Contribution'
+          type: array
+        type: object
+    type: object
   internal_handler.pluginEnabledRequest:
     properties:
       enabled:
@@ -1517,6 +1526,37 @@ definitions:
       pluginName:
         type: string
     type: object
+  krss_backend_internal_plugin.Contribution:
+    properties:
+      action:
+        type: string
+      confirm:
+        type: string
+      fields:
+        items:
+          $ref: '#/definitions/krss_backend_internal_plugin.Field'
+        type: array
+      group:
+        type: string
+      icon:
+        type: string
+      id:
+        type: string
+      label:
+        type: string
+      op:
+        type: string
+      refresh:
+        items:
+          type: string
+        type: array
+      selection:
+        type: string
+      surface:
+        $ref: '#/definitions/krss_backend_internal_plugin.Surface'
+      target:
+        type: string
+    type: object
   krss_backend_internal_plugin.Field:
     properties:
       help:
@@ -1555,6 +1595,28 @@ definitions:
       title:
         type: string
     type: object
+  krss_backend_internal_plugin.Surface:
+    enum:
+    - entry.contextmenu
+    - entry.list.toolbar
+    - entry.reader.toolbar
+    - entry.reader.body
+    - feed.contextmenu
+    - filter.editor.footer
+    - settings.section
+    - app.command
+    - view.toolbar
+    type: string
+    x-enum-varnames:
+    - SurfaceEntryContextMenu
+    - SurfaceEntryListToolbar
+    - SurfaceEntryReaderToolbar
+    - SurfaceEntryReaderBody
+    - SurfaceFeedContextMenu
+    - SurfaceFilterEditorFooter
+    - SurfaceSettingsSection
+    - SurfaceAppCommand
+    - SurfaceViewToolbar
   krss_backend_internal_service.AIProviderConfig:
     properties:
       apiKey:
@@ -2507,6 +2569,18 @@ paths:
           schema:
             $ref: '#/definitions/internal_handler.pluginSettingsResponse'
       summary: 写插件设置（值为掩码 = 保持原值）
+      tags:
+      - plugins
+  /api/plugins/contributions:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.pluginContributionsResponse'
+      summary: 各插入位置（surface）上可用的插件界面项
       tags:
       - plugins
   /api/proxy/image/{encoded}:
