@@ -107,3 +107,22 @@ export type PluginInvokeResult = {
   level?: "success" | "error" | "info" | string;
   refresh?: string[];
 };
+
+/*
+ * 正文装饰（56-22）。后端形状见 `GET /api/entries/:id/decorations` 的
+ * `{ decorations: [...] }`：插件在正文上画的一段「行内标记」，例如标注插件高亮的一段原文。
+ *
+ * `start`/`end` 是**纯文本的 rune 下标**（emoji 算 1 个位置），不是 HTML 字符偏移 ——
+ * 前端由 `components/reader/decorations.ts` 落到文本节点上。
+ */
+export type PluginDecoration = {
+  plugin: string;
+  id: string;
+  start: number;
+  end: number;
+  /** 语义名，落到 `data-decoration-style`（高亮 / 下划线 / 波浪线由样式表决定） */
+  style: string;
+  color?: string;
+  /** 插件自留的附加信息，原样落到 `data-decoration-data`（JSON） */
+  data?: Record<string, string>;
+};

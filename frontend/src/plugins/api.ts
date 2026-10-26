@@ -1,6 +1,7 @@
 import { request } from "@/api";
 import type {
   PluginContribution,
+  PluginDecoration,
   PluginInvokeResult,
   PluginMeta,
   PluginSelection,
@@ -121,4 +122,22 @@ export function invokePluginAction(
     `/api/plugins/${encodeURIComponent(plugin)}/actions/${encodeURIComponent(action)}/invoke`,
     { method: "POST", body: JSON.stringify(body) },
   ).then((data) => data ?? {});
+}
+
+/**
+ * 某条目身上的正文装饰（56-22）：`{ decorations: [...] }`。
+ *
+ * 偏移是纯文本的 rune 下标，落到 DOM 上的活由 `components/reader/decorations.ts` 干。
+ * 后端 Go 侧空 slice 会序列化成 `null`（没有插件画东西时就是 `{decorations: null}`），
+ * 这里统一摊成 `[]` —— 调用方直接交给 `applyDecorations`，不用再判空。
+ *
+ * 路径参数 encodeURIComponent：条目 id 是 19 位数字串（不转数字，见 `PluginSelection` 的注释），
+ * 转义只是照本文件既有做法统一一遍。
+ */
+export function fetchEntryDecorations(
+  entryId: string,
+): Promise<PluginDecoration[]> {
+  return request<{ decorations?: PluginDecoration[] | null }>(
+    `/api/entries/${encodeURIComponent(entryId)}/decorations`,
+  ).then((data) => data.decorations ?? []);
 }
