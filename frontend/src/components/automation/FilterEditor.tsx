@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  Checkbox,
   Fieldset,
   ToggleButton,
   ToggleButtonGroup,
@@ -11,11 +12,14 @@ import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Select } from "@/components/ui/select";
 import { ViewIconPicker } from "@/components/automation/ViewIconPicker";
 import { FeedScopePicker } from "@/components/automation/FeedScopePicker";
+import { PluginActionFields } from "@/components/automation/PluginActionFields";
 import { CONTENT_TYPE_ORDER } from "@/lib/content-type-meta";
 import type { ContentType } from "@/types/api";
 import { useFeeds } from "@/hooks/useFeeds";
 import { useFolders } from "@/hooks/useFolders";
 import { useFilterPreview } from "@/hooks/useFilters";
+import { fetchPlugins } from "@/plugins/api";
+import type { PluginActionMeta, PluginMeta } from "@/plugins/types";
 import {
   FILTER_CONDITION_FIELDS,
   FILTER_CONDITION_OPERATORS,
@@ -136,6 +140,39 @@ export function FilterEditor({
     useState<FilterPreviewResult | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
 
+  /**
+   * 55-14：插件贡献的动作。清单来自 `GET /api/plugins` —— 只把**已启用插件里已启用的动作**
+   * 拿出来渲染（停用即不在编辑器里出现，这是插件契约，不是这里额外加的守卫）。
+   */
+  const [plugins, setPlugins] = useState<PluginMeta[]>([]);
+  /** 保存时被判为「必填却空着」的字段：键 `${pluginId}/${actionId}` → 字段键数组（标红用） */
+  const [invalidPluginFields, setInvalidPluginFields] = useState<
+    Record<string, string[]>
+  >({});
+
+  useEffect(() => {
+    let alive = true;
+    fetchPlugins()
+      .then((list) => {
+        if (alive) setPlugins(list);
+      })
+      // 清单拿不到不能让整张表单崩：插件动作区就是不出现，规则其余部分照常编辑/保存
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+    // 依赖 initial：抽屉关掉后编辑器仍挂在那儿，重新打开（新草稿）必须重拉一次 ——
+    // 否则「刚刚停用某个插件」后编辑器还在列出它的动作（真机踩到，只有刷新页面才消失）
+  }, [initial]);
+
+  const pluginActions = useMemo(
+    () =>
+      plugins.flatMap((plugin) =>
+        plugin.enabled ? plugin.actions.filter((action) => action.enabled) : [],
+      ),
+    [plugins],
+  );
+
   const update = (patch: Partial<FilterWritePayload>) => {
     setDraft((current) => ({ ...current, ...patch }));
     setPreviewResult(null);
@@ -165,6 +202,83 @@ export function FilterEditor({
       conditions: current.conditions.filter((_, i) => i !== index),
     }));
     setPreviewResult(null);
+  };
+
+  /** 插件动作在界面里的唯一键（同一 (plugin, action) 只允许一条引用） */
+  const pluginActionKey = (action: PluginActionMeta) =>
+    `${action.pluginId}/${action.actionId}`;
+
+  const findPluginAction = (pluginId: string, actionId: string) =>
+    pluginActions.find(
+      (action) => action.pluginId === pluginId && action.actionId === actionId,
+    );
+
+  /** 勾选 / 取消勾选一个插件动作：勾上建一条空 config 的引用，取消就从数组里摘掉 */
+  const togglePluginAction = (action: PluginActionMeta, next: boolean) => {
+    setDraft((current) => {
+      const rest = (current.actions.pluginActions ?? []).filter(
+        (item) =>
+          !(item.plugin === action.pluginId && item.action === action.actionId),
+      );
+      return {
+        ...current,
+        actions: {
+          ...current.actions,
+          pluginActions: next
+            ? [
+                ...rest,
+                {
+                  plugin: action.pluginId,
+                  action: action.actionId,
+                  config: {},
+                },
+              ]
+            : rest,
+        },
+      };
+    });
+    setInvalidPluginFields({});
+    setPreviewResult(null);
+  };
+
+  /** 改某个动作的一个字段（不会影响其它动作的同名字段） */
+  const setPluginActionField = (
+    action: PluginActionMeta,
+    key: string,
+    value: string,
+  ) => {
+    setDraft((current) => ({
+      ...current,
+      actions: {
+        ...current.actions,
+        pluginActions: (current.actions.pluginActions ?? []).map((item) =>
+          item.plugin === action.pluginId && item.action === action.actionId
+            ? { ...item, config: { ...item.config, [key]: value } }
+            : item,
+        ),
+      },
+    }));
+    setInvalidPluginFields({});
+    setPreviewResult(null);
+  };
+
+  /**
+   * 插件动作里「声明必填却空着」的字段。保存与预览共用这一份判定 ——
+   * 校验只看插件自己声明的 required，本体不认识任何具体插件字段。
+   */
+  const pluginFieldIssues = (payload: FilterWritePayload) => {
+    const issues: { action: PluginActionMeta; field: string; label: string }[] =
+      [];
+    for (const ref of payload.actions.pluginActions ?? []) {
+      const action = findPluginAction(ref.plugin, ref.action);
+      if (!action) continue;
+      for (const field of action.fields) {
+        if (field.required && !(ref.config?.[field.key] ?? "").trim()) {
+          issues.push({ action, field: field.key, label: field.label });
+        }
+      }
+    }
+    return issues;
   };
 
   /** 三维度一律三态：none=不动 / positive=正向 / negative=反向（互斥天然成立） */
@@ -230,6 +344,13 @@ export function FilterEditor({
       if (!hasAnyAction(payload.actions)) return t("automation.invalid");
       if (payload.actions.webhook && !(payload.actions.webhookUrl ?? "").trim()) {
         return t("automation.webhook_needs_url");
+      }
+      // 插件动作的必填字段：文案里带字段名，用户不用猜是哪一栏
+      const pluginIssue = pluginFieldIssues(payload)[0];
+      if (pluginIssue) {
+        return t("automation.plugin_action_field_required", {
+          field: pluginIssue.label,
+        });
       }
     }
     if (payload.scopeType === "folder" && !payload.scopeId) {
@@ -316,6 +437,13 @@ export function FilterEditor({
   const handleSubmit = () => {
     const error = validate(draft);
     setValidationError(error);
+    // 必填却空着的那几栏标红（错误文案在底部，红框指到具体字段）
+    const grouped: Record<string, string[]> = {};
+    for (const issue of pluginFieldIssues(draft)) {
+      const key = pluginActionKey(issue.action);
+      grouped[key] = [...(grouped[key] ?? []), issue.field];
+    }
+    setInvalidPluginFields(grouped);
     if (error) return;
     onSubmit(buildPayload());
   };
@@ -818,6 +946,71 @@ export function FilterEditor({
               )}
             </div>
             </Fieldset>
+
+            {/* ④ 插件动作（55-14）：字段形状由插件声明，这里只按声明画；
+                停用的插件/动作不渲染 —— 想用就去 设置 → 插件 打开它 */}
+            {pluginActions.length > 0 && (
+              <Fieldset className="border-t border-border/60 pt-3.5 mt-3.5">
+                <Fieldset.Legend className="text-xs font-medium text-foreground">
+                  {t("automation.plugin_actions")}
+                </Fieldset.Legend>
+                <div className="space-y-2">
+                  {pluginActions.map((action) => {
+                    const ref = draft.actions.pluginActions?.find(
+                      (item) =>
+                        item.plugin === action.pluginId &&
+                        item.action === action.actionId,
+                    );
+                    const checked = Boolean(ref);
+                    return (
+                      <div key={pluginActionKey(action)} className="space-y-2">
+                        <Checkbox
+                          isSelected={checked}
+                          onChange={(next: boolean) =>
+                            togglePluginAction(action, next)
+                          }
+                          className="flex flex-row items-center gap-2"
+                        >
+                          <Checkbox.Control className="shrink-0">
+                            <Checkbox.Indicator />
+                          </Checkbox.Control>
+                          <Checkbox.Content className="min-w-0">
+                            {/* 标签与来源整体可换行：窄抽屉里来源不会被拆到一半 */}
+                            <span className="flex flex-wrap items-baseline gap-x-2">
+                              <span className="text-sm text-foreground">
+                                {action.label}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {t("automation.plugin_action_from", {
+                                  name: action.pluginName,
+                                })}
+                              </span>
+                            </span>
+                          </Checkbox.Content>
+                        </Checkbox>
+                        {checked && (
+                          <div className="pl-6">
+                            <PluginActionFields
+                              fields={action.fields}
+                              config={ref?.config}
+                              invalidKeys={
+                                invalidPluginFields[pluginActionKey(action)]
+                              }
+                              onChange={(key, value) =>
+                                setPluginActionField(action, key, value)
+                              }
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <div className="text-xs text-muted-foreground">
+                    {t("automation.plugin_actions_hint")}
+                  </div>
+                </div>
+              </Fieldset>
+            )}
 
             {/* 只留一行总说明（其余都进 tooltip） */}
             <div className="text-xs text-muted-foreground">

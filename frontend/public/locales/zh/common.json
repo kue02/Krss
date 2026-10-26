@@ -1256,7 +1256,11 @@
     "scope_selected_count": "已选 {{count}} 个订阅",
     "action_group_state": "条目状态",
     "action_group_content": "内容加工",
-    "action_group_external": "对外"
+    "action_group_external": "对外",
+    "plugin_actions": "插件动作",
+    "plugin_actions_hint": "动作和字段都由插件声明；停用的插件或动作不会出现在这里（去 设置 → 插件 打开）。",
+    "plugin_action_field_required": "插件动作的「{{field}}」是必填的。",
+    "plugin_action_from": "来自插件 {{name}}"
   },
   "search": {
     "title": "搜索",

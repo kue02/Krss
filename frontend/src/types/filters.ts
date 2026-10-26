@@ -221,7 +221,9 @@ export function hasAnyAction(actions: FilterActions): boolean {
       actions.keepOnly ||
       actions.translate ||
       actions.summarize ||
-      actions.webhook,
+      actions.webhook ||
+      // 只挂插件动作（例如仅推送）也是有效规则，不能算「没有动作」
+      (actions.pluginActions ?? []).length > 0,
   );
 }
 
@@ -241,6 +243,10 @@ export function describeActions(
   if (actions.translate) parts.push(t("automation.action_translate"));
   if (actions.summarize) parts.push(t("automation.action_summarize"));
   if (actions.webhook) parts.push(t("automation.action_webhook"));
+  // 插件动作没有本体的文案：用「插件:xxx」标明来源，具体动作名只有编辑器上下文才知道
+  for (const ref of actions.pluginActions ?? []) {
+    parts.push(`${ref.plugin}:${ref.action}`);
+  }
   return parts.join(" · ");
 }
 

@@ -2,12 +2,19 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, cleanup, fireEvent, screen, act } from "@testing-library/react";
 import { FilterEditor } from "./FilterEditor";
 import type { FilterWritePayload } from "@/types/filters";
+import type { PluginMeta } from "@/plugins/types";
 
-const { previewMutate } = vi.hoisted(() => ({ previewMutate: vi.fn() }));
+const { previewMutate, fetchPluginsMock } = vi.hoisted(() => ({
+  previewMutate: vi.fn(),
+  fetchPluginsMock: vi.fn(),
+}));
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
+
+/** 55-14：规则编辑器挂载时会拉插件清单（停用不渲染 / 动态字段都靠它） */
+vi.mock("@/plugins/api", () => ({ fetchPlugins: fetchPluginsMock }));
 
 vi.mock("@/hooks/useFeeds", () => ({
   useFeeds: () => ({ data: [{ id: "feed-1", title: "少数派" }] }),
@@ -26,7 +33,68 @@ vi.mock("@/hooks/useFilters", () => ({
 }));
 
 afterEach(cleanup);
-beforeEach(() => previewMutate.mockClear());
+beforeEach(() => {
+  previewMutate.mockClear();
+  fetchPluginsMock.mockReset();
+  // 默认「没有插件」：老用例不看插件动作区，别让它们被异步清单影响
+  fetchPluginsMock.mockResolvedValue([]);
+});
+
+/** 一份插件清单样本：demo 的 log 动作（demo 内置、默认停用，这里按需改成启用） */
+function demoPlugin(overrides: Partial<PluginMeta> = {}): PluginMeta {
+  return {
+    id: "demo",
+    name: "Demo",
+    description: "",
+    version: "0.1.0",
+    builtin: true,
+    transport: "builtin",
+    enabled: true,
+    lastError: "",
+    actions: [
+      {
+        pluginId: "demo",
+        pluginName: "Demo",
+        actionId: "log",
+        label: "写一条调试日志（demo）",
+        enabled: true,
+        fields: [{ key: "note", label: "附带一句话（可选）", type: "text" }],
+      },
+    ],
+    sections: [],
+    ...overrides,
+  };
+}
+
+/** 必填字段样本（Bark 形态：secret + required） */
+function barkPlugin(): PluginMeta {
+  return demoPlugin({
+    id: "bark",
+    name: "Bark 推送",
+    actions: [
+      {
+        pluginId: "bark",
+        pluginName: "Bark 推送",
+        actionId: "notify",
+        label: "推送到手机（Bark）",
+        enabled: true,
+        fields: [
+          { key: "url", label: "推送地址", type: "secret", required: true },
+        ],
+      },
+    ],
+  });
+}
+
+/**
+ * HeroUI 的 Checkbox：文字在 label 里、真正的 input 被视觉隐藏。
+ * jsdom 不会把「点 label 里的文字」转发成 input 的 change，所以直接点 input。
+ */
+function clickCheckbox(labelText: string) {
+  const root = screen.getByText(labelText).closest('[data-slot="checkbox"]');
+  expect(root).not.toBeNull();
+  fireEvent.click(root!.querySelector('input[type="checkbox"]') as HTMLElement);
+}
 
 function draft(overrides: Partial<FilterWritePayload> = {}): FilterWritePayload {
   return {
@@ -272,6 +340,131 @@ describe("FilterEditor", () => {
 
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({ name: "屏蔽推广" }),
+    );
+  });
+
+  /**
+   * 55-14：插件动作区 —— 勾选后按插件声明的字段画表单，值写进
+   * actions.pluginActions[].config，保存时原样带走（后端 filterActionsPayload 认这个键）。
+   */
+  it("勾选插件动作 → 出现它的字段；改值后保存 payload 带 pluginActions", async () => {
+    fetchPluginsMock.mockResolvedValue([demoPlugin()]);
+    const onSubmit = vi.fn();
+    render(
+      <FilterEditor initial={draft()} onSubmit={onSubmit} onCancel={vi.fn()} />,
+    );
+
+    // 清单是异步拉的：等动作复选框出现（同时证明「插件名」附在后面）
+    await screen.findByText("写一条调试日志（demo）");
+    expect(screen.getByText("automation.plugin_actions")).toBeTruthy();
+    clickCheckbox("写一条调试日志（demo）");
+
+    const noteInput = (await screen.findByLabelText(
+      /附带一句话/,
+    )) as HTMLInputElement;
+    fireEvent.change(noteInput, { target: { value: "来自规则的一句话" } });
+
+    fireEvent.click(screen.getByText("automation.save"));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actions: expect.objectContaining({
+          pluginActions: [
+            {
+              plugin: "demo",
+              action: "log",
+              config: { note: "来自规则的一句话" },
+            },
+          ],
+        }),
+      }),
+    );
+  });
+
+  /**
+   * 真机回归：编辑器在抽屉关掉后并不卸载，重新打开如果没有重拉清单，
+   * 刚停用的插件还会在动作区里（只有刷新页面才消失）。
+   */
+  it("重新打开编辑器（换了一份草稿）会重拉插件清单", async () => {
+    fetchPluginsMock.mockResolvedValue([demoPlugin()]);
+    const props = {
+      onSubmit: vi.fn(),
+      onCancel: vi.fn(),
+    };
+    const { rerender } = render(
+      <FilterEditor initial={draft()} {...props} />,
+    );
+    await screen.findByText("写一条调试日志（demo）");
+    expect(fetchPluginsMock).toHaveBeenCalledTimes(1);
+
+    // 关掉再打开 = 外壳递进来一份新的 initial
+    rerender(<FilterEditor initial={draft({ name: "另一条规则" })} {...props} />);
+    expect(fetchPluginsMock).toHaveBeenCalledTimes(2);
+  });
+
+  /** 停用的插件不进编辑器 —— 这是插件契约（停用即不存在），不是界面上临时藏一下 */
+  it("插件停用时它的动作复选框不渲染", async () => {
+    fetchPluginsMock.mockResolvedValue([demoPlugin({ enabled: false })]);
+    render(
+      <FilterEditor initial={draft()} onSubmit={vi.fn()} onCancel={vi.fn()} />,
+    );
+
+    // 等清单那一次微任务跑完，再断言「确实没有」
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(fetchPluginsMock).toHaveBeenCalled();
+    expect(screen.queryByText("写一条调试日志（demo）")).toBeNull();
+    // 一个可用动作都没有时，整块「插件动作」不出现（不留空标题）
+    expect(screen.queryByText("automation.plugin_actions")).toBeNull();
+  });
+
+  /**
+   * 必填校验：插件声明了 required 的字段空着 → 拦下保存并指名道姓；
+   * 填好后**只挂插件动作**也能保存（hasAnyAction 认 pluginActions，否则等于「没有动作」）。
+   */
+  it("插件动作的必填字段空着时拦下保存，填好后只靠插件动作也能存", async () => {
+    fetchPluginsMock.mockResolvedValue([barkPlugin()]);
+    const onSubmit = vi.fn();
+    render(
+      <FilterEditor
+        initial={draft({ actions: {} })}
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    await screen.findByText("推送到手机（Bark）");
+    clickCheckbox("推送到手机（Bark）");
+    const urlInput = (await screen.findByLabelText(
+      /推送地址/,
+    )) as HTMLInputElement;
+
+    fireEvent.click(screen.getByText("automation.save"));
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(
+      screen.getByText("automation.plugin_action_field_required"),
+    ).toBeTruthy();
+    // 空着的必填栏自己标红（不必让用户猜是哪一栏）
+    expect(urlInput.getAttribute("aria-invalid")).toBe("true");
+
+    fireEvent.change(urlInput, {
+      target: { value: "https://api.day.app/rule-key" },
+    });
+    fireEvent.click(screen.getByText("automation.save"));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actions: expect.objectContaining({
+          pluginActions: [
+            {
+              plugin: "bark",
+              action: "notify",
+              config: { url: "https://api.day.app/rule-key" },
+            },
+          ],
+        }),
+      }),
     );
   });
 });

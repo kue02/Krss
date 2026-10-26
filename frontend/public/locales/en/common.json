@@ -1259,7 +1259,11 @@
     "scope_selected_count": "{{count}} feeds selected",
     "action_group_state": "Entry state",
     "action_group_content": "Content processing",
-    "action_group_external": "Outbound"
+    "action_group_external": "Outbound",
+    "plugin_actions": "Plugin actions",
+    "plugin_actions_hint": "Actions and their fields are declared by plugins. Disabled plugins or actions do not appear here (enable them in Settings → Plugins).",
+    "plugin_action_field_required": "The plugin action needs \"{{field}}\".",
+    "plugin_action_from": "from {{name}}"
   },
   "search": {
     "title": "Search",
