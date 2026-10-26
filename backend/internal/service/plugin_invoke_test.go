@@ -248,6 +248,31 @@ func TestPluginService_Invoke(t *testing.T) {
 		require.NotNil(t, got.Entries[0].Author)
 	})
 
+	t.Run("只申请 entries:full 也要给条目（full 蕴含 read）", func(t *testing.T) {
+		var got plugin.InvokeRequest
+		action := &invokeAction{id: "open", got: &got}
+		p := &invokePlugin{
+			meta:    plugin.Meta{ID: "annotate", Name: "标注", Builtin: false, Permissions: []string{"entries:full"}},
+			actions: []plugin.Action{action},
+			contributions: []plugin.Contribution{{
+				ID: "export", Surface: plugin.SurfaceEntryReaderToolbar, Action: "open",
+				Label: "导出", Selection: plugin.SelectionSingle,
+			}},
+		}
+		entries := &invokeEntryRepo{entries: map[int64]model.Entry{
+			10: {ID: 10, FeedID: 1, Title: stringPtr("标题"), Content: stringPtr("全文")},
+		}}
+		svc := newInvokeService(t, p, entries, &invokeFeedRepo{feeds: map[int64]model.Feed{}}, nil)
+
+		_, err := svc.Invoke(ctx, "annotate", "open", plugin.InvokeRequest{
+			Surface:   plugin.SurfaceEntryReaderToolbar,
+			Selection: plugin.Selection{EntryIDs: []int64{10}},
+		})
+		require.NoError(t, err)
+		require.Len(t, got.Entries, 1, "entries:full 必须蕴含 entries:read，否则只申请 full 的插件拿不到条目")
+		require.NotNil(t, got.Entries[0].Content, "full 保留正文")
+	})
+
 	t.Run("外部插件无任何权限不补明细", func(t *testing.T) {
 		var got plugin.InvokeRequest
 		action := &invokeAction{id: "ping", got: &got}

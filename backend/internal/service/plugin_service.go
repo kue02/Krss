@@ -451,7 +451,17 @@ func (s *pluginService) enrichInvoke(ctx context.Context, meta plugin.Meta, req 
 		granted[perm] = true
 	}
 	// 内置插件编译在宿主里，本来就是同一份信任域 ⇒ 不裁剪。
-	allowed := func(perm string) bool { return meta.Builtin || granted[perm] }
+	allowed := func(perm string) bool {
+		if meta.Builtin || granted[perm] {
+			return true
+		}
+		// 权限是**分层**的：entries:full（含正文）天然蕴含 entries:read（标题/链接/摘要）。
+		// 不这么算的话，只申请 full 的插件反而拿不到条目 —— 标注插件导出就因此拿不到正文。
+		if perm == permEntriesRead && granted[permEntriesFull] {
+			return true
+		}
+		return false
+	}
 
 	if allowed(permEntriesRead) && s.entries != nil {
 		ids := req.Selection.EntryIDs
