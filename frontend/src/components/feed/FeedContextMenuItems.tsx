@@ -25,6 +25,7 @@ import { resolveFeedSiteUrl } from "@/lib/feed-site";
 import { copyToClipboard } from "@/stores/toast-store";
 import { queryClient } from "@/lib/queryClient";
 import { openFilterEditorForFeed } from "@/stores/filter-editor-store";
+import { PluginSlot } from "@/plugins/PluginSlot";
 import type { ContentType, Feed, Folder } from "@/types/api";
 import type { FilterRule } from "@/types/filters";
 
@@ -206,6 +207,15 @@ export function FeedContextMenuItems({
           </ContextMenuItem>
         </>
       )}
+      {/* 56-13：插件往订阅右键菜单里加的项（这个挂点没有贡献就不占位）。
+          放在菜单内容末尾 —— 宿主既有分组（含破坏性的「删除」）的顺序不因插件而变。
+          selection 带 feedIds：订阅 id 在接口上是数字（后端 Selection.FeedIDs 是 []int64），
+          前端 Feed.id 是字符串，这里按同一口径转一次。 */}
+      <PluginSlot
+        surface="feed.contextmenu"
+        variant="menu"
+        selection={{ feedIds: [Number(feed.id)] }}
+      />
     </>
   );
 }
