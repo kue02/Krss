@@ -348,7 +348,17 @@ func (s *pluginService) TestAction(ctx context.Context, id, actionID string) err
 }
 
 // Contributions 各 surface 的界面贡献（只含已启用插件；丢弃/去重/默认 selection 都在注册表那层做完）。
-func (s *pluginService) Contributions(_ context.Context) map[plugin.Surface][]plugin.Contribution {
+func (s *pluginService) Contributions(ctx context.Context) map[plugin.Surface][]plugin.Contribution {
+	// 启停位存在库里、只有 Catalog 那条链会装载。界面贡献是「打开页面就要对」的读，
+	// 不能指望用户先点一次设置页：冷启动后直接进阅读页右键，也必须看到与库里一致的清单。
+	// 两处 ensure 都是幂等的（补缺行 + 扫目录），失败不挡住读（退化成注册表默认值并留日志）。
+	if s.plugins != nil {
+		if err := s.ensureBuiltin(ctx); err != nil {
+			logger.Warn("plugin contributions ensure builtin failed",
+				"module", "service", "action", "contributions", "resource", "plugin", "result", "degraded", "error", err)
+		}
+	}
+	s.ensureExternal(ctx)
 	return s.registry.AllContributions()
 }
 

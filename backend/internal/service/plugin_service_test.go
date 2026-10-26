@@ -278,3 +278,35 @@ func TestPutSettings_MaskedSecretKeepsOldValue(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "https://api.day.app/NEWKEY", got.Value)
 }
+
+// TestContributions_HonorsDisabledFromRepo 冷启动后（注册表只有默认值）直接读界面贡献，
+// 也要按库里的启停位过滤 —— 否则停用的插件重启后菜单项会「诈尸」，
+// 一直到用户点一次设置页（Catalog 装载启停位）才消失。
+func TestContributions_HonorsDisabledFromRepo(t *testing.T) {
+	reg := plugin.NewRegistry()
+	fakeReg := newFakePluginRepo()
+	settingRepo := newSettingsStub()
+
+	p := &invokePlugin{
+		meta:    plugin.Meta{ID: "barkish", Name: "Barkish", Builtin: true},
+		actions: []plugin.Action{&invokeAction{id: "notify"}},
+		contributions: []plugin.Contribution{{
+			ID: "push", Surface: plugin.SurfaceEntryContextMenu, Action: "notify",
+			Label: "推送", Selection: plugin.SelectionSingle,
+		}},
+	}
+	require.NoError(t, reg.Register(p))
+	// 库里明确停用；注册表此时还没装载过启停位（默认启用）。
+	fakeReg.states["barkish"] = false
+
+	svc := service.NewPluginService(reg, fakeReg, settingRepo)
+	surfaces := svc.Contributions(context.Background())
+	require.Empty(t, surfaces[plugin.SurfaceEntryContextMenu], "库里停用的插件不许出现在界面贡献里")
+
+	// 反过来：库里启用时要有（避免上面因为别的原因空着而假绿）
+	fakeReg.states["barkish"] = true
+	reg2 := plugin.NewRegistry()
+	require.NoError(t, reg2.Register(p))
+	svc2 := service.NewPluginService(reg2, fakeReg, settingRepo)
+	require.Len(t, svc2.Contributions(context.Background())[plugin.SurfaceEntryContextMenu], 1)
+}
