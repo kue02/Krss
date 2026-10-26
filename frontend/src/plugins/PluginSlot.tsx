@@ -55,7 +55,12 @@ export function PluginSlot({
   const items = useMemo(
     () =>
       contributions.filter(
-        (item) => item.op !== "hide" && fitsSelection(item, selection),
+        /**
+         * 只收「追加」项（没有 `op`）：`op:"hide"` / `op:"replace"` 是**改宿主已有控件**
+         * （56-16，由 `useTargetOps` 在控件自己那儿处理），不是往挂点末尾再塞一个 ——
+         * 两边都渲染的话，被顶掉的控件会以插件按钮的形式又出现一次。
+         */
+        (item) => !item.op && fitsSelection(item, selection),
       ),
     [contributions, selection],
   );
@@ -65,7 +70,7 @@ export function PluginSlot({
   return (
     <>
       {items.map((item) => (
-        <PluginSlotItem
+        <PluginItem
           key={`${item.plugin}/${item.id}`}
           item={item}
           selection={selection}
@@ -95,7 +100,12 @@ function fitsSelection(
   return true;
 }
 
-function PluginSlotItem({
+/**
+ * 单条插件项的渲染（菜单项 / 工具栏按钮），56-16 起导出：
+ * 「顶掉宿主控件」（`op:"replace"`）时要复用**同一份**渲染，不能为了替换再抄一遍
+ * 点击链（前置动作 → 表单 → 确认 → 调用）。
+ */
+export function PluginItem({
   item,
   selection,
   variant,

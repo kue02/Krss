@@ -43,6 +43,7 @@ import { useFeedMenuActions } from "@/hooks/useFeedMenuActions";
 import { useUnmuteEntry, useFilters, useCreateFilterException } from "@/hooks/useFilters";
 import { showToast } from "@/stores/toast-store";
 import { PluginSlot } from "@/plugins/PluginSlot";
+import { useTargetOps } from "@/plugins/useTargetOps";
 import { openFilterEditorForEntry } from "@/stores/filter-editor-store";
 import { useAutoReadable } from "@/hooks/useAutoReadable";
 import { stripDuplicatedTitle } from "@/lib/strip-duplicated-title";
@@ -188,15 +189,22 @@ export function EntryContextMenuContent({
   const exception = useCreateFilterException();
   const { mutate: markAsRead } = useMarkAsRead();
   const readAction = readToggleAction(!entry.read);
+  /**
+   * 56-16：这个菜单上的可改控件。宿主登记了 `entry.mark_read` 允许**隐藏**
+   * （插件自己接管阅读状态时不再需要宿主这颗），不允许替换。
+   */
+  const targetOps = useTargetOps("entry.contextmenu");
 
   return (
     <ContextMenuContent>
-      <ContextMenuItem
-        onClick={() => markAsRead({ id: entry.id, read: readAction.nextRead })}
-      >
-        <readAction.Icon className="size-4 shrink-0 text-muted-foreground" />
-        {t(readAction.labelKey)}
-      </ContextMenuItem>
+      {!targetOps.isHidden("entry.mark_read") && (
+        <ContextMenuItem
+          onClick={() => markAsRead({ id: entry.id, read: readAction.nextRead })}
+        >
+          <readAction.Icon className="size-4 shrink-0 text-muted-foreground" />
+          {t(readAction.labelKey)}
+        </ContextMenuItem>
+      )}
       {onMarkAbove && (
         <ContextMenuItem onClick={onMarkAbove}>
           <ChevronsUp className="size-4 shrink-0 text-muted-foreground" />

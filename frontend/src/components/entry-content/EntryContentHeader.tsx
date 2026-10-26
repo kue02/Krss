@@ -5,7 +5,8 @@ import { cn } from "@/lib/utils";
 import { BackIcon, GlobeIcon } from "@/components/ui/icons";
 import { readToggleAction } from "@/components/entry-list/read-toggle-action";
 import { dispatchScrollToTop } from "@/hooks/useScrollToTop";
-import { PluginSlot } from "@/plugins/PluginSlot";
+import { PluginSlot, PluginItem } from "@/plugins/PluginSlot";
+import { useTargetOps } from "@/plugins/useTargetOps";
 import type { Entry } from "@/types/api";
 
 interface EntryContentHeaderProps {
@@ -105,6 +106,10 @@ export function EntryContentHeader({
   const title = displayTitle ?? entry.title ?? t("entry.untitled");
   /** 23-2：「标为已读 / 标为未读」——与条目右键菜单、社交悬停操作条同一份定义 */
   const readAction = readToggleAction(!entry.read);
+  /** 56-16：本挂点上插件对宿主控件的 patch（当前只登记了星标这一个可替换控件） */
+  const targetOps = useTargetOps("entry.reader.toolbar");
+  const starReplacement = targetOps.replacement("entry.star");
+  const starHidden = targetOps.isHidden("entry.star");
 
   return (
     <div
@@ -157,35 +162,47 @@ export function EntryContentHeader({
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
-          <button
-            type="button"
-            onClick={onToggleStarred}
-            title={
-              entry.starred
-                ? t("entry.remove_from_starred")
-                : t("entry.add_to_starred")
-            }
-            className={cn(
-              "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95",
-              entry.starred
-                ? "text-amber-500 hover:bg-amber-500/10"
-                : "text-muted-foreground hover:bg-item-hover hover:text-foreground",
-            )}
-          >
-            <svg
-              className="size-5"
-              viewBox="0 0 24 24"
-              fill={entry.starred ? "currentColor" : "none"}
-              stroke="currentColor"
-              strokeWidth={2}
+          {/* 56-16：星标是宿主登记为「可隐藏 / 可替换」的控件。
+              插件 `op:"replace"` 且 target="entry.star" 时，这颗按钮换成插件项
+              （渲染复用 `PluginItem`，点击链与插件工具栏项完全同一份）；`op:"hide"` 时整颗不渲染。
+              没有插件改它时走原来的按钮，行为一字不变。 */}
+          {starReplacement ? (
+            <PluginItem
+              item={starReplacement}
+              selection={{ entryIds: [entry.id] }}
+              variant="toolbar"
+            />
+          ) : starHidden ? null : (
+            <button
+              type="button"
+              onClick={onToggleStarred}
+              title={
+                entry.starred
+                  ? t("entry.remove_from_starred")
+                  : t("entry.add_to_starred")
+              }
+              className={cn(
+                "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95",
+                entry.starred
+                  ? "text-amber-500 hover:bg-amber-500/10"
+                  : "text-muted-foreground hover:bg-item-hover hover:text-foreground",
+              )}
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
-              />
-            </svg>
-          </button>
+              <svg
+                className="size-5"
+                viewBox="0 0 24 24"
+                fill={entry.starred ? "currentColor" : "none"}
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+                />
+              </svg>
+            </button>
+          )}
 
           {/* 23-2：正文工具栏也能把这条标回未读（用户读一半想留着以后看）。
               图标与条目右键菜单、社交条目的悬停操作条一致：未读 = 描边圆、已读 = 对勾圆 */}
