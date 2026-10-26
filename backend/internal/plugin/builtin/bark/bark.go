@@ -50,7 +50,7 @@ type Plugin struct{}
 var (
 	_ plugin.Plugin                = Plugin{}
 	_ plugin.ContributionsProvider = Plugin{}
-	_ plugin.Invoker               = Plugin{}
+	_ plugin.Invoker               = notifyAction{}
 )
 
 func (Plugin) Meta() plugin.Meta {
@@ -92,7 +92,8 @@ func (Plugin) Contributions() []plugin.Contribution {
 
 // Invoke 界面直调：对选中的条目逐条推。报文与地址两层逻辑全部复用 notifyAction.Execute，
 // 差别只有「没有规则」——规则名取 req.Config["ruleName"]，宿主没给就记「手动推送」。
-func (Plugin) Invoke(ctx context.Context, req plugin.InvokeRequest) (plugin.InvokeResult, error) {
+// 实现在**动作**上（不是插件上）：宿主按 contribution 里的 action 找可直调的动作。
+func (notifyAction) Invoke(ctx context.Context, req plugin.InvokeRequest) (plugin.InvokeResult, error) {
 	if len(req.Entries) == 0 {
 		// v1 不替宿主去库里补明细（Selection 里只有 id 时说明调用方没拿到条目，属于调用错误）。
 		return plugin.InvokeResult{}, errors.New("没有选中条目")

@@ -311,6 +311,8 @@ func sanitizeContributions(pluginID string, items []Contribution) []Contribution
 		if item.Selection == "" {
 			item.Selection = SelectionNone
 		}
+		// 归属插件由宿主注入，插件声明时不必（也不该）自己填。
+		item.Plugin = pluginID
 		out = append(out, item)
 	}
 	return out

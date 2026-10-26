@@ -266,6 +266,9 @@ func TestPluginHandler_Contributions(t *testing.T) {
 	require.Equal(t, "demo-open", items[0].ID)
 	require.Equal(t, "open", items[0].Action)
 	require.Equal(t, plugin.SelectionNone, items[0].Selection, "宿主补的默认 selection 要出得去")
+	// 归属插件由宿主注入：前端靠这个字段决定调哪个插件，插件自己不用填。
+	require.Equal(t, "contrib-demo", items[0].Plugin)
+	require.Contains(t, rec.Body.String(), `"plugin":"contrib-demo"`, "JSON 里必须带 plugin")
 }
 
 // TestPluginHandler_Invoke 界面直调：200 原样回插件结果；动作不存在 404；surface 未声明 400；插件执行失败 502 且带原因。

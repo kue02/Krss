@@ -16,9 +16,14 @@ import (
 // invoker 取插件实例的「界面直调」面（同一个插件既服务自动化规则，也服务右键菜单）。
 func invoker(t *testing.T) plugin.Invoker {
 	t.Helper()
-	got, ok := bark.New().(plugin.Invoker)
-	require.True(t, ok, "bark 要实现 plugin.Invoker（界面右键菜单直调）")
-	return got
+	// 直调能力挂在**动作**上（契约）：从插件的动作列表里取，而不是插件本身。
+	for _, action := range bark.New().Actions() {
+		if got, ok := action.(plugin.Invoker); ok {
+			return got
+		}
+	}
+	require.FailNow(t, "bark 的 notify 动作要实现 plugin.Invoker（界面右键菜单直调）")
+	return nil
 }
 
 // TestContributions 三条界面贡献，动作必须全部复用已有的 notify（不许另造动作）。

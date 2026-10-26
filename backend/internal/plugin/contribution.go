@@ -68,6 +68,8 @@ func (s Selection) IsEmpty() bool {
 
 // Contribution 是插件声明的一条界面贡献。
 type Contribution struct {
+	// Plugin 由宿主在聚合时注入（插件自己声明时不用填）：前端靠它知道该调哪个插件。
+	Plugin    string   `json:"plugin,omitempty"`
 	ID        string   `json:"id"`
 	Surface   Surface  `json:"surface"`
 	Op        string   `json:"op,omitempty"`

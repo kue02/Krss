@@ -52,6 +52,7 @@ func TestRegistry_Contributions_Sanitize(t *testing.T) {
 	require.Equal(t, "a-open", a.ID)
 	require.Equal(t, "open", a.Action, "重复项里的 dup 不该顶掉先到的那条")
 	require.Equal(t, plugin.SelectionNone, a.Selection, "没声明 selection 时补 none")
+	require.NotEmpty(t, a.Plugin, "归属插件必须由宿主注入")
 
 	b := surfaces[plugin.SurfaceEntryListToolbar]
 	require.Len(t, b, 1, "B 的合法项要在册，A 的空 action 项不在")
