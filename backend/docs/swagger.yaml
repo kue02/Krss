@@ -2936,6 +2936,51 @@ paths:
       summary: 写插件设置（值为掩码 = 保持原值）
       tags:
       - plugins
+  /api/plugins/{id}/ui/{path}:
+    get:
+      description: |-
+        只认 GET。插件不存在 404、停用 409、没声明 ui:custom 403、路径含 `..` 或绝对路径 400。
+        响应固定带 CSP（connect-src 'none'）、X-Content-Type-Options: nosniff、Cache-Control: no-store。
+      parameters:
+      - description: 插件 id
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 资源相对路径（缺省 = index.html）
+        in: path
+        name: path
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+        "403":
+          description: 插件没有声明 ui:custom
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+        "409":
+          description: 插件已停用
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+        "502":
+          description: 外部插件取资源失败
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: 插件自带的界面资源（沙箱 iframe 用；内置插件读 embed.FS、外部插件代理到 socket）
+      tags:
+      - plugins
   /api/plugins/contributions:
     get:
       produces:

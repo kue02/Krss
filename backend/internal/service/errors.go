@@ -28,6 +28,10 @@ var (
 	// 插件专属数据（56-19）：这个部署没挂数据仓储（plugin_data 表在、但没接进 service）。
 	// 单独一个错是为了让 500 日志一眼看出是装配漏了，而不是被当成插件的问题。
 	ErrPluginDataUnavailable = errors.New("plugin data storage is not available")
+	// 沙箱 UI 资源（56-24）：没声明 ui:custom / 声明了却没给资源，两种错要分开报
+	// （前者是权限问题=403，后者是插件自己装漏了=404）。
+	ErrPluginUIUndeclared  = errors.New("plugin has not declared ui:custom")
+	ErrPluginUIUnavailable = errors.New("plugin ui assets unavailable")
 )
 
 // FeedConflictError is returned when a feed URL already exists.

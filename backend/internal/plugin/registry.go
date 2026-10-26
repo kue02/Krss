@@ -152,6 +152,16 @@ func (r *Registry) Meta(id string) (Meta, bool) {
 	return withTransport(p.Meta()), true
 }
 
+// Lookup 取插件本体（只按 id，不管启停）。
+// 给「可选接口」用：UIAssets / ViewProvider / RenderDecorator 这类能力不在 Plugin 里，
+// 调用方必须拿到本体做类型断言。
+func (r *Registry) Lookup(id string) (Plugin, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	p, ok := r.plugins[id]
+	return p, ok
+}
+
 // withTransport 输出侧兜底：老内置插件没写 Transport ⇒ "builtin"。
 func withTransport(meta Meta) Meta {
 	if meta.Transport == "" {

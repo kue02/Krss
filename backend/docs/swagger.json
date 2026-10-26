@@ -1269,6 +1269,71 @@
                 }
             }
         },
+        "/api/plugins/{id}/ui/{path}": {
+            "get": {
+                "description": "只认 GET。插件不存在 404、停用 409、没声明 ui:custom 403、路径含 `..` 或绝对路径 400。\n响应固定带 CSP（connect-src 'none'）、X-Content-Type-Options: nosniff、Cache-Control: no-store。",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "plugins"
+                ],
+                "summary": "插件自带的界面资源（沙箱 iframe 用；内置插件读 embed.FS、外部插件代理到 socket）",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "插件 id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "资源相对路径（缺省 = index.html）",
+                        "name": "path",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "插件没有声明 ui:custom",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "插件已停用",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "外部插件取资源失败",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/proxy/image/{encoded}": {
             "get": {
                 "description": "Proxies external images to avoid triggering anti-crawling mechanisms",

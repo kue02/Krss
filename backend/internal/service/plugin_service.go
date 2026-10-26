@@ -43,6 +43,9 @@ type PluginService interface {
 	// Decorations 聚合所有启用插件的正文装饰（56-21）：单个插件 300ms 超时，出错/超时只跳过并 warn，
 	// 绝不阻塞阅读；条目查不到或没挂条目读端回空数组（不是错误）。
 	Decorations(ctx context.Context, entryID int64) ([]plugin.Decoration, error)
+	// UIAssets 一个插件自带界面资源的入口（56-24）：内置插件给 embed.FS、外部插件给 socket 代理。
+	// 插件不存在 / 停用 / 没声明 ui:custom 分别回 ErrPluginNotFound / ErrPluginDisabled / ErrPluginUIUndeclared。
+	UIAssets(ctx context.Context, pluginID string) (PluginUIAssets, error)
 	// Invoke 界面直调一个插件动作（56-5）：校验 surface 声明与 selection，再按插件声明的权限裁剪上下文。
 	Invoke(ctx context.Context, pluginID, actionID string, req plugin.InvokeRequest) (plugin.InvokeResult, error)
 	// 插件专属数据（56-19）—— 只能碰自己的 collection；停用的插件读写一律拒。

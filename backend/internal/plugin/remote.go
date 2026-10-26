@@ -13,6 +13,7 @@
 //	POST /actions/:actionId/test        动作自测（{} → {} / {"error"}）
 //	POST /entry-processors/:id          阅读期处理（{feed, entry} → {entry}）
 //	POST /fetch-classifiers/:id         失败归类（{feed, statusCode, bodyHead, error} → {message}）
+//	GET  /ui/<rest>                     插件自带界面资源（56-24；宿主把 /api/plugins/:id/ui/* 转过来）
 //
 // 安全面：只听 Unix socket（不监听 TCP、不出局域网），每个请求带 X-Krss-Plugin-Token（每次 spawn 新生成）。
 package plugin
@@ -169,6 +170,35 @@ func (c *RemoteClient) Plugin(ctx context.Context) (Plugin, error) {
 		return nil, errors.New("plugin: 外部插件 /meta 没有 id")
 	}
 	return &remotePlugin{client: c, meta: meta}, nil
+}
+
+// UIAsset 取一块插件自带的界面资源（56-24）。
+// 与 do 的区别：响应是**原始字节**（HTML/JS/CSS/图片），不是 JSON，所以自己发一次 GET。
+// 404 单独给 ErrUIAssetNotFound（宿主回 404，让浏览器/前端看到「资源没了」而不是「插件坏了」）。
+// 超时由调用方控制（service 层 5s）；这里仍受 client 的 15s 总超时兜底。
+func (c *RemoteClient) UIAsset(ctx context.Context, subpath string) (UIAssetFile, error) {
+	path := "/ui/" + subpath
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://plugin"+path, nil)
+	if err != nil {
+		return UIAssetFile{}, err
+	}
+	req.Header.Set("X-Krss-Plugin-Token", c.token)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return UIAssetFile{}, fmt.Errorf("plugin: 取界面资源 %s 失败: %w", path, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusNotFound {
+		return UIAssetFile{}, ErrUIAssetNotFound
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return UIAssetFile{}, fmt.Errorf("plugin: %s 返回 %d", path, resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if err != nil {
+		return UIAssetFile{}, fmt.Errorf("plugin: 读 %s 响应失败: %w", path, err)
+	}
+	return UIAssetFile{Body: body, ContentType: resp.Header.Get("Content-Type")}, nil
 }
 
 // GetSettings 读插件设置（裸键，不带 plugin.<id>. 前缀；掩码在 service 层统一做）。

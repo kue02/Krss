@@ -3,7 +3,9 @@ package handler
 
 import (
 	"errors"
+	"io/fs"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -46,6 +48,11 @@ func (h *PluginHandler) RegisterRoutes(g *echo.Group) {
 	// 聚合逻辑却属插件域（要注册表 + 各插件），所以由 PluginHandler 注册 ——
 	// 为它把 PluginService 塞进 EntryHandler 要动 NewEntryHandler/NewRouter 的签名与既有测试，不值当。
 	g.GET("/entries/:id/decorations", h.ListEntryDecorations)
+	// 沙箱界面资源（56-24）：插件自带 HTML/JS，宿主按同源路径服务（iframe 侧是 opaque origin）。
+	// 两条路由：`/ui` 与 `/ui/*` —— 前者让 `<iframe src="…/ui">` 少一次 301（FileServer 的目录重定向），
+	// 两条都走同一个 handler；`*` 拿到的是不带前导斜杠的相对路径（空串 = 目录根）。
+	g.GET("/plugins/:id/ui", h.GetUIAssets)
+	g.GET("/plugins/:id/ui/*", h.GetUIAssets)
 }
 
 type pluginCatalogResponse struct {
@@ -443,4 +450,142 @@ func (h *PluginHandler) ListEntryDecorations(c echo.Context) error {
 		items = []plugin.Decoration{}
 	}
 	return c.JSON(http.StatusOK, entryDecorationsResponse{Decorations: items})
+}
+
+// uiIndexFile 目录访问的默认文件（访问 /ui/ 或 /ui 时补上）。
+const uiIndexFile = "index.html"
+
+// GetUIAssets godoc
+// @Summary 插件自带的界面资源（沙箱 iframe 用；内置插件读 embed.FS、外部插件代理到 socket）
+// @Description 只认 GET。插件不存在 404、停用 409、没声明 ui:custom 403、路径含 `..` 或绝对路径 400。
+// @Description 响应固定带 CSP（connect-src 'none'）、X-Content-Type-Options: nosniff、Cache-Control: no-store。
+// @Tags plugins
+// @Produce application/octet-stream
+// @Param id path string true "插件 id"
+// @Param path path string false "资源相对路径（缺省 = index.html）"
+// @Success 200 {file} file
+// @Failure 400 {object} errorResponse
+// @Failure 403 {object} errorResponse "插件没有声明 ui:custom"
+// @Failure 404 {object} errorResponse
+// @Failure 409 {object} errorResponse "插件已停用"
+// @Failure 502 {object} errorResponse "外部插件取资源失败"
+// @Router /api/plugins/{id}/ui/{path} [get]
+func (h *PluginHandler) GetUIAssets(c echo.Context) error {
+	subpath := c.Param("*")
+	if !validUIAssetPath(subpath) {
+		logger.Warn("plugin ui asset path rejected",
+			"module", "handler", "action", "ui", "resource", "plugin", "result", "rejected",
+			"plugin_id", c.Param("id"), "path", subpath)
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid ui asset path"})
+	}
+	// 目录访问（/ui 或 /ui/）补 index.html：前端 iframe 的 src 就写成这个形态。
+	isDir := subpath == "" || strings.HasSuffix(subpath, "/")
+	assetPath := subpath
+	if isDir {
+		assetPath = subpath + uiIndexFile
+	}
+
+	assets, err := h.service.UIAssets(c.Request().Context(), c.Param("id"))
+	if err != nil {
+		logger.Error("plugin ui assets failed", "module", "handler", "action", "ui", "resource", "plugin",
+			"result", "failed", "id", c.Param("id"), "path", assetPath, "error", err)
+		switch {
+		case errors.Is(err, service.ErrPluginUIUndeclared):
+			// 文案要点名缺什么：插件作者看日志 / 用户看报错都该知道去 Meta.Permissions 里补一条
+			return c.JSON(http.StatusForbidden, errorResponse{
+				Error: "插件没有声明 ui:custom 权限，禁止加载自带界面",
+			})
+		case errors.Is(err, service.ErrPluginUIUnavailable):
+			return c.JSON(http.StatusNotFound, errorResponse{Error: "插件没有提供界面资源"})
+		default:
+			return writeServiceError(c, err)
+		}
+	}
+
+	if assets.Files != nil {
+		setUIAssetHeaders(c.Response().Header())
+		serveUIAssetFile(c, assetPath, assets.Files)
+		return nil
+	}
+
+	// 外部插件：宿主转发一次（service 已带 5s 超时）
+	file, err := assets.Proxy(c.Request().Context(), assetPath)
+	if err != nil {
+		if errors.Is(err, plugin.ErrUIAssetNotFound) {
+			return c.JSON(http.StatusNotFound, errorResponse{Error: "ui asset not found"})
+		}
+		logger.Error("plugin ui asset proxy failed", "module", "handler", "action", "ui", "resource", "plugin",
+			"result", "failed", "id", c.Param("id"), "path", assetPath, "error", err)
+		return c.JSON(http.StatusBadGateway, errorResponse{Error: err.Error()})
+	}
+	setUIAssetHeaders(c.Response().Header())
+	if file.ContentType != "" {
+		c.Response().Header().Set(echo.HeaderContentType, file.ContentType)
+	}
+	if _, err := c.Response().Write(file.Body); err != nil {
+		return err
+	}
+	return nil
+}
+
+// setUIAssetHeaders 沙箱界面的三条固定响应头。
+// no-store 是硬要求：插件更新后不能还让浏览器拿旧页（iframe 缓存的旧脚本会对着新契约发消息）。
+func setUIAssetHeaders(header http.Header) {
+	header.Set("Content-Security-Policy", plugin.UISandboxCSP)
+	header.Set("X-Content-Type-Options", "nosniff")
+	header.Set("Cache-Control", "no-store")
+}
+
+// serveUIAssetFile 用 FileServer 服务一份内置插件资源。
+// FileServer 只认 URL.Path（echo 的 `*` 参数不是它要的形态），所以复制一份请求换掉路径。
+//
+// 另一个坑：net/http 的 serveFile 见到以 index.html 结尾的路径会 301 到 "./"（它的规矩），
+// 而插件视图入口偏偏就写成 index.html ⇒ 这里把 index.html 折成目录根，让 FileServer 自己挑 index，
+// 免得客户端（iframe）多跳一次、也免得相对路径在 301 之后按新目录解析。
+// 路径到这一步已经过 validUIAssetPath + 解码，不再二次清洗。
+func serveUIAssetFile(c echo.Context, assetPath string, files fs.FS) {
+	// URL.Path 是**解码后**的形态（FileServer 按它找文件），所以这里先解一次（已校验过，安全）。
+	if decoded, err := url.PathUnescape(assetPath); err == nil {
+		assetPath = decoded
+	}
+	path := assetPath
+	if path == uiIndexFile {
+		path = ""
+	} else if strings.HasSuffix(path, "/"+uiIndexFile) {
+		path = strings.TrimSuffix(path, "/"+uiIndexFile)
+	}
+	req := new(http.Request)
+	*req = *c.Request()
+	urlCopy := *c.Request().URL
+	req.URL = &urlCopy
+	req.URL.Path = "/" + path
+	req.URL.RawPath = ""
+	http.FileServer(http.FS(files)).ServeHTTP(c.Response(), req)
+}
+
+// validUIAssetPath 路径防护：自己先查一道，不把「穿越」指望给 FileServer / embedding 的洁癖。
+//   - 空串 = 目录根（后面补 index.html），放行；
+//   - 含 ".."（不管是不是整段）一律拒 —— 宁可误杀 a..b.js 这种怪名，也不给穿越留口子；
+//   - 以 "/" 开头 = 绝对路径 / 双斜杠（echo 的 `*` 不带前导斜杠），拒；
+//   - 反斜杠（Windows 分隔符）与 NUL 字节，拒；
+//   - 编码写法（%2e%2e）在 echo 这边以 RawPath 形态递过来（Param("*") 不解码），所以解码后再查一遍，
+//     否则 "%2e%2e/secret" 会绕过检查一路走到 FileServer。
+func validUIAssetPath(subpath string) bool {
+	if subpath == "" {
+		return true
+	}
+	if strings.HasPrefix(subpath, "/") {
+		return false
+	}
+	if strings.ContainsAny(subpath, "\\\x00") {
+		return false
+	}
+	decoded, err := url.PathUnescape(subpath)
+	if err != nil {
+		return false
+	}
+	if strings.Contains(decoded, "..") || strings.HasPrefix(decoded, "/") {
+		return false
+	}
+	return !strings.ContainsAny(decoded, "\\\x00")
 }

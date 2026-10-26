@@ -764,6 +764,16 @@ func (h *PluginHost) TestAction(ctx context.Context, id, actionID string) error 
 	return client.TestAction(ctx, actionID)
 }
 
+// UIAsset 取外部插件自带的界面资源（56-24）：宿主把 /api/plugins/:id/ui/* 转成插件的 GET /ui/<rest>。
+// 外部插件不实现 plugin.UIAssets（那是内置插件 embed.FS 的路），资源一定在插件进程这边。
+func (h *PluginHost) UIAsset(ctx context.Context, id, subpath string) (plugin.UIAssetFile, error) {
+	client, err := h.clientFor(id)
+	if err != nil {
+		return plugin.UIAssetFile{}, err
+	}
+	return client.UIAsset(ctx, subpath)
+}
+
 // newPluginToken 每次 spawn 新生成的共享密钥（16 字节随机 → hex）。
 func newPluginToken() string {
 	buf := make([]byte, 16)
