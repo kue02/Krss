@@ -10,6 +10,8 @@
 //	POST /actions/:actionId/test    动作自测（{} → {} / {"error"}）
 //	POST /entry-processors/:id      阅读期处理（{feed, entry} → {entry}）
 //	POST /fetch-classifiers/:id     失败归类（{feed, statusCode, bodyHead, error} → {message}）
+//	GET  /ui/<rest>                 插件自带界面资源（56-26：实现 plugin.UIAssets 即可；
+//	                                bridge.js 由 SDK 自己发，插件不必带）
 //
 // 安全：只听 krss 建好的 Unix socket（0600），token 从 KRSS_PLUGIN_SOCKET/TOKEN 环境变量拿，
 // 每个请求都要带 X-Krss-Plugin-Token。不开 TCP、不监听局域网。
@@ -45,13 +47,7 @@ func Serve(ctx context.Context, p plugin.Plugin) error {
 	}
 
 	srv := &server{plugin: p, token: token, store: newFileSettings(socketPath)}
-	mux := http.NewServeMux()
-	mux.HandleFunc("/ready", srv.ok)
-	mux.HandleFunc("/meta", srv.meta)
-	mux.HandleFunc("/settings", srv.settings)
-	mux.HandleFunc("/actions/", srv.action)
-	mux.HandleFunc("/entry-processors/", srv.entryProcessor)
-	mux.HandleFunc("/fetch-classifiers/", srv.fetchClassifier)
+	mux := srv.routes()
 
 	// 直接 listen 宿主给的 socket 文件路径；权限 0600（krss 单用户进程拥有）。
 	_ = os.Remove(socketPath)
@@ -96,6 +92,20 @@ type server struct {
 	plugin plugin.Plugin
 	token  string
 	store  *fileSettings
+}
+
+// routes 全部路由。单独拆出来是为了让 /ui/ 这类不经过 socket 的路径也能在 httptest 里整条测
+// （Serve 负责 listen/chmod/signal，没法定点打某一个 handler）。
+func (s *server) routes() *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ready", s.ok)
+	mux.HandleFunc("/meta", s.meta)
+	mux.HandleFunc("/settings", s.settings)
+	mux.HandleFunc("/actions/", s.action)
+	mux.HandleFunc("/entry-processors/", s.entryProcessor)
+	mux.HandleFunc("/fetch-classifiers/", s.fetchClassifier)
+	mux.HandleFunc("/ui/", s.uiAsset)
+	return mux
 }
 
 func (s *server) ok(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }
