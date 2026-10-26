@@ -89,6 +89,14 @@ func RequestLoggerMiddleware() echo.MiddlewareFunc {
 func JWTAuthMiddleware(authService service.AuthService) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
+			// 插件沙箱界面资源放行（56-24）：iframe 是 sandbox="allow-scripts" 的 opaque origin，
+			// 子资源请求既没有 Authorization 头、也不被浏览器带上 SameSite cookie（被当跨站），
+			// 不放行的话插件的 ./bridge.js 一律 401，页面永远停在「加载中」。
+			// 这里服务的是**插件代码**，不是用户数据；数据仍只能由有登录态的父窗口过 postMessage bridge 取。
+			if IsPluginUIAssetPath(c.Request().URL.Path) {
+				return next(c)
+			}
+
 			var token string
 
 			// Try Authorization header first
@@ -156,4 +164,18 @@ func clearAuthCookie(c echo.Context) {
 		MaxAge:   -1,
 	}
 	c.SetCookie(cookie)
+}
+
+// IsPluginUIAssetPath 判断路径是不是「插件自带界面资源」（/api/plugins/<id>/ui[/...]）。
+// 单独提出来是为了让测试直接钉住这条豁免的边界（只放行 ui 子树，别的插件接口照旧要登录）。
+func IsPluginUIAssetPath(path string) bool {
+	rest, ok := strings.CutPrefix(path, "/api/plugins/")
+	if !ok || rest == "" {
+		return false
+	}
+	id, tail, ok := strings.Cut(rest, "/ui")
+	if !ok || strings.TrimSpace(id) == "" || strings.Contains(id, "/") {
+		return false
+	}
+	return tail == "" || strings.HasPrefix(tail, "/")
 }

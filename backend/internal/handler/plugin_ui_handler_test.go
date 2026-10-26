@@ -65,8 +65,12 @@ func TestPluginUIHandler_Builtin(t *testing.T) {
 	require.Equal(t, uiIndexHTML, rec.Body.String())
 	require.Contains(t, rec.Header().Get("Content-Type"), "text/html")
 	// 沙箱三条头：CSP 限死外链与出网、nosniff、插件更新后不许拿旧页
-	require.Equal(t, "default-src 'self' 'unsafe-inline' data: blob:; connect-src 'none'; img-src 'self' data: blob:",
-		rec.Header().Get("Content-Security-Policy"))
+	csp := rec.Header().Get("Content-Security-Policy")
+	// 沙箱 iframe 是 opaque origin：不能依赖 'self'（一个源都不匹配，插件自己的 bridge.js 会被拦），
+	// 也不能写死 host（开发态前端 :5174 经代理到 :8082，源对不上）。边界靠 sandbox + 禁出网。
+	require.NotContains(t, csp, "'self'", "opaque origin 下 'self' 一个源都匹配不到")
+	require.Contains(t, csp, "connect-src 'none'", "插件界面不许直连宿主接口/外网")
+	require.Contains(t, csp, "form-action 'none'", "不许表单外发")
 	require.Equal(t, "nosniff", rec.Header().Get("X-Content-Type-Options"))
 	require.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
 

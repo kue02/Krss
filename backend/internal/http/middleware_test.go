@@ -132,3 +132,28 @@ func TestRequestLoggerMiddleware_StatusBranches(t *testing.T) {
 		})
 	}
 }
+
+// TestIsPluginUIAssetPath 插件界面资源的认证豁免只覆盖 ui 子树（56-24）：
+// iframe 是 opaque origin，带不上 cookie，不放行则插件自己的 bridge.js 一律 401。
+func TestIsPluginUIAssetPath(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{"/api/plugins/annotate/ui/index.html", true},
+		{"/api/plugins/annotate/ui/bridge.js", true},
+		{"/api/plugins/annotate/ui", true},
+		{"/api/plugins/annotate/ui/", true},
+		// 其余插件接口照旧要登录
+		{"/api/plugins/annotate/settings", false},
+		{"/api/plugins/annotate/actions/notify/invoke", false},
+		{"/api/plugins/annotate/data/annotations", false},
+		{"/api/plugins/contributions", false},
+		{"/api/plugins/ui/x", false},        // 缺插件 id
+		{"/api/plugins/a/b/ui/x", false},    // id 里带斜杠
+		{"/api/plugins/annotate/uix", false}, // 前缀像但不相邻
+	}
+	for _, tc := range tests {
+		require.Equalf(t, tc.want, gh.IsPluginUIAssetPath(tc.path), "path=%s", tc.path)
+	}
+}

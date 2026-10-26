@@ -526,7 +526,7 @@ func (h *PluginHandler) GetUIAssets(c echo.Context) error {
 	}
 
 	if assets.Files != nil {
-		setUIAssetHeaders(c.Response().Header())
+		setUIAssetHeaders(c)
 		serveUIAssetFile(c, assetPath, assets.Files)
 		return nil
 	}
@@ -541,7 +541,7 @@ func (h *PluginHandler) GetUIAssets(c echo.Context) error {
 			"result", "failed", "id", c.Param("id"), "path", assetPath, "error", err)
 		return c.JSON(http.StatusBadGateway, errorResponse{Error: err.Error()})
 	}
-	setUIAssetHeaders(c.Response().Header())
+	setUIAssetHeaders(c)
 	if file.ContentType != "" {
 		c.Response().Header().Set(echo.HeaderContentType, file.ContentType)
 	}
@@ -553,7 +553,8 @@ func (h *PluginHandler) GetUIAssets(c echo.Context) error {
 
 // setUIAssetHeaders 沙箱界面的三条固定响应头。
 // no-store 是硬要求：插件更新后不能还让浏览器拿旧页（iframe 缓存的旧脚本会对着新契约发消息）。
-func setUIAssetHeaders(header http.Header) {
+func setUIAssetHeaders(c echo.Context) {
+	header := c.Response().Header()
 	header.Set("Content-Security-Policy", plugin.UISandboxCSP)
 	header.Set("X-Content-Type-Options", "nosniff")
 	header.Set("Cache-Control", "no-store")

@@ -31,9 +31,24 @@ type UIAssets interface {
 // PermissionUICustom 声明「我有自定义界面」；没有它不许访问 /ui/。
 const PermissionUICustom = "ui:custom"
 
-// UISandboxCSP 沙箱界面的内容安全策略：只许加载自己（同源路径）+ 内联样式/脚本 + data:/blob: 图片；
-// connect-src 'none' 断掉插件界面直连宿主接口/外网的后路（要数据走 postMessage）。
-const UISandboxCSP = "default-src 'self' 'unsafe-inline' data: blob:; connect-src 'none'; img-src 'self' data: blob:"
+// UISandboxCSP 沙箱界面的内容安全策略。
+//
+// 为什么这里**不绑定 origin**（不用 'self'，也不写死某个 host）：
+//   1. 沙箱 iframe 是 `sandbox="allow-scripts"`（不给 allow-same-origin）⇒ 文档是 opaque origin，
+//      CSP 的 'self' 匹配的是「文档自己的源」，一个源都匹配不到，插件自己的 `./bridge.js` 会被拦，
+//      页面永远停在「加载中」；
+//   2. 写死「服务它的那个 host」在开发态必错：前端 :5174 经 vite 代理到后端 :8082，
+//      文档 URL 在 :5174 而后端只看得见 :8082，源对不上照样被拦。
+//
+// 所以策略按「允许加载、禁止出网」来定：脚本/样式/图片不限来源（插件本来就能带自己的代码），
+// 但 `connect-src 'none'` 掐掉 fetch/XHR/WebSocket、`form-action`/`base-uri 'none'` 掐掉外发通道。
+// **真正的安全边界是 sandbox（拿不到宿主 DOM/localStorage）+ bridge 的权限校验**，CSP 只是第二道。
+const UISandboxCSP = "default-src * 'unsafe-inline' data: blob:; " +
+	"script-src * 'unsafe-inline'; " +
+	"style-src * 'unsafe-inline'; " +
+	"img-src * data: blob:; " +
+	"font-src * data:; " +
+	"connect-src 'none'; form-action 'none'; base-uri 'none'"
 
 // ErrUIAssetNotFound 外部插件没有这块界面资源（宿主据此回 404，而不是 502「插件坏了」）。
 var ErrUIAssetNotFound = errors.New("plugin: 界面资源不存在")
