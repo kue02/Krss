@@ -1,4 +1,4 @@
-import { request } from "@/api";
+import { ApiError, request } from "@/api";
 import type {
   PluginContribution,
   PluginDecoration,
@@ -122,6 +122,73 @@ export function invokePluginAction(
     `/api/plugins/${encodeURIComponent(plugin)}/actions/${encodeURIComponent(action)}/invoke`,
     { method: "POST", body: JSON.stringify(body) },
   ).then((data) => data ?? {});
+}
+
+/**
+ * 插件专属数据（56-19 的接口，56-25 起由沙箱 bridge 调用）。
+ *
+ * 形状见后端 `plugin_handler.go` 的 ListPluginData / GetPluginData / PutPluginData：
+ * 单键回 `{key, value}`、列举回 `{values: {键: 值}}`、值一律是不透明字符串
+ * （插件自己序列化的 JSON，宿主不解析 —— 所以这里也不做 JSON.parse）。
+ *
+ * 路径参数一律 encodeURIComponent：`collection` 只允许 `[a-z0-9_-]`，但 `key` 可以是
+ * 条目 id、URL、带斜杠的路径，不转义会把路径拼断（断掉就是 404 / 打到别的路由）。
+ */
+export function fetchPluginData(
+  pluginId: string,
+  collection: string,
+  key: string,
+): Promise<string> {
+  return request<{ key: string; value: string }>(
+    `/api/plugins/${encodeURIComponent(pluginId)}/data/${encodeURIComponent(collection)}/${encodeURIComponent(key)}`,
+  ).then((data) => data.value ?? "");
+}
+
+/** 写插件自己的一个键（同键再写 = 覆盖）；回写入后的值 */
+export function putPluginData(
+  pluginId: string,
+  collection: string,
+  key: string,
+  value: string,
+): Promise<string> {
+  return request<{ key: string; value: string }>(
+    `/api/plugins/${encodeURIComponent(pluginId)}/data/${encodeURIComponent(collection)}/${encodeURIComponent(key)}`,
+    { method: "PUT", body: JSON.stringify({ value }) },
+  ).then((data) => data.value ?? value);
+}
+
+/** 列一个 collection 的键值（`prefix` 过滤、`limit` 上限 1000，留空用后端缺省） */
+export function listPluginData(
+  pluginId: string,
+  collection: string,
+  options: { prefix?: string; limit?: number } = {},
+): Promise<Record<string, string>> {
+  const query = new URLSearchParams();
+  if (options.prefix) query.set("prefix", options.prefix);
+  if (options.limit) query.set("limit", String(options.limit));
+  const search = query.toString();
+  const suffix = search ? `?${search}` : "";
+  return request<{ values?: Record<string, string> | null }>(
+    `/api/plugins/${encodeURIComponent(pluginId)}/data/${encodeURIComponent(collection)}${suffix}`,
+  ).then((data) => data.values ?? {});
+}
+
+/** 删一个键（后端 404 说明本来就没有，这里当成功 —— 插件只关心「现在没有了」） */
+export function deletePluginData(
+  pluginId: string,
+  collection: string,
+  key: string,
+): Promise<void> {
+  return request<void>(
+    `/api/plugins/${encodeURIComponent(pluginId)}/data/${encodeURIComponent(collection)}/${encodeURIComponent(key)}`,
+    { method: "DELETE" },
+  )
+    .then(() => undefined)
+    .catch((error: unknown) => {
+      // 404 = 这个键本来就没有；「删掉一个不存在的东西」的目标状态已经达成，不该让插件看到失败
+      if (error instanceof ApiError && error.status === 404) return;
+      throw error;
+    });
 }
 
 /**
