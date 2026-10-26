@@ -87,6 +87,18 @@ describe("useInvokePluginAction", () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["feeds"] });
   });
 
+  it("refresh 里的 decorations → invalidateQueries({queryKey:[\"decorations\"]})", async () => {
+    // 56-32：标注插件高亮后回 refresh:["decorations"]，阅读器要立刻重画标记。
+    mocks.invokePluginAction.mockResolvedValue({ refresh: ["decorations"] });
+    const { result, invalidate } = setup();
+
+    await act(async () => {
+      await result.current.mutateAsync({ selection });
+    });
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["decorations"] });
+  });
+
   it("失败：把后端错误消息弹成 error 提示", async () => {
     mocks.invokePluginAction.mockRejectedValue(new Error("插件超时"));
     const { result } = setup();

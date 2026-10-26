@@ -19,6 +19,8 @@ const REFRESH_QUERY_KEYS: Record<string, readonly string[]> = {
   feeds: ["feeds"],
   filters: ["filters"],
   views: ["views"],
+  // 56-32：正文装饰（标注插件高亮后要立刻重画，否则得手动刷新才看得到）
+  decorations: ["decorations"],
 };
 
 export type InvokePluginActionInput = {

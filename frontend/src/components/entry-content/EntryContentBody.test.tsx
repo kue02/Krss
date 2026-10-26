@@ -1,4 +1,5 @@
-import { render, screen } from "@testing-library/react";
+import { render as rtlRender, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import { EntryContentBody } from "./EntryContentBody";
 import type { Entry } from "@/types/api";
@@ -44,6 +45,16 @@ const entry: Entry = {
   createdAt: "2026-05-10T00:00:00.000Z",
   updatedAt: "2026-05-10T00:00:00.000Z",
 };
+
+
+// 56-32：正文装饰取数改成 react-query，渲染必须有 Provider（装饰拉不到就当没有，不影响这些断言）。
+function render(ui: React.ReactElement) {
+  return rtlRender(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      {ui}
+    </QueryClientProvider>,
+  );
+}
 
 describe("EntryContentBody", () => {
   it("allows long URL titles to wrap instead of clipping horizontally", () => {

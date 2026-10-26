@@ -1,4 +1,5 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EntryContentBody } from "./EntryContentBody";
 import type { PluginDecoration, PluginSelection } from "@/plugins/types";
@@ -90,12 +91,19 @@ function entry(id: string): Entry {
 const CONTENT = "<p>Hello world</p>";
 
 function renderBody(id = "entry-1") {
+  // 56-32：装饰取数改成 react-query（插件回 refresh:["decorations"] 要能失效重画），
+  // 所以这里得有 Provider；懒加载 renderBody 的调用方不需要知道这件事。
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   return render(
-    <EntryContentBody
-      entry={entry(id)}
-      scrollRef={vi.fn()}
-      displayContent={CONTENT}
-    />,
+    <QueryClientProvider client={client}>
+      <EntryContentBody
+        entry={entry(id)}
+        scrollRef={vi.fn()}
+        displayContent={CONTENT}
+      />
+    </QueryClientProvider>,
   );
 }
 
@@ -201,11 +209,13 @@ describe("EntryContentBody 接插件装饰与选中（56-23）", () => {
     });
 
     rerender(
-      <EntryContentBody
-        entry={entry("entry-2")}
-        scrollRef={vi.fn()}
-        displayContent={CONTENT}
-      />,
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <EntryContentBody
+          entry={entry("entry-2")}
+          scrollRef={vi.fn()}
+          displayContent={CONTENT}
+        />
+      </QueryClientProvider>,
     );
 
     await waitFor(() => {

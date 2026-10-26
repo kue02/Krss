@@ -1,12 +1,17 @@
 import { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { fetchEntryDecorations } from "@/plugins/api";
 import { applyDecorations } from "./decorations";
 
 /**
  * 正文装饰的取数 + 绘制（56-23）。
  *
- * 一个 effect 管一次「条目 → 装饰」的生命周期：
- *   - 条目（或正文内容）变了 → 重新拉 `GET /api/entries/:id/decorations`；
+ * 取数走 react-query（key `["decorations", entryId]`）：插件执行完会回
+ * `refresh:["decorations"]`，宿主按这个 key 失效，正文标记就能立刻重画，
+ * 不用刷新页面。裸 useEffect 拿不到可失效的 key，那条 refresh 等于空转。
+ *
+ * 绘制仍是一对一的生命周期：
+ *   - 条目 / 正文内容 / 数据变了 → 重新画；
  *   - 卸掉 / 换条目 / 重渲染前 → 调还原函数，把 `<mark>` 拆回文本。
  *
  * 还原必须做在「下一次绘制」之前：正文内容没变时 React 不会重写 innerHTML，
@@ -19,23 +24,17 @@ export function useEntryDecorations(
   root: HTMLElement | null,
   contentKey?: string | null,
 ): void {
+  const { data } = useQuery({
+    queryKey: ["decorations", entryId],
+    queryFn: () => fetchEntryDecorations(entryId as string),
+    enabled: Boolean(entryId) && root !== null,
+    // 装饰只在「有人改过」时才需要重拉（那条路径会主动失效），平时别反复打接口。
+    staleTime: 60_000,
+  });
+
   useEffect(() => {
-    if (!entryId || !root) return undefined;
-    let cancelled = false;
-    let restore: (() => void) | null = null;
-
-    fetchEntryDecorations(entryId)
-      .then((decorations) => {
-        if (cancelled || !root.isConnected) return;
-        restore = applyDecorations(root, decorations);
-      })
-      .catch(() => {
-        /* 装饰是附加信息：接口不可用就不画，正文照常读 */
-      });
-
-    return () => {
-      cancelled = true;
-      restore?.();
-    };
-  }, [entryId, root, contentKey]);
+    if (!root || !entryId || !data) return undefined;
+    const restore = applyDecorations(root, data);
+    return restore;
+  }, [root, entryId, data, contentKey]);
 }
