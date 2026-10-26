@@ -32,6 +32,8 @@ import { RefreshReportDialog } from "@/components/refresh/RefreshReportDialog";
 import { useRefreshReportWatcher } from "@/hooks/useRefreshReportWatcher";
 import { FilterEditorDialog } from "@/components/automation/FilterEditorDialog";
 import { PluginActionDialog } from "@/plugins/PluginSlot";
+import { PluginViewOutlet } from "@/plugins/PluginViewPane";
+import { usePluginViewRoute } from "@/plugins/usePluginViewRoute";
 import { SettingsModal, ProfileModal } from "@/components/settings";
 import { EditFeedDialog } from "@/components/settings/tabs/EditFeedDialog";
 import { useEditingFeedStore } from "@/stores/editing-feed-store";
@@ -215,6 +217,12 @@ function AuthenticatedApp() {
     toggleUnreadOnly,
     contentType,
   } = useSelection();
+
+  /**
+   * 56-28：插件视图路由（`?view=插件id:视图id`）。
+   * 放在这里而不是靠后的布局分支里 —— 它是钩子，必须在所有 early return 之前。
+   */
+  const pluginViewRoute = usePluginViewRoute();
 
   const { mutate: markAllAsRead } = useMarkAllAsRead();
   const [addFeedContentType, setAddFeedContentType] =
@@ -566,6 +574,34 @@ function AuthenticatedApp() {
     <EntryContentPlaceholder message={t("entry.select_article")} />
   );
 
+  /**
+   * 中栏条目列表（默认三栏布局那一份）。
+   *
+   * 单独提出来是给 56-28 的插件视图当**回落**用：`?view=` 认不出（插件停用 / 卸载 /
+   * 手写错）时要落到「文章」这一屏，而不是一块白屏。两处必须是同一个元素，
+   * 否则回落的列表与正常列表的行为会悄悄分叉。
+   */
+  const desktopEntryList = (
+    <EntryList
+      selection={selection}
+      selectedEntryId={selectedEntryId}
+      onSelectEntry={selectEntry}
+      onMarkAllRead={handleMarkAllRead}
+      unreadOnly={unreadOnly}
+      onToggleUnreadOnly={toggleUnreadOnly}
+      onFilterChange={handleFilterChange}
+      onCloseEntry={() => selectEntry(null)}
+      onToggleStarredViewOnly={handleToggleStarredViewOnly}
+      contentType={contentType}
+      isTablet={isTablet}
+      onToggleSidebar={toggleSidebarVisible}
+      sidebarVisible={sidebarVisible}
+      onSelectFeedFromEntry={handleJumpToFeed}
+      feedJumpBackHref={jumpBackHref}
+      onBackFromFeedJump={handleBackFromFeedJump}
+    />
+  );
+
   // Redirect root to /all with first visible type (must be after ALL hooks including useCallback)
   if (location === "/") {
     // 等待 appearanceSettings 加载完成再跳转，避免先跳 article 再跳正确类型
@@ -592,11 +628,78 @@ function AuthenticatedApp() {
       onSelectAll={handleSelectAll}
       contentType={contentType}
       appearanceSettings={appearanceSettings}
+      // 56-28：视图切换器里的「插件」分组（清单 / 当前选中 / 点击切换）
+      pluginViews={pluginViewRoute.views}
+      activePluginView={pluginViewRoute.activeKey}
+      onSelectPluginView={pluginViewRoute.openView}
       // 移动端：侧栏里的设置/资料弹窗打开时先关 Sheet，否则 Sheet 的滚动锁
       // 会吃掉弹窗内容区的滚动（移动端设置滑不动，2026-09-20）。
       onRequestClose={closeSidebar}
     />
   );
+
+  /**
+   * 56-28：插件视图接管主内容区。
+   *
+   * 判据是「地址栏里有 `?view=`」而不是 `status === "resolved"` —— 清单还没回来时
+   * （loading）与认不出的值（unknown，钩子会把参数摘掉）也要走这一支：
+   * 前者给空底避免「先画内置列表再跳」，后者把回落交给 `PluginViewOutlet` 的 fallback。
+   */
+  if (pluginViewRoute.resolution.status !== "none") {
+    /** 沙箱里的「切视图 / 打开条目」：条目走宿主的选中（会离开插件视图），视图就地在插件内切 */
+    const handlePluginNavigate = (target: { viewId?: string; entryId?: string }) => {
+      if (target.entryId) {
+        selectEntry(target.entryId);
+        return;
+      }
+      if (!target.viewId) return;
+      const owner =
+        pluginViewRoute.resolution.status === "resolved"
+          ? pluginViewRoute.resolution.view.plugin
+          : "";
+      if (owner) pluginViewRoute.openView(`${owner}:${target.viewId}`);
+    };
+
+    const pluginOutlet = (
+      <PluginViewOutlet
+        resolution={pluginViewRoute.resolution}
+        fallback={desktopEntryList}
+        onExit={pluginViewRoute.closeView}
+        onSelectEntry={(entryId) => selectEntry(entryId)}
+        onNavigate={handlePluginNavigate}
+      />
+    );
+
+    if (isMobile) {
+      return (
+        <div className="h-full bg-background">
+          {pluginOutlet}
+          <ShortcutsHelpDialog
+            open={isShortcutsOpen}
+            onOpenChange={(open) => shortcutsHelp.set(open)}
+          />
+          <SearchModal open={isSearchOpen} onOpenChange={setIsSearchOpen} />
+        </div>
+      );
+    }
+
+    return (
+      <>
+        <ThreeColumnLayout
+          sidebar={sidebarContent}
+          list={null}
+          content={pluginOutlet}
+          hideList
+          showSidebar={showSidebar}
+        />
+        <ShortcutsHelpDialog
+          open={isShortcutsOpen}
+          onOpenChange={(open) => shortcutsHelp.set(open)}
+        />
+        <SearchModal open={isSearchOpen} onOpenChange={setIsSearchOpen} />
+      </>
+    );
+  }
 
   // Mobile layout - Sheet is rendered once at the top level to prevent animation flickering
   if (isMobile) {
@@ -869,26 +972,7 @@ function AuthenticatedApp() {
     <>
       <ThreeColumnLayout
         sidebar={sidebarContent}
-        list={
-          <EntryList
-            selection={selection}
-            selectedEntryId={selectedEntryId}
-            onSelectEntry={selectEntry}
-            onMarkAllRead={handleMarkAllRead}
-            unreadOnly={unreadOnly}
-            onToggleUnreadOnly={toggleUnreadOnly}
-            onFilterChange={handleFilterChange}
-            onCloseEntry={() => selectEntry(null)}
-            onToggleStarredViewOnly={handleToggleStarredViewOnly}
-            contentType={contentType}
-            isTablet={isTablet}
-            onToggleSidebar={toggleSidebarVisible}
-            sidebarVisible={sidebarVisible}
-            onSelectFeedFromEntry={handleJumpToFeed}
-            feedJumpBackHref={jumpBackHref}
-            onBackFromFeedJump={handleBackFromFeedJump}
-          />
-        }
+        list={desktopEntryList}
         content={entryContent}
         showSidebar={showSidebar}
         hideContent={isArticleHoverLayout && !selectedEntryId}

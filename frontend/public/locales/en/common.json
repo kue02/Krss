@@ -15,7 +15,8 @@
     "import_success": "OPML imported",
     "import_failed": "OPML import failed",
     "views": "Views",
-    "starred_view": "Only starred in this view"
+    "starred_view": "Only starred in this view",
+    "plugin_views": "Plugins"
   },
   "content_type": {
     "article": "Articles",
@@ -1056,7 +1057,10 @@
       "test_no_url": "Enter a URL first",
       "test_failed": "Failed: {{reason}}",
       "dirty_label": "Push"
-    }
+    },
+    "plugin_view_badge": "Plugin view",
+    "plugin_view_exit": "Exit plugin view",
+    "plugin_view_empty": "No entries in this view"
   },
   "automation": {
     "title": "Automation",

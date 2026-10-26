@@ -6,6 +6,7 @@ import type {
   PluginMeta,
   PluginSelection,
   PluginSettings,
+  PluginView,
 } from "./types";
 
 /**
@@ -97,6 +98,18 @@ export function fetchPluginContributions(): Promise<
   return request<{ surfaces?: Record<string, PluginContribution[]> | null }>(
     "/api/plugins/contributions",
   ).then((data) => data.surfaces ?? {});
+}
+
+/**
+ * 插件注册的视图（56-27 的后端接口，56-28 的视图切换器用）。
+ *
+ * `GET /api/plugins/views` 只含**已启用**插件，回 `{views: [...]}`；空时后端给 `[]`，
+ * 但 Go 的空 slice 也可能序列化成 `null`（同 contributions），这里统一摊成 `[]`。
+ */
+export function fetchPluginViews(): Promise<PluginView[]> {
+  return request<{ views?: PluginView[] | null }>("/api/plugins/views").then(
+    (data) => data.views ?? [],
+  );
 }
 
 /**

@@ -101,6 +101,40 @@ export type PluginContribution = {
   refresh?: string[];
 };
 
+export type PluginViewQuery = {
+  /** 限定订阅（后端 []int64；前端一律当字符串用，与 ..PluginSelection.feedIds 同口径） */
+  feedIds?: number[];
+  /** 限定内容类型（article / picture / notification / social） */
+  types?: string[];
+  unread?: boolean;
+  starred?: boolean;
+  search?: string;
+  /** newest | oldest —— 后端 `/api/entries` 只有时间倒序，oldest 由前端把这一页反序 */
+  sort?: string;
+};
+
+/**
+ * 插件注册的一个视图（56-27 后端 / 56-28 前端）。
+ *
+ * 后端形状见 backend/internal/plugin/view.go；只含**已启用**插件，
+ * 宿主注入 `plugin`，按插件 id 排序。`kind` 的非法值后端已降级成 declarative，
+ * 这里仍按字符串收（老前端遇到新 kind 不该炸），渲染前用 `normalizePluginView` 归一。
+ */
+export type PluginView = {
+  plugin: string;
+  id: string;
+  label: string;
+  icon?: string;
+  kind: "declarative" | "custom" | string;
+  query?: PluginViewQuery;
+  /** list | grid | timeline（认不出的按 list 画） */
+  layout?: string;
+  /** custom 用：插件包内的 iframe 入口（相对 /api/plugins/:id/ui/） */
+  entry?: string;
+  /** ""|reader|external（本棒只按主区域渲染，不外跳） */
+  open?: string;
+};
+
 /** 插件动作的返回：给一句提示 + 要刷新哪些 caches */
 export type PluginInvokeResult = {
   message?: string;

@@ -15,7 +15,8 @@
     "import_success": "OPML 导入完成",
     "import_failed": "OPML 导入失败",
     "views": "视图",
-    "starred_view": "只看当前视图的星标"
+    "starred_view": "只看当前视图的星标",
+    "plugin_views": "插件"
   },
   "content_type": {
     "article": "文章",
@@ -1053,7 +1054,10 @@
       "test_no_url": "先填地址再测试",
       "test_failed": "发送失败：{{reason}}",
       "dirty_label": "推送"
-    }
+    },
+    "plugin_view_badge": "插件视图",
+    "plugin_view_exit": "退出插件视图",
+    "plugin_view_empty": "这个视图目前没有条目"
   },
   "automation": {
     "title": "自动化",

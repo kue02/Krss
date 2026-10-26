@@ -5,6 +5,7 @@ import { fetchPlugins, rescanPlugins, setPluginEnabled } from "@/plugins/api";
 import type { PluginMeta } from "@/plugins/types";
 import { PLUGIN_SETTINGS_SECTIONS } from "@/plugins/registry";
 import { PLUGIN_CONTRIBUTIONS_QUERY_KEY } from "@/plugins/useContributions";
+import { PLUGIN_VIEWS_QUERY_KEY } from "@/plugins/usePluginViews";
 import { queryClient } from "@/lib/queryClient";
 import { HeroSwitch } from "@/components/ui/hero-switch";
 
@@ -48,6 +49,8 @@ export function PluginsSettings() {
       void queryClient.invalidateQueries({
         queryKey: PLUGIN_CONTRIBUTIONS_QUERY_KEY,
       });
+      // 56-28：视图清单同理 —— 新插件带来自己的视图，停用的要从切换器上消失。
+      void queryClient.invalidateQueries({ queryKey: PLUGIN_VIEWS_QUERY_KEY });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -66,6 +69,9 @@ export function PluginsSettings() {
       void queryClient.invalidateQueries({
         queryKey: PLUGIN_CONTRIBUTIONS_QUERY_KEY,
       });
+      // 56-28：停用插件的视图立刻从切换器消失；若正开着它的视图，路由钩子会把
+      // `?view=` 摘掉并回落内置视图（不会白屏）。
+      void queryClient.invalidateQueries({ queryKey: PLUGIN_VIEWS_QUERY_KEY });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
