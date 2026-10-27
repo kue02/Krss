@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { showToast } from "@/stores/toast-store";
-import { invokePluginAction } from "./api";
+import { exportPluginFiles, invokePluginAction } from "./api";
 import type {
   PluginContribution,
   PluginInvokeResult,
@@ -54,6 +54,12 @@ export function useInvokePluginAction(contribution: PluginContribution) {
       const message = result.message ?? "";
       if (message) showToast(message);
 
+      // 插件导出的文件：优先写进「设置 → 通用 → 导出目录」（Obsidian vault 之类）；
+      // 没配目录（后端 400）就回落浏览器下载 —— 两条路都得让用户拿到文件。
+      if (result.files && result.files.length > 0) {
+        void writeOrDownload(result.files);
+      }
+
       const refresh = result.refresh ?? contribution.refresh ?? [];
       for (const name of refresh) {
         const queryKey = REFRESH_QUERY_KEYS[name];
@@ -65,4 +71,29 @@ export function useInvokePluginAction(contribution: PluginContribution) {
       showToast(error instanceof Error ? error.message : String(error));
     },
   });
+}
+
+/**
+ * 导出文件的两条路：写导出目录（首选）/ 浏览器下载（兜底）。
+ *
+ * 写盘成功就不再下载 —— 用户已经把目录配好了，再弹一次下载反而多一步。
+ */
+async function writeOrDownload(files: { filename: string; content: string }[]) {
+  const named = files.map((file) => ({ name: file.filename, content: file.content }));
+  try {
+    const { paths } = await exportPluginFiles(named);
+    const where = paths[0]?.replace(/\/[^/]+$/, "") ?? "";
+    showToast(where ? `已写入 ${where}` : "已写入导出目录");
+    return;
+  } catch {
+    // 落盘失败（没配目录 / 目录没了 / 权限）：退回下载，别让用户拿不到文件
+  }
+  for (const file of named) {
+    const url = URL.createObjectURL(new Blob([file.content], { type: "text/markdown;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = file.name;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
 }

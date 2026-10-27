@@ -608,6 +608,8 @@ func runMigrations(db *sql.DB) error {
 	// Migration 32: 「推送」动作搬进 bark 插件（55 批）。
 	//   filters.actions.notify=true → pluginActions[{plugin:"bark",action:"notify",config:{url:原 notifyUrl}}]
 	//   notify.bark_url → 复制到 plugin.bark.url（旧键留着不删，回滚还用得着）
+	// 只补不覆盖：用户后来在「设置 → 插件」里改过的地址，不能每次启动又被旧键盖回去
+	// （DO NOTHING 而不是 DO UPDATE —— 迁移是补历史，不是每次启动重放）
 	// 没有 notify 的规则一个字不动；解析不了的老数据跳过（迁移不能把规则搞坏）。
 	if err := migrateNotifyToBarkPlugin(db); err != nil {
 		return err
@@ -690,7 +692,7 @@ func migrateNotifyToBarkPlugin(db *sql.DB) error {
 		now := time.Now().UTC().Format(time.RFC3339)
 		if _, err := db.Exec(`
 			INSERT INTO settings (key, value, updated_at) VALUES ('plugin.bark.url', ?, ?)
-			ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+			ON CONFLICT(key) DO NOTHING
 		`, oldURL, now); err != nil {
 			return fmt.Errorf("copy notify.bark_url: %w", err)
 		}

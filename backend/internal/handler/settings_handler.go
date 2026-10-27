@@ -75,6 +75,8 @@ type aiTestResponse struct {
 }
 
 type generalSettingsResponse struct {
+	// ExportDir 插件导出落盘目录（空 = 浏览器下载）
+	ExportDir         string `json:"exportDir"`
 	FallbackUserAgent string `json:"fallbackUserAgent"`
 	AutoReadability   bool   `json:"autoReadability"`
 	MarkReadOnScroll  bool   `json:"markReadOnScroll"`
@@ -83,8 +85,10 @@ type generalSettingsResponse struct {
 
 type generalSettingsRequest struct {
 	FallbackUserAgent string `json:"fallbackUserAgent"`
-	AutoReadability   bool   `json:"autoReadability"`
-	MarkReadOnScroll  bool   `json:"markReadOnScroll"`
+	// ExportDir 插件导出的落盘目录（空 = 浏览器下载）。宿主校验目录存在性。
+	ExportDir        string `json:"exportDir"`
+	AutoReadability  bool   `json:"autoReadability"`
+	MarkReadOnScroll bool   `json:"markReadOnScroll"`
 }
 
 type networkSettingsResponse struct {
@@ -443,6 +447,7 @@ func (h *SettingsHandler) GetGeneralSettings(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, generalSettingsResponse{
 		FallbackUserAgent: settings.FallbackUserAgent,
+		ExportDir:         settings.ExportDir,
 		AutoReadability:   settings.AutoReadability,
 		MarkReadOnScroll:  settings.MarkReadOnScroll,
 	})
@@ -467,11 +472,16 @@ func (h *SettingsHandler) UpdateGeneralSettings(c echo.Context) error {
 
 	settings := &service.GeneralSettings{
 		FallbackUserAgent: req.FallbackUserAgent,
+		ExportDir:         req.ExportDir,
 		AutoReadability:   req.AutoReadability,
 		MarkReadOnScroll:  req.MarkReadOnScroll,
 	}
 
 	if err := h.service.SetGeneralSettings(c.Request().Context(), settings); err != nil {
+		// 导出目录非法是「用户填错」，不是服务器故障：原话回给界面
+		if errors.Is(err, service.ErrInvalidExportDir) {
+			return c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
+		}
 		return writeSettingsSaveError(c, err, "update")
 	}
 

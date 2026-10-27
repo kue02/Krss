@@ -79,3 +79,26 @@ func countSubstring(haystack, needle string) int {
 	}
 	return count
 }
+
+// TestMigrate_NotifyToBarkPlugin_DoesNotOverwritePluginURL 迁移 32 只补不覆盖。
+//
+// 回归的是真事故：早先写的是 ON CONFLICT DO UPDATE，每次启动都把 plugin.bark.url
+// 用旧的 notify.bark_url 盖回去 —— 用户在「设置 → 插件」里改过地址，重启就失效，
+// 而且推送到的是旧地址（实测把一次推送发到了不该发的地方）。
+func TestMigrate_NotifyToBarkPlugin_DoesNotOverwritePluginURL(t *testing.T) {
+	conn, err := db.Open(":memory:")
+	require.NoError(t, err)
+	t.Cleanup(func() { conn.Close() })
+
+	_, err = conn.Exec(`INSERT INTO settings (key, value, updated_at) VALUES ('notify.bark_url','https://api.day.app/OLD','2026-01-01T00:00:00Z')`)
+	require.NoError(t, err)
+	// 用户后来在插件设置里改成了新地址
+	_, err = conn.Exec(`INSERT INTO settings (key, value, updated_at) VALUES ('plugin.bark.url','https://api.day.app/NEW','2026-01-02T00:00:00Z')`)
+	require.NoError(t, err)
+
+	require.NoError(t, db.Migrate(conn)) // 再跑一次（等价于重启）
+
+	var got string
+	require.NoError(t, conn.QueryRow(`SELECT value FROM settings WHERE key = 'plugin.bark.url'`).Scan(&got))
+	require.Equal(t, "https://api.day.app/NEW", got, "迁移不许把用户改过的地址盖回旧值")
+}

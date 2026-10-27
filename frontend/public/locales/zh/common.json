@@ -216,7 +216,10 @@
     "proxy_memory_clear_failed": "清空失败，请重试",
     "proxy_memory_mode_proxy": "代理",
     "proxy_memory_mode_direct": "直连",
-    "proxy_memory_empty": "还没有记忆：下次抓取时会按域自动学习"
+    "proxy_memory_empty": "还没有记忆：下次抓取时会按域自动学习",
+    "export_dir": "导出目录",
+    "export_dir_description": "插件导出的文件写到这个目录，留空则走浏览器下载。",
+    "export_dir_placeholder": "/Users/你/Obsidian/Vault/Inbox"
   },
   "theme": {
     "system": "跟随系统",

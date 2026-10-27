@@ -76,8 +76,10 @@ func TestPluginViews_Declarative(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	require.JSONEq(t, `{"views":[
 		{"plugin":"view-aaa","id":"unread","label":"未读","icon":"mail","kind":"declarative","layout":"list",
+		 "permissions":["ui:custom"],
 		 "query":{"unread":true,"sort":"newest"}},
-		{"plugin":"view-aaa","id":"radar","label":"雷达","kind":"custom","entry":"index.html","open":"reader"}
+		{"plugin":"view-aaa","id":"radar","label":"雷达","kind":"custom","entry":"index.html","open":"reader",
+		 "permissions":["ui:custom"]}
 	]}`, rec.Body.String())
 }
 

@@ -7,6 +7,7 @@ import (
 
 	"krss/backend/internal/handler"
 	gh "krss/backend/internal/http"
+	"krss/backend/internal/service"
 	"krss/backend/internal/service/mock"
 	"krss/backend/pkg/network"
 
@@ -51,6 +52,7 @@ func TestNewRouter_RegistersRoutes(t *testing.T) {
 	mcpHandler := handler.NewMCPHandler(mcpService, mcpOutboundService)
 	mcpEndpointHandler := handler.NewMCPEndpointHandler(mcpOutboundService)
 	pluginHandler := handler.NewPluginHandler(mock.NewMockPluginService(ctrl))
+	exportHandler := handler.NewExportHandler(service.NewExportService(mock.NewMockSettingsService(ctrl)))
 
 	e := gh.NewRouter(
 		folderHandler,
@@ -68,6 +70,7 @@ func TestNewRouter_RegistersRoutes(t *testing.T) {
 		mcpHandler,
 		mcpEndpointHandler,
 		pluginHandler,
+		exportHandler,
 		authService,
 		"",
 		true,
@@ -121,6 +124,7 @@ func TestNewRouter_SwaggerDisabled(t *testing.T) {
 	mcpHandler := handler.NewMCPHandler(mcpService, mcpOutboundService)
 	mcpEndpointHandler := handler.NewMCPEndpointHandler(mcpOutboundService)
 	pluginHandler := handler.NewPluginHandler(mock.NewMockPluginService(ctrl))
+	exportHandler := handler.NewExportHandler(service.NewExportService(mock.NewMockSettingsService(ctrl)))
 
 	e := gh.NewRouter(
 		folderHandler,
@@ -138,6 +142,7 @@ func TestNewRouter_SwaggerDisabled(t *testing.T) {
 		mcpHandler,
 		mcpEndpointHandler,
 		pluginHandler,
+		exportHandler,
 		authService,
 		"",
 		false,
@@ -186,6 +191,7 @@ func TestNewRouter_LogoutRouteIsPublic(t *testing.T) {
 	mcpHandler := handler.NewMCPHandler(mcpService, mcpOutboundService)
 	mcpEndpointHandler := handler.NewMCPEndpointHandler(mcpOutboundService)
 	pluginHandler := handler.NewPluginHandler(mock.NewMockPluginService(ctrl))
+	exportHandler := handler.NewExportHandler(service.NewExportService(mock.NewMockSettingsService(ctrl)))
 
 	e := gh.NewRouter(
 		folderHandler,
@@ -203,6 +209,7 @@ func TestNewRouter_LogoutRouteIsPublic(t *testing.T) {
 		mcpHandler,
 		mcpEndpointHandler,
 		pluginHandler,
+		exportHandler,
 		authService,
 		"",
 		false,

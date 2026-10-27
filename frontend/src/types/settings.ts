@@ -60,6 +60,7 @@ export interface AITestResponse {
 export interface GeneralSettings {
   fallbackUserAgent: string;
   autoReadability: boolean;
+  exportDir?: string;
   markReadOnScroll: boolean;
   // 55-18：RSSHub 实例地址 / ACCESS_KEY 已搬进 rsshub 插件（GET/PUT /api/plugins/rsshub/settings）
 }

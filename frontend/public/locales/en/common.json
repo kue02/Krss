@@ -216,7 +216,10 @@
     "proxy_memory_clear_failed": "Failed to clear, try again",
     "proxy_memory_mode_proxy": "proxy",
     "proxy_memory_mode_direct": "direct",
-    "proxy_memory_empty": "No memory yet: it learns per domain on the next fetch"
+    "proxy_memory_empty": "No memory yet: it learns per domain on the next fetch",
+    "export_dir": "Export folder",
+    "export_dir_description": "Plugin exports are written here; leave empty to download in the browser.",
+    "export_dir_placeholder": "/Users/you/Obsidian/Vault/Inbox"
   },
   "theme": {
     "system": "Follow System",

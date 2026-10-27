@@ -221,3 +221,18 @@ export function fetchEntryDecorations(
     `/api/entries/${encodeURIComponent(entryId)}/decorations`,
   ).then((data) => data.decorations ?? []);
 }
+
+/**
+ * 把插件导出的文件写到「设置 → 通用 → 导出目录」（56-33）。
+ *
+ * 返回绝对路径；后端没配目录时抛错，调用方据此回落到浏览器下载 ——
+ * 「写不写盘」取决于用户环境，前端不该自己拼路径。
+ */
+export function exportPluginFiles(
+  files: { name: string; content: string }[],
+): Promise<{ paths: string[] }> {
+  return request<{ paths: string[] }>("/api/exports", {
+    method: "POST",
+    body: JSON.stringify({ files }),
+  });
+}

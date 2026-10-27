@@ -142,6 +142,8 @@ export type PluginInvokeResult = {
   message?: string;
   level?: "success" | "error" | "info" | string;
   refresh?: string[];
+  /** 插件导出的文件（后端字段是 filename；宿主决定落到「设置 → 通用 → 导出目录」，没配就浏览器下载） */
+  files?: { filename: string; content: string }[];
 };
 
 /*
