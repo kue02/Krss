@@ -41,6 +41,8 @@ const PAGE_SIZE = 50;
 
 export type PluginViewPaneProps = {
   view: PluginView;
+  /** 当前条目（`?entry=<id>`）：自定义视图靠它按条目取数据，没有就是「没选条目」 */
+  entry?: { id: string; title?: string; url?: string };
   /** 插件申请到的权限（转交给沙箱 bridge） */
   permissions?: readonly string[];
   /** 退出插件视图（回到内置视图） */
@@ -53,6 +55,7 @@ export type PluginViewPaneProps = {
 
 export function PluginViewPane({
   view,
+  entry,
   permissions,
   onExit,
   onSelectEntry,
@@ -97,8 +100,9 @@ export function PluginViewPane({
             pluginId={view.plugin}
             page={view.entry || "index.html"}
             title={view.label}
-            permissions={permissions}
+            permissions={permissions ?? view.permissions}
             view={{ id: view.id, title: view.label }}
+            entry={entry}
             onNavigate={onNavigate}
           />
         ) : (
@@ -224,6 +228,8 @@ function DeclarativePluginView({
 
 export type PluginViewOutletProps = {
   resolution: PluginViewResolution;
+  /** `?entry=<id>`：透传给插件视图（按条目看数据） */
+  entry?: { id: string; title?: string; url?: string };
   /** 回落用的内置视图（也就是「文章」那一套列表）—— 认不出的 `?view=` 交给它 */
   fallback: React.ReactNode;
   permissions?: readonly string[];
@@ -240,6 +246,7 @@ export type PluginViewOutletProps = {
  */
 export function PluginViewOutlet({
   resolution,
+  entry,
   fallback,
   permissions,
   onExit,
@@ -250,6 +257,7 @@ export function PluginViewOutlet({
     return (
       <PluginViewPane
         view={resolution.view}
+        entry={entry}
         permissions={permissions}
         onExit={onExit}
         onSelectEntry={onSelectEntry}

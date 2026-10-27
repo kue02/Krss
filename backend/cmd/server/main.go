@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -172,7 +173,8 @@ func main() {
 	// 插件模块（55 批）：注册表与 bark 装配已在规则引擎之前完成（见 filterService 上方），
 	// 这里只把外部插件宿主接上。
 	// 外部插件宿主（55-7b）：$KRSS_DATA_DIR/plugins/<id>/ = manifest + 可执行，不重启即装即用。
-	pluginHost := service.NewPluginHost(pluginRegistry, pluginRepo, filepath.Join(cfg.DataDir, "plugins"))
+	pluginHost := service.NewPluginHost(pluginRegistry, pluginRepo, filepath.Join(cfg.DataDir, "plugins"),
+		service.WithPluginAPIBase(pluginAPIBase(cfg.Addr)))
 	// 每 5s 扫一次插件目录（不上 fsnotify）：丢个文件夹进去，5s 内就发现并拉起。
 	pluginWatchCtx, pluginWatchCancel := context.WithCancel(context.Background())
 	pluginHost.Watch(pluginWatchCtx, 5*time.Second)
@@ -314,4 +316,17 @@ func (a *networkDomainMemoryAdapter) Remember(ctx context.Context, host, mode st
 	if err := a.repo.Set(ctx, host, mode); err != nil {
 		logger.Warn("proxy domain memory write failed", "module", "network", "action", "remember", "resource", "smart-proxy", "host", host, "error", err)
 	}
+}
+
+// pluginAPIBase 把监听地址（":8082" / "0.0.0.0:8082"）翻成插件能连的基址 —— 插件在本机，
+// 一律走 127.0.0.1，不跟着监听网卡走（否则 0.0.0.0 会变成不可连的地址）。
+func pluginAPIBase(addr string) string {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return ""
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" || host == "[::]" {
+		host = "127.0.0.1"
+	}
+	return "http://" + net.JoinHostPort(host, port)
 }

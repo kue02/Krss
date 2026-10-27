@@ -33,6 +33,9 @@ type View struct {
 	Layout string     `json:"layout,omitempty"` // list|grid|timeline
 	Entry  string     `json:"entry,omitempty"`  // custom 用：iframe 入口
 	Open   string     `json:"open,omitempty"`   // ""|reader|external
+	// Permissions 宿主注入：该插件声明的权限。沙箱 bridge 靠它决定给不给 data / entries:read。
+	// 插件不用自己填（填了也会被覆盖成它 Meta 里那份）。
+	Permissions []string `json:"permissions,omitempty"`
 }
 
 // 视图形态取值（View.Kind）。

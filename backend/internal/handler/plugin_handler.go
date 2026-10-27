@@ -25,6 +25,19 @@ func NewPluginHandler(svc service.PluginService) *PluginHandler {
 	return &PluginHandler{service: svc}
 }
 
+// DataTokenResolver 把「插件进程 token → 插件 id」的解析能力交给认证中间件（56-32 单库数据通道）。
+// 用类型断言而不是往 PluginService 接口上加方法：这条能力只有真实现有，加进接口会逼所有
+// mock 跟着改（本批已经在多棵树上并行，少动接口少冲突）。
+func (h *PluginHandler) DataTokenResolver() func(token string) (string, bool) {
+	type resolver interface {
+		PluginIDByDataToken(token string) (string, bool)
+	}
+	if impl, ok := h.service.(resolver); ok {
+		return impl.PluginIDByDataToken
+	}
+	return nil
+}
+
 func (h *PluginHandler) RegisterRoutes(g *echo.Group) {
 	// 固定段必须排在 /plugins/:id 之前（照 filter_handler.go 的 /filters/parse 先例；
 	// echo 虽以静态优先，固定段靠前是本项目的明规则）

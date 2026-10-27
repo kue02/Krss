@@ -663,6 +663,7 @@ function AuthenticatedApp() {
     const pluginOutlet = (
       <PluginViewOutlet
         resolution={pluginViewRoute.resolution}
+        entry={pluginViewRoute.entry ?? undefined}
         fallback={desktopEntryList}
         onExit={pluginViewRoute.closeView}
         onSelectEntry={(entryId) => selectEntry(entryId)}

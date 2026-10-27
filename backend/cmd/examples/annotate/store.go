@@ -1,97 +1,79 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
+	"context"
 	"sync"
+
+	"krss/backend/internal/plugin/sdk"
 )
 
-// store 是插件自己的键值数据（collection → key → 不透明字符串），对应插件页面上
-// `krss.data.*` 那一组能力。外部插件不碰宿主的 DB：默认落在插件目录的 data.json
-// （与 sdk 的 settings.json 并排，位置从宿主注入的 KRSS_PLUGIN_SOCKET 推出来）。
+// store 插件自己的键值数据（collection → key → 不透明字符串）。
 //
-// 传空路径 = 只在内存里（测试用；进程退出即丢）。
+// **单库**：生产走宿主的 plugin_data 表（经 sdk.Data 调 /api/plugins/<自己>/data/*）。
+// 这样插件进程和它的沙箱页面（页面走 bridge → 宿主同一张表）看到的是同一份数据。
+// 早先版本把标注写在插件目录的 data.json、页面读宿主库，两边不通（56-32 改成单库）。
+//
+// 只有「单独把插件跑起来做冒烟」（没有宿主注入的 KRSS_PLUGIN_API/TOKEN/ID）时退回进程内内存；
+// 单元测试也走这条路。
 type store struct {
-	mu     sync.Mutex
-	path   string
-	loaded bool
-	data   map[string]map[string]string
+	data *sdk.Data
+
+	mu  sync.Mutex
+	mem map[string]map[string]string
 }
 
-func newStore(path string) *store { return &store{path: strings.TrimSpace(path)} }
-
-// loadLocked 首次访问时读盘；文件不存在/坏掉都当空库（插件不该因为数据文件丢了就起不来）。
-func (s *store) loadLocked() {
-	if s.loaded {
-		return
-	}
-	s.loaded = true
-	s.data = map[string]map[string]string{}
-	if s.path == "" {
-		return
-	}
-	raw, err := os.ReadFile(s.path)
-	if err != nil {
-		return
-	}
-	var stored map[string]map[string]string
-	if err := json.Unmarshal(raw, &stored); err != nil || stored == nil {
-		return
-	}
-	s.data = stored
+func newStore() *store {
+	return &store{data: sdk.NewData(), mem: map[string]map[string]string{}}
 }
 
-// persistLocked 写穿到磁盘：先写临时文件再 rename，进程半路被杀也不会留下半截 JSON。
-func (s *store) persistLocked() error {
-	if s.path == "" {
-		return nil
-	}
-	raw, err := json.MarshalIndent(s.data, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
-		return fmt.Errorf("annotate: 建数据目录失败: %w", err)
-	}
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
-		return fmt.Errorf("annotate: 写数据文件失败: %w", err)
-	}
-	if err := os.Rename(tmp, s.path); err != nil {
-		return fmt.Errorf("annotate: 落盘失败: %w", err)
-	}
-	return nil
-}
-
+// Get 读一个值；不存在或宿主报错都回 ("", false)。写路径会把错误抛给调用方（Set）。
 func (s *store) Get(collection, key string) (string, bool) {
+	if s.data.Usable() {
+		value, ok, err := s.data.Get(context.Background(), collection, key)
+		if err != nil {
+			return "", false
+		}
+		return value, ok
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.loadLocked()
-	value, ok := s.data[collection][key]
+	bucket, ok := s.mem[collection]
+	if !ok {
+		return "", false
+	}
+	value, ok := bucket[key]
 	return value, ok
 }
 
+// Set 写一个值。生产写宿主库，失败真的报错（不静默丢数据）。
 func (s *store) Set(collection, key, value string) error {
+	if s.data.Usable() {
+		return s.data.Put(context.Background(), collection, key, value)
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.loadLocked()
-	if s.data[collection] == nil {
-		s.data[collection] = map[string]string{}
+	bucket, ok := s.mem[collection]
+	if !ok {
+		bucket = map[string]string{}
+		s.mem[collection] = bucket
 	}
-	s.data[collection][key] = value
-	return s.persistLocked()
+	bucket[key] = value
+	return nil
 }
 
-// List 返回该 collection 的一份拷贝（调用方随便改，不影响库里）。
+// List 列一个 collection；宿主报错时回空 map（读路径不该把整条动作打挂）。
 func (s *store) List(collection string) map[string]string {
+	if s.data.Usable() {
+		values, err := s.data.List(context.Background(), collection, "")
+		if err != nil || values == nil {
+			return map[string]string{}
+		}
+		return values
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.loadLocked()
-	out := make(map[string]string, len(s.data[collection]))
-	for key, value := range s.data[collection] {
+	out := make(map[string]string, len(s.mem[collection]))
+	for key, value := range s.mem[collection] {
 		out[key] = value
 	}
 	return out
@@ -102,15 +84,10 @@ var (
 	defaultStoreVal  *store
 )
 
-// dataStore 进程默认 store：惰性定位到插件目录下的 data.json。
-// （惰性是因为 sdk.Serve 之前 main 就拿不到 socket 路径；测试永远不碰它。）
+// dataStore 进程默认 store（惰性：sdk.Serve 之前 main 还没读到宿主注入的 env）。
 func dataStore() *store {
 	defaultStoreOnce.Do(func() {
-		path := ""
-		if socket := strings.TrimSpace(os.Getenv("KRSS_PLUGIN_SOCKET")); socket != "" {
-			path = filepath.Join(filepath.Dir(socket), "data.json")
-		}
-		defaultStoreVal = newStore(path)
+		defaultStoreVal = newStore()
 	})
 	return defaultStoreVal
 }

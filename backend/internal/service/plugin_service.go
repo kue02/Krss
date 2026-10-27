@@ -535,3 +535,12 @@ func (s *pluginService) enrichInvoke(ctx context.Context, meta plugin.Meta, req 
 
 	return req
 }
+
+// PluginIDByDataToken 用插件进程的 token 换它的插件 id（56-32 单库数据通道）。
+// 不在 PluginService 接口里：只有真实现有宿主，mock 不需要它。
+func (s *pluginService) PluginIDByDataToken(token string) (string, bool) {
+	if s.host == nil {
+		return "", false
+	}
+	return s.host.PluginIDByToken(token)
+}

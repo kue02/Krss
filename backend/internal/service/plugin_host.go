@@ -14,6 +14,7 @@ package service
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -59,7 +60,7 @@ type pluginManifest struct {
 	Capabilities []string `json:"capabilities"`
 	// 56-31：界面贡献 / 视图 / 权限以 manifest 为准（宿主信任边界在磁盘文件上，
 	// 不信插件进程自报的 /meta）；内置轨用代码声明，外部轨用这份声明。
-	Permissions   []string            `json:"permissions"`
+	Permissions   []string              `json:"permissions"`
 	Contributions []plugin.Contribution `json:"contributions"`
 	Views         []plugin.View         `json:"views"`
 }
@@ -108,8 +109,10 @@ type PluginHost struct {
 
 	readyTimeout time.Duration
 	backoffBase  time.Duration
-	backoffMax   time.Duration
-	stopGrace    time.Duration
+	// apiBase 宿主 HTTP 的基址（如 http://127.0.0.1:8082），注入给插件用来自查自己的 data。
+	apiBase    string
+	backoffMax time.Duration
+	stopGrace  time.Duration
 }
 
 // PluginHostOption 宿主可调参数（默认值即计划书口径，测试调小以免等 30s）。
@@ -137,6 +140,12 @@ func WithPluginBackoff(base, max time.Duration) PluginHostOption {
 }
 
 // WithPluginStopGrace 停用时的 SIGTERM→SIGKILL 宽限（默认 5s）。
+// WithPluginAPIBase 告诉宿主「自己的 HTTP 基址」，spawn 时以 KRSS_PLUGIN_API 注入给插件。
+// 插件进程靠它 + 自己的 token 读写自己那份 data（单库，56-32）。
+func WithPluginAPIBase(base string) PluginHostOption {
+	return func(h *PluginHost) { h.apiBase = strings.TrimRight(strings.TrimSpace(base), "/") }
+}
+
 func WithPluginStopGrace(d time.Duration) PluginHostOption {
 	return func(h *PluginHost) {
 		if d > 0 {
@@ -467,6 +476,7 @@ func (h *PluginHost) spawnLocked(p *externalPluginProcess) error {
 		"KRSS_PLUGIN_SOCKET="+p.socketPath,
 		"KRSS_PLUGIN_TOKEN="+p.token,
 		"KRSS_PLUGIN_ID="+p.id,
+		"KRSS_PLUGIN_API="+h.apiBase,
 	)
 	// 插件自己的 stdout/stderr 落插件目录（宿主不吞，排障能看）。
 	var logFile *os.File
@@ -798,4 +808,27 @@ func pidGone(pid int) bool {
 	}
 	err := syscall.Kill(pid, 0)
 	return err == syscall.ESRCH
+}
+
+// PluginIDByToken 用「插件进程带来的 token」换它的插件 id（56-32 单库数据通道）。
+//
+// 语义：插件进程没有登录态，但需要读写**自己**的 data（标注、缓存……）。宿主 spawn 时
+// 已经给它一枚随机 token，这里把它认回来；调用方必须再校验「id 与请求路径一致」，
+// 所以一枚 token 只能碰自己那一行数据。
+// 只有正在跑（未主动停止）的进程的 token 有效：停用/崩溃的插件拿旧 token 也进不来。
+func (h *PluginHost) PluginIDByToken(token string) (string, bool) {
+	if h == nil || len(token) < 16 {
+		return "", false
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for id, p := range h.procs {
+		if p == nil || p.stopping.Load() || p.token == "" {
+			continue
+		}
+		if subtle.ConstantTimeCompare([]byte(p.token), []byte(token)) == 1 {
+			return id, true
+		}
+	}
+	return "", false
 }

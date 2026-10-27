@@ -38,6 +38,9 @@ export function withoutViewParam(location: string, search: string): string {
   return href(location, params.toString());
 }
 
+/** 插件视图想按条目看数据时带的 `?entry=<id>`（id 是字符串：19 位 snowflake 不能进 number） */
+export type PluginViewEntry = { id: string };
+
 export type PluginViewRoute = {
   /** 当前地址 vs 插件视图清单的解析结果 */
   resolution: PluginViewResolution;
@@ -49,6 +52,8 @@ export type PluginViewRoute = {
   openView: (key: string) => void;
   /** 从插件视图退回内置视图 */
   closeView: () => void;
+  /** 当前 `?entry=<id>`；没有就是 null（视图自己决定要不要提示「先选一条」） */
+  entry: PluginViewEntry | null;
 };
 
 /**
@@ -91,9 +96,12 @@ export function usePluginViewRoute(): PluginViewRoute {
     navigate(withoutViewParam(location, search), { replace: true });
   }, [location, search, navigate]);
 
+  const entryParam = new URLSearchParams(search).get("entry")?.trim() ?? "";
+
   return {
     resolution,
     views: data ?? [],
+    entry: entryParam ? { id: entryParam } : null,
     activeKey:
       resolution.status === "resolved" ? pluginViewKey(resolution.view) : null,
     openView,

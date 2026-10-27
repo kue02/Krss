@@ -15,7 +15,7 @@ import (
 )
 
 // newTestPlugin 每个用例一份独立的内存 store（不碰磁盘、互不串味）。
-func newTestPlugin() annotate { return annotate{st: newStore("")} }
+func newTestPlugin() annotate { return annotate{st: newStore()} }
 
 // invokeAction 按 action id 找动作并界面直调（宿主走的就是 plugin.Invoker 这条路）。
 func invokeAction(t *testing.T, a annotate, action string, req plugin.InvokeRequest) (plugin.InvokeResult, error) {

@@ -48,7 +48,7 @@ func NewRouter(
 
 	// Protected API routes (auth required)
 	api := e.Group("/api")
-	api.Use(JWTAuthMiddleware(authService))
+	api.Use(JWTAuthMiddleware(authService, WithPluginDataTokens(pluginHandler.DataTokenResolver())))
 
 	folderHandler.RegisterRoutes(api)
 	feedHandler.RegisterRoutes(api)

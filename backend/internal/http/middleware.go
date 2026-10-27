@@ -86,7 +86,24 @@ func RequestLoggerMiddleware() echo.MiddlewareFunc {
 
 // JWTAuthMiddleware creates a middleware that validates JWT tokens.
 // It checks both Authorization header (for API calls) and Cookie (for browser resource requests like images).
-func JWTAuthMiddleware(authService service.AuthService) echo.MiddlewareFunc {
+type authOptions struct {
+	plugintTokens func(token string) (pluginID string, ok bool)
+}
+
+// AuthOption 认证中间件的可选能力（变参，既有调用方不用改）。
+type AuthOption func(*authOptions)
+
+// WithPluginDataTokens 让插件进程用自己的 token 读写**它自己**的 data（56-32 单库数据通道）。
+// 只在 /api/plugins/<id>/data/... 上生效，且 token 换回的 id 必须等于路径里的 id。
+func WithPluginDataTokens(resolve func(token string) (pluginID string, ok bool)) AuthOption {
+	return func(o *authOptions) { o.plugintTokens = resolve }
+}
+
+func JWTAuthMiddleware(authService service.AuthService, opts ...AuthOption) echo.MiddlewareFunc {
+	options := authOptions{}
+	for _, opt := range opts {
+		opt(&options)
+	}
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			// 插件沙箱界面资源放行（56-24）：iframe 是 sandbox="allow-scripts" 的 opaque origin，
@@ -105,6 +122,22 @@ func JWTAuthMiddleware(authService service.AuthService) echo.MiddlewareFunc {
 				parts := strings.SplitN(authHeader, " ", 2)
 				if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
 					token = parts[1]
+				}
+			}
+
+			// 插件进程的数据通道：带 X-Krss-Plugin-Token 且路径是 /api/plugins/<id>/data/…
+			// token 换回的 id 必须与路径一致（一枚 token 只能碰自己那一行）。
+			if token == "" && options.plugintTokens != nil {
+				if pluginToken := strings.TrimSpace(c.Request().Header.Get("X-Krss-Plugin-Token")); pluginToken != "" {
+					if pathID, ok := pluginDataPathID(c.Request().URL.Path); ok {
+						if id, valid := options.plugintTokens(pluginToken); valid && id == pathID {
+							return next(c)
+						}
+						logger.Warn("plugin data token rejected",
+							"module", "http", "action", "request", "resource", "auth", "result", "failed",
+							"path", c.Request().URL.Path, "remote_ip", c.RealIP())
+						return c.JSON(http.StatusUnauthorized, map[string]string{"error": "invalid plugin token"})
+					}
 				}
 			}
 
@@ -178,4 +211,20 @@ func IsPluginUIAssetPath(path string) bool {
 		return false
 	}
 	return tail == "" || strings.HasPrefix(tail, "/")
+}
+
+// pluginDataPathID 从 /api/plugins/<id>/data[/...] 里取出插件 id。
+func pluginDataPathID(path string) (string, bool) {
+	rest, ok := strings.CutPrefix(path, "/api/plugins/")
+	if !ok {
+		return "", false
+	}
+	id, tail, ok := strings.Cut(rest, "/data")
+	if !ok || id == "" || strings.Contains(id, "/") {
+		return "", false
+	}
+	if tail != "" && !strings.HasPrefix(tail, "/") {
+		return "", false
+	}
+	return id, tail != ""
 }

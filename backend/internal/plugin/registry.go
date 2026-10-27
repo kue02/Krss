@@ -267,6 +267,8 @@ func (r *Registry) AllViews() []View {
 		items []View
 		// customAllowed 该插件是否声明了 ui:custom（在锁内取，免得注册/停用并发时读到半截）
 		customAllowed bool
+		// permissions 该插件声明的全部权限（注入给沙箱 bridge，缺了 data 之类会 permission denied）
+		permissions []string
 	}
 	r.mu.RLock()
 	ids := make([]string, 0, len(r.plugins))
@@ -280,9 +282,11 @@ func (r *Registry) AllViews() []View {
 			continue
 		}
 		ids = append(ids, id)
+		meta := withTransport(p.Meta())
 		raw[id] = pluginViews{
 			items:         provider.Views(),
-			customAllowed: DeclaresPermission(withTransport(p.Meta()), PermissionUICustom),
+			customAllowed: DeclaresPermission(meta, PermissionUICustom),
+			permissions:   append([]string(nil), meta.Permissions...),
 		}
 	}
 	r.mu.RUnlock()
@@ -291,13 +295,13 @@ func (r *Registry) AllViews() []View {
 	out := make([]View, 0, len(ids))
 	for _, id := range ids {
 		entry := raw[id]
-		out = append(out, sanitizeViews(id, entry.items, entry.customAllowed)...)
+		out = append(out, sanitizeViews(id, entry.items, entry.customAllowed, entry.permissions)...)
 	}
 	return out
 }
 
 // sanitizeViews 清洗一个插件注册的视图并注入归属插件。
-func sanitizeViews(pluginID string, items []View, customAllowed bool) []View {
+func sanitizeViews(pluginID string, items []View, customAllowed bool, permissions []string) []View {
 	out := make([]View, 0, len(items))
 	seen := make(map[string]bool, len(items))
 	for _, item := range items {
@@ -331,8 +335,9 @@ func sanitizeViews(pluginID string, items []View, customAllowed bool) []View {
 			continue
 		}
 		seen[key] = true
-		// 归属插件由宿主注入，插件声明时不必（也不该）自己填。
+		// 归属插件与权限都由宿主注入，插件声明时不必（也不该）自己填。
 		item.Plugin = pluginID
+		item.Permissions = append([]string(nil), permissions...)
 		out = append(out, item)
 	}
 	return out
@@ -426,7 +431,7 @@ func sanitizeContributions(pluginID string, items []Contribution) []Contribution
 		if item.Selection == "" {
 			item.Selection = SelectionNone
 		}
-		// 归属插件由宿主注入，插件声明时不必（也不该）自己填。
+		// 归属插件与权限都由宿主注入，插件声明时不必（也不该）自己填。
 		item.Plugin = pluginID
 		out = append(out, item)
 	}

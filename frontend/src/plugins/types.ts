@@ -131,6 +131,8 @@ export type PluginView = {
   layout?: string;
   /** custom 用：插件包内的 iframe 入口（相对 /api/plugins/:id/ui/） */
   entry?: string;
+  /** 宿主注入：该插件声明的权限（沙箱 bridge 靠它放行 data / entries:read） */
+  permissions?: string[];
   /** ""|reader|external（本棒只按主区域渲染，不外跳） */
   open?: string;
 };
