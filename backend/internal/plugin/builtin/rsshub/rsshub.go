@@ -46,8 +46,7 @@ func (Plugin) Meta() plugin.Meta {
 	return plugin.Meta{
 		ID:   "rsshub",
 		Name: "RSSHub 适配",
-		Description: "把公共实例的地址换到自己的 RSSHub，并把实例错误页翻译成真正的原因" +
-			"（路由不存在 / 上游挂 / 实例连不上）。",
+		Description: "换到自己的 RSSHub 实例。",
 		Version: "1.0.0",
 		Builtin: true,
 		// DefaultEnabled 留 nil = 默认启用：稳定能力，老实例升级后行为零变化。
@@ -74,7 +73,7 @@ func (Plugin) SettingsSections() []plugin.SettingsSection {
 				Label:       "自有实例地址",
 				Type:        "text",
 				Placeholder: "https://rsshub.example.com",
-				Help:        "添加订阅时 RSSHub 地址会自动换到该实例；「预览」可把现有订阅一键换过去。",
+				Help:        "添加订阅时自动换到该实例。",
 			},
 			{
 				Key:   "access_key",
@@ -85,7 +84,7 @@ func (Plugin) SettingsSections() []plugin.SettingsSection {
 				// 通用设置也是明文返回这一项，语义不变。
 				Type:        "text",
 				Placeholder: "ACCESS_KEY",
-				Help:        "非空时作为 key 参数写入地址；属凭证，只存在你自己的库里（导出设置不含插件键）。",
+				Help:        "作为 key 参数拼进地址。",
 			},
 		},
 	}}

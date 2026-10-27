@@ -1033,10 +1033,9 @@
   },
   "plugins": {
     "title": "Plugins",
-    "intro": "Plugins add specialised capabilities (push delivery, RSSHub handling, per-feed tweaks). Once disabled, their settings section and automation actions stop working; rules that already reference them will show “plugin disabled” in the rule detail.",
     "builtin": "Built-in",
     "external": "External",
-    "install_hint": "To install: drop the plugin folder (plugin.json plus the executable) into the plugins/ directory of your data folder — no restart needed. To uninstall, delete that folder.",
+    "install_hint": "Drop it under the data dir’s plugins/ folder; delete it to uninstall.",
     "rescan": "Rescan plugin directory",
     "rescanning": "Scanning…",
     "enabled": "Enabled",
@@ -1047,13 +1046,12 @@
     "test_failed": "Test failed",
     "bark": {
       "label": "Push to phone (Bark)",
-      "description": "Used by the automation action \"Push to phone (Bark)\" when a rule leaves its URL empty. Bark-compatible: https://api.day.app/<your-key> (or your own Bark server).",
-      "hint": "The URL contains your device key and stays in your own database. Matches push the rule name, the source and the entry title; tapping opens the entry.",
+      "description": "Used when a rule has no address of its own.",
       "saved": "Saved",
       "save_failed": "Save failed",
       "test": "Send test push",
       "testing": "Sending…",
-      "test_ok": "Sent — check your phone",
+      "test_ok": "Sent",
       "test_no_url": "Enter a URL first",
       "test_failed": "Failed: {{reason}}",
       "dirty_label": "Push"
@@ -1265,7 +1263,7 @@
     "action_group_content": "Content processing",
     "action_group_external": "Outbound",
     "plugin_actions": "Plugin actions",
-    "plugin_actions_hint": "Actions and their fields are declared by plugins. Disabled plugins or actions do not appear here (enable them in Settings → Plugins).",
+    "plugin_actions_hint": "Disabled plugins are not listed here.",
     "plugin_action_field_required": "The plugin action needs \"{{field}}\".",
     "plugin_action_from": "from {{name}}"
   },

@@ -164,10 +164,6 @@ export function BarkNotifySection() {
           </span>
         )}
       </div>
-
-      <div className="text-xs text-muted-foreground">
-        {t("plugins.bark.hint")}
-      </div>
     </section>
   );
 }

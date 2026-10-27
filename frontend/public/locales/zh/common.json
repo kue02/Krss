@@ -1030,10 +1030,9 @@
   },
   "plugins": {
     "title": "插件",
-    "intro": "插件提供特化能力（推送、RSSHub 适配、按订阅源的特别优化）。停用后，它的设置段与自动化动作一并失效；已有引用它的规则会在规则详情里看到「插件已停用」。",
     "builtin": "内置",
     "external": "外部",
-    "install_hint": "安装新插件：把插件文件夹（plugin.json + 可执行文件）放进数据目录的 plugins/ 下即可，无需重启 krss；卸载 = 删掉那个文件夹。",
+    "install_hint": "放入数据目录的 plugins/ 下即生效，删除即卸载。",
     "rescan": "重新扫描插件目录",
     "rescanning": "扫描中…",
     "enabled": "已启用",
@@ -1044,13 +1043,12 @@
     "test_failed": "测试失败",
     "bark": {
       "label": "推送到手机（Bark）",
-      "description": "自动化规则的「推送到手机（Bark）」动作没单独填地址时用这里的地址。Bark 兼容：填 https://api.day.app/<你的 key>（或你自己的 Bark 服务地址）。",
-      "hint": "地址里带着设备 key，只保存在你自己的库里。规则命中后推规则名 + 来源 + 条目标题，点开直达条目。",
+      "description": "规则没填地址时用这个。",
       "saved": "已保存",
       "save_failed": "保存失败",
       "test": "发送测试推送",
       "testing": "发送中…",
-      "test_ok": "已发出，看看手机收到没",
+      "test_ok": "已发送",
       "test_no_url": "先填地址再测试",
       "test_failed": "发送失败：{{reason}}",
       "dirty_label": "推送"
@@ -1262,7 +1260,7 @@
     "action_group_content": "内容加工",
     "action_group_external": "对外",
     "plugin_actions": "插件动作",
-    "plugin_actions_hint": "动作和字段都由插件声明；停用的插件或动作不会出现在这里（去 设置 → 插件 打开）。",
+    "plugin_actions_hint": "停用的插件不在这里出现。",
     "plugin_action_field_required": "插件动作的「{{field}}」是必填的。",
     "plugin_action_from": "来自插件 {{name}}"
   },

@@ -57,7 +57,7 @@ func (Plugin) Meta() plugin.Meta {
 	return plugin.Meta{
 		ID:          "bark",
 		Name:        "Bark 推送",
-		Description: "规则命中后推一条到手机（Bark 兼容协议）。与自动化规则的「推送」动作联动。",
+		Description: "推送到手机。",
 		Version:     "1.0.0",
 		Builtin:     true,
 	}
@@ -135,7 +135,7 @@ func (Plugin) SettingsSections() []plugin.SettingsSection {
 			Label:       "全局推送地址（规则没填地址时走这里）",
 			Type:        "secret",
 			Placeholder: "https://api.day.app/<你的 key>",
-			Help:        "地址里带设备 key，只存在你自己的库里；测试推送走规则同一条发送路径。",
+			Help:        "地址含设备 key，仅存本地。",
 		}},
 	}}
 }

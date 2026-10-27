@@ -81,11 +81,7 @@ export function PluginsSettings() {
 
   return (
     <div className="space-y-4">
-      {/* 说明与「重新扫描」并排：说明要占满剩下的宽度（minmax(0,1fr) 才不会被长句撑破换行） */}
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
-        <p className="min-w-0 text-xs text-muted-foreground">
-          {t("plugins.intro")}
-        </p>
+      <div className="flex items-center justify-end">
         <Button
           size="sm"
           variant="outline"
