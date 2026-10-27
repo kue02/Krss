@@ -6,11 +6,13 @@ import type { PluginContribution } from "./types";
 
 const mocks = vi.hoisted(() => ({
   invokePluginAction: vi.fn(),
+  exportPluginFiles: vi.fn(),
   showToast: vi.fn(),
 }));
 
 vi.mock("@/plugins/api", () => ({
   invokePluginAction: mocks.invokePluginAction,
+  exportPluginFiles: mocks.exportPluginFiles,
 }));
 
 vi.mock("@/stores/toast-store", () => ({
@@ -110,5 +112,56 @@ describe("useInvokePluginAction", () => {
     await waitFor(() =>
       expect(mocks.showToast).toHaveBeenCalledWith("插件超时"),
     );
+  });
+
+  // 插件导出的两条路（56-33）：有导出目录就落盘、没有就回落浏览器下载。
+  describe("导出文件", () => {
+    let clickSpy: ReturnType<typeof vi.fn<() => void>>;
+
+    beforeEach(() => {
+      mocks.exportPluginFiles.mockReset();
+      clickSpy = vi.fn<() => void>();
+      vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => clickSpy());
+      // jsdom 没有 createObjectURL
+      (URL as unknown as { createObjectURL: unknown }).createObjectURL = vi.fn(() => "blob:x");
+      (URL as unknown as { revokeObjectURL: unknown }).revokeObjectURL = vi.fn();
+    });
+
+    it("写进导出目录：提示落盘位置，不再弹下载", async () => {
+      mocks.invokePluginAction.mockResolvedValue({
+        message: "已导出",
+        files: [{ filename: "笔记.md", content: "# x" }],
+      });
+      mocks.exportPluginFiles.mockResolvedValue({ paths: ["/vault/笔记.md"] });
+      const { result } = setup();
+
+      await act(async () => {
+        await result.current.mutateAsync({ selection: { entryIds: ["1"] } });
+      });
+
+      await waitFor(() =>
+        expect(mocks.exportPluginFiles).toHaveBeenCalledWith([
+          { name: "笔记.md", content: "# x" },
+        ]),
+      );
+      await waitFor(() =>
+        expect(mocks.showToast).toHaveBeenCalledWith("已写入 /vault"),
+      );
+      expect(clickSpy).not.toHaveBeenCalled();
+    });
+
+    it("没配导出目录（后端 400）：回落浏览器下载", async () => {
+      mocks.invokePluginAction.mockResolvedValue({
+        files: [{ filename: "笔记.md", content: "# x" }],
+      });
+      mocks.exportPluginFiles.mockRejectedValue(new Error("未设置导出目录"));
+      const { result } = setup();
+
+      await act(async () => {
+        await result.current.mutateAsync({ selection: { entryIds: ["1"] } });
+      });
+
+      await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(1));
+    });
   });
 });
