@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -297,4 +298,66 @@ func TestPluginService_Invoke(t *testing.T) {
 		require.Empty(t, got.Entries, "没声明 entries:read ⇒ 不许补条目明细")
 		require.Equal(t, []int64{10}, got.Selection.EntryIDs, "选择本身原样保留")
 	})
+}
+
+// TestPluginService_InvokeErrorClass 失败分类（56-34）：插件答话报错 → 4xx 原话；联系不上 → 502。
+//
+// 之前一律 502：插件说「先选中文字」，前端当成网关故障重试，用户也看不懂。
+func TestPluginService_InvokeErrorClass(t *testing.T) {
+	ctx := context.Background()
+
+	cases := []struct {
+		name  string
+		err   error
+		check func(t *testing.T, err error)
+	}{
+		{
+			name: "插件报错：原话透出",
+			err:  fmt.Errorf("%w: 先选中文字", plugin.ErrPluginError),
+			check: func(t *testing.T, err error) {
+				var actionErr service.PluginActionError
+				require.ErrorAs(t, err, &actionErr)
+				require.Equal(t, "先选中文字", actionErr.Reason, "要剥掉内部前缀，只回插件原话")
+				require.NotErrorIs(t, err, service.ErrPluginUnreachable)
+			},
+		},
+		{
+			name: "联系不上插件：归到 502 那类",
+			err:  fmt.Errorf("%w: 调用 /actions/open/invoke: dial unix: no such file", plugin.ErrTransport),
+			check: func(t *testing.T, err error) {
+				require.ErrorIs(t, err, service.ErrPluginUnreachable)
+			},
+		},
+		{
+			name: "内置插件的裸错误也按插件报错处理",
+			err:  errors.New("地址没填"),
+			check: func(t *testing.T, err error) {
+				var actionErr service.PluginActionError
+				require.ErrorAs(t, err, &actionErr)
+				require.Equal(t, "地址没填", actionErr.Reason)
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			action := &invokeAction{id: "open", err: tc.err}
+			p := &invokePlugin{
+				meta:    plugin.Meta{ID: "demo", Name: "Demo", Builtin: true},
+				actions: []plugin.Action{action},
+				contributions: []plugin.Contribution{{
+					ID: "demo-open", Surface: plugin.SurfaceEntryContextMenu, Action: "open",
+					Label: "打开", Selection: plugin.SelectionSingle,
+				}},
+			}
+			svc := newInvokeService(t, p, &invokeEntryRepo{entries: map[int64]model.Entry{}},
+				&invokeFeedRepo{feeds: map[int64]model.Feed{}}, nil)
+
+			_, err := svc.Invoke(ctx, "demo", "open", plugin.InvokeRequest{
+				Surface:   plugin.SurfaceEntryContextMenu,
+				Selection: plugin.Selection{EntryIDs: []int64{1}},
+			})
+			tc.check(t, err)
+		})
+	}
 }

@@ -305,8 +305,18 @@ func (h *PluginHandler) InvokePluginAction(c echo.Context) error {
 			return c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
 		case errors.Is(err, service.ErrPluginNotFound), errors.Is(err, service.ErrPluginDisabled), errors.Is(err, service.ErrInvalid):
 			return writeServiceError(c, err)
+		case errors.Is(err, service.ErrPluginUnreachable):
+			// 联系不上插件（进程没起 / 已退出 / 超时）：这不是用户能改的，502
+			logger.Warn("plugin unreachable on invoke", "module", "handler", "action", "invoke",
+				"resource", "plugin", "result", "failed", "id", pluginID, "actionId", actionID, "error", err)
+			return c.JSON(http.StatusBadGateway, errorResponse{Error: "插件没有响应（它可能没在运行）"})
 		default:
-			// 插件真执行失败 → 502 并回插件给的原因（与 /test 同口径：用户要知道为什么没成）
+			// 插件回话了但报错（「先选中文字」这类）：422 + 插件原话 —— 用户改一下就能过，
+			// 用 502 会让前端当成网关故障去重试
+			var actionErr service.PluginActionError
+			if errors.As(err, &actionErr) {
+				return c.JSON(http.StatusUnprocessableEntity, errorResponse{Error: actionErr.Reason})
+			}
 			return c.JSON(http.StatusBadGateway, errorResponse{Error: err.Error()})
 		}
 	}

@@ -30,6 +30,8 @@ var (
 	ErrPluginDataUnavailable = errors.New("plugin data storage is not available")
 	// ErrPluginDataQuota 该插件的数据键已到上限（每插件 10 万键）—— 409，让插件自己清理。
 	ErrPluginDataQuota = errors.New("plugin data key quota exceeded")
+	// ErrPluginUnreachable 联系不上插件进程（没起 / 已退出 / 超时）—— handler 回 502。
+	ErrPluginUnreachable = errors.New("plugin is unreachable")
 	// 沙箱 UI 资源（56-24）：没声明 ui:custom / 声明了却没给资源，两种错要分开报
 	// （前者是权限问题=403，后者是插件自己装漏了=404）。
 	ErrPluginUIUndeclared  = errors.New("plugin has not declared ui:custom")
@@ -48,3 +50,18 @@ func (e *FeedConflictError) Error() string {
 func (e *FeedConflictError) Is(target error) bool {
 	return target == ErrConflict
 }
+
+// PluginActionError 插件**正常回话但报了错**（「先选中文字」「地址没填」这类）。
+// 与 ErrPluginUnreachable 分开：这个给 4xx + 插件原话，用户改一下就能过；
+// 那个是网关故障（502），改参数没用。
+type PluginActionError struct {
+	Reason string
+}
+
+func (e PluginActionError) Error() string { return e.Reason }
+
+// Unwrap 让 errors.Is(err, ErrPluginActionFailed) 成立。
+func (e PluginActionError) Unwrap() error { return ErrPluginActionFailed }
+
+// ErrPluginActionFailed 插件动作失败（总类；具体原因见 PluginActionError.Reason）。
+var ErrPluginActionFailed = errors.New("plugin action failed")

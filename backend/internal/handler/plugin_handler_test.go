@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -290,7 +291,9 @@ func TestPluginHandler_Invoke(t *testing.T) {
 	svc.EXPECT().Invoke(gomock.Any(), "demo", "open", gomock.Any()).
 		Return(plugin.InvokeResult{}, service.ErrPluginSurfaceUndeclared)
 	svc.EXPECT().Invoke(gomock.Any(), "demo", "open", gomock.Any()).
-		Return(plugin.InvokeResult{}, errors.New("推送失败：目标地址不可达（api.day.app）"))
+		Return(plugin.InvokeResult{}, service.PluginActionError{Reason: "推送失败：目标地址不可达（api.day.app）"})
+	svc.EXPECT().Invoke(gomock.Any(), "demo", "open", gomock.Any()).
+		Return(plugin.InvokeResult{}, fmt.Errorf("%w: 调用 /actions/open/invoke: dial unix: no such file", service.ErrPluginUnreachable))
 
 	h := handler.NewPluginHandler(svc)
 	body := map[string]any{
@@ -319,14 +322,19 @@ func TestPluginHandler_Invoke(t *testing.T) {
 	rec = call("open")
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 
-	// ④ 插件真执行失败 → 502 + 插件给的原因（不能只回 internal error）
+	// ④ 插件回话但报错 → 422 + 插件原话（不是网关故障：用户改一下就能过）
 	rec = call("open")
-	require.Equal(t, http.StatusBadGateway, rec.Code)
+	require.Equal(t, http.StatusUnprocessableEntity, rec.Code)
 	var errBody struct {
 		Error string `json:"error"`
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &errBody))
 	require.Contains(t, errBody.Error, "api.day.app")
+
+	// ⑤ 联系不上插件（进程没起 / 已退出）→ 502，且不把内部细节透给前端
+	rec = call("open")
+	require.Equal(t, http.StatusBadGateway, rec.Code)
+	require.Contains(t, rec.Body.String(), "插件没有响应")
 }
 
 // TestPluginHandler_Invoke_BadBody 请求体不是 JSON → 400 统一错误（前端拿它当「参数坏了」）。

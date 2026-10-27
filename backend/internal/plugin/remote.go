@@ -99,12 +99,13 @@ func (c *RemoteClient) do(ctx context.Context, method, path string, body, out in
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("plugin: 调用 %s 失败: %w", path, err)
+		// 连不上 / 超时：插件没工作，是我们这边联系不上它（502）
+		return fmt.Errorf("%w: 调用 %s: %v", ErrTransport, path, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
-		return fmt.Errorf("plugin: 读 %s 响应失败: %w", path, err)
+		return fmt.Errorf("%w: 读 %s 响应: %v", ErrTransport, path, err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		var failure struct {
@@ -121,13 +122,14 @@ func (c *RemoteClient) do(ctx context.Context, method, path string, body, out in
 		if resp.StatusCode == http.StatusBadRequest && strings.Contains(message, "not testable") {
 			return ErrActionNotTestable
 		}
-		return fmt.Errorf("plugin: %s 返回 %d: %s", path, resp.StatusCode, message)
+		// 插件**答话了**，只是内容是错误 ⇒ 交给上层翻 4xx，别当网关故障
+		return fmt.Errorf("%w: %s", ErrPluginError, message)
 	}
 	if out == nil {
 		return nil
 	}
 	if err := json.Unmarshal(raw, out); err != nil {
-		return fmt.Errorf("plugin: 解析 %s 响应失败: %w", path, err)
+		return fmt.Errorf("%w: 解析 %s 响应: %v", ErrTransport, path, err)
 	}
 	return nil
 }

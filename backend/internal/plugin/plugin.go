@@ -7,6 +7,7 @@ package plugin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -89,6 +90,16 @@ type Action interface {
 	Fields() []Field
 	Execute(ctx context.Context, req ActionRequest) error
 }
+
+// 插件调用失败的两类原因（56-34）。区分它们是为了给界面回对的 HTTP 码：
+//   - 联系不上插件（进程没起 / socket 连不上 / 超时 / 报文坏了）→ 502，重试或看日志；
+//   - 插件回话但报了错（「先选中文字」「地址没填」）→ 4xx，用户改一下就能过。
+var (
+	// ErrTransport 宿主联系不上插件。
+	ErrTransport = errors.New("plugin transport failed")
+	// ErrPluginError 插件正常收到了请求、回了错误（不是网关故障）。
+	ErrPluginError = errors.New("plugin returned an error")
+)
 
 // ActionTester 可选接口：动作能自己发一条测试（Bark 的「发送测试推送」搬过来）。
 type ActionTester interface {

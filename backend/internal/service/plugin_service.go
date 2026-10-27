@@ -4,6 +4,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"krss/backend/internal/model"
@@ -437,7 +438,19 @@ func (s *pluginService) Invoke(ctx context.Context, pluginID, actionID string, r
 	req.Plugin = pluginID
 	req.Action = actionID
 	req = s.enrichInvoke(ctx, meta, req)
-	return invoker.Invoke(ctx, req)
+	result, err := invoker.Invoke(ctx, req)
+	if err == nil {
+		return result, nil
+	}
+	// 分类（56-34）：联系不上插件 → 502；插件答话但报错 → 4xx + 插件原话。
+	if errors.Is(err, plugin.ErrTransport) {
+		return result, fmt.Errorf("%w: %s", ErrPluginUnreachable, err.Error())
+	}
+	reason := strings.TrimPrefix(err.Error(), plugin.ErrPluginError.Error()+": ")
+	if reason == "" {
+		reason = err.Error()
+	}
+	return result, PluginActionError{Reason: reason}
 }
 
 // enrichInvoke 按插件声明的权限补上下文（内置插件不裁剪，仍然补 —— 方便插件出文案）。
