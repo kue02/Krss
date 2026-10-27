@@ -2095,6 +2095,54 @@ const docTemplate = `{
                 }
             }
         },
+        "/exports": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "插件导出的文件落到「设置 → 通用 → 导出目录」；未配置时 400，前端回落浏览器下载",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "exports"
+                ],
+                "summary": "写导出文件",
+                "parameters": [
+                    {
+                        "description": "要写盘的文件",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.exportFilesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.exportFilesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/feeds": {
             "get": {
                 "description": "Get a list of all subscribed feeds",
@@ -5002,6 +5050,28 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handler.exportFilesRequest": {
+            "type": "object",
+            "properties": {
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_service.ExportFile"
+                    }
+                }
+            }
+        },
+        "internal_handler.exportFilesResponse": {
+            "type": "object",
+            "properties": {
+                "paths": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "internal_handler.feedConflictResponse": {
             "type": "object",
             "properties": {
@@ -5686,6 +5756,10 @@ const docTemplate = `{
                 "autoReadability": {
                     "type": "boolean"
                 },
+                "exportDir": {
+                    "description": "ExportDir 插件导出的落盘目录（空 = 浏览器下载）。宿主校验目录存在性。",
+                    "type": "string"
+                },
                 "fallbackUserAgent": {
                     "type": "string"
                 },
@@ -5699,6 +5773,10 @@ const docTemplate = `{
             "properties": {
                 "autoReadability": {
                     "type": "boolean"
+                },
+                "exportDir": {
+                    "description": "ExportDir 插件导出落盘目录（空 = 浏览器下载）",
+                    "type": "string"
                 },
                 "fallbackUserAgent": {
                     "type": "string"
@@ -6971,6 +7049,20 @@ const docTemplate = `{
                 }
             }
         },
+        "krss_backend_internal_plugin.ExportFile": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "filename": {
+                    "type": "string"
+                },
+                "mime": {
+                    "type": "string"
+                }
+            }
+        },
         "krss_backend_internal_plugin.Field": {
             "type": "object",
             "properties": {
@@ -7004,6 +7096,12 @@ const docTemplate = `{
         "krss_backend_internal_plugin.InvokeResult": {
             "type": "object",
             "properties": {
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_plugin.ExportFile"
+                    }
+                },
                 "level": {
                     "type": "string"
                 },
@@ -7139,6 +7237,13 @@ const docTemplate = `{
                     "description": "\"\"|reader|external",
                     "type": "string"
                 },
+                "permissions": {
+                    "description": "Permissions 宿主注入：该插件声明的权限。沙箱 bridge 靠它决定给不给 data / entries:read。\n插件不用自己填（填了也会被覆盖成它 Meta 里那份）。",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "plugin": {
                     "description": "宿主注入",
                     "type": "string"
@@ -7221,6 +7326,17 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_service.ExportFile": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "name": {
                     "type": "string"
                 }
             }

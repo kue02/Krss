@@ -320,6 +320,20 @@ definitions:
       error:
         type: string
     type: object
+  internal_handler.exportFilesRequest:
+    properties:
+      files:
+        items:
+          $ref: '#/definitions/krss_backend_internal_service.ExportFile'
+        type: array
+    type: object
+  internal_handler.exportFilesResponse:
+    properties:
+      paths:
+        items:
+          type: string
+        type: array
+    type: object
   internal_handler.feedConflictResponse:
     properties:
       error:
@@ -770,6 +784,9 @@ definitions:
     properties:
       autoReadability:
         type: boolean
+      exportDir:
+        description: ExportDir 插件导出的落盘目录（空 = 浏览器下载）。宿主校验目录存在性。
+        type: string
       fallbackUserAgent:
         type: string
       markReadOnScroll:
@@ -779,6 +796,9 @@ definitions:
     properties:
       autoReadability:
         type: boolean
+      exportDir:
+        description: ExportDir 插件导出落盘目录（空 = 浏览器下载）
+        type: string
       fallbackUserAgent:
         type: string
       markReadOnScroll:
@@ -1625,6 +1645,15 @@ definitions:
         description: highlight|underline|note
         type: string
     type: object
+  krss_backend_internal_plugin.ExportFile:
+    properties:
+      content:
+        type: string
+      filename:
+        type: string
+      mime:
+        type: string
+    type: object
   krss_backend_internal_plugin.Field:
     properties:
       help:
@@ -1647,6 +1676,10 @@ definitions:
     type: object
   krss_backend_internal_plugin.InvokeResult:
     properties:
+      files:
+        items:
+          $ref: '#/definitions/krss_backend_internal_plugin.ExportFile'
+        type: array
       level:
         type: string
       message:
@@ -1742,6 +1775,13 @@ definitions:
       open:
         description: '""|reader|external'
         type: string
+      permissions:
+        description: |-
+          Permissions 宿主注入：该插件声明的权限。沙箱 bridge 靠它决定给不给 data / entries:read。
+          插件不用自己填（填了也会被覆盖成它 Meta 里那份）。
+        items:
+          type: string
+        type: array
       plugin:
         description: 宿主注入
         type: string
@@ -1800,6 +1840,13 @@ definitions:
       summary:
         type: string
       title:
+        type: string
+    type: object
+  krss_backend_internal_service.ExportFile:
+    properties:
+      content:
+        type: string
+      name:
         type: string
     type: object
   krss_backend_internal_service.ImportResult:
@@ -3544,6 +3591,36 @@ paths:
       summary: Clear readability cache
       tags:
       - entries
+  /exports:
+    post:
+      consumes:
+      - application/json
+      description: 插件导出的文件落到「设置 → 通用 → 导出目录」；未配置时 400，前端回落浏览器下载
+      parameters:
+      - description: 要写盘的文件
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.exportFilesRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.exportFilesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: 写导出文件
+      tags:
+      - exports
   /feeds:
     delete:
       consumes:
