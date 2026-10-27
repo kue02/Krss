@@ -95,7 +95,14 @@ func addAnnotation(st *store, req plugin.InvokeRequest, color, note, message str
 	}
 
 	list := loadAnnotations(st, entryID)
-	list = append(list, annotation{Start: span.Start, End: span.End, Color: color, Note: note})
+	list = append(list, annotation{
+		Start: span.Start,
+		End:   span.End,
+		Color: color,
+		Note:  note,
+		// 选中原文一起存：前端据此重新定位，避免偏移基准不同导致高亮漂（56-34）
+		Text: span.Text,
+	})
 	if err := saveAnnotations(st, entryID, list); err != nil {
 		return plugin.InvokeResult{}, err
 	}

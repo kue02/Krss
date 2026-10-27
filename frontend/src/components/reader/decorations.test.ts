@@ -103,4 +103,30 @@ describe("applyDecorations", () => {
     expect(root.querySelectorAll("mark").length).toBe(0);
     expect(root.innerHTML).toBe(before);
   });
+
+  // 56-34：后端的偏移基准（htmlToPlain，块级标签补换行）与这里的 textContent 不同源，
+  // 多段落正文上只按 offset 画会整体漂。插件把选中原文一起存下来，就按原文重新定位。
+  it("⑥ 偏移漂了但带原文：按原文定位到正确位置", () => {
+    const root = makeRoot("<p>第一段。</p><p>这只猫很可爱。</p>");
+    // 后端按「第一段。\n这只猫很可爱。」算出来的 5..9，落到 DOM 上是「猫很可爱」而不是「这只」
+    const painted = applyDecorations(root, [
+      span({ start: 5, end: 9, data: { text: "这只" } }),
+    ]);
+
+    const mark = root.querySelector("mark[data-plugin]");
+    expect(mark?.textContent).toBe("这只");
+
+    painted();
+    expect(root.innerHTML).toBe("<p>第一段。</p><p>这只猫很可爱。</p>");
+  });
+
+  it("⑦ 原文已经改了（找不到）：宁可退回 offset，也不画到无关文字", () => {
+    const root = makeRoot("<p>完全换掉的正文</p>");
+    const painted = applyDecorations(root, [
+      span({ start: 2, end: 5, data: { text: "这只" } }),
+    ]);
+
+    expect(root.querySelector("mark[data-plugin]")?.textContent).toBe("换掉的");
+    painted();
+  });
 });

@@ -217,3 +217,32 @@ func TestPluginData_StorageNotConfigured(t *testing.T) {
 	err := svc.PutData(ctx, "demo", "kv", "k", `"v"`)
 	require.ErrorIs(t, err, service.ErrPluginDataUnavailable)
 }
+
+// fullPluginDataRepo 键数直接报满（不想真塞 10 万行）。
+type fullPluginDataRepo struct {
+	*fakePluginDataRepo
+	count int
+}
+
+func (r fullPluginDataRepo) Count(context.Context, string) (int, error) { return r.count, nil }
+
+// TestPutData_Quota 每插件 10 万键的上限（56-18）：到顶后**新增**被拒，**覆盖**仍可写。
+func TestPutData_Quota(t *testing.T) {
+	registry := plugin.NewRegistry()
+	require.NoError(t, registry.Register(fakePluginWithAction{
+		meta:   plugin.Meta{ID: "annotate", Name: "标注", Builtin: true},
+		action: fakeAction{id: "highlight"},
+	}))
+	repo := newFakePluginDataRepo()
+	svc := service.NewPluginService(registry, newFakePluginRepo(), nil,
+		service.WithPluginDataRepo(fullPluginDataRepo{fakePluginDataRepo: repo, count: repository.PluginDataMaxKeysPerPlugin}))
+
+	// 新增：到顶 → 配额错误（不是 ErrInvalid，前端/插件要能区分「先清理」与「写错了」）
+	err := svc.PutData(context.Background(), "annotate", "annotations", "new-key", "v")
+	require.ErrorIs(t, err, service.ErrPluginDataQuota)
+
+	// 覆盖已有键：行数不变，不该因为到顶就写不进去
+	repo.rows[fakePluginDataKey("annotate", "annotations", "old-key")] = "old"
+	require.NoError(t, svc.PutData(context.Background(), "annotate", "annotations", "old-key", "new"))
+	require.Equal(t, "new", repo.rows[fakePluginDataKey("annotate", "annotations", "old-key")])
+}

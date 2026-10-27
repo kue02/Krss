@@ -16,6 +16,9 @@ type annotation struct {
 	End   int    `json:"end"`
 	Color string `json:"color"`
 	Note  string `json:"note"`
+	// Text 选中的原文（56-34）。后端算偏移的纯文本与前端渲染的 textContent 可能差几个空白，
+	// 只靠 offset 画会整体漂；前端有原文就按原文重新定位。
+	Text string `json:"text,omitempty"`
 }
 
 // colorLabels 颜色 → 中文（导出 Markdown 用）。认不出的颜色原样显示，不猜。

@@ -95,6 +95,19 @@ func (s *pluginService) PutData(ctx context.Context, pluginID, collection, key, 
 	if len(value) > repository.PluginDataMaxValueBytes {
 		return ErrInvalid
 	}
+	// 配额：只在「新增键」时查（覆盖写不增加行数，不该因为到顶就写不进去）。
+	if _, err := s.data.Get(ctx, pluginID, collection, key); err != nil {
+		if !errors.Is(err, repository.ErrNotFound) {
+			return pluginDataError(err)
+		}
+		count, err := s.data.Count(ctx, pluginID)
+		if err != nil {
+			return pluginDataError(err)
+		}
+		if count >= repository.PluginDataMaxKeysPerPlugin {
+			return ErrPluginDataQuota
+		}
+	}
 	return pluginDataError(s.data.Put(ctx, pluginID, collection, key, value))
 }
 

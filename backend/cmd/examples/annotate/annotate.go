@@ -136,6 +136,9 @@ func (a annotate) Decorate(_ context.Context, req plugin.DecorateRequest) ([]plu
 			Style:  "highlight",
 			Color:  item.Color,
 		}
+		if item.Text != "" {
+			decoration.Data = map[string]string{"text": item.Text}
+		}
 		if item.Note != "" {
 			decoration.Data = map[string]string{"note": item.Note}
 		}

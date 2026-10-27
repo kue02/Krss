@@ -33,6 +33,9 @@ type PluginDataRepository interface {
 const (
 	// PluginDataMaxValueBytes 单值上限 256KB（字节，不是字符）。
 	PluginDataMaxValueBytes = 256 * 1024
+	// PluginDataMaxKeysPerPlugin 每个插件最多存多少个键（56-18 的数据膨胀防线）。
+	// 插件挂了循环写、或者被写入脏 key（每条目一个时间戳）时，不能让库无限长。
+	PluginDataMaxKeysPerPlugin = 100000
 	// PluginDataMaxKeyBytes 键名上限 200 字节。
 	PluginDataMaxKeyBytes = 200
 	// PluginDataDefaultLimit / PluginDataMaxLimit List 的缺省与上限。

@@ -95,7 +95,8 @@ func TestHighlight_WritesStoreAndDecorateReadsBack(t *testing.T) {
 	require.Len(t, stored, 1, "键 = 条目 id")
 	var list []annotation
 	require.NoError(t, json.Unmarshal([]byte(stored["42"]), &list))
-	require.Equal(t, []annotation{{Start: 2, End: 6, Color: "yellow", Note: ""}}, list)
+	require.Equal(t, []annotation{{Start: 2, End: 6, Color: "yellow", Note: "", Text: "很可爱"}}, list,
+		"选中原文要一起存：前端靠它重新定位，避免偏移基准不同时高亮漂")
 
 	got, err := a.Decorate(context.Background(), plugin.DecorateRequest{
 		Entry: model.Entry{ID: 42},
@@ -105,6 +106,7 @@ func TestHighlight_WritesStoreAndDecorateReadsBack(t *testing.T) {
 	require.Len(t, got, 1)
 	require.Equal(t, 2, got[0].Start)
 	require.Equal(t, 6, got[0].End)
+	require.Equal(t, "很可爱", got[0].Data["text"], "装饰要把原文带给前端做文本锚定")
 	require.Equal(t, "highlight", got[0].Style)
 	require.Equal(t, "yellow", got[0].Color)
 	require.Equal(t, "annotate", got[0].Plugin, "装饰归属由插件自己填，宿主只做校验")

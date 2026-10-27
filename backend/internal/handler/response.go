@@ -59,6 +59,9 @@ func writeServiceError(c echo.Context, err error) error {
 		return c.JSON(http.StatusConflict, errorResponse{Error: "plugin disabled"})
 	case errors.Is(err, service.ErrPluginActionNotTestable):
 		return c.JSON(http.StatusBadRequest, errorResponse{Error: "plugin action not testable"})
+	// 56-18 配额：每插件数据键到顶（10 万）。409 = 「状态冲突、需要你先清理」，不是请求格式错。
+	case errors.Is(err, service.ErrPluginDataQuota):
+		return c.JSON(http.StatusConflict, errorResponse{Error: "plugin data key quota exceeded"})
 	// 56-5/56-6 界面直调：动作没装 / 没实现 Invoker / 这个挂点没声明。
 	case errors.Is(err, service.ErrPluginActionNotFound):
 		return c.JSON(http.StatusNotFound, errorResponse{Error: "plugin action not found"})

@@ -114,6 +114,40 @@ function wrapSlice(
 }
 
 /**
+ * 用 `data.text` 把区间校正回当前 DOM（56-34）。
+ *
+ * 为什么要这一步：后端算偏移的那份纯文本是 `htmlToPlain(entry.Content)`（块级标签之间补换行再压空白），
+ * 这里的 `textContent` 是文本节点直接拼接 —— 多段落正文上两者会差若干个字符，
+ * 只按 offset 画，整条高亮会往前后漂。插件把选中的原文一起存下来（`data.text`），
+ * 有原文就按原文定位（取离原 offset 最近的那一处），没有才退回 offset。
+ */
+function reanchor(root: HTMLElement, span: DecorationSpan): DecorationSpan {
+  const anchor = span.data?.text;
+  if (!anchor) return span;
+  const haystack = Array.from(root.textContent ?? "");
+  const needle = Array.from(anchor);
+  if (needle.length === 0) return span;
+
+  const matchesAt = (at: number) =>
+    at >= 0 &&
+    at + needle.length <= haystack.length &&
+    needle.every((char, index) => haystack[at + index] === char);
+
+  // 原本就对得上：不改（保持后端口径优先）
+  if (matchesAt(span.start)) return span;
+
+  let best = -1;
+  for (let at = 0; at + needle.length <= haystack.length; at += 1) {
+    if (!matchesAt(at)) continue;
+    if (best < 0 || Math.abs(at - span.start) < Math.abs(best - span.start)) {
+      best = at;
+    }
+  }
+  if (best < 0) return span; // 原文改过了：宁可退回 offset，也不画到无关文字上
+  return { ...span, start: best, end: best + needle.length };
+}
+
+/**
  * 把 rune 区间画到 `root` 里的文本上，返回还原函数。
  *
  * 排序：`(start 升序, end 降序)` —— 先画外层大区间、再画内层小区间，
@@ -132,7 +166,9 @@ export function applyDecorations(
   if (!root || valid.length === 0) return () => {};
 
   const existing = new Set<Element>(Array.from(root.querySelectorAll(MARK_SELECTOR)));
-  const ordered = [...valid].sort(
+  const ordered = valid
+    .map((span) => reanchor(root, span))
+    .sort(
     (a, b) => a.start - b.start || b.end - a.end,
   );
 
