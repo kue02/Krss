@@ -21,7 +21,11 @@
 ## 二、文档分工
 
 `docs/dev/todo.md` 唯一任务清单 · `docs/dev/IDEA.md` 想法/需求/决策/边界（不记进度） · `docs/dev/变更记录.md` 批次流水 + 实测证据 ·
-`docs/dev/移植笔记.md` 技术细节与坑 · `docs/dev/自动化-过滤规则.md` 过滤模块 · `docs/dev/archive/` 留档 · `AGENTS.md` 代码规范。
+`docs/dev/移植笔记.md` 技术细节与坑 · `docs/dev/自动化-过滤规则.md` 过滤模块 · `docs/dev/发版.md` 发版口径（**每次发版前必读**）·
+`docs/dev/archive/` 留档 · `AGENTS.md` 代码规范。
+
+发版规则（细节见 `docs/dev/发版.md`）：第 4 位版本号 +1；发布说明 `docs/releases/v<版本>.md` **只写更新了什么内容，别的什么都不要**，
+不许出现批次号/内部编号（「第五十四批」「58-3」「§2.58」等），格式照 v1.1.3（含）之前那几版。
 
 ## 三、代码与提交
 
