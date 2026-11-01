@@ -1220,18 +1220,33 @@ export function NotificationTimeline({
         const isLeft = row.side === "left";
 
         if (row.kind === "cluster") {
+          const clusterExpanded = expandedClusters.has(row.key);
           const cluster = (
             <TimelineClusterCard
               count={row.count}
               feeds={row.entries.map(
                 (entry) => feeds.get(entry.feedId)?.title ?? t("entry.unknown_feed"),
               )}
-              expanded={expandedClusters.has(row.key)}
+              expanded={clusterExpanded}
               onToggle={() => toggleCluster(row.key)}
             />
           );
           return (
-            <div key={row.key} data-timeline-row="cluster" className={cnRow(singleSide)}>
+            /* 58-2：折叠小节点里的条目**没有自己的 DOM 节点**（没渲染），滚动标已读
+               就永远观察不到它们 —— 把被吸进来的 id 挂在簇行上，交给 useScrollMarkRead
+               按「多 id 目标」处理（看到簇、簇再滚出顶部 → 整簇标已读）。
+               展开后这些条目会各自渲染出 [data-entry-id]，此时不能再挂这个属性，
+               否则簇头部滚出时会把下面还没滚到的展开条目一起标掉。 */
+            <div
+              key={row.key}
+              data-timeline-row="cluster"
+              data-cluster-entry-ids={
+                clusterExpanded
+                  ? undefined
+                  : row.entries.map((entry) => entry.id).join(",")
+              }
+              className={cnRow(singleSide)}
+            >
               <TimelineDot
                 node="minor"
                 unread={row.entries.some((entry) => !entry.read)}

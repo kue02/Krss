@@ -301,3 +301,113 @@ describe("useScrollMarkRead 的已读判定时机", () => {
     expect(Array.from(removed?.[0] as Set<string>)).toEqual(["e1"]);
   });
 });
+
+/**
+ * 58-2（用户 2026-10-29「通知视图滚出顶部失效」）：
+ * 通知时间线把同一时间桶里太密集的条目吸成「小节点 + N 条」的簇 —— 那些条目
+ * 没有自己的 DOM 节点，旧实现（只认 `[data-entry-id]`）永远观察不到，滚过去也不标已读。
+ */
+describe("useScrollMarkRead · 通知时间线折叠簇（58-2）", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    FakeObserver.instances = [];
+    markManyAsRead.mockClear();
+    removeFromUnreadList.mockClear();
+    vi.stubGlobal("IntersectionObserver", FakeObserver as unknown as typeof IntersectionObserver);
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("簇节点（data-cluster-entry-ids）滚出顶部后，整簇条目一次标为已读", () => {
+    const container = document.createElement("div");
+    const contentRoot = document.createElement("div");
+    const cluster = document.createElement("div");
+    cluster.dataset.clusterEntryIds = "c1,c2,c3";
+    cluster.getBoundingClientRect = () =>
+      ({ top: 100, bottom: 200, height: 100, left: 0, right: 600, width: 600 }) as DOMRect;
+    contentRoot.appendChild(cluster);
+    container.appendChild(contentRoot);
+
+    const surface = {
+      kind: "element",
+      getViewportRect: () => ({ top: 0, bottom: 800, left: 0, right: 600, height: 800, width: 600 }),
+      getIntersectionRoot: () => contentRoot,
+      scrollBy: vi.fn(),
+      getScrollTop: () => 0,
+      getScrollHeight: () => 2000,
+    } as unknown as ScrollSurface;
+
+    renderHook(() =>
+      useScrollMarkRead({
+        surface,
+        contentRootRef: { current: contentRoot },
+        entries: [makeEntry("c1"), makeEntry("c2"), makeEntry("c3")],
+        enabled: true,
+        unreadOnly: false,
+        hasNextPage: true,
+        resetKey: "k",
+      }),
+    );
+
+    const observer = FakeObserver.instances.at(-1) as FakeObserver;
+    expect(observer).toBeTruthy();
+    // 看到簇（还没滚出去）
+    observer.emit([{ target: cluster, isIntersecting: true, bottom: 200 }]);
+    vi.advanceTimersByTime(3000);
+    expect(markManyAsRead).not.toHaveBeenCalled();
+
+    // 簇整体滚出顶部
+    observer.emit([{ target: cluster, isIntersecting: false, bottom: -20 }]);
+    vi.advanceTimersByTime(3000);
+
+    expect(markManyAsRead).toHaveBeenCalledTimes(1);
+    const [call] = markManyAsRead.mock.calls;
+    expect((call?.[0] as { ids: string[] }).ids.sort()).toEqual(["c1", "c2", "c3"]);
+  });
+
+  it("簇里没被看到的条目不标（必须先进入过视口）", () => {
+    const container = document.createElement("div");
+    const contentRoot = document.createElement("div");
+    const cluster = document.createElement("div");
+    cluster.dataset.clusterEntryIds = "c1,c2";
+    cluster.getBoundingClientRect = () =>
+      ({ top: 1000, bottom: 1100, height: 100, left: 0, right: 600, width: 600 }) as DOMRect;
+    contentRoot.appendChild(cluster);
+    container.appendChild(contentRoot);
+
+    const surface = {
+      kind: "element",
+      getViewportRect: () => ({ top: 0, bottom: 800, left: 0, right: 600, height: 800, width: 600 }),
+      getIntersectionRoot: () => contentRoot,
+      scrollBy: vi.fn(),
+      getScrollTop: () => 0,
+      getScrollHeight: () => 2000,
+    } as unknown as ScrollSurface;
+
+    renderHook(() =>
+      useScrollMarkRead({
+        surface,
+        contentRootRef: { current: contentRoot },
+        entries: [makeEntry("c1"), makeEntry("c2")],
+        enabled: true,
+        unreadOnly: false,
+        hasNextPage: true,
+        resetKey: "k",
+      }),
+    );
+
+    const observer = FakeObserver.instances.at(-1) as FakeObserver;
+    // 从未 intersect，直接非相交 → 不能标
+    observer.emit([{ target: cluster, isIntersecting: false, bottom: -20 }]);
+    vi.advanceTimersByTime(3000);
+
+    expect(markManyAsRead).not.toHaveBeenCalled();
+  });
+});

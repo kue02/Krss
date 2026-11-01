@@ -148,3 +148,47 @@ describe("toast-store · 同文案合并（49-3）", () => {
     }
   });
 });
+
+/**
+ * 58-3（用户 2026-10-29）：自动刷新后那条「新增 N 条新条目」要能点 ——
+ * 点它跳回顶部，不点 3 秒后自己消失（所以调用方传 durationMs=3000）。
+ */
+describe("toast-store · 可点击动作（58-3）", () => {
+  it("带动作的 Toast 保留 onClick，且按传入的 3 秒自动消失", () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = renderHook(() => useToasts());
+      const jump = vi.fn();
+
+      act(() => showToast("新增 3 条新条目", 3000, jump));
+
+      const toast = result.current.find((item) => item.message === "新增 3 条新条目");
+      expect(toast?.onClick).toBe(jump);
+
+      act(() => {
+        vi.advanceTimersByTime(2999);
+      });
+      expect(result.current.some((item) => item.message === "新增 3 条新条目")).toBe(true);
+
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(result.current.some((item) => item.message === "新增 3 条新条目")).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("同文案重复发时动作换成最新那次（闭包里的方法可能已换引用）", () => {
+    const { result } = renderHook(() => useToasts());
+    const first = vi.fn();
+    const second = vi.fn();
+
+    act(() => showToast("新增 1 条新条目", 3000, first));
+    act(() => showToast("新增 1 条新条目", 3000, second));
+
+    const matches = result.current.filter((item) => item.message === "新增 1 条新条目");
+    expect(matches).toHaveLength(1);
+    expect(matches[0]?.onClick).toBe(second);
+  });
+});

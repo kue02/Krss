@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getRefreshStatus } from "@/api";
+import { requestEntriesHeadSync } from "@/lib/entries-head-sync";
 
 /**
  * Polls the backend refresh status and automatically invalidates
@@ -42,7 +43,9 @@ export function useRefreshStatus() {
       prevTimestampRef.current !== null &&
       prevTimestampRef.current !== current
     ) {
-      queryClient.invalidateQueries({ queryKey: ["entries"] });
+      // 58-3：不整窗重拉（offset 会被头部插入顶掉，用户正读的卡直接从 DOM 消失），
+      // 只把新条目并到已加载列表头部
+      void requestEntriesHeadSync(queryClient);
       queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
       queryClient.invalidateQueries({ queryKey: ["feeds"] });
       prevCompletedRef.current = null;
@@ -55,7 +58,7 @@ export function useRefreshStatus() {
         prevCompletedRef.current = data.completed;
       } else if (data.completed > prevCompletedRef.current) {
         prevCompletedRef.current = data.completed;
-        queryClient.invalidateQueries({ queryKey: ["entries"] });
+        void requestEntriesHeadSync(queryClient);
         queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
         queryClient.invalidateQueries({ queryKey: ["feeds"] });
       }
