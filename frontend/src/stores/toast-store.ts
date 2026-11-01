@@ -9,6 +9,11 @@ import { useSyncExternalStore } from "react";
 export interface Toast {
   id: number;
   message: string;
+  /**
+   * 58-3（用户 2026-10-29）：这条 Toast 可以点 —— 点了执行动作（例如「新增 N 条」跳回顶部），
+   * 不点就等它自己消失。没有这个字段的 Toast 仍是「点一下关掉」。
+   */
+  onClick?: () => void;
 }
 
 let toasts: Toast[] = [];
@@ -31,7 +36,11 @@ function getSnapshot() {
   return toasts;
 }
 
-export function showToast(message: string, durationMs = DURATION_MS): void {
+export function showToast(
+  message: string,
+  durationMs = DURATION_MS,
+  onClick?: () => void,
+): void {
   // 49-3（用户 2026-10-12）：同一条文案**只留一个**。
   //
   // 背景：自动翻译这类「随状态反复发」的提示会在短时间内被多次触发（实测：打开一条
@@ -46,14 +55,18 @@ export function showToast(message: string, durationMs = DURATION_MS): void {
       existing.id,
       setTimeout(() => dismissToast(existing.id), durationMs),
     );
-    // 位置也重新排到最底（让它看起来是「刚刚又响了一次」，而不是被压在中间）
-    toasts = [...toasts.filter((toast) => toast.id !== existing.id), existing];
+    // 位置也重新排到最底（让它看起来是「刚刚又响了一次」，而不是被压在中间）；
+    // 58-3：同文案再发一次时，动作跟着换成最新那次（闭包里的 scrollToTop 引用可能已换）
+    toasts = [
+      ...toasts.filter((toast) => toast.id !== existing.id),
+      { ...existing, onClick: onClick ?? existing.onClick },
+    ];
     emit();
     return;
   }
 
   const id = nextId++;
-  toasts = [...toasts, { id, message }];
+  toasts = [...toasts, { id, message, onClick }];
   emit();
 
   const timer = setTimeout(() => dismissToast(id), durationMs);

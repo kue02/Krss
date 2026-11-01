@@ -341,6 +341,7 @@
     "ai_summary": "AI Summary",
     "select_article": "Select an article to read",
     "refresh_done": "Refresh finished",
+    "refresh_new_entries": "{{count}} new entries",
     "original_site": "View original site",
     "original_site_hint": "The original site is embedded below. If it stays blank, the site refuses framing — use Open in new tab.",
     "video_preview": "Video player",

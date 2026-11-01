@@ -16,6 +16,21 @@ const MARK_READ_ON_SCROLL_GRACE_MS = 1000;
 /** 「看到即已读」（Folo 语义）下，条目需在视口停留这么久才算读过 */
 const MARK_READ_ON_VISIBLE_DWELL_MS = 600;
 
+/**
+ * 58-2（用户 2026-10-29「通知视图滚出顶部失效」）：
+ * 一个滚动目标可能代表**多条**条目 —— 通知时间线把同一时间桶里太密集的条目吸成
+ * 一个「小节点 + N 条」的簇，那些条目完全没有自己的 DOM 节点（`[data-entry-id]`），
+ * IntersectionObserver 永远观察不到，于是滚出顶部也不会标已读。
+ * 簇行上挂了 `data-cluster-entry-ids`（仅收起时）；这里把两种目标统一成 id 列表。
+ */
+function readTargetEntryIds(target: HTMLElement): string[] {
+  const single = target.dataset.entryId;
+  if (single) return [single];
+  const cluster = target.dataset.clusterEntryIds;
+  if (!cluster) return [];
+  return cluster.split(",").filter(Boolean);
+}
+
 /** 滚动已读的判定时机 */
 export type ScrollMarkReadTiming = "scrollPast" | "onVisible";
 
@@ -363,53 +378,63 @@ export function useScrollMarkRead({
       (items) => {
         for (const item of items) {
           const target = item.target as HTMLElement;
-          const entryId = target.dataset.entryId;
-          if (
-            !entryId ||
-            !unreadIds.has(entryId) ||
-            markedReadIds.current.has(entryId)
-          ) {
+          const targetIds = readTargetEntryIds(target).filter((id) =>
+            unreadIds.has(id),
+          );
+          if (targetIds.length === 0) {
+            observer.unobserve(target);
             continue;
           }
+          const pendingIds = targetIds.filter(
+            (id) => !markedReadIds.current.has(id),
+          );
+          if (pendingIds.length === 0) {
+            observer.unobserve(target);
+            continue;
+          }
+          /** 一个簇行 / 一张卡片只挂一个 dwell 计时器（键取第一个未读 id） */
+          const dwellKey = `target:${targetIds[0]}`;
 
           if (item.isIntersecting) {
-            seenEntryIds.current.add(entryId);
+            for (const id of pendingIds) seenEntryIds.current.add(id);
 
             // Folo 语义：进入视口后停留片刻即视为已读
-            if (timing === "onVisible" && !dwellTimers.current.has(entryId)) {
+            if (timing === "onVisible" && !dwellTimers.current.has(dwellKey)) {
               const timer = setTimeout(() => {
-                dwellTimers.current.delete(entryId);
-                if (markedReadIds.current.has(entryId)) return;
+                dwellTimers.current.delete(dwellKey);
                 // 上一批刚移除完、用户还没再滚，先不判
                 if (awaitingUserScroll.current) return;
 
-                const node = contentRoot.querySelector<HTMLElement>(
-                  `[data-entry-id="${entryId}"]`,
-                );
-                const rect = node?.getBoundingClientRect();
+                const rect = target.getBoundingClientRect();
                 const viewportRect = surface.getViewportRect();
                 // 定时器到点后再确认一次仍在视口内（快速划过不留痕）
                 if (
-                  !rect ||
                   rect.bottom < viewportRect.top ||
                   rect.top > viewportRect.bottom
                 ) {
                   return;
                 }
 
-                markedReadIds.current.add(entryId);
-                queueRead(entryId, rect.height || node?.offsetHeight || 0);
+                const stillPending = targetIds.filter(
+                  (id) => !markedReadIds.current.has(id),
+                );
+                const height = rect.height || target.offsetHeight || 0;
+                stillPending.forEach((id, index) => {
+                  markedReadIds.current.add(id);
+                  // 簇行整块消失一次，只按一次高度补偿（其余条目不重复累加）
+                  queueRead(id, index === 0 ? height : 0);
+                });
               }, MARK_READ_ON_VISIBLE_DWELL_MS);
 
-              dwellTimers.current.set(entryId, timer);
+              dwellTimers.current.set(dwellKey, timer);
             }
             continue;
           }
 
-          const pendingDwell = dwellTimers.current.get(entryId);
+          const pendingDwell = dwellTimers.current.get(dwellKey);
           if (pendingDwell) {
             clearTimeout(pendingDwell);
-            dwellTimers.current.delete(entryId);
+            dwellTimers.current.delete(dwellKey);
           }
 
           if (timing === "onVisible") {
@@ -417,17 +442,23 @@ export function useScrollMarkRead({
           }
 
           const rootTop = item.rootBounds?.top ?? surface.getViewportRect().top;
+          const passedIds = targetIds.filter(
+            (id) =>
+              seenEntryIds.current.has(id) && !markedReadIds.current.has(id),
+          );
           if (
-            !seenEntryIds.current.has(entryId) ||
+            passedIds.length === 0 ||
             item.boundingClientRect.bottom > rootTop
           ) {
             continue;
           }
 
-          markedReadIds.current.add(entryId);
           const removedHeight =
             target.getBoundingClientRect().height || target.offsetHeight || 0;
-          queueRead(entryId, removedHeight);
+          passedIds.forEach((id, index) => {
+            markedReadIds.current.add(id);
+            queueRead(id, index === 0 ? removedHeight : 0);
+          });
         }
       },
       {
@@ -439,23 +470,21 @@ export function useScrollMarkRead({
 
     const visibleRect = surface.getViewportRect();
     for (const item of contentRoot.querySelectorAll<HTMLElement>(
-      "[data-entry-id]",
+      // 58-2：单个条目 + 通知时间线折叠簇（簇里 N 条共用一个 DOM 节点）
+      "[data-entry-id], [data-cluster-entry-ids]",
     )) {
-      const entryId = item.dataset.entryId;
-      if (
-        !entryId ||
-        !unreadIds.has(entryId) ||
-        markedReadIds.current.has(entryId)
-      ) {
-        continue;
-      }
+      const targetIds = readTargetEntryIds(item).filter((id) =>
+        unreadIds.has(id),
+      );
+      if (targetIds.length === 0) continue;
+      if (targetIds.every((id) => markedReadIds.current.has(id))) continue;
 
       const itemRect = item.getBoundingClientRect();
       if (
         itemRect.bottom > visibleRect.top &&
         itemRect.top < visibleRect.bottom
       ) {
-        seenEntryIds.current.add(entryId);
+        for (const id of targetIds) seenEntryIds.current.add(id);
       }
       observer.observe(item);
     }

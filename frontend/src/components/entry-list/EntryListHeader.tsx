@@ -51,6 +51,12 @@ interface EntryListHeaderProps {
   unreadCount: number;
   unreadOnly: boolean;
   onToggleUnreadOnly: () => void;
+  /**
+   * 58-1（用户 2026-10-29）：「星标视图里别显示这颗已读/未读切换」——
+   * 星标本来就是看过了才收藏的，切「只看未读」没有意义。
+   * 不传 = 显示（其余视图一行不动）。
+   */
+  showUnreadToggle?: boolean;
   onMarkAllRead: () => void;
   /** 刷新当前选中范围（文件夹 / 单个源 / 某个视图） */
   onRefresh?: () => void;
@@ -102,6 +108,7 @@ export function EntryListHeader({
   onBackFromFeedJump,
   unreadCount,
   unreadOnly,
+  showUnreadToggle = true,
   onToggleUnreadOnly,
   onMarkAllRead,
   onRefresh,
@@ -276,18 +283,20 @@ export function EntryListHeader({
           </ContextMenu>
           </RefreshTooltip>
         )}
-        <button
-          type="button"
-          onClick={onToggleUnreadOnly}
-          title={unreadOnly ? t("entry.show_all") : t("entry.show_unread_only")}
-          className="flex size-8 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95"
-        >
-          {unreadOnly ? (
-            <CircleFilledIcon className="size-5" />
-          ) : (
-            <CircleOutlineIcon className="size-5" />
-          )}
-        </button>
+        {showUnreadToggle && (
+          <button
+            type="button"
+            onClick={onToggleUnreadOnly}
+            title={unreadOnly ? t("entry.show_all") : t("entry.show_unread_only")}
+            className="flex size-8 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95"
+          >
+            {unreadOnly ? (
+              <CircleFilledIcon className="size-5" />
+            ) : (
+              <CircleOutlineIcon className="size-5" />
+            )}
+          </button>
+        )}
         {onToggleStarredViewOnly && (
           /* 20-2（用户：「把这个当前视图也改成图标的那种形式，然后默认选中」）：
              与相邻的刷新/未读/全读按钮同款 —— 32px 圆形图标按钮，选中态用组件库自带的

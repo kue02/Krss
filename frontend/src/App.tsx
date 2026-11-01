@@ -13,6 +13,7 @@ import {
   SETTINGS_SYNC_FAILED_EVENT,
 } from "@/lib/settings-saved";
 import { SETTINGS_MOBILE_BREAKPOINT, initSettingsSync } from "@/lib/settings-sync";
+import { requestEntriesHeadSync } from "@/lib/entries-head-sync";
 import { showToast } from "@/stores/toast-store";
 import { ThreeColumnLayout } from "@/components/layout/three-column-layout";
 import { Sheet } from "@/components/ui/sheet";
@@ -230,7 +231,7 @@ function AuthenticatedApp() {
     // 快捷键 r：普通刷新（强制拉取走中栏刷新图标的右键菜单，带确认）
     mutationFn: () => refreshAllFeeds(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["entries"] });
+      void requestEntriesHeadSync(queryClient);
       queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
     },
   });

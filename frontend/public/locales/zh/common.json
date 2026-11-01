@@ -338,6 +338,7 @@
     "ai_summary": "AI 摘要",
     "select_article": "选择一篇文章开始阅读",
     "refresh_done": "刷新完成",
+    "refresh_new_entries": "新增 {{count}} 条新条目",
     "original_site": "查看原文网站",
     "original_site_hint": "已在内嵌窗口加载原站；若下方空白，说明该站点禁止被内嵌，请点右侧「在新窗口打开」。",
     "video_preview": "视频播放",

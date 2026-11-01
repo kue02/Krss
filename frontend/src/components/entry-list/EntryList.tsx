@@ -16,6 +16,7 @@ import { useEntryPrefetch } from "@/hooks/useEntryPrefetch";
 import { useListTranslations } from "@/hooks/useListTranslations";
 import { useRefreshStatus } from "@/hooks/useRefreshStatus";
 import { queryClient } from "@/lib/queryClient";
+import { requestEntriesHeadSync } from "@/lib/entries-head-sync";
 import { getRefreshStatus, refreshAllFeeds, refreshFeeds } from "@/api";
 import { showToast } from "@/stores/toast-store";
 import { useFolders } from "@/hooks/useFolders";
@@ -43,6 +44,7 @@ import { cn } from "@/lib/utils";
 import { useVirtualizedArticleList } from "./useVirtualizedArticleList";
 import { VirtualizedArticleList } from "./VirtualizedArticleList";
 import { useScrollMarkRead } from "./useScrollMarkRead";
+import { usePrependScrollAnchor } from "./usePrependScrollAnchor";
 import {
   getDeferredRemovalsVersion,
   mergeDeferredRemovals,
@@ -203,14 +205,67 @@ export function EntryList({
   const headerRef = useRef<HTMLDivElement>(null);
   const listWrapperRef = useRef<HTMLDivElement>(null);
   const usesDocumentScroll = Boolean(isMobile);
+  /**
+   * 非虚拟列表（社媒 / 通知时间线）：直接交给浏览器原生 scroll anchoring。
+   *
+   * 2026-11-01 用户「还是不行」的根因就在这里：`overflow-anchor:none` 把浏览器
+   * 自带的补偿关掉之后，只能靠 `usePrependScrollAnchor` 的 JS 兜底 —— 它拿的是
+   * 上一帧量到的锚点坐标，图片/翻译异步撑高、或者锚点条目被换掉之后，那串旧坐标
+   * 会被当成「应该在哪」反复拉，于是整块往下走一段就停住（用户看到的形态）。
+   * 原生 anchoring 和布局在同一帧里补偿，不存在这个时间差。
+   *
+   * 虚拟化文章列表仍走 JS 补偿 —— 行是按 `estimateSize` 绝对定位的，插入新条目会让
+   * 所有行整体平移、总高度却可能不变，Chrome 的 anchoring 认不出这种「垫片内位移」
+   * （实测 3 条 148px 估计行 = 下移 444px 且没人补）。
+   */
+  const nativeScrollAnchor = contentType !== "article";
   const scrollSurface = useEntryListScrollSurface({
     documentScroll: usesDocumentScroll,
     containerRef,
     headerRef,
   });
-  const scrollToTop = useCallback(() => {
-    scrollSurface.scrollTo(0, "smooth");
+  /**
+   * 平滑回顶时会临时关掉「内容位移兜底」：兜底里的 scrollBy 会打断 smooth 动画
+   * （实测 Toast 点回顶停在原处，就是被 0.5px 的兜底补正掐断的）。
+   */
+  const anchorStabilizePausedRef = useRef(false);
+  const anchorPauseTimerRef = useRef<number | null>(null);
+  /** Toast 的「跳到新条目」用瞬时滚动：smooth 在兜底/RO 共存时容易被抢断 */
+  const jumpToTop = useCallback(() => {
+    anchorStabilizePausedRef.current = true;
+    if (import.meta.env.DEV && import.meta.env.MODE !== "test") {
+      console.log("[krss-anchor] jumpToTop before", scrollSurface.getScrollTop());
+    }
+    scrollSurface.scrollTo(0, "auto");
+    requestAnimationFrame(() => {
+      anchorStabilizePausedRef.current = false;
+      if (import.meta.env.DEV && import.meta.env.MODE !== "test") {
+        console.log("[krss-anchor] jumpToTop after", scrollSurface.getScrollTop());
+      }
+    });
   }, [scrollSurface]);
+
+  const scrollToTop = useCallback(() => {
+    // 同步置位（不能靠 setState，兜底会赶在 React 渲染前把 smooth 动画掐断）
+    anchorStabilizePausedRef.current = true;
+    scrollSurface.scrollTo(0, "smooth");
+    if (anchorPauseTimerRef.current !== null) {
+      window.clearTimeout(anchorPauseTimerRef.current);
+    }
+    anchorPauseTimerRef.current = window.setTimeout(() => {
+      anchorPauseTimerRef.current = null;
+      anchorStabilizePausedRef.current = false;
+    }, 1300);
+  }, [scrollSurface]);
+
+  useEffect(
+    () => () => {
+      if (anchorPauseTimerRef.current !== null) {
+        window.clearTimeout(anchorPauseTimerRef.current);
+      }
+    },
+    [],
+  );
 
   useScrollToTop(scrollToTop, "entrylist", isActive);
 
@@ -731,10 +786,26 @@ export function EntryList({
       stopRefreshPolling();
       setIsRefreshing(false);
       setRefreshProgress(null);
-      queryClient.invalidateQueries({ queryKey: ["entries"] });
+      // 58-3：手动刷新也只并头部新条目 —— 整窗重拉会按旧 offset 把用户正读的卡顶出窗口
+      void requestEntriesHeadSync(queryClient);
       queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
       queryClient.invalidateQueries({ queryKey: ["feeds"] });
-      showToast(t("entry.refresh_done"));
+      /**
+       * 58-3：手动刷新也先等「新增 N 条」—— 这条是用户明确要的「刷新完告诉我加了多少」。
+       * 这里先把记账标成「刷新已完成」，entries 一回来就能弹条数 Toast；
+       * 如果确实一条新增都没有，2.5 秒后再补那条泛泛的「刷新完成」。
+       */
+      const watch = refreshWatchRef.current;
+      watch.active = true;
+      watch.finished = true;
+      if (watch.trigger === null) watch.trigger = "manual";
+      if (manualDoneToastTimerRef.current !== null) {
+        window.clearTimeout(manualDoneToastTimerRef.current);
+      }
+      manualDoneToastTimerRef.current = window.setTimeout(() => {
+        manualDoneToastTimerRef.current = null;
+        showToast(t("entry.refresh_done"));
+      }, 2500);
     };
 
     const pollRefreshStatus = () => {
@@ -791,6 +862,186 @@ export function EntryList({
     stopRefreshPolling,
     t,
   ]);
+
+  /**
+   * 58-3（用户 2026-10-29）：自动刷新拉到新条目时——
+   *   ① 列表不在顶部 ⇒ 保持当前这一屏不动（新条目无感叠在前面，见 usePrependScrollAnchor）；
+   *   ② 刷新跑完只弹一条 3 秒 Toast「新增 N 条新条目」，点它才滚回顶部看新内容；
+   *   ③ 在列表最顶端 ⇒ 直接插进来、不弹 Toast（用户原话）。
+   *
+   * 记账口径：只认 `trigger === "auto"` 的刷新（手动刷新已有「刷新完成」提示，不重复弹）；
+   * ids 用 Set 去重（一轮刷新里 completed 递增会多次重拉，同一条新条目可能被算到两次）。
+   */
+  const refreshWatchRef = useRef<{
+    active: boolean;
+    finished: boolean;
+    trigger: "manual" | "auto" | null;
+    ids: Set<string>;
+    timer: number | null;
+  }>({
+    active: false,
+    finished: false,
+    trigger: null,
+    ids: new Set<string>(),
+    timer: null,
+  });
+  const prevRefreshedAtRef = useRef<string | undefined | null>(null);
+  /** DEV 诊断去重：状态签名没变就不打 */
+  const refreshStatusLogSigRef = useRef("");
+  /** 手动刷新如果没拉到新条目，延迟落一条「刷新完成」；有新增则被条数 Toast 顶掉 */
+  const manualDoneToastTimerRef = useRef<number | null>(null);
+
+  const showRefreshAddedToast = useCallback(() => {
+    const watch = refreshWatchRef.current;
+    watch.timer = null;
+    // 有「新增 N 条」就不再补那条泛泛的「刷新完成」
+    if (manualDoneToastTimerRef.current !== null) {
+      window.clearTimeout(manualDoneToastTimerRef.current);
+      manualDoneToastTimerRef.current = null;
+    }
+    const count = watch.ids.size;
+    // 出过这一条就重新开始记：同一轮里后面的重拉不会把同一条再算一次
+    watch.ids.clear();
+    watch.active = false;
+    watch.finished = false;
+    watch.trigger = null;
+    if (count <= 0) return;
+    showToast(
+      t("entry.refresh_new_entries", { count }),
+      3000,
+      // 用户 2026-10-29：「或者可以点击这个 Toast，它就跳到前面了」——
+      // 点它才滚到最顶部；不点 3 秒后自己消失，列表全程不动。
+      jumpToTop,
+    );
+  }, [jumpToTop, t]);
+
+  const scheduleRefreshAddedToast = useCallback(() => {
+    const watch = refreshWatchRef.current;
+    // 手动刷新也报条数（用户 2026-10-29：刷新完没提示，他以为新条目没进来）
+    if (watch.ids.size === 0) return;
+    if (watch.timer !== null) window.clearTimeout(watch.timer);
+    // 等最后一次重拉落定（刷新中每刷完一个源都会并一次 entries）再报总数
+    watch.timer = window.setTimeout(showRefreshAddedToast, 800);
+  }, [showRefreshAddedToast]);
+
+  const handleHeadAdditions = useCallback(
+    (_headIds: string[], newIds: string[], atTop: boolean) => {
+      const watch = refreshWatchRef.current;
+      if (!watch.active) return;
+      if (atTop) {
+        // 在顶端 = 用户本来就在看最新内容，直接插即可，不必再提示条数
+        watch.ids.clear();
+        if (watch.timer !== null) {
+          window.clearTimeout(watch.timer);
+          watch.timer = null;
+        }
+        return;
+      }
+      // 用 newIds 而不是 headIds：按发布时间排序时，新条目可能夹在两条旧条目之间
+      // （实测 3 条新条目里 1 条夹在旧条目后面，只数头部会报「新增 2 条」）。
+      for (const id of newIds) watch.ids.add(id);
+      if (watch.finished) scheduleRefreshAddedToast();
+    },
+    [scheduleRefreshAddedToast],
+  );
+
+  // 刷新状态变化：记下「正在自动刷新 / 刚刷新完」两个时刻（前端轮询 15s 一次，
+  // 短刷新可能只看到「刚刷新完」这一跳，所以两条都算）。
+  useEffect(() => {
+    const status = globalRefreshStatus;
+    if (!status) return;
+    const watch = refreshWatchRef.current;
+    const current = status.lastRefreshedAt ?? undefined;
+
+    if (prevRefreshedAtRef.current === null) {
+      prevRefreshedAtRef.current = current;
+      return;
+    }
+
+    if (status.isRefreshing) {
+      // 新一轮开始：上一轮如果什么都没加到（或已经出过 Toast），清掉残留记账
+      if (!watch.active || watch.finished) {
+        watch.ids.clear();
+        if (watch.timer !== null) {
+          window.clearTimeout(watch.timer);
+          watch.timer = null;
+        }
+      }
+      watch.active = true;
+      watch.finished = false;
+      if (status.trigger) watch.trigger = status.trigger;
+    }
+
+    if (prevRefreshedAtRef.current !== current) {
+      prevRefreshedAtRef.current = current;
+      watch.active = true;
+      watch.finished = true;
+      if (status.trigger) watch.trigger = status.trigger;
+    } else if (watch.active && !watch.finished && !status.isRefreshing) {
+      // 只看到结束（轮询错过了「刷新中」那一跳）
+      watch.finished = true;
+    }
+
+    if (watch.active && watch.finished) scheduleRefreshAddedToast();
+
+    if (import.meta.env.DEV && import.meta.env.MODE !== "test") {
+      // 只在「开始/结束/切轮次」这些状态跳变时打，不跟每 2 秒的 completed 刷屏
+      const signature = `${Boolean(status.isRefreshing)}|${status.trigger ?? ""}|${status.lastRefreshedAt ?? ""}|${watch.active}|${watch.finished}`;
+      if (signature !== refreshStatusLogSigRef.current) {
+        refreshStatusLogSigRef.current = signature;
+        console.log("[krss-refresh] status", {
+          isRefreshing: Boolean(status.isRefreshing),
+          trigger: status.trigger ?? null,
+          lastRefreshedAt: status.lastRefreshedAt ?? null,
+          completed: status.completed ?? null,
+          active: watch.active,
+          finished: watch.finished,
+          newIds: watch.ids.size,
+        });
+      }
+    }
+  }, [globalRefreshStatus, scheduleRefreshAddedToast]);
+
+  // 换列表（订阅 / 视图 / 已读筛选）时清账，别把上一个列表的新条目算进来
+  useEffect(() => {
+    const watch = refreshWatchRef.current;
+    watch.active = false;
+    watch.finished = false;
+    watch.trigger = null;
+    watch.ids.clear();
+    if (watch.timer !== null) {
+      window.clearTimeout(watch.timer);
+      watch.timer = null;
+    }
+    if (manualDoneToastTimerRef.current !== null) {
+      window.clearTimeout(manualDoneToastTimerRef.current);
+      manualDoneToastTimerRef.current = null;
+    }
+  }, [scrollKey, effectiveUnreadOnly]);
+
+  useEffect(
+    () => () => {
+      const watch = refreshWatchRef.current;
+      if (watch.timer !== null) window.clearTimeout(watch.timer);
+      if (manualDoneToastTimerRef.current !== null) {
+        window.clearTimeout(manualDoneToastTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  usePrependScrollAnchor({
+    surface: scrollSurface,
+    contentRootRef: containerRef,
+    entries,
+    resetKey: `${scrollKey}\u0000${effectiveUnreadOnly}`,
+    enabled: isActive,
+    pausedRef: anchorStabilizePausedRef,
+    // 有原生 anchoring 时 JS 不补：浏览器已经在同一帧补偿，JS 再补一次会重复/打架，
+    // 而且它的「锚点旧坐标」在跨帧场景里反而会把页面拉走（用户 2026-11-01 复测「还是不行」）。
+    compensate: !nativeScrollAnchor,
+    onHeadAdditions: handleHeadAdditions,
+  });
 
   const { endPaddingHeight: scrollReadEndPaddingHeight } = useScrollMarkRead({
     surface: scrollSurface,
@@ -1048,6 +1299,8 @@ export function EntryList({
           onBackFromFeedJump={feedJumpBackHref ? onBackFromFeedJump : undefined}
           unreadCount={unreadCount}
           unreadOnly={unreadOnly}
+          /* 58-1：星标视图不显示「只看未读」切换（用户 2026-10-29） */
+          showUnreadToggle={selection.type !== "starred"}
           onToggleUnreadOnly={onToggleUnreadOnly}
           onMarkAllRead={onMarkAllRead}
           onRefresh={handleRefresh}
@@ -1172,10 +1425,16 @@ export function EntryList({
             );
           }}
           className={cn(
-            "w-full overflow-x-hidden rounded-[inherit] [overflow-anchor:none]",
+            "w-full overflow-x-hidden rounded-[inherit]",
+            // 非虚拟列表时交给浏览器自己的 scroll anchoring：它和布局在同一帧里补偿，
+            // 不会出现「先被推走一秒、再被 JS 拉回」的跳（旧 JS 兜底还会用过期锚点乱拉）。
+            // 虚拟化文章列表仍然是 none + usePrependScrollAnchor 的 JS 补偿。
             usesDocumentScroll
-              ? "overflow-y-visible"
-              : "h-full overflow-y-auto overscroll-y-contain",
+              ? cn("overflow-y-visible", nativeScrollAnchor ? "[overflow-anchor:auto]" : "[overflow-anchor:none]")
+              : cn(
+                  "h-full overflow-y-auto overscroll-y-contain",
+                  nativeScrollAnchor ? "[overflow-anchor:auto]" : "[overflow-anchor:none]",
+                ),
           )}
         >
           {isLoading ? (

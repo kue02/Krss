@@ -74,6 +74,7 @@ import {
 import { refreshFeeds } from "@/api";
 import { showToast } from "@/stores/toast-store";
 import { queryClient } from "@/lib/queryClient";
+import { requestEntriesHeadSync } from "@/lib/entries-head-sync";
 import type { AppearanceSettings } from "@/types/settings";
 
 const defaultContentTypes: ContentType[] = [
@@ -407,7 +408,7 @@ export function Sidebar({
       // 范围为空（例如视图里选的是「全部订阅」）就整轮刷新
       try {
         await refreshFeeds(ids, false);
-        queryClient.invalidateQueries({ queryKey: ["entries"] });
+        void requestEntriesHeadSync(queryClient);
         queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
         queryClient.invalidateQueries({ queryKey: ["feeds"] });
         queryClient.invalidateQueries({ queryKey: ["refreshStatus"] });

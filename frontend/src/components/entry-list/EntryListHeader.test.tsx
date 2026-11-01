@@ -134,3 +134,18 @@ describe("EntryListHeader 标题行", () => {
     expect(screen.queryByText("entry.unread_count")).toBeNull();
   });
 });
+
+describe("EntryListHeader 星标视图去掉已读/未读切换（58-1）", () => {
+  it("默认视图仍然显示「只看未读 / 全部」切换", () => {
+    render(<EntryListHeader {...baseProps} />);
+    expect(screen.getByTitle("entry.show_unread_only")).toBeTruthy();
+  });
+
+  it("showUnreadToggle=false（星标视图）时这颗按钮整颗不渲染，刷新/全读不受影响", () => {
+    render(<EntryListHeader {...baseProps} showUnreadToggle={false} />);
+
+    expect(screen.queryByTitle("entry.show_unread_only")).toBeNull();
+    expect(screen.queryByTitle("entry.show_all")).toBeNull();
+    expect(screen.getByTitle("entry.mark_all_read")).toBeTruthy();
+  });
+});

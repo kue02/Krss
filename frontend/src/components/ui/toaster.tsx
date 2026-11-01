@@ -12,7 +12,12 @@ export function Toaster() {
         <button
           key={toast.id}
           type="button"
-          onClick={() => dismissToast(toast.id)}
+          onClick={() => {
+            // 58-3：带动作的 Toast（如「新增 N 条」）点了先执行动作再关掉；
+            // 普通 Toast 仍然只是「点一下立即关闭」。
+            toast.onClick?.();
+            dismissToast(toast.id);
+          }}
           className="nf-enter pointer-events-auto max-w-[80vw] truncate rounded-full border border-border/60 bg-overlay/90 px-3.5 py-1.5 text-xs font-medium text-foreground shadow-nf backdrop-blur-xl transition-colors duration-200 hover:bg-overlay"
         >
           {toast.message}

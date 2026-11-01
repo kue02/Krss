@@ -10,6 +10,7 @@ import {
   useUpdateFeedType,
 } from "@/hooks/useFeeds";
 import { useFolders } from "@/hooks/useFolders";
+import { requestEntriesHeadSync } from "@/lib/entries-head-sync";
 import { useEditingFeedStore } from "@/stores/editing-feed-store";
 import type { FeedMenuActions } from "@/components/feed/FeedContextMenuItems";
 import type { ContentType, Folder } from "@/types/api";
@@ -81,7 +82,7 @@ export function useFeedMenuActions(): Required<FeedMenuActions> & {
     async (feedId: string) => {
       try {
         await refreshFeeds([feedId]);
-        queryClient.invalidateQueries({ queryKey: ["entries"] });
+        void requestEntriesHeadSync(queryClient);
         queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
         queryClient.invalidateQueries({ queryKey: ["feeds"] });
         // 12-10：立刻拉一次刷新状态，中栏进度条与结果弹框不用等下一轮轮询
