@@ -12,6 +12,7 @@ import {
 import { BellOff, ShieldOff, Wand2 } from "lucide-react";
 import { Ripple } from "m3-ripple";
 import { cn } from "@/lib/utils";
+import { apiUrl } from "@/lib/server-url";
 import { formatRelativeTime } from "@/lib/date-utils";
 import { stripHtml } from "@/lib/html-utils";
 import { getEntryImages } from "@/lib/extract-images";
@@ -50,6 +51,7 @@ import {
   extractContentMedia,
 } from "@/lib/extract-content-media";
 import { getProxiedImageUrl } from "@/lib/image-proxy";
+import { useAuthedImageUrl } from "@/lib/use-authed-image";
 import { SocialMediaGallery } from "@/components/entry-list/SocialMediaGallery";
 import { parseSocialSource } from "@/lib/social-source";
 import { removeContentSeparators, splitSocialQuote } from "@/lib/social-content";
@@ -346,6 +348,8 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
       const images = getEntryImages(entry.thumbnailUrl, entry.content, entry.url);
       return images[0] ?? null;
     }, [entry.thumbnailUrl, entry.content, entry.url]);
+    const thumbnailSrc = thumbRecovered && thumbnail ? withProxyCacheBust(thumbnail) : thumbnail;
+    const authedThumbnail = useAuthedImageUrl(thumbnailSrc ?? undefined);
 
     /** 阅读时长（与 EntryContentBody 同口径） */
     const readingTime = useMemo(() => {
@@ -540,7 +544,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
               <UnreadIndicator unread={isUnread} count={feedUnreadCount} className="mt-1">
                 {showIcon ? (
                   <img
-                    src={`/icons/${feed.iconPath}`}
+                    src={apiUrl(`/icons/${feed.iconPath}`)}
                     alt=""
                     width={32}
                     height={32}
@@ -906,7 +910,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
               <UnreadIndicator unread={isUnread} count={feedUnreadCount}>
                 {showIcon ? (
                   <img
-                    src={`/icons/${feed.iconPath}`}
+                    src={apiUrl(`/icons/${feed.iconPath}`)}
                     alt=""
                     width={20}
                     height={20}
@@ -1015,11 +1019,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                   )}
                 >
                 <img
-                  src={
-                    thumbRecovered && thumbnail
-                      ? withProxyCacheBust(thumbnail)
-                      : (thumbnail ?? "")
-                  }
+                  src={authedThumbnail}
                   alt=""
                   loading="lazy"
                   decoding="async"

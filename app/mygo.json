@@ -1,0 +1,26 @@
+{
+  "name": "Krss",
+  "slug": "krss",
+  "identifier": "com.kue02.krss",
+  "version": "1.0.0",
+  "buildCommand": "sh scripts/build-frontend.sh",
+  "frontendDist": "../frontend/dist",
+  "out": "dist",
+  "icon": "resources/icon.png",
+  "ios": {
+    "minimumSystemVersion": "18.7.7",
+    "distribution": "development",
+    "buildNumber": "1",
+    "orientations": [
+      "portrait"
+    ],
+    "infoPlist": {
+      "NSAppTransportSecurity": {
+        "NSAllowsArbitraryLoads": true
+      },
+      "NSLocalNetworkUsageDescription": "连接你自托管的 Krss 服务器，同步订阅与阅读进度。"
+    }
+  },
+  "devUrl": "http://localhost:5173",
+  "devCommand": "cd ../frontend && KRSS_DEV_BACKEND=${KRSS_DEV_BACKEND:-http://localhost:8090} bun run dev --port 5173"
+}

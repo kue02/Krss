@@ -10,6 +10,8 @@ import {
 } from "react";
 import { cn } from "@/lib/utils";
 import { getProxiedImageUrl } from "@/lib/image-proxy";
+import { useAuthedImageUrl } from "@/lib/use-authed-image";
+import { API_BASE_URL } from "@/lib/server-url";
 import {
   isRecoverableProxyUrl,
   renewProxyCookie,
@@ -102,6 +104,7 @@ export const ArticleImage = memo(function ArticleImage({
     () => (srcset ? proxySrcset(srcset, articleUrl) : undefined),
     [srcset, articleUrl],
   );
+  const authedSrc = useAuthedImageUrl(proxiedSrc);
 
   // Initialize isLoaded based on cache - prevents flash on remount
   const [isLoaded, setIsLoaded] = useState(() =>
@@ -225,8 +228,8 @@ export const ArticleImage = memo(function ArticleImage({
       >
         <img
           ref={containerRef}
-          src={recoveredSrc ?? proxiedSrc}
-          srcSet={proxiedSrcset}
+          src={recoveredSrc ?? authedSrc}
+          srcSet={API_BASE_URL ? undefined : proxiedSrcset}
           sizes={sizes}
           alt={alt}
           loading={priority ? "eager" : "lazy"}
@@ -251,8 +254,8 @@ export const ArticleImage = memo(function ArticleImage({
   return (
     <img
       ref={containerRef}
-      src={recoveredSrc ?? proxiedSrc}
-      srcSet={proxiedSrcset}
+      src={recoveredSrc ?? authedSrc}
+      srcSet={API_BASE_URL ? undefined : proxiedSrcset}
       sizes={sizes}
       alt={alt}
       width={width}

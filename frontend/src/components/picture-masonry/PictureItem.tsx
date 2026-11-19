@@ -2,6 +2,8 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Play } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { apiUrl } from "@/lib/server-url";
+import { useAuthedImageUrl } from "@/lib/use-authed-image";
 import { getEntryImages } from "@/lib/extract-images";
 import { getProxiedImageUrl } from "@/lib/image-proxy";
 import { isVideoThumbnail } from "@/lib/media-utils";
@@ -51,6 +53,9 @@ export const PictureItem = memo(function PictureItem({
   // 网格模式一律 1:1（等高正方格），瀑布流模式用缓存的真实比例
   const aspectRatio = square ? 1 : (cachedDimension?.ratio ?? DEFAULT_RATIO);
   const isVideo = isVideoThumbnail(thumbnailUrl);
+  const authedThumbnail = useAuthedImageUrl(
+    thumbnailUrl ? getProxiedImageUrl(thumbnailUrl, entry.url ?? undefined) : undefined,
+  );
 
   const [imageLoaded, setImageLoaded] = useState(false);
   const [iconError, setIconError] = useState(false);
@@ -121,7 +126,7 @@ export const PictureItem = memo(function PictureItem({
         >
           <img
             ref={imgRef}
-            src={getProxiedImageUrl(thumbnailUrl, entry.url ?? undefined)}
+            src={authedThumbnail}
             alt={entry.title || ""}
             className={cn(
               "size-full object-cover transition-opacity duration-300",
@@ -155,7 +160,7 @@ export const PictureItem = memo(function PictureItem({
           />
           {showIcon ? (
             <img
-              src={`/icons/${feed.iconPath}`}
+              src={apiUrl(`/icons/${feed.iconPath}`)}
               alt=""
               {...sourceProps}
               className={cn(

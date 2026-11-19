@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useFeeds } from "@/hooks/useFeeds";
 import { deleteFeeds, refreshAllFeeds, ApiError } from "@/api";
 import { cn } from "@/lib/utils";
+import { apiUrl } from "@/lib/server-url";
 import {
   formatDate,
   formatDateTime,
@@ -378,7 +379,7 @@ export function FeedsSettings() {
                       <div className="flex items-center gap-2">
                         {feed.iconPath ? (
                           <img
-                            src={`/icons/${feed.iconPath}`}
+                            src={apiUrl(`/icons/${feed.iconPath}`)}
                             alt=""
                             className="size-4 shrink-0 rounded-[var(--ui-icon-radius,4px)] object-contain"
                           />

@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { cn } from "@/lib/utils";
 import { getProxiedImageUrl } from "@/lib/image-proxy";
+import { useAuthedImageUrl } from "@/lib/use-authed-image";
 import {
   computeSingleBox,
   gridColumns,
@@ -110,9 +111,9 @@ const GalleryImage = memo(function GalleryImage({
     setFailed(true);
   }, [proxied, recovered, markFailed, item.src]);
 
-  if (failed) return null;
+  const src = useAuthedImageUrl(recovered ? withProxyCacheBust(proxied) : proxied);
 
-  const src = recovered ? withProxyCacheBust(proxied) : proxied;
+  if (failed) return null;
 
   return (
     <button

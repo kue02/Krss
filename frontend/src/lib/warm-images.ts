@@ -12,6 +12,7 @@
 
 import { extractImagesFromHtml } from "./extract-images";
 import { getProxiedImageUrl } from "./image-proxy";
+import { API_BASE_URL } from "./server-url";
 
 /** 默认 warm 几张：够盖住首屏，又不会为了用户可能不看的内容狂拉流量 */
 export const DEFAULT_WARM_IMAGE_COUNT = 3;
@@ -23,6 +24,8 @@ export function warmEntryImages(
 ): void {
   if (!content || limit <= 0) return;
   if (typeof Image === "undefined") return; // 非浏览器环境（测试/SSR）直接跳过
+  // App 里 `new Image()` 带不了 Authorization，预载只会 401；真正渲染时再按需取
+  if (API_BASE_URL) return;
 
   let urls: string[];
   try {

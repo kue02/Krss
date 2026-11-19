@@ -34,6 +34,7 @@ func NewRouter(
 	e.HideBanner = true
 	e.Use(middleware.Recover())
 	e.Use(RequestLoggerMiddleware())
+	e.Use(CORSMiddleware())
 
 	logger.Info("router initialized", "module", "http", "action", "request", "resource", "http", "result", "ok", "static_dir", staticDir)
 

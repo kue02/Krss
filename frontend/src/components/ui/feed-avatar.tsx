@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { apiUrl } from "@/lib/server-url";
 import { FeedIcon } from "./feed-icon";
 
 interface FeedAvatarProps {
@@ -40,7 +41,7 @@ export function FeedAvatar({
    */
   const isCircle = rounded === "circle";
   const radius = isCircle ? "rounded-full" : "";
-  const resolved = src ?? (iconPath ? `/icons/${iconPath}` : null);
+  const resolved = src ?? (iconPath ? apiUrl(`/icons/${iconPath}`) : null);
 
   if (resolved && !failed) {
     return (

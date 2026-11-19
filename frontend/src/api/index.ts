@@ -24,6 +24,7 @@ import {
   removeLocalValue,
 } from "@/lib/settings-storage";
 import { queryClient } from "@/lib/queryClient";
+import { API_BASE_URL } from "@/lib/server-url";
 import type {
   AISettings,
   AITestRequest,
@@ -68,7 +69,6 @@ import type {
   MCPToolsResponse,
 } from "@/types/mcp";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL ?? "";
 // 登录 token 存 localStorage（键名见 LS_KEYS.authToken）
 const TOKEN_SPEC = LS_KEYS.authToken;
 

@@ -1,6 +1,8 @@
 /**
  * Convert relative URL to absolute URL based on the article link
  */
+import { apiUrl } from "@/lib/server-url";
+
 export function toAbsoluteUrl(
   url: string,
   baseUrl: string | undefined,
@@ -63,12 +65,15 @@ export function getProxiedImageUrl(src: string, articleUrl?: string): string {
   const absoluteUrl = toAbsoluteUrl(src, articleUrl);
   if (!absoluteUrl) return src;
 
-  // Skip data URIs and already proxied URLs
-  if (absoluteUrl.startsWith("data:") || absoluteUrl.startsWith("/api/")) {
+  // Skip data URIs; 已代理的相对地址要补上服务器基址（App 内源是 mygo://localhost）
+  if (absoluteUrl.startsWith("data:")) {
     return absoluteUrl;
   }
+  if (absoluteUrl.startsWith("/api/")) {
+    return apiUrl(absoluteUrl);
+  }
 
-  let url = `/api/proxy/image/${toBase64Url(absoluteUrl)}`;
+  let url = apiUrl(`/api/proxy/image/${toBase64Url(absoluteUrl)}`);
   // Pass article URL as referer for CDN anti-hotlinking
   if (articleUrl) {
     url += `?ref=${toBase64Url(articleUrl)}`;

@@ -14,6 +14,7 @@ import { Pause, Play, ExternalLink } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { getProxiedImageUrl } from "@/lib/image-proxy";
+import { useAuthedImageUrl } from "@/lib/use-authed-image";
 import { ArticleLinkContext } from "./article-image";
 import { useVideoPreviewStore } from "@/stores/video-preview-store";
 
@@ -94,6 +95,8 @@ export function ArticleVideo({
     () => (poster ? (getProxiedImageUrl(poster, articleUrl) ?? poster) : undefined),
     [poster, articleUrl],
   );
+  const authedPoster = useAuthedImageUrl(proxiedPoster);
+  const authedPlayableSrc = useAuthedImageUrl(playableSrc);
 
   // 换了条目就重置错误态、悬停态与播放头
   useEffect(() => {
@@ -272,8 +275,8 @@ export function ArticleVideo({
         {/* 源 HTML 常带 controls，这里丢掉：就地只当封面/悬停预览，点了开大屏播放器 */}
         <video
           ref={videoRef}
-          src={childNodes ? undefined : playableSrc}
-          poster={proxiedPoster}
+          src={childNodes ? undefined : authedPlayableSrc}
+          poster={authedPoster}
           muted
           playsInline
           disablePictureInPicture

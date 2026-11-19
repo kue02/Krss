@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "@/lib/date-utils";
 import { isSafeUrl, getSafeHostname } from "@/lib/url";
 import { getProxiedImageUrl } from "@/lib/image-proxy";
+import { AuthedImage } from "@/components/ui/authed-image";
 import {
   FileTextIcon,
   ImageIcon,
@@ -252,7 +253,7 @@ export function FeedPreviewCard({
         {/* Feed Icon */}
         <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-secondary">
           {feed.imageUrl && isSafeUrl(feed.imageUrl) ? (
-            <img
+            <AuthedImage
               src={getProxiedImageUrl(feed.imageUrl, feed.siteUrl)}
               alt=""
               className="size-12 rounded-lg object-cover"
