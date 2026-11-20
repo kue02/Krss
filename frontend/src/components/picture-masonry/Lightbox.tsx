@@ -5,6 +5,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import useEmblaCarousel from "embla-carousel-react";
 import { Play } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { apiUrl } from "@/lib/server-url";
+import { AuthedImage } from "@/components/ui/authed-image";
 import { isVideoThumbnail } from "@/lib/media-utils";
 import { formatRelativeTime } from "@/lib/date-utils";
 import { stripHtml } from "@/lib/html-utils";
@@ -412,7 +414,7 @@ export function Lightbox() {
                   ref={zoom.containerRef}
                   {...zoom.handlers}
                 >
-                  <img
+                  <AuthedImage
                     src={images[0]}
                     alt=""
                     className="max-h-full max-w-full object-contain"
@@ -450,7 +452,7 @@ export function Lightbox() {
                         key={src}
                         className="flex min-h-0 min-w-0 flex-[0_0_100%] items-center justify-center px-0 will-change-transform sm:px-2 lg:px-4"
                       >
-                        <img
+                        <AuthedImage
                           src={src}
                           alt=""
                           className="max-h-full max-w-full object-contain"
@@ -573,7 +575,7 @@ export function Lightbox() {
                 <div className="mb-2 flex items-center gap-2 text-sm text-white/60">
                   {showIcon ? (
                     <img
-                      src={`/icons/${feed.iconPath}`}
+                      src={apiUrl(`/icons/${feed.iconPath}`)}
                       alt=""
                       className="size-4 shrink-0 rounded-[var(--ui-icon-radius,4px)] object-contain"
                       onError={() => setIconError(true)}

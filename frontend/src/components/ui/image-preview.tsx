@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import useEmblaCarousel from "embla-carousel-react";
 import { cn } from "@/lib/utils";
 import { useImagePreviewStore } from "@/stores/image-preview-store";
+import { AuthedImage } from "@/components/ui/authed-image";
 
 export function ImagePreview() {
   const { isOpen, images, currentIndex, close, reset, setIndex } =
@@ -235,7 +236,7 @@ export function ImagePreview() {
                 transition={{ duration: 0.2 }}
                 className="relative flex size-full items-center justify-center safe-area-x"
               >
-                <img
+                <AuthedImage
                   src={images[0]}
                   alt=""
                   className="max-h-full max-w-full object-contain"
@@ -254,7 +255,7 @@ export function ImagePreview() {
                       key={src}
                       className="flex min-h-0 min-w-0 flex-[0_0_100%] items-center justify-center will-change-transform"
                     >
-                      <img
+                      <AuthedImage
                         src={src}
                         alt=""
                         className="max-h-full max-w-full object-contain"

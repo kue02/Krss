@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { getProxiedImageUrl } from "./image-proxy";
 
 describe("image-proxy", () => {
@@ -122,5 +122,38 @@ describe("image-proxy", () => {
       expect(url).toContain("/api/proxy/image/");
       expect(url).toContain("?ref=");
     });
+  });
+});
+
+describe("App 服务器基址（VITE_API_URL）", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it("App 内给图片代理地址补服务器基址", async () => {
+    vi.stubEnv("VITE_API_URL", "http://192.168.1.5:8090");
+    vi.resetModules();
+    const { getProxiedImageUrl } = await import("./image-proxy");
+    const url = getProxiedImageUrl("https://cdn.example.com/a.jpg");
+    expect(url.startsWith("http://192.168.1.5:8090/api/proxy/image/")).toBe(true);
+  });
+
+  it("已是根相对 /api/ 的地址也补基址", async () => {
+    vi.stubEnv("VITE_API_URL", "http://192.168.1.5:8090");
+    vi.resetModules();
+    const { getProxiedImageUrl } = await import("./image-proxy");
+    expect(getProxiedImageUrl("/api/proxy/image/abc")).toBe(
+      "http://192.168.1.5:8090/api/proxy/image/abc",
+    );
+  });
+
+  it("同源构建仍返回根相对代理地址", async () => {
+    vi.stubEnv("VITE_API_URL", "");
+    vi.resetModules();
+    const { getProxiedImageUrl } = await import("./image-proxy");
+    expect(
+      getProxiedImageUrl("https://cdn.example.com/a.jpg").startsWith("/api/proxy/image/"),
+    ).toBe(true);
   });
 });

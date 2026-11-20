@@ -27,6 +27,8 @@ import {
 } from "react";
 import * as THREE from "three";
 import { cn } from "@/lib/utils";
+import { useAuthedImageUrls } from "@/lib/use-authed-image";
+import { AuthedImage } from "@/components/ui/authed-image";
 import {
   clampWallOffset,
   wallAtlasSide,
@@ -186,7 +188,9 @@ async function buildAtlas(images: string[]): Promise<THREE.CanvasTexture> {
   if (ctx) {
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    const loaded = await Promise.all(images.map((src) => loadImage(src)));
+    const loaded = await Promise.all(
+      images.map((src) => (src ? loadImage(src) : Promise.resolve(null))),
+    );
     loaded.forEach((image, index) => {
       if (!image || !ctx) return;
       const fit = wallFitRect(image.naturalWidth, image.naturalHeight);
@@ -305,9 +309,11 @@ function WallFallback({
       style={style}
     >
       <div className="grid h-full w-full grid-cols-3 content-start gap-px overflow-auto sm:grid-cols-5 lg:grid-cols-6">
-        {images.map((src) => (
-          <img
-            key={src}
+        {/* 复审 P2：鉴权取图失败时 useAuthedImageUrls 会给空串；空 src 既不能渲染，
+            又会让 key 重复。这里过滤掉空项，key 用序号（同一张图也可能重复出现）。 */}
+        {images.filter(Boolean).map((src, index) => (
+          <AuthedImage
+            key={index}
             src={src}
             alt=""
             loading="lazy"
@@ -339,9 +345,10 @@ export function ArtGallery({
     supportsWebGL,
     () => false,
   );
+  const resolvedImages = useAuthedImageUrls(images);
   const fallback = (
     <WallFallback
-      images={images}
+      images={resolvedImages}
       note={supported ? undefined : unsupportedNote}
       className={className}
       style={style}
@@ -361,7 +368,7 @@ export function ArtGallery({
       {supported ? (
         <SurfaceBoundary fallback={fallback}>
           <ArtGalleryScene
-            images={images}
+            images={resolvedImages}
             cellSize={cellSize}
             zoomLevel={zoomLevel}
             hint={hint}

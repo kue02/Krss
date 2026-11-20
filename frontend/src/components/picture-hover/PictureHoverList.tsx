@@ -4,6 +4,7 @@ import { HoverImg } from "@/components/block/hover-img";
 import { getEntryImages } from "@/lib/extract-images";
 import { formatRelativeTime } from "@/lib/date-utils";
 import { useUISettingKey } from "@/hooks/useUISettings";
+import { apiUrl } from "@/lib/server-url";
 import type { Entry, Feed } from "@/types/api";
 import "./picture-hover.css";
 
@@ -71,7 +72,7 @@ export function PictureHoverList({
           imageSrc: images[0] ?? "",
           imageSrcs: images,
           // 沿用项目里 `/icons/<iconPath>` 的取法（上游没有这个字段）
-          iconSrc: feed?.iconPath ? `/icons/${feed.iconPath}` : undefined,
+          iconSrc: feed?.iconPath ? apiUrl(`/icons/${feed.iconPath}`) : undefined,
         };
       }),
     [items, t],

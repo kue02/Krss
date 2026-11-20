@@ -11,6 +11,11 @@ import {
 import { cn } from "@/lib/utils";
 import { getProxiedImageUrl } from "@/lib/image-proxy";
 import {
+  refetchAuthedImageUrl,
+  useAuthedImageUrl,
+} from "@/lib/use-authed-image";
+import { API_BASE_URL } from "@/lib/server-url";
+import {
   isRecoverableProxyUrl,
   renewProxyCookie,
   withProxyCacheBust,
@@ -102,6 +107,7 @@ export const ArticleImage = memo(function ArticleImage({
     () => (srcset ? proxySrcset(srcset, articleUrl) : undefined),
     [srcset, articleUrl],
   );
+  const authedSrc = useAuthedImageUrl(proxiedSrc);
 
   // Initialize isLoaded based on cache - prevents flash on remount
   const [isLoaded, setIsLoaded] = useState(() =>
@@ -111,10 +117,13 @@ export const ArticleImage = memo(function ArticleImage({
   // 24-4：cookie 掉了代理图会 401 —— 先续期再重载一次，不行才进破图占位
   const [recoveredSrc, setRecoveredSrc] = useState<string | null>(null);
   const recoveredRef = useRef<string | null>(null);
+  /** 复审 P2：App 内没有 cookie，图片失败时用当前 token 重取一次 blob。 */
+  const tokenRetriedRef = useRef(false);
 
   // 同一挂载换了 src（列表复用节点）：上一张的救济状态不能带过来
   useEffect(() => {
     recoveredRef.current = null;
+    tokenRetriedRef.current = false;
     setRecoveredSrc(null);
     setIsError(false);
   }, [proxiedSrc]);
@@ -135,6 +144,24 @@ export const ArticleImage = memo(function ArticleImage({
   }, [proxiedSrc, src]);
 
   const handleError = useCallback(() => {
+    // App（自定义 scheme）没有 cookie：cookie 续期救不回来，直接用当前 token 重取 blob。
+    if (API_BASE_URL) {
+      if (tokenRetriedRef.current || !isRecoverableProxyUrl(proxiedSrc)) {
+        setIsError(true);
+        return;
+      }
+      tokenRetriedRef.current = true;
+      void refetchAuthedImageUrl(proxiedSrc).then((next) => {
+        if (!next) {
+          setIsError(true);
+          return;
+        }
+        loadedImagesCache.delete(next);
+        setRecoveredSrc(next);
+      });
+      return;
+    }
+
     const current = recoveredRef.current ?? proxiedSrc;
     if (isRecoverableProxyUrl(current) && recoveredRef.current === null) {
       recoveredRef.current = withProxyCacheBust(current);
@@ -225,8 +252,8 @@ export const ArticleImage = memo(function ArticleImage({
       >
         <img
           ref={containerRef}
-          src={recoveredSrc ?? proxiedSrc}
-          srcSet={proxiedSrcset}
+          src={recoveredSrc ?? authedSrc}
+          srcSet={API_BASE_URL ? undefined : proxiedSrcset}
           sizes={sizes}
           alt={alt}
           loading={priority ? "eager" : "lazy"}
@@ -251,8 +278,8 @@ export const ArticleImage = memo(function ArticleImage({
   return (
     <img
       ref={containerRef}
-      src={recoveredSrc ?? proxiedSrc}
-      srcSet={proxiedSrcset}
+      src={recoveredSrc ?? authedSrc}
+      srcSet={API_BASE_URL ? undefined : proxiedSrcset}
       sizes={sizes}
       alt={alt}
       width={width}

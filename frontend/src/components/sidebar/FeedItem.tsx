@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo, useRef } from "react";
 import { Ripple } from "m3-ripple";
 import { cn } from "@/lib/utils";
+import { apiUrl } from "@/lib/server-url";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -162,7 +163,7 @@ export function FeedItem({
             <span className={sidebarItemIconStyles}>
               {iconPath && !iconError ? (
                 <img
-                  src={`/icons/${iconPath}`}
+                  src={apiUrl(`/icons/${iconPath}`)}
                   alt=""
                   className={feedIconImageStyles}
                   onError={() => setIconError(true)}
@@ -317,7 +318,7 @@ export function FeedItem({
             <span className={sidebarItemIconStyles}>
               {iconPath && !iconError ? (
                 <img
-                  src={`/icons/${iconPath}`}
+                  src={apiUrl(`/icons/${iconPath}`)}
                   alt=""
                   className={feedIconImageStyles}
                   onError={() => setIconError(true)}

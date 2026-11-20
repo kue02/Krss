@@ -19,6 +19,7 @@
 import { useRef, useEffect, useState } from "react";
 import gsap from "gsap";
 import "@/components/block/hover-img.css";
+import { AuthedImage } from "@/components/ui/authed-image";
 
 export interface ProjectItem {
     title: string;
@@ -413,7 +414,7 @@ export function HoverImg({ projects = defaultProjects, className, isContained = 
                         {/* krss: 标题前加来源图标（上游只有 h2 + p） */}
                         <h2>
                             {project.iconSrc ? (
-                                <img className="hover-img-icon" src={project.iconSrc} alt="" loading="lazy" />
+                                <AuthedImage className="hover-img-icon" src={project.iconSrc} alt="" loading="lazy" />
                             ) : null}
                             <span className="hover-img-title">{project.title}</span>
                         </h2>
@@ -439,7 +440,7 @@ export function HoverImg({ projects = defaultProjects, className, isContained = 
                         return (
                             <div className="hover-img-thumbnail" key={index}>
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={project.imageSrc} alt={project.title} />
+                                <AuthedImage src={project.imageSrc} alt={project.title} />
                             </div>
                         );
                     }
@@ -456,7 +457,7 @@ export function HoverImg({ projects = defaultProjects, className, isContained = 
                             >
                                 {srcs.map((src, si) => (
                                     /* eslint-disable-next-line @next/next/no-img-element */
-                                    <img key={si} src={src} alt={project.title} loading="lazy" />
+                                    <AuthedImage key={si} src={src} alt={project.title} loading="lazy" />
                                 ))}
                             </div>
                         </div>

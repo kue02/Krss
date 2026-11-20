@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp, Star } from "lucide-react";
 import { Ripple } from "m3-ripple";
 import { Chip } from "@heroui/react";
 import { cn } from "@/lib/utils";
+import { apiUrl } from "@/lib/server-url";
 import { stripHtml } from "@/lib/html-utils";
 import { FeedIcon } from "@/components/ui/feed-icon";
 import { useEntrySourceJump } from "./entry-source-jump";
@@ -386,7 +387,7 @@ const TimelineCard = memo(function TimelineCard({
             <UnreadIndicator unread={isUnread} count={feedUnreadCount}>
               {showIcon ? (
                 <img
-                  src={`/icons/${feed?.iconPath}`}
+                  src={apiUrl(`/icons/${feed?.iconPath}`)}
                   alt=""
                   width={18}
                   height={18}

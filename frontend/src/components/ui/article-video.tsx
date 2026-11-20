@@ -14,6 +14,8 @@ import { Pause, Play, ExternalLink } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { getProxiedImageUrl } from "@/lib/image-proxy";
+import { API_BASE_URL } from "@/lib/server-url";
+import { useAuthedImageUrl } from "@/lib/use-authed-image";
 import { ArticleLinkContext } from "./article-image";
 import { useVideoPreviewStore } from "@/stores/video-preview-store";
 
@@ -78,9 +80,29 @@ export function ArticleVideo({
   const hasPoster = Boolean(poster);
   const [frameReady, setFrameReady] = useState(false);
 
+  // 复审 P2：有些源把地址写在 `<source src>` 里，`video[src]` 是空的。
+  // 之前只认 props.src，导致 source-only 视频整块不响应、也没法取鉴权流。
+  // 这里收出所有 source，用第一个当「主地址」；App 里改成 blob URL 交给 video[src]。
+  const sourceChildren = useMemo(() => {
+    const list: { src: string; type?: string }[] = [];
+    Children.forEach(children, (child) => {
+      if (
+        isValidElement<{ src?: string; type?: string }>(child) &&
+        child.type === "source" &&
+        child.props.src
+      ) {
+        list.push({ src: child.props.src, type: child.props.type });
+      }
+    });
+    return list;
+  }, [children]);
+  const primarySrc = src || sourceChildren[0]?.src;
+  const hasPlayableSource = sourceChildren.length > 0;
+
   const proxiedSrc = useMemo(
-    () => (src ? (getProxiedImageUrl(src, articleUrl) ?? src) : undefined),
-    [src, articleUrl],
+    () =>
+      primarySrc ? (getProxiedImageUrl(primarySrc, articleUrl) ?? primarySrc) : undefined,
+    [primarySrc, articleUrl],
   );
 
   // 无 poster 时补 `#t=0.1`：让浏览器 seek 到 0.1s 解码出首帧当封面。
@@ -94,6 +116,12 @@ export function ArticleVideo({
     () => (poster ? (getProxiedImageUrl(poster, articleUrl) ?? poster) : undefined),
     [poster, articleUrl],
   );
+  const authedPoster = useAuthedImageUrl(proxiedPoster);
+  // 有封面时进页面只加载封面（preload=none），悬停要播了再去取视频 blob；
+  // 无封面必须取到首帧，所以一开始就取。整段 blob 的 Range 限制见 §2.61 记录。
+  const authedPlayableSrc = useAuthedImageUrl(playableSrc, {
+    enabled: hovering || !hasPoster,
+  });
 
   // 换了条目就重置错误态、悬停态与播放头
   useEffect(() => {
@@ -143,8 +171,10 @@ export function ArticleVideo({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hovering]);
 
-  // <source> 子节点也要走代理（有些源用 source 而不是 video 的 src）
-  const childNodes = Children.map(children, (child) => {
+  // <source> 子节点也要走代理（有些源用 source 而不是 video 的 src）。
+  // App 里 `<source src>` 带不上 Authorization，改成主 video 的 authed blob src，
+  // 并且不再渲染 source 子节点；`<track>` 等其它子节点照旧保留。
+  const proxiedChildNodes = Children.map(children, (child) => {
     if (isValidElement<{ src?: string }>(child) && child.type === "source") {
       const childSrc = child.props.src;
       if (childSrc) {
@@ -155,19 +185,36 @@ export function ArticleVideo({
     }
     return child;
   });
+  const renderedChildNodes = API_BASE_URL
+    ? Children.map(proxiedChildNodes, (child) =>
+        isValidElement(child) && child.type === "source" ? null : child,
+      )
+    : proxiedChildNodes;
 
   const handleOpen = () => {
     if (!proxiedSrc || hasError) return;
     videoRef.current?.pause();
     setHovering(false);
+    // 传原始代理地址：VideoPreview 自己会带 Authorization 取 blob，
+    // 这里传就地播放的 blob 会绕过它的加载态与错误处理。
     openVideoPreview(proxiedSrc, proxiedPoster ?? null, proxiedSrc);
   };
 
   /** duration 元数据到齐（首次 loadedmetadata / load() 之后也会再触发） */
   const handleLoadedMetadata = () => {
     const video = videoRef.current;
-    if (video && Number.isFinite(video.duration) && video.duration > 0) {
+    if (!video) return;
+    if (Number.isFinite(video.duration) && video.duration > 0) {
       setDuration(video.duration);
+    }
+    // 复审 P2：App 里视频是 blob，URL 上的 `#t=0.1` 片段在 blob 化后丢失，
+    // 无 poster 的视频会停在黑帧。元数据到齐后显式 seek 0.1s 逼出首帧。
+    if (API_BASE_URL && !hasPoster && video.currentTime === 0) {
+      try {
+        video.currentTime = 0.1;
+      } catch {
+        // 元数据还没就绪：忽略，等下一次 loadedmetadata
+      }
     }
   };
 
@@ -221,9 +268,9 @@ export function ArticleVideo({
   const handleExternalOpen = useCallback(
     (event: React.MouseEvent) => {
       event.stopPropagation();
-      window.open(src, "_blank", "noopener,noreferrer");
+      if (primarySrc) window.open(primarySrc, "_blank", "noopener,noreferrer");
     },
-    [src],
+    [primarySrc],
   );
 
   return (
@@ -272,8 +319,14 @@ export function ArticleVideo({
         {/* 源 HTML 常带 controls，这里丢掉：就地只当封面/悬停预览，点了开大屏播放器 */}
         <video
           ref={videoRef}
-          src={childNodes ? undefined : playableSrc}
-          poster={proxiedPoster}
+          src={
+            API_BASE_URL
+              ? authedPlayableSrc
+              : hasPlayableSource
+                ? undefined
+                : authedPlayableSrc
+          }
+          poster={authedPoster}
           muted
           playsInline
           disablePictureInPicture
@@ -291,7 +344,7 @@ export function ArticleVideo({
           )}
           {...props}
         >
-          {childNodes}
+          {renderedChildNodes}
         </video>
         {/* 首帧没到之前压一层骨架：不露纯白/纯黑空框（用户 §2.25 的原话就是嫌白/黑） */}
         {!hasPoster && !frameReady && !hasError && (
@@ -360,9 +413,9 @@ export function ArticleVideo({
               {formatClock(position)} / {formatClock(duration)}
             </span>
 
-            {src && (
+            {primarySrc && (
               <a
-                href={src}
+                href={primarySrc}
                 target="_blank"
                 rel="noopener noreferrer"
                 title={t("entry.video_open_window")}
@@ -397,7 +450,7 @@ export function ArticleVideo({
       {hasError && (
         // 播放不了的兜底出口：至少能点开原站看
         <a
-          href={src}
+          href={primarySrc}
           target="_blank"
           rel="noopener noreferrer"
           className="mt-1 inline-block text-xs text-muted-foreground underline decoration-primary/40 underline-offset-2 hover:text-foreground"

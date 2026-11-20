@@ -38,6 +38,16 @@ describe("照片墙 · WebGL 降级", () => {
     expect(container.querySelector("canvas")).toBeNull();
   });
 
+  it("取图失败给空串时不渲染空 img、不产生重复 key（复审 P2）", () => {
+    const { container } = render(
+      <ArtGallery images={["", "/api/proxy/image/a.jpg", ""]} />,
+    );
+    const fallback = container.querySelector(
+      '[data-art-gallery-fallback="true"]',
+    );
+    expect(fallback?.querySelectorAll("img")).toHaveLength(1);
+  });
+
   it("照片为空：容器照出（count 0），不起画布，也不崩", () => {
     const { container } = render(<ArtGallery images={[]} hint="拖动浏览" />);
     const root = container.querySelector('[data-art-gallery="true"]');

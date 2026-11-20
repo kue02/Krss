@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useVideoPreviewStore } from "@/stores/video-preview-store";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { useAuthedImageUrl } from "@/lib/use-authed-image";
 
 /**
  * 大屏视频播放器（点卡片/详情里的视频打开）。
@@ -14,6 +15,8 @@ import { cn } from "@/lib/utils";
 export function VideoPreview() {
   const { t } = useTranslation();
   const { isOpen, src, poster, close } = useVideoPreviewStore();
+  const authedSrc = useAuthedImageUrl(src ?? undefined);
+  const authedPoster = useAuthedImageUrl(poster ?? undefined);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -35,12 +38,12 @@ export function VideoPreview() {
         )}
       >
         <DialogTitle className="sr-only">{t("entry.video_preview")}</DialogTitle>
-        {src && (
+        {authedSrc && (
           <video
-            key={src}
+            key={authedSrc}
             ref={videoRef}
-            src={src}
-            poster={poster ?? undefined}
+            src={authedSrc}
+            poster={authedPoster ?? undefined}
             controls
             autoPlay
             playsInline

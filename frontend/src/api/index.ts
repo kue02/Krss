@@ -24,6 +24,8 @@ import {
   removeLocalValue,
 } from "@/lib/settings-storage";
 import { queryClient } from "@/lib/queryClient";
+import { API_BASE_URL } from "@/lib/server-url";
+import { clearAuthedImageCache } from "@/lib/use-authed-image";
 import type {
   AISettings,
   AITestRequest,
@@ -68,7 +70,6 @@ import type {
   MCPToolsResponse,
 } from "@/types/mcp";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL ?? "";
 // 登录 token 存 localStorage（键名见 LS_KEYS.authToken）
 const TOKEN_SPEC = LS_KEYS.authToken;
 
@@ -239,6 +240,8 @@ export function setAuthToken(token: string): void {
 
 export function clearAuthToken(): void {
   removeLocalValue(TOKEN_SPEC);
+  // 复审 P2：登出后把带鉴权取回的 blob 图一并释放，别让旧会话的图片留在内存
+  clearAuthedImageCache();
 }
 
 // Callback for handling 401 errors (set by auth store)
