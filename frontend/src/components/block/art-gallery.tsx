@@ -309,9 +309,11 @@ function WallFallback({
       style={style}
     >
       <div className="grid h-full w-full grid-cols-3 content-start gap-px overflow-auto sm:grid-cols-5 lg:grid-cols-6">
-        {images.map((src) => (
+        {/* 复审 P2：鉴权取图失败时 useAuthedImageUrls 会给空串；空 src 既不能渲染，
+            又会让 key 重复。这里过滤掉空项，key 用序号（同一张图也可能重复出现）。 */}
+        {images.filter(Boolean).map((src, index) => (
           <AuthedImage
-            key={src}
+            key={index}
             src={src}
             alt=""
             loading="lazy"

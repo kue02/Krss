@@ -175,16 +175,18 @@ const ArticleContentBlockRenderer = memo(function ArticleContentBlockRenderer({
           pruneImageCache();
           return element;
         },
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        video: ({ node: _, ...props }) => {
+        video: ({ node, ...props }) => {
           const videoProps = props as React.ComponentProps<typeof ArticleVideo>;
           const src = videoProps.src || "";
-          // 与 img 同理做元素缓存（key = articleUrl + src）。
+          // 与 img 同理做元素缓存（key = articleUrl + 节点偏移 + src）。
           // 不缓存的后果不仅是闪烁：`useAutoReadable` 拉到正文后 content 变化会让
           // 这里的 useMemo 重算，video 节点被**新元素替换**——即使用户正悬停播放，
           // 播放中的 <video> 会被卸载、换成一个从头开始的实例，悬停播放/进度条直接失效
           // （真机复现：阅读页 hover 后 video 反复卸载，readyState 永远 0）。
-          const cacheKey = `${articleUrl || ""}-${src}`;
+          // 复审 P2：source-only 视频的 src 为空，同一篇里多个会撞同一个 key；
+          // 加上节点在原文里的 offset，保证每个 <video> 节点各自缓存。
+          const nodeOffset = node?.position?.start?.offset ?? 0;
+          const cacheKey = `${articleUrl || ""}-${nodeOffset}-${src}`;
           if (videoElementCache.has(cacheKey)) {
             return videoElementCache.get(cacheKey)!;
           }

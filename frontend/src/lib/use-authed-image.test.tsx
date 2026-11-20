@@ -46,6 +46,62 @@ describe("useAuthedImageUrl", () => {
   });
 
 
+  it("blob 缓存有上限：超出后回收最旧的 URL（复审 P2）", async () => {
+    vi.stubEnv("VITE_API_URL", "http://192.168.1.5:8090");
+    vi.resetModules();
+    localStorage.setItem("krss_auth_token", "tok-123");
+    let n = 0;
+    const revoke = vi.fn();
+    const fetchSpy = vi.fn().mockImplementation(async () => ({
+      ok: true,
+      blob: async () => new Blob(["img"], { type: "image/png" }),
+    }));
+    vi.stubGlobal("fetch", fetchSpy);
+    vi.stubGlobal(
+      "URL",
+      Object.assign(URL, {
+        createObjectURL: vi.fn(() => `blob:lru-${++n}`),
+        revokeObjectURL: revoke,
+      }),
+    );
+    const { getAuthedImageUrl } = await import("./use-authed-image");
+    for (let i = 0; i < 70; i++) {
+      await getAuthedImageUrl(
+        `http://192.168.1.5:8090/api/proxy/image/${i}`,
+      );
+    }
+    // 上限 64：至少回收 6 个，且回收的是最早那批
+    expect(revoke.mock.calls.length).toBeGreaterThanOrEqual(6);
+    expect(revoke).toHaveBeenCalledWith("blob:lru-1");
+    localStorage.removeItem("krss_auth_token");
+  });
+
+  it("clearAuthedImageCache 会 revoke 全部 blob URL（登出清理，复审 P2）", async () => {
+    vi.stubEnv("VITE_API_URL", "http://192.168.1.5:8090");
+    vi.resetModules();
+    localStorage.setItem("krss_auth_token", "tok-123");
+    const revoke = vi.fn();
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      blob: async () => new Blob(["img"], { type: "image/png" }),
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+    vi.stubGlobal(
+      "URL",
+      Object.assign(URL, {
+        createObjectURL: vi.fn(() => "blob:clear-me"),
+        revokeObjectURL: revoke,
+      }),
+    );
+    const { getAuthedImageUrl, clearAuthedImageCache } = await import(
+      "./use-authed-image"
+    );
+    await getAuthedImageUrl("http://192.168.1.5:8090/api/proxy/image/a");
+    clearAuthedImageCache();
+    expect(revoke).toHaveBeenCalledWith("blob:clear-me");
+    localStorage.removeItem("krss_auth_token");
+  });
+
   it("批量图集：App 模式逐张取回 blob URL，保持顺序", async () => {
     vi.stubEnv("VITE_API_URL", "http://192.168.1.5:8090");
     vi.resetModules();
