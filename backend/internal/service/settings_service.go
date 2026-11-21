@@ -317,6 +317,9 @@ func (s *settingsService) GetAISettings(ctx context.Context) (*AISettings, error
 	if len(settings.TranslateChannels) == 0 {
 		settings.TranslateChannels = ai.EffectiveFreeTranslateChannels(nil, settings.TranslateChannel)
 	}
+	if settings.TranslateChannels == nil {
+		settings.TranslateChannels = []string{} // 契约统一：空列表返回 []，不返回 null
+	}
 	settings.FallbackToModel = s.getBoolDefault(ctx, keyAIFallbackToModel, true)
 	if val, err := s.getInt(ctx, keyAIRateLimit); err == nil && val > 0 {
 		settings.RateLimit = val
