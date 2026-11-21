@@ -44,8 +44,10 @@ type AISettings struct {
 	AutoTranslate   bool           `json:"autoTranslate"`
 	AutoSummary     bool           `json:"autoSummary"`
 	RateLimit       int            `json:"rateLimit"`
-	// TranslateChannel：翻译走哪条通道。空 = 用上面配置的模型；google/youdao = 免 key 通道
+	// TranslateChannel：旧的单值通道（兼容用，始终等于轮询列表的第一个）。空 = 用上面配置的模型。
 	TranslateChannel string `json:"translateChannel"`
+	// TranslateChannels：免费翻译通道轮询列表（顺序即轮询顺序）。为空 = 不走免费通道，翻译直接用模型。
+	TranslateChannels []string `json:"translateChannels"`
 	// FallbackToModel：免费通道失败时是否自动切回模型（默认开）
 	FallbackToModel bool `json:"fallbackToModel"`
 	// 保存的提供商列表 + 当前使用哪一个（上面的 Provider/APIKey/... 始终等于当前使用的那份）
@@ -53,9 +55,9 @@ type AISettings struct {
 	ActiveProviderID string             `json:"activeProviderId"`
 	// 分场景模型覆盖（50 批 1.2）：空串 = 跟随当前提供商的模型（默认，行为与原来一致）。
 	// 值形如 provider:<id>（用 providers 里那一份的 key/model）或 free（仅翻译场景 = 免费通道）。
-	SceneTranslate   string `json:"sceneTranslate"`
-	SceneSummary     string `json:"sceneSummary"`
-	SceneAutomation  string `json:"sceneAutomation"`
+	SceneTranslate  string `json:"sceneTranslate"`
+	SceneSummary    string `json:"sceneSummary"`
+	SceneAutomation string `json:"sceneAutomation"`
 }
 
 // GeneralSettings holds general application settings.
@@ -149,19 +151,20 @@ const (
 
 // Setting keys
 const (
-	keyAIProvider         = "ai.provider"
-	keyAIAPIKey           = "ai.api_key"
-	keyAIBaseURL          = "ai.base_url"
-	keyAIModel            = "ai.model"
-	keyAIRequestOptions   = "ai.request_options"
-	keyAISummaryLanguage  = "ai.summary_language"
-	keyAIAutoTranslate    = "ai.auto_translate"
-	keyAIAutoSummary      = "ai.auto_summary"
-	keyAIRateLimit        = "ai.rate_limit"
-	keyAITranslateChannel = "ai.translate_channel"
-	keyAIFallbackToModel  = "ai.fallback_to_model"
-	keyAIProviders        = "ai.providers"
-	keyAIActiveProvider   = "ai.active_provider_id"
+	keyAIProvider          = "ai.provider"
+	keyAIAPIKey            = "ai.api_key"
+	keyAIBaseURL           = "ai.base_url"
+	keyAIModel             = "ai.model"
+	keyAIRequestOptions    = "ai.request_options"
+	keyAISummaryLanguage   = "ai.summary_language"
+	keyAIAutoTranslate     = "ai.auto_translate"
+	keyAIAutoSummary       = "ai.auto_summary"
+	keyAIRateLimit         = "ai.rate_limit"
+	keyAITranslateChannel  = "ai.translate_channel"
+	keyAITranslateChannels = "ai.translate_channels"
+	keyAIFallbackToModel   = "ai.fallback_to_model"
+	keyAIProviders         = "ai.providers"
+	keyAIActiveProvider    = "ai.active_provider_id"
 	// 分场景模型覆盖（50 批 1.2）：空 = 跟随当前提供商；provider:<id> = 用已保存的那份；free = 免费通道（仅翻译）
 	keyAISceneTranslate  = "ai.scene_translate"
 	keyAISceneSummary    = "ai.scene_summary"
@@ -173,15 +176,15 @@ const (
 	keyRSSHubBaseURL     = "general.rsshub_base_url"
 	keyRSSHubAccessKey   = "general.rsshub_access_key"
 	// keyNotifyBarkURL 推送地址（含 key，属凭证 —— 只存用户库里，不进仓库/日志明文）
-	keyNotifyBarkURL = "notify.bark_url"
-	keyNetworkEnabled    = "network.proxy_enabled"
-	keyNetworkMode       = "network.proxy_mode" // "proxy" | "smart"；空 = proxy（旧行为）
-	keyNetworkType       = "network.proxy_type"
-	keyNetworkHost       = "network.proxy_host"
-	keyNetworkPort       = "network.proxy_port"
-	keyNetworkUsername   = "network.proxy_username"
-	keyNetworkPassword   = "network.proxy_password"
-	keyNetworkIPStack    = "network.ip_stack"
+	keyNotifyBarkURL   = "notify.bark_url"
+	keyNetworkEnabled  = "network.proxy_enabled"
+	keyNetworkMode     = "network.proxy_mode" // "proxy" | "smart"；空 = proxy（旧行为）
+	keyNetworkType     = "network.proxy_type"
+	keyNetworkHost     = "network.proxy_host"
+	keyNetworkPort     = "network.proxy_port"
+	keyNetworkUsername = "network.proxy_username"
+	keyNetworkPassword = "network.proxy_password"
+	keyNetworkIPStack  = "network.ip_stack"
 
 	keyAppearanceContentTypes = "appearance.content_types"
 
@@ -302,6 +305,17 @@ func (s *settingsService) GetAISettings(ctx context.Context) (*AISettings, error
 	settings.AutoSummary = s.getBool(ctx, keyAIAutoSummary)
 	if val, err := s.getString(ctx, keyAITranslateChannel); err == nil {
 		settings.TranslateChannel = val
+	}
+	if val, err := s.getString(ctx, keyAITranslateChannels); err == nil && strings.TrimSpace(val) != "" {
+		var channels []string
+		if jsonErr := json.Unmarshal([]byte(val), &channels); jsonErr == nil {
+			settings.TranslateChannels = ai.NormalizeFreeTranslateChannels(channels)
+		}
+	}
+	// 兼容旧库：没有新键（或解析为空）时，按旧单值推导出「轮询 + 回退」列表，
+	// 让老用户升级后无需重新保存也能享受轮询。
+	if len(settings.TranslateChannels) == 0 {
+		settings.TranslateChannels = ai.EffectiveFreeTranslateChannels(nil, settings.TranslateChannel)
 	}
 	settings.FallbackToModel = s.getBoolDefault(ctx, keyAIFallbackToModel, true)
 	if val, err := s.getInt(ctx, keyAIRateLimit); err == nil && val > 0 {
@@ -462,7 +476,25 @@ func (s *settingsService) SetAISettings(ctx context.Context, settings *AISetting
 		logger.Warn("ai settings update fallback flag failed", "module", "service", "action", "update", "resource", "settings", "result", "failed", "error", err)
 		return fmt.Errorf("set fallback flag: %w", err)
 	}
-	if err := s.repo.Set(ctx, keyAITranslateChannel, settings.TranslateChannel); err != nil {
+	channels := ai.NormalizeFreeTranslateChannels(settings.TranslateChannels)
+	if len(channels) == 0 && ai.IsFreeTranslateChannel(settings.TranslateChannel) {
+		// 老调用方只给了单值：按旧值推导出轮询列表（本身 + 其它可用通道）
+		channels = ai.EffectiveFreeTranslateChannels(nil, settings.TranslateChannel)
+	}
+	if channels == nil {
+		channels = []string{}
+	}
+	channelsJSON, _ := json.Marshal(channels)
+	if err := s.repo.Set(ctx, keyAITranslateChannels, string(channelsJSON)); err != nil {
+		logger.Warn("ai settings update translate channels failed", "module", "service", "action", "update", "resource", "settings", "result", "failed", "error", err)
+		return fmt.Errorf("set translate channels: %w", err)
+	}
+	// 旧键保持为第一个通道，供仍读旧键的路径兼容；空列表写空串（= 走模型）
+	legacyChannel := ""
+	if len(channels) > 0 {
+		legacyChannel = channels[0]
+	}
+	if err := s.repo.Set(ctx, keyAITranslateChannel, legacyChannel); err != nil {
 		logger.Warn("ai settings update translate channel failed", "module", "service", "action", "update", "resource", "settings", "result", "failed", "error", err)
 		return fmt.Errorf("set translate channel: %w", err)
 	}
@@ -477,8 +509,8 @@ func (s *settingsService) SetAISettings(ctx context.Context, settings *AISetting
 	// 不在（提供商被删、导入串进来）就落回空 = 跟随，别留一个永远解析不出的值。
 	// free（免 key 通道）只对翻译场景合法 —— 摘要/自动化给 free 直接 400。
 	sceneValues := []struct {
-		key string
-		val string
+		key         string
+		val         string
 		freeAllowed bool
 	}{
 		{keyAISceneTranslate, settings.SceneTranslate, true},
@@ -1388,6 +1420,7 @@ func importableSettingKeys() []string {
 		keyAIAutoSummary,
 		keyAIRateLimit,
 		keyAITranslateChannel,
+		keyAITranslateChannels,
 		keyAIFallbackToModel,
 		keyAIActiveProvider,
 		keyAISceneTranslate,

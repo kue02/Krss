@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ArrowUp, ArrowDown, X, Plus } from "lucide-react";
 import { useSettingsDirty } from "@/stores/settings-dirty-store";
 import {
   getAISettings,
@@ -19,6 +20,9 @@ import type {
   RequestOptions,
 } from "@/types/settings";
 import { showToast } from "@/stores/toast-store";
+
+/** 免 key 免费翻译通道（可轮询的顺序由用户配置） */
+const FREE_TRANSLATE_CHANNELS = ["google", "youdao"] as const;
 
 function formatRequestOptions(
   value: RequestOptions | null | undefined,
@@ -188,12 +192,51 @@ export function AISettings() {
 
   const handleChange = (
     field: keyof AISettingsType,
-    value: string | boolean | number | RequestOptions,
+    value: string | boolean | number | RequestOptions | string[],
   ) => {
     if (!settings) return;
     setSettings({ ...settings, [field]: value } as AISettingsType);
     setSuccessMessage(null);
     setTestResult(null);
+  };
+
+  // 免费翻译通道轮询列表：顺序即轮询顺序，全部失败后再回退模型
+  const translateChannels = settings?.translateChannels ?? [];
+  const availableTranslateChannels = FREE_TRANSLATE_CHANNELS.filter(
+    (channel) => !translateChannels.includes(channel),
+  );
+  const channelLabel = (channel: string) =>
+    channel === "google"
+      ? t("ai_settings.translate_channel_google")
+      : channel === "youdao"
+        ? t("ai_settings.translate_channel_youdao")
+        : channel;
+  const setTranslateChannels = (next: string[]) => {
+    if (!settings) return;
+    setSettings({
+      ...settings,
+      translateChannels: next,
+      // 旧的单值键跟随第一个通道，保持兼容与行为快照稳定
+      translateChannel: next[0] ?? "",
+    } as AISettingsType);
+    setSuccessMessage(null);
+    setTestResult(null);
+  };
+  const addTranslateChannel = (channel: string) => {
+    if (translateChannels.includes(channel)) return;
+    setTranslateChannels([...translateChannels, channel]);
+  };
+  const removeTranslateChannel = (channel: string) => {
+    setTranslateChannels(translateChannels.filter((item) => item !== channel));
+  };
+  const moveTranslateChannel = (index: number, delta: number) => {
+    const target = index + delta;
+    const moved = translateChannels[index];
+    if (moved === undefined || target < 0 || target >= translateChannels.length)
+      return;
+    const next = translateChannels.filter((_, i) => i !== index);
+    next.splice(target, 0, moved);
+    setTranslateChannels(next);
   };
 
   /** 把某个提供商配置灌进表单 */
@@ -1128,8 +1171,8 @@ export function AISettings() {
         />
       </div>
 
-      {/* 翻译通道：不想配模型也能用（免 key） */}
-      <div className="flex flex-wrap items-center justify-between gap-2 py-2">
+      {/* 翻译通道：免 key 通道按顺序轮询，全部失败再回退模型（免 key，不用配模型） */}
+      <div className="py-2">
         <div className="min-w-0">
           <span className="text-sm font-medium">
             {t("ai_settings.translate_channel")}
@@ -1138,17 +1181,69 @@ export function AISettings() {
             {t("ai_settings.translate_channel_hint")}
           </p>
         </div>
-        <Select
-          ariaLabel={t("ai_settings.translate_channel")}
-          value={settings.translateChannel ?? ""}
-          onChange={(value) => handleChange("translateChannel", value)}
-          options={[
-            { value: "", label: t("ai_settings.translate_channel_model") },
-            { value: "google", label: t("ai_settings.translate_channel_google") },
-            { value: "youdao", label: t("ai_settings.translate_channel_youdao") },
-          ]}
-          className="w-52 shrink-0"
-        />
+
+        <div className="mt-2 space-y-1.5">
+          {translateChannels.length === 0 ? (
+            <p className="rounded-[var(--radius)] border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground">
+              {t("ai_settings.translate_channels_empty")}
+            </p>
+          ) : (
+            translateChannels.map((channel, index) => (
+              <div
+                key={channel}
+                className="flex items-center gap-2 rounded-[var(--radius)] border border-border/60 bg-card/40 px-2.5 py-1.5"
+              >
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-medium text-primary">
+                  {index + 1}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-sm">
+                  {channelLabel(channel)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => moveTranslateChannel(index, -1)}
+                  disabled={index === 0}
+                  title={t("ai_settings.translate_channel_up")}
+                  className="shrink-0 text-muted-foreground transition-colors duration-200 hover:text-foreground disabled:opacity-30 disabled:hover:text-muted-foreground"
+                >
+                  <ArrowUp className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => moveTranslateChannel(index, 1)}
+                  disabled={index === translateChannels.length - 1}
+                  title={t("ai_settings.translate_channel_down")}
+                  className="shrink-0 text-muted-foreground transition-colors duration-200 hover:text-foreground disabled:opacity-30 disabled:hover:text-muted-foreground"
+                >
+                  <ArrowDown className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeTranslateChannel(channel)}
+                  title={t("ai_settings.translate_channel_remove")}
+                  className="shrink-0 text-muted-foreground transition-colors duration-200 hover:text-destructive"
+                >
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            ))
+          )}
+
+          {availableTranslateChannels.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+              {availableTranslateChannels.map((channel) => (
+                <button
+                  key={channel}
+                  type="button"
+                  onClick={() => addTranslateChannel(channel)}
+                  className="flex items-center gap-1 rounded-[var(--radius)] border border-border px-2.5 py-1 text-xs text-foreground transition-colors duration-200 hover:bg-item-hover"
+                >
+                  <Plus className="size-3.5" /> {channelLabel(channel)}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 免费通道失败是否自动切回模型（只在选了免费通道时有意义） */}
@@ -1325,6 +1420,7 @@ function behaviorSnapshotOf(settings: AISettingsType): string {
   return JSON.stringify([
     settings.summaryLanguage,
     settings.translateChannel,
+    settings.translateChannels ?? [],
     settings.fallbackToModel,
     settings.autoTranslate,
     settings.autoSummary,
