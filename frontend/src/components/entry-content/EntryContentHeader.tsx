@@ -1,3 +1,4 @@
+import { Fragment, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
 import { isSafeUrl } from "@/lib/url";
@@ -5,6 +6,11 @@ import { cn } from "@/lib/utils";
 import { BackIcon, GlobeIcon } from "@/components/ui/icons";
 import { readToggleAction } from "@/components/entry-list/read-toggle-action";
 import { dispatchScrollToTop } from "@/hooks/useScrollToTop";
+import { useUISettingKey } from "@/hooks/useUISettings";
+import {
+  normalizeEntryToolbar,
+  type EntryToolbarItemId,
+} from "@/lib/entry-toolbar";
 import { PluginSlot, PluginItem } from "@/plugins/PluginSlot";
 import { useTargetOps } from "@/plugins/useTargetOps";
 import type { Entry } from "@/types/api";
@@ -23,10 +29,14 @@ interface EntryContentHeaderProps {
   isLoadingSummary?: boolean;
   hasSummary?: boolean;
   onToggleSummary?: () => void;
+  /** REQ3：AI 摘要失败时的错误（有值则摘要按钮转红并显示原因）。 */
+  summaryError?: string | null;
   isTranslating?: boolean;
   hasTranslation?: boolean;
   translationDisabled?: boolean;
   onToggleTranslation?: () => void;
+  /** REQ3：翻译失败时的错误（有值则翻译按钮转红并显示原因）。 */
+  translationError?: string | null;
   isMobile?: boolean;
   onBack?: () => void;
   /**
@@ -91,10 +101,12 @@ export function EntryContentHeader({
   isLoadingSummary,
   hasSummary,
   onToggleSummary,
+  summaryError,
   isTranslating,
   hasTranslation,
   translationDisabled,
   onToggleTranslation,
+  translationError,
   onBack,
   onClose,
   isOriginalSiteActive = false,
@@ -110,6 +122,271 @@ export function EntryContentHeader({
   const targetOps = useTargetOps("entry.reader.toolbar");
   const starReplacement = targetOps.replacement("entry.star");
   const starHidden = targetOps.isHidden("entry.star");
+
+  // 正文工具栏自定义顺序 / 显隐（REQ1）：读取归一后的配置，按它渲染。
+  const entryToolbarConfig = useUISettingKey("entryToolbar");
+  const toolbarItems = useMemo(
+    () => normalizeEntryToolbar(entryToolbarConfig),
+    [entryToolbarConfig],
+  );
+
+  const translationButtonState: TranslationButtonState = {
+    isDisabled: !!translationDisabled,
+    isTranslating: !!isTranslating,
+    hasTranslation: !!hasTranslation,
+  };
+  // REQ3：失败态优先转红；正在翻译时不显示失败态（错误会在成功/取消时清掉）。
+  const translationFailed = !!translationError && !isTranslating;
+  const summaryFailed = !!summaryError && !isLoadingSummary;
+
+  /**
+   * 按 id 渲染单个工具栏按钮；判定「没有对应回调 / 数据」时返回 null（不占位）。
+   * 每个按钮的尺寸 / 图标 / title / class 逻辑保持原样，只是改成可被顺序驱动。
+   */
+  const renderToolbarItem = (itemId: EntryToolbarItemId) => {
+    switch (itemId) {
+      case "star":
+        // 56-16：星标可由插件替换 / 隐藏；配置里也隐藏时同样不渲染。
+        if (starReplacement) {
+          return (
+            <PluginItem
+              item={starReplacement}
+              selection={{ entryIds: [entry.id] }}
+              variant="toolbar"
+            />
+          );
+        }
+        if (starHidden) return null;
+        return (
+          <button
+            type="button"
+            onClick={onToggleStarred}
+            title={
+              entry.starred
+                ? t("entry.remove_from_starred")
+                : t("entry.add_to_starred")
+            }
+            className={cn(
+              "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95",
+              entry.starred
+                ? "text-amber-500 hover:bg-amber-500/10"
+                : "text-muted-foreground hover:bg-item-hover hover:text-foreground",
+            )}
+          >
+            <svg
+              className="size-5"
+              viewBox="0 0 24 24"
+              fill={entry.starred ? "currentColor" : "none"}
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+              />
+            </svg>
+          </button>
+        );
+
+      case "read":
+        if (!onToggleRead) return null;
+        return (
+          <button
+            type="button"
+            onClick={onToggleRead}
+            title={t(readAction.labelKey)}
+            className={cn(
+              "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95",
+              entry.read
+                ? "text-muted-foreground hover:bg-item-hover hover:text-foreground"
+                : "bg-item-active text-foreground",
+            )}
+          >
+            <readAction.Icon className="size-5" />
+          </button>
+        );
+
+      case "summary":
+        if (!onToggleSummary) return null;
+        return (
+          <button
+            type="button"
+            onClick={onToggleSummary}
+            title={
+              summaryError && !isLoadingSummary
+                ? summaryError
+                : isLoadingSummary
+                  ? t("entry.cancel_summary")
+                  : hasSummary
+                    ? t("entry.hide_summary")
+                    : t("entry.generate_summary")
+            }
+            className={cn(
+              "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95",
+              summaryFailed
+                ? "text-destructive hover:bg-destructive/10"
+                : hasSummary
+                  ? "bg-item-active text-foreground"
+                  : "text-muted-foreground hover:bg-item-hover hover:text-foreground",
+            )}
+          >
+            <span
+              className={cn(isLoadingSummary && "ai-icon-thinking-wrapper")}
+            >
+              <svg
+                className="size-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                />
+              </svg>
+            </span>
+          </button>
+        );
+
+      case "translate":
+        if (!onToggleTranslation) return null;
+        return (
+          <button
+            type="button"
+            onClick={onToggleTranslation}
+            disabled={translationDisabled && !hasTranslation && !isTranslating}
+            title={
+              translationFailed
+                ? (translationError as string)
+                : getTranslationButtonTitle(translationButtonState, t)
+            }
+            className={cn(
+              "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95",
+              translationFailed
+                ? "text-destructive hover:bg-destructive/10"
+                : getTranslationButtonClassName(translationButtonState),
+            )}
+          >
+            <span className={cn(isTranslating && "ai-icon-thinking-wrapper")}>
+              <svg
+                className="size-5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"
+                />
+              </svg>
+            </span>
+          </button>
+        );
+
+      case "originalsite":
+        if (!entry.url || !onToggleOriginalSite) return null;
+        return (
+          <button
+            type="button"
+            onClick={onToggleOriginalSite}
+            title={
+              isOriginalSiteActive
+                ? t("entry.show_readable")
+                : t("entry.original_site")
+            }
+            className={cn(
+              "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95",
+              isOriginalSiteActive
+                ? "bg-item-active text-foreground"
+                : "text-muted-foreground hover:bg-item-hover hover:text-foreground",
+            )}
+          >
+            <GlobeIcon className="size-5" />
+          </button>
+        );
+
+      case "readable":
+        if (!entry.url) return null;
+        return (
+          <button
+            type="button"
+            onClick={onToggleReadable}
+            disabled={isLoading}
+            title={
+              error ||
+              (isReadableActive
+                ? t("entry.show_original")
+                : t("entry.show_readable"))
+            }
+            className={cn(
+              "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50",
+              error
+                ? "text-destructive hover:bg-destructive/10"
+                : isReadableActive
+                  ? "bg-item-active text-foreground"
+                  : "text-muted-foreground hover:bg-item-hover hover:text-foreground",
+            )}
+          >
+            <svg
+              className={cn("size-5", isLoading && "animate-spin")}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              viewBox="0 0 24 24"
+            >
+              {isLoading ? (
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              ) : (
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
+              )}
+            </svg>
+          </button>
+        );
+
+      case "openexternal":
+        if (!safeUrl) return null;
+        return (
+          <a
+            href={safeUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="no-drag-region flex size-9 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors hover:bg-item-hover hover:text-foreground"
+            aria-label={t("entry.open_original")}
+          >
+            <svg
+              className="size-5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+              />
+            </svg>
+          </a>
+        );
+
+      default:
+        return null;
+    }
+  };
+
 
   return (
     <div
@@ -162,232 +439,10 @@ export function EntryContentHeader({
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
-          {/* 56-16：星标是宿主登记为「可隐藏 / 可替换」的控件。
-              插件 `op:"replace"` 且 target="entry.star" 时，这颗按钮换成插件项
-              （渲染复用 `PluginItem`，点击链与插件工具栏项完全同一份）；`op:"hide"` 时整颗不渲染。
-              没有插件改它时走原来的按钮，行为一字不变。 */}
-          {starReplacement ? (
-            <PluginItem
-              item={starReplacement}
-              selection={{ entryIds: [entry.id] }}
-              variant="toolbar"
-            />
-          ) : starHidden ? null : (
-            <button
-              type="button"
-              onClick={onToggleStarred}
-              title={
-                entry.starred
-                  ? t("entry.remove_from_starred")
-                  : t("entry.add_to_starred")
-              }
-              className={cn(
-                "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95",
-                entry.starred
-                  ? "text-amber-500 hover:bg-amber-500/10"
-                  : "text-muted-foreground hover:bg-item-hover hover:text-foreground",
-              )}
-            >
-              <svg
-                className="size-5"
-                viewBox="0 0 24 24"
-                fill={entry.starred ? "currentColor" : "none"}
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
-                />
-              </svg>
-            </button>
-          )}
-
-          {/* 23-2：正文工具栏也能把这条标回未读（用户读一半想留着以后看）。
-              图标与条目右键菜单、社交条目的悬停操作条一致：未读 = 描边圆、已读 = 对勾圆 */}
-          {onToggleRead && (
-            <button
-              type="button"
-              onClick={onToggleRead}
-              title={t(readAction.labelKey)}
-              className={cn(
-                "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95",
-                entry.read
-                  ? "text-muted-foreground hover:bg-item-hover hover:text-foreground"
-                  : "bg-item-active text-foreground",
-              )}
-            >
-              <readAction.Icon className="size-5" />
-            </button>
-          )}
-
-          {onToggleSummary && (
-            <button
-              type="button"
-              onClick={onToggleSummary}
-              title={
-                isLoadingSummary
-                  ? t("entry.cancel_summary")
-                  : hasSummary
-                    ? t("entry.hide_summary")
-                    : t("entry.generate_summary")
-              }
-              className={cn(
-                "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95",
-                hasSummary
-                  ? "bg-item-active text-foreground"
-                  : "text-muted-foreground hover:bg-item-hover hover:text-foreground",
-              )}
-            >
-              <span
-                className={cn(isLoadingSummary && "ai-icon-thinking-wrapper")}
-              >
-                <svg
-                  className="size-5"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                  />
-                </svg>
-              </span>
-            </button>
-          )}
-
-          {onToggleTranslation && (
-            <button
-              type="button"
-              onClick={onToggleTranslation}
-              disabled={
-                translationDisabled && !hasTranslation && !isTranslating
-              }
-              title={getTranslationButtonTitle(
-                {
-                  isDisabled: !!translationDisabled,
-                  isTranslating: !!isTranslating,
-                  hasTranslation: !!hasTranslation,
-                },
-                t,
-              )}
-              className={cn(
-                "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95",
-                getTranslationButtonClassName({
-                  isDisabled: !!translationDisabled,
-                  isTranslating: !!isTranslating,
-                  hasTranslation: !!hasTranslation,
-                }),
-              )}
-            >
-              <span className={cn(isTranslating && "ai-icon-thinking-wrapper")}>
-                <svg
-                  className="size-5"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"
-                  />
-                </svg>
-              </span>
-            </button>
-          )}
-
-          {entry.url && onToggleOriginalSite && (
-            <button
-              type="button"
-              onClick={onToggleOriginalSite}
-              title={
-                isOriginalSiteActive
-                  ? t("entry.show_readable")
-                  : t("entry.original_site")
-              }
-              className={cn(
-                "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95",
-                isOriginalSiteActive
-                  ? "bg-item-active text-foreground"
-                  : "text-muted-foreground hover:bg-item-hover hover:text-foreground",
-              )}
-            >
-              <GlobeIcon className="size-5" />
-            </button>
-          )}
-
-          {entry.url && (
-            <button
-              type="button"
-              onClick={onToggleReadable}
-              disabled={isLoading}
-              title={
-                error ||
-                (isReadableActive
-                  ? t("entry.show_original")
-                  : t("entry.show_readable"))
-              }
-              className={cn(
-                "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50",
-                error
-                  ? "text-destructive hover:bg-destructive/10"
-                  : isReadableActive
-                    ? "bg-item-active text-foreground"
-                    : "text-muted-foreground hover:bg-item-hover hover:text-foreground",
-              )}
-            >
-              <svg
-                className={cn("size-5", isLoading && "animate-spin")}
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                viewBox="0 0 24 24"
-              >
-                {isLoading ? (
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                  />
-                ) : (
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                  />
-                )}
-              </svg>
-            </button>
-          )}
-
-          {safeUrl && (
-            <a
-              href={safeUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="no-drag-region flex size-9 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors hover:bg-item-hover hover:text-foreground"
-              aria-label={t("entry.open_original")}
-            >
-              <svg
-                className="size-5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
-                />
-              </svg>
-            </a>
+          {toolbarItems.map((item) =>
+            item.hidden ? null : (
+              <Fragment key={item.id}>{renderToolbarItem(item.id)}</Fragment>
+            ),
           )}
 
           {/* 56-15：阅读器工具栏的插件挂点（`entry.reader.toolbar`）。选中态就是
