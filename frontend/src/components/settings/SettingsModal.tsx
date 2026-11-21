@@ -18,6 +18,7 @@ import { AISettings } from "./tabs/AISettings";
 import { AutomationSettings } from "./tabs/AutomationSettings";
 import { NetworkSettings } from "./tabs/NetworkSettings";
 import { AdvancedSettings } from "./tabs/AdvancedSettings";
+import { AboutSettings } from "./tabs/AboutSettings";
 import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/select";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -34,7 +35,8 @@ export type SettingsTab =
   | "feeds"
   | "folders"
   | "automation"
-  | "advanced";
+  | "advanced"
+  | "about";
 
 /**
  * 设置标签的显示顺序 —— 按「用得多少」排，不是按模块新旧：
@@ -52,6 +54,7 @@ export const SETTINGS_TAB_ORDER: SettingsTab[] = [
   "network",
   "advanced",
   "data",
+  "about",
 ];
 
 /** 每个标签对应的文案键（侧栏与下拉共用） */
@@ -65,6 +68,7 @@ export const SETTINGS_TAB_LABEL_KEYS: Record<SettingsTab, string> = {
   folders: "settings.folders",
   automation: "automation.title",
   advanced: "settings.advanced",
+  about: "settings.about",
 };
 
 interface SettingsModalProps {
@@ -185,6 +189,8 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
         return <FoldersSettings />;
       case "advanced":
         return <AdvancedSettings />;
+      case "about":
+        return <AboutSettings />;
       default:
         return null;
     }
@@ -210,6 +216,8 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
         return t("settings.folders");
       case "advanced":
         return t("settings.advanced");
+      case "about":
+        return t("settings.about");
       default:
         return t("settings.title");
     }
