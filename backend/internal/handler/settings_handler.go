@@ -10,6 +10,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"krss/backend/internal/service"
+	"krss/backend/internal/service/ai"
 	"krss/backend/pkg/logger"
 	"krss/backend/pkg/network"
 )
@@ -190,9 +191,9 @@ type SettingsHandler struct {
 	proxySources service.ProxySourceService
 }
 
-// isFreeTranslateChannel：免 key 翻译通道（与 internal/service/ai 里的常量保持一致）
+// isFreeTranslateChannel：免 key 翻译通道（直接复用 service/ai 的通道清单，避免两份硬编码漂移）
 func isFreeTranslateChannel(channel string) bool {
-	return channel == "google" || channel == "youdao"
+	return ai.IsFreeTranslateChannel(channel)
 }
 
 func isBaseURLRequiredForProvider(provider string) bool {

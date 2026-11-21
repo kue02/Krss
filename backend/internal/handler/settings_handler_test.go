@@ -165,6 +165,64 @@ func TestSettingsHandler_UpdateAISettings_FreeTranslateChannelWithoutModel(t *te
 	}
 }
 
+// 新增键 translateChannels（通道轮询列表）里只要有一个合法免 key 通道，
+// 没有模型 / 密钥也必须存得下来（与旧的单值 translateChannel 行为一致）。
+func TestSettingsHandler_UpdateAISettings_FreeTranslateChannelsWithoutModel(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockSettingsService(ctrl)
+	h := handler.NewSettingsHandlerHelper(mockService, nil)
+
+	e := newTestEcho()
+	reqBody := map[string]interface{}{
+		"provider":          "openai",
+		"model":             "",
+		"translateChannels": []string{"youdao"},
+	}
+	req := newJSONRequest(http.MethodPut, "/settings/ai", reqBody)
+	c, rec := newTestContext(e, req)
+
+	mockService.EXPECT().
+		SetAISettings(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, settings *service.AISettings) error {
+			require.Equal(t, []string{"youdao"}, settings.TranslateChannels)
+			return nil
+		})
+	mockService.EXPECT().
+		GetAISettings(gomock.Any()).
+		Return(&service.AISettings{Provider: "openai", TranslateChannels: []string{"youdao"}}, nil)
+
+	err := h.UpdateAISettings(c)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+// 对照组：translateChannels 里全是非法通道时不能绕过 provider/model 校验。
+func TestSettingsHandler_UpdateAISettings_InvalidTranslateChannelsDoNotBypass(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockSettingsService(ctrl)
+	h := handler.NewSettingsHandlerHelper(mockService, nil)
+
+	e := newTestEcho()
+	reqBody := map[string]interface{}{
+		"provider":          "openai",
+		"model":             "",
+		"translateChannels": []string{"bogus"},
+		"providers": []map[string]interface{}{
+			{"id": "p1", "provider": "openai", "model": ""},
+		},
+	}
+	req := newJSONRequest(http.MethodPut, "/settings/ai", reqBody)
+	c, rec := newTestContext(e, req)
+
+	err := h.UpdateAISettings(c)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
 // 对照组：没选免费通道时，缺模型仍然要 400（不能连带把校验整体放松）
 func TestSettingsHandler_UpdateAISettings_ModelStillRequiredWithoutFreeChannel(t *testing.T) {
 	ctrl := gomock.NewController(t)

@@ -378,7 +378,7 @@
   },
   "ai_settings": {
     "translate_channel": "Free translation channels",
-    "translate_channel_hint": "Add one or more no-key channels and reorder them; translation polls them in order and only falls back to the provider above after all fail. Leave empty to use the model directly.",
+    "translate_channel_hint": "Add one or more no-key channels and reorder them with the up/down buttons; translation polls them in order and only falls back to the provider above after all fail. Leave empty to use the model directly.",
     "translate_channel_model": "Follow the model",
     "translate_channel_google": "Google Translate (free)",
     "translate_channel_youdao": "Youdao Translate (free)",

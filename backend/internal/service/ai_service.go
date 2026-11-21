@@ -276,16 +276,6 @@ func (s *aiService) getFreeTranslateChannels(ctx context.Context) []string {
 	return ai.EffectiveFreeTranslateChannels(configured, legacy)
 }
 
-// hasFreeChannel 判断轮询列表里是否包含某个通道（用于并发限流等按通道定策略的地方）。
-func hasFreeChannel(channels []string, target string) bool {
-	for _, c := range channels {
-		if c == target {
-			return true
-		}
-	}
-	return false
-}
-
 func (s *aiService) GetSummaryLanguage(ctx context.Context) string {
 	setting, err := s.settingsRepo.Get(ctx, "ai.summary_language")
 	if err != nil || setting == nil || setting.Value == "" {
@@ -624,9 +614,11 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 		defer close(errCh)
 
 		var wg sync.WaitGroup
-		// 有道对并发很敏感（并发压上去会大面积返回 errorCode=411），这条通道串行
+		// 有道对并发很敏感（并发压上去会大面积返回 errorCode=411）：仅当轮询首位是有道时串行。
+		// 首位是 google（含旧库 legacy 派生的 [google,youdao]）时保持并发 3，
+		// 否则历史 google 用户升级后会被静默降为 1（约 3 倍变慢）。
 		concurrency := 3
-		if hasFreeChannel(freeChannels, ai.FreeChannelYoudao) {
+		if len(freeChannels) > 0 && freeChannels[0] == ai.FreeChannelYoudao {
 			concurrency = 1
 		}
 		sem := make(chan struct{}, concurrency) // Limit concurrent translations
