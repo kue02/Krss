@@ -364,7 +364,12 @@
     "force_confirm_description": "这会忽略 etag / 上次更新时间，把范围内的订阅整轮重抓一遍（同主机冷却也跳过）。范围这么大，先确认一下是不是选错了。",
     "view_feed": "前往订阅 {{name}}",
     "back_to_previous": "返回上一个选中",
-    "machine_translated": "机器翻译"
+    "machine_translated": "机器翻译",
+    "translating": "翻译中…",
+    "translate_failed": "翻译失败",
+    "translate_timeout": "翻译超时，请稍后重试",
+    "summary_translating": "摘要翻译中…",
+    "summary_translate_failed": "摘要翻译失败"
   },
   "ai_settings": {
     "translate_channel": "免费翻译通道",
@@ -973,7 +978,17 @@
     "unread_badge_preview_source": "示例订阅 · 2 分钟前",
     "unread_badge_preview_note": "改动即时预览；保存后对所有列表生效",
     "unread_badge_reset": "恢复默认",
-    "unread_badge_dot_fixed": "圆点是默认档、外观固定（8px、跟随主题色、压住左上角 2px）；下面几项只作用于「未读数 / 图标」。"
+    "unread_badge_dot_fixed": "圆点是默认档、外观固定（8px、跟随主题色、压住左上角 2px）；下面几项只作用于「未读数 / 图标」。",
+    "entry_toolbar_title": "文章工具栏",
+    "entry_toolbar_description": "拖拽调整按钮顺序，开关控制显示哪些按钮；左侧返回与标题不在此列。",
+    "entry_toolbar_reset": "恢复默认",
+    "entry_toolbar_item_star": "星标",
+    "entry_toolbar_item_read": "已读",
+    "entry_toolbar_item_summary": "AI 摘要",
+    "entry_toolbar_item_translate": "翻译",
+    "entry_toolbar_item_originalsite": "原站",
+    "entry_toolbar_item_readable": "阅读模式",
+    "entry_toolbar_item_openexternal": "新窗口打开"
   },
   "reading_font": {
     "theme_default": "跟随主题",
