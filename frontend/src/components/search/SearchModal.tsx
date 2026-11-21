@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { searchEntries } from "@/api";
@@ -11,6 +12,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { SearchIcon } from "@/components/ui/icons";
 import { formatRelativeTime } from "@/lib/date-utils";
 import { FeedAvatar } from "@/components/ui/feed-avatar";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import type { Entry } from "@/types/api";
 
 interface SearchModalProps {
@@ -32,6 +34,7 @@ const SEARCH_DEBOUNCE_MS = 300;
  */
 export function SearchModal({ open, onOpenChange }: SearchModalProps) {
   const { t } = useTranslation();
+  const isMobile = useIsMobile();
   const { selectEntry, selectFeed } = useSelection();
   const { data: feeds } = useFeeds();
   const { data: folders } = useFolders();
@@ -194,15 +197,16 @@ export function SearchModal({ open, onOpenChange }: SearchModalProps) {
       <DialogContent
         aria-describedby={undefined}
         className={cn(
-          "flex h-[500px] max-h-[80vh] w-[700px] max-w-[92vw] flex-col gap-0 overflow-hidden p-0",
-          // NextFlux 真机实测：700×500、bg-overlay/90 + blur(16px)、19.2px 圆角、1px 边框、大阴影、输入 18px
-          "rounded-[19.2px] border border-border bg-overlay/90 backdrop-blur-lg shadow-2xl",
+          "flex flex-col gap-0 overflow-hidden p-0",
+          isMobile
+            ? "h-[100dvh] max-h-[100dvh] w-screen max-w-none rounded-none border-0 bg-background shadow-none"
+            : "h-[500px] max-h-[80vh] w-[700px] max-w-[92vw] rounded-[19.2px] border border-border bg-overlay/90 backdrop-blur-lg shadow-2xl",
         )}
       >
         <DialogTitle className="sr-only">{t("search.title")}</DialogTitle>
 
         {/* 头部：搜索框 */}
-        <div className="flex shrink-0 items-center gap-2 border-b border-border/60 px-4 py-3">
+        <div className="flex shrink-0 items-center gap-2 border-b border-border/60 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))]">
           <SearchIcon className="size-5 shrink-0 text-muted-foreground opacity-60" />
           <input
             ref={inputRef}
@@ -219,6 +223,16 @@ export function SearchModal({ open, onOpenChange }: SearchModalProps) {
             }
             className="min-w-0 flex-1 bg-transparent text-lg outline-none placeholder:text-muted-foreground/60"
           />
+          {isMobile ? (
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              aria-label={t("actions.cancel")}
+              className="flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground active:bg-item-hover"
+            >
+              <X className="size-5" />
+            </button>
+          ) : null}
         </div>
 
         {/* 结果 */}
@@ -240,6 +254,7 @@ export function SearchModal({ open, onOpenChange }: SearchModalProps) {
                       onClick={() => handleSelect(index)}
                       className={cn(
                         "flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors duration-150",
+                        isMobile && "min-h-11",
                         index === selectedIndex ? "bg-item-hover" : "hover:bg-item-hover/60",
                       )}
                     >
@@ -272,6 +287,7 @@ export function SearchModal({ open, onOpenChange }: SearchModalProps) {
                       onClick={() => handleSelect(index)}
                       className={cn(
                         "flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors duration-150",
+                        isMobile && "min-h-11",
                         index === selectedIndex ? "bg-item-hover" : "hover:bg-item-hover/60",
                       )}
                     >
@@ -292,7 +308,7 @@ export function SearchModal({ open, onOpenChange }: SearchModalProps) {
         </div>
 
         {/* 底部：范围切换 + 键位提示 */}
-        <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border/60 px-3 py-2">
+        <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border/60 px-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2">
           <div className="flex items-center gap-1">
             {(
               [
@@ -310,6 +326,7 @@ export function SearchModal({ open, onOpenChange }: SearchModalProps) {
                 }}
                 className={cn(
                   "rounded-lg px-3 py-1 text-xs transition-colors duration-200",
+                  isMobile && "min-h-11 px-4",
                   tab === value
                     ? "bg-item-hover text-foreground"
                     : "text-muted-foreground hover:text-foreground",
@@ -319,7 +336,7 @@ export function SearchModal({ open, onOpenChange }: SearchModalProps) {
               </button>
             ))}
           </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <div className={cn("flex items-center gap-2 text-xs text-muted-foreground", isMobile && "hidden")}>
             <span className="rounded border border-border/60 px-1.5 py-0.5 font-mono">
               ↑
             </span>

@@ -35,7 +35,8 @@
     "article": "文章",
     "picture": "图片",
     "notification": "通知",
-    "social": "社交媒体"
+    "social": "社交媒体",
+    "nav_label": "内容类型"
   },
   "actions": {
     "expand": "展开",
@@ -66,7 +67,8 @@
     "back": "返回",
     "open_site": "前往主站",
     "copy_site_url": "复制主站地址",
-    "copied_site_url": "已复制主站地址"
+    "copied_site_url": "已复制主站地址",
+    "more": "更多"
   },
   "folders": {
     "delete": "删除文件夹",
@@ -364,7 +366,9 @@
     "force_confirm_description": "这会忽略 etag / 上次更新时间，把范围内的订阅整轮重抓一遍（同主机冷却也跳过）。范围这么大，先确认一下是不是选错了。",
     "view_feed": "前往订阅 {{name}}",
     "back_to_previous": "返回上一个选中",
-    "machine_translated": "机器翻译"
+    "machine_translated": "机器翻译",
+    "refreshing": "刷新中…",
+    "force_refresh_hint": "忽略缓存，重新抓取当前范围"
   },
   "ai_settings": {
     "translate_channel": "免费翻译通道",

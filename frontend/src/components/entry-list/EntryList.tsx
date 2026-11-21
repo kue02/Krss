@@ -65,6 +65,7 @@ import {
 import { NotificationBodyPreview } from "./NotificationBodyPreview";
 import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
 import { useFilterViewStore } from "@/stores/filter-view-store";
+import { MobilePullToRefresh } from "@/components/mobile/MobilePullToRefresh";
 import { ArrowUp, Check, Inbox } from "lucide-react";
 import type { Entry, Feed, Folder, ContentType } from "@/types/api";
 
@@ -112,6 +113,8 @@ interface EntryListProps {
   /** 52-4：这次跳来自哪个订阅（非 null 时列表头出「返回」） */
   feedJumpBackHref?: string | null;
   onBackFromFeedJump?: () => void;
+  /** 移动端顶栏搜索入口（App 打开 SearchModal）；不传不渲染 */
+  onSearchClick?: () => void;
 }
 
 export function EntryList({
@@ -134,6 +137,7 @@ export function EntryList({
   onSelectFeedFromEntry,
   feedJumpBackHref,
   onBackFromFeedJump,
+  onSearchClick,
 }: EntryListProps) {
   "use no memo";
 
@@ -1288,6 +1292,11 @@ export function EntryList({
           : "relative flex h-full flex-col",
       )}
     >
+      <MobilePullToRefresh
+        enabled={Boolean(isMobile && isActive)}
+        isRefreshing={showRefreshing}
+        onRefresh={handleRefresh}
+      />
       <MobileDocumentHeader
         enabled={usesDocumentScroll}
         headerRef={headerRef}
@@ -1326,6 +1335,7 @@ export function EntryList({
           }
           onToggleSidebar={onToggleSidebar}
           sidebarVisible={sidebarVisible}
+          onSearchClick={onSearchClick}
         />
 
         {/* 强制拉取确认（范围太大时先问一句，避免误选整轮重抓） */}

@@ -1,5 +1,14 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { X } from "lucide-react";
+import {
+  ExternalLink,
+  FileText,
+  Globe2,
+  Languages,
+  MoreHorizontal,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { isSafeUrl } from "@/lib/url";
 import { cn } from "@/lib/utils";
 import { BackIcon, GlobeIcon } from "@/components/ui/icons";
@@ -7,6 +16,10 @@ import { readToggleAction } from "@/components/entry-list/read-toggle-action";
 import { dispatchScrollToTop } from "@/hooks/useScrollToTop";
 import { PluginSlot, PluginItem } from "@/plugins/PluginSlot";
 import { useTargetOps } from "@/plugins/useTargetOps";
+import {
+  MobileActionSheet,
+  MobileActionSheetItem,
+} from "@/components/mobile/MobileActionSheet";
 import type { Entry } from "@/types/api";
 
 interface EntryContentHeaderProps {
@@ -95,6 +108,7 @@ export function EntryContentHeader({
   hasTranslation,
   translationDisabled,
   onToggleTranslation,
+  isMobile,
   onBack,
   onClose,
   isOriginalSiteActive = false,
@@ -110,6 +124,199 @@ export function EntryContentHeader({
   const targetOps = useTargetOps("entry.reader.toolbar");
   const starReplacement = targetOps.replacement("entry.star");
   const starHidden = targetOps.isHidden("entry.star");
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  if (isMobile) {
+    return (
+      <>
+        <div className="absolute inset-x-0 top-0 z-20">
+          <div
+            className={cn(
+              "pointer-events-none absolute inset-0 border-b border-foreground/10 bg-overlay/80 backdrop-blur-xl transition-opacity duration-300 ease-in-out",
+              isAtTop ? "opacity-0" : "opacity-100",
+            )}
+          />
+          <div className="relative pt-[env(safe-area-inset-top)]">
+            <div className="flex h-11 items-center gap-1 px-1.5">
+              <button
+                type="button"
+                onClick={onClose ?? onBack}
+                aria-label={onClose ? t("actions.close") : t("actions.back")}
+                className="-ml-1.5 flex size-11 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
+              >
+                {onClose ? (
+                  <X className="size-5" />
+                ) : (
+                  <BackIcon className="size-5" />
+                )}
+              </button>
+
+              <div
+                className="min-w-0 flex-1 px-1"
+                onClick={() => dispatchScrollToTop("entrycontent")}
+              >
+                <div className="truncate text-[15px] font-semibold leading-5 tracking-[-0.01em] text-foreground active:opacity-60">
+                  {title}
+                </div>
+              </div>
+
+              {starReplacement ? (
+                <PluginItem
+                  item={starReplacement}
+                  selection={{ entryIds: [entry.id] }}
+                  variant="toolbar"
+                />
+              ) : starHidden ? null : (
+                <button
+                  type="button"
+                  onClick={onToggleStarred}
+                  aria-label={
+                    entry.starred
+                      ? t("entry.remove_from_starred")
+                      : t("entry.add_to_starred")
+                  }
+                  className={cn(
+                    "flex size-11 shrink-0 items-center justify-center rounded-full transition-colors active:bg-item-hover",
+                    entry.starred ? "text-amber-500" : "text-foreground",
+                  )}
+                >
+                  <svg
+                    className="size-5"
+                    viewBox="0 0 24 24"
+                    fill={entry.starred ? "currentColor" : "none"}
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+                    />
+                  </svg>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setMoreOpen(true)}
+                aria-label={t("actions.more")}
+                className="-mr-1.5 flex size-11 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
+              >
+                <MoreHorizontal className="size-5" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <MobileActionSheet
+          open={moreOpen}
+          onOpenChange={setMoreOpen}
+          title={title}
+        >
+          {onToggleRead ? (
+            <MobileActionSheetItem
+              icon={<readAction.Icon className="size-5" />}
+              label={t(readAction.labelKey)}
+              selected={!entry.read}
+              onClick={() => {
+                setMoreOpen(false);
+                onToggleRead();
+              }}
+            />
+          ) : null}
+          {onToggleSummary ? (
+            <MobileActionSheetItem
+              icon={<Sparkles className="size-5" />}
+              label={
+                isLoadingSummary
+                  ? t("entry.cancel_summary")
+                  : hasSummary
+                    ? t("entry.hide_summary")
+                    : t("entry.generate_summary")
+              }
+              selected={Boolean(hasSummary)}
+              onClick={() => {
+                setMoreOpen(false);
+                onToggleSummary();
+              }}
+            />
+          ) : null}
+          {onToggleTranslation ? (
+            <MobileActionSheetItem
+              icon={<Languages className="size-5" />}
+              label={getTranslationButtonTitle(
+                {
+                  isDisabled: !!translationDisabled,
+                  isTranslating: !!isTranslating,
+                  hasTranslation: !!hasTranslation,
+                },
+                t,
+              )}
+              selected={Boolean(hasTranslation)}
+              disabled={
+                translationDisabled && !hasTranslation && !isTranslating
+              }
+              onClick={() => {
+                setMoreOpen(false);
+                onToggleTranslation();
+              }}
+            />
+          ) : null}
+          {entry.url && onToggleOriginalSite ? (
+            <MobileActionSheetItem
+              icon={<Globe2 className="size-5" />}
+              label={
+                isOriginalSiteActive
+                  ? t("entry.show_readable")
+                  : t("entry.original_site")
+              }
+              selected={isOriginalSiteActive}
+              onClick={() => {
+                setMoreOpen(false);
+                onToggleOriginalSite();
+              }}
+            />
+          ) : null}
+          {entry.url ? (
+            <MobileActionSheetItem
+              icon={<FileText className="size-5" />}
+              label={
+                error
+                  ? t("entry.show_original")
+                  : isReadableActive
+                    ? t("entry.show_original")
+                    : t("entry.show_readable")
+              }
+              description={error ?? undefined}
+              selected={isReadableActive}
+              disabled={isLoading}
+              onClick={() => {
+                setMoreOpen(false);
+                onToggleReadable();
+              }}
+            />
+          ) : null}
+          {safeUrl ? (
+            <MobileActionSheetItem
+              icon={<ExternalLink className="size-5" />}
+              label={t("entry.open_original")}
+              onClick={() => {
+                setMoreOpen(false);
+                window.open(safeUrl, "_blank", "noopener,noreferrer");
+              }}
+            />
+          ) : null}
+          <div className="border-t border-border/50 px-4 py-2">
+            <PluginSlot
+              surface="entry.reader.toolbar"
+              variant="toolbar"
+              selection={{ entryIds: [entry.id] }}
+            />
+          </div>
+        </MobileActionSheet>
+      </>
+    );
+  }
 
   return (
     <div

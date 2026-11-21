@@ -900,13 +900,16 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
             }}
             className={cn(
               // 只过渡真正会变的属性：transition-all 会让几百张卡片为「任何」属性变化做检查
-              "group relative mx-2 mb-1.5 cursor-pointer overflow-hidden rounded-[10px] border p-2",
+              // 移动端改成「纸面列表」：整宽、无卡片边框、行间细线，给文字更多呼吸；
+              // 桌面端（sm 起）保持原来的圆角卡片。
+              "group relative cursor-pointer overflow-hidden border-0 border-b border-border/45 px-4 py-3.5",
+              "sm:mx-2 sm:mb-1.5 sm:rounded-[10px] sm:border sm:p-2",
               "transition-[background-color,border-color,box-shadow,opacity] duration-200",
               // 24-7：上下结构（来源行顶满 + 标题摘要/右图行），大图档保持纵向
               isLargeImage ? "flex flex-col gap-3" : "block",
               isSelected
-                ? "border-border/60 bg-card shadow-nf"
-                : "border-transparent hover:bg-item-hover",
+                ? "bg-item-hover/60 sm:border-border/60 sm:bg-card sm:shadow-nf"
+                : "hover:bg-item-hover/50 sm:border-transparent sm:hover:bg-item-hover",
               // 对齐 Nextflux：已读且未加星标的卡片整体降透明度（只在「变灰」样式下；其余样式由 UnreadIndicator 表达）
               unreadRowClass(isUnread, !!entry.starred, isSelected, unreadStyle),
             )}
@@ -928,7 +931,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                 // 加了 `overflow-hidden` 会把外露那 2px 切掉，表现成「角标被限制在订阅图标范围内、缺一角」
                 // （用户 2026-09-23 报的就是这个）。文字溢出由 `MarqueeText` 自己的 `overflow-hidden` 兜住，
                 // 卡片根节点还有一层 `overflow-hidden` 兜底，这里不需要重复裁切。
-                "flex min-w-0 items-center gap-1.5 text-xs",
+                "flex min-w-0 items-center gap-1.5 text-[11.5px] sm:text-xs",
                 isUnread ? "text-muted-foreground" : "text-muted-foreground/70",
               )}
             >
@@ -990,7 +993,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                 {/* 标题 */}
                 <div
                   className={cn(
-                    "text-base font-semibold leading-6 wrap-anywhere",
+                    "text-[16px] font-semibold leading-[23px] wrap-anywhere sm:text-base sm:leading-6",
                     titleContainsUrl ? "line-clamp-3" : "line-clamp-2",
                   // Nextflux 只用 opacity 表示已读；这里标题始终是前景色，
                   // 已读/未读只差字重，避免再叠一层灰导致正文难以辨认
@@ -1007,7 +1010,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
               {displaySummary && cardPreviewLines > 0 && !isExpanded && (
                 <div
                   className={cn(
-                    "mt-1 text-sm leading-relaxed text-muted-foreground wrap-anywhere",
+                    "mt-1 text-[13.5px] leading-[20px] text-muted-foreground wrap-anywhere sm:text-sm sm:leading-relaxed",
                     !isUnread && "text-muted-foreground/70",
                   )}
                   style={{

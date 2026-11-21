@@ -93,7 +93,7 @@ export function EntryContentBody({
         className={
           embedded
             ? "entry-content nf-enter mx-auto w-full max-w-[clamp(45ch,60vw,65ch)] min-w-0 overflow-x-hidden px-4 pb-6 pt-3 sm:px-5"
-            : "entry-content nf-enter mx-auto w-full max-w-[clamp(45ch,60vw,65ch)] min-w-0 overflow-x-hidden px-4 pb-20 pt-16 sm:px-5 sm:pt-20"
+            : "entry-content nf-enter mx-auto w-full max-w-[clamp(45ch,60vw,65ch)] min-w-0 overflow-x-hidden px-4 pb-20 pt-[calc(3.25rem+env(safe-area-inset-top))] sm:px-5 sm:pt-20"
         }
       >
         {/* 37-2：社交视图不显示标题（社交条目的标题多半就是正文开头），作者行改用订阅源头像 */}

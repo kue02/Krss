@@ -1,0 +1,135 @@
+import { useEffect, useRef, useState } from "react";
+import { RefreshCw } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
+
+interface MobilePullToRefreshProps {
+  enabled: boolean;
+  isRefreshing: boolean;
+  onRefresh: () => Promise<void> | void;
+}
+
+const PULL_THRESHOLD = 64;
+const MAX_PULL = 96;
+
+/**
+ * 移动端下拉刷新。
+ *
+ * 列表在移动端走文档滚动（`html.mobile-document-scroll`），所以监听 window 的 touch；
+ * 只在 scrollY <= 0 时接管，并给橡皮筋阻尼，松手超过 64px 才真正刷新。
+ * 顶栏按钮、输入框、弹层上的手势不拦，避免误触。
+ */
+export function MobilePullToRefresh({
+  enabled,
+  isRefreshing,
+  onRefresh,
+}: MobilePullToRefreshProps) {
+  const { t } = useTranslation();
+  const [pull, setPull] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const startYRef = useRef<number | null>(null);
+  const pullRef = useRef(0);
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    const reset = () => {
+      startYRef.current = null;
+      pullRef.current = 0;
+      setPull(0);
+    };
+
+    const onTouchStart = (event: TouchEvent) => {
+      if (busy || window.scrollY > 0 || event.touches.length !== 1) {
+        reset();
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.closest(
+          "button, a, input, textarea, select, [role='dialog'], [data-no-pull]",
+        )
+      ) {
+        reset();
+        return;
+      }
+      startYRef.current = event.touches[0]?.clientY ?? null;
+    };
+
+    const onTouchMove = (event: TouchEvent) => {
+      if (startYRef.current === null || event.touches.length !== 1) return;
+      const delta = (event.touches[0]?.clientY ?? 0) - startYRef.current;
+      if (delta <= 0 || window.scrollY > 0) {
+        if (pullRef.current !== 0) reset();
+        return;
+      }
+      // 阻尼：手指走 160px 时指示器大约走 80px，越拉越沉。
+      const next = Math.min(MAX_PULL, Math.pow(delta, 0.86));
+      pullRef.current = next;
+      setPull(next);
+      if (event.cancelable) event.preventDefault();
+    };
+
+    const onTouchEnd = () => {
+      if (startYRef.current === null) return;
+      const shouldRefresh = pullRef.current >= PULL_THRESHOLD;
+      startYRef.current = null;
+      if (!shouldRefresh) {
+        reset();
+        return;
+      }
+      setBusy(true);
+      setPull(PULL_THRESHOLD);
+      void Promise.resolve(onRefresh()).finally(() => {
+        setBusy(false);
+        reset();
+      });
+    };
+
+    window.addEventListener("touchstart", onTouchStart, { passive: true });
+    window.addEventListener("touchmove", onTouchMove, { passive: false });
+    window.addEventListener("touchend", onTouchEnd, { passive: true });
+    window.addEventListener("touchcancel", onTouchEnd, { passive: true });
+    return () => {
+      window.removeEventListener("touchstart", onTouchStart);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onTouchEnd);
+      window.removeEventListener("touchcancel", onTouchEnd);
+    };
+  }, [busy, enabled, onRefresh]);
+
+  if (!enabled) return null;
+  const active = busy || isRefreshing;
+  const visible = active || pull > 0;
+
+  return (
+    <div
+      aria-hidden={!visible}
+      className={cn(
+        "pointer-events-none fixed left-1/2 top-[calc(2.75rem+env(safe-area-inset-top))] z-30",
+        "transition-opacity duration-150",
+        visible ? "opacity-100" : "opacity-0",
+      )}
+      style={{
+        transform: `translate(-50%, ${Math.max(0, pull - 12)}px)`,
+      }}
+    >
+      <div
+        className={cn(
+          "flex size-8 items-center justify-center rounded-full border border-border/60 bg-overlay shadow-nf-md",
+          active && "text-accent",
+        )}
+      >
+        <RefreshCw
+          className={cn("size-4", active && "animate-spin")}
+          style={
+            !active
+              ? { transform: `rotate(${Math.min(270, pull * 4)}deg)` }
+              : undefined
+          }
+        />
+      </div>
+      <span className="sr-only">{t("entry.refreshing")}</span>
+    </div>
+  );
+}

@@ -65,7 +65,7 @@ export function ReadingProgressBar({
     <div
       data-reading-progress=""
       className={cn(
-        "pointer-events-none absolute inset-x-0 top-12 z-20",
+        "pointer-events-none absolute inset-x-0 top-[calc(2.75rem+env(safe-area-inset-top))] z-20 sm:top-12",
         className,
       )}
     >

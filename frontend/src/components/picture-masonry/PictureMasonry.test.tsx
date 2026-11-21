@@ -298,7 +298,11 @@ describe("PictureMasonry scroll mark read", () => {
     expect(header.classList.contains("inset-x-0")).toBe(true);
     expect(header.classList.contains("top-0")).toBe(true);
     expect(header.querySelector('[aria-hidden="true"]')).not.toBeNull();
-    expect(header.nextElementSibling?.classList.contains("h-14")).toBe(true);
+    expect(
+      header.nextElementSibling?.classList.contains(
+        "h-[calc(2.75rem+env(safe-area-inset-top))]",
+      ),
+    ).toBe(true);
     expect(
       screen.getByTestId("picture-masonry-scroll").dataset.windowScroll,
     ).toBe("true");

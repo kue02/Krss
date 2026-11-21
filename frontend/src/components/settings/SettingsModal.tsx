@@ -265,7 +265,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
               <button
                 onClick={() => tryLeave(() => onOpenChange(false))}
                 className={cn(
-                  "rounded-[var(--radius)] p-1.5 shrink-0",
+                  "flex size-11 shrink-0 items-center justify-center rounded-[var(--radius)] md:size-auto md:p-1.5",
                   "text-muted-foreground hover:text-foreground hover:bg-secondary",
                   "transition-colors focus:outline-none",
                 )}
