@@ -86,6 +86,9 @@ vi.mock("@/stores/translation-store", () => ({
   translationActions: {
     get: mockTranslationActionsGet,
     isDisabled: () => false,
+    setStatus: vi.fn(),
+    getStatus: vi.fn(() => undefined),
+    clearStatus: vi.fn(),
   },
 }));
 

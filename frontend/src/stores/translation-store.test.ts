@@ -8,7 +8,7 @@ import {
 describe("translation-store", () => {
   beforeEach(() => {
     // Reset store state
-    useTranslationStore.setState({ data: {}, disabled: new Set() });
+    useTranslationStore.setState({ data: {}, disabled: new Set(), statuses: {} });
   });
 
   describe("getCacheKey", () => {
@@ -186,6 +186,55 @@ describe("translation-store", () => {
       translationActions.set("article2", "en", { title: "Test2" });
       translationActions.clear("article2");
       expect(translationActions.get("article2", "en")).toBeUndefined();
+    });
+  });
+
+  describe("statuses (REQ3)", () => {
+    it("stores content / summary states per entry+language without touching data", () => {
+      translationActions.setStatus("article1", "en", {
+        content: { state: "translating" },
+        summary: { state: "translating" },
+      });
+      expect(translationActions.getStatus("article1", "en")).toEqual({
+        content: { state: "translating" },
+        summary: { state: "translating" },
+      });
+      // 过程状态不污染内容缓存
+      expect(useTranslationStore.getState().data["article1"]).toBeUndefined();
+    });
+
+    it("shallow-merges patch and can clear a single field with null", () => {
+      translationActions.setStatus("article1", "en", {
+        content: { state: "translating" },
+        summary: { state: "translating" },
+      });
+      translationActions.setStatus("article1", "en", {
+        content: { state: "done" },
+      });
+      translationActions.setStatus("article1", "en", { summary: null });
+      expect(translationActions.getStatus("article1", "en")).toEqual({
+        content: { state: "done" },
+      });
+    });
+
+    it("drops the key entirely when both fields are cleared", () => {
+      translationActions.setStatus("article1", "en", {
+        content: { state: "failed", error: "boom" },
+      });
+      translationActions.setStatus("article1", "en", { content: null });
+      expect(translationActions.getStatus("article1", "en")).toBeUndefined();
+    });
+
+    it("clearStatus without language clears every language", () => {
+      translationActions.setStatus("article1", "en", {
+        content: { state: "done" },
+      });
+      translationActions.setStatus("article1", "ja", {
+        content: { state: "done" },
+      });
+      translationActions.clearStatus("article1");
+      expect(translationActions.getStatus("article1", "en")).toBeUndefined();
+      expect(translationActions.getStatus("article1", "ja")).toBeUndefined();
     });
   });
 });

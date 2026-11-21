@@ -1079,6 +1079,12 @@ export function EntryList({
     pendingTranslation.current.clear();
 
     if (articlesToTranslate.length > 0) {
+      // REQ3：送出去就先把这批的「摘要」标成翻译中
+      for (const article of articlesToTranslate) {
+        translationActions.setStatus(article.id, targetLanguage, {
+          summary: { state: "translating" },
+        });
+      }
       translateArticlesBatch(articlesToTranslate, targetLanguage).finally(
         () => {
           // Remove entries that didn't actually get translated (cancelled, partial failure, etc.)
@@ -1086,6 +1092,13 @@ export function EntryList({
             const cached = translationActions.get(article.id, targetLanguage);
             if (!cached?.title && !cached?.summary) {
               translatedEntries.current.delete(article.id);
+              translationActions.setStatus(article.id, targetLanguage, {
+                summary: { state: "failed" },
+              });
+            } else {
+              translationActions.setStatus(article.id, targetLanguage, {
+                summary: { state: "done" },
+              });
             }
           }
         },

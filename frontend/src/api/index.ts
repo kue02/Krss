@@ -1303,6 +1303,11 @@ export interface BatchCachedTranslationResponse {
   translations: Record<string, BatchCachedTranslationItem>;
   /** 后端实际用的目标语言（= ai.summary_language） */
   language: string;
+  /**
+   * REQ3：每条目的翻译过程状态（后端新增字段）。
+   * 让列表能在「还没出译文」时区分「翻译中 / 失败」，而不是干等。
+   */
+  statuses?: Record<string, { status: string; error?: string }>;
 }
 
 export async function fetchCachedTranslations(
