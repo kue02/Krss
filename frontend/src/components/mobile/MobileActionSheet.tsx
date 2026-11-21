@@ -7,6 +7,11 @@ interface MobileActionSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title?: string;
+  /**
+   * 传入触点坐标时改为「贴着长按位置」的浮层；不传仍是底部面板。
+   * 坐标会被夹在视口内，靠近底部时自动翻到触点上方。
+   */
+  anchor?: { x: number; y: number } | null;
   children: ReactNode;
 }
 
@@ -21,8 +26,31 @@ export function MobileActionSheet({
   open,
   onOpenChange,
   title,
+  anchor,
   children,
 }: MobileActionSheetProps) {
+  const isAnchored = Boolean(anchor);
+  const viewportWidth = typeof window === "undefined" ? 390 : window.innerWidth;
+  const viewportHeight = typeof window === "undefined" ? 844 : window.innerHeight;
+  const panelWidth = Math.min(280, Math.max(220, viewportWidth - 24));
+  const panelLeft = anchor
+    ? Math.min(
+        Math.max(12, anchor.x - panelWidth / 2),
+        viewportWidth - panelWidth - 12,
+      )
+    : 0;
+  const placeAbove = anchor ? anchor.y > viewportHeight * 0.52 : false;
+  const panelTop = anchor
+    ? placeAbove
+      ? anchor.y - 8
+      : anchor.y + 8
+    : 0;
+  const anchoredMaxHeight = anchor
+    ? Math.min(
+        viewportHeight * 0.7,
+        Math.max(220, placeAbove ? anchor.y - 20 : viewportHeight - anchor.y - 20),
+      )
+    : undefined;
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -58,25 +86,57 @@ export function MobileActionSheet({
               if (event.target === event.currentTarget) onOpenChange(false);
             }}
           />
-          <motion.div
-            key="mobile-action-sheet-panel"
-            role="dialog"
-            aria-modal="true"
-            aria-label={title || "Actions"}
-            className="fixed inset-x-0 bottom-0 z-50 overflow-hidden rounded-t-[22px] border-t border-border/70 bg-overlay pb-[env(safe-area-inset-bottom)] shadow-[0_-18px_50px_rgba(0,0,0,0.18)]"
-            initial={{ y: "100%" }}
-            animate={{ y: 0 }}
-            exit={{ y: "100%" }}
-            transition={{ type: "spring", stiffness: 420, damping: 36 }}
-          >
-            <div className="mx-auto mt-2 h-1 w-9 rounded-full bg-border" />
-            {title ? (
-              <div className="px-5 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                {title}
+          {isAnchored ? (
+            <motion.div
+              key="mobile-action-menu-panel"
+              role="dialog"
+              aria-modal="true"
+              aria-label={title || "Actions"}
+              data-placement="anchor"
+              className="fixed z-50 overflow-hidden rounded-2xl border border-border/70 bg-overlay shadow-[0_18px_50px_rgba(0,0,0,0.22)]"
+              style={{
+                left: panelLeft,
+                top: panelTop,
+                width: panelWidth,
+                maxHeight: anchoredMaxHeight,
+                transform: placeAbove ? "translateY(-100%)" : undefined,
+              }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.16, ease: "easeOut" }}
+            >
+              {title ? (
+                <div className="px-4 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                  {title}
+                </div>
+              ) : null}
+              <div className="max-h-[inherit] overflow-y-auto pb-2">
+                {children}
               </div>
-            ) : null}
-            <div className="max-h-[70dvh] overflow-y-auto pb-2">{children}</div>
-          </motion.div>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="mobile-action-sheet-panel"
+              role="dialog"
+              aria-modal="true"
+              aria-label={title || "Actions"}
+              data-placement="sheet"
+              className="fixed inset-x-0 bottom-0 z-50 overflow-hidden rounded-t-[22px] border-t border-border/70 bg-overlay pb-[env(safe-area-inset-bottom)] shadow-[0_-18px_50px_rgba(0,0,0,0.18)]"
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", stiffness: 420, damping: 36 }}
+            >
+              <div className="mx-auto mt-2 h-1 w-9 rounded-full bg-border" />
+              {title ? (
+                <div className="px-5 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                  {title}
+                </div>
+              ) : null}
+              <div className="max-h-[70dvh] overflow-y-auto pb-2">{children}</div>
+            </motion.div>
+          )}
         </>
       )}
     </AnimatePresence>,

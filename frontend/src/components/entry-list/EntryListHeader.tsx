@@ -204,16 +204,52 @@ export function EntryListHeader({
             ) : null}
           </div>
 
-          {onSearchClick ? (
+          {onRefresh ? (
             <button
               type="button"
-              onClick={onSearchClick}
-              aria-label={t("search.title")}
-              className="flex size-11 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
+              onClick={() => onRefresh()}
+              disabled={isRefreshing}
+              aria-label={
+                isRefreshing ? t("entry.refreshing") : t("entry.refresh_view")
+              }
+              className="flex size-11 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover disabled:opacity-60"
             >
-              <SearchIcon className="size-5" />
+              {isRefreshing ? (
+                <RefreshSpinner
+                  remaining={Math.max(0, refreshTotal - refreshCompleted)}
+                />
+              ) : (
+                <RefreshCw className="size-5" />
+              )}
             </button>
           ) : null}
+          {showUnreadToggle ? (
+            <button
+              type="button"
+              onClick={onToggleUnreadOnly}
+              aria-label={
+                unreadOnly ? t("entry.show_all") : t("entry.show_unread_only")
+              }
+              className={cn(
+                "flex size-11 shrink-0 items-center justify-center rounded-full transition-colors active:bg-item-hover",
+                unreadOnly ? "text-accent" : "text-muted-foreground",
+              )}
+            >
+              {unreadOnly ? (
+                <CircleFilledIcon className="size-5" />
+              ) : (
+                <CircleOutlineIcon className="size-5" />
+              )}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={onMarkAllRead}
+            aria-label={t("entry.mark_all_read")}
+            className="flex size-11 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
+          >
+            <CheckCheck className="size-5" />
+          </button>
           <button
             type="button"
             onClick={() => setMoreOpen(true)}
@@ -229,6 +265,16 @@ export function EntryListHeader({
           onOpenChange={setMoreOpen}
           title={title}
         >
+          {onSearchClick ? (
+            <MobileActionSheetItem
+              icon={<SearchIcon className="size-5" />}
+              label={t("search.title")}
+              onClick={() => {
+                setMoreOpen(false);
+                onSearchClick();
+              }}
+            />
+          ) : null}
           {onRefresh ? (
             <MobileActionSheetItem
               icon={

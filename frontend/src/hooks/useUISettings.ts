@@ -204,6 +204,18 @@ interface UISettings {
   entryFontFamily: string;
   entryFontSize: number;
   entryLineHeight: number;
+  /**
+   * 移动端：侧栏是否展示视图切换（内置四类 + 插件视图）。
+   * 默认关 —— 底部内容轨才是手机上的主入口，侧栏再放一份只会重复。
+   * 关闭时只隐藏切换器，不改变底栏读取的视图列表/顺序。
+   */
+  mobileSidebarShowViews: boolean;
+  /**
+   * 移动端条目长按菜单的位置：
+   *  - sheet = 底部面板（默认，单手可达）
+   *  - anchor = 在长按位置附近弹出浮层（V1 的形态）
+   */
+  mobileEntryMenuPlacement: "sheet" | "anchor";
   /** 社交媒体视图里，条目正文过短（只给摘要）时是否自动抓正文 */
   fetchReadableByView: ViewFlags;
   /**
@@ -518,6 +530,8 @@ export const defaultUISettings: UISettings = {
   entryFontFamily: "",
   entryFontSize: 16,
   entryLineHeight: 1.8,
+  mobileSidebarShowViews: false,
+  mobileEntryMenuPlacement: "sheet",
   fetchReadableByView: {
     article: false,
     picture: false,

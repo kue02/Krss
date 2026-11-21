@@ -715,9 +715,10 @@ export function EntryList({
   }, [entries.length]);
 
   // 刷新：按当前选中范围（单个源 / 文件夹内所有源 / 某个视图的所有源）
-  const [mobileActionsEntry, setMobileActionsEntry] = useState<Entry | null>(
-    null,
-  );
+  const [mobileActions, setMobileActions] = useState<{
+    entry: Entry;
+    point: { x: number; y: number };
+  } | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   /** 强制拉取前待确认的源数（null = 没有待确认的） */
   const [forcePending, setForcePending] = useState<number | null>(null);
@@ -1508,7 +1509,9 @@ export function EntryList({
                       fetchReadable={fetchReadableEnabled}
                       autoExpandLong={expandLongByView?.[contentType] ?? false}
                       isMobile={isMobile}
-                      onLongPress={setMobileActionsEntry}
+                      onLongPress={(entry, point) =>
+                        setMobileActions({ entry, point })
+                      }
                       onSelectFeedFromEntry={onSelectFeedFromEntry}
                     />
                   )}
@@ -1531,7 +1534,9 @@ export function EntryList({
                     fetchReadable={fetchReadableEnabled}
                     autoExpandLong={expandLongByView?.[contentType] ?? false}
                     isMobile={isMobile}
-                    onLongPress={setMobileActionsEntry}
+                    onLongPress={(entry, point) =>
+                      setMobileActions({ entry, point })
+                    }
                     onSelectFeedFromEntry={onSelectFeedFromEntry}
                   />
                 ))
@@ -1608,12 +1613,13 @@ export function EntryList({
           );
         })()}
 
-        {mobileActionsEntry && (
+        {mobileActions && (
           <MobileEntryActions
-            entry={mobileActionsEntry}
+            entry={mobileActions.entry}
+            anchor={mobileActions.point}
             open
             onOpenChange={(next) => {
-              if (!next) setMobileActionsEntry(null);
+              if (!next) setMobileActions(null);
             }}
             onMarkAbove={handleMarkAboveEntry}
           />

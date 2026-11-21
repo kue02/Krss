@@ -994,6 +994,16 @@
     "serif": "衬线",
     "mono": "等宽"
   },
+  "appearance_mobile": {
+    "title": "移动端样式",
+    "description": "只影响手机布局；桌面端保持原样",
+    "sidebar_views": "侧栏显示视图切换",
+    "sidebar_views_hint": "手机底部已有内容入口；关闭后侧栏不再重复显示内置视图和插件视图，底部入口不受影响",
+    "entry_menu": "长按条目的菜单位置",
+    "entry_menu_hint": "两种位置都包含「所属订阅」操作",
+    "entry_menu_sheet": "底部面板",
+    "entry_menu_anchor": "长按位置浮层"
+  },
   "appearance_view": {
     "title": "按视图设置",
     "description": "文章 / 图片 / 通知 / 社交媒体四个视图各自独立",

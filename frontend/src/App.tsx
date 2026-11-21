@@ -260,6 +260,7 @@ function AuthenticatedApp() {
 
   // Sidebar visibility for tablet/desktop
   const sidebarVisible = useUISettingKey("sidebarVisible");
+  const mobileSidebarShowViews = useUISettingKey("mobileSidebarShowViews");
   const { toggleSidebarVisible } = useUISettingActions();
 
   // Initialize sidebar visibility for tablet on first visit
@@ -646,6 +647,8 @@ function AuthenticatedApp() {
       pluginViews={pluginViewRoute.views}
       activePluginView={pluginViewRoute.activeKey}
       onSelectPluginView={pluginViewRoute.openView}
+      // 手机默认隐藏侧栏里重复的视图切换器（设置 → 外观 → 移动端样式可开）
+      showContentTypeSwitcher={!isMobile || mobileSidebarShowViews}
       // 移动端：侧栏里的设置/资料弹窗打开时先关 Sheet，否则 Sheet 的滚动锁
       // 会吃掉弹窗内容区的滚动（移动端设置滑不动，2026-09-20）。
       onRequestClose={closeSidebar}

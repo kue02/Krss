@@ -7,9 +7,11 @@ const MOVE_TOLERANCE_PX = 10;
  * 移动端条目长按：按住约 0.5 秒触发 onLongPress；滑动超过 10px 取消，
  * 触发后吞掉随后那次 click，避免同时进入详情。
  */
+export type LongPressPoint = { x: number; y: number };
+
 export function useMobileLongPress(
   enabled: boolean,
-  onLongPress?: () => void,
+  onLongPress?: (point: LongPressPoint) => void,
 ) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startRef = useRef<{ x: number; y: number } | null>(null);
@@ -50,7 +52,8 @@ export function useMobileLongPress(
     if (!touch) return;
     startRef.current = { x: touch.clientX, y: touch.clientY };
     timerRef.current = setTimeout(() => {
-      onLongPress();
+      const point = startRef.current;
+      if (point) onLongPress(point);
       armSuppressClick();
       timerRef.current = null;
     }, LONG_PRESS_MS);
@@ -75,7 +78,7 @@ export function useMobileLongPress(
     if (!enabled || !onLongPress) return;
     event.preventDefault();
     clear();
-    onLongPress();
+    onLongPress({ x: event.clientX, y: event.clientY });
     armSuppressClick();
   };
 

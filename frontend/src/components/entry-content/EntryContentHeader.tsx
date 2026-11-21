@@ -155,7 +155,12 @@ export function EntryContentHeader({
               </button>
 
               <div
-                className="min-w-0 flex-1 px-1"
+                className={cn(
+                  "min-w-0 flex-1 px-1 transition-all duration-300 ease-out",
+                  isAtTop
+                    ? "pointer-events-none translate-y-1 opacity-0"
+                    : "translate-y-0 opacity-100",
+                )}
                 onClick={() => dispatchScrollToTop("entrycontent")}
               >
                 <div className="truncate text-[15px] font-semibold leading-5 tracking-[-0.01em] text-foreground active:opacity-60">
@@ -198,6 +203,22 @@ export function EntryContentHeader({
                   </svg>
                 </button>
               )}
+
+              {onToggleRead ? (
+                <button
+                  type="button"
+                  onClick={onToggleRead}
+                  aria-label={t(readAction.labelKey)}
+                  className={cn(
+                    "flex size-11 shrink-0 items-center justify-center rounded-full transition-colors active:bg-item-hover",
+                    entry.read
+                      ? "text-muted-foreground"
+                      : "text-foreground",
+                  )}
+                >
+                  <readAction.Icon className="size-5" />
+                </button>
+              ) : null}
 
               <button
                 type="button"

@@ -997,6 +997,16 @@
     "serif": "Serif",
     "mono": "Mono"
   },
+  "appearance_mobile": {
+    "title": "Mobile style",
+    "description": "Affects phone layouts only; desktop stays unchanged",
+    "sidebar_views": "Show view switcher in sidebar",
+    "sidebar_views_hint": "The bottom bar already lists views on phones. Turn this off to avoid a duplicate switcher in the sidebar; the bottom bar is unaffected.",
+    "entry_menu": "Long-press menu position",
+    "entry_menu_hint": "Both positions include the feed actions group",
+    "entry_menu_sheet": "Bottom sheet",
+    "entry_menu_anchor": "At press position"
+  },
   "appearance_view": {
     "title": "Per-view settings",
     "description": "Article / image / notification / social are four separate views",

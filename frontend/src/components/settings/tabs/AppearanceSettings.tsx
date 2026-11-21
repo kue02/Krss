@@ -52,6 +52,7 @@ import {
   LayoutGrid,
   Palette,
   Shapes,
+  Smartphone,
   Type,
 } from "lucide-react";
 import {
@@ -276,6 +277,8 @@ export function AppearanceSettings() {
   const splitterVisibleByView = useUISettingKey("splitterVisibleByView");
   const expandLongByView = useUISettingKey("expandLongByView");
   const reduceMotion = useUISettingKey("reduceMotion");
+  const mobileSidebarShowViews = useUISettingKey("mobileSidebarShowViews");
+  const mobileEntryMenuPlacement = useUISettingKey("mobileEntryMenuPlacement");
   const showLineNumbers = useUISettingKey("showLineNumbers");
   const uiScale = useUISettingKey("uiScale");
   const quoteStyle = useUISettingKey("quoteStyle");
@@ -814,6 +817,58 @@ export function AppearanceSettings() {
               options={[
                 { value: "off", label: t("appearance_view.off") },
                 { value: "on", label: t("appearance_view.on") },
+              ]}
+            />
+          </SettingRow>
+        </div>
+      </SectionCard>
+
+      {/* 移动端样式：手机有独立入口（底栏），这里只决定侧栏是否重复显示、
+          以及长按操作面板从底部弹出还是贴着手指弹出。 */}
+      <SectionCard
+        icon={<Smartphone className="size-4" strokeWidth={1.75} />}
+        title={t("appearance_mobile.title")}
+        description={t("appearance_mobile.description")}
+      >
+        <div className="divide-y divide-border/50">
+          <SettingRow
+            label={t("appearance_mobile.sidebar_views")}
+            hint={t("appearance_mobile.sidebar_views_hint")}
+          >
+            <SegmentedControl
+              className="shrink-0 max-sm:h-12 max-sm:p-0.5 max-sm:[&>button]:h-11 max-sm:[&>button]:px-4"
+              value={mobileSidebarShowViews ? "on" : "off"}
+              onValueChange={(value) =>
+                setUISetting("mobileSidebarShowViews", value === "on")
+              }
+              options={[
+                { value: "off", label: t("appearance_view.off") },
+                { value: "on", label: t("appearance_view.on") },
+              ]}
+            />
+          </SettingRow>
+          <SettingRow
+            label={t("appearance_mobile.entry_menu")}
+            hint={t("appearance_mobile.entry_menu_hint")}
+          >
+            <SegmentedControl
+              className="shrink-0 max-sm:h-12 max-sm:p-0.5 max-sm:[&>button]:h-11 max-sm:[&>button]:px-4"
+              value={mobileEntryMenuPlacement ?? "sheet"}
+              onValueChange={(value) =>
+                setUISetting(
+                  "mobileEntryMenuPlacement",
+                  value as "sheet" | "anchor",
+                )
+              }
+              options={[
+                {
+                  value: "sheet",
+                  label: t("appearance_mobile.entry_menu_sheet"),
+                },
+                {
+                  value: "anchor",
+                  label: t("appearance_mobile.entry_menu_anchor"),
+                },
               ]}
             />
           </SettingRow>

@@ -89,8 +89,8 @@ interface EntryListItemProps {
   social?: boolean;
   /** 移动端：长按打开条目操作面板 */
   isMobile?: boolean;
-  /** 长按条目回调（由列表统一渲染操作面板） */
-  onLongPress?: (entry: Entry) => void;
+  /** 长按条目回调（由列表统一渲染操作面板；带上触点用于「长按位置浮层」） */
+  onLongPress?: (entry: Entry, point: { x: number; y: number }) => void;
   /** 社交媒体视图下：正文过短时自动抓正文（按视图设置） */
   fetchReadable?: boolean;
   /** 社交媒体视图下：长贴默认展开（按视图设置） */
@@ -335,7 +335,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     const feedMenu = useFeedMenuActions();
     const longPress = useMobileLongPress(
       isMobile,
-      onLongPress ? () => onLongPress(entry) : undefined,
+      onLongPress ? (point) => onLongPress(entry, point) : undefined,
     );
     const feedMenuFolders = useMemo(
       () =>
