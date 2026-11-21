@@ -146,6 +146,7 @@ type metaResponse struct {
 	Description      string             `json:"description"`
 	Version          string             `json:"version"`
 	Builtin          bool               `json:"builtin"`
+	APIVersion       int                `json:"apiVersion"`
 	Actions          []remoteActionMeta `json:"actions"`
 	Sections         []SettingsSection  `json:"sections"`
 	EntryProcessors  []idOnly           `json:"entryProcessors"`
@@ -171,7 +172,7 @@ func (c *RemoteClient) Plugin(ctx context.Context) (Plugin, error) {
 	if strings.TrimSpace(meta.ID) == "" {
 		return nil, errors.New("plugin: 外部插件 /meta 没有 id")
 	}
-	return &remotePlugin{client: c, meta: meta}, nil
+	return &remotePlugin{client: c, meta: meta, apiVersion: meta.APIVersion}, nil
 }
 
 // UIAsset 取一块插件自带的界面资源（56-24）。
@@ -304,12 +305,17 @@ func (c *RemoteClient) classify(ctx context.Context, id string, feed model.Feed,
 type remotePlugin struct {
 	client *RemoteClient
 	meta   metaResponse
+	// apiVersion /meta 里自报的协议版本（宿主注册时校验，见 plugin.ProtocolVersion）。
+	apiVersion int
 	// 以下三项来自**宿主的 manifest**（plugin.json），不是插件自报的 /meta：
 	// 界面贡献、视图、权限都属于「宿主信任边界」，以磁盘上的文件为准。
 	manifestContributions []Contribution
 	manifestViews         []View
 	manifestPermissions   []string
 }
+
+// APIVersion 外部适配器自报的协议版本（供宿主注册时校验；不属于 plugin.Plugin 主契约）。
+func (p *remotePlugin) APIVersion() int { return p.apiVersion }
 
 // WithManifest 把 manifest 里声明的界面贡献 / 视图 / 权限挂到适配器上。
 // 没有这一步，外部插件写了 plugin.json 也不会出现在右键菜单、视图切换器里，
@@ -394,8 +400,10 @@ func (p *remoteEntryProcessor) Matches(_ model.Feed, _ model.Entry) bool {
 	return true
 }
 
-func (p *remoteEntryProcessor) Process(entry model.Entry) (model.Entry, error) {
-	return p.client.processEntry(context.Background(), p.id, model.Feed{}, entry)
+func (p *remoteEntryProcessor) Process(ctx context.Context, entry model.Entry) (model.Entry, error) {
+	// 必须用宿主传入的 ctx：读路径给每个插件单独设了超时，用 context.Background()
+	// 会让超时形同虚设，插件卡死时照样拖住正文读取。
+	return p.client.processEntry(ctx, p.id, model.Feed{}, entry)
 }
 
 // remoteFetchClassifier 把外部插件的失败归类器包成 plugin.FetchClassifier。

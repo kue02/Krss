@@ -117,6 +117,7 @@ type metaResponse struct {
 	Description      string                   `json:"description"`
 	Version          string                   `json:"version"`
 	Builtin          bool                     `json:"builtin"`
+	APIVersion       int                      `json:"apiVersion"`
 	Actions          []actionMetaJSON         `json:"actions"`
 	Sections         []plugin.SettingsSection `json:"sections"`
 	EntryProcessors  []idOnly                 `json:"entryProcessors"`
@@ -147,6 +148,7 @@ func (s *server) meta(w http.ResponseWriter, _ *http.Request) {
 		Description: meta.Description,
 		Version:     meta.Version,
 		Builtin:     meta.Builtin,
+		APIVersion:  plugin.ProtocolVersion,
 		Sections:    s.plugin.SettingsSections(),
 	}
 	for _, action := range s.plugin.Actions() {
@@ -271,7 +273,7 @@ func (s *server) entryProcessor(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	out, err := target.Process(body.Entry)
+	out, err := target.Process(r.Context(), body.Entry)
 	if err != nil {
 		writeJSON(w, map[string]string{"error": err.Error()})
 		return

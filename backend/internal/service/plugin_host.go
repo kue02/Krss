@@ -213,7 +213,7 @@ func (h *PluginHost) Watch(ctx context.Context, interval time.Duration) {
 }
 
 // Ensure 扫插件目录并让运行态收敛到「目录 + DB 启停」描述的样子：
-// 新发现的落库（enabled = autostart）并拉起；目录没了的停掉摘除；DB 停用的不拉起。
+// 新发现的插件落库为**停用**（等用户在设置页启用后才拉起）；目录没了的停掉摘除；DB 停用的不拉起。
 // 幂等，Catalog 链上每次都跑（设置页「重新扫描插件目录」= 再跑一次）。
 func (h *PluginHost) Ensure(ctx context.Context) error {
 	if h == nil {
@@ -244,15 +244,20 @@ func (h *PluginHost) syncLocked(ctx context.Context) error {
 	for _, st := range states {
 		enabled[st.ID] = st.Enabled
 	}
-	// 首次发现才落库（已存在的行是用户的选择，不许被 autostart 覆盖）。
-	for id, manifest := range manifests {
+	// 首次发现才落库，且**一律停用**：新插件必须由用户在设置页明确启用后才执行。
+	// manifest.autostart 只保留在结构里（兼容老 manifest），不再作为自动执行的依据——
+	// 已存在的 DB 行是用户的选择，不许被覆盖。
+	for id := range manifests {
 		if _, ok := enabled[id]; ok {
 			continue
 		}
-		if err := h.plugins.Upsert(ctx, id, manifest.Autostart); err != nil {
+		if err := h.plugins.Upsert(ctx, id, false); err != nil {
 			return err
 		}
-		enabled[id] = manifest.Autostart
+		enabled[id] = false
+		logger.Info("发现新插件，等待用户启用",
+			"module", "service", "action", "discover", "resource", "plugin", "result", "ok",
+			"plugin_id", id)
 	}
 	// 拉起：只拉 DB 说启用的、且还没在跑/没判死的；DB 说停用的正在跑也要收走（收敛到库里的样子）。
 	for id, manifest := range manifests {
@@ -461,6 +466,51 @@ func (h *PluginHost) startLocked(ctx context.Context, manifest pluginManifest) e
 	return nil
 }
 
+// pluginLogMaxBytes plugin.log 的轮转阈值：超过它就把旧文件改名为 plugin.log.1。
+// 包级 var 便于测试改小（生产固定 5MB）。
+var pluginLogMaxBytes int64 = 5 << 20
+
+// pluginChildEnv 返回外部插件子进程的**最小环境变量白名单**（绝不继承宿主其余环境）。
+//
+// 安全边界：宿主进程里可能有数据库密码、第三方 key、代理口令等敏感变量，
+// 直接 os.Environ() 会把它们一并泄漏给插件。这里只放行运行插件所必需的基础变量，
+// 再加四个由宿主注入的 KRSS_PLUGIN_*。代理变量大小写两种都带上（不同程序认不同写法）。
+func pluginChildEnv(socketPath, token, id, apiBase string) []string {
+	allow := []string{
+		"PATH", "HOME", "TMPDIR", "TMP", "TEMP", "LANG", "LC_ALL", "TZ",
+		"SSL_CERT_FILE", "SSL_CERT_DIR",
+		"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY",
+		"http_proxy", "https_proxy", "no_proxy", "all_proxy",
+	}
+	env := make([]string, 0, len(allow)+4)
+	for _, key := range allow {
+		if value, ok := os.LookupEnv(key); ok {
+			env = append(env, key+"="+value)
+		}
+	}
+	env = append(env,
+		"KRSS_PLUGIN_SOCKET="+socketPath,
+		"KRSS_PLUGIN_TOKEN="+token,
+		"KRSS_PLUGIN_ID="+id,
+		"KRSS_PLUGIN_API="+apiBase,
+	)
+	return env
+}
+
+// openPluginLog 打开插件日志（追加写）。超过 pluginLogMaxBytes 时先轮转：
+// 已有 plugin.log.1 先删掉（只保留一代），再把 plugin.log 改名为 .1，最后新建空文件。
+func openPluginLog(dir string) (*os.File, error) {
+	path := filepath.Join(dir, pluginLogFile)
+	if info, err := os.Stat(path); err == nil && info.Size() > pluginLogMaxBytes {
+		backup := path + ".1"
+		_ = os.Remove(backup)
+		if err := os.Rename(path, backup); err != nil {
+			return nil, err
+		}
+	}
+	return os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+}
+
 // spawnLocked 起进程 + 轮询 /ready（进程先退出算一次崩溃，不用等满超时）。
 func (h *PluginHost) spawnLocked(p *externalPluginProcess) error {
 	entry := strings.TrimSpace(p.manifest.Entrypoint)
@@ -472,15 +522,10 @@ func (h *PluginHost) spawnLocked(p *externalPluginProcess) error {
 	}
 	cmd := exec.Command(entry)
 	cmd.Dir = p.dir
-	cmd.Env = append(os.Environ(),
-		"KRSS_PLUGIN_SOCKET="+p.socketPath,
-		"KRSS_PLUGIN_TOKEN="+p.token,
-		"KRSS_PLUGIN_ID="+p.id,
-		"KRSS_PLUGIN_API="+h.apiBase,
-	)
+	cmd.Env = pluginChildEnv(p.socketPath, p.token, p.id, h.apiBase)
 	// 插件自己的 stdout/stderr 落插件目录（宿主不吞，排障能看）。
 	var logFile *os.File
-	if f, err := os.OpenFile(filepath.Join(p.dir, pluginLogFile), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600); err == nil {
+	if f, err := openPluginLog(p.dir); err == nil {
 		logFile = f
 		cmd.Stdout = f
 		cmd.Stderr = f
@@ -525,6 +570,15 @@ func (h *PluginHost) spawnLocked(p *externalPluginProcess) error {
 	}
 }
 
+// pluginAPIVersion 读外部插件适配器自报的协议版本。没实现 APIVersion() 的（旧适配器 / 非外部）
+// 返回 0，按「不兼容」处理，提示用新 SDK 重编。
+func pluginAPIVersion(p plugin.Plugin) int {
+	if a, ok := p.(interface{ APIVersion() int }); ok {
+		return a.APIVersion()
+	}
+	return 0
+}
+
 // registerLocked 拉 /meta 并注册（重启用/崩溃重启后要重新注册，meta 可能变了）。
 func (h *PluginHost) registerLocked(p *externalPluginProcess) error {
 	ctx, cancel := context.WithTimeout(context.Background(), h.readyTimeout)
@@ -532,6 +586,10 @@ func (h *PluginHost) registerLocked(p *externalPluginProcess) error {
 	remote, err := p.client.Plugin(ctx)
 	if err != nil {
 		return fmt.Errorf("读 /meta 失败: %w", err)
+	}
+	// 协议版本校验：插件自报的 apiVersion 必须与宿主一致；缺省 0（旧 SDK）也按不兼容处理。
+	if got := pluginAPIVersion(remote); got != plugin.ProtocolVersion {
+		return fmt.Errorf("插件协议版本不兼容：需要 v%d，插件报 v%d（插件需用新 SDK 重新编译）", plugin.ProtocolVersion, got)
 	}
 	// 56-31：外部插件的界面贡献 / 视图 / 权限只认 manifest —— 插件进程自报的不算。
 	remote = plugin.AttachManifest(remote, p.manifest.Contributions, p.manifest.Views, p.manifest.Permissions)
