@@ -140,6 +140,7 @@ plugin:entries.get                {id, entryId}
 plugin:ui.toast                   {message}
 plugin:ui.confirm                 {id, title, body}
 plugin:navigate                   {viewId|entryId}
+plugin:export                     {id}
 ```
 
 宿主 → 插件：

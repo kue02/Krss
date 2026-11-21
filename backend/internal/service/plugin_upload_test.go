@@ -87,7 +87,7 @@ func TestInstallPackage_InstallsZipAndStaysDisabled(t *testing.T) {
 func TestInstallPackage_RejectsPathTraversal(t *testing.T) {
 	svc, _ := newUploadTestService(t, t.TempDir())
 	payload := buildPluginZip(t, map[string]string{
-		"plugin.json":   `{"id":"evil","name":"evil","transport":"http","entrypoint":"./evil"}`,
+		"plugin.json":   `{"id":"evil","name":"evil","version":"0.1.0","transport":"http","entrypoint":"./evil"}`,
 		"../escape.txt": "x",
 	})
 	_, err := svc.(packageInstaller).InstallPackage(context.Background(), "evil.zip", bytes.NewReader(payload), int64(len(payload)))
@@ -99,7 +99,7 @@ func TestInstallPackage_RejectsDuplicateAndBuiltinID(t *testing.T) {
 	svc, reg := newUploadTestService(t, pluginsDir)
 	require.NoError(t, reg.Register(builtinStub{meta: plugin.Meta{ID: "builtin-x", Name: "内置", Builtin: true}}))
 	payload := buildPluginZip(t, map[string]string{
-		"plugin.json": `{"id":"builtin-x","name":"冒名","transport":"http","entrypoint":"./x"}`,
+		"plugin.json": `{"id":"builtin-x","name":"冒名","version":"0.1.0","transport":"http","entrypoint":"./x"}`,
 		"x":           "#!/bin/sh\n",
 	})
 	_, err := svc.(packageInstaller).InstallPackage(context.Background(), "x.zip", bytes.NewReader(payload), int64(len(payload)))
@@ -107,7 +107,7 @@ func TestInstallPackage_RejectsDuplicateAndBuiltinID(t *testing.T) {
 
 	require.NoError(t, os.MkdirAll(filepath.Join(pluginsDir, "dup"), 0o755))
 	payload = buildPluginZip(t, map[string]string{
-		"plugin.json": `{"id":"dup","name":"重复","transport":"http","entrypoint":"./dup"}`,
+		"plugin.json": `{"id":"dup","name":"重复","version":"0.1.0","transport":"http","entrypoint":"./dup"}`,
 		"dup":         "#!/bin/sh\n",
 	})
 	_, err = svc.(packageInstaller).InstallPackage(context.Background(), "dup.zip", bytes.NewReader(payload), int64(len(payload)))
@@ -121,4 +121,51 @@ func TestInstallPackage_RejectsMissingEntrypoint(t *testing.T) {
 	})
 	_, err := svc.(packageInstaller).InstallPackage(context.Background(), "noexe.zip", bytes.NewReader(payload), int64(len(payload)))
 	require.ErrorIs(t, err, service.ErrPluginPackageInvalid)
+}
+
+func TestInstallPackage_RejectsUnsupportedTransport(t *testing.T) {
+	pluginsDir := t.TempDir()
+	svc, _ := newUploadTestService(t, pluginsDir)
+	payload := buildPluginZip(t, map[string]string{
+		"plugin.json": `{"id":"grpc-pack","name":"rpc","version":"0.1.0","transport":"grpc","entrypoint":"./grpc-pack"}`,
+		"grpc-pack":   "#!/bin/sh\n",
+	})
+	_, err := svc.(packageInstaller).InstallPackage(context.Background(), "grpc-pack.zip", bytes.NewReader(payload), int64(len(payload)))
+	require.ErrorIs(t, err, service.ErrPluginPackageInvalid)
+	_, statErr := os.Stat(filepath.Join(pluginsDir, "grpc-pack"))
+	require.True(t, os.IsNotExist(statErr), "校验失败的包不能落盘留下孤儿目录")
+}
+
+func TestInstallPackage_RejectsDirectoryEntrypoint(t *testing.T) {
+	svc, _ := newUploadTestService(t, t.TempDir())
+	payload := buildPluginZip(t, map[string]string{
+		"plugin.json": `{"id":"dir-entry","name":"目录入口","version":"0.1.0","transport":"http","entrypoint":"./bin"}`,
+		"bin/x":       "x",
+	})
+	_, err := svc.(packageInstaller).InstallPackage(context.Background(), "dir-entry.zip", bytes.NewReader(payload), int64(len(payload)))
+	require.ErrorIs(t, err, service.ErrPluginPackageInvalid)
+}
+
+func TestInstallPackage_SkipsFinderMetadataAndSetsExecutable(t *testing.T) {
+	pluginsDir := t.TempDir()
+	svc, _ := newUploadTestService(t, pluginsDir)
+	payload := buildPluginZip(t, map[string]string{
+		"pkg/plugin.json":        `{"id":"pkg","name":"包根目录","version":"0.1.0","transport":"http","entrypoint":"./pkg"}`,
+		"pkg/pkg":                "#!/bin/sh\n",
+		"__MACOSX/pkg/._pkg":     "junk",
+		"__MACOSX/._plugin.json": "junk",
+		".DS_Store":              "junk",
+	})
+	items, err := svc.(packageInstaller).InstallPackage(context.Background(), "pkg.zip", bytes.NewReader(payload), int64(len(payload)))
+	require.NoError(t, err, "Finder 元数据不应让唯一顶层目录判定失败")
+	var found bool
+	for _, it := range items {
+		if it.ID == "pkg" {
+			found = true
+		}
+	}
+	require.True(t, found)
+	info, err := os.Stat(filepath.Join(pluginsDir, "pkg", "pkg"))
+	require.NoError(t, err)
+	require.NotZero(t, info.Mode().Perm()&0o111, "上传的入口必须补上可执行位")
 }

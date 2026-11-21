@@ -797,6 +797,10 @@ func (h *PluginHost) InstallPackage(ctx context.Context, filename string, r io.R
 		if name == "." || name == "" {
 			continue
 		}
+		if isArchiveMetadataPath(name) {
+			// Finder 压缩会带 __MACOSX/ 与 ._* 元数据；不是插件文件，跳过。
+			continue
+		}
 		if filepath.IsAbs(name) || name == ".." || strings.HasPrefix(name, ".."+string(filepath.Separator)) {
 			return "", fmt.Errorf("%w：包内路径越界：%s", ErrPluginPackageInvalid, zf.Name)
 		}
@@ -855,7 +859,7 @@ func (h *PluginHost) InstallPackage(ctx context.Context, filename string, r io.R
 		}
 		var dirs []string
 		for _, e := range entries {
-			if e.IsDir() {
+			if e.IsDir() && !isArchiveMetadataPath(e.Name()) {
 				dirs = append(dirs, e.Name())
 			}
 		}
@@ -876,16 +880,40 @@ func (h *PluginHost) InstallPackage(ctx context.Context, filename string, r io.R
 	if manifest.ID == "" || !pluginPackageIDPattern.MatchString(manifest.ID) || strings.Contains(manifest.ID, archivedPluginMarker) {
 		return "", fmt.Errorf("%w：plugin.json 的 id 不合法（只允许字母数字 . _ -，且不能含 %s）", ErrPluginPackageInvalid, archivedPluginMarker)
 	}
+	manifest.Name = strings.TrimSpace(manifest.Name)
+	manifest.Version = strings.TrimSpace(manifest.Version)
+	if manifest.Name == "" || manifest.Version == "" {
+		return "", fmt.Errorf("%w：plugin.json 的 name/version 不能为空", ErrPluginPackageInvalid)
+	}
+	if manifest.Transport == "" {
+		manifest.Transport = plugin.TransportHTTP
+	}
+	if manifest.Transport != plugin.TransportHTTP {
+		return "", fmt.Errorf("%w：transport=%q 不支持（v1 只有 http）", ErrPluginPackageInvalid, manifest.Transport)
+	}
 	if meta, ok := h.registry.Meta(manifest.ID); ok && meta.Builtin {
 		return "", fmt.Errorf("%w：id %s 是内置插件，不能覆盖", ErrPluginPackageExists, manifest.ID)
 	}
 	entrypoint := strings.TrimSpace(manifest.Entrypoint)
-	if entrypoint == "" || filepath.IsAbs(entrypoint) || strings.Contains(filepath.Clean(entrypoint), "..") {
+	cleanEntrypoint := filepath.Clean(entrypoint)
+	if entrypoint == "" || filepath.IsAbs(entrypoint) || cleanEntrypoint == ".." || strings.HasPrefix(cleanEntrypoint, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("%w：entrypoint 必须是插件目录内的相对路径", ErrPluginPackageInvalid)
 	}
-	if _, err := os.Stat(filepath.Join(root, entrypoint)); err != nil {
-		return "", fmt.Errorf("%w：entrypoint 指向的文件不存在：%s", ErrPluginPackageInvalid, entrypoint)
+	entryPath := filepath.Join(root, cleanEntrypoint)
+	entryInfo, err := os.Stat(entryPath)
+	if err != nil || entryInfo.IsDir() {
+		return "", fmt.Errorf("%w：entrypoint 必须是存在的普通文件：%s", ErrPluginPackageInvalid, entrypoint)
 	}
+	// Windows 打的 zip 常丢可执行位；插件入口至少要给 owner 执行权限，否则 spawn 会 permission denied。
+	if entryInfo.Mode().Perm()&0o111 == 0 {
+		if err := os.Chmod(entryPath, entryInfo.Mode().Perm()|0o111); err != nil {
+			return "", fmt.Errorf("设置 entrypoint 可执行权限失败：%w", err)
+		}
+	}
+
+	// 存在性检查与 rename 放在同一把锁里：两个并发同 id 上传只有一个能落位，另一个得到 409。
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	targetDir := filepath.Join(h.dir, manifest.ID)
 	if _, err := os.Stat(targetDir); err == nil {
 		return "", fmt.Errorf("%w：%s 已存在，请先卸载旧版本", ErrPluginPackageExists, manifest.ID)
@@ -893,19 +921,26 @@ func (h *PluginHost) InstallPackage(ctx context.Context, filename string, r io.R
 		return "", fmt.Errorf("%w：检查目标目录失败：%v", ErrPluginPackageInvalid, err)
 	}
 	if err := os.MkdirAll(h.dir, 0o755); err != nil {
-		return "", fmt.Errorf("%w：创建插件目录失败：%v", ErrPluginPackageInvalid, err)
+		return "", fmt.Errorf("创建插件目录失败：%w", err)
 	}
 	if err := os.Rename(root, targetDir); err != nil {
-		return "", fmt.Errorf("%w：安装插件目录失败：%v", ErrPluginPackageInvalid, err)
+		return "", fmt.Errorf("安装插件目录失败：%w", err)
 	}
-
-	h.mu.Lock()
-	syncErr := h.syncLocked(ctx)
-	h.mu.Unlock()
-	if syncErr != nil {
-		return manifest.ID, syncErr
+	// 新装插件一律先停用；即使 plugins 表里有同 id 的历史残留行（如上次卸载失败）也不继承旧启用位。
+	if err := h.plugins.Upsert(ctx, manifest.ID, false); err != nil {
+		return manifest.ID, err
+	}
+	if err := h.syncLocked(ctx); err != nil {
+		return manifest.ID, err
 	}
 	return manifest.ID, nil
+}
+
+// isArchiveMetadataPath 判断 zip 内是否为 Finder/Windows 压缩工具附带的元数据，不是插件文件。
+func isArchiveMetadataPath(name string) bool {
+	clean := filepath.ToSlash(filepath.Clean(name))
+	base := filepath.Base(clean)
+	return clean == "__MACOSX" || strings.HasPrefix(clean, "__MACOSX/") || base == ".DS_Store" || strings.HasPrefix(base, "._")
 }
 
 func (h *PluginHost) stopLocked(id string) {

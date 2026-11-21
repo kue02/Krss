@@ -641,16 +641,45 @@ func runMigrations(db *sql.DB) error {
 	return nil
 }
 
-// migrateRemoveDemoPlugin 清掉 Demo 样板插件的残留（迁移 35）。幂等：删不到就是已经干净。
+// migrateRemoveDemoPlugin 清掉 Demo 样板插件的残留（迁移 35），只执行一次。
+// 其余迁移都是幂等的结构变更，但这条是删数据：如果每次启动都跑，会把用户后来装的
+// 外部插件 id="demo" 的设置与数据一起抹掉。用 schema_migrations 记版本，跑过就跳过。
 func migrateRemoveDemoPlugin(db *sql.DB) error {
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+		version    INTEGER PRIMARY KEY,
+		applied_at TEXT NOT NULL
+	)`); err != nil {
+		return fmt.Errorf("create schema_migrations: %w", err)
+	}
+
+	var applied int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version = 35`).Scan(&applied); err != nil {
+		return fmt.Errorf("check demo plugin migration: %w", err)
+	}
+	if applied > 0 {
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin demo plugin migration: %w", err)
+	}
+	defer tx.Rollback()
 	for _, stmt := range []string{
 		`DELETE FROM plugin_data WHERE plugin_id = 'demo'`,
 		`DELETE FROM settings WHERE key LIKE 'plugin.demo.%'`,
 		`DELETE FROM plugins WHERE id = 'demo'`,
 	} {
-		if _, err := db.Exec(stmt); err != nil {
+		if _, err := tx.Exec(stmt); err != nil {
 			return fmt.Errorf("remove demo plugin residue: %w", err)
 		}
+	}
+	if _, err := tx.Exec(`INSERT INTO schema_migrations (version, applied_at) VALUES (35, ?)`,
+		time.Now().UTC().Format(time.RFC3339)); err != nil {
+		return fmt.Errorf("mark demo plugin migration: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit demo plugin migration: %w", err)
 	}
 	return nil
 }

@@ -29,7 +29,7 @@ Krss 的插件把「特化能力的实现」从本体里拆出来：本体继续
    }
    ```
 
-2. 写 `main.go`，用 SDK 托管（完整可运行示例见 `backend/cmd/examples/hello-menu/`）：
+2. 写 `main.go`，用 SDK 托管（完整可运行示例见 `backend/cmd/examples/hello-menu/`）。注意 SDK 是 `krss/backend/internal/...` 的 internal 包，插件源码必须放在 backend 模块内（例如 `backend/cmd/my-plugin/`）；树外独立 module 无法直接 import internal 包：
 
    ```go
    package main
@@ -90,9 +90,9 @@ Krss 的插件把「特化能力的实现」从本体里拆出来：本体继续
 
 ## 生命周期与排障
 
-- **发现**：宿主每 5 秒扫一次数据目录 `plugins/`。只认目录里的 `plugin.json`，目录名必须等于 `id`。以 `.removed-` 结尾的目录是卸载归档，不会被扫描。
+- **发现**：宿主每 5 秒扫一次数据目录 `plugins/`。只认目录里的 `plugin.json`，目录名必须等于 `id`。名字里含 `.removed-` 的目录（形如 `<id>.removed-<UTC>`）是卸载归档，不会被扫描。
 - **首次发现**：外部插件一律写入 `plugins` 表并置为**停用**；用户明确打开后才启动。
-- **启动**：宿主创建 `plugins/<id>/plugin.sock`（0600），通过环境变量 `KRSS_PLUGIN_SOCKET`、`KRSS_PLUGIN_TOKEN`、`KRSS_PLUGIN_ID`、`KRSS_PLUGIN_API` 注入。插件进程只继承最小白名单环境变量，不再继承服务端全部环境。
+- **启动**：插件 SDK 自己 `net.Listen` 创建 `plugins/<id>/plugin.sock` 并 `Chmod 0600`；宿主只注入路径与环境变量 `KRSS_PLUGIN_SOCKET`、`KRSS_PLUGIN_TOKEN`、`KRSS_PLUGIN_ID`、`KRSS_PLUGIN_API`。插件进程只继承最小白名单环境变量，不再继承服务端全部环境。
 - **协议**：宿主拉 `/meta`，校验 `apiVersion`。版本不兼容时**不重启**，只在插件卡片显示错误，避免旧二进制被反复拉起。
 - **崩溃**：单个插件连续崩溃 5 次后停止看护并显示 `lastError`；其他插件不受影响。
 - **日志**：`plugins/<id>/plugin.log`，启动时超过 5MB 会轮转。

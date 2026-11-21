@@ -128,6 +128,10 @@ func TestMigrate_RemovesDemoPluginResidue(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { conn.Close() })
 
+	// Open 时迁移 35 已跑过并记了版本；这里模拟「升级前已有 Demo 残留」的老库，重置标记后再造数据。
+	_, err = conn.Exec(`DELETE FROM schema_migrations WHERE version = 35`)
+	require.NoError(t, err)
+
 	now := "2026-11-21T00:00:00Z"
 	_, err = conn.Exec(`INSERT INTO plugins (id, enabled, installed_at, updated_at) VALUES
 		('demo', 0, ?, ?), ('demolite', 1, ?, ?)`, now, now, now, now)
@@ -152,5 +156,21 @@ func TestMigrate_RemovesDemoPluginResidue(t *testing.T) {
 	require.NoError(t, conn.QueryRow(`SELECT COUNT(*) FROM plugins WHERE id = 'demolite'`).Scan(&count))
 	require.Equal(t, 1, count, "名字里带 demo 的别的插件不许误伤")
 	require.NoError(t, conn.QueryRow(`SELECT COUNT(*) FROM settings WHERE key = 'plugin.demolite.note'`).Scan(&count))
+	require.Equal(t, 1, count)
+
+	// 迁移 35 只跑一次：之后用户再装外部插件 id="demo" 并写设置/数据，后续 Migrate 不能再清掉。
+	_, err = conn.Exec(`INSERT INTO plugins (id, enabled, installed_at, updated_at) VALUES ('demo', 1, ?, ?)`, now, now)
+	require.NoError(t, err)
+	_, err = conn.Exec(`INSERT INTO settings (key, value, updated_at) VALUES ('plugin.demo.note', '"after-upgrade"', ?)`, now)
+	require.NoError(t, err)
+	_, err = conn.Exec(`INSERT INTO plugin_data (plugin_id, collection, key, value, updated_at) VALUES ('demo', 'kv', 'k', '"after-upgrade"', 1700000000)`)
+	require.NoError(t, err)
+
+	require.NoError(t, db.Migrate(conn))
+	require.NoError(t, conn.QueryRow(`SELECT COUNT(*) FROM plugins WHERE id = 'demo'`).Scan(&count))
+	require.Equal(t, 1, count, "迁移 35 已执行过，不能再删外部 demo 插件")
+	require.NoError(t, conn.QueryRow(`SELECT COUNT(*) FROM settings WHERE key = 'plugin.demo.note'`).Scan(&count))
+	require.Equal(t, 1, count)
+	require.NoError(t, conn.QueryRow(`SELECT COUNT(*) FROM plugin_data WHERE plugin_id = 'demo'`).Scan(&count))
 	require.Equal(t, 1, count)
 }
