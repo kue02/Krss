@@ -74,6 +74,37 @@ func TestIconService_FetchAndSaveIconForFeed_UsesProvider(t *testing.T) {
 	require.NoError(t, err, "图标文件应真实落盘")
 }
 
+// TestIconService_FetchAndSaveIconForFeed_ProviderFailureDoesNotFallBackToFavicon
+// 插件给了头像 URL 时，下载失败不能退回站点 favicon，否则会把错误图标固化下来，用户刷新也换不回头像。
+func TestIconService_FetchAndSaveIconForFeed_ProviderFailureDoesNotFallBackToFavicon(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "avatar unavailable", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	iconURL := server.URL + "/avatar.png"
+	reg := plugin.NewRegistry()
+	require.NoError(t, reg.Register(fakeFeedIconPlugin{id: "githubavatar", url: iconURL}))
+
+	repo := &feedRepoStub{
+		getByIDFn: func(_ context.Context, id int64) (model.Feed, error) {
+			return model.Feed{ID: id, URL: "https://github.com/alice.atom"}, nil
+		},
+	}
+	dataDir := t.TempDir()
+	svc := service.NewIconService(dataDir, repo, network.NewClientFactoryForTest(&http.Client{}), nil,
+		service.WithPluginRegistry(reg))
+
+	got, err := svc.FetchAndSaveIconForFeed(context.Background(), 8, "", "")
+	require.Error(t, err, "插件头像下载失败时应返回错误，而不是退回 favicon")
+	require.Contains(t, err.Error(), "plugin icon download failed")
+	require.Empty(t, got)
+	entries, statErr := os.ReadDir(filepath.Join(dataDir, "icons"))
+	if statErr == nil {
+		require.Empty(t, entries, "失败时不应写入任何 favicon 文件")
+	}
+}
+
 // TestIconService_BackfillIcons_SyncsProviderIcon 已有通用图标的 feed 会被改成插件头像路径；
 // 头像文件已存在时只改 DB，不再重复下载。
 func TestIconService_BackfillIcons_SyncsProviderIcon(t *testing.T) {

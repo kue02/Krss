@@ -148,11 +148,13 @@ func (s *iconService) FetchAndSaveIcon(ctx context.Context, feedImageURL, siteUR
 // 对 RSSHub 订阅来说那就是 RSSHub 实例的地址，于是：
 //   - 文件名算成 `rsshub.wxhdj.xyz.png`（实例域名，不是频道）
 //   - 第 2 条候选「站点 /favicon.ico」直接命中实例自己的 logo
+//
 // 25 条不同订阅因此共用同一个图标文件，看上去就是「这些源没有图标」。
 //
 // 现在分两步：
 //  1. 先把地址反解成**真实站点**：site_url 若指向 RSSHub/聚合实例，就从订阅路由（路径）反解上游站点。
 //  2. site_url 为空时，拿订阅地址自己按同样的路由表反解。
+//
 // 反解不出就返回空 —— 这时宁可不抓，也不要拿聚合实例的 logo 冒充订阅图标
 // （与前端 feed-site.ts 的同一条口径：RSSHub 的 origin 是实例，不是主页）。
 func (s *iconService) resolveIconSite(ctx context.Context, feedID int64, siteURL string) string {
@@ -284,17 +286,20 @@ var rsshubRouteRules = []rsshubRouteRule{
 // feedID <= 0 时退回全局那份（老行为）。
 //
 // 候选顺序（28-1 起，见 resolveIconSite）：
-//   1. RSS 自带的 <image>（Telegram 的频道头像就是它）
-//   2. **真实站点**（site_url / RSSHub 路由反解出的上游主页）的 favicon.ico → 首页 <link rel=icon>
-//   3. Google / DuckDuckGo favicon 服务（同样只打真实站点）
+//  1. RSS 自带的 <image>（Telegram 的频道头像就是它）
+//  2. **真实站点**（site_url / RSSHub 路由反解出的上游主页）的 favicon.ico → 首页 <link rel=icon>
+//  3. Google / DuckDuckGo favicon 服务（同样只打真实站点）
+//
 // **绝不拿 RSSHub 实例自己的 favicon 当订阅图标** —— 那会让几十条不同订阅共用同一个文件，
 // 表现就是「一堆源看起来都没图标」（28-1：25/74 条共用 rsshub.wxhdj.xyz.png）。
 func (s *iconService) FetchAndSaveIconForFeed(ctx context.Context, feedID int64, feedImageURL, siteURL string) (string, error) {
 	feedImageURL = strings.TrimSpace(feedImageURL)
 	// 插件头像优先于 RSS 自带 image：插件（如 GitHub 头像）为这条订阅提供了图标 URL 就用它，
 	// 后续复用现有的 hash 命名与下载流程，不另写下载逻辑。
+	pluginProvided := false
 	if pURL := s.providerIconURL(ctx, feedID); pURL != "" {
 		feedImageURL = pURL
+		pluginProvided = true
 	}
 	// 图标该向哪个站点要：RSSHub 之类的聚合实例不算「站点」，要换成它背后那个真实站点。
 	realSite := s.resolveIconSite(ctx, feedID, siteURL)
@@ -333,8 +338,12 @@ func (s *iconService) FetchAndSaveIconForFeed(ctx context.Context, feedID int64,
 	}
 
 	// Add local favicon.ico
-	if localURL := s.buildLocalFaviconURL(realSite); localURL != "" {
-		urlsToTry = append(urlsToTry, localURL)
+	// 插件明确给了图标 URL 时不再混入站点 favicon：否则头像下载失败会退回 GitHub favicon，
+	// 用户看到的仍是一个「像头像但不是头像」的通用图标，且会把失败结果固化下来。
+	if !pluginProvided {
+		if localURL := s.buildLocalFaviconURL(realSite); localURL != "" {
+			urlsToTry = append(urlsToTry, localURL)
+		}
 	}
 
 	if len(urlsToTry) == 0 {
@@ -343,6 +352,12 @@ func (s *iconService) FetchAndSaveIconForFeed(ctx context.Context, feedID int64,
 
 	// Try each URL until one succeeds
 	result, successURL, lastErr := s.tryDownloadIconURLs(ctx, urlsToTry, feedID)
+
+	// 插件给了专用图标时，只认它：失败就下次再试，绝不退回站点 favicon。
+	if result == nil && pluginProvided {
+		logger.Debug("plugin icon download failed", "module", "service", "action", "fetch", "resource", "icon", "feed_id", feedID, "error", lastErr)
+		return "", fmt.Errorf("plugin icon download failed: %w", lastErr)
+	}
 
 	// 25-2：站点把图标放在别处（CDN / 子路径 / 相对路径）时，唯一的出路是去读首页 HTML。
 	// 放在这里而不是拼进上面的列表，是为了**只有前面都没命中**才多花这一次首页请求。
