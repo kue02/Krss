@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { AnimatePresence, motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
+import { ListTree, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface TocItem {
@@ -13,6 +16,8 @@ interface EntryTocProps {
   scrollNode?: HTMLDivElement | null;
   /** 换条目时重算 */
   entryId?: string | null;
+  /** 移动端：右缘 44px 热区入口 + 全高目录抽屉（桌面保持 hover 面板） */
+  isMobile?: boolean;
 }
 
 /** 标题离顶部留出的距离（正文顶部有留白，跳过去别贴边） */
@@ -22,10 +27,26 @@ const SCROLL_MARGIN_TOP = 72;
  * 正文右侧的悬浮目录（标题 + 小标题）。
  * 平时完全隐藏，鼠标移到面板右缘的一条窄带上才出现；点标题跳到该段。
  */
-export function EntryToc({ scrollNode, entryId }: EntryTocProps) {
+export function EntryToc({ scrollNode, entryId, isMobile = false }: EntryTocProps) {
   const { t } = useTranslation();
   const [items, setItems] = useState<TocItem[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  // 移动端抽屉打开时锁背景滚动，和 MobileActionSheet 同一口径。
+  useEffect(() => {
+    if (!isMobile || !mobileOpen) return;
+    const root = document.documentElement;
+    const previousOverflow = root.style.overflow;
+    root.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      root.style.overflow = previousOverflow;
+    };
+  }, [isMobile, mobileOpen]);
   const signatureRef = useRef("");
   // id → 标题元素：跳转/高亮直接查这张表，避免用 CSS.escape（jsdom 里没有这个 API）
   const elementsRef = useRef<Map<string, HTMLElement>>(new Map());
@@ -157,6 +178,100 @@ export function EntryToc({ scrollNode, entryId }: EntryTocProps) {
   );
 
   if (items.length === 0) return null;
+
+  if (isMobile) {
+    return (
+      <>
+        {/* 右缘竖轨：视觉只有 6px，热区仍是 44px；不压正文可读宽度 */}
+        <button
+          type="button"
+          onClick={() => setMobileOpen(true)}
+          aria-label={t("entry.toc")}
+          className="absolute right-0 top-1/2 z-20 flex h-24 w-11 -translate-y-1/2 items-center justify-end pr-0.5 active:opacity-60"
+        >
+          <span className="flex h-16 w-1.5 flex-col items-center justify-center gap-1 rounded-full bg-foreground/15">
+            <span className="size-0.5 rounded-full bg-foreground/40" />
+            <span className="size-0.5 rounded-full bg-foreground/40" />
+            <span className="size-0.5 rounded-full bg-foreground/40" />
+          </span>
+        </button>
+
+        {createPortal(
+          <AnimatePresence>
+            {mobileOpen && (
+              <div className="fixed inset-0 z-50">
+                <motion.button
+                  type="button"
+                  aria-label={t("actions.close")}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.18 }}
+                  onClick={() => setMobileOpen(false)}
+                  className="absolute inset-0 bg-black/30 backdrop-blur-[2px]"
+                />
+                <motion.div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label={t("entry.toc")}
+                  initial={{ x: "100%" }}
+                  animate={{ x: 0 }}
+                  exit={{ x: "100%" }}
+                  transition={{ type: "tween", duration: 0.24, ease: [0.32, 0.72, 0, 1] }}
+                  className="absolute inset-y-0 right-0 flex w-[min(84vw,320px)] flex-col border-l border-border/60 bg-background shadow-2xl"
+                >
+                  <div className="flex items-center justify-between gap-3 border-b border-border/50 px-5 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))]">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground">
+                        <ListTree className="size-4 text-muted-foreground" />
+                        {t("entry.toc")}
+                      </div>
+                      <div className="mt-0.5 text-[11px] text-muted-foreground">
+                        {items.length} {t("entry.toc_sections")}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setMobileOpen(false)}
+                      aria-label={t("actions.close")}
+                      className="-mr-2 flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground active:bg-item-hover"
+                    >
+                      <X className="size-5" />
+                    </button>
+                  </div>
+                  <nav className="flex-1 overflow-y-auto px-3 py-3">
+                    <ul className="space-y-1 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+                      {items.map((item) => (
+                        <li key={item.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleJump(item.id);
+                              setMobileOpen(false);
+                            }}
+                            style={{ paddingLeft: `${(item.level - minLevel) * 14 + 12}px` }}
+                            className={cn(
+                              "flex min-h-11 w-full items-center rounded-xl pr-3 text-left text-sm transition-colors duration-150",
+                              item.id === activeId
+                                ? "bg-item-active font-medium text-foreground"
+                                : "text-muted-foreground active:bg-item-hover",
+                            )}
+                          >
+                            <span className="truncate">{item.text}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </nav>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>,
+          document.body,
+        )}
+      </>
+    );
+  }
 
   return (
     <div className="group/toc absolute inset-y-0 right-0 z-20 w-6">

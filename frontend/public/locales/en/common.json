@@ -35,7 +35,8 @@
     "article": "Articles",
     "picture": "Pictures",
     "notification": "Notifications",
-    "social": "Social"
+    "social": "Social",
+    "nav_label": "Content types"
   },
   "actions": {
     "expand": "Expand",
@@ -66,7 +67,8 @@
     "back": "Back",
     "open_site": "Open site",
     "copy_site_url": "Copy site URL",
-    "copied_site_url": "Site URL copied"
+    "copied_site_url": "Site URL copied",
+    "more": "More"
   },
   "folders": {
     "delete": "Delete Folder",
@@ -301,6 +303,15 @@
   },
   "entry": {
     "toc": "Contents",
+    "toc_sections": "sections",
+    "previous": "Previous",
+    "next": "Next",
+    "reading_settings": "Reading settings",
+    "reading_preview": "Preview",
+    "reading_preview_text": "Set the text size and line height you like for long reads.",
+    "decrease_font_size": "Decrease text size",
+    "increase_font_size": "Increase text size",
+    "refreshing_progress": "Refreshing · {{completed}} / {{total}}",
     "read": "Read",
     "expand_hint": "Open in the reader for the full article",
     "show_more": "Show more",
@@ -367,7 +378,9 @@
     "force_confirm_description": "This ignores etag / last-modified and refetches every feed in scope in one go (host cooldown is skipped too). That's a lot of feeds — confirm this wasn't a mis-selection.",
     "view_feed": "Go to feed {{name}}",
     "back_to_previous": "Back to previous selection",
-    "machine_translated": "Machine-translated"
+    "machine_translated": "Machine-translated",
+    "refreshing": "Refreshing…",
+    "force_refresh_hint": "Ignore cache and fetch this view again"
   },
   "ai_settings": {
     "translate_channel": "Free translation channels",
@@ -983,6 +996,16 @@
     "sans": "Sans",
     "serif": "Serif",
     "mono": "Mono"
+  },
+  "appearance_mobile": {
+    "title": "Mobile style",
+    "description": "Affects phone layouts only; desktop stays unchanged",
+    "sidebar_views": "Show view switcher in sidebar",
+    "sidebar_views_hint": "The bottom bar already lists views on phones. Turn this off to avoid a duplicate switcher in the sidebar; the bottom bar is unaffected.",
+    "entry_menu": "Long-press menu position",
+    "entry_menu_hint": "Both positions include the feed actions group",
+    "entry_menu_sheet": "Bottom sheet",
+    "entry_menu_anchor": "At press position"
   },
   "appearance_view": {
     "title": "Per-view settings",

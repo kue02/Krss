@@ -24,6 +24,8 @@ import { Sidebar } from "@/components/sidebar";
 import { AddFeedPage } from "@/components/add-feed";
 import { EntryList } from "@/components/entry-list";
 import { PictureMasonry, Lightbox } from "@/components/picture-masonry";
+import { MobileTabBar } from "@/components/mobile/MobileTabBar";
+import { MenuIcon, SearchIcon } from "@/components/ui/icons";
 import { ScrollToTopZone } from "@/components/layout/ScrollToTopZone";
 import { ImagePreview } from "@/components/ui/image-preview";
 import { LoginPage, RegisterPage, NetworkErrorPage } from "@/components/auth";
@@ -258,6 +260,7 @@ function AuthenticatedApp() {
 
   // Sidebar visibility for tablet/desktop
   const sidebarVisible = useUISettingKey("sidebarVisible");
+  const mobileSidebarShowViews = useUISettingKey("mobileSidebarShowViews");
   const { toggleSidebarVisible } = useUISettingActions();
 
   // Initialize sidebar visibility for tablet on first visit
@@ -408,6 +411,17 @@ function AuthenticatedApp() {
       selectAll(type, { replace: true });
     },
     [selectAll, closeSidebar],
+  );
+
+  const handleMobileTabSelect = useCallback(
+    (type: ContentType) => {
+      // 插件视图是路由上的一层覆盖；切内容类型前先退出，否则 ?view= 会把新列表挡住。
+      if (pluginViewRoute.resolution.status !== "none") {
+        pluginViewRoute.closeView();
+      }
+      handleSelectAll(type);
+    },
+    [pluginViewRoute, handleSelectAll],
   );
 
   const handleFilterChange = useCallback(
@@ -633,6 +647,8 @@ function AuthenticatedApp() {
       pluginViews={pluginViewRoute.views}
       activePluginView={pluginViewRoute.activeKey}
       onSelectPluginView={pluginViewRoute.openView}
+      // 手机默认隐藏侧栏里重复的视图切换器（设置 → 外观 → 移动端样式可开）
+      showContentTypeSwitcher={!isMobile || mobileSidebarShowViews}
       // 移动端：侧栏里的设置/资料弹窗打开时先关 Sheet，否则 Sheet 的滚动锁
       // 会吃掉弹窗内容区的滚动（移动端设置滑不动，2026-09-20）。
       onRequestClose={closeSidebar}
@@ -674,8 +690,49 @@ function AuthenticatedApp() {
 
     if (isMobile) {
       return (
-        <div className="h-full bg-background">
-          {pluginOutlet}
+        <div className="flex h-[var(--app-dvh)] flex-col bg-background">
+          <header className="shrink-0 border-b border-border/45 bg-background/88 pt-[env(safe-area-inset-top)] backdrop-blur-xl">
+            <div className="flex h-11 items-center gap-1 px-1.5">
+              <button
+                type="button"
+                onClick={openSidebar}
+                aria-label={t("actions.show_sidebar")}
+                className="-ml-1.5 flex size-11 shrink-0 items-center justify-center rounded-full text-foreground active:bg-item-hover"
+              >
+                <MenuIcon className="size-5" />
+              </button>
+              <div className="min-w-0 flex-1 px-1">
+                <div className="truncate text-[15px] font-semibold leading-5 text-foreground">
+                  {t("plugins.plugin_view_badge")}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSearchOpen(true)}
+                aria-label={t("search.title")}
+                className="-mr-1.5 flex size-11 shrink-0 items-center justify-center rounded-full text-foreground active:bg-item-hover"
+              >
+                <SearchIcon className="size-5" />
+              </button>
+            </div>
+          </header>
+          <div className="min-h-0 flex-1 overflow-hidden pb-[calc(4.5rem+env(safe-area-inset-bottom))]">{pluginOutlet}</div>
+          <MobileTabBar
+            contentType={contentType}
+            visibleContentTypes={visibleContentTypes}
+            onSelect={handleMobileTabSelect}
+          />
+          <ScrollToTopZone />
+          {contentType === "picture" && <Lightbox />}
+          {contentType !== "picture" && (
+            <>
+              <ImagePreview />
+              <VideoPreview />
+            </>
+          )}
+          <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+            {sidebarContent}
+          </Sheet>
           <ShortcutsHelpDialog
             open={isShortcutsOpen}
             onOpenChange={(open) => shortcutsHelp.set(open)}
@@ -719,7 +776,7 @@ function AuthenticatedApp() {
       );
     } else if (contentType === "picture") {
       mobileContent = (
-        <div className="min-h-[var(--app-dvh)] bg-background">
+        <div className="min-h-[var(--app-dvh)] bg-background pb-[calc(4.5rem+env(safe-area-inset-bottom))]">
           <PictureMasonry
             selection={selection}
             contentType={contentType}
@@ -731,6 +788,7 @@ function AuthenticatedApp() {
             onSelectFeedFromEntry={handleJumpToFeed}
             feedJumpBackHref={jumpBackHref}
             onBackFromFeedJump={handleBackFromFeedJump}
+            onSearchClick={() => setIsSearchOpen(true)}
           />
         </div>
       );
@@ -741,7 +799,7 @@ function AuthenticatedApp() {
           {/* The list stays mounted in normal document flow to preserve state. */}
           <section
             className={cn(
-              "mobile-list-page min-h-[var(--app-dvh)] bg-background",
+              "mobile-list-page min-h-[var(--app-dvh)] bg-background pb-[calc(4.5rem+env(safe-area-inset-bottom))]",
               mobileView === "detail" && "pointer-events-none select-none",
             )}
             aria-hidden={mobileView === "detail"}
@@ -764,6 +822,7 @@ function AuthenticatedApp() {
               onSelectFeedFromEntry={handleJumpToFeed}
               feedJumpBackHref={jumpBackHref}
               onBackFromFeedJump={handleBackFromFeedJump}
+              onSearchClick={() => setIsSearchOpen(true)}
             />
           </section>
           {/* Detail remains an internal scroller and slides over the document list. */}
@@ -786,6 +845,13 @@ function AuthenticatedApp() {
     return (
       <>
         {mobileContent}
+        {!isAddFeedPath(location) ? (
+          <MobileTabBar
+            contentType={contentType}
+            visibleContentTypes={visibleContentTypes}
+            onSelect={handleMobileTabSelect}
+          />
+        ) : null}
         <ScrollToTopZone />
         {/* Lightbox for picture mode */}
         {contentType === "picture" && <Lightbox />}

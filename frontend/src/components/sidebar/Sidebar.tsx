@@ -119,6 +119,11 @@ interface SidebarProps {
   activePluginView?: string | null;
   onSelectPluginView?: (key: string) => void;
   /**
+   * 是否显示顶部的视图切换器（内置视图 + 插件视图）。
+   * 手机默认关掉：底部内容轨已经是主入口，侧栏再放一份只会重复。
+   */
+  showContentTypeSwitcher?: boolean;
+  /**
    * 移动端侧栏 Sheet 关掉自己（App 传下来的 closeSidebar）。
    * 设置/资料弹窗是从侧栏里打开的：不先关 Sheet，它的 touchmove/wheel 锁
    * （`ui/sheet.tsx` 的 preventBackgroundScroll）会把 Radix Dialog 内容区的
@@ -159,6 +164,7 @@ export function Sidebar({
   pluginViews,
   activePluginView,
   onSelectPluginView,
+  showContentTypeSwitcher = true,
   onRequestClose,
 }: SidebarProps) {
   const { t } = useTranslation();
@@ -529,15 +535,17 @@ export function Sidebar({
         onCreateFolder={() => setIsCreateFolderOpen(true)}
       />
 
-      <ContentTypeSwitcher
-        contentType={contentType}
-        counts={contentTypeCounts}
-        onSelect={(type) => onSelectAll?.(type)}
-        visibleContentTypes={visibleContentTypes}
-        pluginViews={pluginViews}
-        activePluginView={activePluginView}
-        onSelectPluginView={onSelectPluginView}
-      />
+      {showContentTypeSwitcher ? (
+        <ContentTypeSwitcher
+          contentType={contentType}
+          counts={contentTypeCounts}
+          onSelect={(type) => onSelectAll?.(type)}
+          visibleContentTypes={visibleContentTypes}
+          pluginViews={pluginViews}
+          activePluginView={activePluginView}
+          onSelectPluginView={onSelectPluginView}
+        />
+      ) : null}
 
       {/* Content */}
       <div className="relative flex-1 overflow-hidden">

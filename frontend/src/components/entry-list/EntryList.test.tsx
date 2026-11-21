@@ -389,7 +389,11 @@ describe("EntryList translation scheduling", () => {
     const backdrop = header.querySelector('[aria-hidden="true"]');
     expect(backdrop?.classList.contains("-top-2")).toBe(true);
     expect(backdrop?.classList.contains("bg-background")).toBe(true);
-    expect(header.nextElementSibling?.classList.contains("h-14")).toBe(true);
+    expect(
+      header.nextElementSibling?.classList.contains(
+        "h-[calc(2.75rem+env(safe-area-inset-top))]",
+      ),
+    ).toBe(true);
   });
 
   it("会为可视区外的选中文章安排翻译", async () => {

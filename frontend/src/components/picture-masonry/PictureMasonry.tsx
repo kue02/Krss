@@ -52,6 +52,8 @@ interface PictureMasonryProps {
   /** 52-4：这次跳来自某个订阅时，列表头出「返回」 */
   feedJumpBackHref?: string | null;
   onBackFromFeedJump?: () => void;
+  /** 移动端顶栏搜索入口（App 打开 SearchModal）；不传不渲染 */
+  onSearchClick?: () => void;
 }
 
 interface MasonryItem {
@@ -100,6 +102,7 @@ export function PictureMasonry({
   onSelectFeedFromEntry,
   feedJumpBackHref,
   onBackFromFeedJump,
+  onSearchClick,
 }: PictureMasonryProps) {
   const { t } = useTranslation();
   const params = selectionToParams(selection, contentType);
@@ -418,6 +421,7 @@ export function PictureMasonry({
           sidebarVisible={sidebarVisible}
           pictureLayout={resolvedLayout}
           onTogglePictureLayout={handleTogglePictureLayout}
+          onSearchClick={onSearchClick}
         />
       </MobileDocumentHeader>
 

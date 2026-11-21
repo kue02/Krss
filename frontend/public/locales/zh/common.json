@@ -35,7 +35,8 @@
     "article": "文章",
     "picture": "图片",
     "notification": "通知",
-    "social": "社交媒体"
+    "social": "社交媒体",
+    "nav_label": "内容类型"
   },
   "actions": {
     "expand": "展开",
@@ -66,7 +67,8 @@
     "back": "返回",
     "open_site": "前往主站",
     "copy_site_url": "复制主站地址",
-    "copied_site_url": "已复制主站地址"
+    "copied_site_url": "已复制主站地址",
+    "more": "更多"
   },
   "folders": {
     "delete": "删除文件夹",
@@ -301,6 +303,15 @@
   },
   "entry": {
     "toc": "目录",
+    "toc_sections": "节",
+    "previous": "上一条",
+    "next": "下一条",
+    "reading_settings": "阅读设置",
+    "reading_preview": "正文预览",
+    "reading_preview_text": "让正文按你习惯的字号与行距排开，读长文时不累。",
+    "decrease_font_size": "减小字号",
+    "increase_font_size": "增大字号",
+    "refreshing_progress": "正在刷新 · {{completed}} / {{total}}",
     "read": "已读",
     "expand_hint": "点开在阅读区查看全文",
     "show_more": "显示更多",
@@ -364,7 +375,9 @@
     "force_confirm_description": "这会忽略 etag / 上次更新时间，把范围内的订阅整轮重抓一遍（同主机冷却也跳过）。范围这么大，先确认一下是不是选错了。",
     "view_feed": "前往订阅 {{name}}",
     "back_to_previous": "返回上一个选中",
-    "machine_translated": "机器翻译"
+    "machine_translated": "机器翻译",
+    "refreshing": "刷新中…",
+    "force_refresh_hint": "忽略缓存，重新抓取当前范围"
   },
   "ai_settings": {
     "translate_channel": "免费翻译通道",
@@ -980,6 +993,16 @@
     "sans": "无衬线",
     "serif": "衬线",
     "mono": "等宽"
+  },
+  "appearance_mobile": {
+    "title": "移动端样式",
+    "description": "只影响手机布局；桌面端保持原样",
+    "sidebar_views": "侧栏显示视图切换",
+    "sidebar_views_hint": "手机底部已有内容入口；关闭后侧栏不再重复显示内置视图和插件视图，底部入口不受影响",
+    "entry_menu": "长按条目的菜单位置",
+    "entry_menu_hint": "两种位置都包含「所属订阅」操作",
+    "entry_menu_sheet": "底部面板",
+    "entry_menu_anchor": "长按位置浮层"
   },
   "appearance_view": {
     "title": "按视图设置",

@@ -65,6 +65,8 @@ import {
 import { NotificationBodyPreview } from "./NotificationBodyPreview";
 import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
 import { useFilterViewStore } from "@/stores/filter-view-store";
+import { MobilePullToRefresh } from "@/components/mobile/MobilePullToRefresh";
+import { MobileEntryActions } from "@/components/mobile/MobileEntryActions";
 import { ArrowUp, Check, Inbox } from "lucide-react";
 import type { Entry, Feed, Folder, ContentType } from "@/types/api";
 
@@ -112,6 +114,8 @@ interface EntryListProps {
   /** 52-4：这次跳来自哪个订阅（非 null 时列表头出「返回」） */
   feedJumpBackHref?: string | null;
   onBackFromFeedJump?: () => void;
+  /** 移动端顶栏搜索入口（App 打开 SearchModal）；不传不渲染 */
+  onSearchClick?: () => void;
 }
 
 export function EntryList({
@@ -134,6 +138,7 @@ export function EntryList({
   onSelectFeedFromEntry,
   feedJumpBackHref,
   onBackFromFeedJump,
+  onSearchClick,
 }: EntryListProps) {
   "use no memo";
 
@@ -710,6 +715,10 @@ export function EntryList({
   }, [entries.length]);
 
   // 刷新：按当前选中范围（单个源 / 文件夹内所有源 / 某个视图的所有源）
+  const [mobileActions, setMobileActions] = useState<{
+    entry: Entry;
+    point: { x: number; y: number };
+  } | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   /** 强制拉取前待确认的源数（null = 没有待确认的） */
   const [forcePending, setForcePending] = useState<number | null>(null);
@@ -1288,6 +1297,13 @@ export function EntryList({
           : "relative flex h-full flex-col",
       )}
     >
+      <MobilePullToRefresh
+        enabled={Boolean(isMobile && isActive)}
+        isRefreshing={showRefreshing}
+        onRefresh={handleRefresh}
+        progressTotal={showRefreshing ? shownTotal : 0}
+        progressCompleted={shownCompleted}
+      />
       <MobileDocumentHeader
         enabled={usesDocumentScroll}
         headerRef={headerRef}
@@ -1326,6 +1342,7 @@ export function EntryList({
           }
           onToggleSidebar={onToggleSidebar}
           sidebarVisible={sidebarVisible}
+          onSearchClick={onSearchClick}
         />
 
         {/* 强制拉取确认（范围太大时先问一句，避免误选整轮重抓） */}
@@ -1491,6 +1508,10 @@ export function EntryList({
                       social={isSocialView}
                       fetchReadable={fetchReadableEnabled}
                       autoExpandLong={expandLongByView?.[contentType] ?? false}
+                      isMobile={isMobile}
+                      onLongPress={(entry, point) =>
+                        setMobileActions({ entry, point })
+                      }
                       onSelectFeedFromEntry={onSelectFeedFromEntry}
                     />
                   )}
@@ -1512,6 +1533,10 @@ export function EntryList({
                     social={isSocialView}
                     fetchReadable={fetchReadableEnabled}
                     autoExpandLong={expandLongByView?.[contentType] ?? false}
+                    isMobile={isMobile}
+                    onLongPress={(entry, point) =>
+                      setMobileActions({ entry, point })
+                    }
                     onSelectFeedFromEntry={onSelectFeedFromEntry}
                   />
                 ))
@@ -1587,6 +1612,18 @@ export function EntryList({
           />
           );
         })()}
+
+        {mobileActions && (
+          <MobileEntryActions
+            entry={mobileActions.entry}
+            anchor={mobileActions.point}
+            open
+            onOpenChange={(next) => {
+              if (!next) setMobileActions(null);
+            }}
+            onMarkAbove={handleMarkAboveEntry}
+          />
+        )}
 
         {!usesDocumentScroll && (
           <EntryListFilterPill

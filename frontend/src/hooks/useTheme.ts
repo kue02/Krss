@@ -87,6 +87,7 @@ function emitChange() {
 function prefersDark(): boolean {
   return (
     typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
     window.matchMedia("(prefers-color-scheme: dark)").matches
   );
 }
@@ -182,6 +183,7 @@ export function useTheme() {
     applyTheme(config);
 
     // Listen for system theme changes
+    if (typeof window.matchMedia !== "function") return;
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
     const handleChange = () => {
       if (cached.mode === "system") {

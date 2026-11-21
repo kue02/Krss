@@ -1,11 +1,15 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ToggleButton } from "@heroui/react";
 import {
+  CheckCheck,
   Filter,
   GalleryHorizontalEnd,
   Images,
   LayoutGrid,
   LayoutList,
+  MoreHorizontal,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { RefreshStatus } from "@/api";
@@ -17,6 +21,7 @@ import {
   CheckCircleIcon,
   FileTextIcon,
   MenuIcon,
+  SearchIcon,
   RefreshIcon,
   RefreshSpinner,
 } from "@/components/ui/icons";
@@ -28,6 +33,10 @@ import {
 } from "@/components/ui/context-menu";
 import { dispatchScrollToTop } from "@/hooks/useScrollToTop";
 import { PluginSlot } from "@/plugins/PluginSlot";
+import {
+  MobileActionSheet,
+  MobileActionSheetItem,
+} from "@/components/mobile/MobileActionSheet";
 
 /**
  * 23-1：星标视图那颗「只看当前视图」的图标（接 20-2）。
@@ -107,6 +116,8 @@ interface EntryListHeaderProps {
    * 「没有选中条目」时自然不出现（那类项是「对选中的若干条做事」）。
    */
   selectedEntryIds?: string[];
+  /** 移动端顶栏的搜索入口；不传则不渲染搜索按钮 */
+  onSearchClick?: () => void;
 }
 
 export function EntryListHeader({
@@ -137,11 +148,252 @@ export function EntryListHeader({
   pictureLayout,
   onTogglePictureLayout,
   selectedEntryIds,
+  onSearchClick,
 }: EntryListHeaderProps) {
   const { t } = useTranslation();
+  const [moreOpen, setMoreOpen] = useState(false);
   /* 顶栏那颗档位按钮：提示文案表达「点下去会变成什么」，所以取下一档的名字 */
   const nextPictureLayoutKey =
     pictureLayout === "grid" ? "hover" : pictureLayout === "hover" ? "wall" : "grid";
+
+  if (isMobile) {
+    return (
+      <>
+        <div className="flex h-11 items-center gap-1 px-1.5">
+          {onMenuClick ? (
+            <button
+              type="button"
+              onClick={onMenuClick}
+              aria-label={t("actions.show_sidebar")}
+              className="-ml-1.5 flex size-11 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
+            >
+              <MenuIcon className="size-5" />
+            </button>
+          ) : onBackFromFeedJump ? (
+            <button
+              type="button"
+              onClick={onBackFromFeedJump}
+              aria-label={t("entry.back_to_previous")}
+              className="-ml-1.5 flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors active:bg-item-hover"
+            >
+              <BackIcon className="size-5" />
+            </button>
+          ) : null}
+
+          <div className="min-w-0 flex-1 px-0.5">
+            <div className="flex items-center gap-1.5">
+              <h1
+                className="min-w-0 truncate text-[15px] font-bold leading-5 tracking-[-0.01em] text-foreground active:opacity-60"
+                onClick={() => dispatchScrollToTop(scrollToTopScope)}
+              >
+                {title}
+              </h1>
+              {unreadCount > 0 ? (
+                <span
+                  aria-label={t("entry.unread_count", { count: unreadCount })}
+                  className="shrink-0 rounded-full bg-default/70 px-1.5 py-0.5 text-[10px] font-semibold leading-3 tabular-nums text-muted-foreground"
+                >
+                  {unreadCount > 999 ? "999+" : unreadCount}
+                </span>
+              ) : null}
+            </div>
+            {subtitle ? (
+              <p className="truncate text-[10px] leading-3 text-muted-foreground">
+                {subtitle}
+              </p>
+            ) : null}
+          </div>
+
+          {onRefresh ? (
+            <button
+              type="button"
+              onClick={() => onRefresh()}
+              disabled={isRefreshing}
+              aria-label={
+                isRefreshing ? t("entry.refreshing") : t("entry.refresh_view")
+              }
+              className="flex size-11 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover disabled:opacity-60"
+            >
+              {isRefreshing ? (
+                <RefreshSpinner
+                  remaining={Math.max(0, refreshTotal - refreshCompleted)}
+                />
+              ) : (
+                <RefreshCw className="size-5" />
+              )}
+            </button>
+          ) : null}
+          {showUnreadToggle ? (
+            <button
+              type="button"
+              onClick={onToggleUnreadOnly}
+              aria-label={
+                unreadOnly ? t("entry.show_all") : t("entry.show_unread_only")
+              }
+              className={cn(
+                "flex size-11 shrink-0 items-center justify-center rounded-full transition-colors active:bg-item-hover",
+                unreadOnly ? "text-accent" : "text-muted-foreground",
+              )}
+            >
+              {unreadOnly ? (
+                <CircleFilledIcon className="size-5" />
+              ) : (
+                <CircleOutlineIcon className="size-5" />
+              )}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={onMarkAllRead}
+            aria-label={t("entry.mark_all_read")}
+            className="flex size-11 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
+          >
+            <CheckCheck className="size-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setMoreOpen(true)}
+            aria-label={t("actions.more")}
+            className="-mr-1.5 flex size-11 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
+          >
+            <MoreHorizontal className="size-5" />
+          </button>
+        </div>
+
+        <MobileActionSheet
+          open={moreOpen}
+          onOpenChange={setMoreOpen}
+          title={title}
+        >
+          {onSearchClick ? (
+            <MobileActionSheetItem
+              icon={<SearchIcon className="size-5" />}
+              label={t("search.title")}
+              onClick={() => {
+                setMoreOpen(false);
+                onSearchClick();
+              }}
+            />
+          ) : null}
+          {onRefresh ? (
+            <MobileActionSheetItem
+              icon={
+                isRefreshing ? (
+                  <RefreshSpinner
+                    remaining={Math.max(0, refreshTotal - refreshCompleted)}
+                  />
+                ) : (
+                  <RefreshCw className="size-5" />
+                )
+              }
+              label={isRefreshing ? t("entry.refreshing") : t("entry.refresh_view")}
+              disabled={isRefreshing}
+              onClick={() => {
+                setMoreOpen(false);
+                onRefresh();
+              }}
+            />
+          ) : null}
+          {onForceRefresh ? (
+            <MobileActionSheetItem
+              icon={<RefreshCw className="size-5" />}
+              label={t("entry.force_refresh")}
+              description={t("entry.force_refresh_hint")}
+              onClick={() => {
+                setMoreOpen(false);
+                onForceRefresh();
+              }}
+            />
+          ) : null}
+          {showUnreadToggle ? (
+            <MobileActionSheetItem
+              icon={
+                unreadOnly ? (
+                  <CircleFilledIcon className="size-5" />
+                ) : (
+                  <CircleOutlineIcon className="size-5" />
+                )
+              }
+              label={
+                unreadOnly ? t("entry.show_all") : t("entry.show_unread_only")
+              }
+              selected={unreadOnly}
+              onClick={() => {
+                setMoreOpen(false);
+                onToggleUnreadOnly();
+              }}
+            />
+          ) : null}
+          {onToggleStarredViewOnly ? (
+            <MobileActionSheetItem
+              icon={<StarredViewIcon className="size-5" />}
+              label={t("sidebar.starred_view")}
+              selected={Boolean(starredViewOnly)}
+              onClick={() => {
+                setMoreOpen(false);
+                onToggleStarredViewOnly();
+              }}
+            />
+          ) : null}
+          {onToggleArticleLayout ? (
+            <MobileActionSheetItem
+              icon={
+                articleLayout === "hover" ? (
+                  <LayoutList className="size-5" />
+                ) : (
+                  <FileTextIcon className="size-5" />
+                )
+              }
+              label={
+                articleLayout === "hover"
+                  ? t("appearance_view.article_layout_list")
+                  : t("appearance_view.article_layout_hover")
+              }
+              onClick={() => {
+                setMoreOpen(false);
+                onToggleArticleLayout();
+              }}
+            />
+          ) : null}
+          {onTogglePictureLayout ? (
+            <MobileActionSheetItem
+              icon={
+                pictureLayout === "wall" ? (
+                  <GalleryHorizontalEnd className="size-5" />
+                ) : pictureLayout === "hover" ? (
+                  <Images className="size-5" />
+                ) : (
+                  <LayoutGrid className="size-5" />
+                )
+              }
+              label={t(`appearance_view.picture_layout_${nextPictureLayoutKey}`)}
+              onClick={() => {
+                setMoreOpen(false);
+                onTogglePictureLayout();
+              }}
+            />
+          ) : null}
+          <MobileActionSheetItem
+            icon={<CheckCheck className="size-5" />}
+            label={t("entry.mark_all_read")}
+            onClick={() => {
+              setMoreOpen(false);
+              onMarkAllRead();
+            }}
+          />
+          {(selectedEntryIds?.length ?? 0) > 0 ? (
+            <div className="border-t border-border/50 px-4 py-2">
+              <PluginSlot
+                surface="entry.list.toolbar"
+                variant="toolbar"
+                selection={{ entryIds: selectedEntryIds ?? [] }}
+              />
+            </div>
+          ) : null}
+        </MobileActionSheet>
+      </>
+    );
+  }
 
   return (
     <div className="flex h-14 items-center justify-between gap-4 px-4 shrink-0">

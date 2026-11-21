@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Krss 移动端 v2 · 纸页设计稿</title>
+  <style>
+    :root {
+      --paper: #e3e0db;
+      --sheet: #f3f1eb;
+      --ink: #42403b;
+      --muted: #7a7773;
+      --line: #c5c3be;
+      --accent: #d85e4b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans CJK SC", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    header {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 64px 28px 36px;
+    }
+    .eyebrow {
+      font-size: 11px;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      color: var(--accent);
+      font-weight: 700;
+    }
+    h1 {
+      margin: 12px 0 10px;
+      font-size: clamp(30px, 4vw, 46px);
+      line-height: 1.18;
+      letter-spacing: -.03em;
+      font-weight: 750;
+    }
+    .lede {
+      max-width: 680px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.75;
+    }
+    .rule { height: 1px; background: var(--line); max-width: 1120px; margin: 0 auto; opacity: .7; }
+    main { max-width: 1120px; margin: 0 auto; padding: 40px 28px 80px; }
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 18px;
+      margin-bottom: 44px;
+    }
+    .meta div { border-top: 1px solid var(--line); padding-top: 12px; }
+    .meta b { display: block; font-size: 20px; letter-spacing: -.02em; }
+    .meta span { color: var(--muted); font-size: 12px; }
+    h2 {
+      margin: 0 0 18px;
+      font-size: 15px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .principles {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 1px;
+      background: var(--line);
+      border: 1px solid var(--line);
+      margin-bottom: 52px;
+    }
+    .principles article { background: var(--sheet); padding: 22px; }
+    .principles h3 { margin: 0 0 8px; font-size: 15px; }
+    .principles p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.65; }
+    .screens {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 32px 24px;
+    }
+    figure { margin: 0; }
+    .phone {
+      position: relative;
+      border-radius: 28px;
+      padding: 6px;
+      background: #292723;
+      box-shadow: 0 22px 44px rgba(45, 42, 37, .20);
+    }
+    .phone img {
+      display: block;
+      width: 100%;
+      border-radius: 22px;
+      aspect-ratio: 390 / 844;
+      object-fit: cover;
+      background: var(--paper);
+    }
+    figcaption { padding: 12px 4px 0; }
+    figcaption b { display: block; font-size: 14px; }
+    figcaption span { color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+      background: var(--sheet);
+      font-size: 13px;
+    }
+    .table th, .table td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+    .table th { color: var(--muted); font-weight: 600; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+    footer { max-width: 1120px; margin: 0 auto; padding: 0 28px 64px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+    .tag {
+      display: inline-block;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 3px 9px;
+      font-size: 11px;
+      color: var(--muted);
+      margin: 0 6px 6px 0;
+    }
+    @media (max-width: 520px) {
+      header { padding-top: 40px; }
+      .screens { grid-template-columns: 1fr 1fr; gap: 18px 12px; }
+      .phone { border-radius: 18px; padding: 3px; }
+      .phone img { border-radius: 15px; }
+      figcaption span { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="eyebrow">Krss Mobile · Design v2 · 2026-11-21</div>
+    <h1>纸页 · Paper Rail</h1>
+    <p class="lede">
+      不再把桌面三栏塞进手机。v2 以纸面为底、以拇指区为界：顶栏只留标题与两个入口，
+      底部用四条内容轨切换文章 / 社交 / 图片 / 通知，所有阅读动作收进底部操作面板。
+    </p>
+  </header>
+  <div class="rule"></div>
+  <main>
+    <div class="meta">
+      <div><b>390 × 844</b><span>设计基准 / iPhone 14–15</span></div>
+      <div><b>44 + 56 px</b><span>顶栏 / 底栏内容高，另加安全区</span></div>
+      <div><b>≥ 44 × 44</b><span>所有可点区域下限</span></div>
+      <div><b>1 种强调色</b><span>未读 · 当前轨 · 阅读进度</span></div>
+    </div>
+
+    <h2>三条原则</h2>
+    <div class="principles">
+      <article>
+        <h3>内容先落在纸上</h3>
+        <p>列表是整宽的目录行，1px 细线分隔，不用层层卡片与阴影。缩略图 76px，标题 16/23 两行。</p>
+      </article>
+      <article>
+        <h3>一级入口都在拇指区</h3>
+        <p>内容类型常驻底栏；搜索、更多在顶栏两端。详情页的 6 颗小按钮收进一个 52px 行高的底部面板。</p>
+      </article>
+      <article>
+        <h3>只让强调色说话</h3>
+        <p>强调色只标记未读、当前内容轨与阅读进度。其余用纸、墨、灰阶，不堆玻璃与渐变。</p>
+      </article>
+    </div>
+
+    <h2>关键界面（实机截图）</h2>
+    <div class="screens">
+      <figure>
+        <div class="phone"><img src="shots/01-list.png" alt="移动端文章列表" /></div>
+        <figcaption><b>文章列表</b><span>44px 顶栏：菜单 / 标题+未读数 / 刷新 / 未读切换 / 全部已读 / 更多；底栏四轨常驻。</span></figcaption>
+      </figure>
+      <figure>
+        <div class="phone"><img src="shots/02-more.png" alt="列表更多操作面板" /></div>
+        <figcaption><b>列表更多</b><span>搜索、刷新、强制拉取、只看未读、全部标记已读，收进底部操作面板。</span></figcaption>
+      </figure>
+      <figure>
+        <div class="phone"><img src="shots/03-search.png" alt="全屏搜索" /></div>
+        <figcaption><b>全屏搜索</b><span>100dvh 搜索页，取消在右上；不再显示桌面键盘快捷键。</span></figcaption>
+      </figure>
+      <figure>
+        <div class="phone"><img src="shots/04-detail.png" alt="文章详情" /></div>
+        <figcaption><b>文章详情</b><span>顶部隐藏标题、滚动后淡入；正文 17/30，右缘目录、底部上一条/下一条，来源头像 24px。</span></figcaption>
+      </figure>
+      <figure>
+        <div class="phone"><img src="shots/05-detail-more.png" alt="详情更多操作面板" /></div>
+        <figcaption><b>详情更多</b><span>已读、AI 摘要、翻译、原站 / 阅读模式、阅读设置、打开原文，一行一个动作。</span></figcaption>
+      </figure>
+      <figure>
+        <div class="phone"><img src="shots/06-social.png" alt="社交媒体视图" /></div>
+        <figcaption><b>社交媒体</b><span>时间线式正文铺开，底栏「社交媒体」高亮当前轨。</span></figcaption>
+      </figure>
+      <figure>
+        <div class="phone"><img src="shots/07-picture.png" alt="图片视图" /></div>
+        <figcaption><b>图片</b><span>双列瀑布流；顶栏保留菜单、标题与更多（搜索在更多里）。</span></figcaption>
+      </figure>
+      <figure>
+        <div class="phone"><img src="shots/08-notification.png" alt="通知时间线" /></div>
+        <figcaption><b>通知</b><span>日期分组 + 时间轴，未读与当前轨用强调色标记。</span></figcaption>
+      </figure>
+      <figure>
+        <div class="phone"><img src="shots/09-sidebar.png" alt="侧边栏抽屉" /></div>
+        <figcaption><b>侧边栏</b><span>左侧抽屉；默认不重复内容类型切换器，保留星标、订阅树与账户入口。</span></figcaption>
+      </figure>
+      <figure>
+        <div class="phone"><img src="shots/10-settings.png" alt="设置" /></div>
+        <figcaption><b>设置</b><span>全屏设置页，顶部下拉切换分区；关闭热区 44×44。</span></figcaption>
+      </figure>
+      <figure>
+        <div class="phone"><img src="shots/11-toc.png" alt="正文目录抽屉" /></div>
+        <figcaption><b>正文目录</b><span>手机右缘 44px 热区，全高目录抽屉；点条目平滑跳转。</span></figcaption>
+      </figure>
+      <figure>
+        <div class="phone"><img src="shots/12-reading-settings.png" alt="阅读设置" /></div>
+        <figcaption><b>阅读设置</b><span>字体 / 字号 / 行距 / 主题，底部面板内实时预览。</span></figcaption>
+      </figure>
+      <figure>
+        <div class="phone"><img src="shots/13-longpress.png" alt="条目长按操作" /></div>
+        <figcaption><b>条目长按</b><span>这条 + 所属订阅两组动作；外观可切底部面板 / 触点浮层。</span></figcaption>
+      </figure>
+      <figure>
+        <div class="phone"><img src="shots/14-mobile-settings.png" alt="移动端样式设置" /></div>
+        <figcaption><b>移动端样式</b><span>侧栏是否显示视图切换；长按菜单用底部面板还是触点浮层。</span></figcaption>
+      </figure>
+      <figure>
+        <div class="phone"><img src="shots/15-anchor-longpress.png" alt="长按位置浮层" /></div>
+        <figcaption><b>长按位置浮层</b><span>选择浮层后菜单贴着触点弹出；靠近底部自动上翻，内部可滚动到删除项。</span></figcaption>
+      </figure>
+    </div>
+
+    <h2 style="margin-top:56px">尺寸表</h2>
+    <table class="table">
+      <tr><th>项目</th><th>值</th></tr>
+      <tr><td>顶栏内容高</td><td>44px + <code>env(safe-area-inset-top)</code></td></tr>
+      <tr><td>底部内容轨</td><td>56px + <code>env(safe-area-inset-bottom)</code></td></tr>
+      <tr><td>列表行内边距</td><td>16px 左右 / 14px 上下</td></tr>
+      <tr><td>列表标题 / 摘要</td><td>16 / 23 · 13.5 / 20</td></tr>
+      <tr><td>详情正文</td><td>17 / 30</td></tr>
+      <tr><td>列表缩略图</td><td>76 × 76，圆角 8px</td></tr>
+      <tr><td>操作面板行高</td><td>≥ 52px</td></tr>
+      <tr><td>最小点击区</td><td>44 × 44px</td></tr>
+    </table>
+
+    <p style="margin-top:40px">
+      <span class="tag">viewport-fit=cover</span>
+      <span class="tag">safe-area-inset</span>
+      <span class="tag">HeroUI v3</span>
+      <span class="tag">无 any</span>
+      <span class="tag">中英 i18n 同步</span>
+    </p>
+  </main>
+  <footer>
+    设计稿与截图来自 <code>mobile-redesign-v2</code> 子树实机运行（390 × 844）。规范全文见同目录 <code>DESIGN.md</code>。
+  </footer>
+</body>
+</html>
