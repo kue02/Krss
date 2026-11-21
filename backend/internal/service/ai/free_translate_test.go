@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -66,6 +67,69 @@ func TestTranslateFreeTextYoudao(t *testing.T) {
 	}
 	if got != "你好世界" {
 		t.Errorf("got %q, want 你好世界", got)
+	}
+}
+
+// google 被限流（生产代理 IP 上就是 429 反滥用页）时要回退到有道。
+func TestTranslateFreeTextFallsBackToYoudao(t *testing.T) {
+	googleServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = w.Write([]byte(`<html><body>Sorry...</body></html>`))
+	}))
+	defer googleServer.Close()
+
+	youdaoServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"errorCode":0,"translation":["你好世界"]}`))
+	}))
+	defer youdaoServer.Close()
+
+	originalGoogle, originalYoudao := googleTranslateEndpoint, youdaoTranslateEndpoint
+	googleTranslateEndpoint = googleServer.URL
+	youdaoTranslateEndpoint = youdaoServer.URL
+	defer func() {
+		googleTranslateEndpoint = originalGoogle
+		youdaoTranslateEndpoint = originalYoudao
+	}()
+
+	got, err := TranslateFreeText(context.Background(), googleServer.Client(), FreeChannelGoogle, "Hello world", "zh-CN")
+	if err != nil {
+		t.Fatalf("google 429 时应回退有道成功，得到错误 %v", err)
+	}
+	if got != "你好世界" {
+		t.Errorf("got %q, want 你好世界", got)
+	}
+}
+
+// 两个通道都失败时，错误里要同时带上两边的失败信息。
+func TestTranslateFreeTextFallbackFailureMentionsBoth(t *testing.T) {
+	googleServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer googleServer.Close()
+
+	youdaoServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"errorCode":-1,"translation":[]}`))
+	}))
+	defer youdaoServer.Close()
+
+	originalGoogle, originalYoudao := googleTranslateEndpoint, youdaoTranslateEndpoint
+	googleTranslateEndpoint = googleServer.URL
+	youdaoTranslateEndpoint = youdaoServer.URL
+	defer func() {
+		googleTranslateEndpoint = originalGoogle
+		youdaoTranslateEndpoint = originalYoudao
+	}()
+
+	_, err := TranslateFreeText(context.Background(), googleServer.Client(), FreeChannelGoogle, "Hello world", "zh-CN")
+	if err == nil {
+		t.Fatal("两个通道都失败时应当报错")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "google") || !strings.Contains(msg, "429") {
+		t.Errorf("错误里应包含 google 的失败信息，得到 %q", msg)
+	}
+	if !strings.Contains(msg, "youdao") || !strings.Contains(msg, "empty translation") {
+		t.Errorf("错误里应包含有道的失败信息，得到 %q", msg)
 	}
 }
 

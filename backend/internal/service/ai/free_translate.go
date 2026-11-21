@@ -35,6 +35,9 @@ func IsFreeTranslateChannel(channel string) bool {
 
 // TranslateFreeText 用免 key 通道翻译一段纯文本。
 // targetLang 用 BCP-47 风格（如 zh-CN / en），内部会转成各通道要的形式。
+//
+// google 是默认的免费通道，但它经代理 IP 访问时会被限流（429 反滥用页），
+// 所以 google 失败后自动回退到有道再放弃；有道作为主通道时不做反向回退。
 func TranslateFreeText(ctx context.Context, client *http.Client, channel, text, targetLang string) (string, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -44,7 +47,30 @@ func TranslateFreeText(ctx context.Context, client *http.Client, channel, text, 
 		client = http.DefaultClient
 	}
 
-	// 免费通道偶发 5xx / 空结果，重试一次再说失败
+	switch channel {
+	case FreeChannelGoogle:
+		translated, googleErr := translateWithRetry(ctx, client, FreeChannelGoogle, text, targetLang)
+		if googleErr == nil {
+			return translated, nil
+		}
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		// 回退有道：不再重试 google，换通道之间也不额外等待
+		translated, youdaoErr := translateWithRetry(ctx, client, FreeChannelYoudao, text, targetLang)
+		if youdaoErr == nil {
+			return translated, nil
+		}
+		return "", fmt.Errorf("google translate failed (%v); fallback youdao also failed (%v)", googleErr, youdaoErr)
+	case FreeChannelYoudao:
+		return translateWithRetry(ctx, client, FreeChannelYoudao, text, targetLang)
+	default:
+		return "", fmt.Errorf("unknown free translate channel: %s", channel)
+	}
+}
+
+// translateWithRetry 对单个通道最多试两次：免费通道偶发 5xx / 空结果，重试一次再说失败。
+func translateWithRetry(ctx context.Context, client *http.Client, channel, text, targetLang string) (string, error) {
 	var lastErr error
 	for attempt := 0; attempt < 2; attempt++ {
 		if attempt > 0 {
@@ -54,20 +80,25 @@ func TranslateFreeText(ctx context.Context, client *http.Client, channel, text, 
 				return "", ctx.Err()
 			}
 		}
-		var translated string
-		switch channel {
-		case FreeChannelGoogle:
-			translated, lastErr = translateViaGoogle(ctx, client, text, targetLang)
-		case FreeChannelYoudao:
-			translated, lastErr = translateViaYoudao(ctx, client, text, targetLang)
-		default:
-			return "", fmt.Errorf("unknown free translate channel: %s", channel)
-		}
-		if lastErr == nil {
+		translated, err := translateViaChannel(ctx, client, channel, text, targetLang)
+		if err == nil {
 			return translated, nil
 		}
+		lastErr = err
 	}
 	return "", lastErr
+}
+
+// translateViaChannel 按通道分发到底层实现。
+func translateViaChannel(ctx context.Context, client *http.Client, channel, text, targetLang string) (string, error) {
+	switch channel {
+	case FreeChannelGoogle:
+		return translateViaGoogle(ctx, client, text, targetLang)
+	case FreeChannelYoudao:
+		return translateViaYoudao(ctx, client, text, targetLang)
+	default:
+		return "", fmt.Errorf("unknown free translate channel: %s", channel)
+	}
 }
 
 // google：translate.googleapis.com 的 gtx 端点，返回嵌套数组，[0][*][0] 是译文片段。
