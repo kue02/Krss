@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { fetchCachedTranslations } from "@/api";
-import { translationActions } from "@/stores/translation-store";
+import { translationActions, useTranslationStore } from "@/stores/translation-store";
 import type { Entry } from "@/types/api";
 
 interface UseListSummaryStatusesOptions {
@@ -50,6 +50,30 @@ export function useListSummaryStatuses({
         try {
           const response = await fetchCachedTranslations(slice, false);
           if (!alive) return;
+          // 正文翻译状态也一并水合：正文页手动翻译完、刷新列表时没有 warm 轮询，
+          // 但卡片的 translation 已进 store，这里补上服务信息，悬浮才会显示「机器翻译 · 服务 · 提供商」。
+          if (response.statuses) {
+            const store = useTranslationStore.getState();
+            for (const [entryId, info] of Object.entries(response.statuses)) {
+              const hasContent = Boolean(store.getTranslation(entryId, targetLanguage));
+              if (info.status === "done" && !hasContent) continue;
+              const state =
+                info.status === "translating"
+                  ? "translating"
+                  : info.status === "failed"
+                    ? "failed"
+                    : "done";
+              translationActions.setStatus(entryId, targetLanguage, {
+                content: {
+                  state,
+                  error: info.error,
+                  service: info.service,
+                  provider: info.provider,
+                  model: info.model,
+                },
+              });
+            }
+          }
           const statuses = response.summaryStatuses;
           if (!statuses) continue;
           for (const [entryId, info] of Object.entries(statuses)) {

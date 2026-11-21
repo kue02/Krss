@@ -462,7 +462,13 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
      * - 摘要同理：`translation?.summary` 有值就是 done，否则看 summary 状态。
      */
     const contentStatus = translationStatus?.content;
-    const contentBadgeState = translatedBody ? "done" : contentStatus?.state ?? null;
+    // 只有真的拿到译文才显示 done；后端 status 为 done 但内容还没进 store 时不显示，
+    // 避免卡片原文却挂「机器翻译」；失败/翻译中不需要内容也能提示。
+    const contentBadgeState = translatedBody
+      ? "done"
+      : contentStatus?.state === "failed" || contentStatus?.state === "translating"
+        ? contentStatus.state
+        : null;
     const summaryStatus = translationStatus?.summary;
     const summaryBadgeState = translation?.summary
       ? "done"

@@ -515,6 +515,20 @@ func (s *aiService) WarmTranslation(ctx context.Context, entryID int64, content,
 
 	// 已经翻好了就直接说 cached，不起任务
 	if cached, err := s.translationRepo.Get(ctx, entryID, isReadability, language); err == nil && cached != nil && cached.Content != "" {
+		// 旧缓存没有状态行时，补一条 done，让列表悬浮能看到「用的哪个服务」。
+		// 已有 done+service 的不重复写，避免每次 warm 都刷库。
+		needStatus := true
+		if statuses, sErr := s.translationRepo.GetStatusBatch(ctx, []int64{entryID}, isReadability, language); sErr == nil {
+			if st, ok := statuses[entryID]; ok && st.Status == "done" && st.Service != "" {
+				needStatus = false
+			}
+		}
+		if needStatus {
+			service, provider, model := s.describeTranslateService(ctx)
+			if statusErr := s.translationRepo.UpsertStatusDetail(ctx, entryID, isReadability, language, "done", "", service, provider, model); statusErr != nil {
+				logger.Warn("ai warm translate status write failed", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", entryID, "status", "done", "error", statusErr)
+			}
+		}
 		return true, nil
 	}
 
@@ -749,6 +763,7 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 		var results []TranslateBlockResult
 		var resultsMu sync.Mutex
 		var hasError atomic.Bool
+		var fallbackSeen atomic.Bool
 
 	blockLoop:
 		for _, block := range blocks {
@@ -852,6 +867,7 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 						return
 					}
 					fallbackFromFree = true
+					fallbackSeen.Store(true)
 					logger.Warn("free translate failed, falling back to model", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", entryID, "block", b.Index, "channels", strings.Join(freeChannels, "/"), "error", freeErr)
 				}
 
@@ -936,6 +952,17 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 			// Save to cache
 			if err := s.SaveTranslation(ctx, entryID, isReadability, fullHTML.String()); err != nil {
 				logger.Warn("ai translate cache save failed", "module", "service", "action", "save", "resource", "ai", "result", "failed", "entry_id", entryID, "error", err)
+			}
+			// 记录 done 与本次实际使用的服务：正文手动翻译（流式）也走这里，
+			// 这样列表悬浮能显示「机器翻译 · Google 翻译 · Google」，不会只剩「机器翻译」。
+			service, provider, modelName := s.describeTranslateService(ctx)
+			if fallbackSeen.Load() && cfg.Provider != "" {
+				service = service + " / " + cfg.Model
+				provider = provider + " / " + cfg.Provider
+				modelName = cfg.Model
+			}
+			if statusErr := s.translationRepo.UpsertStatusDetail(ctx, entryID, isReadability, language, "done", "", service, provider, modelName); statusErr != nil {
+				logger.Warn("ai translate status write failed", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", entryID, "status", "done", "error", statusErr)
 			}
 
 		}
