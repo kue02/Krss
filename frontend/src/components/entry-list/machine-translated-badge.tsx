@@ -19,19 +19,27 @@ import { cn } from "@/lib/utils";
  */
 export type MachineTranslatedBadgeState = "translating" | "done" | "failed";
 
+/** `summary` 用「摘要」专用文案，其余（正文）用通用文案。 */
+export type MachineTranslatedBadgeVariant = "translation" | "summary";
+
 export function MachineTranslatedBadge({
   state = "done",
   error,
   className,
+  variant = "translation",
 }: {
   state?: MachineTranslatedBadgeState;
   error?: string;
   className?: string;
+  variant?: MachineTranslatedBadgeVariant;
 }) {
   const { t } = useTranslation();
+  const isSummary = variant === "summary";
 
   if (state === "translating") {
-    const label = t("entry.translating");
+    const label = t(
+      isSummary ? "entry.summary_translating" : "entry.translating",
+    );
     return (
       <span
         data-machine-translated=""
@@ -52,7 +60,9 @@ export function MachineTranslatedBadge({
   }
 
   if (state === "failed") {
-    const label = t("entry.translate_failed");
+    const label = t(
+      isSummary ? "entry.summary_translate_failed" : "entry.translate_failed",
+    );
     return (
       <span
         data-machine-translated=""

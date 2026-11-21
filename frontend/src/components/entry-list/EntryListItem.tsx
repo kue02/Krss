@@ -1036,6 +1036,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                     <MachineTranslatedBadge
                       state={summaryBadgeState}
                       error={summaryStatus?.error}
+                      variant="summary"
                       className="mt-0.5 shrink-0"
                     />
                   )}
