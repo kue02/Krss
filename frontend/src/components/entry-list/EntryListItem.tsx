@@ -350,7 +350,13 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
      *   所以不会把用户不想要的译文顶上来。
      */
     const translation = useTranslationStore((state) =>
-      targetLanguage ? state.getTranslation(entry.id, targetLanguage) : undefined,
+      targetLanguage
+        ? state.getTranslation(entry.id, targetLanguage) ??
+          // 阅读模式开时正文页把译文写到 `${language}:readability` 槽；
+          // 列表卡片默认读 `language` 槽会读不到（reviewer P2-1）。这里回退到可读槽，
+          // 保证「正文里翻完、退出列表仍能看到译文」在各种阅读模式下都成立。
+          state.getTranslation(entry.id, targetLanguage, true)
+        : undefined,
     );
     const translationStatus = useTranslationStore((state) =>
       targetLanguage ? state.getStatus?.(entry.id, targetLanguage) : undefined,
@@ -660,6 +666,16 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                     <MachineTranslatedBadge
                       state={contentBadgeState}
                       error={contentStatus?.error}
+                      className="ml-1"
+                    />
+                  )}
+                  {/* REQ3：社交视图正文展开时摘要行会隐藏（isExpanded），
+                      摘要三态标记挪到作者行，避免「摘要三态在社交视图看不到」（reviewer P3-1） */}
+                  {isExpanded && summaryBadgeState && (
+                    <MachineTranslatedBadge
+                      state={summaryBadgeState}
+                      error={summaryStatus?.error}
+                      variant="summary"
                       className="ml-1"
                     />
                   )}

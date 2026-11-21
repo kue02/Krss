@@ -193,3 +193,35 @@ func TestApplySegmentedTranslationKeepsSpacing(t *testing.T) {
 		t.Errorf("链接后的空格丢了: %q", got)
 	}
 }
+
+/**
+ * 需求2.1 残留（reviewer P2-2）：单包裹层里用 <br> 换行的形状，分隔符被通道吞掉时
+ * 会走「逐段单独翻译再按原树回填」。这里验证回填不会丢 <br>（两行不会被并成一行）。
+ */
+func TestApplySegmentedTranslationKeepsBr(t *testing.T) {
+	original := `<div>第一行<br>第二行</div>`
+	segs := SegmentTexts(original)
+	if len(segs) != 2 {
+		t.Fatalf("应抠出 2 段，实际 %d: %#v", len(segs), segs)
+	}
+	got, ok := ApplySegmentedTranslation(original, []string{"line one", "line two"})
+	if !ok {
+		t.Fatal("应成功")
+	}
+	if !strings.Contains(got, "<br") {
+		t.Errorf("<br> 换行被吞掉，两行会并成一行: %q", got)
+	}
+	if !strings.Contains(got, "line one") || !strings.Contains(got, "line two") {
+		t.Errorf("译文回填缺失: %q", got)
+	}
+}
+
+func TestStripSegmentSeparators(t *testing.T) {
+	got := StripSegmentSeparators("第一行\n[[KRSS_SEP]]\n第二行")
+	if strings.Contains(got, "[[KRSS_SEP]]") {
+		t.Errorf("字面分隔符没清掉: %q", got)
+	}
+	if !strings.Contains(got, "第一行") || !strings.Contains(got, "第二行") {
+		t.Errorf("清分隔符时把正文弄丢了: %q", got)
+	}
+}

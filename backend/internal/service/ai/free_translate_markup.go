@@ -1,8 +1,10 @@
 package ai
 
 import (
+	"context"
 	"fmt"
 	stdhtml "html"
+	"net/http"
 	"strings"
 
 	"golang.org/x/net/html"
@@ -138,6 +140,36 @@ func ApplySegmentedTranslation(blockHTML string, translated []string) (string, b
 		}
 	}
 	return b.String(), true
+}
+
+// TranslateSegmentsIndividually 逐段单独翻译再按原树回填。
+// 用于免费通道吞掉 [[KRSS_SEP]] 分隔符的退化路径：不依赖分隔符，<br>/<b>/<a> 等结构原样保留，
+// 避免「整段塞回最外层」把 <br> 折行压成一行、并在页面留下字面分隔符（需求2.1 的 <br> 残留）。
+func TranslateSegmentsIndividually(ctx context.Context, client *http.Client, channels []string, blockHTML string, segments []string, targetLang string) (string, bool) {
+	if len(segments) == 0 {
+		return "", false
+	}
+	parts := make([]string, len(segments))
+	for i, seg := range segments {
+		text := strings.TrimSpace(seg)
+		if text == "" {
+			parts[i] = ""
+			continue
+		}
+		out, err := TranslateFreeTextChannels(ctx, client, channels, text, targetLang)
+		if err != nil {
+			return "", false
+		}
+		parts[i] = strings.TrimSpace(out)
+	}
+	return ApplySegmentedTranslation(blockHTML, parts)
+}
+
+// StripSegmentSeparators 清掉译文里可能残留的分隔符（连同两侧换行），供最后兜底使用。
+func StripSegmentSeparators(s string) string {
+	s = strings.ReplaceAll(s, "\n[[KRSS_SEP]]\n", "\n")
+	s = strings.ReplaceAll(s, "[[KRSS_SEP]]", "\n")
+	return strings.TrimSpace(s)
 }
 
 // 空白切集：半角 + 全角空格（U+3000）+ 不换行空格（U+00A0）

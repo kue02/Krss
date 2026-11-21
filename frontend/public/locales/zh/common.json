@@ -369,7 +369,8 @@
     "translate_failed": "翻译失败",
     "translate_timeout": "翻译超时，请稍后重试",
     "summary_translating": "摘要翻译中…",
-    "summary_translate_failed": "摘要翻译失败"
+    "summary_translate_failed": "摘要翻译失败",
+    "summary_translated": "摘要已翻译"
   },
   "ai_settings": {
     "translate_channel": "免费翻译通道",

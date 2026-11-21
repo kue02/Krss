@@ -731,9 +731,17 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 								}
 							}
 							if html == "" {
-								// 分隔符被翻译器改写了：退化成整段包壳（标记会丢，但至少有译文）
-								logger.Warn("segmented free translate fell back to whole-block wrap", "module", "service", "action", "translate", "resource", "ai", "result", "degraded", "entry_id", entryID, "block", b.Index, "segments", len(segments))
-								html = ai.WrapFreeTranslation(b.HTML, translatedText)
+								// 分隔符被翻译器改写（吞掉/替换）时，绝不能把整段塞回最外层 ——
+								// 那会把 <br> 折行和多段结构压成一行，还会在页面留下字面 [[KRSS_SEP]]。
+								// 改为逐段单独翻译再按原树回填：不依赖分隔符，结构（含 <br>）保持原样。
+								logger.Warn("segmented free translate missing separators, retrying per segment", "module", "service", "action", "translate", "resource", "ai", "result", "degraded", "entry_id", entryID, "block", b.Index, "segments", len(segments))
+								if applied, ok := ai.TranslateSegmentsIndividually(ctx, freeClient, freeChannels, b.HTML, segments, language); ok {
+									html = applied
+								}
+							}
+							if html == "" {
+								// 最后兜底：清掉可能残留的分隔符再整段包壳（至少不留字面标记）
+								html = ai.WrapFreeTranslation(b.HTML, ai.StripSegmentSeparators(translatedText))
 							}
 						} else {
 							// 译文按原文外层标签包回去，段落结构（<p>/<h2>）不能丢

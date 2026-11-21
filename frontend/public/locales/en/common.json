@@ -371,8 +371,9 @@
     "translating": "Translating…",
     "translate_failed": "Translation failed",
     "translate_timeout": "Translation timed out, please try again",
-    "summary_translating": "Summarizing translation…",
-    "summary_translate_failed": "Summary translation failed"
+    "summary_translating": "Translating summary…",
+    "summary_translate_failed": "Summary translation failed",
+    "summary_translated": "Summary translated"
   },
   "ai_settings": {
     "translate_channel": "Free translation channels",

@@ -1085,22 +1085,34 @@ export function EntryList({
           summary: { state: "translating" },
         });
       }
-      translateArticlesBatch(articlesToTranslate, targetLanguage).finally(
-        () => {
-          // Remove entries that didn't actually get translated (cancelled, partial failure, etc.)
-          for (const article of articlesToTranslate) {
-            const cached = translationActions.get(article.id, targetLanguage);
-            if (!cached?.title && !cached?.summary) {
-              translatedEntries.current.delete(article.id);
-              translationActions.setStatus(article.id, targetLanguage, {
-                summary: { state: "failed" },
-              });
-            } else {
-              translationActions.setStatus(article.id, targetLanguage, {
-                summary: { state: "done" },
-              });
-            }
+      const settleSummaryStatus = (errorMsg?: string) => {
+        for (const article of articlesToTranslate) {
+          const cached = translationActions.get(article.id, targetLanguage);
+          if (!cached?.title && !cached?.summary) {
+            translatedEntries.current.delete(article.id);
+            translationActions.setStatus(article.id, targetLanguage, {
+              summary: { state: "failed", error: errorMsg },
+            });
+          } else {
+            translationActions.setStatus(article.id, targetLanguage, {
+              summary: { state: "done" },
+            });
           }
+        }
+      };
+      translateArticlesBatch(articlesToTranslate, targetLanguage).then(
+        () => settleSummaryStatus(),
+        (error: unknown) => {
+          // 取消（abort）不算失败：不写失败态，等新批次接管
+          if (error instanceof Error && error.name === "AbortError") return;
+          // REQ3：摘要翻译失败时把具体错误存进状态，列表悬浮可见（与正文翻译失败同口径）
+          const msg =
+            error instanceof Error
+              ? error.message
+              : typeof error === "string"
+                ? error
+                : undefined;
+          settleSummaryStatus(msg);
         },
       );
     }
