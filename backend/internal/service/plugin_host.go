@@ -783,11 +783,11 @@ func (h *PluginHost) InstallPackage(ctx context.Context, filename string, r io.R
 	// 解压到 <data>/../.plugin-upload-*，与最终目录同一文件系统，最后 rename 原子落位。
 	parent := filepath.Dir(h.dir)
 	if err := os.MkdirAll(parent, 0o755); err != nil {
-		return "", fmt.Errorf("%w：创建临时目录失败：%v", ErrPluginPackageInvalid, err)
+		return "", fmt.Errorf("创建临时目录失败：%w", err)
 	}
 	tmp, err := os.MkdirTemp(parent, ".plugin-upload-")
 	if err != nil {
-		return "", fmt.Errorf("%w：创建临时目录失败：%v", ErrPluginPackageInvalid, err)
+		return "", fmt.Errorf("创建临时目录失败：%w", err)
 	}
 	defer os.RemoveAll(tmp)
 
@@ -810,7 +810,7 @@ func (h *PluginHost) InstallPackage(ctx context.Context, filename string, r io.R
 		}
 		if zf.FileInfo().IsDir() {
 			if err := os.MkdirAll(target, 0o755); err != nil {
-				return "", fmt.Errorf("%w：创建目录失败：%v", ErrPluginPackageInvalid, err)
+				return "", fmt.Errorf("创建目录失败：%w", err)
 			}
 			continue
 		}
@@ -825,7 +825,7 @@ func (h *PluginHost) InstallPackage(ctx context.Context, filename string, r io.R
 			return "", fmt.Errorf("%w：解压后总大小超过 %d MB", ErrPluginPackageInvalid, pluginPackageMaxExpand>>20)
 		}
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-			return "", fmt.Errorf("%w：创建目录失败：%v", ErrPluginPackageInvalid, err)
+			return "", fmt.Errorf("创建目录失败：%w", err)
 		}
 		mode := zf.Mode().Perm()
 		if mode == 0 {
@@ -833,7 +833,7 @@ func (h *PluginHost) InstallPackage(ctx context.Context, filename string, r io.R
 		}
 		dst, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode)
 		if err != nil {
-			return "", fmt.Errorf("%w：写入文件失败：%v", ErrPluginPackageInvalid, err)
+			return "", fmt.Errorf("写入文件失败：%w", err)
 		}
 		src, err := zf.Open()
 		if err != nil {
@@ -847,7 +847,7 @@ func (h *PluginHost) InstallPackage(ctx context.Context, filename string, r io.R
 			return "", fmt.Errorf("%w：解压文件失败：%v", ErrPluginPackageInvalid, copyErr)
 		}
 		if closeErr != nil {
-			return "", fmt.Errorf("%w：读取包内文件失败：%v", ErrPluginPackageInvalid, closeErr)
+			return "", fmt.Errorf("读取包内文件失败：%w", closeErr)
 		}
 	}
 
@@ -918,7 +918,7 @@ func (h *PluginHost) InstallPackage(ctx context.Context, filename string, r io.R
 	if _, err := os.Stat(targetDir); err == nil {
 		return "", fmt.Errorf("%w：%s 已存在，请先卸载旧版本", ErrPluginPackageExists, manifest.ID)
 	} else if !os.IsNotExist(err) {
-		return "", fmt.Errorf("%w：检查目标目录失败：%v", ErrPluginPackageInvalid, err)
+		return "", fmt.Errorf("检查目标目录失败：%w", err)
 	}
 	if err := os.MkdirAll(h.dir, 0o755); err != nil {
 		return "", fmt.Errorf("创建插件目录失败：%w", err)

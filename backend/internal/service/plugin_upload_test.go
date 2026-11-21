@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -117,7 +118,7 @@ func TestInstallPackage_RejectsDuplicateAndBuiltinID(t *testing.T) {
 func TestInstallPackage_RejectsMissingEntrypoint(t *testing.T) {
 	svc, _ := newUploadTestService(t, t.TempDir())
 	payload := buildPluginZip(t, map[string]string{
-		"plugin.json": `{"id":"noexe","name":"缺入口","transport":"http","entrypoint":"./missing"}`,
+		"plugin.json": `{"id":"noexe","name":"缺入口","version":"0.1.0","transport":"http","entrypoint":"./missing"}`,
 	})
 	_, err := svc.(packageInstaller).InstallPackage(context.Background(), "noexe.zip", bytes.NewReader(payload), int64(len(payload)))
 	require.ErrorIs(t, err, service.ErrPluginPackageInvalid)
@@ -168,4 +169,65 @@ func TestInstallPackage_SkipsFinderMetadataAndSetsExecutable(t *testing.T) {
 	info, err := os.Stat(filepath.Join(pluginsDir, "pkg", "pkg"))
 	require.NoError(t, err)
 	require.NotZero(t, info.Mode().Perm()&0o111, "上传的入口必须补上可执行位")
+}
+
+func TestInstallPackage_RejectsSymlinkAndAbsolutePaths(t *testing.T) {
+	svc, _ := newUploadTestService(t, t.TempDir())
+	build := func(add func(*zip.Writer)) []byte {
+		var buf bytes.Buffer
+		zw := zip.NewWriter(&buf)
+		w, err := zw.Create("plugin.json")
+		require.NoError(t, err)
+		_, err = w.Write([]byte(`{"id":"unsafe","name":"unsafe","version":"0.1.0","transport":"http","entrypoint":"./unsafe"}`))
+		require.NoError(t, err)
+		w, err = zw.Create("unsafe")
+		require.NoError(t, err)
+		_, err = w.Write([]byte("#!/bin/sh\n"))
+		require.NoError(t, err)
+		add(zw)
+		require.NoError(t, zw.Close())
+		return buf.Bytes()
+	}
+
+	symlinkPayload := build(func(zw *zip.Writer) {
+		h := &zip.FileHeader{Name: "link", Method: zip.Store}
+		h.SetMode(os.ModeSymlink | 0o777)
+		w, err := zw.CreateHeader(h)
+		require.NoError(t, err)
+		_, err = w.Write([]byte("/etc/passwd"))
+		require.NoError(t, err)
+	})
+	_, err := svc.(packageInstaller).InstallPackage(context.Background(), "symlink.zip", bytes.NewReader(symlinkPayload), int64(len(symlinkPayload)))
+	require.ErrorIs(t, err, service.ErrPluginPackageInvalid)
+
+	absPayload := build(func(zw *zip.Writer) {
+		w, err := zw.Create("/absolute.txt")
+		require.NoError(t, err)
+		_, err = w.Write([]byte("x"))
+		require.NoError(t, err)
+	})
+	_, err = svc.(packageInstaller).InstallPackage(context.Background(), "abs.zip", bytes.NewReader(absPayload), int64(len(absPayload)))
+	require.ErrorIs(t, err, service.ErrPluginPackageInvalid)
+}
+
+func TestInstallPackage_RejectsOversizedPackage(t *testing.T) {
+	svc, _ := newUploadTestService(t, t.TempDir())
+	_, err := svc.(packageInstaller).InstallPackage(context.Background(), "huge.zip", bytes.NewReader([]byte{0}), (64<<20)+1)
+	require.ErrorIs(t, err, service.ErrPluginPackageInvalid)
+}
+
+func TestInstallPackage_RejectsTooManyFiles(t *testing.T) {
+	svc, _ := newUploadTestService(t, t.TempDir())
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for i := 0; i < 2001; i++ {
+		w, err := zw.Create(fmt.Sprintf("f/%04d.txt", i))
+		require.NoError(t, err)
+		_, err = w.Write([]byte("x"))
+		require.NoError(t, err)
+	}
+	require.NoError(t, zw.Close())
+	payload := buf.Bytes()
+	_, err := svc.(packageInstaller).InstallPackage(context.Background(), "many.zip", bytes.NewReader(payload), int64(len(payload)))
+	require.ErrorIs(t, err, service.ErrPluginPackageInvalid)
 }
