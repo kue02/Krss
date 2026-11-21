@@ -86,7 +86,6 @@ export function MobileEntryActions({
     [feed, feedMenu.folders],
   );
 
-
   if (!entry || !readAction) return null;
 
   const close = () => {
