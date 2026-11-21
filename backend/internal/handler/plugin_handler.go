@@ -2,7 +2,9 @@
 package handler
 
 import (
+	"context"
 	"errors"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/url"
@@ -42,6 +44,7 @@ func (h *PluginHandler) RegisterRoutes(g *echo.Group) {
 	// 固定段必须排在 /plugins/:id 之前（照 filter_handler.go 的 /filters/parse 先例；
 	// echo 虽以静态优先，固定段靠前是本项目的明规则）
 	g.POST("/plugins/rescan", h.Rescan)
+	g.POST("/plugins/upload", h.UploadPlugin)
 	g.GET("/plugins", h.List)
 	// 清单里的固定段：必须在 /plugins/:id 之前注册
 	g.GET("/plugins/contributions", h.ListContributions)
@@ -354,6 +357,45 @@ func (h *PluginHandler) Rescan(c echo.Context) error {
 		return writeServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, pluginCatalogResponse{Plugins: toCatalogItems(items)})
+}
+
+// UploadPlugin godoc
+// @Summary 上传并安装一个 zip 插件包
+// @Description 包根目录或唯一顶层目录内需有 plugin.json；安装后插件默认停用，需在设置页手动启用。
+// @Description 只支持外部插件（transport=http），内置插件 id 不可覆盖；同名插件已安装时返回 409。
+// @Tags plugins
+// @Accept multipart/form-data
+// @Produce json
+// @Param file formData file true "插件 zip 包"
+// @Success 201 {object} pluginCatalogResponse
+// @Failure 400 {object} errorResponse "插件包不合法"
+// @Failure 409 {object} errorResponse "插件已存在"
+// @Router /api/plugins/upload [post]
+func (h *PluginHandler) UploadPlugin(c echo.Context) error {
+	type packageInstaller interface {
+		InstallPackage(ctx context.Context, filename string, r io.ReaderAt, size int64) ([]plugin.CatalogItem, error)
+	}
+	installer, ok := h.service.(packageInstaller)
+	if !ok {
+		return c.JSON(http.StatusNotImplemented, errorResponse{Error: "当前部署不支持插件包上传"})
+	}
+	// 先卡请求体大小（64MB 包 + multipart 头开销），避免恶意大包把内存/磁盘打满。
+	c.Request().Body = http.MaxBytesReader(c.Response(), c.Request().Body, 66<<20)
+	fh, err := c.FormFile("file")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "请选择一个 .zip 插件包（表单字段名 file）"})
+	}
+	f, err := fh.Open()
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "读取上传文件失败"})
+	}
+	defer f.Close()
+	items, err := installer.InstallPackage(c.Request().Context(), fh.Filename, f, fh.Size)
+	if err != nil {
+		logger.Error("plugin upload failed", "module", "handler", "action", "upload", "resource", "plugin", "result", "failed", "filename", fh.Filename, "error", err)
+		return writeServiceError(c, err)
+	}
+	return c.JSON(http.StatusCreated, pluginCatalogResponse{Plugins: toCatalogItems(items)})
 }
 
 // pluginDataValueResponse 单键出参：键 + 不透明值（插件自己的 JSON 字符串，本体不动）。

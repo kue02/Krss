@@ -631,6 +631,27 @@ func runMigrations(db *sql.DB) error {
 		return err
 	}
 
+	// Migration 35: 删除「Demo 插件（样板）」的内置记录（56-36）。
+	// Demo 已从内置插件清单移除；老实例库里可能还留着它的 plugins 行、设置与数据，
+	// 不清掉设置页会挂一张点不动的空卡片。只删 id='demo'，外部插件同名也按 Demo 处理。
+	if err := migrateRemoveDemoPlugin(db); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// migrateRemoveDemoPlugin 清掉 Demo 样板插件的残留（迁移 35）。幂等：删不到就是已经干净。
+func migrateRemoveDemoPlugin(db *sql.DB) error {
+	for _, stmt := range []string{
+		`DELETE FROM plugin_data WHERE plugin_id = 'demo'`,
+		`DELETE FROM settings WHERE key LIKE 'plugin.demo.%'`,
+		`DELETE FROM plugins WHERE id = 'demo'`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			return fmt.Errorf("remove demo plugin residue: %w", err)
+		}
+	}
 	return nil
 }
 

@@ -59,15 +59,15 @@ func TestMigrate_PluginDataIdempotent(t *testing.T) {
 	t.Cleanup(func() { conn.Close() })
 
 	_, err = conn.Exec(`INSERT INTO plugin_data (plugin_id, collection, key, value, updated_at)
-		VALUES ('demo', 'kv', 'hello', '"world"', 1700000000)`)
+		VALUES ('sample', 'kv', 'hello', '"world"', 1700000000)`)
 	require.NoError(t, err)
 
-	// db.Open 已经跑过一次全量迁移；再跑一次 ⇒ 34 重跑。
+	// db.Open 已经跑过一次全量迁移；再跑一次 ⇒ 34/35 重跑（35 只清 demo，不许误伤别的插件）。
 	require.NoError(t, db.Migrate(conn))
 
 	var value string
 	require.NoError(t, conn.QueryRow(
-		`SELECT value FROM plugin_data WHERE plugin_id = 'demo' AND collection = 'kv' AND key = 'hello'`,
+		`SELECT value FROM plugin_data WHERE plugin_id = 'sample' AND collection = 'kv' AND key = 'hello'`,
 	).Scan(&value))
 	require.Equal(t, `"world"`, value, "重跑迁移不许清数据")
 }
@@ -118,4 +118,39 @@ func TestMigrate_PluginDataCompositeKey(t *testing.T) {
 
 	require.NoError(t, conn.QueryRow(`SELECT COUNT(*) FROM plugin_data`).Scan(&count))
 	require.Equal(t, 3, count)
+}
+
+// TestMigrate_RemovesDemoPluginResidue 迁移 35：Demo 样板插件从内置清单移除后，
+// 老实例库里的 plugins 行 / plugin.demo.* 设置 / plugin_data 都要清干净；
+// 别的插件（含名字里带 demo 的）一个字节不碰。
+func TestMigrate_RemovesDemoPluginResidue(t *testing.T) {
+	conn, err := db.Open(":memory:")
+	require.NoError(t, err)
+	t.Cleanup(func() { conn.Close() })
+
+	now := "2026-11-21T00:00:00Z"
+	_, err = conn.Exec(`INSERT INTO plugins (id, enabled, installed_at, updated_at) VALUES
+		('demo', 0, ?, ?), ('demolite', 1, ?, ?)`, now, now, now, now)
+	require.NoError(t, err)
+	_, err = conn.Exec(`INSERT INTO settings (key, value, updated_at) VALUES
+		('plugin.demo.note', '"x"', ?), ('plugin.demolite.note', '"keep"', ?)`, now, now)
+	require.NoError(t, err)
+	_, err = conn.Exec(`INSERT INTO plugin_data (plugin_id, collection, key, value, updated_at) VALUES
+		('demo', 'kv', 'k', '"x"', 1700000000), ('demolite', 'kv', 'k', '"keep"', 1700000000)`)
+	require.NoError(t, err)
+
+	require.NoError(t, db.Migrate(conn))
+
+	var count int
+	require.NoError(t, conn.QueryRow(`SELECT COUNT(*) FROM plugins WHERE id = 'demo'`).Scan(&count))
+	require.Zero(t, count, "demo 的 plugins 行要删掉")
+	require.NoError(t, conn.QueryRow(`SELECT COUNT(*) FROM settings WHERE key = 'plugin.demo.note'`).Scan(&count))
+	require.Zero(t, count, "plugin.demo.* 设置要删掉")
+	require.NoError(t, conn.QueryRow(`SELECT COUNT(*) FROM plugin_data WHERE plugin_id = 'demo'`).Scan(&count))
+	require.Zero(t, count, "demo 的插件数据要删掉")
+
+	require.NoError(t, conn.QueryRow(`SELECT COUNT(*) FROM plugins WHERE id = 'demolite'`).Scan(&count))
+	require.Equal(t, 1, count, "名字里带 demo 的别的插件不许误伤")
+	require.NoError(t, conn.QueryRow(`SELECT COUNT(*) FROM settings WHERE key = 'plugin.demolite.note'`).Scan(&count))
+	require.Equal(t, 1, count)
 }

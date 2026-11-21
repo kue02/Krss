@@ -61,6 +61,21 @@ export function uninstallPlugin(id: string): Promise<PluginMeta[]> {
   ).then(normalizeList);
 }
 
+/**
+ * 上传并安装一个 zip 插件包（设置页「添加插件」）。
+ *
+ * 表单字段名固定 `file`；与其它清单接口一样回 `{plugins}`，页面直接 setState。
+ * 安装后新插件默认停用，需要用户再手动启用（后端安全策略，不在前端绕过）。
+ */
+export function uploadPlugin(file: File): Promise<PluginMeta[]> {
+  const form = new FormData();
+  form.append("file", file);
+  return request<{ plugins: PluginMeta[] }>("/api/plugins/upload", {
+    method: "POST",
+    body: form,
+  }).then(normalizeList);
+}
+
 /** 读插件设置（secret 字段是掩码，不是明文） */
 export function fetchPluginSettings(
   id: string,
