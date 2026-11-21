@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Chip } from "@heroui/react";
-import { fetchPlugins, rescanPlugins, setPluginEnabled } from "@/plugins/api";
+import { AlertDialog, Button, Chip } from "@heroui/react";
+import {
+  fetchPlugins,
+  rescanPlugins,
+  setPluginEnabled,
+  uninstallPlugin,
+} from "@/plugins/api";
 import type { PluginMeta } from "@/plugins/types";
 import { PLUGIN_SETTINGS_SECTIONS } from "@/plugins/registry";
 import { PLUGIN_CONTRIBUTIONS_QUERY_KEY } from "@/plugins/useContributions";
@@ -24,6 +29,10 @@ export function PluginsSettings() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rescanning, setRescanning] = useState(false);
+  // 卸载二次确认：点「卸载」先落到这里，确认后才真调 DELETE
+  const [pendingUninstall, setPendingUninstall] = useState<PluginMeta | null>(
+    null,
+  );
 
   useEffect(() => {
     let alive = true;
@@ -79,6 +88,31 @@ export function PluginsSettings() {
     }
   }, []);
 
+  // 确认卸载：DELETE 回整份清单，页面直接用它刷新；贡献表 / 视图清单跟着失效。
+  const confirmUninstall = useCallback(async () => {
+    if (!pendingUninstall) return;
+    const plugin = pendingUninstall;
+    setBusyId(plugin.id);
+    setError(null);
+    try {
+      setPlugins(await uninstallPlugin(plugin.id));
+      // 插件卸掉后它的界面贡献与视图都要从各挂点消失 —— 与启停同一套失效口径。
+      void queryClient.invalidateQueries({
+        queryKey: PLUGIN_CONTRIBUTIONS_QUERY_KEY,
+      });
+      void queryClient.invalidateQueries({ queryKey: PLUGIN_VIEWS_QUERY_KEY });
+      setPendingUninstall(null);
+    } catch (e: unknown) {
+      setError(
+        t("plugins.uninstall_failed", {
+          reason: e instanceof Error ? e.message : String(e),
+        }),
+      );
+    } finally {
+      setBusyId(null);
+    }
+  }, [pendingUninstall, t]);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-end">
@@ -95,7 +129,7 @@ export function PluginsSettings() {
 
       <p className="text-xs text-muted-foreground">{t("plugins.install_hint")}</p>
 
-      {error && (
+      {error && pendingUninstall === null && (
         <p role="alert" className="px-1 text-xs text-destructive">
           {error}
         </p>
@@ -159,16 +193,33 @@ export function PluginsSettings() {
                     )}
                   </div>
 
-                  <HeroSwitch
-                    aria-label={plugin.name}
-                    isSelected={plugin.enabled}
-                    isDisabled={busyId === plugin.id}
-                    onChange={(checked: boolean) => void toggle(plugin, checked)}
-                  >
-                    {plugin.enabled
-                      ? t("plugins.enabled")
-                      : t("plugins.disabled")}
-                  </HeroSwitch>
+                  <div className="flex shrink-0 flex-col items-end gap-1.5">
+                    <HeroSwitch
+                      aria-label={plugin.name}
+                      isSelected={plugin.enabled}
+                      isDisabled={busyId === plugin.id}
+                      onChange={(checked: boolean) => void toggle(plugin, checked)}
+                    >
+                      {plugin.enabled
+                        ? t("plugins.enabled")
+                        : t("plugins.disabled")}
+                    </HeroSwitch>
+
+                    {/* 只有外部插件能卸载：内置插件编译进二进制，不给入口 */}
+                    {plugin.transport === "http" && (
+                      <Button
+                        size="sm"
+                        variant="danger-soft"
+                        isDisabled={busyId === plugin.id}
+                        onPress={() => {
+                          setError(null);
+                          setPendingUninstall(plugin);
+                        }}
+                      >
+                        {t("plugins.uninstall")}
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
                 {plugin.enabled && Section && (
@@ -181,6 +232,59 @@ export function PluginsSettings() {
           })}
         </div>
       )}
+
+      {/* 卸载确认（照 MCPServersSection / DataControl 那处 AlertDialog 用法） */}
+      <AlertDialog>
+        <Button className="hidden" aria-hidden />
+        <AlertDialog.Backdrop
+          isOpen={pendingUninstall !== null}
+          onOpenChange={(open) => {
+            if (!open) setPendingUninstall(null);
+          }}
+        >
+          <AlertDialog.Container>
+            <AlertDialog.Dialog className="max-w-lg">
+              <AlertDialog.Header>
+                <AlertDialog.Heading>
+                  {t("plugins.uninstall_confirm_title")}
+                </AlertDialog.Heading>
+              </AlertDialog.Header>
+              <AlertDialog.Body>
+                <div className="text-sm text-muted-foreground">
+                  {t("plugins.uninstall_confirm_body", {
+                    name: pendingUninstall?.name ?? "",
+                  })}
+                </div>
+                {error && (
+                  <div className="mt-2 break-all rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                    {error}
+                  </div>
+                )}
+              </AlertDialog.Body>
+              <AlertDialog.Footer>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onPress={() => setPendingUninstall(null)}
+                >
+                  {t("actions.cancel")}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  isDisabled={
+                    pendingUninstall !== null &&
+                    busyId === pendingUninstall.id
+                  }
+                  onPress={() => void confirmUninstall()}
+                >
+                  {t("plugins.uninstall_confirm")}
+                </Button>
+              </AlertDialog.Footer>
+            </AlertDialog.Dialog>
+          </AlertDialog.Container>
+        </AlertDialog.Backdrop>
+      </AlertDialog>
     </div>
   );
 }

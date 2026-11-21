@@ -1047,6 +1047,11 @@
     "test_action": "Send test",
     "test_ok": "Test succeeded",
     "test_failed": "Test failed",
+    "uninstall": "Uninstall",
+    "uninstall_confirm_title": "Uninstall plugin",
+    "uninstall_confirm_body": "Uninstall “{{name}}”? The plugin folder will be archived and its settings and data will be cleared.",
+    "uninstall_confirm": "Uninstall",
+    "uninstall_failed": "Uninstall failed: {{reason}}",
     "bark": {
       "label": "Push to phone (Bark)",
       "description": "Used when a rule has no address of its own.",

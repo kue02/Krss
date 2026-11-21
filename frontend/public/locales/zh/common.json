@@ -1044,6 +1044,11 @@
     "test_action": "发送测试",
     "test_ok": "测试成功",
     "test_failed": "测试失败",
+    "uninstall": "卸载",
+    "uninstall_confirm_title": "卸载插件",
+    "uninstall_confirm_body": "确定卸载「{{name}}」？插件目录会被归档，插件的设置与数据会一并清除。",
+    "uninstall_confirm": "确认卸载",
+    "uninstall_failed": "卸载失败：{{reason}}",
     "bark": {
       "label": "推送到手机（Bark）",
       "description": "规则没填地址时用这个。",
