@@ -65,7 +65,7 @@ func TestEntryDecorations_HTTP(t *testing.T) {
 
 	rec := doJSON(e, http.MethodGet, "/api/entries/42/decorations", "")
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	require.JSONEq(t, `{"decorations":[{"plugin":"deco-demo","id":"hl","start":0,"end":2,"style":"highlight","color":"#ffcc00"}]}`, rec.Body.String())
+	require.JSONEq(t, `{"decorations":[{"plugin":"deco-demo","id":"hl","start":0,"end":2,"style":"highlight","color":"#ffcc00","data":{"text":"现价"}}]}`, rec.Body.String())
 
 	// 停用插件后同一条路由回空数组（不是 null）—— 阅读器直接遍历，不用判空。
 	require.True(t, registry.SetEnabled("deco-demo", false))
