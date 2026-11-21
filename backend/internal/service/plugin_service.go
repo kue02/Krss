@@ -228,6 +228,10 @@ func (s *pluginService) SetEnabled(ctx context.Context, id string, enabled bool)
 //
 // 顺序：归档目录（停进程 + 改名，可恢复）→ 清插件数据 → 清插件设置 → 删 plugins 行 → 回最新清单。
 // 每一步都幂等/可重试；中途失败就停在那里报错，不吞掉（残留会留在日志里可查）。
+//
+// 重试语义：①归档成功后注册表已摘、宿主已不再认领该 id；若②③④任一步失败，用户重试时
+// inRegistry/external 都会是 false。此时只要 plugins 行还在（删行是最后一步），就继续把残留
+// 清理完，而不是回 404 让残留永久无人可达。
 func (s *pluginService) Uninstall(ctx context.Context, id string) ([]plugin.CatalogItem, error) {
 	if err := s.ensureBuiltin(ctx); err != nil {
 		return nil, err
@@ -240,7 +244,14 @@ func (s *pluginService) Uninstall(ctx context.Context, id string) ([]plugin.Cata
 		return nil, ErrPluginBuiltinCannotUninstall
 	}
 	if !inRegistry && !external {
-		return nil, ErrPluginNotFound
+		// 可能是上次归档后 DB 清理中途失败：plugins 行仍在 ⇒ 可继续幂等清理。
+		hasRow, err := s.pluginRowExists(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if !hasRow {
+			return nil, ErrPluginNotFound
+		}
 	}
 	// ① 归档目录（停进程 + 改名）：改名后 <id> 消失，Ensure 不会立刻重新扫到。
 	if s.host != nil {
@@ -263,6 +274,20 @@ func (s *pluginService) Uninstall(ctx context.Context, id string) ([]plugin.Cata
 		return nil, err
 	}
 	return s.Catalog(ctx)
+}
+
+// pluginRowExists 插件表里是否还有这个 id 的行（卸载失败后判断能否继续幂等清理）。
+func (s *pluginService) pluginRowExists(ctx context.Context, id string) (bool, error) {
+	states, err := s.plugins.List(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, st := range states {
+		if st.ID == id {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // settingsPrefix 插件设置键前缀（与 plugin.Settings 同一约定）。

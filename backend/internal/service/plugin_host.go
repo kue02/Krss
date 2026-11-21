@@ -17,6 +17,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -449,12 +450,7 @@ func (h *PluginHost) startLocked(ctx context.Context, manifest pluginManifest) e
 		err = h.registerLocked(p)
 	}
 	if err != nil {
-		p.lastError = err.Error()
-		h.procs[manifest.ID] = p
-		h.registry.Unregister(manifest.ID)
-		// 起不来也交给看护：按退避重试，连崩到上限才判死。
-		go h.supervise(p, err)
-		return err
+		return h.failStartLocked(p, manifest.ID, err)
 	}
 	p.lastError = ""
 	p.ready = true
@@ -464,6 +460,22 @@ func (h *PluginHost) startLocked(ctx context.Context, manifest pluginManifest) e
 		"plugin_id", manifest.ID, "pid", p.pid, "transport", plugin.TransportHTTP, "socket", p.socketPath)
 	go h.supervise(p, nil)
 	return nil
+}
+
+// failStartLocked 统一处理「spawn / register 失败」：记录 lastError、摘注册表，再决定是否看护。
+// 协议版本不兼容属于永久错误（重试也必然失败），直接收走进程、留占位壳，不进看护循环（审查 MEDIUM-3）。
+func (h *PluginHost) failStartLocked(p *externalPluginProcess, id string, err error) error {
+	p.lastError = err.Error()
+	h.procs[id] = p
+	h.registry.Unregister(id)
+	if errors.Is(err, ErrPluginProtocolIncompatible) {
+		h.killLocked(p)
+		h.registerPlaceholderLocked(p)
+		return err
+	}
+	// 其余起不来的情况交给看护：按退避重试，连崩到上限才判死。
+	go h.supervise(p, err)
+	return err
 }
 
 // pluginLogMaxBytes plugin.log 的轮转阈值：超过它就把旧文件改名为 plugin.log.1。
@@ -589,7 +601,7 @@ func (h *PluginHost) registerLocked(p *externalPluginProcess) error {
 	}
 	// 协议版本校验：插件自报的 apiVersion 必须与宿主一致；缺省 0（旧 SDK）也按不兼容处理。
 	if got := pluginAPIVersion(remote); got != plugin.ProtocolVersion {
-		return fmt.Errorf("插件协议版本不兼容：需要 v%d，插件报 v%d（插件需用新 SDK 重新编译）", plugin.ProtocolVersion, got)
+		return fmt.Errorf("%w：需要 v%d，插件报 v%d（插件需用新 SDK 重新编译）", ErrPluginProtocolIncompatible, plugin.ProtocolVersion, got)
 	}
 	// 56-31：外部插件的界面贡献 / 视图 / 权限只认 manifest —— 插件进程自报的不算。
 	remote = plugin.AttachManifest(remote, p.manifest.Contributions, p.manifest.Views, p.manifest.Permissions)

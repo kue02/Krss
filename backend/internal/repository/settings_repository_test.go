@@ -136,3 +136,28 @@ func TestSettingsRepository_DeleteByPrefix(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, setting)
 }
+
+// 审查 LOW-7：前缀里的 "_" 必须按字面量处理，不能当 LIKE 通配符，否则会误删别的插件设置。
+func TestSettingsRepository_PrefixTreatsWildcardsLiterally(t *testing.T) {
+	t.Parallel()
+	db := testutil.NewTestDB(t)
+	repo := repository.NewSettingsRepository(db)
+	ctx := context.Background()
+
+	testutil.SeedSetting(t, db, "plugin.my_plugin.url", "https://a.example")
+	testutil.SeedSetting(t, db, "plugin.my_plugin.token", "secret")
+	testutil.SeedSetting(t, db, "plugin.myXplugin.url", "https://b.example")
+	testutil.SeedSetting(t, db, "other.key", "value")
+
+	got, err := repo.GetByPrefix(ctx, "plugin.my_plugin.")
+	require.NoError(t, err)
+	require.Len(t, got, 2, "只应命中 my_plugin，不能把 myXplugin 也带上")
+
+	count, err := repo.DeleteByPrefix(ctx, "plugin.my_plugin.")
+	require.NoError(t, err)
+	require.Equal(t, int64(2), count)
+
+	other, err := repo.Get(ctx, "plugin.myXplugin.url")
+	require.NoError(t, err)
+	require.NotNil(t, other, "相似前缀的其他插件设置不许被误删")
+}

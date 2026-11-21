@@ -112,3 +112,55 @@ func hasCatalogItem(items []plugin.CatalogItem, id string) bool {
 	}
 	return false
 }
+
+// TestUninstall_RetryAfterArchiveSucceeds 审查 MEDIUM-2：归档成功但后续 DB 清理失败后，
+// 重试时注册表/宿主都已不认这个 id，只要 plugins 行还在，就必须继续幂等清理而不是回 404。
+func TestUninstall_RetryAfterArchiveSucceeds(t *testing.T) {
+	db := testutil.NewTestDB(t)
+	pluginRepo := repository.NewPluginRepository(db)
+	dataRepo := repository.NewPluginDataRepository(db)
+	settingsRepo := repository.NewSettingsRepository(db)
+	reg := plugin.NewRegistry()
+
+	pluginsDir := t.TempDir()
+	id := "ext-retry"
+	dir := filepath.Join(pluginsDir, id)
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	manifest := `{"id":"ext-retry","name":"外部插件","version":"1.0.0","transport":"http","entrypoint":"./ext-retry","autostart":false}`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "plugin.json"), []byte(manifest), 0o644))
+
+	host := service.NewPluginHost(reg, pluginRepo, pluginsDir)
+	t.Cleanup(host.Stop)
+	svc := service.NewPluginService(reg, pluginRepo, settingsRepo,
+		service.WithPluginHost(host), service.WithPluginDataRepo(dataRepo))
+	ctx := context.Background()
+
+	items, err := svc.Catalog(ctx)
+	require.NoError(t, err)
+	require.True(t, hasCatalogItem(items, id))
+
+	require.NoError(t, dataRepo.Put(ctx, id, "kv", "k", `"v"`))
+	require.NoError(t, settingsRepo.Set(ctx, "plugin.ext-retry.url", "https://example.com"))
+
+	// 模拟第一次卸载：目录已归档、注册表已摘，但清 DB 失败（这里直接先做归档）。
+	_, err = host.Archive(id)
+	require.NoError(t, err)
+	require.False(t, host.Has(id), "归档后宿主不再认领")
+
+	// 重试：注册表/宿主都没有它，但 plugins 行还在 ⇒ 继续清理，不能 404。
+	items, err = svc.Uninstall(ctx, id)
+	require.NoError(t, err)
+	require.False(t, hasCatalogItem(items, id))
+
+	count, err := dataRepo.Count(ctx, id)
+	require.NoError(t, err)
+	require.Zero(t, count)
+	left, err := settingsRepo.GetByPrefix(ctx, "plugin.ext-retry.")
+	require.NoError(t, err)
+	require.Empty(t, left)
+	states, err := pluginRepo.List(ctx)
+	require.NoError(t, err)
+	for _, st := range states {
+		require.NotEqual(t, id, st.ID)
+	}
+}

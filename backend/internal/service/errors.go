@@ -38,6 +38,9 @@ var (
 	ErrPluginUIUnavailable = errors.New("plugin ui assets unavailable")
 	// ErrPluginBuiltinCannotUninstall 内置插件不可卸载（只能停用）—— 卸载走 409。
 	ErrPluginBuiltinCannotUninstall = errors.New("内置插件不可卸载，只能停用")
+	// ErrPluginProtocolIncompatible 外部插件自报的协议版本与宿主不一致 —— 永久错误，不重试。
+	// 单独一个哨兵让 startLocked 能 fail-fast，而不是当成普通崩溃看护 5 轮。
+	ErrPluginProtocolIncompatible = errors.New("插件协议版本不兼容")
 )
 
 // FeedConflictError is returned when a feed URL already exists.

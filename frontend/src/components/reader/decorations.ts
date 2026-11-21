@@ -128,6 +128,9 @@ function reanchor(root: HTMLElement, span: DecorationSpan): DecorationSpan {
   const needle = Array.from(anchor);
   if (needle.length === 0) return span;
 
+  const isSpace = (char: string | undefined) =>
+    char !== undefined && /\s/u.test(char);
+
   const matchesAt = (at: number) =>
     at >= 0 &&
     at + needle.length <= haystack.length &&
@@ -136,15 +139,41 @@ function reanchor(root: HTMLElement, span: DecorationSpan): DecorationSpan {
   // 原本就对得上：不改（保持后端口径优先）
   if (matchesAt(span.start)) return span;
 
-  let best = -1;
-  for (let at = 0; at + needle.length <= haystack.length; at += 1) {
-    if (!matchesAt(at)) continue;
-    if (best < 0 || Math.abs(at - span.start) < Math.abs(best - span.start)) {
-      best = at;
+  // 后端的纯文本基准 `htmlToPlain` 会在块级标签处补一个空格（再压成单空格），
+  // 前端的 `textContent` 是文本节点直接拼接、跨块处没有空格。因此 data.text 可能带
+  // 前端并不存在的空白（尤其是跨 <p> 时）。这里按「忽略空白」比较，并把命中区间映射回
+  // haystack 的真实下标，避免跨块时退回后端 offset 而整体错位。
+  const needleChars = needle.filter((char) => !isSpace(char));
+  if (needleChars.length === 0) return span;
+
+  const matchIgnoringSpace = (
+    at: number,
+  ): { start: number; end: number } | null => {
+    if (at < 0 || at >= haystack.length || isSpace(haystack[at])) return null;
+    let hi = at;
+    let ni = 0;
+    let last = at;
+    while (ni < needleChars.length) {
+      while (hi < haystack.length && isSpace(haystack[hi])) hi += 1;
+      if (hi >= haystack.length || haystack[hi] !== needleChars[ni]) return null;
+      last = hi;
+      hi += 1;
+      ni += 1;
+    }
+    return { start: at, end: last + 1 };
+  };
+
+  // 优先找空白归一后仍落在原 offset 附近的那一处，防止长文里重复短语匹配到远处。
+  let best: { start: number; end: number } | null = null;
+  for (let at = 0; at < haystack.length; at += 1) {
+    const match = matchIgnoringSpace(at);
+    if (!match) continue;
+    if (!best || Math.abs(match.start - span.start) < Math.abs(best.start - span.start)) {
+      best = match;
     }
   }
-  if (best < 0) return span; // 原文改过了：宁可退回 offset，也不画到无关文字上
-  return { ...span, start: best, end: best + needle.length };
+  if (!best) return span; // 原文改过了：宁可退回 offset，也不画到无关文字上
+  return { ...span, start: best.start, end: best.end };
 }
 
 /**

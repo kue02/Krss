@@ -2,11 +2,13 @@ package service
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -73,4 +75,26 @@ func TestRegisterLocked_AcceptsMatchingAPIVersion(t *testing.T) {
 	meta, exists := reg.Meta("fake-meta")
 	require.True(t, exists, "版本一致时正常注册")
 	require.Equal(t, "新插件", meta.Name)
+}
+
+// 审查 MEDIUM-3：协议版本不兼容是永久错误，startLocked 失败后必须 fail-fast：
+// 进程收走、只留占位壳挂 lastError，不能进看护循环反复重启。
+func TestFailStartLocked_ProtocolIncompatibleDoesNotSupervise(t *testing.T) {
+	reg := plugin.NewRegistry()
+	h := NewPluginHost(reg, nil, t.TempDir())
+	p := &externalPluginProcess{
+		id:       "old-plugin",
+		manifest: pluginManifest{ID: "old-plugin", Name: "旧插件", Version: "0.1.0"},
+	}
+	err := h.failStartLocked(p, "old-plugin", fmt.Errorf("%w：需要 v1，插件报 v0", ErrPluginProtocolIncompatible))
+	require.ErrorIs(t, err, ErrPluginProtocolIncompatible)
+
+	meta, exists := reg.Meta("old-plugin")
+	require.True(t, exists, "应注册占位壳让 lastError 可见")
+	require.Contains(t, meta.Description, "未能启动")
+	require.Contains(t, p.lastError, "插件协议版本不兼容")
+
+	time.Sleep(80 * time.Millisecond)
+	require.Zero(t, p.restarts, "版本不兼容不许走看护重试")
+	require.False(t, p.crashed)
 }

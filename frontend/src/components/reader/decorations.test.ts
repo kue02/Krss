@@ -120,6 +120,31 @@ describe("applyDecorations", () => {
     expect(root.innerHTML).toBe("<p>第一段。</p><p>这只猫很可爱。</p>");
   });
 
+  // 审查 MEDIUM-1：后端 htmlToPlain 在块级标签处补空格，跨 <p> 的区间回填的 data.text
+  // 可能带「前端 textContent 里并不存在」的空白；必须按忽略空白的方式匹配并映射回真实下标。
+  it("⑧ 跨 <p> 块且 data.text 带后端注入空格：仍定位到正确文字", () => {
+    const root = makeRoot("<p>你好，世界</p><p>今天天气不错</p>");
+    // 后端纯文本："你好，世界 今天天气不错"，[5:8) 正好是 " 今天"（前导空格来自块边界）
+    applyDecorations(root, [
+      span({ start: 5, end: 8, data: { text: " 今天" } }),
+    ]);
+
+    expect(root.querySelector("mark[data-plugin]")?.textContent).toBe("今天");
+    expect(root.textContent).toBe("你好，世界今天天气不错");
+  });
+
+  it("⑨ 跨 <p> 块且 data.text 中间带注入空格：映射回连续文字", () => {
+    const root = makeRoot("<p>你好，世界</p><p>今天天气不错</p>");
+    // 后端纯文本 [3:8) = "世界 今天"，前端实际是「世界今天」
+    applyDecorations(root, [
+      span({ start: 3, end: 8, data: { text: "世界 今天" } }),
+    ]);
+
+    const marks = Array.from(root.querySelectorAll("mark[data-plugin]"));
+    expect(marks.map((mark) => mark.textContent).join("")).toBe("世界今天");
+    expect(root.textContent).toBe("你好，世界今天天气不错");
+  });
+
   it("⑦ 原文已经改了（找不到）：宁可退回 offset，也不画到无关文字", () => {
     const root = makeRoot("<p>完全换掉的正文</p>");
     const painted = applyDecorations(root, [
