@@ -383,9 +383,9 @@ func TestSettingsService_ActiveProviderUsable(t *testing.T) {
 
 	// 用户库里那条真空卡：有 provider/baseUrl、没 model，还是 active
 	_ = svc.SetAISettings(context.Background(), &service.AISettings{
-		Provider:        "compatible",
-		BaseURL:         "adad",
-		Model:           "",
+		Provider:         "compatible",
+		BaseURL:          "adad",
+		Model:            "",
 		ActiveProviderID: "p1",
 		Providers: []service.AIProviderConfig{
 			{ID: "p1", Name: "新提供商", Provider: "compatible", BaseURL: "adad", Model: ""},
@@ -400,9 +400,9 @@ func TestSettingsService_ActiveProviderUsable(t *testing.T) {
 
 	// 补上模型 → 立刻恢复为可用当前使用
 	_ = svc.SetAISettings(context.Background(), &service.AISettings{
-		Provider:        "compatible",
-		BaseURL:         "adad",
-		Model:           "openai/gpt-4o-mini",
+		Provider:         "compatible",
+		BaseURL:          "adad",
+		Model:            "openai/gpt-4o-mini",
 		ActiveProviderID: "p1",
 		Providers: []service.AIProviderConfig{
 			{ID: "p1", Name: "新提供商", Provider: "compatible", BaseURL: "adad", Model: "openai/gpt-4o-mini"},
@@ -414,8 +414,8 @@ func TestSettingsService_ActiveProviderUsable(t *testing.T) {
 
 	// activeId 指向不存在的卡 → 无
 	_ = svc.SetAISettings(context.Background(), &service.AISettings{
-		Provider:        "compatible",
-		Model:           "x",
+		Provider:         "compatible",
+		Model:            "x",
 		ActiveProviderID: "ghost",
 		Providers: []service.AIProviderConfig{
 			{ID: "p1", Model: "openai/gpt-4o-mini"},
@@ -424,4 +424,40 @@ func TestSettingsService_ActiveProviderUsable(t *testing.T) {
 	got3, err := svc.GetAISettings(context.Background())
 	require.NoError(t, err)
 	require.Empty(t, got3.ActiveProviderID, "指向不存在的卡 = 无")
+}
+
+func TestSettingsService_TranslateChannelsRoundTrip(t *testing.T) {
+	repo := newSettingsRepoStub()
+	svc := service.NewSettingsService(repo, ai.NewRateLimiter(0))
+
+	require.NoError(t, svc.SetAISettings(context.Background(), &service.AISettings{
+		Provider:          "openai",
+		Model:             "gpt-4",
+		TranslateChannels: []string{"youdao", "google"},
+	}))
+	got, err := svc.GetAISettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, []string{"youdao", "google"}, got.TranslateChannels)
+	require.Equal(t, "youdao", got.TranslateChannel, "旧键应等于轮询列表的第一个通道")
+
+	// 空列表 = 不走免费通道，翻译直接用模型
+	require.NoError(t, svc.SetAISettings(context.Background(), &service.AISettings{
+		Provider:          "openai",
+		Model:             "gpt-4",
+		TranslateChannels: []string{},
+	}))
+	got2, err := svc.GetAISettings(context.Background())
+	require.NoError(t, err)
+	require.Empty(t, got2.TranslateChannels)
+	require.Empty(t, got2.TranslateChannel)
+}
+
+// 老库：只有旧单值 google、没有新键，读出来要自动变成 [google, youdao]（升级即获得轮询）。
+func TestSettingsService_TranslateChannelsLegacyDerived(t *testing.T) {
+	repo := newSettingsRepoStub()
+	repo.data[service.KeyAITranslateChannel] = "google"
+	svc := service.NewSettingsService(repo, ai.NewRateLimiter(0))
+	got, err := svc.GetAISettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, []string{"google", "youdao"}, got.TranslateChannels)
 }

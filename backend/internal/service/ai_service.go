@@ -257,17 +257,33 @@ func (s *aiService) isModelFallbackEnabled(ctx context.Context) bool {
 	return setting.Value != "false"
 }
 
-// getFreeTranslateChannel 读「翻译通道」设置：留空表示用配置的模型，google/youdao 走免 key 通道。
-func (s *aiService) getFreeTranslateChannel(ctx context.Context) string {
-	setting, err := s.settingsRepo.Get(ctx, "ai.translate_channel")
-	if err != nil || setting == nil {
-		return ""
+// getFreeTranslateChannels 读「翻译通道」设置，返回按顺序轮询的免费通道列表：
+// 优先读 ai.translate_channels（JSON 数组，用户可在设置里勾选/排序），没有再退回旧的
+// 单值 ai.translate_channel（并自动把其它可用通道排在后面，从而实现轮询 + 回退）。
+// 返回空表示不走免费通道，翻译直接用配置的模型。
+func (s *aiService) getFreeTranslateChannels(ctx context.Context) []string {
+	var configured []string
+	if setting, err := s.settingsRepo.Get(ctx, "ai.translate_channels"); err == nil && setting != nil && strings.TrimSpace(setting.Value) != "" {
+		if err := json.Unmarshal([]byte(setting.Value), &configured); err != nil {
+			logger.Warn("ai translate channels parse failed", "module", "service", "action", "fetch", "resource", "ai", "result", "failed", "error", err)
+			configured = nil
+		}
 	}
-	channel := setting.Value
-	if ai.IsFreeTranslateChannel(channel) {
-		return channel
+	var legacy string
+	if setting, err := s.settingsRepo.Get(ctx, "ai.translate_channel"); err == nil && setting != nil {
+		legacy = setting.Value
 	}
-	return ""
+	return ai.EffectiveFreeTranslateChannels(configured, legacy)
+}
+
+// hasFreeChannel 判断轮询列表里是否包含某个通道（用于并发限流等按通道定策略的地方）。
+func hasFreeChannel(channels []string, target string) bool {
+	for _, c := range channels {
+		if c == target {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *aiService) GetSummaryLanguage(ctx context.Context) string {
@@ -309,7 +325,7 @@ func sceneSettingKey(scene AIScene) string {
 // getAIConfigForScene 按场景取 AI 配置：
 //   - 场景键为空（或解析不出）→ 平铺字段（当前使用的那份），与旧行为一致；
 //   - "free" → 免费翻译通道场景专用：返回空 Config，调用方按「免费通道可用」处理
-//     （实际走不走免费通道仍由 getFreeTranslateChannel 决定，这里只是不再要求配模型）；
+//     （实际走不走免费通道仍由 getFreeTranslateChannels 决定，这里只是不再要求配模型）；
 //   - "provider:<id>" → 用已保存清单里那一份的 provider/base_url/model/api_key/request_options。
 //
 // 实现上只是把平铺字段换掉，`ai.request_options` 等读取逻辑保持一份。
@@ -582,7 +598,7 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 		// 50 批 1.2：翻译场景可以单独选「免费通道」。免费通道不需要 key/模型 ——
 		// 只要当前真的配了免费通道，配置缺失就不再是致命错误（每个块自己走免费翻，
 		// 失败了才需要模型兜底，那时 cfg 为空会按「没有模型可兜底」真报错）。
-		if ai.IsFreeTranslateChannel(s.getFreeTranslateChannel(ctx)) {
+		if len(s.getFreeTranslateChannels(ctx)) > 0 {
 			logger.Warn("ai translate scene has no model config, relying on free channel", "module", "service", "action", "translate", "resource", "ai", "result", "degraded", "entry_id", entryID, "error", err)
 			cfg = ai.Config{}
 		} else {
@@ -594,7 +610,7 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 	// Get language setting
 	language := s.GetSummaryLanguage(ctx)
 	// 翻译通道：空 = 用配置的模型；google/youdao = 免 key 通道（摘要仍走模型）
-	freeChannel := s.getFreeTranslateChannel(ctx)
+	freeChannels := s.getFreeTranslateChannels(ctx)
 
 	// Create channels
 	resultCh := make(chan TranslateBlockResult)
@@ -610,7 +626,7 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 		var wg sync.WaitGroup
 		// 有道对并发很敏感（并发压上去会大面积返回 errorCode=411），这条通道串行
 		concurrency := 3
-		if freeChannel == ai.FreeChannelYoudao {
+		if hasFreeChannel(freeChannels, ai.FreeChannelYoudao) {
 			concurrency = 1
 		}
 		sem := make(chan struct{}, concurrency) // Limit concurrent translations
@@ -660,7 +676,7 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 				// 现在改成：把块里的文本节点抠出来一次翻完、再按原树回填 —— 标记（<b>/<a>/<ul>/<img>）
 				// 一个不动，只换文本。这样带标记的块在只有免费通道时也能翻出来。
 				fallbackFromFree := false
-				if ai.IsFreeTranslateChannel(freeChannel) {
+				if len(freeChannels) > 0 {
 					// 纯文本块：整段翻 + 按外层标签包回去（保持既有行为）
 					// 带标记的块：逐文本段翻 + 原树回填（标记保真）
 					segments := []string(nil)
@@ -675,7 +691,7 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 						return
 					}
 
-					translatedText, freeErr := ai.TranslateFreeText(ctx, freeClient, freeChannel, payload, language)
+					translatedText, freeErr := ai.TranslateFreeTextChannels(ctx, freeClient, freeChannels, payload, language)
 					if freeErr == nil {
 						var html string
 						if segments != nil {
@@ -707,14 +723,14 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 					// 免费通道失败：配了模型 + 开了「自动切回模型」才兜底；否则按真失败处理
 					if !s.isModelFallbackEnabled(ctx) || cfg.Provider == "" || cfg.Model == "" {
 						select {
-						case errCh <- fmt.Errorf("translate block %d via %s: %w (且没有配置模型可以兜底)", b.Index, freeChannel, freeErr):
+						case errCh <- fmt.Errorf("translate block %d via %s: %w (且没有配置模型可以兜底)", b.Index, strings.Join(freeChannels, "/"), freeErr):
 							hasError.Store(true)
 						default:
 						}
 						return
 					}
 					fallbackFromFree = true
-					logger.Warn("free translate failed, falling back to model", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", entryID, "block", b.Index, "channel", freeChannel, "error", freeErr)
+					logger.Warn("free translate failed, falling back to model", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", entryID, "block", b.Index, "channels", strings.Join(freeChannels, "/"), "error", freeErr)
 				}
 
 				// Wait for rate limiter
@@ -851,15 +867,15 @@ func (s *aiService) TranslateBatch(ctx context.Context, articles []BatchArticleI
 	// 翻译通道：空 = 用配置的模型；google/youdao = 免 key 通道
 	// （54-10：与 TranslateBlocks 同一口径 —— 列表标题/摘要的批量翻译原来没有免费通道
 	//  分支，只配了免费通道（没配模型）时这里直接 500「AI model is not configured」，
-	//  于是正文能翻、标题一直是原文。见下面每个 goroutine 里的 freeChannel 分支。）
-	freeChannel := s.getFreeTranslateChannel(ctx)
+	//  于是正文能翻、标题一直是原文。见下面每个 goroutine 里的免费通道分支。）
+	freeChannels := s.getFreeTranslateChannels(ctx)
 	freeClient := s.httpClientForTranslate(ctx, 0)
 
 	if needsTranslation {
 		cfg, err = s.getAIConfigForScene(ctx, SceneTranslate)
 		if err != nil {
 			// 与 TranslateBlocks 同一条放行：只要真的配了免费通道，缺模型配置就不是致命错误
-			if ai.IsFreeTranslateChannel(freeChannel) {
+			if len(freeChannels) > 0 {
 				logger.Warn("ai batch translate scene has no model config, relying on free channel", "module", "service", "action", "translate", "resource", "ai", "result", "degraded", "error", err)
 				cfg = ai.Config{}
 			} else {
@@ -951,16 +967,16 @@ func (s *aiService) TranslateBatch(ctx context.Context, articles []BatchArticleI
 					if strings.TrimSpace(text) == "" {
 						return "", nil
 					}
-					if ai.IsFreeTranslateChannel(freeChannel) {
-						translated, freeErr := ai.TranslateFreeText(ctx, freeClient, freeChannel, text, language)
+					if len(freeChannels) > 0 {
+						translated, freeErr := ai.TranslateFreeTextChannels(ctx, freeClient, freeChannels, text, language)
 						if freeErr == nil {
 							return strings.TrimSpace(translated), nil
 						}
 						// 免费通道失败：只有「配了模型 + 开了自动切回」才兜底
 						if !s.isModelFallbackEnabled(ctx) || cfg.Provider == "" || cfg.Model == "" {
-							return "", fmt.Errorf("translate %s via %s: %w (且没有配置模型可以兜底)", textType, freeChannel, freeErr)
+							return "", fmt.Errorf("translate %s via %s: %w (且没有配置模型可以兜底)", textType, strings.Join(freeChannels, "/"), freeErr)
 						}
-						logger.Warn("free batch translate failed, falling back to model", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", eID, "text_type", textType, "channel", freeChannel, "error", freeErr)
+						logger.Warn("free batch translate failed, falling back to model", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", eID, "text_type", textType, "channels", strings.Join(freeChannels, "/"), "error", freeErr)
 					}
 
 					// 模型路径（免费通道没配 / 免费失败后兜底）

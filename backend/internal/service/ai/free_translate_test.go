@@ -169,3 +169,123 @@ func TestNormalizeLangForYoudao(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeFreeTranslateChannels(t *testing.T) {
+	got := NormalizeFreeTranslateChannels([]string{" youdao ", "google", "youdao", "", "bing"})
+	want := []string{FreeChannelYoudao, FreeChannelGoogle}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+	if got := NormalizeFreeTranslateChannels(nil); got != nil {
+		t.Errorf("nil 输入应返回 nil，得到 %#v", got)
+	}
+	if got := NormalizeFreeTranslateChannels([]string{"bing"}); got != nil {
+		t.Errorf("只有未知通道应返回 nil，得到 %#v", got)
+	}
+}
+
+func TestEffectiveFreeTranslateChannels(t *testing.T) {
+	cases := []struct {
+		name       string
+		configured []string
+		legacy     string
+		want       []string
+	}{
+		{"新键优先", []string{"youdao"}, "google", []string{"youdao"}},
+		{"新键为空退回旧键 google", []string{}, "google", []string{"google", "youdao"}},
+		{"旧键 youdao 排最前", nil, "youdao", []string{"youdao", "google"}},
+		{"新旧都空走模型", nil, "", nil},
+		{"旧键非法返回空", nil, "bing", nil},
+		{"新键全非法退回旧键", []string{"bing"}, "youdao", []string{"youdao", "google"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := EffectiveFreeTranslateChannels(tc.configured, tc.legacy)
+			if len(got) != len(tc.want) {
+				t.Fatalf("got %v, want %v", got, tc.want)
+			}
+			for i := range tc.want {
+				if got[i] != tc.want[i] {
+					t.Fatalf("got %v, want %v", got, tc.want)
+				}
+			}
+		})
+	}
+}
+
+// 轮询顺序：按配置顺序依次尝试，google 失败后才用有道。
+func TestTranslateFreeTextChannelsRotatesInOrder(t *testing.T) {
+	var order []string
+	googleServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		order = append(order, "google")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer googleServer.Close()
+	youdaoServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		order = append(order, "youdao")
+		_, _ = w.Write([]byte(`{"errorCode":0,"translation":["你好世界"]}`))
+	}))
+	defer youdaoServer.Close()
+
+	originalGoogle, originalYoudao := googleTranslateEndpoint, youdaoTranslateEndpoint
+	googleTranslateEndpoint = googleServer.URL
+	youdaoTranslateEndpoint = youdaoServer.URL
+	defer func() {
+		googleTranslateEndpoint = originalGoogle
+		youdaoTranslateEndpoint = originalYoudao
+	}()
+
+	got, err := TranslateFreeTextChannels(context.Background(), googleServer.Client(), []string{FreeChannelGoogle, FreeChannelYoudao}, "Hello world", "zh-CN")
+	if err != nil {
+		t.Fatalf("轮询应最终成功: %v", err)
+	}
+	if got != "你好世界" {
+		t.Errorf("got %q, want 你好世界", got)
+	}
+	if len(order) == 0 || order[0] != "google" {
+		t.Errorf("应按配置顺序先试 google，得到顺序 %v", order)
+	}
+}
+
+// 全部通道失败时，错误里要列出每一个通道。
+func TestTranslateFreeTextChannelsAllFail(t *testing.T) {
+	googleServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer googleServer.Close()
+	youdaoServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"errorCode":-1,"translation":[]}`))
+	}))
+	defer youdaoServer.Close()
+
+	originalGoogle, originalYoudao := googleTranslateEndpoint, youdaoTranslateEndpoint
+	googleTranslateEndpoint = googleServer.URL
+	youdaoTranslateEndpoint = youdaoServer.URL
+	defer func() {
+		googleTranslateEndpoint = originalGoogle
+		youdaoTranslateEndpoint = originalYoudao
+	}()
+
+	_, err := TranslateFreeTextChannels(context.Background(), googleServer.Client(), []string{FreeChannelGoogle, FreeChannelYoudao}, "hi", "zh-CN")
+	if err == nil {
+		t.Fatal("全部失败时应当报错")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "all free translate channels failed") || !strings.Contains(msg, "google") || !strings.Contains(msg, "youdao") {
+		t.Errorf("错误应汇总每个通道，得到 %q", msg)
+	}
+}
+
+func TestTranslateFreeTextChannelsEmptyConfig(t *testing.T) {
+	if _, err := TranslateFreeTextChannels(context.Background(), nil, nil, "hi", "zh-CN"); err == nil {
+		t.Error("没有可用通道时应当报错")
+	}
+	if _, err := TranslateFreeTextChannels(context.Background(), nil, []string{FreeChannelGoogle}, "   ", "zh-CN"); err != nil {
+		t.Errorf("空文本应返回空且不报错，得到 %v", err)
+	}
+}

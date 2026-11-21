@@ -28,17 +28,87 @@ var (
 	youdaoTranslateEndpoint = "https://aidemo.youdao.com/trans"
 )
 
+// FreeTranslateChannels 所有支持的免 key 通道，数组顺序即默认轮询顺序。
+// 设置页里用户可自行勾选、排序；实际轮询列表见 EffectiveFreeTranslateChannels。
+var FreeTranslateChannels = []string{FreeChannelGoogle, FreeChannelYoudao}
+
 // IsFreeTranslateChannel 判断某个通道名是不是免 key 通道。
 func IsFreeTranslateChannel(channel string) bool {
-	return channel == FreeChannelGoogle || channel == FreeChannelYoudao
+	for _, c := range FreeTranslateChannels {
+		if channel == c {
+			return true
+		}
+	}
+	return false
 }
 
-// TranslateFreeText 用免 key 通道翻译一段纯文本。
-// targetLang 用 BCP-47 风格（如 zh-CN / en），内部会转成各通道要的形式。
-//
-// google 是默认的免费通道，但它经代理 IP 访问时会被限流（429 反滥用页），
-// 所以 google 失败后自动回退到有道再放弃；有道作为主通道时不做反向回退。
+// NormalizeFreeTranslateChannels 过滤掉未知/空通道并去重，保持原有顺序。
+func NormalizeFreeTranslateChannels(channels []string) []string {
+	if len(channels) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(channels))
+	out := make([]string, 0, len(channels))
+	for _, c := range channels {
+		c = strings.TrimSpace(c)
+		if !IsFreeTranslateChannel(c) {
+			continue
+		}
+		if _, ok := seen[c]; ok {
+			continue
+		}
+		seen[c] = struct{}{}
+		out = append(out, c)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// EffectiveFreeTranslateChannels 计算实际要轮询的通道列表：
+//   - 新键（ai.translate_channels，数组）非空 → 用它（已归一化，顺序即轮询顺序）；
+//   - 否则退回旧键（ai.translate_channel，单个通道）：把它排在最前、其余可用通道跟在后面
+//     （老用户只配了 google / youdao 的，升级后自动获得「轮询 + 回退」能力）；
+//   - 旧键也为空 → 返回空（表示不走免费通道，翻译直接走配置的模型）。
+func EffectiveFreeTranslateChannels(configured []string, legacy string) []string {
+	if normalized := NormalizeFreeTranslateChannels(configured); len(normalized) > 0 {
+		return normalized
+	}
+	legacy = strings.TrimSpace(legacy)
+	if !IsFreeTranslateChannel(legacy) {
+		return nil
+	}
+	out := []string{legacy}
+	for _, c := range FreeTranslateChannels {
+		if c != legacy {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// TranslateFreeText 用单个免 key 通道翻译一段纯文本（保留旧语义：google 失败会自动回退
+// 有道，有道作为主通道时不做反向回退）。新代码请优先用 TranslateFreeTextChannels。
 func TranslateFreeText(ctx context.Context, client *http.Client, channel, text, targetLang string) (string, error) {
+	return TranslateFreeTextChannels(ctx, client, channelRotation(channel), text, targetLang)
+}
+
+// channelRotation 单个通道对应的轮询列表（兼容旧调用）。
+func channelRotation(channel string) []string {
+	switch channel {
+	case FreeChannelGoogle:
+		return []string{FreeChannelGoogle, FreeChannelYoudao}
+	case FreeChannelYoudao:
+		return []string{FreeChannelYoudao}
+	default:
+		return []string{channel} // 未知通道：交给下游统一报错
+	}
+}
+
+// TranslateFreeTextChannels 按给定顺序依次尝试免 key 通道，第一个成功即返回；
+// 全部失败时返回汇总错误（列出每个通道的失败原因）。空文本返回 ("", nil)。
+func TranslateFreeTextChannels(ctx context.Context, client *http.Client, channels []string, text, targetLang string) (string, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return "", nil
@@ -46,27 +116,23 @@ func TranslateFreeText(ctx context.Context, client *http.Client, channel, text, 
 	if client == nil {
 		client = http.DefaultClient
 	}
-
-	switch channel {
-	case FreeChannelGoogle:
-		translated, googleErr := translateWithRetry(ctx, client, FreeChannelGoogle, text, targetLang)
-		if googleErr == nil {
-			return translated, nil
-		}
-		if ctx.Err() != nil {
-			return "", ctx.Err()
-		}
-		// 回退有道：不再重试 google，换通道之间也不额外等待
-		translated, youdaoErr := translateWithRetry(ctx, client, FreeChannelYoudao, text, targetLang)
-		if youdaoErr == nil {
-			return translated, nil
-		}
-		return "", fmt.Errorf("google translate failed (%v); fallback youdao also failed (%v)", googleErr, youdaoErr)
-	case FreeChannelYoudao:
-		return translateWithRetry(ctx, client, FreeChannelYoudao, text, targetLang)
-	default:
-		return "", fmt.Errorf("unknown free translate channel: %s", channel)
+	normalized := NormalizeFreeTranslateChannels(channels)
+	if len(normalized) == 0 {
+		return "", fmt.Errorf("no free translate channel configured")
 	}
+
+	failures := make([]string, 0, len(normalized))
+	for _, channel := range normalized {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		translated, err := translateWithRetry(ctx, client, channel, text, targetLang)
+		if err == nil {
+			return translated, nil
+		}
+		failures = append(failures, fmt.Sprintf("%s: %v", channel, err))
+	}
+	return "", fmt.Errorf("all free translate channels failed (%s)", strings.Join(failures, "; "))
 }
 
 // translateWithRetry 对单个通道最多试两次：免费通道偶发 5xx / 空结果，重试一次再说失败。

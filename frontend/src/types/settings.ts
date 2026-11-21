@@ -27,8 +27,10 @@ export interface AISettings {
   model: string;
   requestOptions: RequestOptions;
   summaryLanguage: string;
-  /** 翻译通道：空 = 用模型；google / youdao = 免 key 通道 */
+  /** 旧的单值翻译通道（兼容用，始终等于 translateChannels 的第一个） */
   translateChannel: string;
+  /** 免费翻译通道轮询列表（顺序即轮询顺序）；空 = 不走免费通道，翻译直接用模型 */
+  translateChannels: string[];
   /** 免费通道失败时是否自动切回模型（默认开） */
   fallbackToModel: boolean;
   autoTranslate: boolean;

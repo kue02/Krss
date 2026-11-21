@@ -26,16 +26,18 @@ type aiSettingsResponse struct {
 	AutoTranslate   bool           `json:"autoTranslate"`
 	AutoSummary     bool           `json:"autoSummary"`
 	RateLimit       int            `json:"rateLimit"`
-	// TranslateChannel：空 = 翻译走模型；google/youdao = 免 key 通道
+	// TranslateChannel：旧的单值通道（兼容用，缺失时后端会从 TranslateChannels 推导）
 	TranslateChannel string `json:"translateChannel"`
+	// TranslateChannels：免费翻译通道轮询列表（顺序即轮询顺序）；为空 = 翻译直接走模型
+	TranslateChannels []string `json:"translateChannels"`
 	// FallbackToModel：免费通道失败时是否自动切回模型
 	FallbackToModel  bool                       `json:"fallbackToModel"`
 	Providers        []service.AIProviderConfig `json:"providers"`
 	ActiveProviderID string                     `json:"activeProviderId"`
 	// 分场景模型覆盖（50 批 1.2）：空 = 跟随当前使用；provider:<id> / free（仅翻译）
-	SceneTranslate  string                     `json:"sceneTranslate"`
-	SceneSummary    string                     `json:"sceneSummary"`
-	SceneAutomation string                     `json:"sceneAutomation"`
+	SceneTranslate  string `json:"sceneTranslate"`
+	SceneSummary    string `json:"sceneSummary"`
+	SceneAutomation string `json:"sceneAutomation"`
 }
 
 type aiSettingsRequest struct {
@@ -48,16 +50,18 @@ type aiSettingsRequest struct {
 	AutoTranslate   bool           `json:"autoTranslate"`
 	AutoSummary     bool           `json:"autoSummary"`
 	RateLimit       int            `json:"rateLimit"`
-	// TranslateChannel：空 = 翻译走模型；google/youdao = 免 key 通道
+	// TranslateChannel：旧的单值通道（兼容用，缺失时后端会从 TranslateChannels 推导）
 	TranslateChannel string `json:"translateChannel"`
+	// TranslateChannels：免费翻译通道轮询列表（顺序即轮询顺序）；为空 = 翻译直接走模型
+	TranslateChannels []string `json:"translateChannels"`
 	// FallbackToModel：免费通道失败时是否自动切回模型
 	FallbackToModel  bool                       `json:"fallbackToModel"`
 	Providers        []service.AIProviderConfig `json:"providers"`
 	ActiveProviderID string                     `json:"activeProviderId"`
 	// 分场景模型覆盖（50 批 1.2）：空 = 跟随当前使用；provider:<id> / free（仅翻译）
-	SceneTranslate  string                     `json:"sceneTranslate"`
-	SceneSummary    string                     `json:"sceneSummary"`
-	SceneAutomation string                     `json:"sceneAutomation"`
+	SceneTranslate  string `json:"sceneTranslate"`
+	SceneSummary    string `json:"sceneSummary"`
+	SceneAutomation string `json:"sceneAutomation"`
 }
 
 type aiTestRequest struct {
@@ -262,24 +266,25 @@ func (h *SettingsHandler) GetAISettings(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, aiSettingsResponse{
-		Provider:         settings.Provider,
-		APIKey:           settings.APIKey,
-		BaseURL:          settings.BaseURL,
-		Model:            settings.Model,
-		RequestOptions:   settings.RequestOptions,
-		SummaryLanguage:  settings.SummaryLanguage,
-		AutoTranslate:    settings.AutoTranslate,
-		AutoSummary:      settings.AutoSummary,
-		RateLimit:        settings.RateLimit,
-		TranslateChannel: settings.TranslateChannel,
-		FallbackToModel:  settings.FallbackToModel,
+		Provider:          settings.Provider,
+		APIKey:            settings.APIKey,
+		BaseURL:           settings.BaseURL,
+		Model:             settings.Model,
+		RequestOptions:    settings.RequestOptions,
+		SummaryLanguage:   settings.SummaryLanguage,
+		AutoTranslate:     settings.AutoTranslate,
+		AutoSummary:       settings.AutoSummary,
+		RateLimit:         settings.RateLimit,
+		TranslateChannel:  settings.TranslateChannel,
+		TranslateChannels: settings.TranslateChannels,
+		FallbackToModel:   settings.FallbackToModel,
 
 		Providers:        settings.Providers,
 		ActiveProviderID: settings.ActiveProviderID,
 
-		SceneTranslate:   settings.SceneTranslate,
-		SceneSummary:     settings.SceneSummary,
-		SceneAutomation:  settings.SceneAutomation,
+		SceneTranslate:  settings.SceneTranslate,
+		SceneSummary:    settings.SceneSummary,
+		SceneAutomation: settings.SceneAutomation,
 	})
 }
 
@@ -311,7 +316,14 @@ func (h *SettingsHandler) UpdateAISettings(c echo.Context) error {
 			realProviderCount++
 		}
 	}
-	if !isFreeTranslateChannel(req.TranslateChannel) && realProviderCount > 0 {
+	hasFreeChannels := isFreeTranslateChannel(req.TranslateChannel)
+	for _, c := range req.TranslateChannels {
+		if isFreeTranslateChannel(c) {
+			hasFreeChannels = true
+			break
+		}
+	}
+	if !hasFreeChannels && realProviderCount > 0 {
 		if req.Provider == "" {
 			return c.JSON(http.StatusBadRequest, errorResponse{Error: "provider is required"})
 		}
@@ -324,20 +336,21 @@ func (h *SettingsHandler) UpdateAISettings(c echo.Context) error {
 	}
 
 	settings := &service.AISettings{
-		Provider:         req.Provider,
-		APIKey:           req.APIKey,
-		BaseURL:          req.BaseURL,
-		Model:            req.Model,
-		RequestOptions:   req.RequestOptions,
-		SummaryLanguage:  req.SummaryLanguage,
-		AutoTranslate:    req.AutoTranslate,
-		AutoSummary:      req.AutoSummary,
-		RateLimit:        req.RateLimit,
-		TranslateChannel: req.TranslateChannel,
-		SceneTranslate:   req.SceneTranslate,
-		SceneSummary:     req.SceneSummary,
-		SceneAutomation:  req.SceneAutomation,
-		FallbackToModel:  req.FallbackToModel,
+		Provider:          req.Provider,
+		APIKey:            req.APIKey,
+		BaseURL:           req.BaseURL,
+		Model:             req.Model,
+		RequestOptions:    req.RequestOptions,
+		SummaryLanguage:   req.SummaryLanguage,
+		AutoTranslate:     req.AutoTranslate,
+		AutoSummary:       req.AutoSummary,
+		RateLimit:         req.RateLimit,
+		TranslateChannel:  req.TranslateChannel,
+		TranslateChannels: req.TranslateChannels,
+		SceneTranslate:    req.SceneTranslate,
+		SceneSummary:      req.SceneSummary,
+		SceneAutomation:   req.SceneAutomation,
+		FallbackToModel:   req.FallbackToModel,
 
 		Providers:        req.Providers,
 		ActiveProviderID: req.ActiveProviderID,

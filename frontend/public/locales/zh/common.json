@@ -374,8 +374,8 @@
     "machine_translated": "机器翻译"
   },
   "ai_settings": {
-    "translate_channel": "翻译通道",
-    "translate_channel_hint": "摘要仍用上面配置的模型；翻译可选免 Key 的免费通道，免费通道失败会自动退回模型。",
+    "translate_channel": "免费翻译通道",
+    "translate_channel_hint": "可添加多条免 Key 通道并拖动排序，翻译时按顺序轮询；全部失败后再用上面配置的模型兜底。留空则直接用模型。",
     "translate_channel_model": "跟随模型",
     "translate_channel_google": "Google 翻译（免费）",
     "translate_channel_youdao": "有道翻译（免费）",
@@ -442,8 +442,8 @@
     "probe_models": "探测模型",
     "probing": "探测中…",
     "probe_failed": "探测模型失败",
-    "fallback_to_model": "免费通道失败时自动切回模型",
-    "fallback_to_model_hint": "开着的话，某一通道失败会自动用上面的模型补译；关掉就只报错不兜底。",
+    "fallback_to_model": "所有免费通道失败后自动切回模型",
+    "fallback_to_model_hint": "开着的话，轮询完所有免费通道仍失败，会用上面的模型补译；关掉就只报错不兜底。",
     "model_hint": "填提供商那边的模型 ID；不确定就点右边「探测模型」拉列表。",
     "mcp_servers": "MCP 服务",
     "mcp_servers_hint": "把 MCP 取到的东西（工具或资源）当成订阅来处理；同一份连接也可以给 AI 当工具用。",
@@ -664,7 +664,11 @@
     "scene_translate": "翻译",
     "scene_summary": "摘要",
     "scene_automation": "自动化（AI 条件 / 建规则）",
-    "scene_follow": "跟随当前使用"
+    "scene_follow": "跟随当前使用",
+    "translate_channels_empty": "未启用免费通道，翻译将直接使用模型",
+    "translate_channel_up": "上移",
+    "translate_channel_down": "下移",
+    "translate_channel_remove": "移除"
   },
   "data_control": {
     "import_opml": "导入 OPML",
