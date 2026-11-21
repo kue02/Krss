@@ -80,23 +80,20 @@ type aiTestResponse struct {
 }
 
 type generalSettingsResponse struct {
+	// ExportDir 插件导出落盘目录（空 = 浏览器下载）
+	ExportDir         string `json:"exportDir"`
 	FallbackUserAgent string `json:"fallbackUserAgent"`
 	AutoReadability   bool   `json:"autoReadability"`
 	MarkReadOnScroll  bool   `json:"markReadOnScroll"`
-	// RSSHub 自有实例（添加订阅时自动换域名用）——不回这两个字段的话界面每次打开都是空的
-	RSSHubBaseURL   string `json:"rsshubBaseUrl"`
-	RSSHubAccessKey string `json:"rsshubAccessKey"`
-	// BarkURL 推送地址（自动化规则的「推送到手机」没单独填地址时用它）
-	BarkURL string `json:"barkUrl"`
+	// 55-18：RSSHub 实例设置在插件里（GET/PUT /api/plugins/rsshub/settings），不再是通用字段。
 }
 
 type generalSettingsRequest struct {
 	FallbackUserAgent string `json:"fallbackUserAgent"`
-	AutoReadability   bool   `json:"autoReadability"`
-	MarkReadOnScroll  bool   `json:"markReadOnScroll"`
-	RSSHubBaseURL     string `json:"rsshubBaseUrl"`
-	RSSHubAccessKey   string `json:"rsshubAccessKey"`
-	BarkURL           string `json:"barkUrl"`
+	// ExportDir 插件导出的落盘目录（空 = 浏览器下载）。宿主校验目录存在性。
+	ExportDir        string `json:"exportDir"`
+	AutoReadability  bool   `json:"autoReadability"`
+	MarkReadOnScroll bool   `json:"markReadOnScroll"`
 }
 
 type networkSettingsResponse struct {
@@ -464,11 +461,9 @@ func (h *SettingsHandler) GetGeneralSettings(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, generalSettingsResponse{
 		FallbackUserAgent: settings.FallbackUserAgent,
+		ExportDir:         settings.ExportDir,
 		AutoReadability:   settings.AutoReadability,
 		MarkReadOnScroll:  settings.MarkReadOnScroll,
-		RSSHubBaseURL:     settings.RSSHubBaseURL,
-		RSSHubAccessKey:   settings.RSSHubAccessKey,
-		BarkURL:           settings.BarkURL,
 	})
 }
 
@@ -491,14 +486,16 @@ func (h *SettingsHandler) UpdateGeneralSettings(c echo.Context) error {
 
 	settings := &service.GeneralSettings{
 		FallbackUserAgent: req.FallbackUserAgent,
+		ExportDir:         req.ExportDir,
 		AutoReadability:   req.AutoReadability,
 		MarkReadOnScroll:  req.MarkReadOnScroll,
-		RSSHubBaseURL:     req.RSSHubBaseURL,
-		RSSHubAccessKey:   req.RSSHubAccessKey,
-		BarkURL:           req.BarkURL,
 	}
 
 	if err := h.service.SetGeneralSettings(c.Request().Context(), settings); err != nil {
+		// 导出目录非法是「用户填错」，不是服务器故障：原话回给界面
+		if errors.Is(err, service.ErrInvalidExportDir) {
+			return c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
+		}
 		return writeSettingsSaveError(c, err, "update")
 	}
 

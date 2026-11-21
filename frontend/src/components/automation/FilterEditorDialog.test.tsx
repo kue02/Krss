@@ -15,11 +15,18 @@ vi.mock("@/hooks/useFolders", () => ({ useFolders: () => ({ data: [] }) }));
 vi.mock("@/hooks/useFilters", () => ({
   useFilterPreview: () => ({ mutate: vi.fn(), isPending: false }),
   useFilterMutations: () => ({
-    create: { mutate, isPending: false, isError: false },
-    update: { mutate, isPending: false, isError: false },
+    // 56-14：外壳的保存要能 await（底栏插件按钮「先保存再调用」靠它拿新 id），
+    // 所以 mutateAsync 与 mutate 打同一个桩
+    create: { mutate, mutateAsync: mutate, isPending: false, isError: false },
+    update: { mutate, mutateAsync: mutate, isPending: false, isError: false },
     remove: { mutate: vi.fn() },
     revert: { mutate: vi.fn() },
   }),
+}));
+
+/** 56-14：编辑器底栏挂了插件插槽（内部要 react-query 的 Provider）；这些用例不关心插件 */
+vi.mock("@/plugins/useContributions", () => ({
+  useContributions: () => [],
 }));
 
 vi.mock("@/stores/toast-store", () => ({ showToast: vi.fn() }));
@@ -109,13 +116,11 @@ describe("FilterEditorDialog 离开确认", () => {
     await waitFor(() => {
       expect(mutate).toHaveBeenCalledTimes(1);
     });
-    const [payload, options] = mutate.mock.calls[0] as [
-      { name: string },
-      { onSuccess: () => void },
-    ];
+    const [payload] = mutate.mock.calls[0] as [{ name: string }];
     expect(payload.name).toBe("要保存的规则");
 
-    options.onSuccess();
+    // 56-14 起保存走 mutateAsync、成功回调由外壳自己跑（不再靠 mutation 的 options.onSuccess），
+    // 所以这里直接等「提示 + 关闭」发生
     await waitFor(() => {
       expect(showToast).toHaveBeenCalledWith("automation.created_saved");
       expect(useFilterEditorStore.getState().open).toBe(false);

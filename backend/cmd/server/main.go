@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/pprof"
 	"os"
@@ -18,6 +19,10 @@ import (
 	"krss/backend/internal/db"
 	"krss/backend/internal/handler"
 	transport "krss/backend/internal/http"
+	"krss/backend/internal/plugin"
+	"krss/backend/internal/plugin/builtin/bark"           // 内置插件：Bark 推送（55-12）
+	_ "krss/backend/internal/plugin/builtin/githubavatar" // 内置插件：GitHub 订阅显示账号头像
+	"krss/backend/internal/plugin/builtin/rsshub"         // 内置插件：RSSHub 适配（55-18）
 	"krss/backend/internal/repository"
 	"krss/backend/internal/scheduler"
 	"krss/backend/internal/service"
@@ -87,28 +92,30 @@ func main() {
 	anubisStore := anubis.NewStore(settingsRepo)
 	anubisSolver := anubis.NewSolver(clientFactory, anubisStore)
 
-	iconService := service.NewIconService(cfg.DataDir, feedRepo, clientFactory, anubisSolver)
+	// 插件注册表（55 批）：内置插件在各自 init() 注册进 plugin.Default。
+	// iconService 要靠它收集 FeedIconProvider（GitHub 头像），所以在构造 iconService 之前先取默认注册表。
+	pluginRegistry := plugin.Default
 
-	// Backfill icons for existing feeds (run in background)
-	backfillCtx, cancelBackfill := context.WithCancel(context.Background())
-	var backfillWG sync.WaitGroup
-	backfillWG.Add(1)
-	go func() {
-		defer backfillWG.Done()
-		if err := iconService.BackfillIcons(backfillCtx); err != nil && !errors.Is(err, context.Canceled) {
-			logger.Warn("backfill icons", "error", err)
-		}
-	}()
+	iconService := service.NewIconService(cfg.DataDir, feedRepo, clientFactory, anubisSolver, service.WithPluginRegistry(pluginRegistry))
 
 	folderService := service.NewFolderService(folderRepo, feedRepo)
+	// 插件注册表（55 批）已在上方取好 plugin.Default；启停记录在下方 Catalog 时覆盖默认值。
+	// 规则引擎要拿它派发「插件动作」（推送 = bark 插件的 notify），所以注册表在本函数里始终可用 ——
+	// 55-13 起本体不再有推送实现，注册表没接上就等于规则里的推送静默不执行。
+	pluginRepo := repository.NewPluginRepository(dbConn)
+	// 插件专属数据（56-19，迁移 34）：插件存自己东西的地方，一张三段式 KV 表。
+	pluginDataRepo := repository.NewPluginDataRepository(dbConn)
+	// bark 推送插件（55-12）：出网 client 用 clientFactory 建（继承代理，与 webhook 同一套路径），
+	// 设置存储给 settingsRepo（键 plugin.bark.url）。
+	bark.Configure(clientFactory.NewHTTPClient(context.Background(), 15*time.Second), settingsRepo)
+	// RSSHub 适配插件（55-18）：只要设置存储（键 plugin.rsshub.base_url / access_key），不出网。
+	rsshub.Configure(settingsRepo)
 	// 规则引擎：抓取入库之后跑，只改条目上的标记（muted / read / starred / auto-translate）。
 	// 本项目有两条入库路径（新订阅首次抓取、刷新），两条都要过规则，所以先建它再注入。
 	// AI 与 webhook 是 P2/P3 动作的依赖：AI 供「AI 条件」与「自然语言建规则」，
 	// webhook 用统一的网络层（继承代理设置）出网投递（所以 aiService 得先于它建好）。
 	aiService := service.NewAIServiceWithFeedContext(aiSummaryRepo, aiTranslationRepo, aiListTranslationRepo, settingsRepo, rateLimiter, entryRepo, feedRepo, clientFactory)
 	webhookClient := clientFactory.NewHTTPClient(context.Background(), 15*time.Second)
-	// 推送通道（Bark）：与 webhook 共用同一套「POST JSON 出网」语义，只是 UA 不同便于分辨
-	notifyService := service.NewNotifyService(settingsRepo, service.NewHTTPNotifier(webhookClient))
 	filterService := service.NewFilterService(service.FilterServiceDeps{
 		Filters: filterRepo,
 		Entries: entryRepo,
@@ -116,16 +123,20 @@ func main() {
 		Folders: folderRepo,
 		AI:      aiService,
 		Webhook: service.NewHTTPWebhookSender(webhookClient),
-		Notify:  notifyService,
+		Plugins: pluginRegistry,
 	})
 	// MCP（16 批入向 / 17 批出向）共用同一套协议底座 internal/service/mcp。
 	mcpService := service.NewMCPService(mcpServerRepo, settingsService, clientFactory, aiService)
 	feedService := service.NewFeedService(feedRepo, folderRepo, entryRepo, iconService, settingsService, clientFactory, anubisSolver, filterService, mcpService)
-	// 条目列表要能按「保存筛选视图」（filters.kind = view）筛，所以 entryService 也拿到 filterRepo
-	entryService := service.NewEntryService(entryRepo, feedRepo, folderRepo, filterRepo)
+	// 条目列表要能按「保存筛选视图」（filters.kind = view）筛，所以 entryService 也拿到 filterRepo；
+	// 55-21：条目详情读取走插件阅读期处理（注册表没接上 = 老行为，原样返回）。
+	entryService := service.NewEntryService(entryRepo, feedRepo, folderRepo, filterRepo).
+		WithPlugins(pluginRegistry)
 	readabilityService := service.NewReadabilityService(entryRepo, clientFactory, anubisSolver)
 	domainRateLimitService := service.NewDomainRateLimitService(domainRateLimitRepo)
-	refreshService := service.NewRefreshService(feedRepo, entryRepo, settingsService, iconService, clientFactory, anubisSolver, domainRateLimitService, filterService, mcpService)
+	refreshService := service.NewRefreshService(feedRepo, entryRepo, settingsService, iconService, clientFactory, anubisSolver, domainRateLimitService, filterService, mcpService).
+		// 55-17：抓取失败分类走插件链（RSSHub 错误页归类在 rsshub 插件里）。
+		WithPlugins(pluginRegistry)
 	opmlService := service.NewOPMLService(folderService, feedService, refreshService, iconService, folderRepo, feedRepo)
 
 	// 代理媒体磁盘缓存（50-2）：图片/音视频取过一次就落盘，第二次起不再出网。
@@ -151,7 +162,44 @@ func main() {
 	mcpHandler := handler.NewMCPHandler(mcpService, mcpOutboundService)
 	mcpEndpointHandler := handler.NewMCPEndpointHandler(mcpOutboundService)
 
-	router := transport.NewRouter(folderHandler, feedHandler, entryHandler, opmlHandler, iconHandler, proxyHandler, settingsHandler, aiHandler, authHandler, domainRateLimitHandler, filterHandler, proxySourceHandler, mcpHandler, mcpEndpointHandler, authService, cfg.StaticDir, cfg.EnableSwagger)
+	// 插件模块（55 批）：注册表与 bark 装配已在规则引擎之前完成（见 filterService 上方），
+	// 这里只把外部插件宿主接上。
+	// 外部插件宿主（55-7b）：$KRSS_DATA_DIR/plugins/<id>/ = manifest + 可执行，不重启即装即用。
+	pluginHost := service.NewPluginHost(pluginRegistry, pluginRepo, filepath.Join(cfg.DataDir, "plugins"),
+		service.WithPluginAPIBase(pluginAPIBase(cfg.Addr)))
+	// 每 5s 扫一次插件目录（不上 fsnotify）：丢个文件夹进去，5s 内就发现并拉起。
+	pluginWatchCtx, pluginWatchCancel := context.WithCancel(context.Background())
+	pluginHost.Watch(pluginWatchCtx, 5*time.Second)
+	pluginService := service.NewPluginService(pluginRegistry, pluginRepo, settingsRepo,
+		service.WithPluginHost(pluginHost),
+		// 界面直调（56-5）要按选择补条目/订阅/规则明细；只读 GetByID，走现成仓储。
+		service.WithInvokeRepos(entryRepo, feedRepo, filterRepo),
+		// 插件专属数据（56-19）：/api/plugins/:id/data/... 的存储。
+		service.WithPluginDataRepo(pluginDataRepo))
+	// 启动即装载：表里没有的内置插件补进行（bark/rsshub 默认开 ⇒ 老实例行为零变化；demo 默认关），
+	// 同时扫一遍插件目录把外部插件拉起来（Catalog 链上就带 ensureExternal）。
+	if _, err := pluginService.Catalog(context.Background()); err != nil {
+		logger.Error("init plugins", "error", err)
+		os.Exit(1)
+	}
+
+	// Backfill icons for existing feeds (run in background)。
+	// 必须放到插件注册表建好、Catalog 装载完启用状态之后再起：否则 GitHub 头像等 FeedIconProvider
+	// 还没就绪，回填会先按通用 favicon 落盘，头像要等下一轮才补上。
+	backfillCtx, cancelBackfill := context.WithCancel(context.Background())
+	var backfillWG sync.WaitGroup
+	backfillWG.Add(1)
+	go func() {
+		defer backfillWG.Done()
+		if err := iconService.BackfillIcons(backfillCtx); err != nil && !errors.Is(err, context.Canceled) {
+			logger.Warn("backfill icons", "error", err)
+		}
+	}()
+
+	pluginHandler := handler.NewPluginHandler(pluginService)
+	exportHandler := handler.NewExportHandler(service.NewExportService(settingsService))
+
+	router := transport.NewRouter(folderHandler, feedHandler, entryHandler, opmlHandler, iconHandler, proxyHandler, settingsHandler, aiHandler, authHandler, domainRateLimitHandler, filterHandler, proxySourceHandler, mcpHandler, mcpEndpointHandler, pluginHandler, exportHandler, authService, cfg.StaticDir, cfg.EnableSwagger)
 	pprofServer := startPprofServer(cfg.PprofAddr)
 
 	// 定时刷新：间隔来自设置（设置 → 高级 → 拉取），每轮重新读一次 —— 改完下一轮生效，不用重启
@@ -178,6 +226,9 @@ func main() {
 		sched.Stop()
 		readabilityService.Close()
 		proxyService.Close()
+		// 外部插件子进程要跟着走（SIGTERM → 5s 宽限 → SIGKILL），不留孤儿进程。
+		pluginWatchCancel()
+		pluginHost.Stop()
 		cancelBackfill()
 
 		// Wait for backfill task to exit within shutdown deadline.
@@ -272,4 +323,17 @@ func (a *networkDomainMemoryAdapter) Remember(ctx context.Context, host, mode st
 	if err := a.repo.Set(ctx, host, mode); err != nil {
 		logger.Warn("proxy domain memory write failed", "module", "network", "action", "remember", "resource", "smart-proxy", "host", host, "error", err)
 	}
+}
+
+// pluginAPIBase 把监听地址（":8082" / "0.0.0.0:8082"）翻成插件能连的基址 —— 插件在本机，
+// 一律走 127.0.0.1，不跟着监听网卡走（否则 0.0.0.0 会变成不可连的地址）。
+func pluginAPIBase(addr string) string {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return ""
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" || host == "[::]" {
+		host = "127.0.0.1"
+	}
+	return "http://" + net.JoinHostPort(host, port)
 }

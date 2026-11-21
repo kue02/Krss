@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>标注</title>
+    <style>
+      /* 主题变量由 host:init 写进来（krss.theme()），这里给的是兜底色 —— 不引任何依赖。 */
+      body {
+        margin: 0;
+        padding: 16px;
+        font: 14px/1.6 system-ui, -apple-system, "PingFang SC", sans-serif;
+        background: var(--background, #fff);
+        color: var(--foreground, #18181b);
+      }
+      h1 { margin: 0 0 4px; font-size: 15px; }
+      .hint { margin: 0 0 14px; font-size: 12px; color: var(--muted, #71717a); }
+      ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+      li {
+        padding: 8px 10px;
+        border: 1px solid var(--border, #e4e4e7);
+        border-radius: var(--radius, 8px);
+        background: var(--surface, transparent);
+      }
+      .range { font-size: 12px; color: var(--muted, #71717a); }
+      .note { margin-top: 2px; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <h1 id="title">标注</h1>
+    <p class="hint" id="hint">加载中…</p>
+    <ul id="list"></ul>
+
+    <!-- bridge.js 由 SDK 统一发（sdk/ui/bridge.js），插件目录里不需要拷一份 -->
+    <script src="./bridge.js"></script>
+    <script>
+      (function () {
+        "use strict";
+        var listEl = document.getElementById("list");
+        var hintEl = document.getElementById("hint");
+        var titleEl = document.getElementById("title");
+
+        // 宿主把当前条目的身份放在 host:init 里（正文不在这里：要正文得按权限另取）
+        krss.onInit(function (init) {
+          var theme = init.theme || {};
+          Object.keys(theme).forEach(function (name) {
+            document.documentElement.style.setProperty(name, theme[name]);
+          });
+          var entry = init.entry || {};
+          if (entry.title) titleEl.textContent = entry.title;
+          if (!entry.id) {
+            hintEl.textContent = "从阅读器打开一条条目后再看标注。";
+            return;
+          }
+          load(String(entry.id));
+        });
+
+        // 告诉宿主「脚本起来了」（宿主不依赖它，排障时有用）
+        krss.ready();
+
+        function load(entryId) {
+          hintEl.textContent = "读取标注…";
+          // 值是不透明字符串：插件自己 JSON.parse（宿主不改一个字节）
+          krss.data
+            .list("annotations")
+            .then(function (values) {
+              var raw = (values || {})[entryId];
+              var items = [];
+              try {
+                items = raw ? JSON.parse(raw) : [];
+              } catch (error) {
+                hintEl.textContent = "标注数据坏了：" + error;
+                return;
+              }
+              render(items);
+            })
+            .catch(function (error) {
+              hintEl.textContent = "读不到标注：" + (error && error.message ? error.message : error);
+            });
+        }
+
+        function render(items) {
+          items.sort(function (a, b) { return a.start - b.start; });
+          listEl.textContent = "";
+          hintEl.textContent = items.length
+            ? "共 " + items.length + " 条（黄色 = 高亮，蓝色 = 笔记）"
+            : "还没有标注：在正文里选中文字，点「高亮」或「写笔记」。";
+          items.forEach(function (item) {
+            var li = document.createElement("li");
+            var range = document.createElement("div");
+            range.className = "range";
+            range.textContent = (item.color === "blue" ? "笔记" : "高亮") +
+              " · 第 " + (item.start + 1) + "–" + item.end + " 字";
+            li.appendChild(range);
+            if (item.note) {
+              var note = document.createElement("div");
+              note.className = "note";
+              note.textContent = item.note;
+              li.appendChild(note);
+            }
+            listEl.appendChild(li);
+          });
+        }
+      })();
+    </script>
+  </body>
+</html>

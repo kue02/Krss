@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  Checkbox,
   Fieldset,
   ToggleButton,
   ToggleButtonGroup,
@@ -11,11 +12,15 @@ import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Select } from "@/components/ui/select";
 import { ViewIconPicker } from "@/components/automation/ViewIconPicker";
 import { FeedScopePicker } from "@/components/automation/FeedScopePicker";
+import { PluginActionFields } from "@/components/automation/PluginActionFields";
+import { PluginSlot } from "@/plugins/PluginSlot";
 import { CONTENT_TYPE_ORDER } from "@/lib/content-type-meta";
 import type { ContentType } from "@/types/api";
 import { useFeeds } from "@/hooks/useFeeds";
 import { useFolders } from "@/hooks/useFolders";
 import { useFilterPreview } from "@/hooks/useFilters";
+import { fetchPlugins } from "@/plugins/api";
+import type { PluginActionMeta, PluginMeta } from "@/plugins/types";
 import {
   FILTER_CONDITION_FIELDS,
   FILTER_CONDITION_OPERATORS,
@@ -33,6 +38,14 @@ import {
 
 interface FilterEditorProps {
   initial: FilterWritePayload;
+  /**
+   * 正在编辑的那条规则的 id（56-14）。新建时为 undefined。
+   *
+   * 编辑器要靠它决定两件事：底栏插件按钮的 selection 带不带 `filterId`、
+   * 以及点击时要不要先保存（没有 id 的草稿直接推 = 推一条没有规则的推送）。
+   * 它不在 `FilterWritePayload` 里 —— 那份形状是**原样发给后端**的写请求，多一个 id 就多一个脏字段。
+   */
+  filterId?: string;
   /** view = 「保存筛选视图」：同一套范围 + 条件，但没有动作区 */
   kind?: FilterKind;
   /** 自然语言建规则给出的解释（刚生成时显示一次） */
@@ -47,12 +60,22 @@ interface FilterEditorProps {
    * 因为只有它知道 kind/trim/视图清空动作这些规范化规则（buildPayload）。
    */
   onPayloadChange?: (payload: FilterWritePayload, dirty: boolean) => void;
-  onSubmit: (payload: FilterWritePayload) => void;
+  /**
+   * 保存。可以返回**保存后的规则 id**（56-14）：底栏的插件按钮要「先保存再调用」，
+   * 新建规则时正是靠这个返回值拿到刚生成 id 去推。同步返回 void / 什么都不返回 = 老行为。
+   * 失败请 reject（调用方会把异常收掉，错误照旧由 `saveError` 显示）。
+   */
+  onSubmit: (
+    payload: FilterWritePayload,
+  ) => Promise<string | void> | string | void;
   onCancel: () => void;
 }
 
-/** 正反成对的动作（勾了正就禁用反，同一条规则里互斥）；xxxUrl 不是开关，排除在外 */
-type ActionKey = Exclude<keyof FilterActions, "webhookUrl" | "notifyUrl">;
+/** 正反成对的动作（勾了正就禁用反，同一条规则里互斥）；xxxUrl / 插件动作不是开关，排除在外 */
+type ActionKey = Exclude<
+  keyof FilterActions,
+  "webhookUrl" | "pluginActions"
+>;
 
 const ACTION_PAIRS: { positive: ActionKey; negative: ActionKey }[] = [
   { positive: "mute", negative: "unmute" },
@@ -72,7 +95,6 @@ const ACTION_LABEL_KEYS: Record<string, string> = {
   translate: "action_translate",
   summarize: "action_summarize",
   webhook: "action_webhook",
-  notify: "action_notify",
 };
 
 /** 三态维度（静音 / 已读 / 星标）的行标签 */
@@ -88,7 +110,6 @@ const ACTION_HINT_KEYS: Record<string, string> = {
   translate: "translate_hint",
   summarize: "summarize_hint",
   webhook: "webhook_hint",
-  notify: "notify_hint",
 };
 
 const inputClass = cn(
@@ -111,6 +132,7 @@ function emptyCondition(): FilterCondition {
  */
 export function FilterEditor({
   initial,
+  filterId,
   kind = "rule",
   notes = null,
   warnings = [],
@@ -134,6 +156,39 @@ export function FilterEditor({
   const [previewResult, setPreviewResult] =
     useState<FilterPreviewResult | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
+
+  /**
+   * 55-14：插件贡献的动作。清单来自 `GET /api/plugins` —— 只把**已启用插件里已启用的动作**
+   * 拿出来渲染（停用即不在编辑器里出现，这是插件契约，不是这里额外加的守卫）。
+   */
+  const [plugins, setPlugins] = useState<PluginMeta[]>([]);
+  /** 保存时被判为「必填却空着」的字段：键 `${pluginId}/${actionId}` → 字段键数组（标红用） */
+  const [invalidPluginFields, setInvalidPluginFields] = useState<
+    Record<string, string[]>
+  >({});
+
+  useEffect(() => {
+    let alive = true;
+    fetchPlugins()
+      .then((list) => {
+        if (alive) setPlugins(list);
+      })
+      // 清单拿不到不能让整张表单崩：插件动作区就是不出现，规则其余部分照常编辑/保存
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+    // 依赖 initial：抽屉关掉后编辑器仍挂在那儿，重新打开（新草稿）必须重拉一次 ——
+    // 否则「刚刚停用某个插件」后编辑器还在列出它的动作（真机踩到，只有刷新页面才消失）
+  }, [initial]);
+
+  const pluginActions = useMemo(
+    () =>
+      plugins.flatMap((plugin) =>
+        plugin.enabled ? plugin.actions.filter((action) => action.enabled) : [],
+      ),
+    [plugins],
+  );
 
   const update = (patch: Partial<FilterWritePayload>) => {
     setDraft((current) => ({ ...current, ...patch }));
@@ -164,6 +219,83 @@ export function FilterEditor({
       conditions: current.conditions.filter((_, i) => i !== index),
     }));
     setPreviewResult(null);
+  };
+
+  /** 插件动作在界面里的唯一键（同一 (plugin, action) 只允许一条引用） */
+  const pluginActionKey = (action: PluginActionMeta) =>
+    `${action.pluginId}/${action.actionId}`;
+
+  const findPluginAction = (pluginId: string, actionId: string) =>
+    pluginActions.find(
+      (action) => action.pluginId === pluginId && action.actionId === actionId,
+    );
+
+  /** 勾选 / 取消勾选一个插件动作：勾上建一条空 config 的引用，取消就从数组里摘掉 */
+  const togglePluginAction = (action: PluginActionMeta, next: boolean) => {
+    setDraft((current) => {
+      const rest = (current.actions.pluginActions ?? []).filter(
+        (item) =>
+          !(item.plugin === action.pluginId && item.action === action.actionId),
+      );
+      return {
+        ...current,
+        actions: {
+          ...current.actions,
+          pluginActions: next
+            ? [
+                ...rest,
+                {
+                  plugin: action.pluginId,
+                  action: action.actionId,
+                  config: {},
+                },
+              ]
+            : rest,
+        },
+      };
+    });
+    setInvalidPluginFields({});
+    setPreviewResult(null);
+  };
+
+  /** 改某个动作的一个字段（不会影响其它动作的同名字段） */
+  const setPluginActionField = (
+    action: PluginActionMeta,
+    key: string,
+    value: string,
+  ) => {
+    setDraft((current) => ({
+      ...current,
+      actions: {
+        ...current.actions,
+        pluginActions: (current.actions.pluginActions ?? []).map((item) =>
+          item.plugin === action.pluginId && item.action === action.actionId
+            ? { ...item, config: { ...item.config, [key]: value } }
+            : item,
+        ),
+      },
+    }));
+    setInvalidPluginFields({});
+    setPreviewResult(null);
+  };
+
+  /**
+   * 插件动作里「声明必填却空着」的字段。保存与预览共用这一份判定 ——
+   * 校验只看插件自己声明的 required，本体不认识任何具体插件字段。
+   */
+  const pluginFieldIssues = (payload: FilterWritePayload) => {
+    const issues: { action: PluginActionMeta; field: string; label: string }[] =
+      [];
+    for (const ref of payload.actions.pluginActions ?? []) {
+      const action = findPluginAction(ref.plugin, ref.action);
+      if (!action) continue;
+      for (const field of action.fields) {
+        if (field.required && !(ref.config?.[field.key] ?? "").trim()) {
+          issues.push({ action, field: field.key, label: field.label });
+        }
+      }
+    }
+    return issues;
   };
 
   /** 三维度一律三态：none=不动 / positive=正向 / negative=反向（互斥天然成立） */
@@ -229,6 +361,13 @@ export function FilterEditor({
       if (!hasAnyAction(payload.actions)) return t("automation.invalid");
       if (payload.actions.webhook && !(payload.actions.webhookUrl ?? "").trim()) {
         return t("automation.webhook_needs_url");
+      }
+      // 插件动作的必填字段：文案里带字段名，用户不用猜是哪一栏
+      const pluginIssue = pluginFieldIssues(payload)[0];
+      if (pluginIssue) {
+        return t("automation.plugin_action_field_required", {
+          field: pluginIssue.label,
+        });
       }
     }
     if (payload.scopeType === "folder" && !payload.scopeId) {
@@ -312,12 +451,47 @@ export function FilterEditor({
     );
   };
 
-  const handleSubmit = () => {
+  /**
+   * 校验 + 标红，返回「有没有问题」。保存按钮与底栏插件按钮（先保存）共用这一份，
+   * 两处口径必须一致，否则会出现「保存能过、推送被拦」这种自相矛盾。
+   */
+  const checkBeforeSave = (): boolean => {
     const error = validate(draft);
     setValidationError(error);
-    if (error) return;
-    onSubmit(buildPayload());
+    // 必填却空着的那几栏标红（错误文案在底部，红框指到具体字段）
+    const grouped: Record<string, string[]> = {};
+    for (const issue of pluginFieldIssues(draft)) {
+      const key = pluginActionKey(issue.action);
+      grouped[key] = [...(grouped[key] ?? []), issue.field];
+    }
+    setInvalidPluginFields(grouped);
+    return Boolean(error);
   };
+
+  const handleSubmit = () => {
+    if (checkBeforeSave()) return;
+    // 保存失败由 onSubmit 自己报（saveError）；这里只把 rejection 收掉，
+    // 不让一次点击变成未捕获的 Promise 拒绝（56-14 起 onSubmit 可能返回 Promise）
+    void Promise.resolve(onSubmit(buildPayload())).catch(() => undefined);
+  };
+
+  /**
+   * 底栏插件按钮的「先保存」（56-14）：确保这份草稿有一条落库的规则，返回它的 id。
+   *
+   * - 已经有 id（编辑既有规则）→ 直接用它，**不重复保存**；
+   * - 新建 → 校验后保存，id 取自 `onSubmit` 的返回值（外壳用 mutateAsync 拿得到）；
+   * - 校验不过 / 保存失败 → 抛错，`PluginSlot` 会因此放弃调用插件动作
+   *   （错误已经显示在表单里，不需要第二个提示）。
+   */
+  const saveDraft = async (): Promise<string | null> => {
+    if (filterId) return filterId;
+    if (checkBeforeSave()) throw new Error("invalid filter draft");
+    const savedId = await onSubmit(buildPayload());
+    return typeof savedId === "string" && savedId ? savedId : null;
+  };
+
+  /** 插件动作的 selection：id 原样传字符串（int64 走 JS number 会丢精度，后端 Selection 两种都认） */
+  const filterSelection = (id: string | null | undefined) => (id ? { filterId: id } : {});
 
   const valuePlaceholder = (condition: FilterCondition): string => {
     if (condition.field === "ai_relevance") {
@@ -787,37 +961,6 @@ export function FilterEditor({
               <div className="contents">
                 <span
                   className="text-xs text-muted-foreground"
-                  title={t(`automation.${ACTION_HINT_KEYS["notify"]}`)}
-                >
-                  {t("automation.action_notify")}
-                </span>
-                <HeroSwitch
-                  aria-label={t("automation.action_notify")}
-                  isSelected={Boolean(draft.actions.notify)}
-                  onChange={(checked) =>
-                    update({ actions: { ...draft.actions, notify: checked } })
-                  }
-                />
-              </div>
-              {draft.actions.notify && (
-                <input
-                  type="text"
-                  value={draft.actions.notifyUrl ?? ""}
-                  onChange={(event) =>
-                    update({
-                      actions: {
-                        ...draft.actions,
-                        notifyUrl: event.target.value,
-                      },
-                    })
-                  }
-                  placeholder={t("automation.notify_url_placeholder")}
-                  className={cn(inputClass, "col-start-2")}
-                />
-              )}
-              <div className="contents">
-                <span
-                  className="text-xs text-muted-foreground"
                   title={t(`automation.${ACTION_HINT_KEYS["webhook"]}`)}
                 >
                   {t("automation.action_webhook")}
@@ -848,6 +991,71 @@ export function FilterEditor({
               )}
             </div>
             </Fieldset>
+
+            {/* ④ 插件动作（55-14）：字段形状由插件声明，这里只按声明画；
+                停用的插件/动作不渲染 —— 想用就去 设置 → 插件 打开它 */}
+            {pluginActions.length > 0 && (
+              <Fieldset className="border-t border-border/60 pt-3.5 mt-3.5">
+                <Fieldset.Legend className="text-xs font-medium text-foreground">
+                  {t("automation.plugin_actions")}
+                </Fieldset.Legend>
+                <div className="space-y-2">
+                  {pluginActions.map((action) => {
+                    const ref = draft.actions.pluginActions?.find(
+                      (item) =>
+                        item.plugin === action.pluginId &&
+                        item.action === action.actionId,
+                    );
+                    const checked = Boolean(ref);
+                    return (
+                      <div key={pluginActionKey(action)} className="space-y-2">
+                        <Checkbox
+                          isSelected={checked}
+                          onChange={(next: boolean) =>
+                            togglePluginAction(action, next)
+                          }
+                          className="flex flex-row items-center gap-2"
+                        >
+                          <Checkbox.Control className="shrink-0">
+                            <Checkbox.Indicator />
+                          </Checkbox.Control>
+                          <Checkbox.Content className="min-w-0">
+                            {/* 标签与来源整体可换行：窄抽屉里来源不会被拆到一半 */}
+                            <span className="flex flex-wrap items-baseline gap-x-2">
+                              <span className="text-sm text-foreground">
+                                {action.label}
+                              </span>
+                              <span className="text-xs text-muted-foreground">
+                                {t("automation.plugin_action_from", {
+                                  name: action.pluginName,
+                                })}
+                              </span>
+                            </span>
+                          </Checkbox.Content>
+                        </Checkbox>
+                        {checked && (
+                          <div className="pl-6">
+                            <PluginActionFields
+                              fields={action.fields}
+                              config={ref?.config}
+                              invalidKeys={
+                                invalidPluginFields[pluginActionKey(action)]
+                              }
+                              onChange={(key, value) =>
+                                setPluginActionField(action, key, value)
+                              }
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <div className="text-xs text-muted-foreground">
+                    {t("automation.plugin_actions_hint")}
+                  </div>
+                </div>
+              </Fieldset>
+            )}
 
             {/* 只留一行总说明（其余都进 tooltip） */}
             <div className="text-xs text-muted-foreground">
@@ -952,6 +1160,15 @@ export function FilterEditor({
             : t("automation.preview")}
         </button>
         <div className="flex-1" />
+        {/* 56-14：插件往底栏加的按钮（这个挂点没有贡献就不占位）。
+            点击先走 beforeInvoke 保存这份草稿：新建规则时还没 id，直接推就是一条
+            「没有规则的推送」；保存成功才继续调用，返回的新 id 补进 selection。 */}
+        <PluginSlot
+          surface="filter.editor.footer"
+          variant="toolbar"
+          selection={filterSelection(filterId)}
+          beforeInvoke={async () => filterSelection(await saveDraft())}
+        />
         <button
           type="button"
           onClick={onCancel}

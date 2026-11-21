@@ -81,3 +81,20 @@ func BuildAISummarizeSystemPromptForTest(s AIService, ctx context.Context, entry
 
 // Export for testing
 var SliceByRange = sliceByRange
+
+// 插件运行时安全（fix/plugin-runtime）：黑盒测试用的窄口。
+var PluginChildEnv = pluginChildEnv
+var OpenPluginLog = openPluginLog
+
+// PluginLogMaxBytesForTest 读当前 plugin.log 轮转阈值。
+func PluginLogMaxBytesForTest() int64 { return pluginLogMaxBytes }
+
+// SetPluginLogMaxBytesForTest 改 plugin.log 轮转阈值（返回还原函数，测试结束调）。
+func SetPluginLogMaxBytesForTest(n int64) (restore func()) {
+	old := pluginLogMaxBytes
+	pluginLogMaxBytes = n
+	return func() { pluginLogMaxBytes = old }
+}
+
+// ExcludedSettingKeysForTest 导出排除名单（55-22 守门测试：插件 secret 键必须都在里面）。
+func ExcludedSettingKeysForTest() []string { return excludedSettingKeys() }

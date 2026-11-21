@@ -43,6 +43,8 @@ import {
 import { useFeedMenuActions } from "@/hooks/useFeedMenuActions";
 import { useUnmuteEntry, useFilters, useCreateFilterException } from "@/hooks/useFilters";
 import { showToast } from "@/stores/toast-store";
+import { PluginSlot } from "@/plugins/PluginSlot";
+import { useTargetOps } from "@/plugins/useTargetOps";
 import { openFilterEditorForEntry } from "@/stores/filter-editor-store";
 import { useAutoReadable } from "@/hooks/useAutoReadable";
 import { stripDuplicatedTitle } from "@/lib/strip-duplicated-title";
@@ -189,15 +191,22 @@ export function EntryContextMenuContent({
   const exception = useCreateFilterException();
   const { mutate: markAsRead } = useMarkAsRead();
   const readAction = readToggleAction(!entry.read);
+  /**
+   * 56-16：这个菜单上的可改控件。宿主登记了 `entry.mark_read` 允许**隐藏**
+   * （插件自己接管阅读状态时不再需要宿主这颗），不允许替换。
+   */
+  const targetOps = useTargetOps("entry.contextmenu");
 
   return (
     <ContextMenuContent>
-      <ContextMenuItem
-        onClick={() => markAsRead({ id: entry.id, read: readAction.nextRead })}
-      >
-        <readAction.Icon className="size-4 shrink-0 text-muted-foreground" />
-        {t(readAction.labelKey)}
-      </ContextMenuItem>
+      {!targetOps.isHidden("entry.mark_read") && (
+        <ContextMenuItem
+          onClick={() => markAsRead({ id: entry.id, read: readAction.nextRead })}
+        >
+          <readAction.Icon className="size-4 shrink-0 text-muted-foreground" />
+          {t(readAction.labelKey)}
+        </ContextMenuItem>
+      )}
       {onMarkAbove && (
         <ContextMenuItem onClick={onMarkAbove}>
           <ChevronsUp className="size-4 shrink-0 text-muted-foreground" />
@@ -255,6 +264,22 @@ export function EntryContextMenuContent({
           />
         </>
       )}
+      {/* 56-11：条目右键菜单的插件挂点（`entry.contextmenu`）。**只插这一处** ——
+          条目卡片（列表档 / 社交档同一个组件）与通知视图的时间线卡片都复用
+          `EntryContextMenuContent`，插在这里两处一起生效，别在别处再插一份。
+          选中态只给 entryIds（single 项据此判断「恰好选中 1 条」）。
+
+          `entryIds` 是 `string[]`（后端 `plugin.Selection.EntryIDs` 是 `[]int64`），
+          而前端 `Entry.id` 是字符串，所以按 56-13 的同一口径转一次。
+          ⚠️ 已知隐患：19 位 snowflake 超出 JS 安全整数（实测库里 200 条 id 只有 4 条
+          能原样往返），转完的 id 会让后端 `GetByID` 查不到而**静默跳过**这条条目。
+          真修需要契约层改成按字符串传（后端 `json:",string"` 或 Selection 收 string），
+          会同时牵动 56-13 的 feedIds，已记进 `docs/dev/todo.md` 待观察，不在本棒私改。 */}
+      <PluginSlot
+        surface="entry.contextmenu"
+        variant="menu"
+        selection={{ entryIds: [entry.id] }}
+      />
     </ContextMenuContent>
   );
 }

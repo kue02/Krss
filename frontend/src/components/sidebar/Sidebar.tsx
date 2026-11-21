@@ -67,6 +67,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import type { SelectionType } from "@/hooks/useSelection";
 import type { Folder, Feed, ContentType } from "@/types/api";
+import type { PluginView } from "@/plugins/types";
 import {
   useSidebarHotkeys,
   type SidebarTarget,
@@ -110,6 +111,14 @@ interface SidebarProps {
   contentType: ContentType;
   appearanceSettings?: AppearanceSettings;
   /**
+   * 56-28：插件注册的视图（`GET /api/plugins/views`）。缺省空数组 = 切换器上没有「插件」分组，
+   * 与 56 批之前一模一样 —— 不装插件的用户界面零变化。
+   */
+  pluginViews?: PluginView[];
+  /** 正在显示的插件视图 key（高亮用） */
+  activePluginView?: string | null;
+  onSelectPluginView?: (key: string) => void;
+  /**
    * 移动端侧栏 Sheet 关掉自己（App 传下来的 closeSidebar）。
    * 设置/资料弹窗是从侧栏里打开的：不先关 Sheet，它的 touchmove/wheel 锁
    * （`ui/sheet.tsx` 的 preventBackgroundScroll）会把 Radix Dialog 内容区的
@@ -147,6 +156,9 @@ export function Sidebar({
   onSelectAll,
   contentType,
   appearanceSettings,
+  pluginViews,
+  activePluginView,
+  onSelectPluginView,
   onRequestClose,
 }: SidebarProps) {
   const { t } = useTranslation();
@@ -522,6 +534,9 @@ export function Sidebar({
         counts={contentTypeCounts}
         onSelect={(type) => onSelectAll?.(type)}
         visibleContentTypes={visibleContentTypes}
+        pluginViews={pluginViews}
+        activePluginView={activePluginView}
+        onSelectPluginView={onSelectPluginView}
       />
 
       {/* Content */}

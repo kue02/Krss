@@ -424,6 +424,41 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/entries/{id}/decorations": {
+            "get": {
+                "description": "区间偏移以「正文纯文本」为基准（rune 计数，HTML 已由宿主剥掉）；单个插件 300ms 超时，\n出错/超时/越界一律跳过，返回的永远只是能画的那些。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "entries"
+                ],
+                "summary": "一条条目的正文装饰（各启用插件声明的段落样式区间）",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Entry ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.entryDecorationsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/feeds/merge-preview": {
             "get": {
                 "description": "Preview merging a subscription into the one that already owns the target URL",
@@ -724,21 +759,686 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/notify/test": {
-            "post": {
-                "description": "Send a test push via the configured notify channel (Bark)",
+        "/api/plugins": {
+            "get": {
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "settings"
+                    "plugins"
                 ],
-                "summary": "Send test notification",
+                "summary": "插件清单（含各插件声明的动作与设置段）",
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/internal_handler.notifyTestResponse"
+                            "$ref": "#/definitions/internal_handler.pluginCatalogResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/plugins/contributions": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "plugins"
+                ],
+                "summary": "各插入位置（surface）上可用的插件界面项",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.pluginContributionsResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/plugins/upload": {
+            "post": {
+                "description": "包根目录或唯一顶层目录内需有 plugin.json；安装后插件默认停用，需在设置页手动启用。\n只支持外部插件（transport=http），内置插件 id 不可覆盖；同名插件已安装时返回 409。",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "plugins"
+                ],
+                "summary": "上传并安装一个 zip 插件包",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "插件 zip 包",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.pluginCatalogResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "插件包不合法",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "插件已存在",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/plugins/views": {
+            "get": {
+                "description": "只含**已启用**插件；按插件 id 排序，宿主注入 plugin 字段。\ncustom 视图必须声明 ui:custom 且带 entry，否则被注册表丢弃（防绕过 /ui/ 门禁）。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "plugins"
+                ],
+                "summary": "插件注册的视图（视图切换器一份数据）",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.pluginViewsResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/plugins/{id}": {
+            "delete": {
+                "description": "只对外部插件生效：停进程、把插件目录改名为 \u003cid\u003e.removed-\u003c时间戳\u003e 归档（不真删，可恢复），\n再清掉 plugin_data、plugin.\u003cid\u003e.* 设置与 plugins 行，返回最新清单。\n内置插件不可卸载，只能停用（409）。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "plugins"
+                ],
+                "summary": "卸载一个外部插件（归档目录并清干净残留）",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "插件 id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.pluginCatalogResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "插件不存在",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "内置插件不可卸载，只能停用",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "plugins"
+                ],
+                "summary": "启用 / 停用一个插件",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "插件 id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "启停",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.pluginEnabledRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.pluginCatalogResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/plugins/{id}/actions/{actionId}/invoke": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "plugins"
+                ],
+                "summary": "界面直调一个插件动作（按插件声明的权限补上下文）",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "插件 id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "动作 id",
+                        "name": "actionId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "挂点 + 选择 + 配置",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.pluginInvokeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/krss_backend_internal_plugin.InvokeResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "插件执行失败，error 里是插件给的可见原因",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/plugins/{id}/actions/{actionId}/test": {
+            "post": {
+                "tags": [
+                    "plugins"
+                ],
+                "summary": "让插件动作自己发一条测试（Bark 发送测试推送）",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "integer"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "投递失败，error 里是插件给的可见原因（地址已打码）",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/plugins/{id}/data/{collection}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "plugins"
+                ],
+                "summary": "列插件某个 collection 的键值（?prefix= 过滤、?limit= 限条数，缺省 200 上限 1000）",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "插件 id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "collection 名（^[a-z0-9_-]{1,32}$）",
+                        "name": "collection",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "只列以此开头的键（空 = 全部）",
+                        "name": "prefix",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "最多几条（缺省 200，上限 1000）",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.pluginDataListResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "插件已停用",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "plugins"
+                ],
+                "summary": "删插件某个 collection 的全部键（幂等：空 collection 也 204）",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "插件 id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "collection 名（^[a-z0-9_-]{1,32}$）",
+                        "name": "collection",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "插件已停用",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/plugins/{id}/data/{collection}/{key}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "plugins"
+                ],
+                "summary": "读插件自己存的一个键",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "插件 id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "collection 名（^[a-z0-9_-]{1,32}$）",
+                        "name": "collection",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "键名（1..200 字节，特殊字符要 URL 编码）",
+                        "name": "key",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.pluginDataValueResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "键不存在（或插件不存在）",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "插件已停用",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "plugins"
+                ],
+                "summary": "写 / 覆盖插件自己的一个键（同键再写 = 覆盖）",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "插件 id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "collection 名（^[a-z0-9_-]{1,32}$）",
+                        "name": "collection",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "键名（1..200 字节）",
+                        "name": "key",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "值（字符串，≤256KB）",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.pluginDataPutRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.pluginDataValueResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "collection / 键名不合规，或值超 256KB",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "插件已停用",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "plugins"
+                ],
+                "summary": "删插件自己的一个键（键不在 = 404）",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "插件 id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "collection 名（^[a-z0-9_-]{1,32}$）",
+                        "name": "collection",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "键名",
+                        "name": "key",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "插件已停用",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/plugins/{id}/settings": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "plugins"
+                ],
+                "summary": "读插件设置（secret 字段掩码）",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.pluginSettingsResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "plugins"
+                ],
+                "summary": "写插件设置（值为掩码 = 保持原值）",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.pluginSettingsResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/plugins/{id}/ui/{path}": {
+            "get": {
+                "description": "只认 GET。插件不存在 404、停用 409、没声明 ui:custom 403、路径含 ` + "`" + `..` + "`" + ` 或绝对路径 400。\n响应固定带 CSP（connect-src 'none'）、X-Content-Type-Options: nosniff、Cache-Control: no-store。",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "plugins"
+                ],
+                "summary": "插件自带的界面资源（沙箱 iframe 用；内置插件读 embed.FS、外部插件代理到 socket）",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "插件 id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "资源相对路径（缺省 = index.html）",
+                        "name": "path",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "插件没有声明 ui:custom",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "插件已停用",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "外部插件取资源失败",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
                         }
                     }
                 }
@@ -1473,6 +2173,54 @@ const docTemplate = `{
                         "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/exports": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "插件导出的文件落到「设置 → 通用 → 导出目录」；未配置时 400，前端回落浏览器下载",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "exports"
+                ],
+                "summary": "写导出文件",
+                "parameters": [
+                    {
+                        "description": "要写盘的文件",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.exportFilesRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.exportFilesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -4294,6 +5042,17 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handler.entryDecorationsResponse": {
+            "type": "object",
+            "properties": {
+                "decorations": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_plugin.Decoration"
+                    }
+                }
+            }
+        },
         "internal_handler.entryListResponse": {
             "type": "object",
             "properties": {
@@ -4371,6 +5130,28 @@ const docTemplate = `{
             "properties": {
                 "error": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_handler.exportFilesRequest": {
+            "type": "object",
+            "properties": {
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_service.ExportFile"
+                    }
+                }
+            }
+        },
+        "internal_handler.exportFilesResponse": {
+            "type": "object",
+            "properties": {
+                "paths": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -4605,12 +5386,12 @@ const docTemplate = `{
                 "mute": {
                     "type": "boolean"
                 },
-                "notify": {
-                    "description": "Notify：命中后推一条到手机（Bark 兼容；地址留空 = 跟随设置里的全局推送地址）",
-                    "type": "boolean"
-                },
-                "notifyUrl": {
-                    "type": "string"
+                "pluginActions": {
+                    "description": "PluginActions 插件贡献的动作（55 批；bark 的「推送到手机」等）。\n必须在这层出/入都带上，否则编辑器改一条规则再保存会把推送动作悄悄丢掉。",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_model.PluginActionRef"
+                    }
                 },
                 "star": {
                     "type": "boolean"
@@ -5058,7 +5839,8 @@ const docTemplate = `{
                 "autoReadability": {
                     "type": "boolean"
                 },
-                "barkUrl": {
+                "exportDir": {
+                    "description": "ExportDir 插件导出的落盘目录（空 = 浏览器下载）。宿主校验目录存在性。",
                     "type": "string"
                 },
                 "fallbackUserAgent": {
@@ -5066,12 +5848,6 @@ const docTemplate = `{
                 },
                 "markReadOnScroll": {
                     "type": "boolean"
-                },
-                "rsshubAccessKey": {
-                    "type": "string"
-                },
-                "rsshubBaseUrl": {
-                    "type": "string"
                 }
             }
         },
@@ -5081,8 +5857,8 @@ const docTemplate = `{
                 "autoReadability": {
                     "type": "boolean"
                 },
-                "barkUrl": {
-                    "description": "BarkURL 推送地址（自动化规则的「推送到手机」没单独填地址时用它）",
+                "exportDir": {
+                    "description": "ExportDir 插件导出落盘目录（空 = 浏览器下载）",
                     "type": "string"
                 },
                 "fallbackUserAgent": {
@@ -5090,13 +5866,6 @@ const docTemplate = `{
                 },
                 "markReadOnScroll": {
                     "type": "boolean"
-                },
-                "rsshubAccessKey": {
-                    "type": "string"
-                },
-                "rsshubBaseUrl": {
-                    "description": "RSSHub 自有实例（添加订阅时自动换域名用）——不回这两个字段的话界面每次打开都是空的",
-                    "type": "string"
                 }
             }
         },
@@ -5572,11 +6341,148 @@ const docTemplate = `{
                 }
             }
         },
-        "internal_handler.notifyTestResponse": {
+        "internal_handler.pluginCatalogItem": {
             "type": "object",
             "properties": {
-                "status": {
-                    "type": "integer"
+                "actions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_plugin.ActionMeta"
+                    }
+                },
+                "builtin": {
+                    "type": "boolean"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "lastError": {
+                    "description": "LastError 外部插件最近一次故障（非空 ⇒ UI 显示「已崩溃 / 起不来」）",
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "sections": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_plugin.SettingsSection"
+                    }
+                },
+                "transport": {
+                    "description": "Transport builtin（编译进二进制）| http（外部进程，即装即用）",
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.pluginCatalogResponse": {
+            "type": "object",
+            "properties": {
+                "plugins": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_handler.pluginCatalogItem"
+                    }
+                }
+            }
+        },
+        "internal_handler.pluginContributionsResponse": {
+            "type": "object",
+            "properties": {
+                "surfaces": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/definitions/krss_backend_internal_plugin.Contribution"
+                        }
+                    }
+                }
+            }
+        },
+        "internal_handler.pluginDataListResponse": {
+            "type": "object",
+            "properties": {
+                "values": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "internal_handler.pluginDataPutRequest": {
+            "type": "object",
+            "properties": {
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.pluginDataValueResponse": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.pluginEnabledRequest": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "internal_handler.pluginInvokeRequest": {
+            "type": "object",
+            "properties": {
+                "config": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "selection": {
+                    "$ref": "#/definitions/krss_backend_internal_plugin.Selection"
+                },
+                "surface": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.pluginSettingsResponse": {
+            "type": "object",
+            "properties": {
+                "values": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "internal_handler.pluginViewsResponse": {
+            "type": "object",
+            "properties": {
+                "views": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_plugin.View"
+                    }
                 }
             }
         },
@@ -6081,6 +6987,23 @@ const docTemplate = `{
                 }
             }
         },
+        "krss_backend_internal_model.PluginActionRef": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string"
+                },
+                "config": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "plugin": {
+                    "type": "string"
+                }
+            }
+        },
         "krss_backend_internal_model.ProxyOverrideConfig": {
             "type": "object",
             "properties": {
@@ -6098,6 +7021,347 @@ const docTemplate = `{
                 },
                 "username": {
                     "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_plugin.ActionMeta": {
+            "type": "object",
+            "properties": {
+                "actionId": {
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "fields": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_plugin.Field"
+                    }
+                },
+                "label": {
+                    "type": "string"
+                },
+                "pluginId": {
+                    "type": "string"
+                },
+                "pluginName": {
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_plugin.Contribution": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string"
+                },
+                "confirm": {
+                    "type": "string"
+                },
+                "fields": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_plugin.Field"
+                    }
+                },
+                "group": {
+                    "type": "string"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "op": {
+                    "type": "string"
+                },
+                "plugin": {
+                    "description": "Plugin 由宿主在聚合时注入（插件自己声明时不用填）：前端靠它知道该调哪个插件。",
+                    "type": "string"
+                },
+                "refresh": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "selection": {
+                    "type": "string"
+                },
+                "surface": {
+                    "$ref": "#/definitions/krss_backend_internal_plugin.Surface"
+                },
+                "target": {
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_plugin.Decoration": {
+            "type": "object",
+            "properties": {
+                "color": {
+                    "type": "string"
+                },
+                "data": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "end": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "plugin": {
+                    "description": "宿主注入",
+                    "type": "string"
+                },
+                "start": {
+                    "type": "integer"
+                },
+                "style": {
+                    "description": "highlight|underline|note",
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_plugin.ExportFile": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "filename": {
+                    "type": "string"
+                },
+                "mime": {
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_plugin.Field": {
+            "type": "object",
+            "properties": {
+                "help": {
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "options": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_plugin.Option"
+                    }
+                },
+                "placeholder": {
+                    "type": "string"
+                },
+                "required": {
+                    "type": "boolean"
+                },
+                "type": {
+                    "description": "\"text\" | \"secret\" | \"select\" | \"bool\"",
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_plugin.InvokeResult": {
+            "type": "object",
+            "properties": {
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_plugin.ExportFile"
+                    }
+                },
+                "level": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "refresh": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "krss_backend_internal_plugin.Option": {
+            "type": "object",
+            "properties": {
+                "label": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_plugin.Selection": {
+            "type": "object",
+            "properties": {
+                "entryIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "feedIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "filterId": {
+                    "type": "integer"
+                },
+                "textRange": {
+                    "$ref": "#/definitions/krss_backend_internal_plugin.TextRange"
+                },
+                "viewId": {
+                    "type": "integer"
+                }
+            }
+        },
+        "krss_backend_internal_plugin.SettingsSection": {
+            "type": "object",
+            "properties": {
+                "fields": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_plugin.Field"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_plugin.Surface": {
+            "type": "string",
+            "enum": [
+                "entry.contextmenu",
+                "entry.list.toolbar",
+                "entry.reader.toolbar",
+                "entry.reader.body",
+                "feed.contextmenu",
+                "filter.editor.footer",
+                "settings.section",
+                "app.command",
+                "view.toolbar"
+            ],
+            "x-enum-varnames": [
+                "SurfaceEntryContextMenu",
+                "SurfaceEntryListToolbar",
+                "SurfaceEntryReaderToolbar",
+                "SurfaceEntryReaderBody",
+                "SurfaceFeedContextMenu",
+                "SurfaceFilterEditorFooter",
+                "SurfaceSettingsSection",
+                "SurfaceAppCommand",
+                "SurfaceViewToolbar"
+            ]
+        },
+        "krss_backend_internal_plugin.TextRange": {
+            "type": "object",
+            "properties": {
+                "end": {
+                    "type": "integer"
+                },
+                "start": {
+                    "type": "integer"
+                },
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_plugin.View": {
+            "type": "object",
+            "properties": {
+                "entry": {
+                    "description": "custom 用：iframe 入口",
+                    "type": "string"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "description": "\"declarative\" | \"custom\"",
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "layout": {
+                    "description": "list|grid|timeline",
+                    "type": "string"
+                },
+                "open": {
+                    "description": "\"\"|reader|external",
+                    "type": "string"
+                },
+                "permissions": {
+                    "description": "Permissions 宿主注入：该插件声明的权限。沙箱 bridge 靠它决定给不给 data / entries:read。\n插件不用自己填（填了也会被覆盖成它 Meta 里那份）。",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "plugin": {
+                    "description": "宿主注入",
+                    "type": "string"
+                },
+                "query": {
+                    "$ref": "#/definitions/krss_backend_internal_plugin.ViewQuery"
+                }
+            }
+        },
+        "krss_backend_internal_plugin.ViewQuery": {
+            "type": "object",
+            "properties": {
+                "feedIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "search": {
+                    "type": "string"
+                },
+                "sort": {
+                    "type": "string"
+                },
+                "starred": {
+                    "type": "boolean"
+                },
+                "types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "unread": {
+                    "type": "boolean"
                 }
             }
         },
@@ -6145,6 +7409,17 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_service.ExportFile": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "name": {
                     "type": "string"
                 }
             }

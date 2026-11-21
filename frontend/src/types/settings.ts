@@ -62,13 +62,9 @@ export interface AITestResponse {
 export interface GeneralSettings {
   fallbackUserAgent: string;
   autoReadability: boolean;
+  exportDir?: string;
   markReadOnScroll: boolean;
-  /** RSSHub 适配：自有实例地址（如 https://rsshub.example.com） */
-  rsshubBaseUrl: string;
-  /** RSSHub 实例的 ACCESS_KEY（可选，会作为 key 参数写入地址） */
-  rsshubAccessKey: string;
-  /** 推送地址（Bark 兼容，形如 https://api.day.app/<你的 key>）；留空 = 不推送 */
-  barkUrl: string;
+  // 55-18：RSSHub 实例地址 / ACCESS_KEY 已搬进 rsshub 插件（GET/PUT /api/plugins/rsshub/settings）
 }
 
 export type ProxyType = "http" | "socks5";

@@ -27,6 +27,7 @@ import (
 
 	"krss/backend/internal/config"
 	"krss/backend/internal/model"
+	"krss/backend/internal/plugin"
 	"krss/backend/internal/repository"
 	"krss/backend/pkg/logger"
 	"krss/backend/pkg/network"
@@ -68,15 +69,29 @@ type iconService struct {
 	feeds         repository.FeedRepository
 	clientFactory *network.ClientFactory
 	anubis        AnubisSolver
+	// plugins 可选：接上后，FeedIconProvider 插件可为订阅提供专用图标 URL（如 GitHub 头像）。
+	plugins *plugin.Registry
 }
 
-func NewIconService(dataDir string, feeds repository.FeedRepository, clientFactory *network.ClientFactory, anubisSolver AnubisSolver) IconService {
-	return &iconService{
+// IconServiceOption 是 NewIconService 的函数式选项，避免为了新依赖改动所有既有调用点。
+type IconServiceOption func(*iconService)
+
+// WithPluginRegistry 注入插件注册表，启用 FeedIconProvider 扩展点。
+func WithPluginRegistry(r *plugin.Registry) IconServiceOption {
+	return func(s *iconService) { s.plugins = r }
+}
+
+func NewIconService(dataDir string, feeds repository.FeedRepository, clientFactory *network.ClientFactory, anubisSolver AnubisSolver, opts ...IconServiceOption) IconService {
+	s := &iconService{
 		dataDir:       dataDir,
 		feeds:         feeds,
 		clientFactory: clientFactory,
 		anubis:        anubisSolver,
 	}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // supportedIconExts lists all supported icon extensions
@@ -95,6 +110,32 @@ func (s *iconService) findExistingIcon(baseName string) string {
 	return ""
 }
 
+// providerIconURL 询问已启用的 FeedIconProvider 插件，返回该订阅的专用图标 URL；没有则空串。
+// 每家 provider 只给 1s 超时，出错只记日志并继续下一家，绝不影响主流程。
+func (s *iconService) providerIconURL(ctx context.Context, feedID int64) string {
+	if feedID <= 0 || s.plugins == nil {
+		return ""
+	}
+	feed, err := s.feeds.GetByID(ctx, feedID)
+	if err != nil {
+		logger.Debug("icon provider feed lookup failed", "module", "service", "action", "fetch", "resource", "icon", "feed_id", feedID, "error", err)
+		return ""
+	}
+	for _, np := range s.plugins.FeedIconProviders() {
+		pctx, cancel := context.WithTimeout(ctx, time.Second)
+		iconURL, perr := np.Provider.FeedIcon(pctx, feed)
+		cancel()
+		if perr != nil {
+			logger.Debug("icon provider failed", "module", "service", "action", "fetch", "resource", "icon", "plugin", np.PluginID, "feed_id", feedID, "error", perr)
+			continue
+		}
+		if iconURL = strings.TrimSpace(iconURL); iconURL != "" {
+			return iconURL
+		}
+	}
+	return ""
+}
+
 // FetchAndSaveIcon 不带来源信息（凑不齐 feed 的老调用点）：走全局代理。
 func (s *iconService) FetchAndSaveIcon(ctx context.Context, feedImageURL, siteURL string) (string, error) {
 	return s.FetchAndSaveIconForFeed(ctx, 0, feedImageURL, siteURL)
@@ -107,11 +148,13 @@ func (s *iconService) FetchAndSaveIcon(ctx context.Context, feedImageURL, siteUR
 // 对 RSSHub 订阅来说那就是 RSSHub 实例的地址，于是：
 //   - 文件名算成 `rsshub.wxhdj.xyz.png`（实例域名，不是频道）
 //   - 第 2 条候选「站点 /favicon.ico」直接命中实例自己的 logo
+//
 // 25 条不同订阅因此共用同一个图标文件，看上去就是「这些源没有图标」。
 //
 // 现在分两步：
 //  1. 先把地址反解成**真实站点**：site_url 若指向 RSSHub/聚合实例，就从订阅路由（路径）反解上游站点。
 //  2. site_url 为空时，拿订阅地址自己按同样的路由表反解。
+//
 // 反解不出就返回空 —— 这时宁可不抓，也不要拿聚合实例的 logo 冒充订阅图标
 // （与前端 feed-site.ts 的同一条口径：RSSHub 的 origin 是实例，不是主页）。
 func (s *iconService) resolveIconSite(ctx context.Context, feedID int64, siteURL string) string {
@@ -243,13 +286,21 @@ var rsshubRouteRules = []rsshubRouteRule{
 // feedID <= 0 时退回全局那份（老行为）。
 //
 // 候选顺序（28-1 起，见 resolveIconSite）：
-//   1. RSS 自带的 <image>（Telegram 的频道头像就是它）
-//   2. **真实站点**（site_url / RSSHub 路由反解出的上游主页）的 favicon.ico → 首页 <link rel=icon>
-//   3. Google / DuckDuckGo favicon 服务（同样只打真实站点）
+//  1. RSS 自带的 <image>（Telegram 的频道头像就是它）
+//  2. **真实站点**（site_url / RSSHub 路由反解出的上游主页）的 favicon.ico → 首页 <link rel=icon>
+//  3. Google / DuckDuckGo favicon 服务（同样只打真实站点）
+//
 // **绝不拿 RSSHub 实例自己的 favicon 当订阅图标** —— 那会让几十条不同订阅共用同一个文件，
 // 表现就是「一堆源看起来都没图标」（28-1：25/74 条共用 rsshub.wxhdj.xyz.png）。
 func (s *iconService) FetchAndSaveIconForFeed(ctx context.Context, feedID int64, feedImageURL, siteURL string) (string, error) {
 	feedImageURL = strings.TrimSpace(feedImageURL)
+	// 插件头像优先于 RSS 自带 image：插件（如 GitHub 头像）为这条订阅提供了图标 URL 就用它，
+	// 后续复用现有的 hash 命名与下载流程，不另写下载逻辑。
+	pluginProvided := false
+	if pURL := s.providerIconURL(ctx, feedID); pURL != "" {
+		feedImageURL = pURL
+		pluginProvided = true
+	}
 	// 图标该向哪个站点要：RSSHub 之类的聚合实例不算「站点」，要换成它背后那个真实站点。
 	realSite := s.resolveIconSite(ctx, feedID, siteURL)
 
@@ -287,8 +338,12 @@ func (s *iconService) FetchAndSaveIconForFeed(ctx context.Context, feedID int64,
 	}
 
 	// Add local favicon.ico
-	if localURL := s.buildLocalFaviconURL(realSite); localURL != "" {
-		urlsToTry = append(urlsToTry, localURL)
+	// 插件明确给了图标 URL 时不再混入站点 favicon：否则头像下载失败会退回 GitHub favicon，
+	// 用户看到的仍是一个「像头像但不是头像」的通用图标，且会把失败结果固化下来。
+	if !pluginProvided {
+		if localURL := s.buildLocalFaviconURL(realSite); localURL != "" {
+			urlsToTry = append(urlsToTry, localURL)
+		}
 	}
 
 	if len(urlsToTry) == 0 {
@@ -297,6 +352,12 @@ func (s *iconService) FetchAndSaveIconForFeed(ctx context.Context, feedID int64,
 
 	// Try each URL until one succeeds
 	result, successURL, lastErr := s.tryDownloadIconURLs(ctx, urlsToTry, feedID)
+
+	// 插件给了专用图标时，只认它：失败就下次再试，绝不退回站点 favicon。
+	if result == nil && pluginProvided {
+		logger.Debug("plugin icon download failed", "module", "service", "action", "fetch", "resource", "icon", "feed_id", feedID, "error", lastErr)
+		return "", fmt.Errorf("plugin icon download failed: %w", lastErr)
+	}
 
 	// 25-2：站点把图标放在别处（CDN / 子路径 / 相对路径）时，唯一的出路是去读首页 HTML。
 	// 放在这里而不是拼进上面的列表，是为了**只有前面都没命中**才多花这一次首页请求。
@@ -523,8 +584,45 @@ func (s *iconService) BackfillIcons(ctx context.Context) error {
 	const iconMaxAge = 30 * 24 * time.Hour // 30 days
 	now := time.Now()
 
+	// 2.5 插件头像同步（如 GitHub 头像）：让 FeedIconProvider 认领的订阅改用插件提供的图标。
+	// 先于通用过期循环执行，被 provider 认领的订阅后面直接跳过，避免头像又被换回 favicon。
+	providerSynced := make(map[int64]bool)
+	for _, feed := range allFeeds {
+		iconURL := s.providerIconURL(ctx, feed.ID)
+		if iconURL == "" {
+			continue // 没有插件认领，保持原有回填逻辑
+		}
+		sum := sha256.Sum256([]byte(iconURL))
+		expectedBase := hex.EncodeToString(sum[:8])
+
+		matches := false
+		if feed.IconPath != nil && *feed.IconPath != "" {
+			base := filepath.Base(*feed.IconPath)
+			currentBase := strings.TrimSuffix(base, filepath.Ext(base))
+			if currentBase == expectedBase {
+				if _, statErr := os.Stat(filepath.Join(s.dataDir, "icons", base)); statErr == nil {
+					matches = true // 已经是这张头像且文件在，无需重抓
+				}
+			}
+		}
+		if !matches {
+			iconPath, fetchErr := s.FetchAndSaveIconForFeed(ctx, feed.ID, "", derefSiteURL(feed.SiteURL))
+			if fetchErr != nil {
+				logger.Debug("icon provider sync fetch failed", "module", "service", "action", "backfill", "resource", "icon", "feed_id", feed.ID, "error", fetchErr)
+			} else if iconPath != "" {
+				if updErr := s.feeds.UpdateIconPath(ctx, feed.ID, iconPath); updErr != nil {
+					logger.Warn("icon provider sync update path failed", "module", "service", "action", "backfill", "resource", "icon", "feed_id", feed.ID, "error", updErr)
+				}
+			}
+		}
+		providerSynced[feed.ID] = true
+	}
+
 	var feedsNeedRefetch []int64
 	for _, feed := range allFeeds {
+		if providerSynced[feed.ID] {
+			continue // 已由插件头像接管，通用过期/聚合逻辑不再处理
+		}
 		if feed.IconPath == nil || *feed.IconPath == "" {
 			continue
 		}

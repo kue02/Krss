@@ -132,3 +132,62 @@ func TestRequestLoggerMiddleware_StatusBranches(t *testing.T) {
 		})
 	}
 }
+
+// TestIsPluginUIAssetPath 插件界面资源的认证豁免只覆盖 ui 子树（56-24）：
+// iframe 是 opaque origin，带不上 cookie，不放行则插件自己的 bridge.js 一律 401。
+func TestIsPluginUIAssetPath(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{"/api/plugins/annotate/ui/index.html", true},
+		{"/api/plugins/annotate/ui/bridge.js", true},
+		{"/api/plugins/annotate/ui", true},
+		{"/api/plugins/annotate/ui/", true},
+		// 其余插件接口照旧要登录
+		{"/api/plugins/annotate/settings", false},
+		{"/api/plugins/annotate/actions/notify/invoke", false},
+		{"/api/plugins/annotate/data/annotations", false},
+		{"/api/plugins/contributions", false},
+		{"/api/plugins/ui/x", false},        // 缺插件 id
+		{"/api/plugins/a/b/ui/x", false},    // id 里带斜杠
+		{"/api/plugins/annotate/uix", false}, // 前缀像但不相邻
+	}
+	for _, tc := range tests {
+		require.Equalf(t, tc.want, gh.IsPluginUIAssetPath(tc.path), "path=%s", tc.path)
+	}
+}
+
+// TestJWTAuthMiddleware_PluginDataToken 插件进程用自己的 token 读写自己的 data（56-32 单库）：
+// 只放行 /api/plugins/<自己>/data/*，换别人的 id 一律 401。
+func TestJWTAuthMiddleware_PluginDataToken(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	resolver := func(token string) (string, bool) {
+		if token == "good-token-123456" {
+			return "annotate", true
+		}
+		return "", false
+	}
+	middleware := gh.JWTAuthMiddleware(mock.NewMockAuthService(ctrl), gh.WithPluginDataTokens(resolver))
+
+	e := echo.New()
+	handler := func(c echo.Context) error { return c.String(http.StatusOK, "ok") }
+
+	call := func(path, token string) int {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		if token != "" {
+			req.Header.Set("X-Krss-Plugin-Token", token)
+		}
+		rec := httptest.NewRecorder()
+		require.NoError(t, middleware(handler)(e.NewContext(req, rec)))
+		return rec.Code
+	}
+
+	require.Equal(t, http.StatusOK, call("/api/plugins/annotate/data/annotations/x", "good-token-123456"), "自己的 data 放行")
+	require.Equal(t, http.StatusUnauthorized, call("/api/plugins/bark/data/annotations/x", "good-token-123456"), "别人的 data 不许碰")
+	require.Equal(t, http.StatusUnauthorized, call("/api/plugins/annotate/data/annotations/x", "bad-token"), "假 token 401")
+	require.Equal(t, http.StatusUnauthorized, call("/api/plugins/annotate/data/annotations/x", ""), "没 token 也不许")
+	require.Equal(t, http.StatusUnauthorized, call("/api/plugins/annotate/settings", "good-token-123456"), "非 data 路径 token 无效，要登录")
+}

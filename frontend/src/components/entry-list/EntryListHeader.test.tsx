@@ -12,6 +12,15 @@ vi.mock("@/hooks/useScrollToTop", () => ({
   dispatchScrollToTop: vi.fn(),
 }));
 
+/** 56-15：工具栏插槽要 react-query Provider；本文件不关心插件，按「无贡献」打桩 */
+vi.mock("@/plugins/useContributions", () => ({
+  useContributions: () => [],
+}));
+
+vi.mock("@/plugins/useInvokePluginAction", () => ({
+  useInvokePluginAction: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
 const baseProps = {
   title: "全部文章",
   unreadCount: 12,

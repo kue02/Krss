@@ -7,6 +7,15 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
+/** 56-15：列表头尾部挂了插件工具栏插槽（要 react-query Provider）；本文件不关心插件 */
+vi.mock("@/plugins/useContributions", () => ({
+  useContributions: () => [],
+}));
+
+vi.mock("@/plugins/useInvokePluginAction", () => ({
+  useInvokePluginAction: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
 vi.mock("@/hooks/useEntries", () => ({
   useEntriesInfinite: vi.fn(),
   useUnreadCounts: vi.fn(() => ({ data: undefined })),

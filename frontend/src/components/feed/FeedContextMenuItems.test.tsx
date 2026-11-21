@@ -8,13 +8,28 @@ import {
   ContextMenuContent,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { FeedContextMenuItems } from "./FeedContextMenuItems";
 import { queryClient } from "@/lib/queryClient";
 import { useFilterEditorStore } from "@/stores/filter-editor-store";
 import type { Feed } from "@/types/api";
+import type { PluginContribution } from "@/plugins/types";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
+}));
+
+/**
+ * 56-13：订阅右键接插件插槽。这里只打桩「某个挂点上有哪些贡献」这一层，
+ * 插槽本身走真实实现（菜单项形态、文案、无贡献不占位都由它决定）。
+ */
+const { pluginContributions } = vi.hoisted(() => ({
+  pluginContributions: { current: [] as PluginContribution[] },
+}));
+
+vi.mock("@/plugins/useContributions", () => ({
+  useContributions: (surface: string) =>
+    pluginContributions.current.filter((item) => item.surface === surface),
 }));
 
 const feed: Feed = {
@@ -28,24 +43,28 @@ const feed: Feed = {
 };
 
 function renderMenu(feedOverride: Feed = feed) {
+  // 插槽里要调插件动作（useInvokePluginAction → useQueryClient），线上有 Provider，
+  // 这里补上同一个 queryClient 单例，测试走的仍是线上结构
   return render(
-    <ContextMenu>
-      <ContextMenuTrigger>
-        <span>trigger</span>
-      </ContextMenuTrigger>
-      <ContextMenuContent>
-        <FeedContextMenuItems
-          feed={feedOverride}
-          folders={[]}
-          label={feedOverride.title}
-          onRefresh={vi.fn()}
-          onEdit={vi.fn()}
-          onDelete={vi.fn()}
-          onMoveToFolder={vi.fn()}
-          onChangeType={vi.fn()}
-        />
-      </ContextMenuContent>
-    </ContextMenu>,
+    <QueryClientProvider client={queryClient}>
+      <ContextMenu>
+        <ContextMenuTrigger>
+          <span>trigger</span>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <FeedContextMenuItems
+            feed={feedOverride}
+            folders={[]}
+            label={feedOverride.title}
+            onRefresh={vi.fn()}
+            onEdit={vi.fn()}
+            onDelete={vi.fn()}
+            onMoveToFolder={vi.fn()}
+            onChangeType={vi.fn()}
+          />
+        </ContextMenuContent>
+      </ContextMenu>
+    </QueryClientProvider>,
   );
 }
 
@@ -54,6 +73,7 @@ describe("FeedContextMenuItems（卡 B：第一栏与第二栏共用的订阅组
     cleanup();
     useFilterEditorStore.getState().close();
     queryClient.clear();
+    pluginContributions.current = [];
   });
 
   it("渲染第一栏原有的全部订阅项（顺序与文案一字不动）", () => {
@@ -132,6 +152,43 @@ describe("FeedContextMenuItems（卡 B：第一栏与第二栏共用的订阅组
     expect(state.open).toBe(true);
     expect(state.draft?.scopeType).toBe("feed");
     expect(state.draft?.scopeId).toBe(feed.id);
+  });
+
+  it("56-13：这个挂点有插件贡献 → 菜单末尾多出插件项", () => {
+    queryClient.setQueryData(["feeds"], [feed]);
+    pluginContributions.current = [
+      {
+        plugin: "bark",
+        pluginName: "Bark 推送",
+        id: "notify",
+        surface: "feed.contextmenu",
+        action: "notify",
+        label: "推送到手机（Bark）",
+        icon: "bell",
+        selection: "none",
+      },
+    ];
+    renderMenu();
+
+    fireEvent.contextMenu(screen.getByText("trigger"));
+
+    expect(screen.getByText("推送到手机（Bark）")).toBeTruthy();
+    // 宿主原有 9 项（7 个直接项 + 2 个子菜单触发器）一个不少，插件项排在菜单内容末尾
+    const items = screen.getAllByRole("menuitem").map((el) => el.textContent);
+    expect(items).toHaveLength(10);
+    expect(items[items.length - 1]).toContain("推送到手机（Bark）");
+  });
+
+  it("56-13：这个挂点没有插件贡献 → 不崩、也不多出任何项", () => {
+    queryClient.setQueryData(["feeds"], [feed]);
+    pluginContributions.current = [];
+    renderMenu();
+
+    fireEvent.contextMenu(screen.getByText("trigger"));
+
+    expect(screen.queryByText("推送到手机（Bark）")).toBeNull();
+    // 仍是原来那 9 项（插槽没有贡献时不占位）
+    expect(screen.getAllByRole("menuitem")).toHaveLength(9);
   });
 
   it("第一栏与第二栏渲染同一组件（源码断言，防照抄第二份）", () => {

@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"krss/backend/internal/model"
@@ -89,8 +90,8 @@ func (r *settingsRepository) SetMany(ctx context.Context, values map[string]stri
 // GetByPrefix retrieves all settings with keys starting with the given prefix.
 func (r *settingsRepository) GetByPrefix(ctx context.Context, prefix string) ([]model.Setting, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT key, value, updated_at FROM settings WHERE key LIKE ?
-	`, prefix+"%")
+		SELECT key, value, updated_at FROM settings WHERE key LIKE ? ESCAPE '\'
+	`, likePrefix(prefix))
 	if err != nil {
 		return nil, err
 	}
@@ -116,9 +117,16 @@ func (r *settingsRepository) Delete(ctx context.Context, key string) error {
 	return err
 }
 
+// likePrefix 把前缀按字面量转义后拼上 %：前缀里的 %/_/\ 不能当 SQL LIKE 通配符，
+// 否则外部插件 id 含 "_" 时（例如 plugin.my_plugin.）会误删或漏删别的键（审查 LOW-7）。
+func likePrefix(prefix string) string {
+	escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(prefix)
+	return escaped + "%"
+}
+
 // DeleteByPrefix removes all settings with keys starting with the given prefix.
 func (r *settingsRepository) DeleteByPrefix(ctx context.Context, prefix string) (int64, error) {
-	result, err := r.db.ExecContext(ctx, `DELETE FROM settings WHERE key LIKE ?`, prefix+"%")
+	result, err := r.db.ExecContext(ctx, `DELETE FROM settings WHERE key LIKE ? ESCAPE '\'`, likePrefix(prefix))
 	if err != nil {
 		return 0, err
 	}

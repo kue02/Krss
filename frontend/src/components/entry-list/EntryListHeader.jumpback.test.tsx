@@ -13,6 +13,18 @@ vi.mock("@/hooks/useScrollToTop", () => ({
   dispatchScrollToTop: vi.fn(),
 }));
 
+/**
+ * 56-15：`EntryListHeader` 末尾挂了插件工具栏插槽（内部要 react-query 的 Provider）。
+ * 这个用例集不关心插件 —— 按「这个挂点没有贡献」打桩，插槽不渲染、按钮结构不变。
+ */
+vi.mock("@/plugins/useContributions", () => ({
+  useContributions: () => [],
+}));
+
+vi.mock("@/plugins/useInvokePluginAction", () => ({
+  useInvokePluginAction: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
 const baseProps = {
   title: "少数派",
   unreadCount: 0,

@@ -4,10 +4,13 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -60,18 +63,19 @@ type AISettings struct {
 	SceneAutomation string `json:"sceneAutomation"`
 }
 
+// ErrInvalidExportDir 导出目录填错（相对路径 / 不存在 / 不是文件夹）—— handler 据此回 400。
+var ErrInvalidExportDir = errors.New("导出目录无效")
+
 // GeneralSettings holds general application settings.
 type GeneralSettings struct {
 	FallbackUserAgent string `json:"fallbackUserAgent"`
-	AutoReadability   bool   `json:"autoReadability"`
-	MarkReadOnScroll  bool   `json:"markReadOnScroll"`
-	// RSSHub 适配：自有实例域名 + 可选 ACCESS_KEY，用于添加订阅时改写地址、
-	// 以及把已有订阅批量换到自己的实例
-	RSSHubBaseURL   string `json:"rsshubBaseUrl"`
-	RSSHubAccessKey string `json:"rsshubAccessKey"`
-	// BarkURL 推送地址（Bark 兼容，形如 https://api.day.app/<你的 key>）。
-	// 自动化规则的「推送到手机」动作没单独填地址时就走这里。
-	BarkURL string `json:"barkUrl"`
+	// ExportDir 插件导出的文件写到哪（Obsidian vault 之类）。空 = 走浏览器下载。
+	// 它是宿主能力而不是某个插件的能力：任何插件返回 files，宿主都往这里写。
+	ExportDir        string `json:"exportDir"`
+	AutoReadability  bool   `json:"autoReadability"`
+	MarkReadOnScroll bool   `json:"markReadOnScroll"`
+	// 55-18：RSSHub 实例地址 / ACCESS_KEY 已搬进 rsshub 插件（键 plugin.rsshub.*），
+	// 本体通用设置不再认识它们 —— 特化能力不进核心。
 }
 
 // NetworkSettings holds network proxy configuration.
@@ -171,20 +175,20 @@ const (
 	keyAISceneAutomation = "ai.scene_automation"
 
 	keyFallbackUserAgent = "general.fallback_user_agent"
+	keyExportDir         = "general.export_dir"
 	keyAutoReadability   = "general.auto_readability"
 	keyMarkReadOnScroll  = "general.mark_read_on_scroll"
-	keyRSSHubBaseURL     = "general.rsshub_base_url"
-	keyRSSHubAccessKey   = "general.rsshub_access_key"
-	// keyNotifyBarkURL 推送地址（含 key，属凭证 —— 只存用户库里，不进仓库/日志明文）
-	keyNotifyBarkURL   = "notify.bark_url"
-	keyNetworkEnabled  = "network.proxy_enabled"
-	keyNetworkMode     = "network.proxy_mode" // "proxy" | "smart"；空 = proxy（旧行为）
-	keyNetworkType     = "network.proxy_type"
-	keyNetworkHost     = "network.proxy_host"
-	keyNetworkPort     = "network.proxy_port"
-	keyNetworkUsername = "network.proxy_username"
-	keyNetworkPassword = "network.proxy_password"
-	keyNetworkIPStack  = "network.ip_stack"
+	// RSSHub 实例配置 55-18 起归 rsshub 插件；旧键保留，只为兼容老版本导出的设置备份。
+	pluginRSSHubBaseURL = "plugin.rsshub.base_url"
+	legacyRSSHubBaseURL = "general.rsshub_base_url"
+	keyNetworkEnabled   = "network.proxy_enabled"
+	keyNetworkMode      = "network.proxy_mode" // "proxy" | "smart"；空 = proxy（旧行为）
+	keyNetworkType      = "network.proxy_type"
+	keyNetworkHost      = "network.proxy_host"
+	keyNetworkPort      = "network.proxy_port"
+	keyNetworkUsername  = "network.proxy_username"
+	keyNetworkPassword  = "network.proxy_password"
+	keyNetworkIPStack   = "network.ip_stack"
 
 	keyAppearanceContentTypes = "appearance.content_types"
 
@@ -867,14 +871,8 @@ func (s *settingsService) GetGeneralSettings(ctx context.Context) (*GeneralSetti
 	}
 	settings.AutoReadability = s.getBool(ctx, keyAutoReadability)
 	settings.MarkReadOnScroll = s.getBool(ctx, keyMarkReadOnScroll)
-	if val, err := s.getString(ctx, keyRSSHubBaseURL); err == nil {
-		settings.RSSHubBaseURL = val
-	}
-	if val, err := s.getString(ctx, keyRSSHubAccessKey); err == nil {
-		settings.RSSHubAccessKey = val
-	}
-	if val, err := s.getString(ctx, keyNotifyBarkURL); err == nil {
-		settings.BarkURL = val
+	if val, err := s.getString(ctx, keyExportDir); err == nil {
+		settings.ExportDir = val
 	}
 	return settings, nil
 }
@@ -943,6 +941,16 @@ func (s *settingsService) SetFetchSettings(ctx context.Context, settings *FetchS
 
 // SetGeneralSettings updates the general settings.
 func (s *settingsService) SetGeneralSettings(ctx context.Context, settings *GeneralSettings) error {
+	exportDir := strings.TrimSpace(settings.ExportDir)
+	if exportDir != "" {
+		if !filepath.IsAbs(exportDir) {
+			return fmt.Errorf("%w：要写绝对路径（%s）", ErrInvalidExportDir, exportDir)
+		}
+		info, err := os.Stat(exportDir)
+		if err != nil || !info.IsDir() {
+			return fmt.Errorf("%w：不存在或不是文件夹（%s）", ErrInvalidExportDir, exportDir)
+		}
+	}
 	autoReadabilityVal := "false"
 	if settings.AutoReadability {
 		autoReadabilityVal = "true"
@@ -952,30 +960,11 @@ func (s *settingsService) SetGeneralSettings(ctx context.Context, settings *Gene
 		markReadOnScrollVal = "true"
 	}
 
-	baseURL := strings.TrimRight(strings.TrimSpace(settings.RSSHubBaseURL), "/")
-	if baseURL != "" {
-		parsed, parseErr := url.Parse(baseURL)
-		if parseErr != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-			return ErrInvalid
-		}
-	}
-
-	// 推送地址按 URL 校验（空 = 不推送）；同样不允许留着末尾斜杠带来的歧义
-	barkURL := strings.TrimSpace(settings.BarkURL)
-	if barkURL != "" {
-		parsed, parseErr := url.Parse(barkURL)
-		if parseErr != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-			return ErrInvalid
-		}
-	}
-
 	if err := s.repo.SetMany(ctx, map[string]string{
 		keyFallbackUserAgent: settings.FallbackUserAgent,
 		keyAutoReadability:   autoReadabilityVal,
 		keyMarkReadOnScroll:  markReadOnScrollVal,
-		keyRSSHubBaseURL:     baseURL,
-		keyRSSHubAccessKey:   strings.TrimSpace(settings.RSSHubAccessKey),
-		keyNotifyBarkURL:     barkURL,
+		keyExportDir:         exportDir,
 	}); err != nil {
 		logger.Warn("general settings update failed", "module", "service", "action", "update", "resource", "settings", "result", "failed", "error", err)
 		return fmt.Errorf("set general settings: %w", err)
@@ -1378,10 +1367,13 @@ func (s *settingsService) ImportSettings(ctx context.Context, payload *SettingsE
 		return fmt.Errorf("%w: empty settings payload", ErrInvalid)
 	}
 
-	allowed := make(map[string]struct{}, len(importableSettingKeys()))
+	allowed := make(map[string]struct{}, len(importableSettingKeys())+1)
 	for _, key := range importableSettingKeys() {
 		allowed[key] = struct{}{}
 	}
+	// 只允许导入、不参与导出：老版本备份里的 RSSHub 通用键。导入后同步到插件键，
+	// 避免「老备份一导入就整包被拒」，也避免升级实例的 RSSHub 配置丢失。
+	allowed[legacyRSSHubBaseURL] = struct{}{}
 
 	values := make(map[string]string, len(payload.Settings))
 	for key, raw := range payload.Settings {
@@ -1395,6 +1387,13 @@ func (s *settingsService) ImportSettings(ctx context.Context, payload *SettingsE
 			return err
 		}
 		values[key] = jsonValueToStored(raw)
+	}
+
+	// 老备份只有 general.rsshub_base_url：导入时同步到插件键（新备份已直接带插件键）。
+	if legacy, ok := values[legacyRSSHubBaseURL]; ok {
+		if _, hasNew := values[pluginRSSHubBaseURL]; !hasNew {
+			values[pluginRSSHubBaseURL] = legacy
+		}
 	}
 
 	if len(values) == 0 {
@@ -1432,8 +1431,8 @@ func importableSettingKeys() []string {
 		// 通用与拉取
 		keyFallbackUserAgent,
 		keyAutoReadability,
+		pluginRSSHubBaseURL,
 		keyMarkReadOnScroll,
-		keyRSSHubBaseURL,
 		keyRefreshIntervalMinutes,
 		keyRefreshConcurrency,
 		keyRefreshPerHostConcurrency,
@@ -1465,13 +1464,15 @@ func excludedSettingKeys() []string {
 	return []string{
 		keyAIAPIKey,
 		keyAIProviders,
-		keyNotifyBarkURL,
-		keyRSSHubAccessKey,
 		keyNetworkPassword,
 		keyUserPasswordHash,
 		keyUserJWTSecret,
 		// 站点会话 cookie：按前缀整体排除（anubis.cookie.<host>）
 		"anubis.cookie.*",
+		// 插件密钥：**新增插件 secret 字段时同步这里**（有守门测试
+		// settings_plugin_secret_test.go 盯着：漏了会红，不用靠人记）。
+		// 地址里带设备 key，等同于凭证。
+		"plugin.bark.url",
 	}
 }
 

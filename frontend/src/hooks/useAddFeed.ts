@@ -11,11 +11,10 @@ import {
   previewFeed,
 } from "@/api";
 import { getErrorMessage } from "@/lib/errors";
-import { rewriteRssHubUrl } from "@/lib/rsshub";
+import { useRssHubRewrite } from "@/plugins/rsshub/useRssHubRewrite";
 import { planDomainGroup } from "@/lib/feed-group";
 import { showToast } from "@/stores/toast-store";
 import type { TFunction } from "i18next";
-import { useGeneralSettings } from "@/hooks/useGeneralSettings";
 import type { ContentType, FeedPreview, Folder } from "@/types/api";
 
 export interface SubscribeOptions {
@@ -129,26 +128,19 @@ export function useAddFeed(
   const [error, setError] = useState<string | null>(null);
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const { data: generalSettings } = useGeneralSettings();
+  // RSSHub 地址自动换到自有实例（55-18：实例地址在 rsshub 插件设置里，配了才生效）
+  const { rewrite: rewriteRssHub } = useRssHubRewrite();
   const [rewrittenFrom, setRewrittenFrom] = useState<string | null>(null);
 
-  // RSSHub 地址自动换到自有实例（设置里配了才生效）
   const applyRssHubBase = useCallback(
     (rawUrl: string): string => {
-      const baseUrl = generalSettings?.rsshubBaseUrl ?? "";
-      if (!baseUrl) return rawUrl;
-
-      const rewritten = rewriteRssHubUrl(
-        rawUrl,
-        baseUrl,
-        generalSettings?.rsshubAccessKey ?? "",
-      );
-      if (!rewritten || rewritten === rawUrl) return rawUrl;
+      const rewritten = rewriteRssHub(rawUrl);
+      if (!rewritten) return rawUrl;
 
       setRewrittenFrom(rawUrl);
       return rewritten;
     },
-    [generalSettings],
+    [rewriteRssHub],
   );
 
   const clearPreview = useCallback(() => {

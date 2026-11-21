@@ -1,4 +1,4 @@
-import { useMemo, useRef, type RefObject } from "react";
+import { useCallback, useMemo, useRef, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { useCodeHighlight } from "@/hooks/useCodeHighlight";
 import { removeContentSeparators } from "@/lib/social-content";
@@ -31,6 +31,13 @@ interface ArticleProseProps {
   className?: string;
   /** 42-9：正文图片按容器宽自适应（社交视图开启，文章视图维持 prose 原样） */
   fitImages?: boolean;
+  /**
+   * 56-23：把正文容器（`data-slot="article-prose"` 这个 div）交出去。
+   * 插件装饰要往这个容器的文本节点里包 `<mark>`、选中区间也相对它算 rune 偏移，
+   * 所以上层拿到的必须是**这个**节点，而不是外层滚动容器或整篇文章（那会把标题、
+   * AI 摘要、日期行都算进纯文本偏移里）。
+   */
+  bodyRef?: (node: HTMLDivElement | null) => void;
 }
 
 export function ArticleProse({
@@ -40,9 +47,18 @@ export function ArticleProse({
   highlightContent,
   className,
   fitImages = false,
+  bodyRef,
 }: ArticleProseProps) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
+  /** 代码高亮要 ref 对象、装饰/选中要节点本身：一个回调里同时交付，别挂两个 ref */
+  const setContainer = useCallback(
+    (node: HTMLDivElement | null) => {
+      containerRef.current = node;
+      bodyRef?.(node);
+    },
+    [bodyRef],
+  );
   const entryFontFamily = useUISettingKey("entryFontFamily");
   const entryFontSize = useUISettingKey("entryFontSize");
   const entryLineHeight = useUISettingKey("entryLineHeight");
@@ -64,7 +80,7 @@ export function ArticleProse({
 
   return (
     <div
-      ref={containerRef}
+      ref={setContainer}
       style={{
         fontSize: `${entryFontSize}px`,
         lineHeight: entryLineHeight,
