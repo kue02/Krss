@@ -34,12 +34,13 @@ import (
 )
 
 const (
-	pluginManifestFile = "plugin.json" // plugins/<id>/plugin.json
-	pluginSocketFile   = "plugin.sock" // 宿主与插件之间的 Unix socket
-	pluginLogFile      = "plugin.log"  // 插件自己 stdout/stderr 落在插件目录
-	maxPluginCrashes   = 5             // 连续崩这么多次就不再拉起
-	pluginReadyPoll    = 50 * time.Millisecond
-	pluginKillWait     = 2 * time.Second
+	pluginManifestFile   = "plugin.json" // plugins/<id>/plugin.json
+	pluginSocketFile     = "plugin.sock" // 宿主与插件之间的 Unix socket
+	pluginLogFile        = "plugin.log"  // 插件自己 stdout/stderr 落在插件目录
+	maxPluginCrashes     = 5             // 连续崩这么多次就不再拉起
+	archivedPluginMarker = ".removed-"   // 卸载归档目录名后缀标记（scanLocked 跳过）
+	pluginReadyPoll      = 50 * time.Millisecond
+	pluginKillWait       = 2 * time.Second
 )
 
 // 默认值（测试用 Option 调小，生产按计划书：10s 就绪、1s 起退避、30s 封顶、5s 停用宽限）。
@@ -305,6 +306,11 @@ func (h *PluginHost) scanLocked() (map[string]pluginManifest, error) {
 	out := make(map[string]pluginManifest, len(entries))
 	for _, entry := range entries {
 		if !entry.IsDir() {
+			continue
+		}
+		// 卸载归档目录（<id>.removed-<UTC>）不是在用插件：跳过，不要每轮扫描都当成
+		// 「id 与目录名不一致」的坏插件记一条 warn。
+		if strings.Contains(entry.Name(), archivedPluginMarker) {
 			continue
 		}
 		manifest, err := h.readManifestLocked(entry.Name())
@@ -727,7 +733,7 @@ func (h *PluginHost) Archive(id string) (string, error) {
 	dir := filepath.Join(h.dir, id)
 	archivePath := ""
 	if _, err := os.Stat(dir); err == nil {
-		archivePath = dir + ".removed-" + time.Now().UTC().Format("20060102T150405Z")
+		archivePath = dir + archivedPluginMarker + time.Now().UTC().Format("20060102T150405Z")
 		if err := os.Rename(dir, archivePath); err != nil {
 			return "", fmt.Errorf("归档插件目录 %s 失败: %w", dir, err)
 		}

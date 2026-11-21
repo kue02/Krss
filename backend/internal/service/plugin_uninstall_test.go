@@ -164,3 +164,35 @@ func TestUninstall_RetryAfterArchiveSucceeds(t *testing.T) {
 		require.NotEqual(t, id, st.ID)
 	}
 }
+
+// TestEnsure_SkipsArchivedPluginDirs 卸载归档目录不是「坏插件」：即使它的 plugin.json
+// 里的 id 正好等于这个归档目录名，Ensure 也不应把它注册进注册表（否则每轮扫描都白读一遍）。
+func TestEnsure_SkipsArchivedPluginDirs(t *testing.T) {
+	db := testutil.NewTestDB(t)
+	pluginRepo := repository.NewPluginRepository(db)
+	reg := plugin.NewRegistry()
+	pluginsDir := t.TempDir()
+	ctx := context.Background()
+
+	writePlugin := func(dirName, id string) {
+		dir := filepath.Join(pluginsDir, dirName)
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+		manifest := `{"id":"` + id + `","name":"外部插件","version":"1.0.0","transport":"http","entrypoint":"./p","autostart":false}`
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "plugin.json"), []byte(manifest), 0o644))
+	}
+	writePlugin("live", "live")
+	archivedName := "old.removed-20260101T000000Z"
+	writePlugin(archivedName, archivedName)
+
+	host := service.NewPluginHost(reg, pluginRepo, pluginsDir,
+		service.WithPluginReadyTimeout(time.Second),
+		service.WithPluginStopGrace(time.Second),
+	)
+	t.Cleanup(host.Stop)
+	require.NoError(t, host.Ensure(ctx))
+
+	_, liveOK := reg.Lookup("live")
+	require.True(t, liveOK, "正常插件应被发现")
+	_, archivedOK := reg.Lookup(archivedName)
+	require.False(t, archivedOK, "归档目录不应被当成插件注册")
+}
