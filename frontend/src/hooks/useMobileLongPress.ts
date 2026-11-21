@@ -77,8 +77,13 @@ export function useMobileLongPress(
   const onContextMenu = (event: MouseEvent<HTMLElement>) => {
     if (!enabled || !onLongPress) return;
     event.preventDefault();
+    const fallback = startRef.current;
+    const point = {
+      x: event.clientX || fallback?.x || 0,
+      y: event.clientY || fallback?.y || 0,
+    };
     clear();
-    onLongPress({ x: event.clientX, y: event.clientY });
+    onLongPress(point);
     armSuppressClick();
   };
 

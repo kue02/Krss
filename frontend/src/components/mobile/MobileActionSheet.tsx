@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -30,8 +30,12 @@ export function MobileActionSheet({
   children,
 }: MobileActionSheetProps) {
   const isAnchored = Boolean(anchor);
-  const viewportWidth = typeof window === "undefined" ? 390 : window.innerWidth;
-  const viewportHeight = typeof window === "undefined" ? 844 : window.innerHeight;
+  const [viewport, setViewport] = useState(() => ({
+    width: typeof window === "undefined" ? 390 : window.innerWidth,
+    height: typeof window === "undefined" ? 844 : window.innerHeight,
+  }));
+  const viewportWidth = viewport.width;
+  const viewportHeight = viewport.height;
   const panelWidth = Math.min(280, Math.max(220, viewportWidth - 24));
   const panelLeft = anchor
     ? Math.min(
@@ -40,10 +44,11 @@ export function MobileActionSheet({
       )
     : 0;
   const placeAbove = anchor ? anchor.y > viewportHeight * 0.52 : false;
+  const ANCHOR_GAP = 12;
   const panelTop = anchor
     ? placeAbove
-      ? anchor.y - 8
-      : anchor.y + 8
+      ? anchor.y - ANCHOR_GAP
+      : anchor.y + ANCHOR_GAP
     : 0;
   const anchoredMaxHeight = anchor
     ? Math.min(
@@ -56,7 +61,12 @@ export function MobileActionSheet({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onOpenChange(false);
     };
+    const syncViewport = () => {
+      setViewport({ width: window.innerWidth, height: window.innerHeight });
+    };
     window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", syncViewport);
+    window.addEventListener("orientationchange", syncViewport);
     // 面板打开时锁住背后的文档滚动：移动端列表滚的是 html 文档，
     // 直接记下并覆盖 html 的内联 overflow，关闭时原样恢复（不抢项目共享锁类的所有权）。
     const root = document.documentElement;
@@ -64,6 +74,8 @@ export function MobileActionSheet({
     root.style.overflow = "hidden";
     return () => {
       window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", syncViewport);
+      window.removeEventListener("orientationchange", syncViewport);
       root.style.overflow = previousOverflow;
     };
   }, [open, onOpenChange]);
@@ -93,7 +105,7 @@ export function MobileActionSheet({
               aria-modal="true"
               aria-label={title || "Actions"}
               data-placement="anchor"
-              className="fixed z-50 overflow-hidden rounded-2xl border border-border/70 bg-overlay shadow-[0_18px_50px_rgba(0,0,0,0.22)]"
+              className="fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-border/70 bg-overlay shadow-[0_18px_50px_rgba(0,0,0,0.22)]"
               style={{
                 left: panelLeft,
                 top: panelTop,
@@ -107,11 +119,11 @@ export function MobileActionSheet({
               transition={{ duration: 0.16, ease: "easeOut" }}
             >
               {title ? (
-                <div className="px-4 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                <div className="shrink-0 px-4 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                   {title}
                 </div>
               ) : null}
-              <div className="max-h-[inherit] overflow-y-auto pb-2">
+              <div className="min-h-0 flex-1 overflow-y-auto pb-2">
                 {children}
               </div>
             </motion.div>
