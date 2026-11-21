@@ -175,14 +175,17 @@ const (
 	keyExportDir         = "general.export_dir"
 	keyAutoReadability   = "general.auto_readability"
 	keyMarkReadOnScroll  = "general.mark_read_on_scroll"
-	keyNetworkEnabled    = "network.proxy_enabled"
-	keyNetworkMode       = "network.proxy_mode" // "proxy" | "smart"；空 = proxy（旧行为）
-	keyNetworkType       = "network.proxy_type"
-	keyNetworkHost       = "network.proxy_host"
-	keyNetworkPort       = "network.proxy_port"
-	keyNetworkUsername   = "network.proxy_username"
-	keyNetworkPassword   = "network.proxy_password"
-	keyNetworkIPStack    = "network.ip_stack"
+	// RSSHub 实例配置 55-18 起归 rsshub 插件；旧键保留，只为兼容老版本导出的设置备份。
+	pluginRSSHubBaseURL = "plugin.rsshub.base_url"
+	legacyRSSHubBaseURL = "general.rsshub_base_url"
+	keyNetworkEnabled   = "network.proxy_enabled"
+	keyNetworkMode      = "network.proxy_mode" // "proxy" | "smart"；空 = proxy（旧行为）
+	keyNetworkType      = "network.proxy_type"
+	keyNetworkHost      = "network.proxy_host"
+	keyNetworkPort      = "network.proxy_port"
+	keyNetworkUsername  = "network.proxy_username"
+	keyNetworkPassword  = "network.proxy_password"
+	keyNetworkIPStack   = "network.ip_stack"
 
 	keyAppearanceContentTypes = "appearance.content_types"
 
@@ -1329,10 +1332,13 @@ func (s *settingsService) ImportSettings(ctx context.Context, payload *SettingsE
 		return fmt.Errorf("%w: empty settings payload", ErrInvalid)
 	}
 
-	allowed := make(map[string]struct{}, len(importableSettingKeys()))
+	allowed := make(map[string]struct{}, len(importableSettingKeys())+1)
 	for _, key := range importableSettingKeys() {
 		allowed[key] = struct{}{}
 	}
+	// 只允许导入、不参与导出：老版本备份里的 RSSHub 通用键。导入后同步到插件键，
+	// 避免「老备份一导入就整包被拒」，也避免升级实例的 RSSHub 配置丢失。
+	allowed[legacyRSSHubBaseURL] = struct{}{}
 
 	values := make(map[string]string, len(payload.Settings))
 	for key, raw := range payload.Settings {
@@ -1346,6 +1352,13 @@ func (s *settingsService) ImportSettings(ctx context.Context, payload *SettingsE
 			return err
 		}
 		values[key] = jsonValueToStored(raw)
+	}
+
+	// 老备份只有 general.rsshub_base_url：导入时同步到插件键（新备份已直接带插件键）。
+	if legacy, ok := values[legacyRSSHubBaseURL]; ok {
+		if _, hasNew := values[pluginRSSHubBaseURL]; !hasNew {
+			values[pluginRSSHubBaseURL] = legacy
+		}
 	}
 
 	if len(values) == 0 {
@@ -1382,6 +1395,7 @@ func importableSettingKeys() []string {
 		// 通用与拉取
 		keyFallbackUserAgent,
 		keyAutoReadability,
+		pluginRSSHubBaseURL,
 		keyMarkReadOnScroll,
 		keyRefreshIntervalMinutes,
 		keyRefreshConcurrency,

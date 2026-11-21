@@ -247,3 +247,33 @@ func mustJSON(t *testing.T, value any) []byte {
 	require.NoError(t, err)
 	return encoded
 }
+
+// TestSettingsService_ImportSettings_AcceptsLegacyRSSHubKey 老版本导出的设置备份里
+// 只有 general.rsshub_base_url（那时 RSSHub 还没搬进插件）。新版导入必须接受，
+// 并同时喂给 plugin.rsshub.base_url，否则升级用户一导入就整包失败、RSSHub 配置也丢。
+func TestSettingsService_ImportSettings_AcceptsLegacyRSSHubKey(t *testing.T) {
+	repo, svc := newUISettingsService()
+	ctx := context.Background()
+
+	err := svc.ImportSettings(ctx, &service.SettingsExport{
+		Version: 1,
+		Settings: map[string]json.RawMessage{
+			"general.rsshub_base_url": json.RawMessage(`"https://rsshub.example.com"`),
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "https://rsshub.example.com", repo.data["general.rsshub_base_url"])
+	require.Equal(t, "https://rsshub.example.com", repo.data["plugin.rsshub.base_url"], "老备份要同步到插件键")
+}
+
+// TestSettingsService_ExportSettings_IncludesPluginRSSHubBaseURL 新版本导出的备份
+// 要带上插件键，恢复时 RSSHub 配置不会丢。
+func TestSettingsService_ExportSettings_IncludesPluginRSSHubBaseURL(t *testing.T) {
+	repo, svc := newUISettingsService()
+	repo.data["plugin.rsshub.base_url"] = "https://rsshub.example.com"
+
+	out, err := svc.ExportSettings(context.Background())
+	require.NoError(t, err)
+	require.Contains(t, out.Settings, "plugin.rsshub.base_url")
+	require.NotContains(t, out.Settings, "general.rsshub_base_url", "旧键只为兼容老备份，不再导出")
+}
