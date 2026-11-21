@@ -669,16 +669,6 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                       className="ml-1"
                     />
                   )}
-                  {/* REQ3：社交视图正文展开时摘要行会隐藏（isExpanded），
-                      摘要三态标记挪到作者行，避免「摘要三态在社交视图看不到」（reviewer P3-1） */}
-                  {isExpanded && summaryBadgeState && (
-                    <MachineTranslatedBadge
-                      state={summaryBadgeState}
-                      error={summaryStatus?.error}
-                      variant="summary"
-                      className="ml-1"
-                    />
-                  )}
                   {entry.muted && <MutedBadge filterId={entry.filterId} />}
                 </div>
 

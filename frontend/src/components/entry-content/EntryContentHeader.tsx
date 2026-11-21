@@ -1,6 +1,15 @@
 import { Fragment, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { X } from "lucide-react";
+import {
+  ExternalLink,
+  FileText,
+  Globe,
+  Languages,
+  Lightbulb,
+  MoreHorizontal,
+  Star,
+  X,
+} from "lucide-react";
 import { isSafeUrl } from "@/lib/url";
 import { cn } from "@/lib/utils";
 import { BackIcon, GlobeIcon } from "@/components/ui/icons";
@@ -11,6 +20,12 @@ import {
   normalizeEntryToolbar,
   type EntryToolbarItemId,
 } from "@/lib/entry-toolbar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { PluginSlot, PluginItem } from "@/plugins/PluginSlot";
 import { useTargetOps } from "@/plugins/useTargetOps";
 import type { Entry } from "@/types/api";
@@ -138,6 +153,116 @@ export function EntryContentHeader({
   // REQ3：失败态优先转红；正在翻译时不显示失败态（错误会在成功/取消时清掉）。
   const translationFailed = !!translationError && !isTranslating;
   const summaryFailed = !!summaryError && !isLoadingSummary;
+
+  // 各按钮的 title / 可用性（内联按钮与「更多」菜单共用一份文案，避免两处漂移）。
+  const starTitle = entry.starred
+    ? t("entry.remove_from_starred")
+    : t("entry.add_to_starred");
+  const summaryTitle =
+    summaryError && !isLoadingSummary
+      ? summaryError
+      : isLoadingSummary
+        ? t("entry.cancel_summary")
+        : hasSummary
+          ? t("entry.hide_summary")
+          : t("entry.generate_summary");
+  const translationTitle = translationFailed
+    ? (translationError as string)
+    : getTranslationButtonTitle(translationButtonState, t);
+  const originalsiteTitle = isOriginalSiteActive
+    ? t("entry.show_readable")
+    : t("entry.original_site");
+  const readableTitle =
+    error ||
+    (isReadableActive ? t("entry.show_original") : t("entry.show_readable"));
+
+  /**
+   * 「更多」（三点）菜单里的单项：与内联按钮同一套点击 / 禁用 / 失败红字逻辑，
+   * 但换成带文案的菜单行（图标 + 标题），供不常驻工具栏的按钮使用。
+   * 返回 null = 当前没有对应回调 / 数据，不占菜单项。
+   */
+  const renderToolbarMenuItem = (itemId: EntryToolbarItemId) => {
+    const itemClass = "gap-2";
+    switch (itemId) {
+      case "star":
+        // 星标被插件替换时由插件接管整颗控件，不进「更多」。
+        if (starReplacement || starHidden) return null;
+        return (
+          <DropdownMenuItem className={itemClass} onSelect={() => onToggleStarred()}>
+            <Star className="size-4 shrink-0" aria-hidden="true" />
+            <span>{starTitle}</span>
+          </DropdownMenuItem>
+        );
+      case "read":
+        if (!onToggleRead) return null;
+        return (
+          <DropdownMenuItem className={itemClass} onSelect={() => onToggleRead()}>
+            <readAction.Icon className="size-4 shrink-0" aria-hidden="true" />
+            <span>{t(readAction.labelKey)}</span>
+          </DropdownMenuItem>
+        );
+      case "summary":
+        if (!onToggleSummary) return null;
+        return (
+          <DropdownMenuItem
+            className={cn(itemClass, summaryFailed && "text-destructive focus:text-destructive")}
+            onSelect={() => onToggleSummary()}
+          >
+            <Lightbulb className="size-4 shrink-0" aria-hidden="true" />
+            <span className="truncate">{summaryTitle}</span>
+          </DropdownMenuItem>
+        );
+      case "translate":
+        if (!onToggleTranslation) return null;
+        return (
+          <DropdownMenuItem
+            className={cn(itemClass, translationFailed && "text-destructive focus:text-destructive")}
+            disabled={
+              translationDisabled && !hasTranslation && !isTranslating
+            }
+            onSelect={() => onToggleTranslation()}
+          >
+            <Languages className="size-4 shrink-0" aria-hidden="true" />
+            <span className="truncate">{translationTitle}</span>
+          </DropdownMenuItem>
+        );
+      case "originalsite":
+        if (!entry.url || !onToggleOriginalSite) return null;
+        return (
+          <DropdownMenuItem className={itemClass} onSelect={() => onToggleOriginalSite()}>
+            <Globe className="size-4 shrink-0" aria-hidden="true" />
+            <span>{originalsiteTitle}</span>
+          </DropdownMenuItem>
+        );
+      case "readable":
+        if (!entry.url) return null;
+        return (
+          <DropdownMenuItem
+            className={cn(itemClass, error && "text-destructive focus:text-destructive")}
+            disabled={isLoading}
+            onSelect={() => onToggleReadable()}
+          >
+            <FileText className="size-4 shrink-0" aria-hidden="true" />
+            <span className="truncate">{readableTitle}</span>
+          </DropdownMenuItem>
+        );
+      case "openexternal":
+        if (!safeUrl) return null;
+        return (
+          <DropdownMenuItem
+            className={itemClass}
+            onSelect={() =>
+              window.open(safeUrl, "_blank", "noopener,noreferrer")
+            }
+          >
+            <ExternalLink className="size-4 shrink-0" aria-hidden="true" />
+            <span>{t("entry.open_original")}</span>
+          </DropdownMenuItem>
+        );
+      default:
+        return null;
+    }
+  };
 
   /**
    * 按 id 渲染单个工具栏按钮；判定「没有对应回调 / 数据」时返回 null（不占位）。
@@ -387,6 +512,12 @@ export function EntryContentHeader({
     }
   };
 
+  // 「更多」菜单的内容：按配置顺序，过滤掉当前不可用的项。
+  const moreMenuItems = toolbarItems
+    .filter((item) => item.placement === "more")
+    .map((item) => ({ id: item.id, node: renderToolbarMenuItem(item.id) }))
+    .filter((entry) => entry.node !== null)
+    .map((entry) => <Fragment key={entry.id}>{entry.node}</Fragment>);
 
   return (
     <div
@@ -440,9 +571,29 @@ export function EntryContentHeader({
 
         <div className="flex shrink-0 items-center gap-1">
           {toolbarItems.map((item) =>
-            item.hidden ? null : (
+            item.placement === "toolbar" ? (
               <Fragment key={item.id}>{renderToolbarItem(item.id)}</Fragment>
-            ),
+            ) : null,
+          )}
+
+          {/* REQ1：「更多」（三点）——收进这里的不常驻工具栏，但仍在一步可达；
+              永久隐藏（placement: "hidden"）的连这里也不进。为后续插件/新按钮扩容。 */}
+          {moreMenuItems.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  title={t("entry.more_actions")}
+                  aria-label={t("entry.more_actions")}
+                  className="no-drag-region flex size-9 items-center justify-center rounded-full text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground active:scale-95"
+                >
+                  <MoreHorizontal className="size-5" aria-hidden="true" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-44">
+                {moreMenuItems}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
 
           {/* 56-15：阅读器工具栏的插件挂点（`entry.reader.toolbar`）。选中态就是
