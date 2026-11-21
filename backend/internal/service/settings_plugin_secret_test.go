@@ -38,7 +38,7 @@ func TestExcludedSettingKeys_CoverPluginSecrets(t *testing.T) {
 		for _, fields := range fieldSets {
 			for _, key := range plugin.SecretKeys(item.Meta, fields) {
 				checked++
-				assert.Truef(t, excluded[key], "插件 %s 的密钥 %s 没进 excludedSettingKeys()", item.Meta.ID, key)
+				assert.Truef(t, excluded[key], "插件 %s 的密钥 %s 没进 excludedSettingKeys()", item.ID, key)
 			}
 		}
 	}

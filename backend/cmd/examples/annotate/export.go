@@ -63,8 +63,8 @@ func buildExportMarkdown(entry model.Entry, list []annotation, now time.Time) st
 		b.WriteString("- （还没有标注）\n")
 	}
 	for _, item := range sorted {
-		b.WriteString(fmt.Sprintf("- 〔%s〕第 %d–%d 字：%s\n",
-			colorLabel(item.Color), item.Start+1, item.End, describeAnnotation(text, item)))
+		fmt.Fprintf(&b, "- 〔%s〕第 %d–%d 字：%s\n",
+			colorLabel(item.Color), item.Start+1, item.End, describeAnnotation(text, item))
 	}
 	return b.String()
 }
