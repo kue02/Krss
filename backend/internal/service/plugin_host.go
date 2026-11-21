@@ -698,6 +698,36 @@ func (h *PluginHost) Stop() {
 	}
 }
 
+// Archive 卸载一个外部插件：进程在跑先停，插件目录改名为 <id>.removed-<UTC 时间戳>
+// （不真删，可人工恢复），从 procs 移除并摘注册表，返回归档后的目录路径。
+// 改名后目录已不叫 <id>，Ensure/scanLocked 不会立刻把它重新扫成「新发现的插件」。
+// 目录本来就不在时返回空串（仅摘注册表），仍算成功（幂等）。
+func (h *PluginHost) Archive(id string) (string, error) {
+	if h == nil {
+		return "", ErrPluginNotFound
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	// 进程在跑先收走（stopLocked 会删 procs[id] 并摘注册表；目录此时还在）。
+	if _, ok := h.procs[id]; ok {
+		h.stopLocked(id)
+	}
+	dir := filepath.Join(h.dir, id)
+	archivePath := ""
+	if _, err := os.Stat(dir); err == nil {
+		archivePath = dir + ".removed-" + time.Now().UTC().Format("20060102T150405Z")
+		if err := os.Rename(dir, archivePath); err != nil {
+			return "", fmt.Errorf("归档插件目录 %s 失败: %w", dir, err)
+		}
+	} else if !os.IsNotExist(err) {
+		return "", fmt.Errorf("检查插件目录 %s 失败: %w", dir, err)
+	}
+	// 停用态下没有进程，但注册表里可能有 manifest 空壳；统一摘一次（对已摘的幂等）。
+	delete(h.procs, id)
+	h.registry.Unregister(id)
+	return archivePath, nil
+}
+
 func (h *PluginHost) stopLocked(id string) {
 	p, ok := h.procs[id]
 	if !ok {

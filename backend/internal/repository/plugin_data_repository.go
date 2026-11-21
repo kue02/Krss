@@ -26,6 +26,8 @@ type PluginDataRepository interface {
 	DeleteCollection(ctx context.Context, pluginID, collection string) error
 	// Count 这个插件一共存了多少键（跨 collection；配额/诊断用）。
 	Count(ctx context.Context, pluginID string) (int, error)
+	// DeleteAll 删掉这个插件**所有** collection 的全部键（卸载清残留；返回删了多少行，幂等）。
+	DeleteAll(ctx context.Context, pluginID string) (int64, error)
 }
 
 // 插件数据的硬限制。service 也会挡一道（那里要回 400 而不是 500），
@@ -183,6 +185,18 @@ func (r *pluginDataRepository) DeleteCollection(ctx context.Context, pluginID, c
 		DELETE FROM plugin_data WHERE plugin_id = ? AND collection = ?
 	`, pluginID, collection)
 	return err
+}
+
+// DeleteAll 删掉这个插件所有 collection 的全部键（卸载清残留）。
+// 返回受影响行数；没有数据返回 0,nil（幂等，不报 ErrNotFound）。
+func (r *pluginDataRepository) DeleteAll(ctx context.Context, pluginID string) (int64, error) {
+	result, err := r.db.ExecContext(ctx, `
+		DELETE FROM plugin_data WHERE plugin_id = ?
+	`, pluginID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 func (r *pluginDataRepository) Count(ctx context.Context, pluginID string) (int, error) {

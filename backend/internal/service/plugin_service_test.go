@@ -132,6 +132,10 @@ func (r *fakePluginRepo) Upsert(ctx context.Context, id string, enabled bool) er
 	r.states[id] = enabled
 	return nil
 }
+func (r *fakePluginRepo) Delete(ctx context.Context, id string) error {
+	delete(r.states, id)
+	return nil
+}
 
 func TestCatalog_EnsuresBuiltinRows(t *testing.T) {
 	reg := plugin.NewRegistry()

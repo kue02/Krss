@@ -47,6 +47,7 @@ func (h *PluginHandler) RegisterRoutes(g *echo.Group) {
 	g.GET("/plugins/contributions", h.ListContributions)
 	g.GET("/plugins/views", h.ListViews)
 	g.PATCH("/plugins/:id", h.SetEnabled)
+	g.DELETE("/plugins/:id", h.Uninstall)
 	g.GET("/plugins/:id/settings", h.GetSettings)
 	g.PUT("/plugins/:id/settings", h.PutSettings)
 	g.POST("/plugins/:id/actions/:actionId/test", h.TestAction)
@@ -193,6 +194,27 @@ func (h *PluginHandler) SetEnabled(c echo.Context) error {
 	items, err := h.service.SetEnabled(c.Request().Context(), c.Param("id"), req.Enabled)
 	if err != nil {
 		logger.Error("plugin set enabled failed", "module", "handler", "action", "update", "resource", "plugin", "result", "failed", "id", c.Param("id"), "error", err)
+		return writeServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, pluginCatalogResponse{Plugins: toCatalogItems(items)})
+}
+
+// Uninstall godoc
+// @Summary 卸载一个外部插件（归档目录并清干净残留）
+// @Description 只对外部插件生效：停进程、把插件目录改名为 <id>.removed-<时间戳> 归档（不真删，可恢复），
+// @Description 再清掉 plugin_data、plugin.<id>.* 设置与 plugins 行，返回最新清单。
+// @Description 内置插件不可卸载，只能停用（409）。
+// @Tags plugins
+// @Produce json
+// @Param id path string true "插件 id"
+// @Success 200 {object} pluginCatalogResponse
+// @Failure 404 {object} errorResponse "插件不存在"
+// @Failure 409 {object} errorResponse "内置插件不可卸载，只能停用"
+// @Router /api/plugins/{id} [delete]
+func (h *PluginHandler) Uninstall(c echo.Context) error {
+	items, err := h.service.Uninstall(c.Request().Context(), c.Param("id"))
+	if err != nil {
+		logger.Error("plugin uninstall failed", "module", "handler", "action", "uninstall", "resource", "plugin", "result", "failed", "id", c.Param("id"), "error", err)
 		return writeServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, pluginCatalogResponse{Plugins: toCatalogItems(items)})

@@ -267,7 +267,7 @@ export function EntryContextMenuContent({
           `EntryContextMenuContent`，插在这里两处一起生效，别在别处再插一份。
           选中态只给 entryIds（single 项据此判断「恰好选中 1 条」）。
 
-          `entryIds` 是 `number[]`（后端 `plugin.Selection.EntryIDs` 是 `[]int64`），
+          `entryIds` 是 `string[]`（后端 `plugin.Selection.EntryIDs` 是 `[]int64`），
           而前端 `Entry.id` 是字符串，所以按 56-13 的同一口径转一次。
           ⚠️ 已知隐患：19 位 snowflake 超出 JS 安全整数（实测库里 200 条 id 只有 4 条
           能原样往返），转完的 id 会让后端 `GetByID` 查不到而**静默跳过**这条条目。

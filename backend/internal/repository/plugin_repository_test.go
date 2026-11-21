@@ -83,3 +83,23 @@ func TestPluginRepository_UpsertIdempotent(t *testing.T) {
 	require.Equal(t, "demo", states[0].ID)
 	require.False(t, states[0].Enabled)
 }
+
+// TestPluginRepository_Delete 删一个插件行：只删指定 id，别的保留；不存在不报错（卸载幂等）。
+func TestPluginRepository_Delete(t *testing.T) {
+	db := testutil.NewTestDB(t)
+	repo := repository.NewPluginRepository(db)
+	ctx := context.Background()
+
+	require.NoError(t, repo.Upsert(ctx, "demo", true))
+	require.NoError(t, repo.Upsert(ctx, "bark", false))
+
+	require.NoError(t, repo.Delete(ctx, "demo"))
+
+	states, err := repo.List(ctx)
+	require.NoError(t, err)
+	require.Len(t, states, 1)
+	require.Equal(t, "bark", states[0].ID)
+
+	// 再删一次（已经不在了）也不报错。
+	require.NoError(t, repo.Delete(ctx, "demo"))
+}

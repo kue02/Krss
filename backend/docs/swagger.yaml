@@ -2719,6 +2719,35 @@ paths:
       tags:
       - plugins
   /api/plugins/{id}:
+    delete:
+      description: |-
+        只对外部插件生效：停进程、把插件目录改名为 <id>.removed-<时间戳> 归档（不真删，可恢复），
+        再清掉 plugin_data、plugin.<id>.* 设置与 plugins 行，返回最新清单。
+        内置插件不可卸载，只能停用（409）。
+      parameters:
+      - description: 插件 id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_handler.pluginCatalogResponse'
+        "404":
+          description: 插件不存在
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+        "409":
+          description: 内置插件不可卸载，只能停用
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: 卸载一个外部插件（归档目录并清干净残留）
+      tags:
+      - plugins
     patch:
       consumes:
       - application/json
