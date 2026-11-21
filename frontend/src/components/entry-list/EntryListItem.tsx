@@ -67,6 +67,7 @@ import { useInView } from "@/hooks/useInView";
 import { ArticleContent } from "@/components/ui/article-content";
 import { MachineTranslatedBadge } from "./machine-translated-badge";
 import { resolveReadingFontStack } from "@/lib/reading-fonts";
+import { useMobileLongPress } from "@/hooks/useMobileLongPress";
 import type { Entry, Feed, Folder } from "@/types/api";
 
 const URL_PATTERN = /\bhttps?:\/\/\S+/i;
@@ -86,6 +87,10 @@ interface EntryListItemProps {
   targetLanguage?: string;
   /** 社交媒体视图（第四类内容）：时间线式铺开正文，而不是卡片列表 */
   social?: boolean;
+  /** 移动端：长按打开条目操作面板 */
+  isMobile?: boolean;
+  /** 长按条目回调（由列表统一渲染操作面板） */
+  onLongPress?: (entry: Entry) => void;
   /** 社交媒体视图下：正文过短时自动抓正文（按视图设置） */
   fetchReadable?: boolean;
   /** 社交媒体视图下：长贴默认展开（按视图设置） */
@@ -297,6 +302,8 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
       social = false,
       fetchReadable = false,
       autoExpandLong = false,
+      isMobile = false,
+      onLongPress,
       onMarkAboveEntry,
       onSelectFeedFromEntry,
       style,
@@ -326,6 +333,10 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
      * 内容类型过滤，这里按 `feed.type` 过滤 —— 同一条订阅类型固定，等价）。
      */
     const feedMenu = useFeedMenuActions();
+    const longPress = useMobileLongPress(
+      isMobile,
+      onLongPress ? () => onLongPress(entry) : undefined,
+    );
     const feedMenuFolders = useMemo(
       () =>
         feed
@@ -534,7 +545,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     if (isSocialView) {
       return (
         <ContextMenu>
-          <ContextMenuTrigger asChild>
+          <ContextMenuTrigger asChild disabled={isMobile}>
             <div
               ref={(node) => {
                 if (typeof ref === "function") ref(node);
@@ -550,7 +561,11 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
               style={style}
               data-index={dataIndex}
               data-entry-id={dataEntryId}
-              onClick={() => onClick(entry.id)}
+              {...longPress.touchHandlers}
+              onClick={() => {
+                if (longPress.consumeClick()) return;
+                onClick(entry.id);
+              }}
             >
               <Ripple hoverOpacity={0} pressedOpacity={0.05} duration={100} />
 
@@ -891,7 +906,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
 
     return (
       <ContextMenu>
-        <ContextMenuTrigger asChild>
+        <ContextMenuTrigger asChild disabled={isMobile}>
           <div
             ref={(node) => {
               if (typeof ref === "function") ref(node);
@@ -916,7 +931,11 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
             style={style}
             data-index={dataIndex}
             data-entry-id={dataEntryId}
-            onClick={() => onClick(entry.id)}
+            {...longPress.touchHandlers}
+            onClick={() => {
+              if (longPress.consumeClick()) return;
+              onClick(entry.id);
+            }}
           >
             {/* Material 3 涟漪 —— 与 Nextflux 的 ArticleCard 同库同参数 */}
             <Ripple hoverOpacity={0} pressedOpacity={0.05} duration={100} />

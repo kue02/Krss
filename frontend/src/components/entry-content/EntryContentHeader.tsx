@@ -7,6 +7,7 @@ import {
   Languages,
   MoreHorizontal,
   Sparkles,
+  Type,
   X,
 } from "lucide-react";
 import { isSafeUrl } from "@/lib/url";
@@ -20,6 +21,7 @@ import {
   MobileActionSheet,
   MobileActionSheetItem,
 } from "@/components/mobile/MobileActionSheet";
+import { MobileReadingSettings } from "@/components/mobile/MobileReadingSettings";
 import type { Entry } from "@/types/api";
 
 interface EntryContentHeaderProps {
@@ -125,6 +127,7 @@ export function EntryContentHeader({
   const starReplacement = targetOps.replacement("entry.star");
   const starHidden = targetOps.isHidden("entry.star");
   const [moreOpen, setMoreOpen] = useState(false);
+  const [readingSettingsOpen, setReadingSettingsOpen] = useState(false);
 
   if (isMobile) {
     return (
@@ -296,6 +299,14 @@ export function EntryContentHeader({
               }}
             />
           ) : null}
+          <MobileActionSheetItem
+            icon={<Type className="size-5" />}
+            label={t("entry.reading_settings")}
+            onClick={() => {
+              setMoreOpen(false);
+              setReadingSettingsOpen(true);
+            }}
+          />
           {safeUrl ? (
             <MobileActionSheetItem
               icon={<ExternalLink className="size-5" />}
@@ -314,6 +325,11 @@ export function EntryContentHeader({
             />
           </div>
         </MobileActionSheet>
+
+        <MobileReadingSettings
+          open={readingSettingsOpen}
+          onOpenChange={setReadingSettingsOpen}
+        />
       </>
     );
   }

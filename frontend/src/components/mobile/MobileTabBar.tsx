@@ -54,7 +54,7 @@ export function MobileTabBar({
   return (
     <nav
       aria-label={t("content_type.nav_label")}
-      className="mobile-tab-bar fixed inset-x-0 bottom-0 z-20 border-t border-border/60 bg-overlay/95 pb-[env(safe-area-inset-bottom)] shadow-[0_-1px_0_rgba(0,0,0,0.03)] backdrop-blur-xl"
+      className="mobile-tab-bar fixed inset-x-0 bottom-0 z-20 border-t border-border/50 bg-background/75 pb-[env(safe-area-inset-bottom)] shadow-[0_-1px_0_rgba(0,0,0,0.03)] backdrop-blur-xl"
     >
       <div role="tablist" className="mx-auto flex h-14 w-full max-w-md items-stretch">
         {tabs.map((type) => {

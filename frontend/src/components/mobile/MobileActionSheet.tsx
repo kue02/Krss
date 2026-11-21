@@ -51,7 +51,12 @@ export function MobileActionSheet({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18, ease: "easeOut" }}
-            onClick={() => onOpenChange(false)}
+            // 用 pointerdown 而不是 click 关闭：长按打开时，手指抬起补发的
+            // click 会命中刚出现的全屏遮罩，click 关闭会让面板刚开就关；
+            // 而那次手指的 pointerdown 发生在遮罩出现之前，不会命中这里。
+            onPointerDown={(event) => {
+              if (event.target === event.currentTarget) onOpenChange(false);
+            }}
           />
           <motion.div
             key="mobile-action-sheet-panel"

@@ -1,9 +1,11 @@
-import { useState, type RefCallback } from "react";
+import { useEffect, useState, type RefCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useEntryMeta } from "@/hooks/useEntryMeta";
+import { useFeeds } from "@/hooks/useFeeds";
+import { apiUrl } from "@/lib/server-url";
 import { isSafeUrl } from "@/lib/url";
 import type { ArticleContentBlock } from "@/components/ui/article-content";
-import { UserIcon, CalendarIcon, ClockIcon } from "@/components/ui/icons";
+import { CalendarIcon, ClockIcon } from "@/components/ui/icons";
 import { PluginSlot } from "@/plugins/PluginSlot";
 import { useEntryDecorations } from "@/components/reader/useEntryDecorations";
 import { useReaderTextRange } from "@/components/reader/useReaderTextRange";
@@ -51,6 +53,12 @@ export function EntryContentBody({
 }: EntryContentBodyProps) {
   const { t } = useTranslation();
   const { publishedLong, readingTime } = useEntryMeta(entry);
+  const { data: feeds = [] } = useFeeds();
+  const sourceFeed = feeds.find((feed) => feed.id === entry.feedId);
+  const [iconFailed, setIconFailed] = useState(false);
+  useEffect(() => {
+    setIconFailed(false);
+  }, [entry.feedId, sourceFeed?.iconPath]);
   const title = displayTitle ?? entry.title ?? t("entry.untitled");
 
   /**
@@ -118,9 +126,24 @@ export function EntryContentBody({
 
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-sm text-muted-foreground">
             {entry.author && (
-              <div className="flex items-center gap-1.5">
-                <UserIcon className="size-4 opacity-70" />
-                <span>{entry.author}</span>
+              <div className="flex min-w-0 items-center gap-2">
+                {sourceFeed?.iconPath && !iconFailed ? (
+                  <img
+                    src={apiUrl(`/icons/${sourceFeed.iconPath}`)}
+                    alt=""
+                    width={24}
+                    height={24}
+                    loading="lazy"
+                    decoding="async"
+                    className="size-6 shrink-0 rounded-full object-cover"
+                    onError={() => setIconFailed(true)}
+                  />
+                ) : (
+                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-secondary text-[11px] font-semibold text-muted-foreground">
+                    {entry.author.trim().charAt(0).toUpperCase() || "?"}
+                  </span>
+                )}
+                <span className="truncate">{entry.author}</span>
               </div>
             )}
 

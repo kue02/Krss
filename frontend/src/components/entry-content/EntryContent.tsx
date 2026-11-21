@@ -19,6 +19,7 @@ import { EntryContentBody } from "./EntryContentBody";
 import { EntryToc } from "./EntryToc";
 import { OriginalSiteView } from "./OriginalSiteView";
 import { ReadingProgressBar } from "./ReadingProgressBar";
+import { MobileEntryNav } from "@/components/mobile/MobileEntryNav";
 import { deferUnreadRemovals } from "@/components/entry-list/deferred-removal";
 import { isPlainKey, isTypingTarget } from "@/lib/keyboard";
 import { resolveEntryAutoTranslate } from "@/lib/auto-translate";
@@ -281,7 +282,16 @@ export function EntryContent({
       )}
       {/* 39-1：大纲是 `absolute inset-y-0`，内嵌时要对着宿主容器的可见区域，
           由宿主挂在自己的 `relative` 包装上并传 `containerRef` 过来 */}
-      {!embedded && <EntryToc scrollNode={scrollNode} entryId={entryId} />}
+      {!embedded && (
+        <EntryToc
+          scrollNode={scrollNode}
+          entryId={entryId}
+          isMobile={Boolean(isMobile)}
+        />
+      )}
+      {isMobile && !embedded && !showOriginalSite && (
+        <MobileEntryNav entryId={entryId} />
+      )}
     </div>
   );
 }

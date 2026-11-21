@@ -7,6 +7,9 @@ interface MobilePullToRefreshProps {
   enabled: boolean;
   isRefreshing: boolean;
   onRefresh: () => Promise<void> | void;
+  /** 后端刷新进度（刷新中显示「正在刷新 · 3 / 74」） */
+  progressTotal?: number;
+  progressCompleted?: number;
 }
 
 const PULL_THRESHOLD = 64;
@@ -23,6 +26,8 @@ export function MobilePullToRefresh({
   enabled,
   isRefreshing,
   onRefresh,
+  progressTotal = 0,
+  progressCompleted = 0,
 }: MobilePullToRefreshProps) {
   const { t } = useTranslation();
   const [pull, setPull] = useState(0);
@@ -116,8 +121,8 @@ export function MobilePullToRefresh({
     >
       <div
         className={cn(
-          "flex size-8 items-center justify-center rounded-full border border-border/60 bg-overlay shadow-nf-md",
-          active && "text-accent",
+          "flex items-center justify-center rounded-full border border-border/60 bg-overlay shadow-nf-md",
+          active ? "h-9 gap-2 px-3 text-accent" : "size-8",
         )}
       >
         <RefreshCw
@@ -128,8 +133,17 @@ export function MobilePullToRefresh({
               : undefined
           }
         />
+        {active && (
+          <span className="whitespace-nowrap text-[11px] font-medium tabular-nums">
+            {progressTotal > 0
+              ? t("entry.refreshing_progress", {
+                  completed: progressCompleted,
+                  total: progressTotal,
+                })
+              : t("entry.refreshing")}
+          </span>
+        )}
       </div>
-      <span className="sr-only">{t("entry.refreshing")}</span>
     </div>
   );
 }
