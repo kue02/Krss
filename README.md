@@ -161,6 +161,7 @@ bun run build              # 产物输出到 dist/
 - 所有数据（SQLite 数据库、缓存、日志）都在数据目录（默认 `./data`，容器内 `/app/data`），备份该目录即可完整迁移。
 - 升级：`docker compose pull && docker compose up -d`。升级后服务启动时可能自动回填订阅图标等缓存，属正常现象。
 - 版本说明见 [docs/releases/](docs/releases/)。
+- 自己写插件：从 [docs/plugins/](docs/plugins/) 开始（清单、Go API、外部进程协议、沙箱 bridge）。
 
 ## 目录结构
 
