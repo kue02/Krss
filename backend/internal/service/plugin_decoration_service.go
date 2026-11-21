@@ -45,7 +45,7 @@ func (s *pluginService) Decorations(ctx context.Context, entryID int64) ([]plugi
 	if entry.Content != nil {
 		text = htmlToPlain(*entry.Content)
 	}
-	runeLen := len([]rune(text))
+	runes := []rune(text)
 	req := plugin.DecorateRequest{Entry: entry, Text: text}
 
 	// 各插件并发跑：互不等待，谁慢谁自己超时；结果按注册表顺序落到自己的槽位（不用加锁）。
@@ -64,7 +64,7 @@ func (s *pluginService) Decorations(ctx context.Context, entryID int64) ([]plugi
 					"pluginId", named.PluginID, "entry", entryID, "error", err)
 				return
 			}
-			results[i] = sanitizeDecorations(named.PluginID, items, runeLen)
+			results[i] = sanitizeDecorations(named.PluginID, items, runes)
 		}(i, named)
 	}
 	wg.Wait()
@@ -88,7 +88,12 @@ func (s *pluginService) Decorations(ctx context.Context, entryID int64) ([]plugi
 // sanitizeDecorations 校验插件报的区间并注入归属插件。
 // 越界（负 start / 空区间 / 超出文本长度）一律丢弃并 warn：宁可少画一段，
 // 也不能让前端按坏区间去切字符串（切出来是乱码或 panic）。这里不截断——截断等于替插件改意思。
-func sanitizeDecorations(pluginID string, items []plugin.Decoration, runeLen int) []plugin.Decoration {
+//
+// text 是偏移基准的正文纯文本（rune 切片）。对通过校验的区间：
+// 宿主替插件补原文锚点 data.text（= text[start:end]），供前端 reanchor 使用 ——
+// 前端只有拿到这段原文才能纠正 offset 偏差，否则多段落正文会漂。插件自带 text 不覆盖。
+func sanitizeDecorations(pluginID string, items []plugin.Decoration, text []rune) []plugin.Decoration {
+	runeLen := len(text)
 	out := make([]plugin.Decoration, 0, len(items))
 	for _, item := range items {
 		reason := ""
@@ -108,6 +113,13 @@ func sanitizeDecorations(pluginID string, items []plugin.Decoration, runeLen int
 			continue
 		}
 		item.Plugin = pluginID
+		// 宿主替插件补原文锚点，供前端 reanchor 使用（插件自带 text 时不覆盖）。
+		if item.Data == nil {
+			item.Data = map[string]string{}
+		}
+		if item.Data["text"] == "" {
+			item.Data["text"] = string(text[item.Start:item.End])
+		}
 		out = append(out, item)
 	}
 	return out

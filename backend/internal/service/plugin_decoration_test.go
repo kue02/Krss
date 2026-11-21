@@ -131,11 +131,57 @@ func TestPluginService_Decorations(t *testing.T) {
 		require.Equal(t, "fast", out[0].ID)
 	})
 
+	t.Run("插件只给 start/end 时宿主回填 data.text 原文锚点", func(t *testing.T) {
+		// 多段落 + 中文：htmlToPlain 把块级标签当空白再压成单空格 ⇒ "你好，世界 今天天气不错"
+		// rune 下标：0你 1好 2， 3世 4界 5空格 6今 7天 8天 9气 10不 11错（共 12 runes）
+		p := &decoratorPlugin{id: "aaa-anchor", items: []plugin.Decoration{
+			{ID: "a", Start: 0, End: 5, Style: "highlight"},
+			{ID: "b", Start: 2, End: 8, Style: "underline"}, // 跨段落边界，验证 rune 下标而非字节
+			{ID: "c", Start: 6, End: 12, Style: "note"},
+		}}
+		entries := &invokeEntryRepo{entries: map[int64]model.Entry{
+			7: {ID: 7, Content: stringPtr("<p>你好，世界</p><p>今天天气不错</p>")},
+		}}
+		svc := newDecorationService(t, entries, p)
+
+		out, err := svc.Decorations(ctx, 7)
+		require.NoError(t, err)
+		require.Len(t, out, 3)
+
+		textByID := make(map[string]string, len(out))
+		for _, d := range out {
+			textByID[d.ID] = d.Data["text"]
+		}
+		require.Equal(t, "你好，世界", textByID["a"], "宿主回填的原文应等于正文对应片段")
+		require.Equal(t, "，世界 今天", textByID["b"], "跨段落边界按 rune 切片，不能按字节切")
+		require.Equal(t, "今天天气不错", textByID["c"])
+	})
+
+	t.Run("插件自带 data.text 时保持原值不被覆盖", func(t *testing.T) {
+		p := &decoratorPlugin{id: "aaa-anchor", items: []plugin.Decoration{
+			{ID: "own", Start: 0, End: 5, Style: "highlight", Data: map[string]string{"text": "插件自己的锚点"}},
+			{ID: "bare", Start: 0, End: 5, Style: "highlight"},
+		}}
+		entries := &invokeEntryRepo{entries: map[int64]model.Entry{7: {ID: 7, Content: stringPtr("hello 世界")}}}
+		svc := newDecorationService(t, entries, p)
+
+		out, err := svc.Decorations(ctx, 7)
+		require.NoError(t, err)
+		require.Len(t, out, 2)
+		byID := make(map[string]plugin.Decoration, len(out))
+		for _, d := range out {
+			byID[d.ID] = d
+		}
+		require.Equal(t, "插件自己的锚点", byID["own"].Data["text"], "插件自带 text 不许覆盖")
+		require.Equal(t, "hello", byID["bare"].Data["text"], "没说 text 的才由宿主补")
+	})
+
 	t.Run("越界区间被丢弃", func(t *testing.T) {
 		p := &decoratorPlugin{id: "aaa-deco", items: []plugin.Decoration{
 			{ID: "ok", Start: 0, End: 5, Style: "highlight"},
 			{ID: "neg", Start: -1, End: 3, Style: "highlight"},
 			{ID: "empty", Start: 3, End: 3, Style: "highlight"},
+			{ID: "rev", Start: 4, End: 2, Style: "highlight"},
 			{ID: "over", Start: 0, End: 9, Style: "highlight"},
 		}}
 		// "hello 世界" = 8 runes（无标签 ⇒ 纯文本，偏移基准好算）
@@ -144,7 +190,7 @@ func TestPluginService_Decorations(t *testing.T) {
 
 		out, err := svc.Decorations(ctx, 7)
 		require.NoError(t, err)
-		require.Len(t, out, 1, "start<0 / end<=start / end>len(runes) 三条都丢，且一条都不许拦腰截断")
+		require.Len(t, out, 1, "start<0 / end<=start（含反向）/ end>len(runes) 四条都丢，且一条都不许拦腰截断")
 		require.Equal(t, "ok", out[0].ID)
 	})
 
