@@ -20,9 +20,10 @@ import (
 	"krss/backend/internal/handler"
 	transport "krss/backend/internal/http"
 	"krss/backend/internal/plugin"
-	"krss/backend/internal/plugin/builtin/bark"   // 内置插件：Bark 推送（55-12）
-	_ "krss/backend/internal/plugin/builtin/demo" // 内置插件：init() 自注册进 plugin.Default（55-7a）
-	"krss/backend/internal/plugin/builtin/rsshub" // 内置插件：RSSHub 适配（55-18）
+	"krss/backend/internal/plugin/builtin/bark"           // 内置插件：Bark 推送（55-12）
+	_ "krss/backend/internal/plugin/builtin/demo"         // 内置插件：init() 自注册进 plugin.Default（55-7a）
+	_ "krss/backend/internal/plugin/builtin/githubavatar" // 内置插件：GitHub 订阅显示账号头像
+	"krss/backend/internal/plugin/builtin/rsshub"         // 内置插件：RSSHub 适配（55-18）
 	"krss/backend/internal/repository"
 	"krss/backend/internal/scheduler"
 	"krss/backend/internal/service"
@@ -92,27 +93,19 @@ func main() {
 	anubisStore := anubis.NewStore(settingsRepo)
 	anubisSolver := anubis.NewSolver(clientFactory, anubisStore)
 
-	iconService := service.NewIconService(cfg.DataDir, feedRepo, clientFactory, anubisSolver)
+	// 插件注册表（55 批）：内置插件在各自 init() 注册进 plugin.Default。
+	// iconService 要靠它收集 FeedIconProvider（GitHub 头像），所以在构造 iconService 之前先取默认注册表。
+	pluginRegistry := plugin.Default
 
-	// Backfill icons for existing feeds (run in background)
-	backfillCtx, cancelBackfill := context.WithCancel(context.Background())
-	var backfillWG sync.WaitGroup
-	backfillWG.Add(1)
-	go func() {
-		defer backfillWG.Done()
-		if err := iconService.BackfillIcons(backfillCtx); err != nil && !errors.Is(err, context.Canceled) {
-			logger.Warn("backfill icons", "error", err)
-		}
-	}()
+	iconService := service.NewIconService(cfg.DataDir, feedRepo, clientFactory, anubisSolver, service.WithPluginRegistry(pluginRegistry))
 
 	folderService := service.NewFolderService(folderRepo, feedRepo)
-	// 插件注册表（55 批）：内置插件在各自 init() 注册进 plugin.Default；用库里的启停记录覆盖默认值。
-	// 规则引擎要拿它派发「插件动作」（推送 = bark 插件的 notify），所以必须建在 filterService 之前 ——
+	// 插件注册表（55 批）已在上方取好 plugin.Default；启停记录在下方 Catalog 时覆盖默认值。
+	// 规则引擎要拿它派发「插件动作」（推送 = bark 插件的 notify），所以注册表在本函数里始终可用 ——
 	// 55-13 起本体不再有推送实现，注册表没接上就等于规则里的推送静默不执行。
 	pluginRepo := repository.NewPluginRepository(dbConn)
 	// 插件专属数据（56-19，迁移 34）：插件存自己东西的地方，一张三段式 KV 表。
 	pluginDataRepo := repository.NewPluginDataRepository(dbConn)
-	pluginRegistry := plugin.Default
 	// bark 推送插件（55-12）：出网 client 用 clientFactory 建（继承代理，与 webhook 同一套路径），
 	// 设置存储给 settingsRepo（键 plugin.bark.url）。
 	bark.Configure(clientFactory.NewHTTPClient(context.Background(), 15*time.Second), settingsRepo)
@@ -190,6 +183,20 @@ func main() {
 		logger.Error("init plugins", "error", err)
 		os.Exit(1)
 	}
+
+	// Backfill icons for existing feeds (run in background)。
+	// 必须放到插件注册表建好、Catalog 装载完启用状态之后再起：否则 GitHub 头像等 FeedIconProvider
+	// 还没就绪，回填会先按通用 favicon 落盘，头像要等下一轮才补上。
+	backfillCtx, cancelBackfill := context.WithCancel(context.Background())
+	var backfillWG sync.WaitGroup
+	backfillWG.Add(1)
+	go func() {
+		defer backfillWG.Done()
+		if err := iconService.BackfillIcons(backfillCtx); err != nil && !errors.Is(err, context.Canceled) {
+			logger.Warn("backfill icons", "error", err)
+		}
+	}()
+
 	pluginHandler := handler.NewPluginHandler(pluginService)
 	exportHandler := handler.NewExportHandler(service.NewExportService(settingsService))
 
