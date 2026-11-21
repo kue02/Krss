@@ -47,6 +47,20 @@ export function setPluginEnabled(
   }).then(normalizeList);
 }
 
+/**
+ * 卸载一个**外部**插件（56-35）：后端归档插件目录并清掉它的设置与数据，
+ * 与 PATCH 一样回整份清单，页面拿到新清单直接 setState。
+ *
+ * 只对外部插件（`transport === "http"`）开放 —— 内置插件编译进二进制，卸载不了。
+ * 路径参数 encodeURIComponent：插件 id 来自 manifest 文件名，可能带 `.` / 空格 / 中文。
+ */
+export function uninstallPlugin(id: string): Promise<PluginMeta[]> {
+  return request<{ plugins: PluginMeta[] }>(
+    `/api/plugins/${encodeURIComponent(id)}`,
+    { method: "DELETE" },
+  ).then(normalizeList);
+}
+
 /** 读插件设置（secret 字段是掩码，不是明文） */
 export function fetchPluginSettings(
   id: string,

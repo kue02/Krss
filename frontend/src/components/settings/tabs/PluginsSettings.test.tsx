@@ -13,12 +13,19 @@ const mocks = vi.hoisted(() => ({
   fetchPlugins: vi.fn(),
   setPluginEnabled: vi.fn(),
   rescanPlugins: vi.fn(),
+  uninstallPlugin: vi.fn(),
 }));
 
-/** 只回 key，不拉 i18n 资源（与同目录既有测试一致） */
+/** 只回 key，不拉 i18n 资源（与同目录既有测试一致）；带 params 的键把插值拼进结果 */
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string, params?: Record<string, unknown>) => {
+      if (!params) return key;
+      const extra = Object.entries(params)
+        .map(([name, value]) => `${name}=${String(value)}`)
+        .join(",");
+      return `${key}(${extra})`;
+    },
   }),
 }));
 
@@ -26,6 +33,7 @@ vi.mock("@/plugins/api", () => ({
   fetchPlugins: mocks.fetchPlugins,
   setPluginEnabled: mocks.setPluginEnabled,
   rescanPlugins: mocks.rescanPlugins,
+  uninstallPlugin: mocks.uninstallPlugin,
 }));
 
 /**
@@ -61,6 +69,7 @@ beforeEach(() => {
   mocks.setPluginEnabled.mockImplementation(
     async (id: string, enabled: boolean) => [plugin({ id, enabled })],
   );
+  mocks.uninstallPlugin.mockResolvedValue([]);
 });
 
 describe("设置 → 插件（55-8）", () => {
@@ -134,5 +143,74 @@ describe("设置 → 插件（55-8）", () => {
     fireEvent.click(screen.getByRole("switch"));
 
     expect(await screen.findByText("section-for-demo")).toBeTruthy();
+  });
+
+  it("内置插件没有「卸载」按钮（内置不能卸载）", async () => {
+    mocks.fetchPlugins.mockResolvedValue([
+      plugin({ id: "demo", builtin: true, transport: "builtin" }),
+    ]);
+
+    render(<PluginsSettings />);
+    await screen.findByText("Demo 插件");
+
+    expect(screen.queryByText("plugins.uninstall")).toBeNull();
+  });
+
+  it("外部插件：点「卸载」弹二次确认，确认后调 DELETE 一次并用返回清单刷新", async () => {
+    mocks.fetchPlugins.mockResolvedValue([
+      plugin({
+        id: "demo-ext",
+        name: "Demo Ext",
+        builtin: false,
+        transport: "http",
+        enabled: true,
+      }),
+    ]);
+    mocks.uninstallPlugin.mockResolvedValue([]);
+
+    render(<PluginsSettings />);
+    await screen.findByText("Demo Ext");
+
+    // 卡片上的「卸载」→ 打开确认弹窗
+    fireEvent.click(screen.getByText("plugins.uninstall"));
+    expect(
+      await screen.findByText("plugins.uninstall_confirm_title"),
+    ).toBeTruthy();
+
+    // 确认：DELETE 一次，清单换成空列表，卡片消失
+    fireEvent.click(screen.getByText("plugins.uninstall_confirm"));
+
+    await waitFor(() =>
+      expect(mocks.uninstallPlugin).toHaveBeenCalledWith("demo-ext"),
+    );
+    expect(mocks.uninstallPlugin).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.queryByText("Demo Ext")).toBeNull());
+  });
+
+  it("外部插件：取消确认不调 DELETE", async () => {
+    mocks.fetchPlugins.mockResolvedValue([
+      plugin({
+        id: "demo-ext",
+        name: "Demo Ext",
+        builtin: false,
+        transport: "http",
+        enabled: true,
+      }),
+    ]);
+
+    render(<PluginsSettings />);
+    await screen.findByText("Demo Ext");
+
+    fireEvent.click(screen.getByText("plugins.uninstall"));
+    await screen.findByText("plugins.uninstall_confirm_title");
+
+    fireEvent.click(screen.getByText("actions.cancel"));
+
+    await waitFor(() =>
+      expect(screen.queryByText("plugins.uninstall_confirm_title")).toBeNull(),
+    );
+    expect(mocks.uninstallPlugin).not.toHaveBeenCalled();
+    // 卡片还在
+    expect(screen.getByText("Demo Ext")).toBeTruthy();
   });
 });
