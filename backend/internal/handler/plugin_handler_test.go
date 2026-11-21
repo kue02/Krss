@@ -386,3 +386,42 @@ func TestPluginHandler_Contributions_Disabled(t *testing.T) {
 	require.NotContains(t, rec.Body.String(), "null", "空结果不许序列化成 null")
 	require.JSONEq(t, `{"surfaces":{}}`, rec.Body.String())
 }
+
+// TestPluginHandler_Uninstall 卸载外部插件 → 200，回包与 PATCH 同形（{plugins:[...]}）。
+func TestPluginHandler_Uninstall(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	svc := mock.NewMockPluginService(ctrl)
+	svc.EXPECT().Uninstall(gomock.Any(), "ext1").Return(demoCatalog(), nil)
+
+	h := handler.NewPluginHandler(svc)
+	c, rec := newPluginTestContext(http.MethodDelete, "/api/plugins/ext1", nil, "id")
+	c.SetParamValues("ext1")
+	require.NoError(t, h.Uninstall(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"plugins"`)
+}
+
+// TestPluginHandler_Uninstall_Errors 内置插件不可卸载 → 409 + 中文口径；插件不存在 → 404。
+func TestPluginHandler_Uninstall_Errors(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	svc := mock.NewMockPluginService(ctrl)
+	svc.EXPECT().Uninstall(gomock.Any(), "demo").Return(nil, service.ErrPluginBuiltinCannotUninstall)
+	svc.EXPECT().Uninstall(gomock.Any(), "ghost").Return(nil, service.ErrPluginNotFound)
+
+	h := handler.NewPluginHandler(svc)
+
+	c, rec := newPluginTestContext(http.MethodDelete, "/api/plugins/demo", nil, "id")
+	c.SetParamValues("demo")
+	require.NoError(t, h.Uninstall(c))
+	require.Equal(t, http.StatusConflict, rec.Code)
+	require.Contains(t, rec.Body.String(), "内置插件不可卸载")
+
+	c2, rec2 := newPluginTestContext(http.MethodDelete, "/api/plugins/ghost", nil, "id")
+	c2.SetParamValues("ghost")
+	require.NoError(t, h.Uninstall(c2))
+	require.Equal(t, http.StatusNotFound, rec2.Code)
+}

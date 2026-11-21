@@ -36,6 +36,8 @@ var (
 	// （前者是权限问题=403，后者是插件自己装漏了=404）。
 	ErrPluginUIUndeclared  = errors.New("plugin has not declared ui:custom")
 	ErrPluginUIUnavailable = errors.New("plugin ui assets unavailable")
+	// ErrPluginBuiltinCannotUninstall 内置插件不可卸载（只能停用）—— 卸载走 409。
+	ErrPluginBuiltinCannotUninstall = errors.New("内置插件不可卸载，只能停用")
 )
 
 // FeedConflictError is returned when a feed URL already exists.

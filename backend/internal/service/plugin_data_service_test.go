@@ -85,6 +85,17 @@ func (r *fakePluginDataRepo) Count(_ context.Context, pluginID string) (int, err
 	return n, nil
 }
 
+func (r *fakePluginDataRepo) DeleteAll(_ context.Context, pluginID string) (int64, error) {
+	var n int64
+	for k := range r.rows {
+		if strings.HasPrefix(k, pluginID+"\x00") {
+			delete(r.rows, k)
+			n++
+		}
+	}
+	return n, nil
+}
+
 // newPluginDataService 起一个带「data」插件的真注册表 + 真 service（数据仓储用内存假件）。
 func newPluginDataService(t *testing.T) (service.PluginService, *plugin.Registry, *fakePluginDataRepo) {
 	t.Helper()

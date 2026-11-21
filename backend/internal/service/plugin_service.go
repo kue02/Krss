@@ -32,6 +32,10 @@ type PluginService interface {
 	Catalog(ctx context.Context) ([]plugin.CatalogItem, error)
 	// SetEnabled 改启停：内存注册表即时生效 + 落库。
 	SetEnabled(ctx context.Context, id string, enabled bool) ([]plugin.CatalogItem, error)
+	// Uninstall 卸载一个**外部**插件：归档目录（停进程 + 改名，不真删）→ 清 plugin_data →
+	// 清 plugin.<id>.* 设置 → 删 plugins 行 → 返回最新清单。
+	// 内置插件不可卸载（ErrPluginBuiltinCannotUninstall）；不存在 = ErrPluginNotFound。
+	Uninstall(ctx context.Context, id string) ([]plugin.CatalogItem, error)
 	// GetSettings 读插件设置（secret 掩码）。
 	GetSettings(ctx context.Context, id string) (PluginSettingsResult, error)
 	// PutSettings 写插件设置；值为掩码 = 不改这一项。
@@ -213,6 +217,50 @@ func (s *pluginService) SetEnabled(ctx context.Context, id string, enabled bool)
 	// 停用 = 进程真的收走（SIGTERM → 宽限 → SIGKILL），再摘注册表。
 	if external {
 		s.host.StopPlugin(id)
+	}
+	return s.Catalog(ctx)
+}
+
+// Uninstall 卸载一个外部插件，清干净所有残留（56 批）。
+//
+// 内置插件（在注册表里、又不是外部插件）不许卸载 ⇒ ErrPluginBuiltinCannotUninstall；
+// 注册表里没有、宿主也不管 ⇒ ErrPluginNotFound（卸载不存在的插件是错误，避免静默成功）。
+//
+// 顺序：归档目录（停进程 + 改名，可恢复）→ 清插件数据 → 清插件设置 → 删 plugins 行 → 回最新清单。
+// 每一步都幂等/可重试；中途失败就停在那里报错，不吞掉（残留会留在日志里可查）。
+func (s *pluginService) Uninstall(ctx context.Context, id string) ([]plugin.CatalogItem, error) {
+	if err := s.ensureBuiltin(ctx); err != nil {
+		return nil, err
+	}
+	s.ensureExternal(ctx)
+	_, inRegistry := s.registry.Meta(id)
+	external := s.isExternal(id)
+	if inRegistry && !external {
+		// 在注册表里却不是外部插件 ⇒ 内置插件（Builtin=true），只能停用。
+		return nil, ErrPluginBuiltinCannotUninstall
+	}
+	if !inRegistry && !external {
+		return nil, ErrPluginNotFound
+	}
+	// ① 归档目录（停进程 + 改名）：改名后 <id> 消失，Ensure 不会立刻重新扫到。
+	if s.host != nil {
+		if _, err := s.host.Archive(id); err != nil {
+			return nil, err
+		}
+	}
+	// ② 清该插件的全部 plugin_data。
+	if s.data != nil {
+		if _, err := s.data.DeleteAll(ctx, id); err != nil {
+			return nil, err
+		}
+	}
+	// ③ 清 plugin.<id>.* 设置。
+	if _, err := s.settings.DeleteByPrefix(ctx, settingsPrefix(id)); err != nil {
+		return nil, err
+	}
+	// ④ 删 plugins 行。
+	if err := s.plugins.Delete(ctx, id); err != nil {
+		return nil, err
 	}
 	return s.Catalog(ctx)
 }

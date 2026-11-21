@@ -818,6 +818,45 @@ const docTemplate = `{
             }
         },
         "/api/plugins/{id}": {
+            "delete": {
+                "description": "只对外部插件生效：停进程、把插件目录改名为 \u003cid\u003e.removed-\u003c时间戳\u003e 归档（不真删，可恢复），\n再清掉 plugin_data、plugin.\u003cid\u003e.* 设置与 plugins 行，返回最新清单。\n内置插件不可卸载，只能停用（409）。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "plugins"
+                ],
+                "summary": "卸载一个外部插件（归档目录并清干净残留）",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "插件 id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.pluginCatalogResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "插件不存在",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "内置插件不可卸载，只能停用",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            },
             "patch": {
                 "consumes": [
                     "application/json"

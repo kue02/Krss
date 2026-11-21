@@ -153,3 +153,34 @@ func TestPluginDataRepository_RejectsOversizedAndIllegal(t *testing.T) {
 	require.ErrorIs(t, repo.Put(ctx, "demo", "kv", strings.Repeat("k", repository.PluginDataMaxKeyBytes+1), `"v"`), repository.ErrPluginDataInvalidKey)
 	require.NoError(t, repo.Put(ctx, "demo", "kv", strings.Repeat("k", repository.PluginDataMaxKeyBytes), `"v"`))
 }
+
+// TestPluginDataRepository_DeleteAll 按插件删全部 collection（卸载清残留）：
+// 只清这个插件的所有 collection，别的插件一条不动；返回受影响行数；空插件删了是 0,nil（幂等）。
+func TestPluginDataRepository_DeleteAll(t *testing.T) {
+	db := testutil.NewTestDB(t)
+	repo := repository.NewPluginDataRepository(db)
+	ctx := context.Background()
+
+	require.NoError(t, repo.Put(ctx, "demo", "cache", "a", `"1"`))
+	require.NoError(t, repo.Put(ctx, "demo", "cache", "b", `"2"`))
+	require.NoError(t, repo.Put(ctx, "demo", "keep", "a", `"3"`))
+	require.NoError(t, repo.Put(ctx, "bark", "cache", "a", `"4"`))
+
+	n, err := repo.DeleteAll(ctx, "demo")
+	require.NoError(t, err)
+	require.EqualValues(t, 3, n, "demo 两个 collection 共 3 行全删")
+
+	count, err := repo.Count(ctx, "demo")
+	require.NoError(t, err)
+	require.Zero(t, count)
+
+	// 别的插件不受影响。
+	value, err := repo.Get(ctx, "bark", "cache", "a")
+	require.NoError(t, err)
+	require.Equal(t, `"4"`, value)
+
+	// 再删一次（已经空了）：0 行、不报错。
+	n, err = repo.DeleteAll(ctx, "demo")
+	require.NoError(t, err)
+	require.Zero(t, n)
+}
