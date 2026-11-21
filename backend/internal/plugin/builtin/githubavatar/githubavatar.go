@@ -1,7 +1,7 @@
 // Package githubavatar 内置插件：让 GitHub 订阅源显示账号头像。
 //
 // GitHub 官方 RSS/Atom 不含头像，订阅列表只能用通用 favicon。本插件实现
-// plugin.FeedIconProvider，从订阅 URL 解析出账号名，返回 github.com/{user}.png。
+// plugin.FeedIconProvider，从订阅 URL 解析出账号名，返回 avatars.githubusercontent.com/{user}。
 package githubavatar
 
 import (
@@ -71,7 +71,7 @@ func (Plugin) FeedIcon(_ context.Context, feed model.Feed) (string, error) {
 	}
 	for _, raw := range candidates {
 		if user := userFromGitHubURL(raw); user != "" {
-			return "https://github.com/" + user + ".png?size=120", nil
+			return "https://avatars.githubusercontent.com/" + user + "?s=120", nil
 		}
 	}
 	return "", nil
