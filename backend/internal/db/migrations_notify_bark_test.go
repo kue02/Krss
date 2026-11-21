@@ -102,3 +102,25 @@ func TestMigrate_NotifyToBarkPlugin_DoesNotOverwritePluginURL(t *testing.T) {
 	require.NoError(t, conn.QueryRow(`SELECT value FROM settings WHERE key = 'plugin.bark.url'`).Scan(&got))
 	require.Equal(t, "https://api.day.app/NEW", got, "迁移不许把用户改过的地址盖回旧值")
 }
+
+// TestMigrate_NotifyToBarkPlugin_PreservesUnknownFields 迁移 32 不能把模型不认识的
+// 老字段丢掉：升级时规则 JSON 里可能还有其它版本/手工加的键，丢了就是数据损坏。
+func TestMigrate_NotifyToBarkPlugin_PreservesUnknownFields(t *testing.T) {
+	conn, err := db.Open(":memory:")
+	require.NoError(t, err)
+	t.Cleanup(func() { conn.Close() })
+
+	_, err = conn.Exec(`INSERT INTO filters (id, name, enabled, position, kind, scope_type, conditions, actions, match_count, created_at, updated_at)
+		VALUES (1, '带自定义字段', 1, 0, 'rule', 'all', '[]', ?, 0, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`,
+		`{"notify":true,"notifyUrl":"https://api.day.app/RULEKEY","customFlag":"keep-me","unknownObj":{"a":1}}`)
+	require.NoError(t, err)
+
+	require.NoError(t, db.Migrate(conn))
+
+	var actions string
+	require.NoError(t, conn.QueryRow(`SELECT actions FROM filters WHERE id = 1`).Scan(&actions))
+	require.Contains(t, actions, `"customFlag":"keep-me"`, "模型不认识的字符串字段要保留")
+	require.Contains(t, actions, `"unknownObj":{"a":1}`, "模型不认识的嵌套对象要保留")
+	require.NotContains(t, actions, `"notify":true`)
+	require.Contains(t, actions, `"plugin":"bark"`)
+}

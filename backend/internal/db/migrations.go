@@ -785,12 +785,33 @@ func migrateNotifyToBarkPlugin(db *sql.DB) error {
 		if migrated {
 			continue
 		}
+		// 先保留整份原始 JSON 对象，再叠上规范化后的模型字段：
+		// 老库若还有模型不认识的键（其它工具写的标记等），不能在迁移里被静默丢掉。
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(item.actions), &raw); err != nil {
+			continue
+		}
 		url := legacy.NotifyURL
 		actions := legacy.FilterActions
 		actions.PluginActions = append(actions.PluginActions, model.PluginActionRef{
 			Plugin: "bark", Action: "notify", Config: map[string]string{"url": url},
 		})
-		updated, err := json.Marshal(actions)
+		canonical, err := json.Marshal(actions)
+		if err != nil {
+			continue
+		}
+		var merged map[string]json.RawMessage
+		if err := json.Unmarshal(canonical, &merged); err != nil {
+			continue
+		}
+		for key, value := range raw {
+			if _, known := merged[key]; !known {
+				merged[key] = value
+			}
+		}
+		delete(merged, "notify")
+		delete(merged, "notifyUrl")
+		updated, err := json.Marshal(merged)
 		if err != nil {
 			continue
 		}
