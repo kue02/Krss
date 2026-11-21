@@ -159,6 +159,59 @@ func TestRefreshService_RefreshFeed_Success(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestRefreshService_RefreshFeed_RechecksExistingIcon 已有通用图标也要每次刷新交给图标服务重判：
+// 这是 GitHub 头像插件能把导入时固化的 github.com.ico 换成头像的关键。
+func TestRefreshService_RefreshFeed_RechecksExistingIcon(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockFeeds := mock.NewMockFeedRepository(ctrl)
+	mockEntries := mock.NewMockEntryRepository(ctrl)
+	mockIcons := servicemock.NewMockIconService(ctrl)
+
+	oldIcon := "github.com.ico"
+	feed := model.Feed{ID: 11, URL: "https://example.com/rss", Title: "Feed", IconPath: &oldIcon}
+	mockFeeds.EXPECT().GetByID(gomock.Any(), int64(11)).Return(feed, nil)
+	mockFeeds.EXPECT().UpdateErrorMessage(gomock.Any(), int64(11), nil).Return(nil)
+	mockFeeds.EXPECT().Update(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, updated model.Feed) (model.Feed, error) {
+			return updated, nil
+		},
+	)
+	mockFeeds.EXPECT().UpdateSiteURL(gomock.Any(), int64(11), "https://example.com").Return(nil)
+	mockIcons.EXPECT().FetchAndSaveIconForFeed(gomock.Any(), int64(11), "https://example.com/icon.png", "https://example.com").Return("abc123.jpg", nil)
+	mockFeeds.EXPECT().UpdateIconPath(gomock.Any(), int64(11), "abc123.jpg").Return(nil)
+
+	mockEntries.EXPECT().GetExistingEntry(gomock.Any(), int64(11), hashString("https://example.com/1"), "https://example.com/1").Return(nil, nil)
+	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).Return(nil)
+	mockFeeds.EXPECT().ResetRefreshFailure(gomock.Any(), int64(11)).Return(nil)
+
+	client := &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			header := make(http.Header)
+			header.Set("ETag", "etag-value")
+			header.Set("Last-Modified", "Mon, 02 Jan 2006 15:04:05 GMT")
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(sampleRSS)),
+				Header:     header,
+				Request:    req,
+			}, nil
+		}),
+	}
+	svc := service.NewRefreshService(
+		mockFeeds,
+		mockEntries,
+		nil,
+		mockIcons,
+		network.NewClientFactoryForTest(client),
+		nil,
+		nil,
+		nil,
+	)
+	require.NoError(t, svc.RefreshFeed(context.Background(), 11))
+}
+
 func TestRefreshService_RefreshFeed_FallbackUserAgent(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

@@ -28,7 +28,8 @@
     "import_success": "OPML imported",
     "import_failed": "OPML import failed",
     "views": "Views",
-    "starred_view": "Only starred in this view"
+    "starred_view": "Only starred in this view",
+    "plugin_views": "Plugins"
   },
   "content_type": {
     "article": "Articles",
@@ -162,16 +163,6 @@
     "rsshub_merge_also": "Another {{count}} subscription(s) only change URL and are unaffected.",
     "rsshub_merge_confirm": "Merge",
     "rsshub_merge_merged": "Merged {{merged}} duplicate subscription(s); {{changed}} changed URL",
-    "notify_label": "Push to phone (Bark)",
-    "notify_description": "Used by the automation action \"Push to phone\" when a rule leaves its URL empty. Bark-compatible: https://api.day.app/<your-key> (or your own Bark server).",
-    "notify_hint": "The URL contains your device key and stays in your own database. Matches push title + source, and tapping opens the entry.",
-    "notify_saved": "Saved",
-    "notify_save_failed": "Save failed",
-    "notify_test": "Send test push",
-    "notify_testing": "Sending…",
-    "notify_test_ok": "Sent (HTTP {{status}}) — check your phone",
-    "notify_test_no_url": "Enter a URL first",
-    "notify_test_failed": "Failed: {{reason}}",
     "fetch_title": "Fetching",
     "fetch_description": "Scheduled refresh frequency and concurrency. Changes take effect from the next round — no restart needed.",
     "fetch_interval": "Refresh interval (minutes)",
@@ -221,7 +212,6 @@
     "dirty_label_general": "General",
     "dirty_label_network": "Network",
     "dirty_label_ai": "AI",
-    "dirty_label_notify": "Notifications",
     "dirty_label_rsshub": "RSSHub",
     "dirty_label_profile": "Profile",
     "sync_failed_toast": "Failed to upload settings: {{reason}}",
@@ -240,7 +230,10 @@
     "proxy_memory_clear_failed": "Failed to clear, try again",
     "proxy_memory_mode_proxy": "proxy",
     "proxy_memory_mode_direct": "direct",
-    "proxy_memory_empty": "No memory yet: it learns per domain on the next fetch"
+    "proxy_memory_empty": "No memory yet: it learns per domain on the next fetch",
+    "export_dir": "Export folder",
+    "export_dir_description": "Plugin exports are written here; leave empty to download in the browser.",
+    "export_dir_placeholder": "/Users/you/Obsidian/Vault/Inbox"
   },
   "theme": {
     "system": "Follow System",
@@ -1064,6 +1057,43 @@
     "name_placeholder": "Folder name",
     "rename_failed": "Rename failed"
   },
+  "plugins": {
+    "title": "Plugins",
+    "builtin": "Built-in",
+    "external": "External",
+    "install_hint": "Drop it under the data dir’s plugins/ folder; delete it to uninstall.",
+    "add_plugin": "Add plugin",
+    "uploading": "Installing…",
+    "install_failed": "Install failed: {{reason}}",
+    "rescan": "Rescan plugin directory",
+    "rescanning": "Scanning…",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "settings": "Plugin settings",
+    "test_action": "Send test",
+    "test_ok": "Test succeeded",
+    "test_failed": "Test failed",
+    "uninstall": "Uninstall",
+    "uninstall_confirm_title": "Uninstall plugin",
+    "uninstall_confirm_body": "Uninstall “{{name}}”? The plugin folder will be archived and its settings and data will be cleared.",
+    "uninstall_confirm": "Uninstall",
+    "uninstall_failed": "Uninstall failed: {{reason}}",
+    "bark": {
+      "label": "Push to phone (Bark)",
+      "description": "Used when a rule has no address of its own.",
+      "saved": "Saved",
+      "save_failed": "Save failed",
+      "test": "Send test push",
+      "testing": "Sending…",
+      "test_ok": "Sent",
+      "test_no_url": "Enter a URL first",
+      "test_failed": "Failed: {{reason}}",
+      "dirty_label": "Push"
+    },
+    "plugin_view_badge": "Plugin view",
+    "plugin_view_exit": "Exit plugin view",
+    "plugin_view_empty": "No entries in this view"
+  },
   "automation": {
     "title": "Automation",
     "subtitle": "Rules run after entries are stored and only affect newly fetched entries by default (use “Apply to history” to backfill); first match wins, order is priority.",
@@ -1230,9 +1260,6 @@
     "dim_read": "Read",
     "dim_star": "Star",
     "mute_blocked_by_keep_only": "\"Keep only matches\" already mutes everything else — \"Mute\" can't be combined with it",
-    "action_notify": "Push to phone",
-    "notify_url_placeholder": "Leave empty to use the global push URL in Settings → General",
-    "notify_hint": "Push a notification (Bark-compatible) when matched: title + source + deep link. Leave the URL empty to follow the global push URL; delivery failures show as red text on the rule row.",
     "saved": "Saved",
     "created_saved": "Saved",
     "unsaved_title": "Unsaved changes",
@@ -1268,7 +1295,11 @@
     "scope_selected_count": "{{count}} feeds selected",
     "action_group_state": "Entry state",
     "action_group_content": "Content processing",
-    "action_group_external": "Outbound"
+    "action_group_external": "Outbound",
+    "plugin_actions": "Plugin actions",
+    "plugin_actions_hint": "Disabled plugins are not listed here.",
+    "plugin_action_field_required": "The plugin action needs \"{{field}}\".",
+    "plugin_action_from": "from {{name}}"
   },
   "search": {
     "title": "Search",

@@ -27,6 +27,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { dispatchScrollToTop } from "@/hooks/useScrollToTop";
+import { PluginSlot } from "@/plugins/PluginSlot";
 
 /**
  * 23-1：星标视图那颗「只看当前视图」的图标（接 20-2）。
@@ -100,6 +101,12 @@ interface EntryListHeaderProps {
    * 不传（没跳转过来）就不渲染 —— 与 articleLayout / pictureLayout 同一口径。
    */
   onBackFromFeedJump?: () => void;
+  /**
+   * 56-15：插件 toolbar 挂点的选中态（列表里当前选中的条目 id，没有就空数组）。
+   * 工具栏本身不持选中状态，由调用方传 —— `selection:"multi"` 的插件项因此在
+   * 「没有选中条目」时自然不出现（那类项是「对选中的若干条做事」）。
+   */
+  selectedEntryIds?: string[];
 }
 
 export function EntryListHeader({
@@ -129,6 +136,7 @@ export function EntryListHeader({
   onToggleArticleLayout,
   pictureLayout,
   onTogglePictureLayout,
+  selectedEntryIds,
 }: EntryListHeaderProps) {
   const { t } = useTranslation();
   /* 顶栏那颗档位按钮：提示文案表达「点下去会变成什么」，所以取下一档的名字 */
@@ -330,6 +338,14 @@ export function EntryListHeader({
         >
           <CheckCircleIcon className="size-4" />
         </button>
+        {/* 56-15：列表工具栏的插件挂点（`entry.list.toolbar`）。插在宿主按钮之后 ——
+            插件项是「附加」，不改既有按钮的顺序与位置；没有贡献时插槽什么都不渲染。
+            选中态来自调用方（列表的选条目状态），没有选中就是空数组。 */}
+        <PluginSlot
+          surface="entry.list.toolbar"
+          variant="toolbar"
+          selection={{ entryIds: selectedEntryIds ?? [] }}
+        />
       </div>
     </div>
   );

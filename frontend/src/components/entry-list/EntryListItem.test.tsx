@@ -24,6 +24,14 @@ const { markAsRead, markAsStarred, unmuteMutate, exceptionMutate } = vi.hoisted(
   }),
 );
 
+/**
+ * 56-13：订阅右键菜单末尾挂了插件插槽（内部要 react-query 的 Provider）。
+ * 这个用例集不关心插件 —— 按「这个挂点没有贡献」打桩，插槽不渲染、菜单项数不变。
+ */
+vi.mock("@/plugins/useContributions", () => ({
+  useContributions: () => [],
+}));
+
 vi.mock("@/hooks/useEntries", () => ({
   useMarkAsRead: () => ({ mutate: markAsRead }),
   useMarkAsStarred: () => ({ mutate: markAsStarred }),

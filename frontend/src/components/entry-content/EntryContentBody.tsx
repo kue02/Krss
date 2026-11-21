@@ -1,9 +1,12 @@
-import type { RefCallback } from "react";
+import { useState, type RefCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useEntryMeta } from "@/hooks/useEntryMeta";
 import { isSafeUrl } from "@/lib/url";
 import type { ArticleContentBlock } from "@/components/ui/article-content";
 import { UserIcon, CalendarIcon, ClockIcon } from "@/components/ui/icons";
+import { PluginSlot } from "@/plugins/PluginSlot";
+import { useEntryDecorations } from "@/components/reader/useEntryDecorations";
+import { useReaderTextRange } from "@/components/reader/useReaderTextRange";
 import { AiSummaryBox } from "./AiSummaryBox";
 import { BackToTopButton } from "./BackToTopButton";
 import { ArticleProse } from "./ArticleProse";
@@ -50,6 +53,15 @@ export function EntryContentBody({
   const { publishedLong, readingTime } = useEntryMeta(entry);
   const title = displayTitle ?? entry.title ?? t("entry.untitled");
 
+  /**
+   * 56-23：插件在正文上画的两样东西都锚在**同一个容器**上 —— `ArticleProse` 里那个
+   * `data-slot="article-prose"`（正文 HTML 的宿主）。装饰的 rune 偏移、选中区间的 rune 偏移
+   * 都按它的纯文本算，所以标题 / 日期行 / AI 摘要不会混进下标里。
+   */
+  const [bodyNode, setBodyNode] = useState<HTMLDivElement | null>(null);
+  useEntryDecorations(entry.id, bodyNode, displayContent);
+  const textRange = useReaderTextRange(bodyNode, entry.id);
+
   return (
     <div
       ref={scrollRef}
@@ -59,6 +71,24 @@ export function EntryContentBody({
           : "entry-content-viewport flex-1 overflow-y-auto [overflow-anchor:none]"
       }
     >
+      {/**
+       * 56-23：正文里有选中文字时才出现的插件条（`entry.reader.body`）。
+       * 没选中 → 整块不渲染（不占位、不留白）；有选中但没有插件贡献 → PluginSlot 回 null，
+       * 外层靠 `empty:hidden` 收掉，也不会浮出一条空胶囊。
+       * 用 `sticky` 而不是插进正文流里：滚动读长文时按钮要一直在手边。
+       */}
+      {textRange && (
+        <div
+          data-slot="selection-toolbar"
+          className="empty:hidden sticky top-2 z-10 mx-auto flex w-fit max-w-full flex-wrap items-center gap-1 rounded-full border border-border/60 bg-overlay/90 px-2 py-1 shadow-nf backdrop-blur-xl"
+        >
+          <PluginSlot
+            surface="entry.reader.body"
+            variant="toolbar"
+            selection={{ entryIds: [entry.id], textRange }}
+          />
+        </div>
+      )}
       <article
         className={
           embedded
@@ -124,6 +154,7 @@ export function EntryContentBody({
           articleUrl={entry.url}
           highlightContent={highlightContent}
           fitImages={isSocial}
+          bodyRef={setBodyNode}
         />
       </article>
       {scrollNode && <BackToTopButton scrollNode={scrollNode} />}

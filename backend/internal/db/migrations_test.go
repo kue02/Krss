@@ -180,3 +180,103 @@ func TestMigrate_EntryHashDeduplication_MergesHistoricalDuplicates(t *testing.T)
 	err = db.Migrate(database)
 	require.NoError(t, err)
 }
+
+func TestMigrate_PluginsTable(t *testing.T) {
+	database, err := sql.Open("sqlite", "file::memory:?cache=shared&_pragma=foreign_keys(1)")
+	require.NoError(t, err)
+	defer database.Close()
+
+	_, err = database.Exec(`
+		CREATE TABLE feeds (
+			id INTEGER PRIMARY KEY,
+			folder_id INTEGER,
+			title TEXT NOT NULL,
+			url TEXT NOT NULL UNIQUE,
+			site_url TEXT,
+			description TEXT,
+			etag TEXT,
+			last_modified TEXT,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			FOREIGN KEY (folder_id) REFERENCES folders(id) ON DELETE SET NULL
+		);
+
+		CREATE TABLE IF NOT EXISTS folders (
+			id INTEGER PRIMARY KEY,
+			name TEXT NOT NULL,
+			parent_id INTEGER,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			FOREIGN KEY (parent_id) REFERENCES folders(id) ON DELETE CASCADE
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_folders_parent_id ON folders(parent_id);
+
+		CREATE TABLE entries (
+			id INTEGER PRIMARY KEY,
+			feed_id INTEGER NOT NULL,
+			hash TEXT NOT NULL DEFAULT '',
+			title TEXT,
+			url TEXT,
+			content TEXT,
+			author TEXT,
+			published_at TEXT,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			FOREIGN KEY (feed_id) REFERENCES feeds(id) ON DELETE CASCADE
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_entries_feed_id ON entries(feed_id);
+
+		CREATE VIRTUAL TABLE entries_fts USING fts5(
+			title,
+			content,
+			author,
+			url,
+			tokenize = 'unicode61'
+		);
+
+		CREATE TRIGGER IF NOT EXISTS entries_ai AFTER INSERT ON entries BEGIN
+			INSERT INTO entries_fts(rowid, title, content, author, url)
+			VALUES (new.id, new.title, new.content, new.author, new.url);
+		END;
+
+		CREATE TRIGGER IF NOT EXISTS entries_ad AFTER DELETE ON entries BEGIN
+			DELETE FROM entries_fts WHERE rowid = old.id;
+		END;
+	`)
+	require.NoError(t, err)
+
+	_, err = database.Exec(`CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)`)
+	require.NoError(t, err)
+
+	err = db.Migrate(database)
+	require.NoError(t, err)
+
+	var name string
+	err = database.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='plugins'`).Scan(&name)
+	require.NoError(t, err)
+	require.Equal(t, "plugins", name)
+
+	// Idempotent: run again without error
+	err = db.Migrate(database)
+	require.NoError(t, err)
+
+	// Verify structure
+	var colCount int
+	err = database.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('plugins') WHERE name='id'`).Scan(&colCount)
+	require.NoError(t, err)
+	require.Equal(t, 1, colCount)
+
+	err = database.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('plugins') WHERE name='enabled'`).Scan(&colCount)
+	require.NoError(t, err)
+	require.Equal(t, 1, colCount)
+
+	err = database.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('plugins') WHERE name='installed_at'`).Scan(&colCount)
+	require.NoError(t, err)
+	require.Equal(t, 1, colCount)
+
+	err = database.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('plugins') WHERE name='updated_at'`).Scan(&colCount)
+	require.NoError(t, err)
+	require.Equal(t, 1, colCount)
+}

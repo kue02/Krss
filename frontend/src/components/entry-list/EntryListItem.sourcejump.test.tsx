@@ -28,6 +28,15 @@ vi.mock("@/hooks/useFilters", () => ({
   }),
 }));
 
+/** 56-16：「标为已读」要问 useTargetOps 有没有被插件改（内部走 react-query）；本文件不关心插件 */
+vi.mock("@/plugins/useContributions", () => ({
+  useContributions: () => [],
+}));
+
+vi.mock("@/plugins/useInvokePluginAction", () => ({
+  useInvokePluginAction: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
 vi.mock("@/stores/translation-store", () => ({
   useTranslationStore: (
     selector: (state: { getTranslation: () => undefined }) => unknown,

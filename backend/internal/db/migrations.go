@@ -2,11 +2,13 @@ package db
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	"krss/backend/internal/hashutil"
+	"krss/backend/internal/model"
 	"krss/backend/internal/urlutil"
 )
 
@@ -583,12 +585,228 @@ func runMigrations(db *sql.DB) error {
 		return fmt.Errorf("create idx_entries_read_feed: %w", err)
 	}
 	// 未读默认列表（WHERE read=0 AND muted=0 ORDER BY published_at DESC, id DESC）：
-	// 副本 EXPLAIN 验证：无此索引时 SCAN entries USING INDEX idx_entries_published（全索引扫+逐行过滤）；
+	// 副本 EXPLAIN 验证：无此索引时 SCAN entries USING INDEX idx_entries_published（全索引扫 + 逐行过滤）；
 	// 加后 SEARCH ... USING INDEX (read=? AND muted=?)，行内已有序、无 TEMP B-TREE。
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_entries_unread_published ON entries(read, muted, published_at DESC, id DESC)`); err != nil {
 		return fmt.Errorf("create idx_entries_unread_published: %w", err)
 	}
 
+	// Migration 31: 插件表（55 批插件模块）。
+	// 本体只认「核心 = 阅读体验与管理」；Bark 推送 / RSSHub 适配这类特化能力做成内置插件，
+	// 启停走这一行。启动时 EnsureBuiltin 把内置插件补进行，默认 enabled=1 ⇒ 行为零变化。
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS plugins (
+			id TEXT PRIMARY KEY,
+			enabled INTEGER NOT NULL DEFAULT 1,
+			installed_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		)
+	`); err != nil {
+		return fmt.Errorf("create plugins table: %w", err)
+	}
+
+	// Migration 32: 「推送」动作搬进 bark 插件（55 批）。
+	//   filters.actions.notify=true → pluginActions[{plugin:"bark",action:"notify",config:{url:原 notifyUrl}}]
+	//   notify.bark_url → 复制到 plugin.bark.url（旧键留着不删，回滚还用得着）
+	// 只补不覆盖：用户后来在「设置 → 插件」里改过的地址，不能每次启动又被旧键盖回去
+	// （DO NOTHING 而不是 DO UPDATE —— 迁移是补历史，不是每次启动重放）
+	// 没有 notify 的规则一个字不动；解析不了的老数据跳过（迁移不能把规则搞坏）。
+	if err := migrateNotifyToBarkPlugin(db); err != nil {
+		return err
+	}
+
+	// Migration 33: RSSHub 适配搬进 rsshub 插件（55-18）。
+	//   general.rsshub_base_url → plugin.rsshub.base_url
+	//   general.rsshub_access_key → plugin.rsshub.access_key
+	// 旧键留着不删；没配过就不写（不造空键）。
+	if err := migrateRSSHubToPluginSettings(db); err != nil {
+		return err
+	}
+
+	// Migration 34: 插件专属数据（56-17）—— 一张三段式 KV 表，插件自己起 collection 名放东西。
+	// 本体不为每个插件各开一张表：插件是即装即用的（外部插件丢目录就上），
+	// 它的存储需求不该逼着宿主改 schema。复合主键 (plugin_id, collection, key)
+	// ⇒ 同键重写是覆盖不是插新行；索引支持「列/删整 collection」。
+	if err := migratePluginData(db); err != nil {
+		return err
+	}
+
+	// Migration 35: 删除「Demo 插件（样板）」的内置记录（56-36）。
+	// Demo 已从内置插件清单移除；老实例库里可能还留着它的 plugins 行、设置与数据，
+	// 不清掉设置页会挂一张点不动的空卡片。只删 id='demo'，外部插件同名也按 Demo 处理。
+	if err := migrateRemoveDemoPlugin(db); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// migrateRemoveDemoPlugin 清掉 Demo 样板插件的残留（迁移 35），只执行一次。
+// 其余迁移都是幂等的结构变更，但这条是删数据：如果每次启动都跑，会把用户后来装的
+// 外部插件 id="demo" 的设置与数据一起抹掉。用 schema_migrations 记版本，跑过就跳过。
+func migrateRemoveDemoPlugin(db *sql.DB) error {
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+		version    INTEGER PRIMARY KEY,
+		applied_at TEXT NOT NULL
+	)`); err != nil {
+		return fmt.Errorf("create schema_migrations: %w", err)
+	}
+
+	var applied int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version = 35`).Scan(&applied); err != nil {
+		return fmt.Errorf("check demo plugin migration: %w", err)
+	}
+	if applied > 0 {
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin demo plugin migration: %w", err)
+	}
+	defer tx.Rollback()
+	for _, stmt := range []string{
+		`DELETE FROM plugin_data WHERE plugin_id = 'demo'`,
+		`DELETE FROM settings WHERE key LIKE 'plugin.demo.%'`,
+		`DELETE FROM plugins WHERE id = 'demo'`,
+	} {
+		if _, err := tx.Exec(stmt); err != nil {
+			return fmt.Errorf("remove demo plugin residue: %w", err)
+		}
+	}
+	if _, err := tx.Exec(`INSERT INTO schema_migrations (version, applied_at) VALUES (35, ?)`,
+		time.Now().UTC().Format(time.RFC3339)); err != nil {
+		return fmt.Errorf("mark demo plugin migration: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit demo plugin migration: %w", err)
+	}
+	return nil
+}
+
+// migratePluginData 建插件专属数据表（迁移 34）。
+// 建表 + 索引都是 IF NOT EXISTS，重跑幂等（已有数据一个字节不动）。
+func migratePluginData(db *sql.DB) error {
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS plugin_data (
+			plugin_id  TEXT NOT NULL,
+			collection TEXT NOT NULL,
+			key        TEXT NOT NULL,
+			value      TEXT NOT NULL,
+			updated_at INTEGER NOT NULL,
+			PRIMARY KEY (plugin_id, collection, key)
+		)
+	`); err != nil {
+		return fmt.Errorf("create plugin_data table: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_plugin_data_collection ON plugin_data (plugin_id, collection)`); err != nil {
+		return fmt.Errorf("create idx_plugin_data_collection: %w", err)
+	}
+	return nil
+}
+
+// migrateRSSHubToPluginSettings 把本体通用设置里的 RSSHub 实例配置复制到插件键（迁移 33）。
+// 只补不覆盖：插件键已有值（用户在新界面里改过）就一个字不动 —— 与迁移 32 的
+// 「老键每次启动回写」不同，这里 DO NOTHING。
+func migrateRSSHubToPluginSettings(db *sql.DB) error {
+	copies := []struct{ from, to string }{
+		{"general.rsshub_base_url", "plugin.rsshub.base_url"},
+		{"general.rsshub_access_key", "plugin.rsshub.access_key"},
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	for _, c := range copies {
+		var oldValue string
+		if err := db.QueryRow(`SELECT value FROM settings WHERE key = ?`, c.from).Scan(&oldValue); err != nil {
+			continue // 没配过：不写空键
+		}
+		if strings.TrimSpace(oldValue) == "" {
+			continue
+		}
+		if _, err := db.Exec(`
+			INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+			ON CONFLICT(key) DO NOTHING
+		`, c.to, oldValue, now); err != nil {
+			return fmt.Errorf("copy %s: %w", c.from, err)
+		}
+	}
+	return nil
+}
+
+// migrateNotifyToBarkPlugin 把本体「推送」动作改写成 bark 插件引用（迁移 32）。
+func migrateNotifyToBarkPlugin(db *sql.DB) error {
+	var oldURL string
+	if err := db.QueryRow(`SELECT value FROM settings WHERE key = 'notify.bark_url'`).Scan(&oldURL); err == nil {
+		oldURL = strings.TrimSpace(oldURL)
+	}
+	if oldURL != "" {
+		now := time.Now().UTC().Format(time.RFC3339)
+		if _, err := db.Exec(`
+			INSERT INTO settings (key, value, updated_at) VALUES ('plugin.bark.url', ?, ?)
+			ON CONFLICT(key) DO NOTHING
+		`, oldURL, now); err != nil {
+			return fmt.Errorf("copy notify.bark_url: %w", err)
+		}
+	}
+
+	rows, err := db.Query(`SELECT id, actions FROM filters`)
+	if err != nil {
+		return fmt.Errorf("load filters: %w", err)
+	}
+	type rewrite struct {
+		id      int64
+		actions string
+	}
+	var pending []rewrite
+	for rows.Next() {
+		var item rewrite
+		if err := rows.Scan(&item.id, &item.actions); err != nil {
+			rows.Close()
+			return err
+		}
+		var legacy struct {
+			model.FilterActions
+			// 55-13：notify / notifyUrl 已从本体模型删除，但迁移必须还能读懂老库里的这两个键
+			Notify    bool   `json:"notify"`
+			NotifyURL string `json:"notifyUrl"`
+		}
+		if err := json.Unmarshal([]byte(item.actions), &legacy); err != nil {
+			continue // 老数据解析不了：不动它
+		}
+		if !legacy.Notify {
+			continue
+		}
+		// 已经迁过（幂等）：pluginActions 里已有 bark.notify 就不再叠
+		migrated := false
+		for _, ref := range legacy.PluginActions {
+			if ref.Plugin == "bark" && ref.Action == "notify" {
+				migrated = true
+			}
+		}
+		if migrated {
+			continue
+		}
+		url := legacy.NotifyURL
+		actions := legacy.FilterActions
+		actions.PluginActions = append(actions.PluginActions, model.PluginActionRef{
+			Plugin: "bark", Action: "notify", Config: map[string]string{"url": url},
+		})
+		updated, err := json.Marshal(actions)
+		if err != nil {
+			continue
+		}
+		pending = append(pending, rewrite{id: item.id, actions: string(updated)})
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+
+	for _, item := range pending {
+		if _, err := db.Exec(`UPDATE filters SET actions = ? WHERE id = ?`, item.actions, item.id); err != nil {
+			return fmt.Errorf("rewrite filter %d actions: %w", item.id, err)
+		}
+	}
 	return nil
 }
 

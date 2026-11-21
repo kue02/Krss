@@ -26,6 +26,8 @@ func NewRouter(
 	proxySourceHandler *handler.ProxySourceHandler,
 	mcpHandler *handler.MCPHandler,
 	mcpEndpointHandler *handler.MCPEndpointHandler,
+	pluginHandler *handler.PluginHandler,
+	exportHandler *handler.ExportHandler,
 	authService service.AuthService,
 	staticDir string,
 	enableSwagger bool,
@@ -48,7 +50,7 @@ func NewRouter(
 
 	// Protected API routes (auth required)
 	api := e.Group("/api")
-	api.Use(JWTAuthMiddleware(authService))
+	api.Use(JWTAuthMiddleware(authService, WithPluginDataTokens(pluginHandler.DataTokenResolver())))
 
 	folderHandler.RegisterRoutes(api)
 	feedHandler.RegisterRoutes(api)
@@ -64,6 +66,10 @@ func NewRouter(
 	proxySourceHandler.RegisterRoutes(api)
 	// MCP 连接管理 + 出向状态/令牌（16/17 批）：走登录态（JWT）
 	mcpHandler.RegisterRoutes(api)
+
+	// 插件模块（55 批）：清单 / 启停 / 设置 / 测试动作
+	pluginHandler.RegisterRoutes(api)
+	exportHandler.RegisterRoutes(api)
 
 	// MCP 出向端点 /mcp：**不走 JWT** —— 它用长期 token（MCP 客户端只会带这个）
 	mcpEndpointHandler.RegisterRoutes(e)

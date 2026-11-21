@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"krss/backend/internal/model"
+	"krss/backend/internal/plugin"
 	mock_repo "krss/backend/internal/repository/mock"
 	"krss/backend/internal/service"
 	"krss/backend/pkg/opml"
@@ -294,6 +295,11 @@ func (s *refreshServiceStub) IsRefreshing() bool {
 
 func (s *refreshServiceStub) GetRefreshStatus() service.RefreshStatus {
 	return service.RefreshStatus{}
+}
+
+// WithPlugins 55-17：stub 不接插件（OPML 导入路径不碰抓取失败归类），返回自己即可。
+func (s *refreshServiceStub) WithPlugins(_ *plugin.Registry) service.RefreshService {
+	return s
 }
 
 type iconServiceStub struct {

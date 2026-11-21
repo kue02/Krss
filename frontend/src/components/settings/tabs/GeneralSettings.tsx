@@ -10,8 +10,6 @@ import { useGeneralSettings } from "@/hooks/useGeneralSettings";
 import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
 import { setUISetting, useUISettingKey, type ScrollReadMode } from "@/hooks/useUISettings";
 import { setUILang } from "@/lib/ui-lang";
-import { RSSHubSettings } from "./RSSHubSettings";
-import { NotifySettings } from "./NotifySettings";
 
 type Language = "zh" | "en";
 
@@ -21,6 +19,8 @@ export function GeneralSettings() {
   const { data: generalSettings, isLoading: isGeneralSettingsLoading } =
     useGeneralSettings();
   const [fallbackUA, setFallbackUA] = useState("");
+  /** 插件导出的落盘目录（空 = 走浏览器下载）；与 UA 同属「点保存」这一档 */
+  const [exportDir, setExportDir] = useState("");
   const [autoReadability, setAutoReadability] = useState(false);
   const [markReadOnScroll, setMarkReadOnScroll] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -32,6 +32,7 @@ export function GeneralSettings() {
     if (!generalSettings) return;
 
     setFallbackUA(generalSettings.fallbackUserAgent || "");
+    setExportDir(generalSettings.exportDir || "");
     setAutoReadability(generalSettings.autoReadability || false);
     setMarkReadOnScroll(generalSettings.markReadOnScroll || false);
   }, [generalSettings]);
@@ -57,7 +58,8 @@ export function GeneralSettings() {
    */
   const uaDirty =
     !!generalSettings &&
-    fallbackUA !== (generalSettings.fallbackUserAgent || "");
+    (fallbackUA !== (generalSettings.fallbackUserAgent || "") ||
+      exportDir !== (generalSettings.exportDir || ""));
   useSettingsDirty("general", uaDirty, t("settings.dirty_label_general"), () =>
     handleSaveFallbackUA(),
   );
@@ -71,6 +73,7 @@ export function GeneralSettings() {
       await updateGeneralSettings({
         ...generalSettings,
         fallbackUserAgent: fallbackUA,
+        exportDir,
         autoReadability,
         markReadOnScroll,
       });
@@ -93,6 +96,7 @@ export function GeneralSettings() {
         await updateGeneralSettings({
           ...generalSettings,
           fallbackUserAgent: generalSettings.fallbackUserAgent,
+          exportDir: generalSettings.exportDir ?? "",
           autoReadability: checked,
           markReadOnScroll,
         });
@@ -123,6 +127,7 @@ export function GeneralSettings() {
         await updateGeneralSettings({
           ...generalSettings,
           fallbackUserAgent: generalSettings.fallbackUserAgent,
+          exportDir: generalSettings.exportDir ?? "",
           autoReadability,
           markReadOnScroll: nextBool,
         });
@@ -149,10 +154,6 @@ export function GeneralSettings() {
 
   return (
     <div className="space-y-6">
-      <RSSHubSettings />
-
-      <NotifySettings />
-
       {/* Language Section */}
       <section>
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -248,6 +249,28 @@ export function GeneralSettings() {
       <section>
         <div className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
           {t("settings.advanced")}
+        </div>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            <div className="text-sm font-medium">
+              {t("settings.export_dir")}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {t("settings.export_dir_description")}
+            </div>
+          </div>
+          <input
+            type="text"
+            value={exportDir}
+            onChange={(e) => setExportDir(e.target.value)}
+            disabled={settingsDisabled}
+            placeholder={t("settings.export_dir_placeholder")}
+            className={cn(
+              "h-9 w-64 max-w-full shrink-0 rounded-field border border-border bg-background px-3 text-sm",
+              "placeholder:text-muted-foreground/50",
+              "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
+            )}
+          />
         </div>
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">

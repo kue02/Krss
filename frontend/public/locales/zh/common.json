@@ -28,7 +28,8 @@
     "import_success": "OPML 导入完成",
     "import_failed": "OPML 导入失败",
     "views": "视图",
-    "starred_view": "只看当前视图的星标"
+    "starred_view": "只看当前视图的星标",
+    "plugin_views": "插件"
   },
   "content_type": {
     "article": "文章",
@@ -162,16 +163,6 @@
     "rsshub_merge_also": "另有 {{count}} 条订阅只是换地址，不受影响。",
     "rsshub_merge_confirm": "确认合并",
     "rsshub_merge_merged": "已合并 {{merged}} 条重复订阅，另有 {{changed}} 条换了地址",
-    "notify_label": "推送到手机（Bark）",
-    "notify_description": "自动化规则的「推送到手机」动作没单独填地址时用这里的地址。Bark 兼容：填 https://api.day.app/<你的 key>（或你自己的 Bark 服务地址）。",
-    "notify_hint": "地址里带着设备 key，只保存在你自己的库里。规则命中后推「标题 + 来源」，点开直达条目。",
-    "notify_saved": "已保存",
-    "notify_save_failed": "保存失败",
-    "notify_test": "发送测试推送",
-    "notify_testing": "发送中…",
-    "notify_test_ok": "已发出（HTTP {{status}}），看看手机收到没",
-    "notify_test_no_url": "先填地址再测试",
-    "notify_test_failed": "发送失败：{{reason}}",
     "fetch_title": "拉取",
     "fetch_description": "定时刷新频率与并发。改完从下一轮刷新开始生效，不用重启。",
     "fetch_interval": "定时刷新间隔（分钟）",
@@ -221,7 +212,6 @@
     "dirty_label_general": "通用",
     "dirty_label_network": "网络",
     "dirty_label_ai": "AI",
-    "dirty_label_notify": "通知",
     "dirty_label_rsshub": "RSSHub",
     "dirty_label_profile": "个人资料",
     "sync_failed_toast": "设置上传失败：{{reason}}",
@@ -240,7 +230,10 @@
     "proxy_memory_clear_failed": "清空失败，请重试",
     "proxy_memory_mode_proxy": "代理",
     "proxy_memory_mode_direct": "直连",
-    "proxy_memory_empty": "还没有记忆：下次抓取时会按域自动学习"
+    "proxy_memory_empty": "还没有记忆：下次抓取时会按域自动学习",
+    "export_dir": "导出目录",
+    "export_dir_description": "插件导出的文件写到这个目录，留空则走浏览器下载。",
+    "export_dir_placeholder": "/Users/你/Obsidian/Vault/Inbox"
   },
   "theme": {
     "system": "跟随系统",
@@ -1061,6 +1054,43 @@
     "name_placeholder": "文件夹名称",
     "rename_failed": "重命名失败"
   },
+  "plugins": {
+    "title": "插件",
+    "builtin": "内置",
+    "external": "外部",
+    "install_hint": "放入数据目录的 plugins/ 下即生效，删除即卸载。",
+    "add_plugin": "添加插件",
+    "uploading": "安装中…",
+    "install_failed": "安装失败：{{reason}}",
+    "rescan": "重新扫描插件目录",
+    "rescanning": "扫描中…",
+    "enabled": "已启用",
+    "disabled": "已停用",
+    "settings": "插件设置",
+    "test_action": "发送测试",
+    "test_ok": "测试成功",
+    "test_failed": "测试失败",
+    "uninstall": "卸载",
+    "uninstall_confirm_title": "卸载插件",
+    "uninstall_confirm_body": "确定卸载「{{name}}」？插件目录会被归档，插件的设置与数据会一并清除。",
+    "uninstall_confirm": "确认卸载",
+    "uninstall_failed": "卸载失败：{{reason}}",
+    "bark": {
+      "label": "推送到手机（Bark）",
+      "description": "规则没填地址时用这个。",
+      "saved": "已保存",
+      "save_failed": "保存失败",
+      "test": "发送测试推送",
+      "testing": "发送中…",
+      "test_ok": "已发送",
+      "test_no_url": "先填地址再测试",
+      "test_failed": "发送失败：{{reason}}",
+      "dirty_label": "推送"
+    },
+    "plugin_view_badge": "插件视图",
+    "plugin_view_exit": "退出插件视图",
+    "plugin_view_empty": "这个视图目前没有条目"
+  },
   "automation": {
     "title": "自动化",
     "subtitle": "规则在抓取入库之后执行，默认只作用于刚入库的新条目（可用「回溯历史」补跑旧条目）；命中即停，顺序即优先级。",
@@ -1227,9 +1257,6 @@
     "dim_read": "已读",
     "dim_star": "星标",
     "mute_blocked_by_keep_only": "「只保留匹配」已把不匹配的条目静音，不能再选「静音」",
-    "action_notify": "推送到手机",
-    "notify_url_placeholder": "留空 = 用「设置 → 通用」里的全局推送地址",
-    "notify_hint": "命中后推一条到手机（Bark 兼容）：标题 + 来源 + 直达链接。地址留空就跟随全局推送地址；投递失败会写在规则行的红字上。",
     "saved": "已保存",
     "created_saved": "已保存",
     "unsaved_title": "有未保存的更改",
@@ -1265,7 +1292,11 @@
     "scope_selected_count": "已选 {{count}} 个订阅",
     "action_group_state": "条目状态",
     "action_group_content": "内容加工",
-    "action_group_external": "对外"
+    "action_group_external": "对外",
+    "plugin_actions": "插件动作",
+    "plugin_actions_hint": "停用的插件不在这里出现。",
+    "plugin_action_field_required": "插件动作的「{{field}}」是必填的。",
+    "plugin_action_from": "来自插件 {{name}}"
   },
   "search": {
     "title": "搜索",

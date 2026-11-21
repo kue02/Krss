@@ -1,0 +1,439 @@
+package plugin
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+	"sync"
+
+	"krss/backend/pkg/logger"
+)
+
+// Registry 插件注册表。并发安全：启动时 Register，运行时读（dispatch 路径）。
+type Registry struct {
+	mu      sync.RWMutex
+	plugins map[string]Plugin
+	actions map[string]Action // key = pluginID + "." + actionID
+	enabled map[string]bool
+}
+
+// ActionMeta 一个动作的清单项（规则编辑器 / 设置页都用它渲染）。
+type ActionMeta struct {
+	PluginID   string  `json:"pluginId"`
+	PluginName string  `json:"pluginName"`
+	ActionID   string  `json:"actionId"`
+	Label      string  `json:"label"`
+	Fields     []Field `json:"fields"`
+	Enabled    bool    `json:"enabled"`
+}
+
+// CatalogItem 一个插件的完整清单。
+type CatalogItem struct {
+	Meta
+	Enabled  bool              `json:"enabled"`
+	Actions  []ActionMeta      `json:"actions"`
+	Sections []SettingsSection `json:"sections"`
+	// LastError 外部插件最近一次故障原因（宿主填；非空 ⇒ UI 显示「崩溃 / 启动失败」）。
+	LastError string `json:"lastError,omitempty"`
+}
+
+func NewRegistry() *Registry {
+	return &Registry{
+		plugins: make(map[string]Plugin),
+		actions: make(map[string]Action),
+		enabled: make(map[string]bool),
+	}
+}
+
+func actionKey(pluginID, actionID string) string { return pluginID + "." + actionID }
+
+// Register 注册一个插件（内置插件由各包 init() 调）。默认启用；
+// DB 里有记录时由 LoadEnabled 覆盖。重复 id / 空 id / 重复动作都报错。
+func (r *Registry) Register(p Plugin) error {
+	if p == nil {
+		return fmt.Errorf("plugin: Register(nil)")
+	}
+	meta := p.Meta()
+	if meta.ID == "" {
+		return fmt.Errorf("plugin: Meta().ID 不能为空")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, dup := r.plugins[meta.ID]; dup {
+		return fmt.Errorf("plugin: 重复注册 %q", meta.ID)
+	}
+	r.plugins[meta.ID] = p
+	// 首次启停位：Meta.DefaultEnabled 说了算；nil = 默认启用（稳定能力的口径）。
+	// DB 里有记录时由 LoadEnabled 覆盖（service.ensureBuiltin 负责落库）。
+	on := true
+	if meta.DefaultEnabled != nil {
+		on = *meta.DefaultEnabled
+	}
+	r.enabled[meta.ID] = on
+	for _, action := range p.Actions() {
+		if action.ID() == "" {
+			return fmt.Errorf("plugin %s: Action.ID() 不能为空", meta.ID)
+		}
+		key := actionKey(meta.ID, action.ID())
+		if _, dup := r.actions[key]; dup {
+			return fmt.Errorf("plugin: 重复动作 %q", key)
+		}
+		r.actions[key] = action
+	}
+	return nil
+}
+
+// LoadEnabled 用 DB 启停记录覆盖默认值（启动时调一次）。
+// 表里没有的插件保持默认启用；表里多出来的 id（插件代码已不在）忽略。
+func (r *Registry) LoadEnabled(states map[string]bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id := range r.plugins {
+		if on, ok := states[id]; ok {
+			r.enabled[id] = id != "" && on
+		}
+	}
+}
+
+// EnabledStates 导出当前启停（service 落库 / 比对用）。
+func (r *Registry) EnabledStates() map[string]bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make(map[string]bool, len(r.enabled))
+	for id, on := range r.enabled {
+		out[id] = on
+	}
+	return out
+}
+
+// SetEnabled 改内存启停（PATCH 接口调它；DB 由 service 负责落）。返回 false = 插件不存在。
+func (r *Registry) SetEnabled(id string, on bool) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.plugins[id]; !ok {
+		return false
+	}
+	r.enabled[id] = on
+	return true
+}
+
+func (r *Registry) Enabled(id string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.enabled[id]
+}
+
+// Unregister 摘除一个插件（外部插件停用 / 卸载 / 重装时用）。返回 false = 本来就不在。
+// 动作、启停位一并删干净，免得残留的 dispatch 键指向死进程。
+func (r *Registry) Unregister(id string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.plugins[id]; !ok {
+		return false
+	}
+	delete(r.plugins, id)
+	delete(r.enabled, id)
+	for key := range r.actions {
+		if pluginID, _, found := strings.Cut(key, "."); found && pluginID == id {
+			delete(r.actions, key)
+		}
+	}
+	return true
+}
+
+// Meta 查一个插件的元信息（transport 已兜底）；外部插件宿主用它区分两条轨。
+func (r *Registry) Meta(id string) (Meta, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	p, ok := r.plugins[id]
+	if !ok {
+		return Meta{}, false
+	}
+	return withTransport(p.Meta()), true
+}
+
+// Lookup 取插件本体（只按 id，不管启停）。
+// 给「可选接口」用：UIAssets / ViewProvider / RenderDecorator 这类能力不在 Plugin 里，
+// 调用方必须拿到本体做类型断言。
+func (r *Registry) Lookup(id string) (Plugin, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	p, ok := r.plugins[id]
+	return p, ok
+}
+
+// withTransport 输出侧兜底：老内置插件没写 Transport ⇒ "builtin"。
+func withTransport(meta Meta) Meta {
+	if meta.Transport == "" {
+		meta.Transport = TransportBuiltin
+	}
+	return meta
+}
+
+// LookupAction 查动作本体，**不管启停**（引擎要区分「没装」与「停用」两种错误文案）。
+func (r *Registry) LookupAction(pluginID, actionID string) (Action, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	action, ok := r.actions[actionKey(pluginID, actionID)]
+	return action, ok
+}
+
+// Plugins 全部插件元信息（按 ID 排序，保证输出稳定）。
+func (r *Registry) Plugins() []Meta {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]Meta, 0, len(r.plugins))
+	for _, p := range r.plugins {
+		out = append(out, withTransport(p.Meta()))
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+// Catalog 完整清单（设置页 / 规则编辑器一份数据）。
+func (r *Registry) Catalog() []CatalogItem {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]CatalogItem, 0, len(r.plugins))
+	for _, p := range r.plugins {
+		meta := withTransport(p.Meta())
+		item := CatalogItem{
+			Meta:     meta,
+			Enabled:  r.enabled[meta.ID],
+			Sections: p.SettingsSections(),
+		}
+		for _, action := range p.Actions() {
+			item.Actions = append(item.Actions, ActionMeta{
+				PluginID:   meta.ID,
+				PluginName: meta.Name,
+				ActionID:   action.ID(),
+				Label:      action.Label(),
+				Fields:     action.Fields(),
+				Enabled:    r.enabled[meta.ID],
+			})
+		}
+		out = append(out, item)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+// EntryProcessors 全部**已启用**插件的阅读期处理器（按插件 ID 排序，顺序稳定）。
+func (r *Registry) EntryProcessors() []EntryProcessor {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var out []EntryProcessor
+	for _, p := range r.plugins {
+		if !r.enabled[p.Meta().ID] {
+			continue
+		}
+		out = append(out, p.EntryProcessors()...)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].ID() < out[j].ID() })
+	return out
+}
+
+// Decorators 全部**已启用**插件的正文装饰器（按插件 ID 排序，顺序稳定）。
+// 没实现 RenderDecorator 的插件跳过（装饰是可选能力，不该逼每个插件都写一遍）。
+func (r *Registry) Decorators() []NamedDecorator {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	ids := make([]string, 0, len(r.plugins))
+	for id, p := range r.plugins {
+		if !r.enabled[id] {
+			continue
+		}
+		if _, ok := p.(RenderDecorator); !ok {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	out := make([]NamedDecorator, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, NamedDecorator{PluginID: id, Decorator: r.plugins[id].(RenderDecorator)})
+	}
+	return out
+}
+
+// AllViews 全部**已启用**插件注册的视图（56-27；按 plugin id 排序、宿主注入 Plugin）。
+// 清洗规则（丢一条就留一条 warn，插件作者的错要能在日志里查到）：
+//   - kind 空 / 非法 ⇒ 降级成 declarative（视图还在，只是按宿主的方式画）；
+//   - kind=custom 却没声明 ui:custom ⇒ 丢弃（自定义视图 = 沙箱 iframe 入口，权限绕不过去）；
+//   - kind=custom 但 Entry 空 ⇒ 丢弃（装了也打不开）；
+//   - 没 id / 同插件内 id 重复 ⇒ 丢弃。
+func (r *Registry) AllViews() []View {
+	type pluginViews struct {
+		items []View
+		// customAllowed 该插件是否声明了 ui:custom（在锁内取，免得注册/停用并发时读到半截）
+		customAllowed bool
+		// permissions 该插件声明的全部权限（注入给沙箱 bridge，缺了 data 之类会 permission denied）
+		permissions []string
+	}
+	r.mu.RLock()
+	ids := make([]string, 0, len(r.plugins))
+	raw := make(map[string]pluginViews, len(r.plugins))
+	for id, p := range r.plugins {
+		if !r.enabled[id] {
+			continue
+		}
+		provider, ok := p.(ViewProvider)
+		if !ok {
+			continue
+		}
+		ids = append(ids, id)
+		meta := withTransport(p.Meta())
+		raw[id] = pluginViews{
+			items:         provider.Views(),
+			customAllowed: DeclaresPermission(meta, PermissionUICustom),
+			permissions:   append([]string(nil), meta.Permissions...),
+		}
+	}
+	r.mu.RUnlock()
+
+	sort.Strings(ids)
+	out := make([]View, 0, len(ids))
+	for _, id := range ids {
+		entry := raw[id]
+		out = append(out, sanitizeViews(id, entry.items, entry.customAllowed, entry.permissions)...)
+	}
+	return out
+}
+
+// sanitizeViews 清洗一个插件注册的视图并注入归属插件。
+func sanitizeViews(pluginID string, items []View, customAllowed bool, permissions []string) []View {
+	out := make([]View, 0, len(items))
+	seen := make(map[string]bool, len(items))
+	for _, item := range items {
+		key := strings.TrimSpace(item.ID)
+		reason := ""
+		switch strings.TrimSpace(item.Kind) {
+		case "", ViewKindDeclarative:
+			item.Kind = ViewKindDeclarative
+		case ViewKindCustom:
+			item.Kind = ViewKindCustom
+			// custom 的两种丢法：没权限（想绕过 /ui/ 门禁）、没入口（装了也打不开）
+			if !customAllowed {
+				reason = "custom view without ui:custom"
+			} else if strings.TrimSpace(item.Entry) == "" {
+				reason = "custom view without entry"
+			}
+		default:
+			// 未知 kind 不丢视图，只降级：插件可能写的是未来形态，先按宿主会的画
+			item.Kind = ViewKindDeclarative
+		}
+		if reason == "" && (key == "" || seen[key]) {
+			reason = "empty id"
+			if key != "" {
+				reason = "duplicate id"
+			}
+		}
+		if reason != "" {
+			logger.Warn("plugin view dropped",
+				"module", "plugin", "action", "sanitize", "resource", "view", "result", "dropped",
+				"pluginId", pluginID, "id", item.ID, "kind", item.Kind, "reason", reason)
+			continue
+		}
+		seen[key] = true
+		// 归属插件与权限都由宿主注入，插件声明时不必（也不该）自己填。
+		item.Plugin = pluginID
+		item.Permissions = append([]string(nil), permissions...)
+		out = append(out, item)
+	}
+	return out
+}
+
+// FetchClassifiers 全部**已启用**插件的抓取失败归类器。
+func (r *Registry) FetchClassifiers() []FetchClassifier {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var out []FetchClassifier
+	for _, p := range r.plugins {
+		if !r.enabled[p.Meta().ID] {
+			continue
+		}
+		out = append(out, p.FetchClassifiers()...)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].ID() < out[j].ID() })
+	return out
+}
+
+// PluginContributions 单个插件声明的界面贡献（已清洗；**不管启停** —— 设置页要能预览停用插件会加什么）。
+// 没装 / 没实现 ContributionsProvider 都返回空。
+func (r *Registry) PluginContributions(pluginID string) []Contribution {
+	r.mu.RLock()
+	p, ok := r.plugins[pluginID]
+	r.mu.RUnlock()
+	if !ok {
+		return nil
+	}
+	provider, ok := p.(ContributionsProvider)
+	if !ok {
+		return nil
+	}
+	return sanitizeContributions(pluginID, provider.Contributions())
+}
+
+// AllContributions 全部**已启用**插件贡献的界面项，按 surface 分组。
+// 组内按插件 id 排序（稳定输出，前端不会因 map 迭代顺序跳位）；没有贡献时返回空 map（不是 nil）。
+func (r *Registry) AllContributions() map[Surface][]Contribution {
+	ids := make([]string, 0, 4)
+	raw := make(map[string][]Contribution, 4)
+	r.mu.RLock()
+	for id, p := range r.plugins {
+		if !r.enabled[id] {
+			continue
+		}
+		provider, ok := p.(ContributionsProvider)
+		if !ok {
+			continue
+		}
+		ids = append(ids, id)
+		raw[id] = provider.Contributions()
+	}
+	r.mu.RUnlock()
+
+	sort.Strings(ids)
+	out := make(map[Surface][]Contribution, len(ids))
+	for _, id := range ids {
+		for _, item := range sanitizeContributions(id, raw[id]) {
+			out[item.Surface] = append(out[item.Surface], item)
+		}
+	}
+	return out
+}
+
+// sanitizeContributions 清掉插件写错的界面项：未知 surface / 没 action / 没 id / 同 surface 内 id 重复。
+// 丢弃一律留一条 warn（插件作者的错要能在日志里查到，不能静默少一个按钮）。
+func sanitizeContributions(pluginID string, items []Contribution) []Contribution {
+	out := make([]Contribution, 0, len(items))
+	seen := make(map[string]bool, len(items))
+	for _, item := range items {
+		key := string(item.Surface) + "|" + item.ID
+		reason := ""
+		switch {
+		case !IsSupportedSurface(item.Surface):
+			reason = "unsupported surface"
+		case strings.TrimSpace(item.Action) == "":
+			reason = "empty action"
+		case strings.TrimSpace(item.ID) == "":
+			reason = "empty id"
+		case seen[key]:
+			reason = "duplicate id in surface"
+		}
+		if reason != "" {
+			logger.Warn("plugin contribution dropped",
+				"module", "plugin", "action", "sanitize", "resource", "contribution", "result", "dropped",
+				"pluginId", pluginID, "id", item.ID, "surface", string(item.Surface), "reason", reason)
+			continue
+		}
+		seen[key] = true
+		if item.Selection == "" {
+			item.Selection = SelectionNone
+		}
+		// 归属插件与权限都由宿主注入，插件声明时不必（也不该）自己填。
+		item.Plugin = pluginID
+		out = append(out, item)
+	}
+	return out
+}
