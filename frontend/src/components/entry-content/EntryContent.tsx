@@ -138,6 +138,7 @@ export function EntryContent({
     displayTitle,
     translatedContentBlocks,
     combinedTranslatedContent,
+    translationError,
     handleToggleTranslation,
   } = useAITranslation({
     entry,
@@ -242,10 +243,12 @@ export function EntryContent({
         isLoadingSummary={isLoadingSummary}
         hasSummary={!!aiSummary}
         onToggleSummary={handleToggleSummary}
+        summaryError={summaryError}
         isTranslating={isTranslating}
         hasTranslation={hasTranslation}
         translationDisabled={translationDisabled}
         onToggleTranslation={handleToggleTranslation}
+        translationError={translationError}
         isMobile={isMobile}
         onBack={onBack}
         onClose={onClose}

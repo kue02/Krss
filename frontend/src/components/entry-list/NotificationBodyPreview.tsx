@@ -133,6 +133,16 @@ export function NotificationBodyPreview({
       ? state.getTranslation(entry.id, targetLanguage)
       : undefined,
   );
+  // REQ3：正文三态状态（翻译中 / 失败 / 完成）——与卡片同一份 store
+  const translationStatus = useTranslationStore((state) =>
+    entry && targetLanguage
+      ? state.getStatus?.(entry.id, targetLanguage)
+      : undefined,
+  );
+  const contentStatus = translationStatus?.content;
+  const contentBadgeState = translation?.content
+    ? "done"
+    : contentStatus?.state ?? null;
   const displayTitle = entry ? (translation?.title ?? entry.title) : "";
   /**
    * 54-5：浮块正文同样优先显示译文（用户在列表里看到的是译文，悬停后不该退回原文）。
@@ -286,8 +296,13 @@ export function NotificationBodyPreview({
       <div className="flex max-h-[inherit] flex-col p-3">
         <div className="flex shrink-0 items-center gap-1 text-[12px] font-medium text-muted-foreground">
           <span>{feedName}</span>
-          {/* 54-5：浮块正文同样优先显示译文，那就同样要标明「这是机器翻译」 */}
-          {previewContent && translation?.content && <MachineTranslatedBadge />}
+          {/* REQ3：浮块正文三态标记（完成 / 翻译中 / 失败） */}
+          {contentBadgeState && (
+            <MachineTranslatedBadge
+              state={contentBadgeState}
+              error={contentStatus?.error}
+            />
+          )}
         </div>
         <div className="mt-0.5 shrink-0 text-[13.5px] font-semibold leading-5 text-foreground">
           {displayTitle || t("entry.untitled")}

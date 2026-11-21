@@ -367,7 +367,12 @@
     "force_confirm_description": "This ignores etag / last-modified and refetches every feed in scope in one go (host cooldown is skipped too). That's a lot of feeds — confirm this wasn't a mis-selection.",
     "view_feed": "Go to feed {{name}}",
     "back_to_previous": "Back to previous selection",
-    "machine_translated": "Machine-translated"
+    "machine_translated": "Machine-translated",
+    "translating": "Translating…",
+    "translate_failed": "Translation failed",
+    "translate_timeout": "Translation timed out, please try again",
+    "summary_translating": "Summarizing translation…",
+    "summary_translate_failed": "Summary translation failed"
   },
   "ai_settings": {
     "translate_channel": "Free translation channels",
@@ -976,7 +981,17 @@
     "unread_badge_preview_source": "Sample feed · 2 min ago",
     "unread_badge_preview_note": "Updates live; applies to every list once saved",
     "unread_badge_reset": "Reset",
-    "unread_badge_dot_fixed": "The dot is the default and has a fixed look (8px, theme accent, 2px overlap); the options below only apply to Count / Icon."
+    "unread_badge_dot_fixed": "The dot is the default and has a fixed look (8px, theme accent, 2px overlap); the options below only apply to Count / Icon.",
+    "entry_toolbar_title": "Article toolbar",
+    "entry_toolbar_description": "Drag to reorder buttons and use the toggles to show or hide them; the back button and title on the left are not included.",
+    "entry_toolbar_reset": "Reset to default",
+    "entry_toolbar_item_star": "Star",
+    "entry_toolbar_item_read": "Read",
+    "entry_toolbar_item_summary": "AI summary",
+    "entry_toolbar_item_translate": "Translate",
+    "entry_toolbar_item_originalsite": "Original site",
+    "entry_toolbar_item_readable": "Reading mode",
+    "entry_toolbar_item_openexternal": "Open in new tab"
   },
   "reading_font": {
     "theme_default": "Theme default",
