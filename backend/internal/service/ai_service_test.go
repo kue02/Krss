@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	repositorymock "krss/backend/internal/repository/mock"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	repositorymock "krss/backend/internal/repository/mock"
 
 	"krss/backend/internal/model"
 	"krss/backend/internal/service/ai"
@@ -203,6 +203,12 @@ type translationRepoStub struct {
 	// batchResult / batchErr：批量读（54-1）
 	batchResult map[int64]*model.AITranslation
 	batchErr    error
+	// statusResult / statusErr：批量读翻译状态（迁移 36）
+	statusResult map[int64]model.AITranslationStatus
+	statusErr    error
+	// lastStatus / lastStatusErr：记录最近一次 UpsertStatus 的参数，供 WarmTranslation 测试断言
+	lastStatus    string
+	lastStatusErr string
 }
 
 func (s *translationRepoStub) Get(ctx context.Context, entryID int64, isReadability bool, language string) (*model.AITranslation, error) {
@@ -228,6 +234,22 @@ func (s *translationRepoStub) Save(ctx context.Context, entryID int64, isReadabi
 	}
 	s.lastLanguage = language
 	return nil
+}
+
+func (s *translationRepoStub) UpsertStatus(ctx context.Context, entryID int64, isReadability bool, language, status, errMsg string) error {
+	s.lastStatus = status
+	s.lastStatusErr = errMsg
+	return nil
+}
+
+func (s *translationRepoStub) GetStatusBatch(ctx context.Context, entryIDs []int64, isReadability bool, language string) (map[int64]model.AITranslationStatus, error) {
+	if s.statusErr != nil {
+		return nil, s.statusErr
+	}
+	if s.statusResult != nil {
+		return s.statusResult, nil
+	}
+	return make(map[int64]model.AITranslationStatus), nil
 }
 
 func (s *translationRepoStub) DeleteByEntryID(ctx context.Context, entryID int64) error {
@@ -522,6 +544,33 @@ func TestAIService_GetCachedTranslations_RepoError(t *testing.T) {
 
 	got, err := svc.GetCachedTranslations(context.Background(), []int64{1}, false)
 	require.Error(t, err, "仓储错误要透出，不许静默吞掉")
+	require.Nil(t, got)
+}
+
+func TestAIService_GetTranslationStatuses(t *testing.T) {
+	translationRepo := &translationRepoStub{
+		statusResult: map[int64]model.AITranslationStatus{
+			1: {Status: "done"},
+			2: {Status: "failed", Error: "boom"},
+		},
+	}
+	svc := service.NewAIService(&summaryRepoStub{}, translationRepo, &listTranslationRepoStub{}, newSettingsRepoStub(), ai.NewRateLimiter(100))
+
+	got, err := svc.GetTranslationStatuses(context.Background(), []int64{1, 2, 3}, false)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	require.Equal(t, "done", got[1].Status)
+	require.Equal(t, "failed", got[2].Status)
+	require.Equal(t, "boom", got[2].Error)
+	require.NotContains(t, got, int64(3))
+}
+
+func TestAIService_GetTranslationStatuses_RepoError(t *testing.T) {
+	translationRepo := &translationRepoStub{statusErr: errors.New("db down")}
+	svc := service.NewAIService(&summaryRepoStub{}, translationRepo, &listTranslationRepoStub{}, newSettingsRepoStub(), ai.NewRateLimiter(100))
+
+	got, err := svc.GetTranslationStatuses(context.Background(), []int64{1}, false)
+	require.Error(t, err)
 	require.Nil(t, got)
 }
 

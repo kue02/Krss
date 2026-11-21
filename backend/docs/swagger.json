@@ -4892,12 +4892,31 @@
                     "description": "Language 后端实际用的目标语言（= ai.summary_language），前端用来对齐缓存键",
                     "type": "string"
                 },
+                "statuses": {
+                    "description": "Statuses 逐条翻译状态（translating/done/failed + 失败原因），供列表显示\n「翻译中 / 已完成 / 失败」并在失败时悬浮看原因。只含有状态行的条目（子集 OK）。",
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/internal_handler.batchCachedTranslationStatus"
+                    }
+                },
                 "translations": {
                     "description": "Translations 只含**已翻好**的条目；没缓存的条目不出现在这里（前端按原文处理）",
                     "type": "object",
                     "additionalProperties": {
                         "$ref": "#/definitions/internal_handler.batchCachedTranslationItem"
                     }
+                }
+            }
+        },
+        "internal_handler.batchCachedTranslationStatus": {
+            "description": "batchCachedTranslationStatus 单条翻译状态（列表展示「翻译中 / 已完成 / 失败」用）。",
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
                 }
             }
         },

@@ -167,3 +167,50 @@ func TestAITranslationRepository_GetBatch(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, gotEmpty)
 }
+
+func TestAITranslationRepository_Status(t *testing.T) {
+	db := testutil.NewTestDB(t)
+	repo := repository.NewAITranslationRepository(db)
+	ctx := context.Background()
+
+	feedID := testutil.SeedFeed(t, db, model.Feed{Title: "F", URL: "u"})
+	e1 := testutil.SeedEntry(t, db, model.Entry{FeedID: feedID})
+	e2 := testutil.SeedEntry(t, db, model.Entry{FeedID: feedID})
+
+	// 初始 translating
+	require.NoError(t, repo.UpsertStatus(ctx, e1, false, "zh-CN", "translating", ""))
+	got, err := repo.GetStatusBatch(ctx, []int64{e1, e2}, false, "zh-CN")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, "translating", got[e1].Status)
+	require.Empty(t, got[e1].Error)
+
+	// 覆盖成 failed + 原因（同一行，不新增）
+	require.NoError(t, repo.UpsertStatus(ctx, e1, false, "zh-CN", "failed", "通道超时"))
+	got, err = repo.GetStatusBatch(ctx, []int64{e1}, false, "zh-CN")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.Equal(t, "failed", got[e1].Status)
+	require.Equal(t, "通道超时", got[e1].Error)
+
+	// 覆盖成 done，error 清空
+	require.NoError(t, repo.UpsertStatus(ctx, e1, false, "zh-CN", "done", ""))
+	got, _ = repo.GetStatusBatch(ctx, []int64{e1}, false, "zh-CN")
+	require.Equal(t, "done", got[e1].Status)
+	require.Empty(t, got[e1].Error)
+
+	// 可读模式 / 别的语言互不串
+	require.NoError(t, repo.UpsertStatus(ctx, e1, true, "zh-CN", "done", ""))
+	require.NoError(t, repo.UpsertStatus(ctx, e2, false, "en-US", "done", ""))
+	gotReadable, err := repo.GetStatusBatch(ctx, []int64{e1}, true, "zh-CN")
+	require.NoError(t, err)
+	require.Len(t, gotReadable, 1)
+	gotOtherLang, err := repo.GetStatusBatch(ctx, []int64{e2}, false, "zh-CN")
+	require.NoError(t, err)
+	require.Empty(t, gotOtherLang)
+
+	// 空入参返回空 map 且不报错
+	empty, err := repo.GetStatusBatch(ctx, nil, false, "zh-CN")
+	require.NoError(t, err)
+	require.Empty(t, empty)
+}

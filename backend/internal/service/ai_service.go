@@ -68,6 +68,9 @@ type AIService interface {
 	// 所以走这条只读的口子 —— 译文多半已由滚动预载 `WarmTranslation` 落库。
 	// 返回 entryID → 译文 HTML；没缓存过的条目不出现在结果里。
 	GetCachedTranslations(ctx context.Context, entryIDs []int64, isReadability bool) (map[int64]string, error)
+	// GetTranslationStatuses 批量取逐条翻译状态（translating/done/failed + 失败原因），
+	// 供列表展示「翻译中 / 已完成 / 失败」。只返回有状态行的条目。
+	GetTranslationStatuses(ctx context.Context, entryIDs []int64, isReadability bool) (map[int64]model.AITranslationStatus, error)
 	// TranslateBlocks parses HTML into blocks and translates them in parallel.
 	// Returns block info, a channel of results (in completion order), and an error channel.
 	TranslateBlocks(ctx context.Context, entryID int64, content, title string, isReadability bool) ([]TranslateBlockInfo, <-chan TranslateBlockResult, <-chan error, error)
@@ -482,6 +485,12 @@ func (s *aiService) WarmTranslation(ctx context.Context, entryID int64, content,
 	s.warmInFlight[key] = struct{}{}
 	s.warmMu.Unlock()
 
+	// 记「翻译中」：只在这次真的起了后台任务时写（上面 already-cached / 已在算两条
+	// 早退路径都不动状态）。写失败只记日志，不能挡住翻译本身。用请求 ctx。
+	if err := s.translationRepo.UpsertStatus(ctx, entryID, isReadability, language, "translating", ""); err != nil {
+		logger.Warn("ai warm translate status write failed", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", entryID, "status", "translating", "error", err)
+	}
+
 	go func() {
 		defer func() {
 			s.warmMu.Lock()
@@ -494,10 +503,15 @@ func (s *aiService) WarmTranslation(ctx context.Context, entryID int64, content,
 		_, resultCh, errCh, err := s.TranslateBlocks(ctx, entryID, content, title, isReadability)
 		if err != nil {
 			logger.Warn("ai warm translate start failed", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", entryID, "error", err)
+			// 起不来也算失败，不能把状态永远停在「翻译中」。
+			if statusErr := s.translationRepo.UpsertStatus(context.Background(), entryID, isReadability, language, "failed", err.Error()); statusErr != nil {
+				logger.Warn("ai warm translate status write failed", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", entryID, "status", "failed", "error", statusErr)
+			}
 			return
 		}
 		// 把结果流抽干 —— TranslateBlocks 在「无错」时自己会把整篇落缓存，
-		// 这里只是等它跑完，不转发给任何人。
+		// 这里只是等它跑完，不转发给任何人。顺便记下第一处错误，供状态展示。
+		firstErrMsg := ""
 		for resultCh != nil || errCh != nil {
 			select {
 			case _, ok := <-resultCh:
@@ -510,8 +524,20 @@ func (s *aiService) WarmTranslation(ctx context.Context, entryID int64, content,
 					continue
 				}
 				if err != nil {
+					if firstErrMsg == "" {
+						firstErrMsg = err.Error()
+					}
 					logger.Warn("ai warm translate block failed", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", entryID, "error", err)
 				}
+			}
+		}
+		if firstErrMsg != "" {
+			if statusErr := s.translationRepo.UpsertStatus(context.Background(), entryID, isReadability, language, "failed", firstErrMsg); statusErr != nil {
+				logger.Warn("ai warm translate status write failed", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", entryID, "status", "failed", "error", statusErr)
+			}
+		} else {
+			if statusErr := s.translationRepo.UpsertStatus(context.Background(), entryID, isReadability, language, "done", ""); statusErr != nil {
+				logger.Warn("ai warm translate status write failed", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", entryID, "status", "done", "error", statusErr)
 			}
 		}
 		logger.Info("ai warm translate finished", "module", "service", "action", "translate", "resource", "ai", "result", "ok", "entry_id", entryID)
@@ -545,6 +571,18 @@ func (s *aiService) GetCachedTranslations(ctx context.Context, entryIDs []int64,
 		out[id] = t.Content
 	}
 	return out, nil
+}
+
+// GetTranslationStatuses 批量取逐条翻译状态（translating/done/failed + 失败原因）。
+// 语言口径与 GetCachedTranslations 一致（= ai.summary_language），委托仓储批量读。
+func (s *aiService) GetTranslationStatuses(ctx context.Context, entryIDs []int64, isReadability bool) (map[int64]model.AITranslationStatus, error) {
+	language := s.GetSummaryLanguage(ctx)
+	statuses, err := s.translationRepo.GetStatusBatch(ctx, entryIDs, isReadability, language)
+	if err != nil {
+		logger.Warn("ai translation status batch lookup failed", "module", "service", "action", "fetch", "resource", "ai", "result", "failed", "error", err)
+		return nil, err
+	}
+	return statuses, nil
 }
 
 func (s *aiService) SaveTranslation(ctx context.Context, entryID int64, isReadability bool, content string) error {

@@ -454,11 +454,20 @@ type batchCachedTranslationItem struct {
 	Content string `json:"content"`
 }
 
+// batchCachedTranslationStatus 单条翻译状态（列表展示「翻译中 / 已完成 / 失败」用）。
+type batchCachedTranslationStatus struct {
+	Status string `json:"status"`
+	Error  string `json:"error,omitempty"`
+}
+
 type batchCachedTranslationResponse struct {
 	// Translations 只含**已翻好**的条目；没缓存的条目不出现在这里（前端按原文处理）
 	Translations map[string]batchCachedTranslationItem `json:"translations"`
 	// Language 后端实际用的目标语言（= ai.summary_language），前端用来对齐缓存键
 	Language string `json:"language"`
+	// Statuses 逐条翻译状态（translating/done/failed + 失败原因），供列表显示
+	// 「翻译中 / 已完成 / 失败」并在失败时悬浮看原因。只含有状态行的条目（子集 OK）。
+	Statuses map[string]batchCachedTranslationStatus `json:"statuses,omitempty"`
 }
 
 type batchCachedTranslationRequest struct {
@@ -474,8 +483,9 @@ type batchCachedTranslationRequest struct {
 // `POST /ai/translate/warm` 算好落库了，这里只是把结果批量取出来。
 //
 // 只读语义：不触发生成、不写库；没缓存的条目直接不返回，不报错。
+// 同时带回逐条翻译状态（statuses），供列表显示「翻译中 / 已完成 / 失败」。
 // @Summary Batch read cached translations
-// @Description Read already-cached full-content translations for many entries. Read-only: never triggers translation.
+// @Description Read already-cached full-content translations for many entries, plus per-entry translation statuses. Read-only: never triggers translation.
 // @Tags ai
 // @Accept json
 // @Produce json
@@ -524,11 +534,22 @@ func (h *AIHandler) CachedTranslations(c echo.Context) error {
 		translations[strconv.FormatInt(entryID, 10)] = batchCachedTranslationItem{Content: content}
 	}
 
+	// 逐条状态：只是读侧辅助信息，取不到不影响译文本身（记日志、返回空 statuses）。
+	statuses := make(map[string]batchCachedTranslationStatus)
+	if statusMap, statusErr := h.service.GetTranslationStatuses(ctx, ids, req.IsReadability); statusErr != nil {
+		logger.Warn("ai cached translations status lookup failed", "module", "handler", "action", "fetch", "resource", "ai", "result", "failed", "count", len(ids), "error", statusErr)
+	} else {
+		for entryID, st := range statusMap {
+			statuses[strconv.FormatInt(entryID, 10)] = batchCachedTranslationStatus{Status: st.Status, Error: st.Error}
+		}
+	}
+
 	logger.Debug("ai cached translations served", "module", "handler", "action", "fetch", "resource", "ai", "result", "ok", "requested", len(ids), "hit", len(translations))
 
 	return c.JSON(http.StatusOK, batchCachedTranslationResponse{
 		Translations: translations,
 		Language:     h.service.GetSummaryLanguage(ctx),
+		Statuses:     statuses,
 	})
 }
 
