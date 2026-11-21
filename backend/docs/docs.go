@@ -797,6 +797,50 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/plugins/upload": {
+            "post": {
+                "description": "包根目录或唯一顶层目录内需有 plugin.json；安装后插件默认停用，需在设置页手动启用。\n只支持外部插件（transport=http），内置插件 id 不可覆盖；同名插件已安装时返回 409。",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "plugins"
+                ],
+                "summary": "上传并安装一个 zip 插件包",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "插件 zip 包",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.pluginCatalogResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "插件包不合法",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "插件已存在",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/plugins/views": {
             "get": {
                 "description": "只含**已启用**插件；按插件 id 排序，宿主注入 plugin 字段。\ncustom 视图必须声明 ui:custom 且带 entry，否则被注册表丢弃（防绕过 /ui/ 门禁）。",

@@ -4,10 +4,9 @@ import (
 	"testing"
 
 	"krss/backend/internal/plugin"
-	// 守门测试必须能看见内置插件的声明 —— 没有这三条 blank import，Catalog 是空的，
+	// 守门测试必须能看见内置插件的声明 —— 没有这两条 blank import，Catalog 是空的，
 	// 循环体一次都不跑，测试会假绿（这也是下面两条 require 存在的原因）。
 	_ "krss/backend/internal/plugin/builtin/bark"
-	_ "krss/backend/internal/plugin/builtin/demo"
 	_ "krss/backend/internal/plugin/builtin/rsshub"
 	"krss/backend/internal/service"
 

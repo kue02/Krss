@@ -3121,6 +3121,37 @@ paths:
       summary: 各插入位置（surface）上可用的插件界面项
       tags:
       - plugins
+  /api/plugins/upload:
+    post:
+      consumes:
+      - multipart/form-data
+      description: |-
+        包根目录或唯一顶层目录内需有 plugin.json；安装后插件默认停用，需在设置页手动启用。
+        只支持外部插件（transport=http），内置插件 id 不可覆盖；同名插件已安装时返回 409。
+      parameters:
+      - description: 插件 zip 包
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_handler.pluginCatalogResponse'
+        "400":
+          description: 插件包不合法
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+        "409":
+          description: 插件已存在
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: 上传并安装一个 zip 插件包
+      tags:
+      - plugins
   /api/plugins/views:
     get:
       description: |-

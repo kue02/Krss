@@ -12,6 +12,7 @@
 package service
 
 import (
+	"archive/zip"
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
@@ -19,9 +20,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -41,7 +44,14 @@ const (
 	archivedPluginMarker = ".removed-"   // 卸载归档目录名后缀标记（scanLocked 跳过）
 	pluginReadyPoll      = 50 * time.Millisecond
 	pluginKillWait       = 2 * time.Second
+	// 插件包上传（56-36）：限制 zip 文件大小、解压总大小与文件数，挡住 zip 炸弹。
+	pluginPackageMaxBytes  int64 = 64 << 20
+	pluginPackageMaxExpand int64 = 256 << 20
+	pluginPackageMaxFiles        = 2000
 )
+
+// pluginPackageIDPattern 插件包 id 允许的字符集：落盘前会拼进 <plugins>/<id>，不能带路径分隔符。
+var pluginPackageIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 // 默认值（测试用 Option 调小，生产按计划书：10s 就绪、1s 起退避、30s 封顶、5s 停用宽限）。
 const (
@@ -744,6 +754,158 @@ func (h *PluginHost) Archive(id string) (string, error) {
 	delete(h.procs, id)
 	h.registry.Unregister(id)
 	return archivePath, nil
+}
+
+// InstallPackage 安装一个 zip 插件包（设置页「添加插件」用）。
+//
+// 包结构：zip 根目录直接放 plugin.json，或只有一个顶层目录、plugin.json 在其中。
+// 解压前逐项校验路径（拒绝绝对路径 / .. / 符号链接）与总量（防 zip 炸弹），
+// 校验 manifest.id 与 entrypoint 后才整体落到 <plugins>/<id>；同名目录已存在则回
+// ErrPluginPackageExists。新插件沿用宿主既有安全策略：首次发现一律停用，由用户显式启用。
+func (h *PluginHost) InstallPackage(ctx context.Context, filename string, r io.ReaderAt, size int64) (string, error) {
+	if h == nil {
+		return "", ErrPluginPackageInvalid
+	}
+	if !strings.EqualFold(filepath.Ext(filename), ".zip") {
+		return "", fmt.Errorf("%w：只支持 .zip 插件包", ErrPluginPackageInvalid)
+	}
+	if size <= 0 || size > pluginPackageMaxBytes {
+		return "", fmt.Errorf("%w：插件包大小需在 1 字节到 %d MB 之间", ErrPluginPackageInvalid, pluginPackageMaxBytes>>20)
+	}
+	zr, err := zip.NewReader(r, size)
+	if err != nil {
+		return "", fmt.Errorf("%w：zip 解析失败：%v", ErrPluginPackageInvalid, err)
+	}
+	if len(zr.File) > pluginPackageMaxFiles {
+		return "", fmt.Errorf("%w：文件数超过 %d", ErrPluginPackageInvalid, pluginPackageMaxFiles)
+	}
+
+	// 解压到 <data>/../.plugin-upload-*，与最终目录同一文件系统，最后 rename 原子落位。
+	parent := filepath.Dir(h.dir)
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		return "", fmt.Errorf("%w：创建临时目录失败：%v", ErrPluginPackageInvalid, err)
+	}
+	tmp, err := os.MkdirTemp(parent, ".plugin-upload-")
+	if err != nil {
+		return "", fmt.Errorf("%w：创建临时目录失败：%v", ErrPluginPackageInvalid, err)
+	}
+	defer os.RemoveAll(tmp)
+
+	var expanded int64
+	for _, zf := range zr.File {
+		name := filepath.Clean(strings.ReplaceAll(zf.Name, "\\", "/"))
+		if name == "." || name == "" {
+			continue
+		}
+		if filepath.IsAbs(name) || name == ".." || strings.HasPrefix(name, ".."+string(filepath.Separator)) {
+			return "", fmt.Errorf("%w：包内路径越界：%s", ErrPluginPackageInvalid, zf.Name)
+		}
+		target := filepath.Join(tmp, name)
+		if target != tmp && !strings.HasPrefix(target, tmp+string(filepath.Separator)) {
+			return "", fmt.Errorf("%w：包内路径越界：%s", ErrPluginPackageInvalid, zf.Name)
+		}
+		if zf.FileInfo().IsDir() {
+			if err := os.MkdirAll(target, 0o755); err != nil {
+				return "", fmt.Errorf("%w：创建目录失败：%v", ErrPluginPackageInvalid, err)
+			}
+			continue
+		}
+		if zf.Mode()&os.ModeSymlink != 0 {
+			return "", fmt.Errorf("%w：不允许符号链接：%s", ErrPluginPackageInvalid, zf.Name)
+		}
+		if zf.UncompressedSize64 > uint64(pluginPackageMaxExpand) {
+			return "", fmt.Errorf("%w：单文件解压后超过 %d MB", ErrPluginPackageInvalid, pluginPackageMaxExpand>>20)
+		}
+		expanded += int64(zf.UncompressedSize64)
+		if expanded > pluginPackageMaxExpand {
+			return "", fmt.Errorf("%w：解压后总大小超过 %d MB", ErrPluginPackageInvalid, pluginPackageMaxExpand>>20)
+		}
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return "", fmt.Errorf("%w：创建目录失败：%v", ErrPluginPackageInvalid, err)
+		}
+		mode := zf.Mode().Perm()
+		if mode == 0 {
+			mode = 0o644
+		}
+		dst, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode)
+		if err != nil {
+			return "", fmt.Errorf("%w：写入文件失败：%v", ErrPluginPackageInvalid, err)
+		}
+		src, err := zf.Open()
+		if err != nil {
+			dst.Close()
+			return "", fmt.Errorf("%w：读取包内文件失败：%v", ErrPluginPackageInvalid, err)
+		}
+		_, copyErr := io.CopyN(dst, src, int64(zf.UncompressedSize64)+1)
+		closeErr := src.Close()
+		dst.Close()
+		if copyErr != nil && copyErr != io.EOF {
+			return "", fmt.Errorf("%w：解压文件失败：%v", ErrPluginPackageInvalid, copyErr)
+		}
+		if closeErr != nil {
+			return "", fmt.Errorf("%w：读取包内文件失败：%v", ErrPluginPackageInvalid, closeErr)
+		}
+	}
+
+	root := tmp
+	if _, err := os.Stat(filepath.Join(root, pluginManifestFile)); err != nil {
+		entries, readErr := os.ReadDir(tmp)
+		if readErr != nil {
+			return "", fmt.Errorf("%w：读取临时目录失败：%v", ErrPluginPackageInvalid, readErr)
+		}
+		var dirs []string
+		for _, e := range entries {
+			if e.IsDir() {
+				dirs = append(dirs, e.Name())
+			}
+		}
+		if len(dirs) != 1 {
+			return "", fmt.Errorf("%w：plugin.json 需在包根目录，或唯一顶层目录内", ErrPluginPackageInvalid)
+		}
+		root = filepath.Join(tmp, dirs[0])
+	}
+	manifestBytes, err := os.ReadFile(filepath.Join(root, pluginManifestFile))
+	if err != nil {
+		return "", fmt.Errorf("%w：缺少 plugin.json", ErrPluginPackageInvalid)
+	}
+	var manifest pluginManifest
+	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
+		return "", fmt.Errorf("%w：plugin.json 不是合法 JSON：%v", ErrPluginPackageInvalid, err)
+	}
+	manifest.ID = strings.TrimSpace(manifest.ID)
+	if manifest.ID == "" || !pluginPackageIDPattern.MatchString(manifest.ID) || strings.Contains(manifest.ID, archivedPluginMarker) {
+		return "", fmt.Errorf("%w：plugin.json 的 id 不合法（只允许字母数字 . _ -，且不能含 %s）", ErrPluginPackageInvalid, archivedPluginMarker)
+	}
+	if meta, ok := h.registry.Meta(manifest.ID); ok && meta.Builtin {
+		return "", fmt.Errorf("%w：id %s 是内置插件，不能覆盖", ErrPluginPackageExists, manifest.ID)
+	}
+	entrypoint := strings.TrimSpace(manifest.Entrypoint)
+	if entrypoint == "" || filepath.IsAbs(entrypoint) || strings.Contains(filepath.Clean(entrypoint), "..") {
+		return "", fmt.Errorf("%w：entrypoint 必须是插件目录内的相对路径", ErrPluginPackageInvalid)
+	}
+	if _, err := os.Stat(filepath.Join(root, entrypoint)); err != nil {
+		return "", fmt.Errorf("%w：entrypoint 指向的文件不存在：%s", ErrPluginPackageInvalid, entrypoint)
+	}
+	targetDir := filepath.Join(h.dir, manifest.ID)
+	if _, err := os.Stat(targetDir); err == nil {
+		return "", fmt.Errorf("%w：%s 已存在，请先卸载旧版本", ErrPluginPackageExists, manifest.ID)
+	} else if !os.IsNotExist(err) {
+		return "", fmt.Errorf("%w：检查目标目录失败：%v", ErrPluginPackageInvalid, err)
+	}
+	if err := os.MkdirAll(h.dir, 0o755); err != nil {
+		return "", fmt.Errorf("%w：创建插件目录失败：%v", ErrPluginPackageInvalid, err)
+	}
+	if err := os.Rename(root, targetDir); err != nil {
+		return "", fmt.Errorf("%w：安装插件目录失败：%v", ErrPluginPackageInvalid, err)
+	}
+
+	h.mu.Lock()
+	syncErr := h.syncLocked(ctx)
+	h.mu.Unlock()
+	if syncErr != nil {
+		return manifest.ID, syncErr
+	}
+	return manifest.ID, nil
 }
 
 func (h *PluginHost) stopLocked(id string) {

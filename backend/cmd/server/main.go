@@ -21,7 +21,6 @@ import (
 	transport "krss/backend/internal/http"
 	"krss/backend/internal/plugin"
 	"krss/backend/internal/plugin/builtin/bark"           // 内置插件：Bark 推送（55-12）
-	_ "krss/backend/internal/plugin/builtin/demo"         // 内置插件：init() 自注册进 plugin.Default（55-7a）
 	_ "krss/backend/internal/plugin/builtin/githubavatar" // 内置插件：GitHub 订阅显示账号头像
 	"krss/backend/internal/plugin/builtin/rsshub"         // 内置插件：RSSHub 适配（55-18）
 	"krss/backend/internal/repository"

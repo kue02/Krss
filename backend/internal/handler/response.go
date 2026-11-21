@@ -60,6 +60,11 @@ func writeServiceError(c echo.Context, err error) error {
 	// 卸载内置插件：409 + 一句能给用户看的中文口径（只能停用）。
 	case errors.Is(err, service.ErrPluginBuiltinCannotUninstall):
 		return c.JSON(http.StatusConflict, errorResponse{Error: err.Error()})
+	// 插件包上传：包结构/manifest 不合法回 400，同名已安装回 409（透出具体原因，用户能照着改）。
+	case errors.Is(err, service.ErrPluginPackageInvalid):
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
+	case errors.Is(err, service.ErrPluginPackageExists):
+		return c.JSON(http.StatusConflict, errorResponse{Error: err.Error()})
 	case errors.Is(err, service.ErrPluginActionNotTestable):
 		return c.JSON(http.StatusBadRequest, errorResponse{Error: "plugin action not testable"})
 	// 56-18 配额：每插件数据键到顶（10 万）。409 = 「状态冲突、需要你先清理」，不是请求格式错。

@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   setPluginEnabled: vi.fn(),
   rescanPlugins: vi.fn(),
   uninstallPlugin: vi.fn(),
+  uploadPlugin: vi.fn(),
 }));
 
 /** 只回 key，不拉 i18n 资源（与同目录既有测试一致）；带 params 的键把插值拼进结果 */
@@ -34,6 +35,7 @@ vi.mock("@/plugins/api", () => ({
   setPluginEnabled: mocks.setPluginEnabled,
   rescanPlugins: mocks.rescanPlugins,
   uninstallPlugin: mocks.uninstallPlugin,
+  uploadPlugin: mocks.uploadPlugin,
 }));
 
 /**
@@ -70,6 +72,7 @@ beforeEach(() => {
     async (id: string, enabled: boolean) => [plugin({ id, enabled })],
   );
   mocks.uninstallPlugin.mockResolvedValue([]);
+  mocks.uploadPlugin.mockResolvedValue([]);
 });
 
 describe("设置 → 插件（55-8）", () => {
@@ -95,6 +98,28 @@ describe("设置 → 插件（55-8）", () => {
       expect(mocks.setPluginEnabled).toHaveBeenCalledWith("demo", true),
     );
     expect(await screen.findByText("plugins.enabled")).toBeTruthy();
+  });
+
+  it("添加插件：选 zip 后调用上传并用返回清单刷新", async () => {
+    mocks.uploadPlugin.mockResolvedValue([
+      plugin({ id: "pack1", name: "包里的插件", builtin: false, transport: "http" }),
+    ]);
+    const { container } = render(<PluginsSettings />);
+    await screen.findByText("Demo 插件");
+
+    const input = container.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    expect(input).toBeTruthy();
+    const file = new File(["zip"], "pack1.zip", {
+      type: "application/zip",
+    });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() =>
+      expect(mocks.uploadPlugin).toHaveBeenCalledWith(file),
+    );
+    expect(await screen.findByText("包里的插件")).toBeTruthy();
   });
 
   it("外部插件（transport=http）显示「外部」徽标", async () => {
@@ -167,6 +192,7 @@ describe("设置 → 插件（55-8）", () => {
       }),
     ]);
     mocks.uninstallPlugin.mockResolvedValue([]);
+  mocks.uploadPlugin.mockResolvedValue([]);
 
     render(<PluginsSettings />);
     await screen.findByText("Demo Ext");

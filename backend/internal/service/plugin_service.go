@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 
 	"krss/backend/internal/model"
@@ -156,6 +157,18 @@ func (s *pluginService) ensureBuiltin(ctx context.Context) error {
 	}
 	s.registry.LoadEnabled(loaded)
 	return nil
+}
+
+// InstallPackage 安装设置页上传的 zip 插件包，返回最新清单。
+// 只有挂了外部插件宿主才可用（纯内置部署返回 ErrPluginPackageInvalid）。
+func (s *pluginService) InstallPackage(ctx context.Context, filename string, r io.ReaderAt, size int64) ([]plugin.CatalogItem, error) {
+	if s.host == nil {
+		return nil, fmt.Errorf("%w：这个部署没有启用外部插件宿主", ErrPluginPackageInvalid)
+	}
+	if _, err := s.host.InstallPackage(ctx, filename, r, size); err != nil {
+		return nil, err
+	}
+	return s.Catalog(ctx)
 }
 
 func (s *pluginService) Catalog(ctx context.Context) ([]plugin.CatalogItem, error) {

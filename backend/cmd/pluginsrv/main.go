@@ -13,7 +13,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	demoplugin "krss/backend/internal/plugin/builtin/demo"
+	demoplugin "krss/backend/cmd/examples/demo"
 	"krss/backend/internal/plugin/sdk"
 	"krss/backend/pkg/logger"
 )

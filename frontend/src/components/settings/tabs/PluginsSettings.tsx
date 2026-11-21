@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertDialog, Button, Chip } from "@heroui/react";
+import { Upload } from "lucide-react";
 import {
   fetchPlugins,
   rescanPlugins,
   setPluginEnabled,
   uninstallPlugin,
+  uploadPlugin,
 } from "@/plugins/api";
 import type { PluginMeta } from "@/plugins/types";
 import { PLUGIN_SETTINGS_SECTIONS } from "@/plugins/registry";
@@ -29,6 +31,8 @@ export function PluginsSettings() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rescanning, setRescanning] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   // 卸载二次确认：点「卸载」先落到这里，确认后才真调 DELETE
   const [pendingUninstall, setPendingUninstall] = useState<PluginMeta | null>(
     null,
@@ -66,6 +70,27 @@ export function PluginsSettings() {
       setRescanning(false);
     }
   }, []);
+
+  const installPackage = useCallback(async (file: File) => {
+    setUploading(true);
+    setError(null);
+    try {
+      setPlugins(await uploadPlugin(file));
+      // 新插件可能带界面贡献与视图；与启停/重扫同一套失效口径。
+      void queryClient.invalidateQueries({
+        queryKey: PLUGIN_CONTRIBUTIONS_QUERY_KEY,
+      });
+      void queryClient.invalidateQueries({ queryKey: PLUGIN_VIEWS_QUERY_KEY });
+    } catch (e: unknown) {
+      setError(
+        t("plugins.install_failed", {
+          reason: e instanceof Error ? e.message : String(e),
+        }),
+      );
+    } finally {
+      setUploading(false);
+    }
+  }, [t]);
 
   const toggle = useCallback(async (plugin: PluginMeta, next: boolean) => {
     setBusyId(plugin.id);
@@ -115,12 +140,34 @@ export function PluginsSettings() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-end">
+      <div className="flex items-center justify-end gap-2">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".zip,application/zip"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            // 清空 value：同一个包重选一次也要能触发 onChange
+            event.target.value = "";
+            if (file) void installPackage(file);
+          }}
+        />
+        <Button
+          size="sm"
+          variant="primary"
+          className="shrink-0"
+          isDisabled={uploading || rescanning}
+          onPress={() => fileInputRef.current?.click()}
+        >
+          <Upload className="size-4" />
+          {uploading ? t("plugins.uploading") : t("plugins.add_plugin")}
+        </Button>
         <Button
           size="sm"
           variant="outline"
           className="shrink-0"
-          isDisabled={rescanning}
+          isDisabled={rescanning || uploading}
           onPress={() => void rescan()}
         >
           {rescanning ? t("plugins.rescanning") : t("plugins.rescan")}
