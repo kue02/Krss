@@ -44,6 +44,27 @@ func blockingAIProvider(t *testing.T, delay time.Duration) (*httptest.Server, *i
 	return server, &calls
 }
 
+// gatedAIProvider 起一个可精确控制的假模型：第一个请求到达时通知 started，
+// 然后一直等到 release 关闭才返回。用于断言 single-flight 时不再依赖 sleep 时序。
+func gatedAIProvider(t *testing.T) (*httptest.Server, <-chan struct{}, chan<- struct{}, *int32) {
+	t.Helper()
+	var calls int32
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		select {
+		case started <- struct{}{}:
+		default:
+		}
+		<-release
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"id":"x","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"<p>translated</p>"},"finish_reason":"stop"}]}`)
+	}))
+	t.Cleanup(server.Close)
+	return server, started, release, &calls
+}
+
 func newWarmTestService(t *testing.T, baseURL string, translationRepo *translationRepoStub) service.AIService {
 	t.Helper()
 	settings := newSettingsRepoStub()
@@ -69,8 +90,7 @@ func TestWarmTranslation_SkipsWhenAlreadyCached(t *testing.T) {
 }
 
 func TestWarmTranslation_SingleFlight(t *testing.T) {
-	// 让假模型慢一点，好在它跑的时候连续发第二次 warm
-	server, calls := blockingAIProvider(t, 400*time.Millisecond)
+	server, started, release, calls := gatedAIProvider(t)
 
 	repo := &translationRepoStub{} // Get 返回 nil ⇒ 没缓存
 	svc := newWarmTestService(t, server.URL, repo)
@@ -79,14 +99,20 @@ func TestWarmTranslation_SingleFlight(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, alreadyCached, "第一次应当起后台任务")
 
-	// 立刻再来两次：这俩必须被 single-flight 吞掉，不能各起一个任务
+	// 等后台任务真的打到假模型，再连续发两次：这俩必须被 single-flight 吞掉。
+	select {
+	case <-started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("后台翻译没有发起请求")
+	}
 	_, err = svc.WarmTranslation(context.Background(), 43, "<p>Hello world</p>", "t", false)
 	require.NoError(t, err)
 	_, err = svc.WarmTranslation(context.Background(), 43, "<p>Hello world</p>", "t", false)
 	require.NoError(t, err)
 
-	time.Sleep(1200 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 	require.Equal(t, int32(1), atomic.LoadInt32(calls), "同一条目同时只该有一个后台翻译任务")
+	close(release)
 }
 
 func TestWarmTranslation_ReturnsImmediately(t *testing.T) {
