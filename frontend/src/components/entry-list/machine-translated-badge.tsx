@@ -1,4 +1,4 @@
-import { AlertTriangle, Languages } from "lucide-react";
+import { AlertTriangle, Languages, Lightbulb } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -20,22 +20,43 @@ import { cn } from "@/lib/utils";
  */
 export type MachineTranslatedBadgeState = "translating" | "done" | "failed";
 
-/** `summary` 用「摘要」专用文案，其余（正文）用通用文案。 */
-export type MachineTranslatedBadgeVariant = "translation" | "summary";
+/**
+ * `summary` 用「摘要翻译」专用文案；`ai-summary` 表示这条目有 AI 摘要（灯泡图标）；
+ * 其余（正文）用通用文案。
+ */
+export type MachineTranslatedBadgeVariant =
+  | "translation"
+  | "summary"
+  | "ai-summary";
 
 export function MachineTranslatedBadge({
   state = "done",
   error,
+  service,
+  provider,
+  model,
   className,
   variant = "translation",
 }: {
   state?: MachineTranslatedBadgeState;
   error?: string;
+  service?: string;
+  provider?: string;
+  model?: string;
   className?: string;
   variant?: MachineTranslatedBadgeVariant;
 }) {
   const { t } = useTranslation();
-  const isSummary = variant === "summary";
+  const isAISummary = variant === "ai-summary";
+  const isSummary = variant === "summary" || isAISummary;
+  const Icon = isAISummary ? Lightbulb : Languages;
+
+  // 完成态在 label 后附上「用了哪个服务 / 提供商 / 模型」（去重后拼接）。
+  const detailParts = Array.from(
+    new Set([service, provider, model].filter((v): v is string => !!v)),
+  );
+  const withDetail = (label: string) =>
+    detailParts.length > 0 ? `${label} · ${detailParts.join(" · ")}` : label;
 
   if (state === "translating") {
     const label = t(
@@ -55,7 +76,7 @@ export function MachineTranslatedBadge({
             role="img"
           >
             <span className="ai-icon-thinking-wrapper">
-              <Languages className="size-3.5" aria-hidden="true" />
+              <Icon className="size-3.5" aria-hidden="true" />
             </span>
           </span>
         </TooltipTrigger>
@@ -89,9 +110,12 @@ export function MachineTranslatedBadge({
     );
   }
 
-  const label = isSummary
-    ? t("entry.summary_translated")
-    : t("entry.machine_translated");
+  const label = isAISummary
+    ? t("entry.ai_summary")
+    : isSummary
+      ? t("entry.summary_translated")
+      : t("entry.machine_translated");
+  const tooltip = withDetail(label);
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -102,13 +126,13 @@ export function MachineTranslatedBadge({
             "inline-flex shrink-0 items-center text-muted-foreground/70",
             className,
           )}
-          aria-label={label}
+          aria-label={tooltip}
           role="img"
         >
-          <Languages className="size-3.5" aria-hidden="true" />
+          <Icon className="size-3.5" aria-hidden="true" />
         </span>
       </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
+      <TooltipContent>{tooltip}</TooltipContent>
     </Tooltip>
   );
 }

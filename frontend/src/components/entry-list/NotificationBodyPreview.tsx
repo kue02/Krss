@@ -142,6 +142,11 @@ export function NotificationBodyPreview({
   const contentBadgeState = translation?.content
     ? "done"
     : contentStatus?.state ?? null;
+  const aiSummaryStatus = useTranslationStore((state) =>
+    entry && targetLanguage
+      ? state.getSummaryStatus?.(entry.id, targetLanguage)
+      : undefined,
+  );
   const displayTitle = entry ? (translation?.title ?? entry.title) : "";
   /**
    * 54-5：浮块正文同样优先显示译文（用户在列表里看到的是译文，悬停后不该退回原文）。
@@ -300,6 +305,18 @@ export function NotificationBodyPreview({
             <MachineTranslatedBadge
               state={contentBadgeState}
               error={contentStatus?.error}
+              service={contentStatus?.service}
+              provider={contentStatus?.provider}
+              model={contentStatus?.model}
+            />
+          )}
+          {aiSummaryStatus && (
+            <MachineTranslatedBadge
+              state={aiSummaryStatus.state}
+              error={aiSummaryStatus.error}
+              provider={aiSummaryStatus.provider}
+              model={aiSummaryStatus.model}
+              variant="ai-summary"
             />
           )}
         </div>

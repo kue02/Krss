@@ -350,7 +350,7 @@ export function EntryContentHeader({
             className={cn(
               "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95",
               summaryFailed
-                ? "text-destructive hover:bg-destructive/10"
+                ? "bg-destructive/10 text-destructive hover:bg-destructive/20"
                 : hasSummary
                   ? "bg-item-active text-foreground"
                   : "text-muted-foreground hover:bg-item-hover hover:text-foreground",
@@ -391,7 +391,7 @@ export function EntryContentHeader({
             className={cn(
               "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95",
               translationFailed
-                ? "text-destructive hover:bg-destructive/10"
+                ? "bg-destructive/10 text-destructive hover:bg-destructive/20"
                 : getTranslationButtonClassName(translationButtonState),
             )}
           >
@@ -451,7 +451,7 @@ export function EntryContentHeader({
             className={cn(
               "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50",
               error
-                ? "text-destructive hover:bg-destructive/10"
+                ? "bg-destructive/10 text-destructive hover:bg-destructive/20"
                 : isReadableActive
                   ? "bg-item-active text-foreground"
                   : "text-muted-foreground hover:bg-item-hover hover:text-foreground",

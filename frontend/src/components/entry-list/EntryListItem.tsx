@@ -361,6 +361,12 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     const translationStatus = useTranslationStore((state) =>
       targetLanguage ? state.getStatus?.(entry.id, targetLanguage) : undefined,
     );
+    // AI 摘要状态（与「正文翻译」独立）：有条目需摘要且有状态时才显示摘要徽章。
+    const aiSummaryStatus = useTranslationStore((state) =>
+      targetLanguage
+        ? state.getSummaryStatus?.(entry.id, targetLanguage)
+        : undefined,
+    );
 
     const strippedContent = useMemo(
       () => (entry.content ? stripHtml(entry.content).slice(0, 150) : null),
@@ -666,6 +672,21 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                     <MachineTranslatedBadge
                       state={contentBadgeState}
                       error={contentStatus?.error}
+                      service={contentStatus?.service}
+                      provider={contentStatus?.provider}
+                      model={contentStatus?.model}
+                      className="ml-1"
+                    />
+                  )}
+                  {/* 需求（第三轮）：有条目需要 AI 摘要时，列表也显示摘要徽章；
+                      完成态悬浮显示摘要所用模型提供商。灯泡图标与翻译语言图标区分。 */}
+                  {aiSummaryStatus && (
+                    <MachineTranslatedBadge
+                      state={aiSummaryStatus.state}
+                      error={aiSummaryStatus.error}
+                      provider={aiSummaryStatus.provider}
+                      model={aiSummaryStatus.model}
+                      variant="ai-summary"
                       className="ml-1"
                     />
                   )}

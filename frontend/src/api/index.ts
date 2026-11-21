@@ -1307,7 +1307,24 @@ export interface BatchCachedTranslationResponse {
    * REQ3：每条目的翻译过程状态（后端新增字段）。
    * 让列表能在「还没出译文」时区分「翻译中 / 失败」，而不是干等。
    */
-  statuses?: Record<string, { status: string; error?: string }>;
+  statuses?: Record<
+    string,
+    {
+      status: string;
+      error?: string;
+      service?: string;
+      provider?: string;
+      model?: string;
+    }
+  >;
+  /**
+   * 每条目的 AI 摘要状态（摘要中/已完成/失败 + 所用模型提供商）。
+   * 列表据此显示摘要徽章，并可在悬浮时看到摘要用的是哪个模型。
+   */
+  summaryStatuses?: Record<
+    string,
+    { status: string; error?: string; provider?: string; model?: string }
+  >;
 }
 
 export async function fetchCachedTranslations(

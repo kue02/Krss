@@ -14,6 +14,7 @@ import { useFeeds } from "@/hooks/useFeeds";
 import { useGeneralSettings } from "@/hooks/useGeneralSettings";
 import { useEntryPrefetch } from "@/hooks/useEntryPrefetch";
 import { useListTranslations } from "@/hooks/useListTranslations";
+import { useListSummaryStatuses } from "@/hooks/useListSummaryStatuses";
 import { useRefreshStatus } from "@/hooks/useRefreshStatus";
 import { queryClient } from "@/lib/queryClient";
 import { requestEntriesHeadSync } from "@/lib/entries-head-sync";
@@ -629,6 +630,14 @@ export function EntryList({
       (autoTranslate || hasAutoTranslateOverride),
     resetKey: scrollKey,
     concurrency: entryPrefetchConcurrency,
+  });
+
+  // 列表卡片的「AI 摘要」徽章：只读轮询后端摘要状态（不发翻译请求）。
+  useListSummaryStatuses({
+    entries,
+    targetLanguage,
+    enabled: isActive && (isSocialView || isNotificationTimeline),
+    resetKey: scrollKey,
   });
 
   // 24-5：右键「标记上方为已读」—— 把这条之上的未读一次标掉。

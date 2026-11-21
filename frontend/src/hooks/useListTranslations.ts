@@ -390,8 +390,14 @@ export function useListTranslations({
           // 内容已到达 ⇒ done（并清掉旧错误）
           for (const entryId of Object.keys(response.translations)) {
             stateRef.current.awaiting.delete(entryId);
+            const info = response.statuses?.[entryId];
             translationActions.setStatus(entryId, language, {
-              content: { state: "done" },
+              content: {
+                state: "done",
+                service: info?.service,
+                provider: info?.provider,
+                model: info?.model,
+              },
             });
           }
           // REQ3：后端新增的过程状态（translating / done / failed）
@@ -401,17 +407,33 @@ export function useListTranslations({
               if (response.translations[entryId]) continue;
               if (info.status === "done") {
                 translationActions.setStatus(entryId, language, {
-                  content: { state: "done" },
+                  content: {
+                    state: "done",
+                    service: info.service,
+                    provider: info.provider,
+                    model: info.model,
+                  },
                 });
                 stateRef.current.awaiting.delete(entryId);
               } else if (info.status === "failed") {
                 translationActions.setStatus(entryId, language, {
-                  content: { state: "failed", error: info.error },
+                  content: {
+                    state: "failed",
+                    error: info.error,
+                    service: info.service,
+                    provider: info.provider,
+                    model: info.model,
+                  },
                 });
                 stateRef.current.awaiting.delete(entryId);
               } else if (info.status === "translating") {
                 translationActions.setStatus(entryId, language, {
-                  content: { state: "translating" },
+                  content: {
+                    state: "translating",
+                    service: info.service,
+                    provider: info.provider,
+                    model: info.model,
+                  },
                 });
               }
             }

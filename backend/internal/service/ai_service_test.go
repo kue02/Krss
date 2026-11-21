@@ -168,6 +168,9 @@ type summaryRepoStub struct {
 	deleteAllRows int64
 	getResult     *model.AISummary
 	getErr        error
+	statusResult  map[int64]model.AISummaryStatus
+	statusErr     error
+	lastStatus    string
 }
 
 func (s *summaryRepoStub) Get(ctx context.Context, entryID int64, isReadability bool, language string) (*model.AISummary, error) {
@@ -180,6 +183,21 @@ func (s *summaryRepoStub) Get(ctx context.Context, entryID int64, isReadability 
 func (s *summaryRepoStub) Save(ctx context.Context, entryID int64, isReadability bool, language, summary string) error {
 	s.lastLanguage = language
 	return nil
+}
+
+func (s *summaryRepoStub) UpsertStatus(ctx context.Context, entryID int64, isReadability bool, language, status, errMsg, provider, modelName string) error {
+	s.lastStatus = status
+	return nil
+}
+
+func (s *summaryRepoStub) GetStatusBatch(ctx context.Context, entryIDs []int64, isReadability bool, language string) (map[int64]model.AISummaryStatus, error) {
+	if s.statusErr != nil {
+		return nil, s.statusErr
+	}
+	if s.statusResult != nil {
+		return s.statusResult, nil
+	}
+	return make(map[int64]model.AISummaryStatus), nil
 }
 
 func (s *summaryRepoStub) DeleteByEntryID(ctx context.Context, entryID int64) error {
@@ -237,6 +255,12 @@ func (s *translationRepoStub) Save(ctx context.Context, entryID int64, isReadabi
 }
 
 func (s *translationRepoStub) UpsertStatus(ctx context.Context, entryID int64, isReadability bool, language, status, errMsg string) error {
+	s.lastStatus = status
+	s.lastStatusErr = errMsg
+	return nil
+}
+
+func (s *translationRepoStub) UpsertStatusDetail(ctx context.Context, entryID int64, isReadability bool, language, status, errMsg, service, provider, modelName string) error {
 	s.lastStatus = status
 	s.lastStatusErr = errMsg
 	return nil

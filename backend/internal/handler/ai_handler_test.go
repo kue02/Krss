@@ -283,6 +283,9 @@ func TestAIHandler_Summarize_StreamResponse(t *testing.T) {
 	mockService.EXPECT().
 		SaveSummary(gomock.Any(), int64(123), false, "First chunkSecond chunkFinal chunk").
 		Return(nil)
+	mockService.EXPECT().
+		FinishSummary(gomock.Any(), int64(123), false, "").
+		Return(nil)
 
 	e := newTestEcho()
 	reqBody := map[string]interface{}{
@@ -501,6 +504,9 @@ func TestAIHandler_Summarize_CacheLookupError_ContinuesWithService(t *testing.T)
 	mockService.EXPECT().
 		SaveSummary(gomock.Any(), int64(123), false, "Summary content").
 		Return(nil)
+	mockService.EXPECT().
+		FinishSummary(gomock.Any(), int64(123), false, "").
+		Return(nil)
 
 	e := newTestEcho()
 	reqBody := map[string]interface{}{
@@ -568,6 +574,9 @@ func TestAIHandler_CachedTranslations_HitAndMiss(t *testing.T) {
 		GetTranslationStatuses(gomock.Any(), []int64{123, 456}, false).
 		Return(map[int64]model.AITranslationStatus{123: {Status: "done"}}, nil)
 	mockService.EXPECT().
+		GetSummaryStatuses(gomock.Any(), []int64{123, 456}, false).
+		Return(map[int64]model.AISummaryStatus{}, nil)
+	mockService.EXPECT().
 		GetSummaryLanguage(gomock.Any()).
 		Return("zh-CN")
 
@@ -628,6 +637,9 @@ func TestAIHandler_CachedTranslations_SkipsInvalidIDs(t *testing.T) {
 	mockService.EXPECT().
 		GetTranslationStatuses(gomock.Any(), []int64{123}, true).
 		Return(map[int64]model.AITranslationStatus{123: {Status: "translating"}}, nil)
+	mockService.EXPECT().
+		GetSummaryStatuses(gomock.Any(), []int64{123}, true).
+		Return(map[int64]model.AISummaryStatus{}, nil)
 	mockService.EXPECT().
 		GetSummaryLanguage(gomock.Any()).
 		Return("zh-CN")
@@ -722,6 +734,9 @@ func TestAIHandler_CachedTranslations_Statuses(t *testing.T) {
 			456: {Status: "done"},
 		}, nil)
 	mockService.EXPECT().
+		GetSummaryStatuses(gomock.Any(), []int64{123, 456, 789}, false).
+		Return(map[int64]model.AISummaryStatus{456: {Status: "done", Provider: "deepseek", Model: "deepseek-chat"}}, nil)
+	mockService.EXPECT().
 		GetSummaryLanguage(gomock.Any()).
 		Return("zh-CN")
 
@@ -756,6 +771,9 @@ func TestAIHandler_CachedTranslations_StatusLookupErrorStillOK(t *testing.T) {
 	mockService.EXPECT().
 		GetTranslationStatuses(gomock.Any(), []int64{123}, false).
 		Return(nil, errors.New("status db down"))
+	mockService.EXPECT().
+		GetSummaryStatuses(gomock.Any(), []int64{123}, false).
+		Return(nil, errors.New("summary status db down"))
 	mockService.EXPECT().
 		GetSummaryLanguage(gomock.Any()).
 		Return("zh-CN")

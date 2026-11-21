@@ -15,6 +15,20 @@ export type TranslationStatusState = "translating" | "done" | "failed";
 export interface TranslationStatusEntry {
   state: TranslationStatusState;
   error?: string;
+  /** 翻译/摘要实际使用的服务名（如「Google 翻译」/模型名），供徽章悬停展示。 */
+  service?: string;
+  /** 服务提供商。 */
+  provider?: string;
+  /** 走模型时的模型名。 */
+  model?: string;
+}
+
+/** AI 摘要状态（与「翻译」分开存；列表卡片据此显示摘要徽章）。 */
+export interface AISummaryStatusEntry {
+  state: TranslationStatusState;
+  error?: string;
+  provider?: string;
+  model?: string;
 }
 
 export interface EntryTranslationStatus {
@@ -40,6 +54,8 @@ interface TranslationState {
   disabled: Set<string>;
   // REQ3：过程状态，key = `${entryId}:${language}`
   statuses: Record<string, EntryTranslationStatus>;
+  // AI 摘要状态，key = `${entryId}:${language}`（与翻译分开）
+  aiSummaryStatuses: Record<string, AISummaryStatusEntry>;
 
   // Actions
   getTranslation: (
@@ -70,12 +86,24 @@ interface TranslationState {
   ) => void;
   /** REQ3：清状态（不传 language 则清该条目所有语言） */
   clearStatus: (articleId: string, language?: string) => void;
+  /** 读某条目某语言的 AI 摘要状态 */
+  getSummaryStatus: (
+    articleId: string,
+    language: string,
+  ) => AISummaryStatusEntry | undefined;
+  /** 写/覆盖 AI 摘要状态（传 null 删除） */
+  setSummaryStatus: (
+    articleId: string,
+    language: string,
+    value: AISummaryStatusEntry | null,
+  ) => void;
 }
 
 export const useTranslationStore = create<TranslationState>((set, get) => ({
   data: {},
   disabled: new Set<string>(),
   statuses: {},
+  aiSummaryStatuses: {},
 
   getTranslation: (
     articleId: string,
@@ -123,11 +151,15 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
       const { [articleId]: _removed, ...rest } = state.data;
       void _removed;
       const statuses = { ...state.statuses };
+      const aiSummaryStatuses = { ...state.aiSummaryStatuses };
       const prefix = `${articleId}:`;
       for (const key of Object.keys(statuses)) {
         if (key.startsWith(prefix)) delete statuses[key];
       }
-      return { data: rest, statuses };
+      for (const key of Object.keys(aiSummaryStatuses)) {
+        if (key.startsWith(prefix)) delete aiSummaryStatuses[key];
+      }
+      return { data: rest, statuses, aiSummaryStatuses };
     });
   },
 
@@ -140,11 +172,15 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
       void _removed;
       // REQ3：停用后清掉该条目的过程状态，免得卡片继续显示「翻译中 / 失败」
       const statuses = { ...state.statuses };
+      const aiSummaryStatuses = { ...state.aiSummaryStatuses };
       const prefix = `${articleId}:`;
       for (const key of Object.keys(statuses)) {
         if (key.startsWith(prefix)) delete statuses[key];
       }
-      return { disabled: newDisabled, data: rest, statuses };
+      for (const key of Object.keys(aiSummaryStatuses)) {
+        if (key.startsWith(prefix)) delete aiSummaryStatuses[key];
+      }
+      return { disabled: newDisabled, data: rest, statuses, aiSummaryStatuses };
     });
   },
 
@@ -206,6 +242,27 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
       return { statuses };
     });
   },
+
+  getSummaryStatus: (articleId: string, language: string) => {
+    return get().aiSummaryStatuses[`${articleId}:${language}`];
+  },
+
+  setSummaryStatus: (
+    articleId: string,
+    language: string,
+    value: AISummaryStatusEntry | null,
+  ) => {
+    const key = `${articleId}:${language}`;
+    set((state) => {
+      const aiSummaryStatuses = { ...state.aiSummaryStatuses };
+      if (value === null) {
+        delete aiSummaryStatuses[key];
+      } else {
+        aiSummaryStatuses[key] = value;
+      }
+      return { aiSummaryStatuses };
+    });
+  },
 }));
 
 // Helper for external use
@@ -245,4 +302,11 @@ export const translationActions = {
     useTranslationStore.getState().setStatus(articleId, language, patch),
   clearStatus: (articleId: string, language?: string) =>
     useTranslationStore.getState().clearStatus(articleId, language),
+  getSummaryStatus: (articleId: string, language: string) =>
+    useTranslationStore.getState().getSummaryStatus(articleId, language),
+  setSummaryStatus: (
+    articleId: string,
+    language: string,
+    value: AISummaryStatusEntry | null,
+  ) => useTranslationStore.getState().setSummaryStatus(articleId, language, value),
 };
