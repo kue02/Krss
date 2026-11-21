@@ -1,6 +1,7 @@
 package sdk
 
 import (
+	"encoding/json"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -119,3 +120,16 @@ func TestServerUI_NotFoundAndMethod(t *testing.T) {
 // 编译期确认测试替身真的满足宿主契约（否则测试测的是别的东西）。
 var _ plugin.Plugin = uiTestPlugin{}
 var _ plugin.UIAssets = uiTestPlugin{}
+
+// 插件运行时安全：/meta 必须带 apiVersion，值 = plugin.ProtocolVersion（宿主注册时据此校验）。
+func TestServerMeta_ReportsAPIVersion(t *testing.T) {
+	h := newUITestHandler(t, uiTestPlugin{})
+	rec := uiGet(t, h, "/meta")
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var body struct {
+		APIVersion int `json:"apiVersion"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Equal(t, plugin.ProtocolVersion, body.APIVersion)
+}

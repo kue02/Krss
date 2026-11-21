@@ -52,7 +52,13 @@ type EntryService interface {
 	// WithPlugins 装上插件注册表（55-21：条目详情读取时跑阅读期处理器）。
 	// builder 形状照 RefreshService.WithPlugins：main.go 构造处一行接上，不传 = 老行为。
 	WithPlugins(registry *plugin.Registry) EntryService
+	// WithEntryProcessorTimeout 覆盖单个阅读期处理器的超时（默认 2s；测试用短超时）。
+	WithEntryProcessorTimeout(timeout time.Duration) EntryService
 }
+
+// entryProcessorTimeout 单个阅读期处理器的超时（插件运行时安全）。
+// 铁律：一个插件不许拖住正文 —— 每个插件单独给这么久，超时就跳过，继续下一个。
+const entryProcessorTimeout = 2 * time.Second
 
 type entryService struct {
 	entries repository.EntryRepository
@@ -62,6 +68,8 @@ type entryService struct {
 	filters repository.FilterRepository
 	// plugins 阅读期处理器来源（55-21）；nil = 老行为（详情原样返回）。
 	plugins *plugin.Registry
+	// processorTimeout 单个处理器的超时；默认 entryProcessorTimeout，测试可改小。
+	processorTimeout time.Duration
 }
 
 func NewEntryService(
@@ -71,10 +79,11 @@ func NewEntryService(
 	filters repository.FilterRepository,
 ) EntryService {
 	return &entryService{
-		entries: entries,
-		feeds:   feeds,
-		folders: folders,
-		filters: filters,
+		entries:          entries,
+		feeds:            feeds,
+		folders:          folders,
+		filters:          filters,
+		processorTimeout: entryProcessorTimeout,
 	}
 }
 
@@ -82,6 +91,15 @@ func NewEntryService(
 // 用 builder 而不是加构造参数：既有 10+ 处测试调用点零改动，nil 就是老行为。
 func (s *entryService) WithPlugins(registry *plugin.Registry) EntryService {
 	s.plugins = registry
+	return s
+}
+
+// WithEntryProcessorTimeout 覆盖单个阅读期处理器的超时（默认 2s）。
+// 主要给测试用：真等 2s 太慢，短超时就能验证「卡住的插件不拖住正文」。
+func (s *entryService) WithEntryProcessorTimeout(timeout time.Duration) EntryService {
+	if timeout > 0 {
+		s.processorTimeout = timeout
+	}
 	return s
 }
 
@@ -98,10 +116,17 @@ func (s *entryService) runEntryProcessors(ctx context.Context, entry model.Entry
 		return entry
 	}
 	for _, processor := range s.plugins.EntryProcessors() {
+		// 父 ctx 已取消（用户离开 / 请求断开）：立即停手，别再调后面的插件。
+		if ctx.Err() != nil {
+			break
+		}
 		if !processor.Matches(feed, entry) {
 			continue
 		}
-		processed, err := processor.Process(entry)
+		// 每个插件单独限时：单个插件卡住/超时只跳过它，继续下一个，绝不拖住正文。
+		procCtx, cancel := context.WithTimeout(ctx, s.processorTimeout)
+		processed, err := processor.Process(procCtx, entry)
+		cancel()
 		if err != nil {
 			logger.Warn("entry processor failed", "module", "service", "action", "process", "resource", "entry", "result", "failed", "processor", processor.ID(), "entry_id", entry.ID, "error", err)
 			continue

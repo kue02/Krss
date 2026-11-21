@@ -65,7 +65,7 @@ type markerProcessor struct{}
 
 func (markerProcessor) ID() string                               { return "demo-marker" }
 func (markerProcessor) Matches(_ model.Feed, _ model.Entry) bool { return true }
-func (markerProcessor) Process(entry model.Entry) (model.Entry, error) {
+func (markerProcessor) Process(_ context.Context, entry model.Entry) (model.Entry, error) {
 	marker := `<hr><p><em>[demo 插件处理过本条]</em></p>`
 	if entry.Content == nil {
 		entry.Content = &marker

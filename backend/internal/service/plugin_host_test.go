@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -119,22 +120,32 @@ func TestPluginHost_InstallTakesEffectWithoutRestart(t *testing.T) {
 	installExternalPlugin(t, pluginsDir, "demo-ext", pluginsrvBinary(t), true)
 	require.NoError(t, host.Ensure(ctx))
 
+	// 新发现的外部插件一律停用：即便 manifest autostart=true 也不自动起、不自动启用。
 	meta, exists := reg.Meta("demo-ext")
-	require.True(t, exists, "不重启即在册")
+	require.True(t, exists, "不重启即在册（停用壳）")
 	require.Equal(t, "http", meta.Transport, "外部插件标 http")
 	require.False(t, meta.Builtin, "外部插件不是内置")
-	require.True(t, reg.Enabled("demo-ext"), "autostart=true ⇒ 直接启用")
-	require.Equal(t, true, repo.states["demo-ext"], "发现即落库")
+	require.False(t, reg.Enabled("demo-ext"), "新发现默认停用（autostart 不再自动执行）")
+	require.Equal(t, false, repo.states["demo-ext"], "首次发现落库为停用")
+	_, hasAction := reg.LookupAction("demo-ext", "log")
+	require.False(t, hasAction, "停用壳没有动作")
+
+	// 用户在设置页启用后才拉起真身、才有动作。
+	svc := service.NewPluginService(reg, repo, newSettingsStub(), service.WithPluginHost(host))
+	_, err := svc.SetEnabled(ctx, "demo-ext", true)
+	require.NoError(t, err)
+	require.True(t, reg.Enabled("demo-ext"), "用户启用后生效")
+	require.Equal(t, true, repo.states["demo-ext"], "启用落库")
 
 	action, ok := reg.LookupAction("demo-ext", "log")
-	require.True(t, ok, "动作已包成内置同形")
+	require.True(t, ok, "启用后动作已包成内置同形")
 	require.NoError(t, action.Execute(ctx, plugin.ActionRequest{Config: map[string]string{"note": "hot"}}),
 		"真 socket 真执行")
 
 	// 阅读期处理与失败归类也走同一条 socket（适配器形状与内置一模一样）
 	processors := reg.EntryProcessors()
 	require.Len(t, processors, 1, "阅读期处理器已注册")
-	processed, err := processors[0].Process(model.Entry{})
+	processed, err := processors[0].Process(ctx, model.Entry{})
 	require.NoError(t, err)
 	require.NotNil(t, processed.Content)
 	require.Contains(t, *processed.Content, "demo 插件处理过本条")
@@ -172,8 +183,15 @@ func TestPluginHost_CrashRestartsAndCapsOut(t *testing.T) {
 	host := newTestHost(t, pluginsDir, reg, repo)
 
 	installCrashPlugin(t, pluginsDir, "crashy")
-	// 首次就起不来：Ensure 不该把整个清单接口搞挂（错在插件不在宿主）
+	// 新发现默认停用，Ensure 不会自己拉起。
 	require.NoError(t, host.Ensure(ctx))
+	_, enabled := reg.Meta("crashy")
+	require.True(t, enabled, "停用壳在册（看得见、能勾回来）")
+	require.Equal(t, false, repo.states["crashy"], "新发现默认停用")
+	// 模拟用户在设置页启用（插件必崩时真链路 Start 会返回错误、不落库，这里直接把库置为启用再拉起），
+	// 以便验证「连崩封顶后不再重启」的看护语义。
+	require.NoError(t, repo.Upsert(ctx, "crashy", true))
+	require.Error(t, host.Start(ctx, "crashy"), "起来就崩 ⇒ Start 返回错误，但看护会接手重试")
 
 	waitUntil(t, 5*time.Second, "自动重启发生", func() bool {
 		st, ok := host.State("crashy")
@@ -215,6 +233,10 @@ func TestPluginHost_DisableKillsProcess(t *testing.T) {
 
 	installExternalPlugin(t, pluginsDir, "demo-ext", pluginsrvBinary(t), true)
 	require.NoError(t, host.Ensure(ctx))
+	// 新发现默认停用，先走 service 真链路启用才拉起进程。
+	_, err := svc.SetEnabled(ctx, "demo-ext", true)
+	require.NoError(t, err)
+	require.True(t, reg.Enabled("demo-ext"))
 
 	st, ok := host.State("demo-ext")
 	require.True(t, ok)
@@ -222,7 +244,7 @@ func TestPluginHost_DisableKillsProcess(t *testing.T) {
 	require.NoError(t, syscall.Kill(st.PID, 0), "停用前进程活着")
 
 	// 走 service 真链路（PATCH /api/plugins/demo-ext {enabled:false} 的落点）
-	_, err := svc.SetEnabled(ctx, "demo-ext", false)
+	_, err = svc.SetEnabled(ctx, "demo-ext", false)
 	require.NoError(t, err)
 	require.False(t, repo.states["demo-ext"], "停用落库")
 	require.True(t, processGone(st.PID), "SIGTERM 后进程真的没了")
@@ -299,7 +321,12 @@ func TestPluginHost_ManifestDeclaresUI(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "plugin.json"), []byte(manifest), 0o644))
 
 	require.NoError(t, host.Ensure(ctx))
-	require.True(t, reg.Enabled("demo-ext"), "安装即启用")
+	require.False(t, reg.Enabled("demo-ext"), "新发现默认停用")
+	// 启用后才拉起真身、才带上 manifest 声明的贡献 / 视图 / 权限。
+	svc := service.NewPluginService(reg, repo, newSettingsStub(), service.WithPluginHost(host))
+	_, err = svc.SetEnabled(ctx, "demo-ext", true)
+	require.NoError(t, err)
+	require.True(t, reg.Enabled("demo-ext"), "用户启用后生效")
 
 	items := reg.AllContributions()[plugin.SurfaceEntryContextMenu]
 	require.Len(t, items, 1, "manifest 里声明的界面贡献要进清单")
@@ -313,4 +340,56 @@ func TestPluginHost_ManifestDeclaresUI(t *testing.T) {
 	meta, ok := reg.Meta("demo-ext")
 	require.True(t, ok)
 	require.Equal(t, []string{"entries:read", "data"}, meta.Permissions, "权限也要从 manifest 带出来")
+}
+
+// 插件运行时安全：外部插件子进程只拿到最小环境变量白名单，宿主敏感变量不外泄。
+func TestPluginChildEnv_OnlyWhitelistedAndInjected(t *testing.T) {
+	t.Setenv("KRSS_TEST_SECRET", "super-secret-value")
+	t.Setenv("PATH", "/usr/local/bin:/usr/bin")
+
+	env := service.PluginChildEnv("/tmp/plugin.sock", "tok-123", "demo-ext", "http://127.0.0.1:8082")
+	joined := strings.Join(env, "\n")
+
+	require.NotContains(t, joined, "KRSS_TEST_SECRET", "宿主敏感变量不许继承给插件")
+	require.NotContains(t, joined, "super-secret-value")
+	require.Contains(t, joined, "PATH=/usr/local/bin:/usr/bin", "PATH 必须放行")
+	for _, want := range []string{
+		"KRSS_PLUGIN_SOCKET=/tmp/plugin.sock",
+		"KRSS_PLUGIN_TOKEN=tok-123",
+		"KRSS_PLUGIN_ID=demo-ext",
+		"KRSS_PLUGIN_API=http://127.0.0.1:8082",
+	} {
+		require.Contains(t, joined, want, "四个 KRSS_PLUGIN_* 必须注入")
+	}
+}
+
+// 插件运行时安全：plugin.log 超过阈值后轮转，旧内容进 plugin.log.1（只保留一代），新文件为空。
+func TestOpenPluginLog_RotatesWhenOversized(t *testing.T) {
+	dir := t.TempDir()
+	restore := service.SetPluginLogMaxBytesForTest(64)
+	t.Cleanup(restore)
+
+	// 先放一个旧的 .1，验证轮转时会被覆盖（只留一代）。
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "plugin.log.1"), []byte("STALE"), 0o600))
+
+	// 第一次打开：文件不存在 ⇒ 不轮转，写入超过阈值的内容。
+	f, err := service.OpenPluginLog(dir)
+	require.NoError(t, err)
+	_, err = f.WriteString(strings.Repeat("x", 100))
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	// 再次打开：旧文件超过阈值 ⇒ 轮转到 .1，新建空文件。
+	f2, err := service.OpenPluginLog(dir)
+	require.NoError(t, err)
+	info, err := f2.Stat()
+	require.NoError(t, err)
+	require.Zero(t, info.Size(), "轮转后新的 plugin.log 应为空")
+	require.NoError(t, f2.Close())
+
+	backup, err := os.ReadFile(filepath.Join(dir, "plugin.log.1"))
+	require.NoError(t, err, "旧内容进 plugin.log.1")
+	require.NotEqual(t, "STALE", string(backup), "旧的 .1 应被删掉，只保留一代")
+	require.Equal(t, 100, len(backup))
+	require.Equal(t, strings.Repeat("x", 100), string(backup))
 }

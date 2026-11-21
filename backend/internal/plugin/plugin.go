@@ -108,10 +108,13 @@ type ActionTester interface {
 
 // EntryProcessor 阅读体验扩展点：对某类订阅源的特别优化落在这一层。
 // Matches 决定要不要跑；Process 返回处理后的条目。出错由调用方兜底（返回原条目）。
+//
+// ctx 由宿主按「单个插件」注入超时（读路径不能被一个卡死的插件拖住），插件必须尊重取消：
+// 阻塞等待 / 网络请求都要能随 ctx.Done() 返回，否则宿主仍会被同步调用卡住。
 type EntryProcessor interface {
 	ID() string
 	Matches(feed model.Feed, entry model.Entry) bool
-	Process(entry model.Entry) (model.Entry, error)
+	Process(ctx context.Context, entry model.Entry) (model.Entry, error)
 }
 
 // FetchClassifier 抓取失败归类扩展点（RSSHub 错误页是第一个真实实现）。

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"krss/backend/internal/model"
 	"krss/backend/internal/plugin"
@@ -31,7 +32,7 @@ func (fakeTitleSuffixProcessor) ID() string { return "fake-title-suffix" }
 
 func (fakeTitleSuffixProcessor) Matches(model.Feed, model.Entry) bool { return true }
 
-func (p fakeTitleSuffixProcessor) Process(entry model.Entry) (model.Entry, error) {
+func (p fakeTitleSuffixProcessor) Process(_ context.Context, entry model.Entry) (model.Entry, error) {
 	if p.err != nil {
 		return model.Entry{}, p.err
 	}
@@ -126,4 +127,106 @@ func TestGetByID_NoPluginRegistryKeepsOriginal(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, entry.Title)
 	require.Equal(t, "原题目", *entry.Title, "没装注册表 ⇒ 老行为（原样返回）")
+}
+
+// fakeSlowProcessor 模拟「尊重 ctx 但很慢」的插件：等满 delay 才改标题，超时则随 ctx 退出。
+type fakeSlowProcessor struct{ delay time.Duration }
+
+func (fakeSlowProcessor) ID() string                           { return "fake-slow" }
+func (fakeSlowProcessor) Matches(model.Feed, model.Entry) bool { return true }
+
+func (p fakeSlowProcessor) Process(ctx context.Context, entry model.Entry) (model.Entry, error) {
+	select {
+	case <-time.After(p.delay):
+		title := "处理完了"
+		entry.Title = &title
+		return entry, nil
+	case <-ctx.Done():
+		return entry, ctx.Err()
+	}
+}
+
+// 插件运行时安全：单个处理器卡住超过超时 ⇒ 只跳过它、返回原条目，读路径不被拖住。
+func TestGetByID_SlowProcessorTimesOutAndReturnsOriginal(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	svc, mockEntries, mockFeeds := entryServiceWithMocks(ctrl)
+	title := "原题目"
+	mockEntries.EXPECT().GetByID(gomock.Any(), int64(11)).
+		Return(model.Entry{ID: 11, FeedID: 3, Title: &title}, nil)
+	mockFeeds.EXPECT().GetByID(gomock.Any(), int64(3)).
+		Return(model.Feed{ID: 3, Title: "某订阅源"}, nil)
+
+	svc = svc.WithPlugins(newProcessorRegistry(t, fakeSlowProcessor{delay: 2 * time.Second})).
+		WithEntryProcessorTimeout(30 * time.Millisecond)
+
+	start := time.Now()
+	entry, err := svc.GetByID(context.Background(), 11)
+	elapsed := time.Since(start)
+	require.NoError(t, err)
+	require.NotNil(t, entry.Title)
+	require.Equal(t, "原题目", *entry.Title, "超时 ⇒ 返回原条目（不被卡住的插件改写）")
+	require.Less(t, elapsed, time.Second, "单个插件超时后应立即返回，实际 %s", elapsed)
+}
+
+// fakeCancelProcessor 处理时取消父 ctx（模拟请求断开 / 上游取消）。
+type fakeCancelProcessor struct{ cancel context.CancelFunc }
+
+func (fakeCancelProcessor) ID() string                           { return "a-cancel" }
+func (fakeCancelProcessor) Matches(model.Feed, model.Entry) bool { return true }
+func (p fakeCancelProcessor) Process(_ context.Context, entry model.Entry) (model.Entry, error) {
+	p.cancel()
+	return entry, nil
+}
+
+// fakeRecordingProcessor 记录是否被调用。
+type fakeRecordingProcessor struct{ called *bool }
+
+func (fakeRecordingProcessor) ID() string                           { return "z-recording" }
+func (fakeRecordingProcessor) Matches(model.Feed, model.Entry) bool { return true }
+func (p fakeRecordingProcessor) Process(_ context.Context, entry model.Entry) (model.Entry, error) {
+	*p.called = true
+	return entry, nil
+}
+
+// fakeMultiProcessorPlugin 一个插件挂多个处理器（用来验证「前一个取消 ctx 后，后一个不再被调」）。
+type fakeMultiProcessorPlugin struct{ processors []plugin.EntryProcessor }
+
+func (fakeMultiProcessorPlugin) Meta() plugin.Meta {
+	return plugin.Meta{ID: "fake-multi", Name: "多处理器", Builtin: true}
+}
+func (fakeMultiProcessorPlugin) Actions() []plugin.Action                   { return nil }
+func (fakeMultiProcessorPlugin) SettingsSections() []plugin.SettingsSection { return nil }
+func (fakeMultiProcessorPlugin) FetchClassifiers() []plugin.FetchClassifier { return nil }
+func (p fakeMultiProcessorPlugin) EntryProcessors() []plugin.EntryProcessor {
+	return p.processors
+}
+
+// 插件运行时安全：父 ctx 在处理过程中被取消 ⇒ 立即停止，不再调用后续处理器。
+func TestGetByID_CancelledContextStopsLaterProcessors(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	svc, mockEntries, mockFeeds := entryServiceWithMocks(ctrl)
+	title := "原题目"
+	mockEntries.EXPECT().GetByID(gomock.Any(), int64(12)).
+		Return(model.Entry{ID: 12, FeedID: 3, Title: &title}, nil)
+	mockFeeds.EXPECT().GetByID(gomock.Any(), int64(3)).
+		Return(model.Feed{ID: 3, Title: "某订阅源"}, nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	called := false
+	registry := plugin.NewRegistry()
+	require.NoError(t, registry.Register(fakeMultiProcessorPlugin{processors: []plugin.EntryProcessor{
+		fakeCancelProcessor{cancel: cancel},
+		fakeRecordingProcessor{called: &called},
+	}}))
+	svc = svc.WithPlugins(registry)
+
+	entry, err := svc.GetByID(ctx, 12)
+	require.NoError(t, err)
+	require.NotNil(t, entry.Title)
+	require.Equal(t, "原题目", *entry.Title)
+	require.False(t, called, "ctx 取消后，后续处理器不应再被调用")
 }
