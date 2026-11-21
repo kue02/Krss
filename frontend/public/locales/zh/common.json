@@ -2,6 +2,19 @@
   "app": {
     "name": "Krss"
   },
+  "about": {
+    "title": "关于",
+    "tagline": "自托管 RSS 阅读器，单二进制 + SQLite，开箱即用。",
+    "version": "版本",
+    "license": "开源许可",
+    "tech_stack": "技术栈",
+    "links": "链接",
+    "repo": "GitHub 仓库",
+    "issues": "问题反馈",
+    "releases": "更新日志",
+    "made_with": "用 ❤ 为 RSS 而做",
+    "description": "项目开源在 GitHub，欢迎 Star、反馈问题或查看更新日志。"
+  },
   "sidebar": {
     "feeds": "订阅",
     "expand_all": "全部展开",
@@ -70,6 +83,7 @@
   },
   "settings": {
     "title": "设置",
+    "about": "关于",
     "general": "通用",
     "network": "网络",
     "appearance": "外观",
@@ -895,6 +909,10 @@
     "ui_scale_large": "大",
     "ui_scale_xl": "特大",
     "title": "阅读与列表",
+    "description": "字体、字号、卡片与动效，都在这里调。",
+    "group_typography": "排版",
+    "group_cards": "卡片与列表",
+    "group_performance": "性能与动效",
     "card_image": "列表图片",
     "card_image_none": "不显示",
     "card_image_small": "小图",

@@ -3,13 +3,23 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import path from "path";
+import { readFileSync } from "node:fs";
 
 // 后端地址：并行开工时（另一条线占着 :8090）用 KRSS_DEV_BACKEND 指向自己的后端，例如
 //   KRSS_DEV_BACKEND=http://localhost:8082 bun run dev
 const backendOrigin = process.env.KRSS_DEV_BACKEND ?? "http://localhost:8090";
 
+// 版本号只从 package.json 读一处，注入到前端（关于页显示）
+const pkg = JSON.parse(
+  readFileSync(path.resolve(__dirname, "package.json"), "utf-8"),
+) as { version: string };
+const appVersion = pkg.version;
+
 // https://vite.dev/config/
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+  },
   plugins: [
     react(),
     tailwindcss(),

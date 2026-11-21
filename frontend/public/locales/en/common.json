@@ -2,6 +2,19 @@
   "app": {
     "name": "Krss"
   },
+  "about": {
+    "title": "About",
+    "tagline": "A self-hosted RSS reader. Single binary + SQLite, works out of the box.",
+    "version": "Version",
+    "license": "License",
+    "tech_stack": "Tech stack",
+    "links": "Links",
+    "repo": "GitHub repository",
+    "issues": "Report an issue",
+    "releases": "Release notes",
+    "made_with": "Made with ❤ for RSS",
+    "description": "Krss is open source on GitHub. Star it, report an issue, or check the release notes."
+  },
   "sidebar": {
     "feeds": "Feeds",
     "expand_all": "Expand all",
@@ -70,6 +83,7 @@
   },
   "settings": {
     "title": "Settings",
+    "about": "About",
     "general": "General",
     "network": "Network",
     "appearance": "Appearance",
@@ -898,6 +912,10 @@
     "ui_scale_large": "Large",
     "ui_scale_xl": "XL",
     "title": "Reading & list",
+    "description": "Fonts, sizes, cards and motion, all in one place.",
+    "group_typography": "Typography",
+    "group_cards": "Cards & list",
+    "group_performance": "Performance & motion",
     "card_image": "List thumbnails",
     "card_image_none": "Hidden",
     "card_image_small": "Small",

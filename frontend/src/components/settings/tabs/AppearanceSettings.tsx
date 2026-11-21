@@ -47,6 +47,14 @@ import { FeedAvatar } from "@/components/ui/feed-avatar";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Select } from "@/components/ui/select";
 import {
+  ArrowUpDown,
+  Check,
+  LayoutGrid,
+  Palette,
+  Shapes,
+  Type,
+} from "lucide-react";
+import {
   FileTextIcon,
   ImageIcon,
   BellIcon,
@@ -62,7 +70,24 @@ const defaultContentTypes: ContentType[] = [
   "social",
 ];
 
-/** Nextflux 皮肤：亮/暗各一套配色的色卡选择行 */
+/** 色块上的骨架条该用深色还是浅色（按底色亮度判断） */
+function swatchInk(color?: string) {
+  const hex = (color ?? "#ffffff").replace("#", "");
+  const full =
+    hex.length === 3
+      ? hex
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : hex;
+  const r = parseInt(full.slice(0, 2), 16) || 0;
+  const g = parseInt(full.slice(2, 4), 16) || 0;
+  const b = parseInt(full.slice(4, 6), 16) || 0;
+  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return luminance > 0.6 ? "rgba(0,0,0,0.14)" : "rgba(255,255,255,0.45)";
+}
+
+/** 主题配色瓷砖：迷你预览 + 名称 + 选中对勾（保留 aria-pressed / title / onClick 语义） */
 function ThemeSwatchRow({
   title,
   options,
@@ -76,14 +101,13 @@ function ThemeSwatchRow({
 }) {
   const { t } = useTranslation();
 
-
-
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2">
+    <div className="space-y-2">
       <div className="text-xs text-muted-foreground">{title}</div>
-      <div className="flex items-center gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {options.map((option) => {
           const isActive = option.id === value;
+          const ink = swatchInk(option.color);
           return (
             <button
               key={option.id}
@@ -92,17 +116,41 @@ function ThemeSwatchRow({
               aria-pressed={isActive}
               title={t(`theme.themes.${option.id}`)}
               className={cn(
-                "flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs transition-colors",
+                "group relative overflow-hidden rounded-xl border p-1.5 text-left transition-all",
                 isActive
-                  ? "border-ring bg-item-active text-foreground"
-                  : "border-border text-muted-foreground hover:bg-item-hover",
+                  ? "border-primary/60 bg-primary/5 shadow-nf-sm"
+                  : "border-border/60 bg-background/40 hover:border-border hover:bg-item-hover",
               )}
             >
               <span
-                className="size-4 shrink-0 rounded-full border border-border"
+                aria-hidden
+                className="flex h-14 w-full flex-col justify-end gap-1 rounded-lg p-2"
                 style={{ backgroundColor: option.color }}
-              />
-              {t(`theme.themes.${option.id}`)}
+              >
+                <span
+                  className="h-1.5 w-2/3 rounded-full"
+                  style={{ backgroundColor: ink }}
+                />
+                <span
+                  className="h-1.5 w-1/2 rounded-full"
+                  style={{ backgroundColor: ink }}
+                />
+              </span>
+              <span className="mt-1.5 flex items-center gap-1.5 px-0.5">
+                <span
+                  className="size-2.5 shrink-0 rounded-full border border-border"
+                  style={{ backgroundColor: option.color }}
+                />
+                <span className="truncate text-xs font-medium text-foreground">
+                  {t(`theme.themes.${option.id}`)}
+                </span>
+                {isActive && (
+                  <Check
+                    className="ml-auto size-3.5 shrink-0 text-primary"
+                    strokeWidth={2.5}
+                  />
+                )}
+              </span>
             </button>
           );
         })}
@@ -111,7 +159,60 @@ function ThemeSwatchRow({
   );
 }
 
-/** 设置行：左侧说明 + 右侧控件 */
+/** 分区卡片：图标 + 标题 + 描述 + 右侧操作，下面装设置行（纯展示，无状态） */
+function SectionCard({
+  icon,
+  title,
+  description,
+  action,
+  children,
+  className,
+}: {
+  icon: ReactNode;
+  title: string;
+  description?: string;
+  action?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section
+      className={cn(
+        "overflow-hidden rounded-2xl border border-border/60 bg-card/30 shadow-nf-sm",
+        className,
+      )}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/50 px-4 py-3.5">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-[var(--radius)] bg-primary/10 text-primary">
+            {icon}
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+            {description && (
+              <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                {description}
+              </p>
+            )}
+          </div>
+        </div>
+        {action && <div className="shrink-0">{action}</div>}
+      </div>
+      <div className="px-3 py-1.5">{children}</div>
+    </section>
+  );
+}
+
+/** 分区里的子分组小标题 */
+function GroupLabel({ children }: { children: ReactNode }) {
+  return (
+    <div className="px-1 pb-1 pt-4 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+      {children}
+    </div>
+  );
+}
+
+/** 设置行：左侧说明 + 右侧控件（DOM 契约：label 与控件同为根节点子元素） */
 function SettingRow({
   label,
   children,
@@ -125,10 +226,10 @@ function SettingRow({
   hint?: string;
 }) {
   return (
-    // 对齐 Nextflux 的设置行：min-h-12 / px-2.5 py-2 / 标签 14px
+    // 对齐 Nextflux 的设置行：min-h-12 / px-1 py-2.5 / 标签 14px
     <div
       className={cn(
-        "flex min-h-12 flex-wrap items-center justify-between gap-2 px-1 py-2",
+        "flex min-h-12 flex-wrap items-center justify-between gap-x-4 gap-y-2 px-1 py-2.5",
         disabled && "opacity-60",
       )}
       aria-disabled={disabled || undefined}
@@ -444,27 +545,25 @@ export function AppearanceSettings() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* 主题：模式 + 配色合并成一块（2026-09-17 用户要求整理）。
           原先「主题」（跟随系统/浅色/深色）与「配色主题」（亮色配色/暗色配色）并排摆、
           都用「亮/暗」字眼，看着像同一个东西设置了两遍；现在同一张卡片里说明：
           **模式决定用哪一栏皮肤**。 */}
-      <section className="rounded-lg border border-border/60 p-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="min-w-0">
-            <div className="text-sm font-medium">{t("theme.label")}</div>
-            <div className="text-xs text-muted-foreground">
-              {t("theme.description")}
-            </div>
-          </div>
+      <SectionCard
+        icon={<Palette className="size-4" strokeWidth={1.75} />}
+        title={t("theme.label")}
+        description={t("theme.description")}
+        action={
           <SegmentedControl
             className="shrink-0"
             value={theme}
             onValueChange={setTheme}
             options={themeOptions}
           />
-        </div>
-        <div className="mt-3 border-t border-border/60 pt-3">
+        }
+      >
+        <div className="border-t border-border/50 pt-3">
           <div className="mb-2">
             <div className="text-sm font-medium">
               {t("theme.palette_label")}
@@ -493,55 +592,18 @@ export function AppearanceSettings() {
             <AccentColorPicker />
           </SettingRow>
         </div>
-      </section>
+      </SectionCard>
 
       {/* 阅读与列表（对齐 Nextflux 的 Appearance / Readability）
           21 批之后这一节不再只是本机偏好：全部随服务端同步（只有「界面字号」按设备各存一套），
           所以原来那行「仅保存在本机（换设备不影响）」已经不准，已删掉。 */}
-      <section>
-        <div className="mb-3">
-          <div className="text-sm font-medium">
-            {t("appearance_reading.title")}
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          <SettingRow label={t("appearance_reading.card_image")}>
-            <SegmentedControl
-              className="shrink-0"
-              value={cardImageSize}
-              onValueChange={(value) => setCardImageSize(value as CardImageSize)}
-              options={[
-                {
-                  value: "none",
-                  label: t("appearance_reading.card_image_none"),
-                },
-                {
-                  value: "small",
-                  label: t("appearance_reading.card_image_small"),
-                },
-                {
-                  value: "large",
-                  label: t("appearance_reading.card_image_large"),
-                },
-              ]}
-            />
-          </SettingRow>
-
-          <SettingRow label={t("appearance_reading.preview_lines")}>
-            <SegmentedControl
-              className="shrink-0"
-              value={String(cardPreviewLines)}
-              onValueChange={(value) => setCardPreviewLines(Number(value))}
-              options={[
-                { value: "0", label: t("appearance_reading.none") },
-                { value: "1", label: "1" },
-                { value: "2", label: "2" },
-                { value: "3", label: "3" },
-              ]}
-            />
-          </SettingRow>
-
+      <SectionCard
+        icon={<Type className="size-4" strokeWidth={1.75} />}
+        title={t("appearance_reading.title")}
+        description={t("appearance_reading.description")}
+      >
+        <GroupLabel>{t("appearance_reading.group_typography")}</GroupLabel>
+        <div className="divide-y divide-border/50">
           <SettingRow label={t("appearance_reading.font_family")}>
             <SegmentedControl
               className="shrink-0"
@@ -597,6 +659,46 @@ export function AppearanceSettings() {
               ]}
             />
           </SettingRow>
+        </div>
+
+        <GroupLabel>{t("appearance_reading.group_cards")}</GroupLabel>
+        <div className="divide-y divide-border/50">
+          <SettingRow label={t("appearance_reading.card_image")}>
+            <SegmentedControl
+              className="shrink-0"
+              value={cardImageSize}
+              onValueChange={(value) => setCardImageSize(value as CardImageSize)}
+              options={[
+                {
+                  value: "none",
+                  label: t("appearance_reading.card_image_none"),
+                },
+                {
+                  value: "small",
+                  label: t("appearance_reading.card_image_small"),
+                },
+                {
+                  value: "large",
+                  label: t("appearance_reading.card_image_large"),
+                },
+              ]}
+            />
+          </SettingRow>
+
+          <SettingRow label={t("appearance_reading.preview_lines")}>
+            <SegmentedControl
+              className="shrink-0"
+              value={String(cardPreviewLines)}
+              onValueChange={(value) => setCardPreviewLines(Number(value))}
+              options={[
+                { value: "0", label: t("appearance_reading.none") },
+                { value: "1", label: "1" },
+                { value: "2", label: "2" },
+                { value: "3", label: "3" },
+              ]}
+            />
+          </SettingRow>
+
           <SettingRow label={t("appearance_reading.sidebar_feed_appearance")}>
             <SegmentedControl
               className="shrink-0"
@@ -665,6 +767,10 @@ export function AppearanceSettings() {
               ]}
             />
           </SettingRow>
+        </div>
+
+        <GroupLabel>{t("appearance_reading.group_performance")}</GroupLabel>
+        <div className="divide-y divide-border/50">
           {/* 进视口预载：默认开。关掉 = 回到「点开才发起请求」 */}
           <SettingRow
             label={t("appearance_reading.entry_prefetch")}
@@ -712,20 +818,15 @@ export function AppearanceSettings() {
             />
           </SettingRow>
         </div>
-      </section>
+      </SectionCard>
 
       {/* 形状 —— 圆角（18 批：组件 / 表单 / 订阅图标 三个旋钮，档位照 HeroUI 官方刻度） */}
-      <section>
-        <div className="mb-3">
-          <div className="text-sm font-medium">
-            {t("appearance_shape.title")}
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {t("appearance_shape.description")}
-          </div>
-        </div>
-
-        <div className="space-y-3">
+      <SectionCard
+        icon={<Shapes className="size-4" strokeWidth={1.75} />}
+        title={t("appearance_shape.title")}
+        description={t("appearance_shape.description")}
+      >
+        <div className="divide-y divide-border/50">
           <SettingRow label={t("appearance_shape.component_radius")}>
             <Select
               className="w-56 shrink-0"
@@ -760,7 +861,12 @@ export function AppearanceSettings() {
           --ui-icon-radius），所以这里**不需要任何联动代码** —— 旋钮一改，下面这几个现成组件当场跟着变。
           预览是只读的（不可点、不进 Tab 序），点它不会改任何设置。
         */}
-        <div className="mt-3 rounded-2xl border border-border/60 p-3">
+        <div className="relative mt-3 overflow-hidden rounded-2xl border border-border/60 bg-secondary/20 p-3">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 opacity-60 [background-image:radial-gradient(circle_at_1px_1px,var(--border)_1px,transparent_0)] [background-size:14px_14px]"
+          />
+          <div className="relative">
           <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
             <div className="text-xs font-medium">
               {t("appearance_shape.preview_title")}
@@ -806,30 +912,29 @@ export function AppearanceSettings() {
               <FeedAvatar src="/preview-icons/feed-square.png" size={20} />
             </span>
           </div>
+          </div>
         </div>
-      </section>
+      </SectionCard>
 
       {/* 按视图设置 —— 每个视图（文章 / 图片 / 通知）独立控制 */}
-      <section>
-        <div className="mb-3">
-          <div className="text-sm font-medium">
-            {t("appearance_view.title")}
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {t("appearance_view.description")}
-          </div>
-        </div>
-
-        <div className="space-y-3">
+      <SectionCard
+        icon={<LayoutGrid className="size-4" strokeWidth={1.75} />}
+        title={t("appearance_view.title")}
+        description={t("appearance_view.description")}
+      >
+        <div className="space-y-2.5">
           {(
             ["article", "picture", "notification", "social"] as ContentType[]
           ).map(
             (view) => (
               <div
                 key={view}
-                className="space-y-1 overflow-hidden rounded-xl bg-card/40 p-2 shadow-nf"
+                className="space-y-1 overflow-hidden rounded-xl border border-border/60 bg-background/40 p-2"
               >
-                <div className="text-xs font-semibold text-foreground">
+                <div className="flex items-center gap-2 px-1 pb-0.5 pt-1 text-xs font-semibold text-foreground">
+                  <span className="text-primary/80">
+                    {contentTypeMeta[view].icon}
+                  </span>
                   {t(`content_type.${view}`)}
                 </div>
                 {/* 第一栏的分界限按视图显示（用户 11-7：图片/社交媒体里可以不显示） */}
@@ -1212,19 +1317,14 @@ export function AppearanceSettings() {
             ),
           )}
         </div>
-      </section>
+      </SectionCard>
 
       {/* Category View Section */}
-      <section>
-        <div className="mb-3">
-          <div className="text-sm font-medium">
-            {t("settings.appearance_categories")}
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {t("settings.appearance_categories_description")}
-          </div>
-        </div>
-
+      <SectionCard
+        icon={<ArrowUpDown className="size-4" strokeWidth={1.75} />}
+        title={t("settings.appearance_categories")}
+        description={t("settings.appearance_categories_description")}
+      >
         <div className="space-y-3">
           {/* Horizontal draggable chips */}
           <div className="flex flex-wrap gap-2">
@@ -1247,8 +1347,8 @@ export function AppearanceSettings() {
                     dragTransition={{ bounceStiffness: 600, bounceDamping: 50 }}
                     transition={{ duration: 0.15 }}
                     className={cn(
-                      "flex cursor-grab items-center gap-2 rounded-lg border border-border/60 bg-card px-3 py-2",
-                      "hover:border-border hover:shadow-sm",
+                      "flex cursor-grab items-center gap-2 rounded-[var(--radius)] border border-border/60 bg-card/60 px-3 py-2 shadow-nf-sm",
+                      "hover:border-border hover:bg-card",
                       "active:cursor-grabbing active:shadow-md active:z-10",
                     )}
                     aria-roledescription={t("settings.appearance_drag")}
@@ -1316,7 +1416,7 @@ export function AppearanceSettings() {
             </div>
           )}
         </div>
-      </section>
+      </SectionCard>
     </div>
   );
 }
