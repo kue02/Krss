@@ -25,6 +25,11 @@ import { AddFeedPage } from "@/components/add-feed";
 import { EntryList } from "@/components/entry-list";
 import { PictureMasonry, Lightbox } from "@/components/picture-masonry";
 import { MobileTabBar } from "@/components/mobile/MobileTabBar";
+import {
+  applyMobileTabTap,
+  getMobileListScrollTop,
+} from "@/components/mobile/mobile-tab-scroll";
+import { dispatchScrollToTop } from "@/hooks/useScrollToTop";
 import { MenuIcon, SearchIcon } from "@/components/ui/icons";
 import { ScrollToTopZone } from "@/components/layout/ScrollToTopZone";
 import { ImagePreview } from "@/components/ui/image-preview";
@@ -415,13 +420,20 @@ function AuthenticatedApp() {
 
   const handleMobileTabSelect = useCallback(
     (type: ContentType) => {
-      // 插件视图是路由上的一层覆盖；切内容类型前先退出，否则 ?view= 会把新列表挡住。
-      if (pluginViewRoute.resolution.status !== "none") {
-        pluginViewRoute.closeView();
-      }
-      handleSelectAll(type);
+      // 用户 2026-11-22：第一次点当前 tab 回顶部，第二次才切到该类的「全部」。
+      // 插件视图是路由上的一层覆盖；走「切全部」分支前先退出，否则 ?view= 会把新列表挡住。
+      applyMobileTabTap({
+        type,
+        isActiveTab: type === contentType,
+        hasPluginView: pluginViewRoute.resolution.status !== "none",
+        selectionIsAll: selection.type === "all",
+        scrollTop: getMobileListScrollTop(),
+        scrollToTop: dispatchScrollToTop,
+        closePluginView: pluginViewRoute.closeView,
+        selectAll: () => handleSelectAll(type),
+      });
     },
-    [pluginViewRoute, handleSelectAll],
+    [contentType, pluginViewRoute, selection.type, handleSelectAll],
   );
 
   const handleFilterChange = useCallback(
