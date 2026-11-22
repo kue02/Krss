@@ -585,6 +585,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
               style={style}
               data-index={dataIndex}
               data-entry-id={dataEntryId}
+              data-entry-card=""
               {...longPress.touchHandlers}
               onClick={() => {
                 if (longPress.consumeClick()) return;
@@ -974,6 +975,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
             style={style}
             data-index={dataIndex}
             data-entry-id={dataEntryId}
+            data-entry-card=""
             {...longPress.touchHandlers}
             onClick={() => {
               if (longPress.consumeClick()) return;
@@ -1091,6 +1093,9 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                     <MachineTranslatedBadge
                       state={summaryBadgeState}
                       error={summaryStatus?.error}
+                      service={summaryStatus?.service}
+                      provider={summaryStatus?.provider}
+                      model={summaryStatus?.model}
                       variant="summary"
                       className="mt-0.5 shrink-0"
                     />
