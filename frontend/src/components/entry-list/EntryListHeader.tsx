@@ -276,7 +276,7 @@ export function EntryListHeader({
           ) : null}
           {onForceRefresh ? (
             <MobileActionSheetItem
-              icon={<RefreshIcon className="size-4" />}
+              icon={<RefreshIcon className="size-5" />}
               label={t("entry.force_refresh")}
               description={t("entry.force_refresh_hint")}
               onClick={() => {

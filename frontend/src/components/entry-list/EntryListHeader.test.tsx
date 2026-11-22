@@ -265,10 +265,10 @@ describe("EntryListHeader 移动端顶栏与 Web 图标统一", () => {
       within(panel).getByText("appearance_view.article_layout_hover"),
     ).toBeTruthy();
 
-    /* 强制刷新与 Web 右键菜单同一颗 RefreshIcon（16px） */
+    /* 强制刷新与 Web 右键菜单同一颗 RefreshIcon；面板内图标统一 20px(size-5) */
     const forceRefreshRow = forceRefresh.closest("button");
     const forceRefreshSvg = forceRefreshRow?.querySelector("svg");
-    expect(forceRefreshSvg?.getAttribute("class")).toBe("size-4");
+    expect(forceRefreshSvg?.getAttribute("class")).toBe("size-5");
     expect(forceRefreshSvg?.querySelector("path")?.getAttribute("d")).toBe(
       REFRESH_ICON_PATH,
     );
