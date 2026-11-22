@@ -35,6 +35,7 @@
   接口改动跑 `swag init`；只动必要的一处、不改既有行为语义。
 - 前端 React/TS：禁止 `any`；i18n 中英必须同步；HTML 渲染走 `unified` + `rehype` 管道。
 - 提交规范：Conventional Commits + 简体中文标题；**只 `git add <具体路径>`**，不要 `-A`；`main` 历史只前进。
+- **提交信息禁止出现 `Co-Authored-By: Hermes Agent`**：该署名邮箱绑定了无关的 GitHub 账号，会把合著算到别人头上、污染仓库 Contributors 图（2026-11-22 已因此重写历史清除一次）。协作署名只写真实贡献者，或干脆不写。
 - 迁移编号：21 过滤 / 25 视图图标 / 26 代理 / 27 MCP 已占用，新的从 28 起（与 `.hermes.md` 保持一致）。
 - 质量门：后端 `cd backend && make test && make lint`；前端 `cd frontend && bun run test`（退出码 0）+ `bunx tsc -b`。
 - 并行开工：用 git worktree，各自分支各自目录；`:8090` + 主库归主树，另一个用 `:8082` + 自己的库副本。
