@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, cleanup, act, screen } from "@testing-library/react";
 import type { Entry } from "@/types/api";
+import { setUISetting } from "@/hooks/useUISettings";
 
 const {
   mockMarkManyAsRead,
@@ -267,6 +268,8 @@ describe("PictureMasonry scroll mark read", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    // 本文件的用例针对的是「网格/瀑布流」这套图片墙实现，固定 layout 为 grid（默认已改成 hover）
+    setUISetting("pictureLayout", "grid");
     originalIntersectionObserver = globalThis.IntersectionObserver;
     originalResizeObserver = globalThis.ResizeObserver;
     globalThis.ResizeObserver = undefined as unknown as typeof ResizeObserver;

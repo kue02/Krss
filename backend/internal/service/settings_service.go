@@ -203,8 +203,8 @@ const (
 // 拉取默认值（改这里等于改「没显式配置时」的行为）。
 const (
 	DefaultRefreshIntervalMinutes    = 15
-	DefaultRefreshConcurrency        = 8
-	DefaultRefreshPerHostConcurrency = 6
+	DefaultRefreshConcurrency        = 12
+	DefaultRefreshPerHostConcurrency = 10
 	DefaultRefreshTimeoutSeconds     = 15
 )
 
@@ -870,7 +870,8 @@ func (s *settingsService) GetGeneralSettings(ctx context.Context) (*GeneralSetti
 		settings.FallbackUserAgent = val
 	}
 	settings.AutoReadability = s.getBool(ctx, keyAutoReadability)
-	settings.MarkReadOnScroll = s.getBool(ctx, keyMarkReadOnScroll)
+	// 默认开启（与生产实例一致）：未显式配置时，滚动即标已读
+	settings.MarkReadOnScroll = s.getBoolDefault(ctx, keyMarkReadOnScroll, true)
 	if val, err := s.getString(ctx, keyExportDir); err == nil {
 		settings.ExportDir = val
 	}
@@ -1222,7 +1223,7 @@ func normalizeContentTypes(values []string) []string {
 	return ordered
 }
 
-var defaultAppearanceContentTypes = []string{"article", "picture", "notification", "social"}
+var defaultAppearanceContentTypes = []string{"article", "picture", "social", "notification"}
 
 func isValidAppearanceContentType(value string) bool {
 	switch value {
