@@ -235,7 +235,7 @@ const docTemplate = `{
         },
         "/ai/translations/batch": {
             "post": {
-                "description": "Read already-cached full-content translations for many entries. Read-only: never triggers translation.",
+                "description": "Read already-cached full-content translations for many entries, plus per-entry translation statuses. Read-only: never triggers translation.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4729,8 +4729,15 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "translateChannel": {
-                    "description": "TranslateChannel：空 = 翻译走模型；google/youdao = 免 key 通道",
+                    "description": "TranslateChannel：旧的单值通道（兼容用，缺失时后端会从 TranslateChannels 推导）",
                     "type": "string"
+                },
+                "translateChannels": {
+                    "description": "TranslateChannels：免费翻译通道轮询列表（顺序即轮询顺序）；为空 = 翻译直接走模型",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -4789,8 +4796,15 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "translateChannel": {
-                    "description": "TranslateChannel：空 = 翻译走模型；google/youdao = 免 key 通道",
+                    "description": "TranslateChannel：旧的单值通道（兼容用，缺失时后端会从 TranslateChannels 推导）",
                     "type": "string"
+                },
+                "translateChannels": {
+                    "description": "TranslateChannels：免费翻译通道轮询列表（顺序即轮询顺序）；为空 = 翻译直接走模型",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -4870,6 +4884,23 @@ const docTemplate = `{
                 }
             }
         },
+        "internal_handler.batchCachedSummaryStatus": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
         "internal_handler.batchCachedTranslationItem": {
             "type": "object",
             "properties": {
@@ -4906,6 +4937,13 @@ const docTemplate = `{
                         "$ref": "#/definitions/internal_handler.batchCachedTranslationStatus"
                     }
                 },
+                "summaryStatuses": {
+                    "description": "SummaryStatuses 逐条 AI 摘要状态；供列表显示摘要徽章与所用模型提供商。",
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/internal_handler.batchCachedSummaryStatus"
+                    }
+                },
                 "translations": {
                     "description": "Translations 只含**已翻好**的条目；没缓存的条目不出现在这里（前端按原文处理）",
                     "type": "object",
@@ -4916,10 +4954,18 @@ const docTemplate = `{
             }
         },
         "internal_handler.batchCachedTranslationStatus": {
-            "description": "batchCachedTranslationStatus 单条翻译状态（列表展示「翻译中 / 已完成 / 失败」用）。",
             "type": "object",
             "properties": {
                 "error": {
+                    "type": "string"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "service": {
                     "type": "string"
                 },
                 "status": {
@@ -7422,6 +7468,13 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "id": {
+                    "type": "string"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "provider": {
+                    "description": "Provider / Model：这条标题/摘要实际用的提供商与模型（免费通道只有 Provider）。\n前端据此在列表「摘要」徽标完成态显示「提供商（· 模型）」。",
                     "type": "string"
                 },
                 "summary": {

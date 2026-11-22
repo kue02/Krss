@@ -54,8 +54,13 @@ definitions:
       summaryLanguage:
         type: string
       translateChannel:
-        description: TranslateChannel：空 = 翻译走模型；google/youdao = 免 key 通道
+        description: TranslateChannel：旧的单值通道（兼容用，缺失时后端会从 TranslateChannels 推导）
         type: string
+      translateChannels:
+        description: TranslateChannels：免费翻译通道轮询列表（顺序即轮询顺序）；为空 = 翻译直接走模型
+        items:
+          type: string
+        type: array
     type: object
   internal_handler.aiSettingsResponse:
     properties:
@@ -95,8 +100,13 @@ definitions:
       summaryLanguage:
         type: string
       translateChannel:
-        description: TranslateChannel：空 = 翻译走模型；google/youdao = 免 key 通道
+        description: TranslateChannel：旧的单值通道（兼容用，缺失时后端会从 TranslateChannels 推导）
         type: string
+      translateChannels:
+        description: TranslateChannels：免费翻译通道轮询列表（顺序即轮询顺序）；为空 = 翻译直接走模型
+        items:
+          type: string
+        type: array
     type: object
   internal_handler.aiTestRequest:
     properties:
@@ -147,6 +157,17 @@ definitions:
       exists:
         type: boolean
     type: object
+  internal_handler.batchCachedSummaryStatus:
+    properties:
+      error:
+        type: string
+      model:
+        type: string
+      provider:
+        type: string
+      status:
+        type: string
+    type: object
   internal_handler.batchCachedTranslationItem:
     properties:
       content:
@@ -173,6 +194,11 @@ definitions:
           Statuses 逐条翻译状态（translating/done/failed + 失败原因），供列表显示
           「翻译中 / 已完成 / 失败」并在失败时悬浮看原因。只含有状态行的条目（子集 OK）。
         type: object
+      summaryStatuses:
+        additionalProperties:
+          $ref: '#/definitions/internal_handler.batchCachedSummaryStatus'
+        description: SummaryStatuses 逐条 AI 摘要状态；供列表显示摘要徽章与所用模型提供商。
+        type: object
       translations:
         additionalProperties:
           $ref: '#/definitions/internal_handler.batchCachedTranslationItem'
@@ -180,9 +206,14 @@ definitions:
         type: object
     type: object
   internal_handler.batchCachedTranslationStatus:
-    description: batchCachedTranslationStatus 单条翻译状态（列表展示「翻译中 / 已完成 / 失败」用）。
     properties:
       error:
+        type: string
+      model:
+        type: string
+      provider:
+        type: string
+      service:
         type: string
       status:
         type: string
@@ -1852,6 +1883,13 @@ definitions:
         type: boolean
       id:
         type: string
+      model:
+        type: string
+      provider:
+        description: |-
+          Provider / Model：这条标题/摘要实际用的提供商与模型（免费通道只有 Provider）。
+          前端据此在列表「摘要」徽标完成态显示「提供商（· 模型）」。
+        type: string
       summary:
         type: string
       title:
@@ -2372,8 +2410,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: 'Read already-cached full-content translations for many entries.
-        Read-only: never triggers translation.'
+      description: 'Read already-cached full-content translations for many entries,
+        plus per-entry translation statuses. Read-only: never triggers translation.'
       parameters:
       - description: Batch cached translation request
         in: body
