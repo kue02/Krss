@@ -24,7 +24,7 @@
 `docs/dev/移植笔记.md` 技术细节与坑 · `docs/dev/自动化-过滤规则.md` 过滤模块 · `docs/dev/发版.md` 发版口径（**每次发版前必读**）·
 `docs/dev/archive/` 留档 · `AGENTS.md` 代码规范。
 
-发版规则（细节见 `docs/dev/发版.md`）：第 4 位版本号 +1；发布说明 `docs/releases/v<版本>.md` **只写更新了什么内容，别的什么都不要**，
+发版规则（细节见 `docs/dev/发版.md`）：版本号严格遵循 Semantic Versioning 2.0.0（只有 `MAJOR.MINOR.PATCH` 三段，禁止四段），按变更性质选择 MAJOR/MINOR/PATCH；发布说明 `docs/releases/v<版本>.md` **只写更新了什么内容，别的什么都不要**，
 不许出现批次号/内部编号（「第五十四批」「58-3」「§2.58」等）；**发布说明严格遵循 Keep a Changelog 1.1.0**（`CHANGELOG.md` 为准，`docs/releases/v<版本>.md` 复制其版本节，分节只用 Added/Changed/Deprecated/Removed/Fixed/Security；旧的 emoji 分节模板已作废）。
 **Docker 镜像和代码是同一套发版流程**：tag 一推 `release.yml` 就同时构建并推送 `ghcr.io/kue02/krss`（`amd64`+`arm64`）；
 发完必须核对 `:<版本>` 与 `:latest` 同 digest、与上一版不同，不许只看 CI 绿就报「发版完成」。
