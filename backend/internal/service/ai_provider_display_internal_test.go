@@ -86,3 +86,23 @@ func TestProviderDisplayName_FallsBackToProtocol(t *testing.T) {
 		t.Fatalf("providerDisplayName = %q, want openai", got)
 	}
 }
+
+func TestMergeTranslationUsage(t *testing.T) {
+	cases := []struct {
+		name                                    string
+		baseS, baseP, baseM, cfgM, cfgP         string
+		hasChannel, fallback                     bool
+		wantS, wantP, wantM                      string
+	}{
+		{"纯免费命中不改", "Google 翻译", "Google", "", "m", "P", true, false, "Google 翻译", "Google", ""},
+		{"纯模型不改", "m", "P", "m", "m", "P", false, false, "m", "P", "m"},
+		{"免费命中+模型兜底追加", "有道翻译", "有道", "", "deepseek-chat", "DeepSeek", true, true, "有道翻译 / deepseek-chat", "有道 / DeepSeek", "deepseek-chat"},
+		{"免费全失败→模型兜底不重复", "Google 翻译", "Google", "", "deepseek-chat", "DeepSeek", false, true, "deepseek-chat", "DeepSeek", "deepseek-chat"},
+	}
+	for _, c := range cases {
+		gs, gp, gm := mergeTranslationUsage(c.baseS, c.baseP, c.baseM, c.cfgM, c.cfgP, c.hasChannel, c.fallback)
+		if gs != c.wantS || gp != c.wantP || gm != c.wantM {
+			t.Fatalf("%s: got (%q,%q,%q) want (%q,%q,%q)", c.name, gs, gp, gm, c.wantS, c.wantP, c.wantM)
+		}
+	}
+}

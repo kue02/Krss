@@ -624,14 +624,7 @@ func (s *aiService) WarmTranslation(ctx context.Context, entryID int64, content,
 			}
 			if fallbackSeen {
 				if cfg, cfgErr := s.getAIConfigForScene(context.Background(), SceneTranslate); cfgErr == nil && cfg.Provider != "" {
-					// 免费通道实际没成功时不要拿预测的 chans[0] 当基底
-					if usedChannel == "" {
-						uService = cfg.Model
-						uProvider = providerDisplayName(cfg)
-					}
-					uService = uService + " / " + cfg.Model
-					uProvider = uProvider + " / " + providerDisplayName(cfg)
-					uModel = cfg.Model
+					uService, uProvider, uModel = mergeTranslationUsage(uService, uProvider, uModel, cfg.Model, providerDisplayName(cfg), usedChannel != "", true)
 				}
 			}
 			if statusErr := s.translationRepo.UpsertStatusDetail(context.Background(), entryID, isReadability, language, "done", "", uService, uProvider, uModel); statusErr != nil {
@@ -654,6 +647,20 @@ func (s *aiService) describeTranslateService(ctx context.Context) (service, prov
 		return cfg.Model, providerDisplayName(cfg), cfg.Model
 	}
 	return "", "", ""
+}
+
+// mergeTranslationUsage 合并「免费通道实际命中」与「模型兜底」的展示值。
+//   - 没有 fallback：原样返回（免费命中或纯模型都不改）；
+//   - 有 fallback 且有实际命中的免费通道：通道名后追加模型（“有道 / deepseek-chat”）；
+//   - 有 fallback 但没有实际命中（免费全失败）：直接用模型，**不能再拼一次**。
+func mergeTranslationUsage(baseService, baseProvider, baseModel, cfgModel, cfgProviderName string, hasChannel, fallback bool) (service, provider, model string) {
+	if !fallback {
+		return baseService, baseProvider, baseModel
+	}
+	if hasChannel {
+		return baseService + " / " + cfgModel, baseProvider + " / " + cfgProviderName, cfgModel
+	}
+	return cfgModel, cfgProviderName, cfgModel
 }
 
 // providerDisplayName 返回用户可读的提供商名：优先用户在「提供商」里起的名字，
@@ -1001,14 +1008,7 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 				}
 			}
 			if fallbackSeen.Load() && cfg.Provider != "" {
-				// 全是免费失败后模型兜底：基底应该是模型，不是预测的 chans[0]
-				if !hasChannel {
-					service = cfg.Model
-					provider = providerDisplayName(cfg)
-				}
-				service = service + " / " + cfg.Model
-				provider = provider + " / " + providerDisplayName(cfg)
-				modelName = cfg.Model
+				service, provider, modelName = mergeTranslationUsage(service, provider, modelName, cfg.Model, providerDisplayName(cfg), hasChannel, true)
 			}
 			if statusErr := s.translationRepo.UpsertStatusDetail(ctx, entryID, isReadability, language, "done", "", service, provider, modelName); statusErr != nil {
 				logger.Warn("ai translate status write failed", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", entryID, "status", "done", "error", statusErr)
