@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { EntryListHeader } from "./EntryListHeader";
 
@@ -156,5 +156,124 @@ describe("EntryListHeader 星标视图去掉已读/未读切换（58-1）", () =
     expect(screen.queryByTitle("entry.show_unread_only")).toBeNull();
     expect(screen.queryByTitle("entry.show_all")).toBeNull();
     expect(screen.getByTitle("entry.mark_all_read")).toBeTruthy();
+  });
+});
+
+describe("EntryListHeader 移动端顶栏与 Web 图标统一", () => {
+  /** 项目自定义 RefreshIcon 的首段 path，用来和 lucide 的 RefreshCw 区分 */
+  const REFRESH_ICON_PATH = "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8";
+  /** 项目自定义 CheckCircleIcon 的首段 path，用来和 lucide 的 CheckCheck 区分 */
+  const CHECK_CIRCLE_ICON_PATH = "M22 11.08V12a10 10 0 1 1-5.93-9.14";
+
+  function mobileButton(label: string) {
+    return screen.getByLabelText(label);
+  }
+
+  it("刷新/全部已读改用 Web 同款图标（16px），按钮盒仍是 44px", () => {
+    render(<EntryListHeader {...baseProps} isMobile onRefresh={vi.fn()} />);
+
+    const refresh = mobileButton("entry.refresh_view");
+    expect(refresh.className).toContain("size-11");
+    const refreshSvg = refresh.querySelector("svg");
+    expect(refreshSvg?.getAttribute("class")).toBe("size-4");
+    expect(refreshSvg?.querySelector("path")?.getAttribute("d")).toBe(
+      REFRESH_ICON_PATH,
+    );
+
+    const markAllRead = mobileButton("entry.mark_all_read");
+    expect(markAllRead.className).toContain("size-11");
+    const checkSvg = markAllRead.querySelector("svg");
+    expect(checkSvg?.getAttribute("class")).toBe("size-4");
+    expect(checkSvg?.querySelector("path")?.getAttribute("d")).toBe(
+      CHECK_CIRCLE_ICON_PATH,
+    );
+  });
+
+  it("未读切换沿用 Web 的 20px 实心/描边圆点，按钮盒仍是 44px", () => {
+    const { rerender } = render(
+      <EntryListHeader {...baseProps} isMobile unreadOnly={false} />,
+    );
+
+    const outlineButton = mobileButton("entry.show_unread_only");
+    expect(outlineButton.className).toContain("size-11");
+    expect(outlineButton.querySelector("circle")).toBeTruthy();
+    expect(outlineButton.querySelector("svg")?.getAttribute("class")).toBe(
+      "size-5",
+    );
+
+    rerender(<EntryListHeader {...baseProps} isMobile unreadOnly />);
+    const filledButton = mobileButton("entry.show_all");
+    expect(filledButton.className).toContain("size-11");
+    expect(filledButton.querySelector("path")).toBeNull();
+    expect(filledButton.querySelector("circle")).toBeTruthy();
+    expect(filledButton.querySelector("svg")?.getAttribute("class")).toBe(
+      "size-5",
+    );
+  });
+
+  it("刷新中仍显示 RefreshSpinner（保留进度数字，不改尺寸）", () => {
+    render(
+      <EntryListHeader
+        {...baseProps}
+        isMobile
+        onRefresh={vi.fn()}
+        isRefreshing
+        refreshTotal={9}
+        refreshCompleted={4}
+      />,
+    );
+
+    const refresh = mobileButton("entry.refreshing");
+    expect(refresh.querySelector(".animate-spin")).not.toBeNull();
+    expect(refresh.textContent).toBe("5");
+  });
+
+  it("「更多」面板不再出现刷新/只看未读/全部已读，保留其余动作", () => {
+    const onSearchClick = vi.fn();
+    const onForceRefresh = vi.fn();
+    const onToggleStarredViewOnly = vi.fn();
+    const onToggleArticleLayout = vi.fn();
+
+    render(
+      <EntryListHeader
+        {...baseProps}
+        isMobile
+        onRefresh={vi.fn()}
+        onForceRefresh={onForceRefresh}
+        onSearchClick={onSearchClick}
+        onToggleStarredViewOnly={onToggleStarredViewOnly}
+        articleLayout="list"
+        onToggleArticleLayout={onToggleArticleLayout}
+      />,
+    );
+
+    fireEvent.click(mobileButton("actions.more"));
+    const panel = screen.getByRole("dialog");
+
+    /* 已移到顶栏的三项，面板里不能再有 */
+    expect(within(panel).queryByText("entry.refresh_view")).toBeNull();
+    expect(within(panel).queryByText("entry.show_unread_only")).toBeNull();
+    expect(within(panel).queryByText("entry.show_all")).toBeNull();
+    expect(within(panel).queryByText("entry.mark_all_read")).toBeNull();
+
+    /* 面板保留的动作 */
+    expect(within(panel).getByText("search.title")).toBeTruthy();
+    const forceRefresh = within(panel).getByText("entry.force_refresh");
+    expect(forceRefresh).toBeTruthy();
+    expect(within(panel).getByText("sidebar.starred_view")).toBeTruthy();
+    expect(
+      within(panel).getByText("appearance_view.article_layout_hover"),
+    ).toBeTruthy();
+
+    /* 强制刷新与 Web 右键菜单同一颗 RefreshIcon（16px） */
+    const forceRefreshRow = forceRefresh.closest("button");
+    const forceRefreshSvg = forceRefreshRow?.querySelector("svg");
+    expect(forceRefreshSvg?.getAttribute("class")).toBe("size-4");
+    expect(forceRefreshSvg?.querySelector("path")?.getAttribute("d")).toBe(
+      REFRESH_ICON_PATH,
+    );
+
+    fireEvent.click(forceRefreshRow as HTMLElement);
+    expect(onForceRefresh).toHaveBeenCalledTimes(1);
   });
 });

@@ -2,14 +2,12 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ToggleButton } from "@heroui/react";
 import {
-  CheckCheck,
   Filter,
   GalleryHorizontalEnd,
   Images,
   LayoutGrid,
   LayoutList,
   MoreHorizontal,
-  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { RefreshStatus } from "@/api";
@@ -219,7 +217,8 @@ export function EntryListHeader({
                   remaining={Math.max(0, refreshTotal - refreshCompleted)}
                 />
               ) : (
-                <RefreshCw className="size-5" />
+                /* 与 Web 端同一颗图标：图形 16px，按钮盒仍保持 44px 触摸热区 */
+                <RefreshIcon className="size-4" />
               )}
             </button>
           ) : null}
@@ -248,7 +247,7 @@ export function EntryListHeader({
             aria-label={t("entry.mark_all_read")}
             className="flex size-11 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
           >
-            <CheckCheck className="size-5" />
+            <CheckCircleIcon className="size-4" />
           </button>
           <button
             type="button"
@@ -275,52 +274,14 @@ export function EntryListHeader({
               }}
             />
           ) : null}
-          {onRefresh ? (
-            <MobileActionSheetItem
-              icon={
-                isRefreshing ? (
-                  <RefreshSpinner
-                    remaining={Math.max(0, refreshTotal - refreshCompleted)}
-                  />
-                ) : (
-                  <RefreshCw className="size-5" />
-                )
-              }
-              label={isRefreshing ? t("entry.refreshing") : t("entry.refresh_view")}
-              disabled={isRefreshing}
-              onClick={() => {
-                setMoreOpen(false);
-                onRefresh();
-              }}
-            />
-          ) : null}
           {onForceRefresh ? (
             <MobileActionSheetItem
-              icon={<RefreshCw className="size-5" />}
+              icon={<RefreshIcon className="size-4" />}
               label={t("entry.force_refresh")}
               description={t("entry.force_refresh_hint")}
               onClick={() => {
                 setMoreOpen(false);
                 onForceRefresh();
-              }}
-            />
-          ) : null}
-          {showUnreadToggle ? (
-            <MobileActionSheetItem
-              icon={
-                unreadOnly ? (
-                  <CircleFilledIcon className="size-5" />
-                ) : (
-                  <CircleOutlineIcon className="size-5" />
-                )
-              }
-              label={
-                unreadOnly ? t("entry.show_all") : t("entry.show_unread_only")
-              }
-              selected={unreadOnly}
-              onClick={() => {
-                setMoreOpen(false);
-                onToggleUnreadOnly();
               }}
             />
           ) : null}
@@ -373,14 +334,6 @@ export function EntryListHeader({
               }}
             />
           ) : null}
-          <MobileActionSheetItem
-            icon={<CheckCheck className="size-5" />}
-            label={t("entry.mark_all_read")}
-            onClick={() => {
-              setMoreOpen(false);
-              onMarkAllRead();
-            }}
-          />
           {(selectedEntryIds?.length ?? 0) > 0 ? (
             <div className="border-t border-border/50 px-4 py-2">
               <PluginSlot
