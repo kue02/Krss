@@ -2,8 +2,12 @@ package service_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"krss/backend/internal/service"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -658,4 +662,53 @@ func TestAIService_TranslateBatch_NoChannelNoModelFails(t *testing.T) {
 		{ID: "1", Title: "Some English title here"},
 	})
 	require.Error(t, err, "既没免费通道也没模型时应当报错")
+}
+
+// 新翻译（非缓存）也要把实际使用的提供商/模型写进结果与缓存：
+// 走模型时展示用户给提供商卡起的名字，而不是协议常量。
+func TestAIService_TranslateBatch_NewTranslationRecordsProvider(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/responses") {
+			_, _ = w.Write([]byte(`{"id":"resp_1","object":"response","status":"completed","output":[{"type":"message","id":"msg_1","status":"completed","role":"assistant","content":[{"type":"output_text","text":"译文","annotations":[]}]}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"译文"}}]}`))
+	}))
+	defer server.Close()
+
+	providers, _ := json.Marshal([]service.AIProviderConfig{
+		{ID: "p1", Name: "我的中转", Provider: "openai", BaseURL: server.URL, Model: "m1", APIKey: "k"},
+	})
+	repo := newSettingsRepoStub()
+	repo.data["ai.provider"] = "openai"
+	repo.data["ai.api_key"] = "k"
+	repo.data["ai.base_url"] = server.URL
+	repo.data["ai.model"] = "m1"
+	repo.data["ai.active_provider_id"] = "p1"
+	repo.data["ai.providers"] = string(providers)
+	repo.data["ai.summary_language"] = "zh-CN"
+	repo.data["ai.translate_channel"] = ""
+
+	listRepo := &listTranslationRepoStub{batchResult: map[int64]*model.AIListTranslation{}}
+	svc := service.NewAIService(&summaryRepoStub{}, &translationRepoStub{}, listRepo, repo, ai.NewRateLimiter(100))
+
+	resultCh, errCh, err := svc.TranslateBatch(context.Background(), []service.BatchArticleInput{
+		{ID: "1", Title: "Hello", Summary: "World"},
+	})
+	require.NoError(t, err)
+
+	var got *service.BatchTranslateResult
+	for r := range resultCh {
+		rr := r
+		got = &rr
+	}
+	for e := range errCh {
+		require.NoError(t, e)
+	}
+	require.NotNil(t, got, "应产出一条翻译结果")
+	require.Equal(t, "我的中转", got.Provider, "徽标应显示用户配置的提供商名")
+	require.Equal(t, "m1", got.Model)
+	require.Equal(t, "我的中转", listRepo.lastProvider, "缓存里也要记住提供商")
+	require.Equal(t, "m1", listRepo.lastModel)
 }

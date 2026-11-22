@@ -25,6 +25,9 @@ type TranslateBlockResult struct {
 	HTML  string `json:"html"`
 	// Fallback：这个块是免费通道失败后由模型兜底译出来的（前端据此提示）
 	Fallback bool
+	// UsedChannel：免费通道实际命中的通道（如 google / youdao），仅服务端用来
+	// 记录真实服务名，不推给前端。
+	UsedChannel string `json:"-"`
 }
 
 // TranslateBlockInfo represents original block info.
@@ -416,8 +419,11 @@ func (s *aiService) getAIConfigForScene(ctx context.Context, scene AIScene) (ai.
 		if raw := settingsMap["ai.providers"]; raw != "" {
 			if err := json.Unmarshal([]byte(raw), &saved); err == nil {
 				for _, item := range saved {
-					if item.ID == activeID && item.Model == "" {
-						return cfg, fmt.Errorf("AI model is not configured")
+					if item.ID == activeID {
+						cfg.ProviderName = item.Name
+						if item.Model == "" {
+							return cfg, fmt.Errorf("AI model is not configured")
+						}
 					}
 				}
 			}
@@ -463,6 +469,7 @@ func (s *aiService) getAIConfigForScene(ctx context.Context, scene AIScene) (ai.
 				continue
 			}
 			cfg.Provider = item.Provider
+			cfg.ProviderName = item.Name
 			cfg.APIKey = item.APIKey
 			cfg.BaseURL = item.BaseURL
 			cfg.Model = item.Model
@@ -578,6 +585,7 @@ func (s *aiService) WarmTranslation(ctx context.Context, entryID int64, content,
 		// 这里只是等它跑完，不转发给任何人。顺便记下第一处错误，供状态展示。
 		firstErrMsg := ""
 		fallbackSeen := false
+		usedChannel := ""
 		for resultCh != nil || errCh != nil {
 			select {
 			case result, ok := <-resultCh:
@@ -587,6 +595,9 @@ func (s *aiService) WarmTranslation(ctx context.Context, entryID int64, content,
 				}
 				if result.Fallback {
 					fallbackSeen = true
+				}
+				if result.UsedChannel != "" {
+					usedChannel = result.UsedChannel
 				}
 			case err, ok := <-errCh:
 				if !ok {
@@ -607,6 +618,10 @@ func (s *aiService) WarmTranslation(ctx context.Context, entryID int64, content,
 			}
 		} else {
 			uService, uProvider, uModel := statService, statProvider, statModel
+			if usedChannel != "" {
+				uService, uProvider = channelDisplayName(usedChannel)
+				uModel = ""
+			}
 			if fallbackSeen {
 				if cfg, cfgErr := s.getAIConfigForScene(context.Background(), SceneTranslate); cfgErr == nil && cfg.Provider != "" {
 					uService = statService + " / " + cfg.Model
@@ -631,9 +646,18 @@ func (s *aiService) describeTranslateService(ctx context.Context) (service, prov
 		return svc, prov, ""
 	}
 	if cfg, err := s.getAIConfigForScene(ctx, SceneTranslate); err == nil {
-		return cfg.Model, cfg.Provider, cfg.Model
+		return cfg.Model, providerDisplayName(cfg), cfg.Model
 	}
 	return "", "", ""
+}
+
+// providerDisplayName 返回用户可读的提供商名：优先用户在「提供商」里起的名字，
+// 没有就退回协议类型（openai/anthropic/compatible）。只用于展示。
+func providerDisplayName(cfg ai.Config) string {
+	if cfg.ProviderName != "" {
+		return cfg.ProviderName
+	}
+	return cfg.Provider
 }
 
 // channelDisplayName 把免 key 通道 id 翻成用户能看懂的服务名 + 提供商。
@@ -824,7 +848,7 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 						return
 					}
 
-					translatedText, freeErr := ai.TranslateFreeTextChannels(ctx, freeClient, freeChannels, payload, language)
+					translatedText, usedChannel, freeErr := ai.TranslateFreeTextChannelsWithChannel(ctx, freeClient, freeChannels, payload, language)
 					if freeErr == nil {
 						var html string
 						if segments != nil {
@@ -850,7 +874,7 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 							// 译文按原文外层标签包回去，段落结构（<p>/<h2>）不能丢
 							html = ai.WrapFreeTranslation(b.HTML, translatedText)
 						}
-						result := TranslateBlockResult{Index: b.Index, HTML: html}
+						result := TranslateBlockResult{Index: b.Index, HTML: html, UsedChannel: usedChannel}
 						resultsMu.Lock()
 						results = append(results, result)
 						resultsMu.Unlock()
@@ -960,6 +984,15 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 			// 记录 done 与本次实际使用的服务：正文手动翻译（流式）也走这里，
 			// 这样列表悬浮能显示「机器翻译 · Google 翻译 · Google」，不会只剩「机器翻译」。
 			service, provider, modelName := s.describeTranslateService(ctx)
+			// 免费通道会按顺序回退（google → youdao），这里用**实际命中**的通道覆盖
+			// describeTranslateService 的预测值，避免把有道的结果记成 Google。
+			for _, r := range results {
+				if r.UsedChannel != "" {
+					service, provider = channelDisplayName(r.UsedChannel)
+					modelName = ""
+					break
+				}
+			}
 			if fallbackSeen.Load() && cfg.Provider != "" {
 				service = service + " / " + cfg.Model
 				provider = provider + " / " + cfg.Provider
@@ -1153,7 +1186,7 @@ func (s *aiService) TranslateBatch(ctx context.Context, articles []BatchArticleI
 					if err != nil {
 						return "", err
 					}
-					usedProvider, usedModel = cfg.Provider, cfg.Model
+					usedProvider, usedModel = providerDisplayName(cfg), cfg.Model
 					return strings.TrimSpace(translated), nil
 				}
 
