@@ -7,7 +7,7 @@ import (
 
 const (
 	AppName    = "Krss"
-	AppVersion = "1.1.8"
+	AppVersion = "1.1.9"
 	AppRepo    = "https://github.com/kue02/Krss"
 )
 
