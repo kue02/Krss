@@ -2,22 +2,27 @@
 
 [![License: GPL v2](https://img.shields.io/badge/License-GPL_v2-blue.svg)](https://www.gnu.org/licenses/old-licenses/gpl-2.0.en.html)
 [![Build Docker Image](https://github.com/kue02/Krss/actions/workflows/docker-build.yml/badge.svg)](https://github.com/kue02/Krss/actions/workflows/docker-build.yml)
+[![Latest Release](https://img.shields.io/github/v/release/kue02/Krss)](https://github.com/kue02/Krss/releases)
 
-功能完整的自托管 RSS 阅读器：单二进制 + SQLite，开箱即用。内置 AI 摘要与翻译、自动化规则引擎、社交 / 通知 / 图片多视图，并支持 MCP 双向集成。
+功能完整的自托管 RSS 阅读器：单个二进制 + SQLite，一条命令即可跑起来。内置 AI 摘要与翻译、自动化规则引擎、文章 / 社交媒体 / 通知 / 图片多视图，并支持 MCP 双向集成。
+
+> 下文截图均来自全新实例，订阅源为公开示例（Cloudflare Blog、GitHub Blog、阮一峰的网络日志、少数派、Smashing Magazine、Universe Today、xkcd），仅作演示。
 
 ## 截图
 
-![Krss 文章三栏阅读界面](docs/images/screenshot_01.png)
+![Krss 桌面端：文章三栏阅读界面](docs/images/desktop-01-list.png)
 
-| 社交媒体视图 | 通知视图 |
+| 文章正文与封面 | 图片视图 |
 | :---: | :---: |
-| ![社交媒体视图：Twitter/X 卡片 + 图片网格](docs/images/screenshot_02.png) | ![通知视图：推送时间线](docs/images/screenshot_03.png) |
+| ![文章正文阅读](docs/images/desktop-02-detail.png) | ![图片视图：照片网格](docs/images/desktop-03-picture.png) |
 
-| 图片视图 | 设置 · 外观 |
+| 设置面板 | 移动端 · 文章列表 |
 | :---: | :---: |
-| ![图片视图：图集网格](docs/images/screenshot_04.png) | ![设置外观：主题 / 主题色 / 阅读与列表](docs/images/screenshot_05.png) |
+| ![设置面板](docs/images/desktop-04-settings.png) | ![移动端文章列表](docs/images/mobile-01-list.png) |
 
-![设置自动化：规则列表与条件 / 动作列](docs/images/screenshot_06.png)
+| 移动端 · 文章详情 | 移动端 · 侧边栏 |
+| :---: | :---: |
+| ![移动端文章详情](docs/images/mobile-02-detail.png) | ![移动端侧边栏](docs/images/mobile-03-sidebar.png) |
 
 ## 功能特性
 
@@ -25,8 +30,8 @@
 
 - 支持 RSS 2.0 / Atom / JSON Feed
 - OPML 导入与导出（导入带进度、可取消）
-- 文件夹分层管理；分类可在设置里拖拽排序或隐藏，侧边栏同步；订阅可设置内容类型与图标
-- 未读 / 星标视图，未读角标可自定义，全文搜索
+- 文件夹分层管理；分类可在设置里拖拽排序或隐藏，侧边栏同步；每个订阅可设置内容类型与图标
+- 未读 / 星标视图，未读角标样式可自定义，全文搜索
 - 阅读模式（自动提取正文），图集灯箱，图片代理（解决防盗链）
 - 站点反爬（Anubis 类）Cookie 配置
 - 定时刷新（间隔可配）、手动刷新与刷新报告
@@ -45,10 +50,10 @@
 
 ### 多视图
 
-- 文章视图：三栏布局（订阅 / 列表 / 正文），卡片列表 + 浮层阅读面板
-- 社交媒体视图：Twitter/X 风格卡片 + 图片网格，时间线里可直接展开成完整阅读器
-- 通知视图：推送时间线，展开即完整正文页（工具栏、大纲、AI 摘要、翻译全可用）
-- 图片视图：网格 / 悬停大图 / 照片墙三种排布
+- **文章视图**：三栏布局（订阅 / 列表 / 正文），卡片列表 + 浮层阅读面板
+- **社交媒体视图**：Twitter/X 风格卡片 + 图片网格，时间线里可直接展开成完整阅读器
+- **通知视图**：推送时间线，展开即完整正文页（工具栏、大纲、AI 摘要、翻译全可用）
+- **图片视图**：网格 / 悬停大图 / 照片墙三种排布
 
 ### 集成
 
@@ -59,8 +64,8 @@
 
 ### 界面与体验
 
-- 5 套主题（3 浅 2 深）与跟随系统；主题色、圆角、列表密度、正文字体 / 字号 / 行高可调
-- 键盘快捷键：`j` `k` 上下条、`m` 已读/未读、`s` 星标、`v` 原文、`r` 刷新、`f` 搜索、`?` 帮助（以设置 → 快捷键中的完整列表为准）
+- 5 套主题（3 套浅色、2 套深色）并支持跟随系统；主题色、圆角、列表密度、正文字体 / 字号 / 行高可调
+- 键盘快捷键：`j` `k` 上下条、`m` 已读 / 未读、`s` 星标、`v` 原文、`r` 刷新、`f` 搜索、`?` 帮助（以「设置 → 快捷键」中的完整列表为准）
 - PWA，可安装到桌面与移动设备
 - 全部设置服务端持久化，换设备登录依然一致
 - 界面语言：简体中文 / English
@@ -145,22 +150,28 @@ bun run build              # 产物输出到 dist/
 
 ## 配置
 
-| 变量                | 默认值           | 说明                                          |
-| ------------------- | ---------------- | --------------------------------------------- |
-| `KRSS_ADDR`         | `:8090`          | 监听地址                                      |
-| `KRSS_DATA_DIR`     | `./data`         | 数据目录（容器内为 `/app/data`）              |
-| `KRSS_DB_PATH`      | `data/krss.db`   | SQLite 数据库文件路径                         |
-| `KRSS_STATIC_DIR`   | 自动探测         | 前端静态文件目录（`frontend/dist`）           |
-| `KRSS_LOG_LEVEL`    | `info`           | 日志级别：`debug` / `info` / `warn` / `error` |
-| `KRSS_SWAGGER`      | `false`          | 设为 `true` 开启 `/swagger/index.html`        |
-| `KRSS_ENABLE_PPROF` | `false`          | 开启 pprof 性能分析                           |
-| `KRSS_PPROF_ADDR`   | `127.0.0.1:6060` | pprof 监听地址（开启后生效）                  |
+除下列环境变量外，绝大部分选项都可以在应用内的「设置」中调整并服务端持久化。
+
+| 变量                  | 默认值           | 说明                                              |
+| --------------------- | ---------------- | ------------------------------------------------- |
+| `KRSS_ADDR`           | `:8090`          | 监听地址                                          |
+| `KRSS_DATA_DIR`       | `./data`         | 数据目录（容器内为 `/app/data`）                  |
+| `KRSS_DB_PATH`        | `data/krss.db`   | SQLite 数据库文件路径                             |
+| `KRSS_STATIC_DIR`     | 自动探测         | 前端静态文件目录（`frontend/dist`）               |
+| `KRSS_LOG_LEVEL`      | `info`           | 日志级别：`debug` / `info` / `warn` / `error`     |
+| `KRSS_MEDIA_CACHE_MB` | `512`            | 代理媒体缓存上限（MB），缓存在数据目录下          |
+| `KRSS_CORS_ORIGINS`   | 见下             | 追加允许的跨域来源，逗号分隔                      |
+| `KRSS_SWAGGER`        | `false`          | 设为 `true` 开启 `/swagger/index.html`            |
+| `KRSS_ENABLE_PPROF`   | `false`          | 开启 pprof 性能分析                               |
+| `KRSS_PPROF_ADDR`     | `127.0.0.1:6060` | pprof 监听地址（开启后生效）                      |
+
+`KRSS_CORS_ORIGINS` 会在内置的默认来源（桌面 / 移动客户端的 `mygo://localhost`、`https://mygo.localhost`、`null`）之外追加来源，方便换域名时无需改代码。
 
 ## 数据与备份
 
 - 所有数据（SQLite 数据库、缓存、日志）都在数据目录（默认 `./data`，容器内 `/app/data`），备份该目录即可完整迁移。
 - 升级：`docker compose pull && docker compose up -d`。升级后服务启动时可能自动回填订阅图标等缓存，属正常现象。
-- 版本说明见 [docs/releases/](docs/releases/)。
+- 版本说明见 [docs/releases/](docs/releases/)，完整变更记录见 [CHANGELOG.md](CHANGELOG.md)。
 - 自己写插件：从 [docs/plugins/](docs/plugins/) 开始（清单、Go API、外部进程协议、沙箱 bridge）。
 
 ## 目录结构
