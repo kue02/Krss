@@ -175,19 +175,19 @@ func (s *aiService) Summarize(ctx context.Context, entryID int64, content, title
 	provider, err := ai.NewProvider(cfg)
 	if err != nil {
 		logger.Warn("ai provider create failed", "module", "service", "action", "fetch", "resource", "ai", "result", "failed", "provider", cfg.Provider, "model", cfg.Model, "error", err)
-		_ = s.summaryRepo.UpsertStatus(ctx, entryID, isReadability, language, "failed", err.Error(), cfg.Provider, cfg.Model)
+		_ = s.summaryRepo.UpsertStatus(ctx, entryID, isReadability, language, "failed", err.Error(), providerDisplayName(cfg), cfg.Model)
 		return nil, nil, fmt.Errorf("create provider: %w", err)
 	}
 
 	// Wait for rate limiter
 	if err := s.rateLimiter.Wait(ctx); err != nil {
 		logger.Warn("ai rate limit wait failed", "module", "service", "action", "fetch", "resource", "ai", "result", "failed", "error", err)
-		_ = s.summaryRepo.UpsertStatus(ctx, entryID, isReadability, language, "failed", err.Error(), cfg.Provider, cfg.Model)
+		_ = s.summaryRepo.UpsertStatus(ctx, entryID, isReadability, language, "failed", err.Error(), providerDisplayName(cfg), cfg.Model)
 		return nil, nil, fmt.Errorf("rate limit: %w", err)
 	}
 
 	// 记「摘要中」并记下所用模型提供商（供列表徽章悬停展示）。
-	if statusErr := s.summaryRepo.UpsertStatus(ctx, entryID, isReadability, language, "translating", "", cfg.Provider, cfg.Model); statusErr != nil {
+	if statusErr := s.summaryRepo.UpsertStatus(ctx, entryID, isReadability, language, "translating", "", providerDisplayName(cfg), cfg.Model); statusErr != nil {
 		logger.Warn("ai summary status write failed", "module", "service", "action", "summarize", "resource", "ai", "result", "failed", "entry_id", entryID, "status", "translating", "error", statusErr)
 	}
 
@@ -251,7 +251,7 @@ func (s *aiService) FinishSummary(ctx context.Context, entryID int64, isReadabil
 	language := s.GetSummaryLanguage(ctx)
 	provider, modelName := "", ""
 	if cfg, err := s.getAIConfigForScene(ctx, SceneSummary); err == nil {
-		provider, modelName = cfg.Provider, cfg.Model
+		provider, modelName = providerDisplayName(cfg), cfg.Model
 	}
 	status := "done"
 	if errMsg != "" {
@@ -624,8 +624,13 @@ func (s *aiService) WarmTranslation(ctx context.Context, entryID int64, content,
 			}
 			if fallbackSeen {
 				if cfg, cfgErr := s.getAIConfigForScene(context.Background(), SceneTranslate); cfgErr == nil && cfg.Provider != "" {
-					uService = statService + " / " + cfg.Model
-					uProvider = statProvider + " / " + cfg.Provider
+					// 免费通道实际没成功时不要拿预测的 chans[0] 当基底
+					if usedChannel == "" {
+						uService = cfg.Model
+						uProvider = providerDisplayName(cfg)
+					}
+					uService = uService + " / " + cfg.Model
+					uProvider = uProvider + " / " + providerDisplayName(cfg)
 					uModel = cfg.Model
 				}
 			}
@@ -986,16 +991,23 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 			service, provider, modelName := s.describeTranslateService(ctx)
 			// 免费通道会按顺序回退（google → youdao），这里用**实际命中**的通道覆盖
 			// describeTranslateService 的预测值，避免把有道的结果记成 Google。
+			hasChannel := false
 			for _, r := range results {
 				if r.UsedChannel != "" {
 					service, provider = channelDisplayName(r.UsedChannel)
 					modelName = ""
+					hasChannel = true
 					break
 				}
 			}
 			if fallbackSeen.Load() && cfg.Provider != "" {
+				// 全是免费失败后模型兜底：基底应该是模型，不是预测的 chans[0]
+				if !hasChannel {
+					service = cfg.Model
+					provider = providerDisplayName(cfg)
+				}
 				service = service + " / " + cfg.Model
-				provider = provider + " / " + cfg.Provider
+				provider = provider + " / " + providerDisplayName(cfg)
 				modelName = cfg.Model
 			}
 			if statusErr := s.translationRepo.UpsertStatusDetail(ctx, entryID, isReadability, language, "done", "", service, provider, modelName); statusErr != nil {
