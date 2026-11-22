@@ -283,6 +283,9 @@ func TestAIHandler_Summarize_StreamResponse(t *testing.T) {
 	mockService.EXPECT().
 		SaveSummary(gomock.Any(), int64(123), false, "First chunkSecond chunkFinal chunk").
 		Return(nil)
+	mockService.EXPECT().
+		FinishSummary(gomock.Any(), int64(123), false, "").
+		Return(nil)
 
 	e := newTestEcho()
 	reqBody := map[string]interface{}{
@@ -501,6 +504,9 @@ func TestAIHandler_Summarize_CacheLookupError_ContinuesWithService(t *testing.T)
 	mockService.EXPECT().
 		SaveSummary(gomock.Any(), int64(123), false, "Summary content").
 		Return(nil)
+	mockService.EXPECT().
+		FinishSummary(gomock.Any(), int64(123), false, "").
+		Return(nil)
 
 	e := newTestEcho()
 	reqBody := map[string]interface{}{
@@ -565,6 +571,12 @@ func TestAIHandler_CachedTranslations_HitAndMiss(t *testing.T) {
 		GetCachedTranslations(gomock.Any(), []int64{123, 456}, false).
 		Return(map[int64]string{123: "<p>译文</p>"}, nil)
 	mockService.EXPECT().
+		GetTranslationStatuses(gomock.Any(), []int64{123, 456}, false).
+		Return(map[int64]model.AITranslationStatus{123: {Status: "done"}}, nil)
+	mockService.EXPECT().
+		GetSummaryStatuses(gomock.Any(), []int64{123, 456}, false).
+		Return(map[int64]model.AISummaryStatus{}, nil)
+	mockService.EXPECT().
 		GetSummaryLanguage(gomock.Any()).
 		Return("zh-CN")
 
@@ -582,6 +594,8 @@ func TestAIHandler_CachedTranslations_HitAndMiss(t *testing.T) {
 	require.Equal(t, "<p>译文</p>", resp.Translations["123"].Content)
 	require.NotContains(t, resp.Translations, "456")
 	require.Equal(t, "zh-CN", resp.Language)
+	require.Equal(t, "done", resp.Statuses["123"].Status)
+	require.NotContains(t, resp.Statuses, "456")
 }
 
 func TestAIHandler_CachedTranslations_EmptyIDsIsOK(t *testing.T) {
@@ -620,6 +634,12 @@ func TestAIHandler_CachedTranslations_SkipsInvalidIDs(t *testing.T) {
 	mockService.EXPECT().
 		GetCachedTranslations(gomock.Any(), []int64{123}, true).
 		Return(map[int64]string{123: "translated"}, nil)
+	mockService.EXPECT().
+		GetTranslationStatuses(gomock.Any(), []int64{123}, true).
+		Return(map[int64]model.AITranslationStatus{123: {Status: "translating"}}, nil)
+	mockService.EXPECT().
+		GetSummaryStatuses(gomock.Any(), []int64{123}, true).
+		Return(map[int64]model.AISummaryStatus{}, nil)
 	mockService.EXPECT().
 		GetSummaryLanguage(gomock.Any()).
 		Return("zh-CN")
@@ -694,4 +714,80 @@ func TestAIHandler_CachedTranslations_InvalidBody(t *testing.T) {
 
 	require.NoError(t, h.CachedTranslations(c))
 	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestAIHandler_CachedTranslations_Statuses(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockAIService(ctrl)
+	h := handler.NewAIHandlerHelper(mockService)
+
+	// 123 失败（带原因）、456 翻译中/已完成、789 无状态行（不出现）
+	mockService.EXPECT().
+		GetCachedTranslations(gomock.Any(), []int64{123, 456, 789}, false).
+		Return(map[int64]string{456: "done content"}, nil)
+	mockService.EXPECT().
+		GetTranslationStatuses(gomock.Any(), []int64{123, 456, 789}, false).
+		Return(map[int64]model.AITranslationStatus{
+			123: {Status: "failed", Error: "通道超时"},
+			456: {Status: "done"},
+		}, nil)
+	mockService.EXPECT().
+		GetSummaryStatuses(gomock.Any(), []int64{123, 456, 789}, false).
+		Return(map[int64]model.AISummaryStatus{456: {Status: "done", Provider: "deepseek", Model: "deepseek-chat"}}, nil)
+	mockService.EXPECT().
+		GetSummaryLanguage(gomock.Any()).
+		Return("zh-CN")
+
+	e := newTestEcho()
+	req := newJSONRequest(http.MethodPost, "/ai/translations/batch", map[string]interface{}{
+		"entryIds":      []string{"123", "456", "789"},
+		"isReadability": false,
+	})
+	c, rec := newTestContext(e, req)
+
+	require.NoError(t, h.CachedTranslations(c))
+
+	var resp handler.BatchCachedTranslationResponse
+	assertJSONResponse(t, rec, http.StatusOK, &resp)
+	require.Equal(t, "failed", resp.Statuses["123"].Status)
+	require.Equal(t, "通道超时", resp.Statuses["123"].Error)
+	require.Equal(t, "done", resp.Statuses["456"].Status)
+	require.NotContains(t, resp.Statuses, "789")
+}
+
+func TestAIHandler_CachedTranslations_StatusLookupErrorStillOK(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockAIService(ctrl)
+	h := handler.NewAIHandlerHelper(mockService)
+
+	// 状态读失败不该拖垮译文本身：仍 200，译文照常返回
+	mockService.EXPECT().
+		GetCachedTranslations(gomock.Any(), []int64{123}, false).
+		Return(map[int64]string{123: "译文"}, nil)
+	mockService.EXPECT().
+		GetTranslationStatuses(gomock.Any(), []int64{123}, false).
+		Return(nil, errors.New("status db down"))
+	mockService.EXPECT().
+		GetSummaryStatuses(gomock.Any(), []int64{123}, false).
+		Return(nil, errors.New("summary status db down"))
+	mockService.EXPECT().
+		GetSummaryLanguage(gomock.Any()).
+		Return("zh-CN")
+
+	e := newTestEcho()
+	req := newJSONRequest(http.MethodPost, "/ai/translations/batch", map[string]interface{}{
+		"entryIds": []string{"123"},
+	})
+	c, rec := newTestContext(e, req)
+
+	require.NoError(t, h.CachedTranslations(c))
+
+	var resp handler.BatchCachedTranslationResponse
+	assertJSONResponse(t, rec, http.StatusOK, &resp)
+	require.Equal(t, "译文", resp.Translations["123"].Content)
+	require.Empty(t, resp.Statuses)
 }

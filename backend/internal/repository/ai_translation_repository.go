@@ -16,6 +16,12 @@ type AITranslationRepository interface {
 	// 只返回**已翻好**的条目；没有的条目在结果里不出现（调用方按「没拿到就用原文」处理）。
 	// 上限由 repository 侧保护：一次最多 200 条，超出的截断（列表一屏远达不到）。
 	GetBatch(ctx context.Context, entryIDs []int64, isReadability bool, language string) (map[int64]*model.AITranslation, error)
+	// UpsertStatus 记录单条译文的翻译状态（translating / done / failed），失败时带原因。
+	UpsertStatus(ctx context.Context, entryID int64, isReadability bool, language, status, errMsg string) error
+	// UpsertStatusDetail 同 UpsertStatus，并记录实际所用服务/提供商/模型（供列表悬停展示）。
+	UpsertStatusDetail(ctx context.Context, entryID int64, isReadability bool, language, status, errMsg, service, provider, model string) error
+	// GetStatusBatch 批量取翻译状态；只返回有状态行的条目，没翻译过的条目不出现在结果里。
+	GetStatusBatch(ctx context.Context, entryIDs []int64, isReadability bool, language string) (map[int64]model.AITranslationStatus, error)
 	Save(ctx context.Context, entryID int64, isReadability bool, language, content string) error
 	DeleteByEntryID(ctx context.Context, entryID int64) error
 	DeleteAll(ctx context.Context) (int64, error)
@@ -158,4 +164,90 @@ func (r *aiTranslationRepository) DeleteAll(ctx context.Context) (int64, error) 
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+// UpsertStatus 写单条翻译状态（迁移 36）。同 (entry, 可读, 语言) 覆盖，不插新行。
+func (r *aiTranslationRepository) UpsertStatus(ctx context.Context, entryID int64, isReadability bool, language, status, errMsg string) error {
+	return r.UpsertStatusDetail(ctx, entryID, isReadability, language, status, errMsg, "", "", "")
+}
+
+// UpsertStatusDetail 写状态并记录服务/提供商/模型（迁移 37 新增列）。
+func (r *aiTranslationRepository) UpsertStatusDetail(ctx context.Context, entryID int64, isReadability bool, language, status, errMsg, service, provider, model string) error {
+	isReadabilityInt := 0
+	if isReadability {
+		isReadabilityInt = 1
+	}
+	now := formatTime(time.Now())
+
+	_, err := r.db.ExecContext(
+		ctx,
+		`INSERT INTO ai_translation_status (entry_id, is_readability, language, status, error, service, provider, model, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(entry_id, is_readability, language) DO UPDATE SET
+		   status = excluded.status,
+		   error = excluded.error,
+		   service = excluded.service,
+		   provider = excluded.provider,
+		   model = excluded.model,
+		   updated_at = excluded.updated_at`,
+		entryID, isReadabilityInt, language, status, errMsg, service, provider, model, now,
+	)
+	return err
+}
+
+// GetStatusBatch 批量取翻译状态，口径与 GetBatch 一致（去重 + 200 条上限）。
+func (r *aiTranslationRepository) GetStatusBatch(ctx context.Context, entryIDs []int64, isReadability bool, language string) (map[int64]model.AITranslationStatus, error) {
+	result := make(map[int64]model.AITranslationStatus)
+	if len(entryIDs) == 0 {
+		return result, nil
+	}
+	seen := make(map[int64]struct{}, len(entryIDs))
+	ids := make([]int64, 0, len(entryIDs))
+	for _, id := range entryIDs {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+		if len(ids) >= aiTranslationBatchLimit {
+			break
+		}
+	}
+
+	isReadabilityInt := 0
+	if isReadability {
+		isReadabilityInt = 1
+	}
+
+	query := `SELECT entry_id, status, error, service, provider, model
+	          FROM ai_translation_status WHERE is_readability = ? AND language = ? AND entry_id IN (`
+	args := make([]interface{}, 0, len(ids)+2)
+	args = append(args, isReadabilityInt, language)
+	for i, id := range ids {
+		if i > 0 {
+			query += ","
+		}
+		query += "?"
+		args = append(args, id)
+	}
+	query += ")"
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var entryID int64
+		var st model.AITranslationStatus
+		if err := rows.Scan(&entryID, &st.Status, &st.Error, &st.Service, &st.Provider, &st.Model); err != nil {
+			return nil, err
+		}
+		result[entryID] = st
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
 }

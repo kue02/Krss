@@ -58,6 +58,10 @@ type AIService interface {
 	Summarize(ctx context.Context, entryID int64, content, title string, isReadability bool) (<-chan string, <-chan error, error)
 	// SaveSummary saves a summary to cache.
 	SaveSummary(ctx context.Context, entryID int64, isReadability bool, summary string) error
+	// GetSummaryStatuses 批量取 AI 摘要生成状态（摘要中/已完成/失败 + 失败原因、模型提供商），供列表徽章展示。
+	GetSummaryStatuses(ctx context.Context, entryIDs []int64, isReadability bool) (map[int64]model.AISummaryStatus, error)
+	// FinishSummary 收尾摘要状态：errMsg 为空写 done，否则写 failed。
+	FinishSummary(ctx context.Context, entryID int64, isReadability bool, errMsg string) error
 	// GetSummaryLanguage returns the configured summary language.
 	GetSummaryLanguage(ctx context.Context) string
 
@@ -68,6 +72,9 @@ type AIService interface {
 	// 所以走这条只读的口子 —— 译文多半已由滚动预载 `WarmTranslation` 落库。
 	// 返回 entryID → 译文 HTML；没缓存过的条目不出现在结果里。
 	GetCachedTranslations(ctx context.Context, entryIDs []int64, isReadability bool) (map[int64]string, error)
+	// GetTranslationStatuses 批量取逐条翻译状态（translating/done/failed + 失败原因），
+	// 供列表展示「翻译中 / 已完成 / 失败」。只返回有状态行的条目。
+	GetTranslationStatuses(ctx context.Context, entryIDs []int64, isReadability bool) (map[int64]model.AITranslationStatus, error)
 	// TranslateBlocks parses HTML into blocks and translates them in parallel.
 	// Returns block info, a channel of results (in completion order), and an error channel.
 	TranslateBlocks(ctx context.Context, entryID int64, content, title string, isReadability bool) ([]TranslateBlockInfo, <-chan TranslateBlockResult, <-chan error, error)
@@ -149,9 +156,11 @@ func (s *aiService) GetCachedSummary(ctx context.Context, entryID int64, isReada
 }
 
 func (s *aiService) Summarize(ctx context.Context, entryID int64, content, title string, isReadability bool) (<-chan string, <-chan error, error) {
+	language := s.GetSummaryLanguage(ctx)
 	// Get AI configuration（50 批 1.2：摘要场景可用单独的提供商配置）
 	cfg, err := s.getAIConfigForScene(ctx, SceneSummary)
 	if err != nil {
+		_ = s.summaryRepo.UpsertStatus(ctx, entryID, isReadability, language, "failed", err.Error(), "", "")
 		return nil, nil, err
 	}
 
@@ -159,13 +168,20 @@ func (s *aiService) Summarize(ctx context.Context, entryID int64, content, title
 	provider, err := ai.NewProvider(cfg)
 	if err != nil {
 		logger.Warn("ai provider create failed", "module", "service", "action", "fetch", "resource", "ai", "result", "failed", "provider", cfg.Provider, "model", cfg.Model, "error", err)
+		_ = s.summaryRepo.UpsertStatus(ctx, entryID, isReadability, language, "failed", err.Error(), cfg.Provider, cfg.Model)
 		return nil, nil, fmt.Errorf("create provider: %w", err)
 	}
 
 	// Wait for rate limiter
 	if err := s.rateLimiter.Wait(ctx); err != nil {
 		logger.Warn("ai rate limit wait failed", "module", "service", "action", "fetch", "resource", "ai", "result", "failed", "error", err)
+		_ = s.summaryRepo.UpsertStatus(ctx, entryID, isReadability, language, "failed", err.Error(), cfg.Provider, cfg.Model)
 		return nil, nil, fmt.Errorf("rate limit: %w", err)
+	}
+
+	// 记「摘要中」并记下所用模型提供商（供列表徽章悬停展示）。
+	if statusErr := s.summaryRepo.UpsertStatus(ctx, entryID, isReadability, language, "translating", "", cfg.Provider, cfg.Model); statusErr != nil {
+		logger.Warn("ai summary status write failed", "module", "service", "action", "summarize", "resource", "ai", "result", "failed", "entry_id", entryID, "status", "translating", "error", statusErr)
 	}
 
 	// Get language setting
@@ -221,6 +237,39 @@ func (s *aiService) SaveSummary(ctx context.Context, entryID int64, isReadabilit
 	}
 	logger.Info("ai summary saved", "module", "service", "action", "save", "resource", "ai", "result", "ok", "entry_id", entryID, "readability", isReadability)
 	return nil
+}
+
+// FinishSummary 收尾摘要状态（done / failed）。提供商/模型按当前摘要场景配置回写。
+func (s *aiService) FinishSummary(ctx context.Context, entryID int64, isReadability bool, errMsg string) error {
+	language := s.GetSummaryLanguage(ctx)
+	provider, modelName := "", ""
+	if cfg, err := s.getAIConfigForScene(ctx, SceneSummary); err == nil {
+		provider, modelName = cfg.Provider, cfg.Model
+	}
+	status := "done"
+	if errMsg != "" {
+		status = "failed"
+	}
+	return s.summaryRepo.UpsertStatus(ctx, entryID, isReadability, language, status, errMsg, provider, modelName)
+}
+
+// GetSummaryStatuses 批量取摘要状态；有缓存摘要但没状态行的，按 done 处理（兼容老数据）。
+func (s *aiService) GetSummaryStatuses(ctx context.Context, entryIDs []int64, isReadability bool) (map[int64]model.AISummaryStatus, error) {
+	language := s.GetSummaryLanguage(ctx)
+	statuses, err := s.summaryRepo.GetStatusBatch(ctx, entryIDs, isReadability, language)
+	if err != nil {
+		logger.Warn("ai summary status batch lookup failed", "module", "service", "action", "fetch", "resource", "ai", "result", "failed", "error", err)
+		return nil, err
+	}
+	for _, id := range entryIDs {
+		if _, ok := statuses[id]; ok {
+			continue
+		}
+		if cached, lookupErr := s.summaryRepo.Get(ctx, id, isReadability, language); lookupErr == nil && cached != nil && cached.Summary != "" {
+			statuses[id] = model.AISummaryStatus{Status: "done"}
+		}
+	}
+	return statuses, nil
 }
 
 // freeTranslateTimeout：免 key 通道单块翻译的超时（这些端点很快，不该像模型那样等很久）
@@ -466,6 +515,20 @@ func (s *aiService) WarmTranslation(ctx context.Context, entryID int64, content,
 
 	// 已经翻好了就直接说 cached，不起任务
 	if cached, err := s.translationRepo.Get(ctx, entryID, isReadability, language); err == nil && cached != nil && cached.Content != "" {
+		// 旧缓存没有状态行时，补一条 done，让列表悬浮能看到「用的哪个服务」。
+		// 已有 done+service 的不重复写，避免每次 warm 都刷库。
+		needStatus := true
+		if statuses, sErr := s.translationRepo.GetStatusBatch(ctx, []int64{entryID}, isReadability, language); sErr == nil {
+			if st, ok := statuses[entryID]; ok && st.Status == "done" && st.Service != "" {
+				needStatus = false
+			}
+		}
+		if needStatus {
+			service, provider, model := s.describeTranslateService(ctx)
+			if statusErr := s.translationRepo.UpsertStatusDetail(ctx, entryID, isReadability, language, "done", "", service, provider, model); statusErr != nil {
+				logger.Warn("ai warm translate status write failed", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", entryID, "status", "done", "error", statusErr)
+			}
+		}
 		return true, nil
 	}
 
@@ -482,6 +545,13 @@ func (s *aiService) WarmTranslation(ctx context.Context, entryID int64, content,
 	s.warmInFlight[key] = struct{}{}
 	s.warmMu.Unlock()
 
+	// 记「翻译中」：只在这次真的起了后台任务时写（上面 already-cached / 已在算两条
+	// 早退路径都不动状态）。写失败只记日志，不能挡住翻译本身。用请求 ctx。
+	statService, statProvider, statModel := s.describeTranslateService(ctx)
+	if err := s.translationRepo.UpsertStatusDetail(ctx, entryID, isReadability, language, "translating", "", statService, statProvider, statModel); err != nil {
+		logger.Warn("ai warm translate status write failed", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", entryID, "status", "translating", "error", err)
+	}
+
 	go func() {
 		defer func() {
 			s.warmMu.Lock()
@@ -494,15 +564,25 @@ func (s *aiService) WarmTranslation(ctx context.Context, entryID int64, content,
 		_, resultCh, errCh, err := s.TranslateBlocks(ctx, entryID, content, title, isReadability)
 		if err != nil {
 			logger.Warn("ai warm translate start failed", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", entryID, "error", err)
+			// 起不来也算失败，不能把状态永远停在「翻译中」。
+			if statusErr := s.translationRepo.UpsertStatusDetail(context.Background(), entryID, isReadability, language, "failed", err.Error(), statService, statProvider, statModel); statusErr != nil {
+				logger.Warn("ai warm translate status write failed", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", entryID, "status", "failed", "error", statusErr)
+			}
 			return
 		}
 		// 把结果流抽干 —— TranslateBlocks 在「无错」时自己会把整篇落缓存，
-		// 这里只是等它跑完，不转发给任何人。
+		// 这里只是等它跑完，不转发给任何人。顺便记下第一处错误，供状态展示。
+		firstErrMsg := ""
+		fallbackSeen := false
 		for resultCh != nil || errCh != nil {
 			select {
-			case _, ok := <-resultCh:
+			case result, ok := <-resultCh:
 				if !ok {
 					resultCh = nil
+					continue
+				}
+				if result.Fallback {
+					fallbackSeen = true
 				}
 			case err, ok := <-errCh:
 				if !ok {
@@ -510,14 +590,58 @@ func (s *aiService) WarmTranslation(ctx context.Context, entryID int64, content,
 					continue
 				}
 				if err != nil {
+					if firstErrMsg == "" {
+						firstErrMsg = err.Error()
+					}
 					logger.Warn("ai warm translate block failed", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", entryID, "error", err)
 				}
+			}
+		}
+		if firstErrMsg != "" {
+			if statusErr := s.translationRepo.UpsertStatusDetail(context.Background(), entryID, isReadability, language, "failed", firstErrMsg, statService, statProvider, statModel); statusErr != nil {
+				logger.Warn("ai warm translate status write failed", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", entryID, "status", "failed", "error", statusErr)
+			}
+		} else {
+			uService, uProvider, uModel := statService, statProvider, statModel
+			if fallbackSeen {
+				if cfg, cfgErr := s.getAIConfigForScene(context.Background(), SceneTranslate); cfgErr == nil && cfg.Provider != "" {
+					uService = statService + " / " + cfg.Model
+					uProvider = statProvider + " / " + cfg.Provider
+					uModel = cfg.Model
+				}
+			}
+			if statusErr := s.translationRepo.UpsertStatusDetail(context.Background(), entryID, isReadability, language, "done", "", uService, uProvider, uModel); statusErr != nil {
+				logger.Warn("ai warm translate status write failed", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", entryID, "status", "done", "error", statusErr)
 			}
 		}
 		logger.Info("ai warm translate finished", "module", "service", "action", "translate", "resource", "ai", "result", "ok", "entry_id", entryID)
 	}()
 
 	return false, nil
+}
+
+// describeTranslateService 描述当前翻译会用的服务/提供商（免费通道优先，其次模型）。
+func (s *aiService) describeTranslateService(ctx context.Context) (service, provider, model string) {
+	if chans := s.getFreeTranslateChannels(ctx); len(chans) > 0 {
+		svc, prov := channelDisplayName(chans[0])
+		return svc, prov, ""
+	}
+	if cfg, err := s.getAIConfigForScene(ctx, SceneTranslate); err == nil {
+		return cfg.Model, cfg.Provider, cfg.Model
+	}
+	return "", "", ""
+}
+
+// channelDisplayName 把免 key 通道 id 翻成用户能看懂的服务名 + 提供商。
+func channelDisplayName(channel string) (service, provider string) {
+	switch channel {
+	case "google":
+		return "Google 翻译", "Google"
+	case "youdao":
+		return "有道翻译", "有道"
+	default:
+		return channel, channel
+	}
 }
 
 func (s *aiService) GetCachedTranslation(ctx context.Context, entryID int64, isReadability bool) (*model.AITranslation, error) {
@@ -545,6 +669,18 @@ func (s *aiService) GetCachedTranslations(ctx context.Context, entryIDs []int64,
 		out[id] = t.Content
 	}
 	return out, nil
+}
+
+// GetTranslationStatuses 批量取逐条翻译状态（translating/done/failed + 失败原因）。
+// 语言口径与 GetCachedTranslations 一致（= ai.summary_language），委托仓储批量读。
+func (s *aiService) GetTranslationStatuses(ctx context.Context, entryIDs []int64, isReadability bool) (map[int64]model.AITranslationStatus, error) {
+	language := s.GetSummaryLanguage(ctx)
+	statuses, err := s.translationRepo.GetStatusBatch(ctx, entryIDs, isReadability, language)
+	if err != nil {
+		logger.Warn("ai translation status batch lookup failed", "module", "service", "action", "fetch", "resource", "ai", "result", "failed", "error", err)
+		return nil, err
+	}
+	return statuses, nil
 }
 
 func (s *aiService) SaveTranslation(ctx context.Context, entryID int64, isReadability bool, content string) error {
@@ -627,6 +763,7 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 		var results []TranslateBlockResult
 		var resultsMu sync.Mutex
 		var hasError atomic.Bool
+		var fallbackSeen atomic.Bool
 
 	blockLoop:
 		for _, block := range blocks {
@@ -693,9 +830,17 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 								}
 							}
 							if html == "" {
-								// 分隔符被翻译器改写了：退化成整段包壳（标记会丢，但至少有译文）
-								logger.Warn("segmented free translate fell back to whole-block wrap", "module", "service", "action", "translate", "resource", "ai", "result", "degraded", "entry_id", entryID, "block", b.Index, "segments", len(segments))
-								html = ai.WrapFreeTranslation(b.HTML, translatedText)
+								// 分隔符被翻译器改写（吞掉/替换）时，绝不能把整段塞回最外层 ——
+								// 那会把 <br> 折行和多段结构压成一行，还会在页面留下字面 [[KRSS_SEP]]。
+								// 改为逐段单独翻译再按原树回填：不依赖分隔符，结构（含 <br>）保持原样。
+								logger.Warn("segmented free translate missing separators, retrying per segment", "module", "service", "action", "translate", "resource", "ai", "result", "degraded", "entry_id", entryID, "block", b.Index, "segments", len(segments))
+								if applied, ok := ai.TranslateSegmentsIndividually(ctx, freeClient, freeChannels, b.HTML, segments, language); ok {
+									html = applied
+								}
+							}
+							if html == "" {
+								// 最后兜底：清掉可能残留的分隔符再整段包壳（至少不留字面标记）
+								html = ai.WrapFreeTranslation(b.HTML, ai.StripSegmentSeparators(translatedText))
 							}
 						} else {
 							// 译文按原文外层标签包回去，段落结构（<p>/<h2>）不能丢
@@ -722,6 +867,7 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 						return
 					}
 					fallbackFromFree = true
+					fallbackSeen.Store(true)
 					logger.Warn("free translate failed, falling back to model", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", entryID, "block", b.Index, "channels", strings.Join(freeChannels, "/"), "error", freeErr)
 				}
 
@@ -806,6 +952,17 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 			// Save to cache
 			if err := s.SaveTranslation(ctx, entryID, isReadability, fullHTML.String()); err != nil {
 				logger.Warn("ai translate cache save failed", "module", "service", "action", "save", "resource", "ai", "result", "failed", "entry_id", entryID, "error", err)
+			}
+			// 记录 done 与本次实际使用的服务：正文手动翻译（流式）也走这里，
+			// 这样列表悬浮能显示「机器翻译 · Google 翻译 · Google」，不会只剩「机器翻译」。
+			service, provider, modelName := s.describeTranslateService(ctx)
+			if fallbackSeen.Load() && cfg.Provider != "" {
+				service = service + " / " + cfg.Model
+				provider = provider + " / " + cfg.Provider
+				modelName = cfg.Model
+			}
+			if statusErr := s.translationRepo.UpsertStatusDetail(ctx, entryID, isReadability, language, "done", "", service, provider, modelName); statusErr != nil {
+				logger.Warn("ai translate status write failed", "module", "service", "action", "translate", "resource", "ai", "result", "failed", "entry_id", entryID, "status", "done", "error", statusErr)
 			}
 
 		}

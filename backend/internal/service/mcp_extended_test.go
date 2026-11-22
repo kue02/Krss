@@ -616,6 +616,15 @@ func (s *stubAIService) GetCachedTranslation(ctx context.Context, entryID int64,
 func (s *stubAIService) GetCachedTranslations(ctx context.Context, entryIDs []int64, isReadability bool) (map[int64]string, error) {
 	return map[int64]string{}, nil
 }
+func (s *stubAIService) GetSummaryStatuses(ctx context.Context, entryIDs []int64, isReadability bool) (map[int64]model.AISummaryStatus, error) {
+	return map[int64]model.AISummaryStatus{}, nil
+}
+func (s *stubAIService) FinishSummary(ctx context.Context, entryID int64, isReadability bool, errMsg string) error {
+	return nil
+}
+func (s *stubAIService) GetTranslationStatuses(ctx context.Context, entryIDs []int64, isReadability bool) (map[int64]model.AITranslationStatus, error) {
+	return map[int64]model.AITranslationStatus{}, nil
+}
 func (s *stubAIService) TranslateBlocks(ctx context.Context, entryID int64, content, title string, isReadability bool) ([]service.TranslateBlockInfo, <-chan service.TranslateBlockResult, <-chan error, error) {
 	return nil, nil, nil, nil
 }

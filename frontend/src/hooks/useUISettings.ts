@@ -16,6 +16,10 @@ import type {
   TimelineGranularity,
   TimelineTimeBasis,
 } from "@/lib/timeline-model";
+import {
+  defaultEntryToolbar,
+  type EntryToolbarItem,
+} from "@/lib/entry-toolbar";
 
 export type CardImageSize = "none" | "small" | "large";
 export type ScrollReadOverride = "inherit" | "on" | "off";
@@ -309,6 +313,12 @@ interface UISettings {
    * （左时间列 + 右卡片），关掉则始终左右交替。
    */
   timelineSingleSideByView: ViewFlags;
+  /**
+   * 正文工具栏自定义（显示 / 隐藏 + 拖拽排序）。
+   * 存 `{ id, hidden }[]`，顺序即渲染顺序；读取时统一走
+   * `lib/entry-toolbar.ts` 的 `normalizeEntryToolbar` 归一。
+   */
+  entryToolbar: EntryToolbarItem[];
 }
 
 /**
@@ -371,6 +381,8 @@ const SILENT_SAVE_UI_KEYS = new Set<string>([
   "hoverImageSize",
   // 47-1：切「只显示未读 / 显示全部」，列表当场就换了，不必再弹一句
   "unreadOnly",
+  // 文章工具栏：拖拽排序/显隐在设置面板里当场可见，不必每动一下弹「已保存」
+  "entryToolbar",
 ]);
 
 /** 存储/同步的整包形状（与 `types/settings.ts` 的 UISettingsPackage 同形） */
@@ -605,6 +617,8 @@ export const defaultUISettings: UISettings = {
     notification: true,
     social: true,
   },
+  // 正文工具栏：默认七项全可见，顺序 = 现有渲染顺序
+  entryToolbar: defaultEntryToolbar(),
 };
 
 let cachedPackage: UISettingsPackageShape = readStoredPackage();
@@ -847,6 +861,11 @@ export function useUISettingActions() {
     });
   }, []);
 
+  /** REQ1：整条文章工具栏配置（顺序 + 是否隐藏），拖拽 / 开关后整包写回 */
+  const setEntryToolbar = useCallback((config: EntryToolbarItem[]) => {
+    setUISetting("entryToolbar", config);
+  }, []);
+
   const setComponentRadius = useCallback((preset: RadiusPreset) => {
     setUISetting("componentRadius", preset);
   }, []);
@@ -1000,6 +1019,7 @@ export function useUISettingActions() {
     setFieldRadius,
     setIconRadius,
     setUnreadBadge,
+    setEntryToolbar,
     setUnreadStyle,
     setAccentColor,
     setSidebarFeedAppearance,

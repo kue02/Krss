@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next";
 import gsap from "gsap";
 import { ArticleContent } from "@/components/ui/article-content";
 import { useTranslationStore } from "@/stores/translation-store";
-import { resolveEntryAutoTranslate } from "@/lib/auto-translate";
 import { MachineTranslatedBadge } from "./machine-translated-badge";
 import type { Entry, Feed } from "@/types/api";
 
@@ -93,8 +92,6 @@ export function NotificationBodyPreview({
   visible,
   anchor,
   feedName,
-  feed,
-  autoTranslate,
   targetLanguage,
   onMouseEnter,
   onMouseLeave,
@@ -126,11 +123,28 @@ export function NotificationBodyPreview({
 }) {
   const { t } = useTranslation();
   const floatRef = useRef<HTMLDivElement | null>(null);
+  // 与卡片同一口径（reviewer P3-2）：直接读 store，不再按 autoTranslate 现算门。
+  // getTranslation 在 disabled 时已返回 undefined，手动译文/失败态也能正常显示。
+  // 阅读模式把译文写到 `${language}:readability` 槽，这里回退到可读槽（reviewer P2-1）。
   const translation = useTranslationStore((state) =>
-    entry &&
-    targetLanguage &&
-    resolveEntryAutoTranslate({ entry, feed, aiSettings: { autoTranslate } })
-      ? state.getTranslation(entry.id, targetLanguage)
+    entry && targetLanguage
+      ? state.getTranslation(entry.id, targetLanguage) ??
+        state.getTranslation(entry.id, targetLanguage, true)
+      : undefined,
+  );
+  // REQ3：正文三态状态（翻译中 / 失败 / 完成）——与卡片同一份 store
+  const translationStatus = useTranslationStore((state) =>
+    entry && targetLanguage
+      ? state.getStatus?.(entry.id, targetLanguage)
+      : undefined,
+  );
+  const contentStatus = translationStatus?.content;
+  const contentBadgeState = translation?.content
+    ? "done"
+    : contentStatus?.state ?? null;
+  const aiSummaryStatus = useTranslationStore((state) =>
+    entry && targetLanguage
+      ? state.getSummaryStatus?.(entry.id, targetLanguage)
       : undefined,
   );
   const displayTitle = entry ? (translation?.title ?? entry.title) : "";
@@ -286,8 +300,25 @@ export function NotificationBodyPreview({
       <div className="flex max-h-[inherit] flex-col p-3">
         <div className="flex shrink-0 items-center gap-1 text-[12px] font-medium text-muted-foreground">
           <span>{feedName}</span>
-          {/* 54-5：浮块正文同样优先显示译文，那就同样要标明「这是机器翻译」 */}
-          {previewContent && translation?.content && <MachineTranslatedBadge />}
+          {/* REQ3：浮块正文三态标记（完成 / 翻译中 / 失败） */}
+          {contentBadgeState && (
+            <MachineTranslatedBadge
+              state={contentBadgeState}
+              error={contentStatus?.error}
+              service={contentStatus?.service}
+              provider={contentStatus?.provider}
+              model={contentStatus?.model}
+            />
+          )}
+          {aiSummaryStatus && (
+            <MachineTranslatedBadge
+              state={aiSummaryStatus.state}
+              error={aiSummaryStatus.error}
+              provider={aiSummaryStatus.provider}
+              model={aiSummaryStatus.model}
+              variant="ai-summary"
+            />
+          )}
         </div>
         <div className="mt-0.5 shrink-0 text-[13.5px] font-semibold leading-5 text-foreground">
           {displayTitle || t("entry.untitled")}

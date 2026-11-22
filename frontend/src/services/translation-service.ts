@@ -161,10 +161,8 @@ export async function translateArticlesBatch(
       });
     }
   } catch (error) {
-    // Ignore abort errors
-    if (error instanceof Error && error.name === "AbortError") {
-      return;
-    }
+    // 取消（abort）不是「翻译失败」：向上抛出，让调用方按 AbortError 跳过失败态，
+    // 否则切列表/重新发起批次时会把上一批误标成「翻译失败」。
     throw error;
   } finally {
     // Clean up batch tracking

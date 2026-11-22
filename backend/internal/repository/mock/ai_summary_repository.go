@@ -85,6 +85,21 @@ func (mr *MockAISummaryRepositoryMockRecorder) Get(ctx, entryID, isReadability, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockAISummaryRepository)(nil).Get), ctx, entryID, isReadability, language)
 }
 
+// GetStatusBatch mocks base method.
+func (m *MockAISummaryRepository) GetStatusBatch(ctx context.Context, entryIDs []int64, isReadability bool, language string) (map[int64]model.AISummaryStatus, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetStatusBatch", ctx, entryIDs, isReadability, language)
+	ret0, _ := ret[0].(map[int64]model.AISummaryStatus)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetStatusBatch indicates an expected call of GetStatusBatch.
+func (mr *MockAISummaryRepositoryMockRecorder) GetStatusBatch(ctx, entryIDs, isReadability, language any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStatusBatch", reflect.TypeOf((*MockAISummaryRepository)(nil).GetStatusBatch), ctx, entryIDs, isReadability, language)
+}
+
 // Save mocks base method.
 func (m *MockAISummaryRepository) Save(ctx context.Context, entryID int64, isReadability bool, language, summary string) error {
 	m.ctrl.T.Helper()
@@ -97,4 +112,18 @@ func (m *MockAISummaryRepository) Save(ctx context.Context, entryID int64, isRea
 func (mr *MockAISummaryRepositoryMockRecorder) Save(ctx, entryID, isReadability, language, summary any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Save", reflect.TypeOf((*MockAISummaryRepository)(nil).Save), ctx, entryID, isReadability, language, summary)
+}
+
+// UpsertStatus mocks base method.
+func (m *MockAISummaryRepository) UpsertStatus(ctx context.Context, entryID int64, isReadability bool, language, status, errMsg, provider, arg7 string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertStatus", ctx, entryID, isReadability, language, status, errMsg, provider, arg7)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpsertStatus indicates an expected call of UpsertStatus.
+func (mr *MockAISummaryRepositoryMockRecorder) UpsertStatus(ctx, entryID, isReadability, language, status, errMsg, provider, arg7 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertStatus", reflect.TypeOf((*MockAISummaryRepository)(nil).UpsertStatus), ctx, entryID, isReadability, language, status, errMsg, provider, arg7)
 }

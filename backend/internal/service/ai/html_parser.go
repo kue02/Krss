@@ -47,6 +47,59 @@ var wrapperElements = map[string]bool{
 	"nav":     true,
 }
 
+// blockLevelElements 是所有「块级」标签里、除 wrapperElements 之外的部分。
+// 只有直接子元素里含块级元素的 wrapper 才往里拆；只含文本 / 内联标签的 wrapper
+// 整块当一个叶子块，把外层标签留在 HTML 里 —— 否则 `<div>line1</div><div>line2</div>`
+// 会被拆成两段裸文本、外层 div 丢失，前端拼回去就没有换行结构了。
+var blockLevelElements = map[string]bool{
+	"p":          true,
+	"h1":         true,
+	"h2":         true,
+	"h3":         true,
+	"h4":         true,
+	"h5":         true,
+	"h6":         true,
+	"ul":         true,
+	"ol":         true,
+	"li":         true,
+	"dl":         true,
+	"dt":         true,
+	"dd":         true,
+	"table":      true,
+	"thead":      true,
+	"tbody":      true,
+	"tfoot":      true,
+	"tr":         true,
+	"td":         true,
+	"th":         true,
+	"blockquote": true,
+	"figure":     true,
+	"figcaption": true,
+	"hr":         true,
+	"address":    true,
+	"details":    true,
+	"summary":    true,
+	"form":       true,
+	"fieldset":   true,
+}
+
+// isBlockLevelTag 判断某个标签是否算块级（wrapper + 上面补充的块级标签）。
+func isBlockLevelTag(tag string) bool {
+	return wrapperElements[tag] || blockLevelElements[tag]
+}
+
+// hasBlockLevelChild 判断一个节点的**直接**子元素里是否有块级元素。
+// 只看直接子级：wrapper 里的块级子元素才是「该往里拆」的依据；只有文本 / 内联标签
+// （text/b/strong/em/a/span/code/img…）的 wrapper 应当整块保留。
+func hasBlockLevelChild(n *html.Node) bool {
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		if c.Type == html.ElementNode && isBlockLevelTag(c.Data) {
+			return true
+		}
+	}
+	return false
+}
+
 // ParseHTMLBlocks parses HTML content into blocks for translation.
 func ParseHTMLBlocks(content string) ([]Block, error) {
 	doc, err := html.Parse(strings.NewReader(content))
@@ -119,9 +172,11 @@ func collectBlocks(parent *html.Node, blocks *[]Block, index *int) {
 			continue
 		}
 
-		// Check if this is a wrapper element that should be expanded
-		if child.Type == html.ElementNode && wrapperElements[child.Data] {
-			// Always expand wrapper elements recursively
+		// Check if this is a wrapper element that should be expanded.
+		// 只有直接子元素里含块级元素时才往里递归拆；否则（只含文本 / 内联标签 /
+		// 图片）整个 wrapper 当一个叶子块，保留自己的外层标签 —— 这样
+		// `<div>line1</div><div>line2</div>` 的两段不会被拼成一行。
+		if child.Type == html.ElementNode && wrapperElements[child.Data] && hasBlockLevelChild(child) {
 			collectBlocks(child, blocks, index)
 			continue
 		}

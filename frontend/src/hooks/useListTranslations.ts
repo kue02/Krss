@@ -31,6 +31,7 @@
  */
 
 import { useEffect, useMemo, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { fetchCachedTranslations, warmTranslate } from "@/api";
 import { translationActions } from "@/stores/translation-store";
 import { resolveEntryAutoTranslate } from "@/lib/auto-translate";
@@ -204,6 +205,7 @@ export function useListTranslations({
   resetKey,
   concurrency,
 }: UseListTranslationsOptions): void {
+  const { t } = useTranslation();
   const stateRef = useRef<HookState>({
     warmed: new Set<string>(),
     awaiting: new Map<string, number>(),
@@ -346,6 +348,12 @@ export function useListTranslations({
         release();
         return;
       }
+      // REQ3：warm 真正发出去 ⇒ 卡片进入「翻译中」态
+      translationActions.setStatus(
+        target.entry.id,
+        latestRef.current.targetLanguage,
+        { content: { state: "translating" } },
+      );
       try {
         await warmTranslate({
           entryId: target.entry.id,
@@ -355,6 +363,12 @@ export function useListTranslations({
           isReadability: false,
         });
       } catch {
+        // warm 都没发出去 ⇒ 不会再有译文，标失败（否则卡片一直卡在「翻译中」）
+        translationActions.setStatus(
+          target.entry.id,
+          latestRef.current.targetLanguage,
+          { content: { state: "failed" } },
+        );
         release();
         return;
       }
@@ -373,8 +387,56 @@ export function useListTranslations({
           const response = await fetchCachedTranslations(slice, false);
           if (!alive()) return;
           applyCachedTranslations(response.translations, language, false);
+          // 内容已到达 ⇒ done（并清掉旧错误）
           for (const entryId of Object.keys(response.translations)) {
             stateRef.current.awaiting.delete(entryId);
+            const info = response.statuses?.[entryId];
+            translationActions.setStatus(entryId, language, {
+              content: {
+                state: "done",
+                service: info?.service,
+                provider: info?.provider,
+                model: info?.model,
+              },
+            });
+          }
+          // REQ3：后端新增的过程状态（translating / done / failed）
+          if (response.statuses) {
+            for (const [entryId, info] of Object.entries(response.statuses)) {
+              // 已经拿到内容的（上面已置 done）不重复处理
+              if (response.translations[entryId]) continue;
+              if (info.status === "done") {
+                translationActions.setStatus(entryId, language, {
+                  content: {
+                    state: "done",
+                    service: info.service,
+                    provider: info.provider,
+                    model: info.model,
+                  },
+                });
+                stateRef.current.awaiting.delete(entryId);
+              } else if (info.status === "failed") {
+                translationActions.setStatus(entryId, language, {
+                  content: {
+                    state: "failed",
+                    error: info.error,
+                    service: info.service,
+                    provider: info.provider,
+                    model: info.model,
+                  },
+                });
+                stateRef.current.awaiting.delete(entryId);
+              } else if (info.status === "translating") {
+                translationActions.setStatus(entryId, language, {
+                  content: {
+                    state: "translating",
+                    service: info.service,
+                    provider: info.provider,
+                    model: info.model,
+                  },
+                });
+              }
+            }
           }
         } catch {
           // 读失败不打扰用户：下一轮再试，卡片照旧显示原文
@@ -385,6 +447,12 @@ export function useListTranslations({
       for (const [entryId, requestedAt] of [...stateRef.current.awaiting]) {
         if (now - requestedAt > RESULT_TIMEOUT_MS) {
           stateRef.current.awaiting.delete(entryId);
+          translationActions.setStatus(entryId, language, {
+            content: {
+              state: "failed",
+              error: t("entry.translate_timeout"),
+            },
+          });
         }
       }
       pump();

@@ -18,7 +18,6 @@ import { stripHtml } from "@/lib/html-utils";
 import { getEntryImages } from "@/lib/extract-images";
 import { useImagePreviewStore } from "@/stores/image-preview-store";
 import { useTranslationStore } from "@/stores/translation-store";
-import { resolveEntryAutoTranslate } from "@/lib/auto-translate";
 import { FeedIcon } from "@/components/ui/feed-icon";
 import { useEntrySourceJump } from "./entry-source-jump";
 import { MarqueeText } from "@/components/ui/marquee-text";
@@ -297,7 +296,6 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
       feedUnreadCount,
       isSelected,
       onClick,
-      autoTranslate,
       targetLanguage,
       social = false,
       fetchReadable = false,
@@ -355,22 +353,29 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     const entryFontSize = useUISettingKey("entryFontSize");
     const entryLineHeight = useUISettingKey("entryLineHeight");
 
+    /**
+     * 54-7（用户 2026-10-20 报「设置了订阅翻译，列表里还是英文」）：
+     * REQ2 之后这里改成**直接读 store**，不再按 `autoTranslate` 现算门：
+     * - 正文页手动翻译也会写进 store，列表要能立刻看到（否则「翻译了列表没更新」）；
+     * - 关掉订阅自动翻译时，`getTranslation` 会因 `disabled` 返回 undefined（见 store），
+     *   所以不会把用户不想要的译文顶上来。
+     */
     const translation = useTranslationStore((state) =>
-      /**
-       * 54-7（用户 2026-10-20 报「设置了订阅翻译，列表里还是英文」）：
-       * 这里的门必须与**取数/预载**用同一份解析器（条目级 > 订阅级 > 全局），
-       * 不能只看全局 `autoTranslate`。
-       *
-       * 原来的形态：`useListTranslations` 按订阅级覆盖挑候选（feed.autoTranslate）
-       * 把译文写进了 store，而这里只认全局开关 —— 全局关着、只配了订阅级翻译时，
-       * 译文明明在 store 里却读不出来，卡片一直是原文。
-       */
-      targetLanguage && resolveEntryAutoTranslate({
-        entry,
-        feed,
-        aiSettings: { autoTranslate },
-      })
-        ? state.getTranslation(entry.id, targetLanguage)
+      targetLanguage
+        ? state.getTranslation(entry.id, targetLanguage) ??
+          // 阅读模式开时正文页把译文写到 `${language}:readability` 槽；
+          // 列表卡片默认读 `language` 槽会读不到（reviewer P2-1）。这里回退到可读槽，
+          // 保证「正文里翻完、退出列表仍能看到译文」在各种阅读模式下都成立。
+          state.getTranslation(entry.id, targetLanguage, true)
+        : undefined,
+    );
+    const translationStatus = useTranslationStore((state) =>
+      targetLanguage ? state.getStatus?.(entry.id, targetLanguage) : undefined,
+    );
+    // AI 摘要状态（与「正文翻译」独立）：有条目需摘要且有状态时才显示摘要徽章。
+    const aiSummaryStatus = useTranslationStore((state) =>
+      targetLanguage
+        ? state.getSummaryStatus?.(entry.id, targetLanguage)
         : undefined,
     );
 
@@ -460,6 +465,25 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     const translatedBody = translation?.content ?? null;
     const displayContent = translatedBody ?? expandedContent;
     const isExpanded = isSocialView && Boolean(displayContent);
+
+    /**
+     * REQ3 三态标记：
+     * - 有译文（content）= done；
+     * - 否则看 store 里 `useListTranslations` 落的过程状态：translating / failed；
+     * - 摘要同理：`translation?.summary` 有值就是 done，否则看 summary 状态。
+     */
+    const contentStatus = translationStatus?.content;
+    // 只有真的拿到译文才显示 done；后端 status 为 done 但内容还没进 store 时不显示，
+    // 避免卡片原文却挂「机器翻译」；失败/翻译中不需要内容也能提示。
+    const contentBadgeState = translatedBody
+      ? "done"
+      : contentStatus?.state === "failed" || contentStatus?.state === "translating"
+        ? contentStatus.state
+        : null;
+    const summaryStatus = translationStatus?.summary;
+    const summaryBadgeState = translation?.summary
+      ? "done"
+      : summaryStatus?.state ?? null;
 
     // 源常在正文开头重复标题，时间线里标题已单独渲染，去掉重复的首段；
     // 图片也从正文摘掉，交给下面的缩略图行（对齐 Folo 的 noMedia + MediaGallery）
@@ -664,9 +688,28 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                   {entry.starred && (
                     <Star className="ml-1 size-3.5 shrink-0 text-amber-500" />
                   )}
-                  {/* 54-5：正文显示的是译文时挂个语言图标（判据 = store 里真有译文） */}
-                  {translatedBody && (
-                    <MachineTranslatedBadge className="ml-1" />
+                  {/* REQ3：正文三态标记（有译文 / 翻译中 / 失败） */}
+                  {contentBadgeState && (
+                    <MachineTranslatedBadge
+                      state={contentBadgeState}
+                      error={contentStatus?.error}
+                      service={contentStatus?.service}
+                      provider={contentStatus?.provider}
+                      model={contentStatus?.model}
+                      className="ml-1"
+                    />
+                  )}
+                  {/* 需求（第三轮）：有条目需要 AI 摘要时，列表也显示摘要徽章；
+                      完成态悬浮显示摘要所用模型提供商。灯泡图标与翻译语言图标区分。 */}
+                  {aiSummaryStatus && (
+                    <MachineTranslatedBadge
+                      state={aiSummaryStatus.state}
+                      error={aiSummaryStatus.error}
+                      provider={aiSummaryStatus.provider}
+                      model={aiSummaryStatus.model}
+                      variant="ai-summary"
+                      className="ml-1"
+                    />
                   )}
                   {entry.muted && <MutedBadge filterId={entry.filterId} />}
                 </div>
@@ -1027,20 +1070,31 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
 
               {/* 摘要（行数可在 设置 → 外观 里调，0 = 不显示） */}
               {displaySummary && cardPreviewLines > 0 && !isExpanded && (
-                <div
-                  className={cn(
-                    "mt-1 text-[13.5px] leading-[20px] text-muted-foreground wrap-anywhere sm:text-sm sm:leading-relaxed",
-                    !isUnread && "text-muted-foreground/70",
+                <div className="mt-1 flex items-start gap-1">
+                  <div
+                    className={cn(
+                      "min-w-0 flex-1 text-[13.5px] leading-[20px] text-muted-foreground wrap-anywhere sm:text-sm sm:leading-relaxed",
+                      !isUnread && "text-muted-foreground/70",
+                    )}
+                    style={{
+                      display: "-webkit-box",
+                      WebkitBoxOrient: "vertical",
+                      WebkitLineClamp:
+                        cardPreviewLines + (summaryContainsUrl ? 1 : 0),
+                      overflow: "hidden",
+                    }}
+                  >
+                    {displaySummary}
+                  </div>
+                  {/* REQ3：摘要是机器翻译时挂三态标记 */}
+                  {summaryBadgeState && (
+                    <MachineTranslatedBadge
+                      state={summaryBadgeState}
+                      error={summaryStatus?.error}
+                      variant="summary"
+                      className="mt-0.5 shrink-0"
+                    />
                   )}
-                  style={{
-                    display: "-webkit-box",
-                    WebkitBoxOrient: "vertical",
-                    WebkitLineClamp:
-                      cardPreviewLines + (summaryContainsUrl ? 1 : 0),
-                    overflow: "hidden",
-                  }}
-                >
-                  {displaySummary}
                 </div>
               )}
 

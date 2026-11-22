@@ -74,6 +74,20 @@ func (mr *MockAIServiceMockRecorder) Complete(ctx, systemPrompt, content any) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Complete", reflect.TypeOf((*MockAIService)(nil).Complete), ctx, systemPrompt, content)
 }
 
+// FinishSummary mocks base method.
+func (m *MockAIService) FinishSummary(ctx context.Context, entryID int64, isReadability bool, errMsg string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FinishSummary", ctx, entryID, isReadability, errMsg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// FinishSummary indicates an expected call of FinishSummary.
+func (mr *MockAIServiceMockRecorder) FinishSummary(ctx, entryID, isReadability, errMsg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FinishSummary", reflect.TypeOf((*MockAIService)(nil).FinishSummary), ctx, entryID, isReadability, errMsg)
+}
+
 // GetCachedSummary mocks base method.
 func (m *MockAIService) GetCachedSummary(ctx context.Context, entryID int64, isReadability bool) (*model.AISummary, error) {
 	m.ctrl.T.Helper()
@@ -131,6 +145,36 @@ func (m *MockAIService) GetSummaryLanguage(ctx context.Context) string {
 func (mr *MockAIServiceMockRecorder) GetSummaryLanguage(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSummaryLanguage", reflect.TypeOf((*MockAIService)(nil).GetSummaryLanguage), ctx)
+}
+
+// GetSummaryStatuses mocks base method.
+func (m *MockAIService) GetSummaryStatuses(ctx context.Context, entryIDs []int64, isReadability bool) (map[int64]model.AISummaryStatus, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSummaryStatuses", ctx, entryIDs, isReadability)
+	ret0, _ := ret[0].(map[int64]model.AISummaryStatus)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetSummaryStatuses indicates an expected call of GetSummaryStatuses.
+func (mr *MockAIServiceMockRecorder) GetSummaryStatuses(ctx, entryIDs, isReadability any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSummaryStatuses", reflect.TypeOf((*MockAIService)(nil).GetSummaryStatuses), ctx, entryIDs, isReadability)
+}
+
+// GetTranslationStatuses mocks base method.
+func (m *MockAIService) GetTranslationStatuses(ctx context.Context, entryIDs []int64, isReadability bool) (map[int64]model.AITranslationStatus, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetTranslationStatuses", ctx, entryIDs, isReadability)
+	ret0, _ := ret[0].(map[int64]model.AITranslationStatus)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetTranslationStatuses indicates an expected call of GetTranslationStatuses.
+func (mr *MockAIServiceMockRecorder) GetTranslationStatuses(ctx, entryIDs, isReadability any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTranslationStatuses", reflect.TypeOf((*MockAIService)(nil).GetTranslationStatuses), ctx, entryIDs, isReadability)
 }
 
 // ModelName mocks base method.

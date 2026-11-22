@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -171,6 +172,9 @@ func (h *AIHandler) Summarize(c echo.Context) error {
 				case err := <-errCh:
 					if err != nil {
 						logger.Error("ai summarize stream error", "module", "handler", "action", "fetch", "resource", "ai", "result", "failed", "entry_id", entryID, "error", err)
+						if statusErr := h.service.FinishSummary(context.Background(), entryID, req.IsReadability, err.Error()); statusErr != nil {
+							logger.Warn("ai summarize status finish failed", "module", "handler", "action", "summarize", "resource", "ai", "result", "failed", "entry_id", entryID, "error", statusErr)
+						}
 						// Write error to stream
 						fmt.Fprintf(c.Response(), "event: error\ndata: %s\n\n", err.Error())
 						c.Response().Flush()
@@ -186,6 +190,9 @@ func (h *AIHandler) Summarize(c echo.Context) error {
 						logger.Warn("ai summarize cache save failed", "module", "handler", "action", "save", "resource", "ai", "result", "failed", "entry_id", entryID, "error", err)
 					} else {
 						logger.Info("ai summarize cached", "module", "handler", "action", "save", "resource", "ai", "result", "ok", "entry_id", entryID)
+					}
+					if statusErr := h.service.FinishSummary(context.Background(), entryID, req.IsReadability, ""); statusErr != nil {
+						logger.Warn("ai summarize status finish failed", "module", "handler", "action", "summarize", "resource", "ai", "result", "failed", "entry_id", entryID, "error", statusErr)
 					}
 				}
 
@@ -203,6 +210,9 @@ func (h *AIHandler) Summarize(c echo.Context) error {
 
 		case <-ctx.Done():
 			logger.Warn("ai summarize cancelled", "module", "handler", "action", "fetch", "resource", "ai", "result", "cancelled", "entry_id", entryID)
+			if statusErr := h.service.FinishSummary(context.Background(), entryID, req.IsReadability, "已取消"); statusErr != nil {
+				logger.Warn("ai summarize status finish failed", "module", "handler", "action", "summarize", "resource", "ai", "result", "failed", "entry_id", entryID, "error", statusErr)
+			}
 			return nil
 		}
 	}
@@ -454,11 +464,33 @@ type batchCachedTranslationItem struct {
 	Content string `json:"content"`
 }
 
+// batchCachedTranslationStatus 单条翻译状态（列表展示「翻译中 / 已完成 / 失败」用）。
+type batchCachedTranslationStatus struct {
+	Status   string `json:"status"`
+	Error    string `json:"error,omitempty"`
+	Service  string `json:"service,omitempty"`
+	Provider string `json:"provider,omitempty"`
+	Model    string `json:"model,omitempty"`
+}
+
+// batchCachedSummaryStatus 单条 AI 摘要状态（列表展示「摘要中 / 已完成 / 失败」+ 所用模型）。
+type batchCachedSummaryStatus struct {
+	Status   string `json:"status"`
+	Error    string `json:"error,omitempty"`
+	Provider string `json:"provider,omitempty"`
+	Model    string `json:"model,omitempty"`
+}
+
 type batchCachedTranslationResponse struct {
 	// Translations 只含**已翻好**的条目；没缓存的条目不出现在这里（前端按原文处理）
 	Translations map[string]batchCachedTranslationItem `json:"translations"`
 	// Language 后端实际用的目标语言（= ai.summary_language），前端用来对齐缓存键
 	Language string `json:"language"`
+	// Statuses 逐条翻译状态（translating/done/failed + 失败原因），供列表显示
+	// 「翻译中 / 已完成 / 失败」并在失败时悬浮看原因。只含有状态行的条目（子集 OK）。
+	Statuses map[string]batchCachedTranslationStatus `json:"statuses,omitempty"`
+	// SummaryStatuses 逐条 AI 摘要状态；供列表显示摘要徽章与所用模型提供商。
+	SummaryStatuses map[string]batchCachedSummaryStatus `json:"summaryStatuses,omitempty"`
 }
 
 type batchCachedTranslationRequest struct {
@@ -474,8 +506,9 @@ type batchCachedTranslationRequest struct {
 // `POST /ai/translate/warm` 算好落库了，这里只是把结果批量取出来。
 //
 // 只读语义：不触发生成、不写库；没缓存的条目直接不返回，不报错。
+// 同时带回逐条翻译状态（statuses），供列表显示「翻译中 / 已完成 / 失败」。
 // @Summary Batch read cached translations
-// @Description Read already-cached full-content translations for many entries. Read-only: never triggers translation.
+// @Description Read already-cached full-content translations for many entries, plus per-entry translation statuses. Read-only: never triggers translation.
 // @Tags ai
 // @Accept json
 // @Produce json
@@ -524,11 +557,33 @@ func (h *AIHandler) CachedTranslations(c echo.Context) error {
 		translations[strconv.FormatInt(entryID, 10)] = batchCachedTranslationItem{Content: content}
 	}
 
+	// 逐条状态：只是读侧辅助信息，取不到不影响译文本身（记日志、返回空 statuses）。
+	statuses := make(map[string]batchCachedTranslationStatus)
+	if statusMap, statusErr := h.service.GetTranslationStatuses(ctx, ids, req.IsReadability); statusErr != nil {
+		logger.Warn("ai cached translations status lookup failed", "module", "handler", "action", "fetch", "resource", "ai", "result", "failed", "count", len(ids), "error", statusErr)
+	} else {
+		for entryID, st := range statusMap {
+			statuses[strconv.FormatInt(entryID, 10)] = batchCachedTranslationStatus{Status: st.Status, Error: st.Error, Service: st.Service, Provider: st.Provider, Model: st.Model}
+		}
+	}
+
+	// 摘要状态：列表卡片也要显示「摘要中 / 已完成 / 失败」徽章与所用模型。
+	summaryStatuses := make(map[string]batchCachedSummaryStatus)
+	if summaryMap, summaryErr := h.service.GetSummaryStatuses(ctx, ids, req.IsReadability); summaryErr != nil {
+		logger.Warn("ai cached summaries status lookup failed", "module", "handler", "action", "fetch", "resource", "ai", "result", "failed", "count", len(ids), "error", summaryErr)
+	} else {
+		for entryID, st := range summaryMap {
+			summaryStatuses[strconv.FormatInt(entryID, 10)] = batchCachedSummaryStatus{Status: st.Status, Error: st.Error, Provider: st.Provider, Model: st.Model}
+		}
+	}
+
 	logger.Debug("ai cached translations served", "module", "handler", "action", "fetch", "resource", "ai", "result", "ok", "requested", len(ids), "hit", len(translations))
 
 	return c.JSON(http.StatusOK, batchCachedTranslationResponse{
-		Translations: translations,
-		Language:     h.service.GetSummaryLanguage(ctx),
+		Translations:    translations,
+		Language:        h.service.GetSummaryLanguage(ctx),
+		Statuses:        statuses,
+		SummaryStatuses: summaryStatuses,
 	})
 }
 

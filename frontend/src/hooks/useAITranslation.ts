@@ -39,6 +39,8 @@ interface UseAITranslationReturn {
   translatedContent: string | null;
   translatedContentBlocks: Array<{ key: string; html: string }> | null;
   combinedTranslatedContent: string | null;
+  /** REQ3：最近一次翻译失败的可见原因（无失败 = null）。 */
+  translationError: string | null;
   handleToggleTranslation: () => Promise<void>;
 }
 
@@ -78,6 +80,8 @@ export function useAITranslation({
   );
   const [isTranslating, setIsTranslating] = useState(false);
   const [translationMode, setTranslationMode] = useState<boolean | null>(null);
+  /** REQ3：最近一次翻译失败的可见原因（用于正文工具栏按钮转红 + hover 显示）。 */
+  const [translationError, setTranslationError] = useState<string | null>(null);
 
   const translateAbortRef = useRef<AbortController | null>(null);
   const translateRequestedRef = useRef(false);
@@ -92,6 +96,7 @@ export function useAITranslation({
     setOriginalBlocks([]);
     setTranslatedBlocks(new Map());
     setTranslationMode(null);
+    setTranslationError(null);
     hasExistingTranslationRef.current = false;
   }, []);
 
@@ -116,6 +121,7 @@ export function useAITranslation({
     failedBlockCountRef.current = 0;
     lastTranslateErrorRef.current = null;
     failureToastShownRef.current = false;
+    setTranslationError(null);
   }, [entry?.id, cancelInFlightTranslation, clearTranslationState]);
 
   // Get cached translations from store
@@ -199,6 +205,7 @@ export function useAITranslation({
         setTranslatedContent(event.content);
         setOriginalBlocks([]);
         setTranslatedBlocks(new Map());
+        setTranslationError(null);
         return true;
       }
 
@@ -225,6 +232,7 @@ export function useAITranslation({
       if (isTranslateError(event)) {
         failedBlockCountRef.current += 1;
         lastTranslateErrorRef.current = event.error;
+        setTranslationError(event.error);
         return false;
       }
 
@@ -260,6 +268,7 @@ export function useAITranslation({
       // 49-2：每跑一次翻译重新记账（这次失败了要说，上次说过的不重复说）
       failedBlockCountRef.current = 0;
       lastTranslateErrorRef.current = null;
+      setTranslationError(null);
 
       // 别人（预载）正在翻同一条 ⇒ 只订阅它的事件，**不重复跑一遍模型**。
       // 它结束时：store 里有结果就直接用；没有（失败 / 被取消）就落到下面自己补一次。
@@ -283,6 +292,7 @@ export function useAITranslation({
           );
           if (prefetched?.content) {
             setTranslatedContent(prefetched.content);
+            setTranslationError(null);
             setIsTranslating(false);
             isTranslatingRef.current = false;
             return;
@@ -327,6 +337,12 @@ export function useAITranslation({
         if (err instanceof Error && err.name === "AbortError") {
           return;
         }
+        // REQ3：整条流失败（网络 / 服务端）也要能把正文工具栏按钮标成失败态。
+        setTranslationError(
+          err instanceof Error && err.message
+            ? err.message
+            : t("entry.translate_failed"),
+        );
         return;
       } finally {
         claim?.finish();
@@ -338,15 +354,20 @@ export function useAITranslation({
           }
           // 49-2：有块没译出来就明说（用户口径「失败须给可见原因」）。
           // 同一次翻译只提示一次；toast-store 现在也会把同文案合并成一条。
-          if (failedBlockCountRef.current > 0 && !failureToastShownRef.current) {
-            failureToastShownRef.current = true;
-            const reason = (lastTranslateErrorRef.current ?? "").slice(0, 60);
-            showToast(
-              t("entry.translate_blocks_failed", {
-                count: failedBlockCountRef.current,
-                reason,
-              }),
+          if (failedBlockCountRef.current > 0) {
+            setTranslationError(
+              lastTranslateErrorRef.current ?? t("entry.translate_failed"),
             );
+            if (!failureToastShownRef.current) {
+              failureToastShownRef.current = true;
+              const reason = (lastTranslateErrorRef.current ?? "").slice(0, 60);
+              showToast(
+                t("entry.translate_blocks_failed", {
+                  count: failedBlockCountRef.current,
+                  reason,
+                }),
+              );
+            }
           }
         }
       }
@@ -493,7 +514,9 @@ export function useAITranslation({
 
   // Save translation to store when completed
   useEffect(() => {
-    if (!entry || !autoTranslate) return;
+    // REQ2：手动翻译（autoTranslate=false）同样要落库，否则「在正文里翻译完，
+    // 回到列表还是原文」。这里只保留 entry 守卫，autoTranslate 不再拦截。
+    if (!entry) return;
 
     const content = combinedTranslatedContent;
     if (content && !isTranslating && translationMode !== null) {
@@ -521,6 +544,7 @@ export function useAITranslation({
     translatedContent: translatedContentForCurrentMode,
     translatedContentBlocks,
     combinedTranslatedContent,
+    translationError,
     handleToggleTranslation,
   };
 }

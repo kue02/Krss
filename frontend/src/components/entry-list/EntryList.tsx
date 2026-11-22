@@ -14,6 +14,7 @@ import { useFeeds } from "@/hooks/useFeeds";
 import { useGeneralSettings } from "@/hooks/useGeneralSettings";
 import { useEntryPrefetch } from "@/hooks/useEntryPrefetch";
 import { useListTranslations } from "@/hooks/useListTranslations";
+import { useListSummaryStatuses } from "@/hooks/useListSummaryStatuses";
 import { useRefreshStatus } from "@/hooks/useRefreshStatus";
 import { queryClient } from "@/lib/queryClient";
 import { requestEntriesHeadSync } from "@/lib/entries-head-sync";
@@ -636,6 +637,14 @@ export function EntryList({
     concurrency: entryPrefetchConcurrency,
   });
 
+  // 列表卡片的「AI 摘要」徽章：只读轮询后端摘要状态（不发翻译请求）。
+  useListSummaryStatuses({
+    entries,
+    targetLanguage,
+    enabled: isActive && (isSocialView || isNotificationTimeline),
+    resetKey: scrollKey,
+  });
+
   // 24-5：右键「标记上方为已读」—— 把这条之上的未读一次标掉。
   // 与菜单里「标为已读」同语义（直接写库、不推迟摘除），上面被标掉的当场消失。
   const { mutate: markManyAsRead } = useMarkManyAsRead();
@@ -1088,15 +1097,40 @@ export function EntryList({
     pendingTranslation.current.clear();
 
     if (articlesToTranslate.length > 0) {
-      translateArticlesBatch(articlesToTranslate, targetLanguage).finally(
-        () => {
-          // Remove entries that didn't actually get translated (cancelled, partial failure, etc.)
-          for (const article of articlesToTranslate) {
-            const cached = translationActions.get(article.id, targetLanguage);
-            if (!cached?.title && !cached?.summary) {
-              translatedEntries.current.delete(article.id);
-            }
+      // REQ3：送出去就先把这批的「摘要」标成翻译中
+      for (const article of articlesToTranslate) {
+        translationActions.setStatus(article.id, targetLanguage, {
+          summary: { state: "translating" },
+        });
+      }
+      const settleSummaryStatus = (errorMsg?: string) => {
+        for (const article of articlesToTranslate) {
+          const cached = translationActions.get(article.id, targetLanguage);
+          if (!cached?.title && !cached?.summary) {
+            translatedEntries.current.delete(article.id);
+            translationActions.setStatus(article.id, targetLanguage, {
+              summary: { state: "failed", error: errorMsg },
+            });
+          } else {
+            translationActions.setStatus(article.id, targetLanguage, {
+              summary: { state: "done" },
+            });
           }
+        }
+      };
+      translateArticlesBatch(articlesToTranslate, targetLanguage).then(
+        () => settleSummaryStatus(),
+        (error: unknown) => {
+          // 取消（abort）不算失败：不写失败态，等新批次接管
+          if (error instanceof Error && error.name === "AbortError") return;
+          // REQ3：摘要翻译失败时把具体错误存进状态，列表悬浮可见（与正文翻译失败同口径）
+          const msg =
+            error instanceof Error
+              ? error.message
+              : typeof error === "string"
+                ? error
+                : undefined;
+          settleSummaryStatus(msg);
         },
       );
     }

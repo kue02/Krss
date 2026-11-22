@@ -638,6 +638,53 @@ func runMigrations(db *sql.DB) error {
 		return err
 	}
 
+	// Migration 36: 逐条翻译状态（列表展示「翻译中 / 已完成 / 失败」+ 悬停看失败原因）。
+	// 一条 (entry_id, is_readability, language) 一行，状态只有 translating/done/failed，
+	// error 放失败原因供前端悬浮展示。纯结构变更，IF NOT EXISTS 幂等，老库升级零影响。
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS ai_translation_status (
+			entry_id INTEGER NOT NULL,
+			is_readability INTEGER NOT NULL DEFAULT 0,
+			language TEXT NOT NULL,
+			status TEXT NOT NULL,          -- 'translating' | 'done' | 'failed'
+			error TEXT NOT NULL DEFAULT '',
+			updated_at TEXT NOT NULL,
+			PRIMARY KEY (entry_id, is_readability, language)
+		)
+	`); err != nil {
+		return fmt.Errorf("create ai_translation_status table: %w", err)
+	}
+
+	// Migration 37: 记录翻译/摘要**用了哪个服务/模型**，供列表徽章悬停展示；
+	// 并新增 ai_summary_status 表让列表也能显示 AI 摘要的「摘要中/已完成/失败」。
+	if err := addColumnIfMissing(db, "ai_translation_status", "service",
+		`ALTER TABLE ai_translation_status ADD COLUMN service TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "ai_translation_status", "provider",
+		`ALTER TABLE ai_translation_status ADD COLUMN provider TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "ai_translation_status", "model",
+		`ALTER TABLE ai_translation_status ADD COLUMN model TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS ai_summary_status (
+			entry_id INTEGER NOT NULL,
+			is_readability INTEGER NOT NULL DEFAULT 0,
+			language TEXT NOT NULL,
+			status TEXT NOT NULL,          -- 'translating' | 'done' | 'failed'
+			error TEXT NOT NULL DEFAULT '',
+			provider TEXT NOT NULL DEFAULT '',
+			model TEXT NOT NULL DEFAULT '',
+			updated_at TEXT NOT NULL,
+			PRIMARY KEY (entry_id, is_readability, language)
+		)
+	`); err != nil {
+		return fmt.Errorf("create ai_summary_status table: %w", err)
+	}
+
 	return nil
 }
 

@@ -100,6 +100,21 @@ func (mr *MockAITranslationRepositoryMockRecorder) GetBatch(ctx, entryIDs, isRea
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBatch", reflect.TypeOf((*MockAITranslationRepository)(nil).GetBatch), ctx, entryIDs, isReadability, language)
 }
 
+// GetStatusBatch mocks base method.
+func (m *MockAITranslationRepository) GetStatusBatch(ctx context.Context, entryIDs []int64, isReadability bool, language string) (map[int64]model.AITranslationStatus, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetStatusBatch", ctx, entryIDs, isReadability, language)
+	ret0, _ := ret[0].(map[int64]model.AITranslationStatus)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetStatusBatch indicates an expected call of GetStatusBatch.
+func (mr *MockAITranslationRepositoryMockRecorder) GetStatusBatch(ctx, entryIDs, isReadability, language any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStatusBatch", reflect.TypeOf((*MockAITranslationRepository)(nil).GetStatusBatch), ctx, entryIDs, isReadability, language)
+}
+
 // Save mocks base method.
 func (m *MockAITranslationRepository) Save(ctx context.Context, entryID int64, isReadability bool, language, content string) error {
 	m.ctrl.T.Helper()
@@ -112,4 +127,32 @@ func (m *MockAITranslationRepository) Save(ctx context.Context, entryID int64, i
 func (mr *MockAITranslationRepositoryMockRecorder) Save(ctx, entryID, isReadability, language, content any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Save", reflect.TypeOf((*MockAITranslationRepository)(nil).Save), ctx, entryID, isReadability, language, content)
+}
+
+// UpsertStatus mocks base method.
+func (m *MockAITranslationRepository) UpsertStatus(ctx context.Context, entryID int64, isReadability bool, language, status, errMsg string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertStatus", ctx, entryID, isReadability, language, status, errMsg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpsertStatus indicates an expected call of UpsertStatus.
+func (mr *MockAITranslationRepositoryMockRecorder) UpsertStatus(ctx, entryID, isReadability, language, status, errMsg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertStatus", reflect.TypeOf((*MockAITranslationRepository)(nil).UpsertStatus), ctx, entryID, isReadability, language, status, errMsg)
+}
+
+// UpsertStatusDetail mocks base method.
+func (m *MockAITranslationRepository) UpsertStatusDetail(ctx context.Context, entryID int64, isReadability bool, language, status, errMsg, service, provider, arg8 string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertStatusDetail", ctx, entryID, isReadability, language, status, errMsg, service, provider, arg8)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpsertStatusDetail indicates an expected call of UpsertStatusDetail.
+func (mr *MockAITranslationRepositoryMockRecorder) UpsertStatusDetail(ctx, entryID, isReadability, language, status, errMsg, service, provider, arg8 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertStatusDetail", reflect.TypeOf((*MockAITranslationRepository)(nil).UpsertStatusDetail), ctx, entryID, isReadability, language, status, errMsg, service, provider, arg8)
 }

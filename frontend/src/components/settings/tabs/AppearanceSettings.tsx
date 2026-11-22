@@ -34,6 +34,7 @@ import {
 import { useScrollReadSetting, type ScrollReadPerViewChoice } from "@/hooks/useScrollReadSetting";
 import { AccentColorPicker } from "@/components/settings/tabs/AccentColorPicker";
 import { UnreadBadgeCustomizer } from "@/components/settings/tabs/UnreadBadgeCustomizer";
+import { EntryToolbarSettings } from "@/components/settings/tabs/EntryToolbarSettings";
 import { readingFonts } from "@/lib/reading-fonts";
 import type {
   TimelineCollapse,
@@ -51,6 +52,7 @@ import {
   Check,
   LayoutGrid,
   Palette,
+  PanelTop,
   Shapes,
   Smartphone,
   Type,
@@ -1470,6 +1472,17 @@ export function AppearanceSettings() {
               {t("settings.appearance_keep_one")}
             </div>
           )}
+        </div>
+      </SectionCard>
+
+      {/* REQ1: article toolbar customization (show/hide + drag reorder) */}
+      <SectionCard
+        icon={<PanelTop className="size-4" strokeWidth={1.75} />}
+        title={t("appearance_reading.entry_toolbar_title")}
+        description={t("appearance_reading.entry_toolbar_description")}
+      >
+        <div className="px-1 py-2">
+          <EntryToolbarSettings />
         </div>
       </SectionCard>
     </div>
