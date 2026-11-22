@@ -151,7 +151,8 @@ export function MachineTranslatedBadge({
         >
           {icon}
         </Popover.Trigger>
-        <Popover.Content>
+        {/* 点空白/再点徽标即可关闭；模态能确保背景不误触列表 */}
+        <Popover.Content placement="top">
           <Popover.Dialog className="max-w-[min(18rem,calc(100vw-2rem))] px-3 py-2 text-xs leading-relaxed text-popover-foreground">
             {message}
           </Popover.Dialog>

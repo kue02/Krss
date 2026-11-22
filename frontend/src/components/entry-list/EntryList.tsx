@@ -638,12 +638,13 @@ export function EntryList({
   });
 
   // 列表卡片的「AI 摘要」徽章：只读轮询后端摘要状态（不发翻译请求）。
-  // 全视图启用：文章列表的标题/摘要批量翻译也会在后端记入摘要状态，
-  // 这样卡片徽章完成态在任何视图都能显示「提供商（· 模型）」而不只是社交/通知视图。
+  // 只在这两个视图启用：它们的卡片渲染 AI 摘要徽章（lightbulb）。
+  // 文章列表的「摘要」徽标不靠这里 —— 批量翻译流式返回时会带 provider/model
+  // 直接写进 translation store，既不额外轮询也不占用 ai_summary_status。
   useListSummaryStatuses({
     entries,
     targetLanguage,
-    enabled: isActive,
+    enabled: isActive && (isSocialView || isNotificationTimeline),
     resetKey: scrollKey,
   });
 
@@ -1108,14 +1109,19 @@ export function EntryList({
       const settleSummaryStatus = (errorMsg?: string) => {
         for (const article of articlesToTranslate) {
           const cached = translationActions.get(article.id, targetLanguage);
+          const prevSummary = translationActions.getStatus?.(
+            article.id,
+            targetLanguage,
+          )?.summary;
           if (!cached?.title && !cached?.summary) {
             translatedEntries.current.delete(article.id);
             translationActions.setStatus(article.id, targetLanguage, {
               summary: { state: "failed", error: errorMsg },
             });
           } else {
+            // 保留流式结果写入的 provider/model，只把状态收尾成 done
             translationActions.setStatus(article.id, targetLanguage, {
-              summary: { state: "done" },
+              summary: { ...prevSummary, state: "done" },
             });
           }
         }

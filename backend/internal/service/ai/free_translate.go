@@ -109,30 +109,38 @@ func channelRotation(channel string) []string {
 // TranslateFreeTextChannels 按给定顺序依次尝试免 key 通道，第一个成功即返回；
 // 全部失败时返回汇总错误（列出每个通道的失败原因）。空文本返回 ("", nil)。
 func TranslateFreeTextChannels(ctx context.Context, client *http.Client, channels []string, text, targetLang string) (string, error) {
+	translated, _, err := TranslateFreeTextChannelsWithChannel(ctx, client, channels, text, targetLang)
+	return translated, err
+}
+
+// TranslateFreeTextChannelsWithChannel 同 TranslateFreeTextChannels，但额外返回
+// **实际命中的通道**（channel 常量，如 "google" / "youdao"）。调用方据此记录真正的
+// 提供商 —— 通道会按顺序回退，不能想当然用 channels[0]。
+func TranslateFreeTextChannelsWithChannel(ctx context.Context, client *http.Client, channels []string, text, targetLang string) (string, string, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return "", nil
+		return "", "", nil
 	}
 	if client == nil {
 		client = http.DefaultClient
 	}
 	normalized := NormalizeFreeTranslateChannels(channels)
 	if len(normalized) == 0 {
-		return "", fmt.Errorf("no free translate channel configured")
+		return "", "", fmt.Errorf("no free translate channel configured")
 	}
 
 	failures := make([]string, 0, len(normalized))
 	for _, channel := range normalized {
 		if err := ctx.Err(); err != nil {
-			return "", err
+			return "", "", err
 		}
 		translated, err := translateWithRetry(ctx, client, channel, text, targetLang)
 		if err == nil {
-			return translated, nil
+			return translated, channel, nil
 		}
 		failures = append(failures, fmt.Sprintf("%s: %v", channel, err))
 	}
-	return "", fmt.Errorf("all free translate channels failed (%s)", strings.Join(failures, "; "))
+	return "", "", fmt.Errorf("all free translate channels failed (%s)", strings.Join(failures, "; "))
 }
 
 // translateWithRetry 对单个通道最多试两次：免费通道偶发 5xx / 空结果，重试一次再说失败。

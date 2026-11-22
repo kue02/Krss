@@ -685,6 +685,17 @@ func runMigrations(db *sql.DB) error {
 		return fmt.Errorf("create ai_summary_status table: %w", err)
 	}
 
+	// Migration 38: 列表标题/摘要的批量译文缓存也记住用了哪个提供商/模型，
+	// 供列表「摘要」徽标在缓存命中时仍能显示（迁移 37 只覆盖了 AI 摘要表）。
+	if err := addColumnIfMissing(db, "ai_list_translations", "provider",
+		`ALTER TABLE ai_list_translations ADD COLUMN provider TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "ai_list_translations", "model",
+		`ALTER TABLE ai_list_translations ADD COLUMN model TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+
 	return nil
 }
 

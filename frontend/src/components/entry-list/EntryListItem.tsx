@@ -484,12 +484,6 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     const summaryBadgeState = translation?.summary
       ? "done"
       : summaryStatus?.state ?? null;
-    /**
-     * 普通（非社交）卡片的「摘要」徽标完成态要显示提供商（· 模型）。
-     * 列表「标题+摘要」批量翻译的提供商由 `useListSummaryStatuses` 写进
-     * aiSummaryStatuses，这里优先用它；没有就回退到翻译状态自带的 service。
-     */
-    const summaryBadgeUsage = aiSummaryStatus ?? summaryStatus;
 
     // 源常在正文开头重复标题，时间线里标题已单独渲染，去掉重复的首段；
     // 图片也从正文摘掉，交给下面的缩略图行（对齐 Folo 的 noMedia + MediaGallery）
@@ -1098,10 +1092,10 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                   {summaryBadgeState && (
                     <MachineTranslatedBadge
                       state={summaryBadgeState}
-                      error={summaryStatus?.error ?? aiSummaryStatus?.error}
+                      error={summaryStatus?.error}
                       service={summaryStatus?.service}
-                      provider={summaryBadgeUsage?.provider}
-                      model={summaryBadgeUsage?.model}
+                      provider={summaryStatus?.provider}
+                      model={summaryStatus?.model}
                       variant="summary"
                       className="mt-0.5 shrink-0"
                     />

@@ -1265,6 +1265,10 @@ export interface BatchTranslateResult {
   title: string | null;
   summary: string | null;
   cached?: boolean;
+  /** 本条实际使用的提供商（免费通道为「Google」/「有道」等）。 */
+  provider?: string;
+  /** 走模型时的模型名；免费通道为空。 */
+  model?: string;
 }
 
 /**

@@ -126,7 +126,13 @@ function cssColorToHex(color: string): string | null {
   const ctx = canvas.getContext("2d");
   if (!ctx) return null;
   ctx.clearRect(0, 0, 1, 1);
+  // 先写一个已知可用的哨兵色：若浏览器不认 oklch() 之类的新语法，fillStyle 会
+  // 保持哨兵值不变，此时必须回退（否则会静默取到哨兵/默认黑色）。
+  ctx.fillStyle = "#ff0000";
   ctx.fillStyle = value;
+  if (String(ctx.fillStyle).toLowerCase() === "#ff0000" && value.toLowerCase() !== "#ff0000" && value.toLowerCase() !== "red") {
+    return null;
+  }
   ctx.fillRect(0, 0, 1, 1);
   const data = ctx.getImageData(0, 0, 1, 1).data;
   const r = data[0] ?? 0;

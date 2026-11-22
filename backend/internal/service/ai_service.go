@@ -47,6 +47,10 @@ type BatchTranslateResult struct {
 	Title   *string `json:"title"`
 	Summary *string `json:"summary"`
 	Cached  bool    `json:"cached,omitempty"`
+	// Provider / Model：这条标题/摘要实际用的提供商与模型（免费通道只有 Provider）。
+	// 前端据此在列表「摘要」徽标完成态显示「提供商（· 模型）」。
+	Provider string `json:"provider,omitempty"`
+	Model    string `json:"model,omitempty"`
 }
 
 // AIService provides AI-related operations like summarization and translation.
@@ -1056,10 +1060,12 @@ func (s *aiService) TranslateBatch(ctx context.Context, articles []BatchArticleI
 			// Check cache first
 			if cached, ok := cachedMap[entryID]; ok {
 				result := BatchTranslateResult{
-					ID:      article.ID,
-					Title:   &cached.Title,
-					Summary: &cached.Summary,
-					Cached:  true,
+					ID:       article.ID,
+					Title:    &cached.Title,
+					Summary:  &cached.Summary,
+					Cached:   true,
+					Provider: cached.Provider,
+					Model:    cached.Model,
 				}
 				select {
 				case resultCh <- result:
@@ -1120,9 +1126,11 @@ func (s *aiService) TranslateBatch(ctx context.Context, articles []BatchArticleI
 						return "", nil
 					}
 					if len(freeChannels) > 0 {
-						translated, freeErr := ai.TranslateFreeTextChannels(ctx, freeClient, freeChannels, text, language)
+						translated, usedChannel, freeErr := ai.TranslateFreeTextChannelsWithChannel(ctx, freeClient, freeChannels, text, language)
 						if freeErr == nil {
-							_, usedProvider = channelDisplayName(freeChannels[0])
+							// 通道会按顺序回退（google → youdao），必须用实际命中的通道，
+							// 不能用 freeChannels[0]，否则 Google 失败时会把有道误标成 Google。
+							_, usedProvider = channelDisplayName(usedChannel)
 							usedModel = ""
 							return strings.TrimSpace(translated), nil
 						}
@@ -1183,22 +1191,20 @@ func (s *aiService) TranslateBatch(ctx context.Context, articles []BatchArticleI
 					summaryStr = translated
 				}
 
-				// Save to cache
+				// Save to cache（连同实际用的提供商/模型一起落库，缓存命中时也能显示）
 				if titleStr != "" || summaryStr != "" {
-					if err := s.listTranslationRepo.Save(ctx, eID, language, titleStr, summaryStr); err != nil {
+					if err := s.listTranslationRepo.Save(ctx, eID, language, titleStr, summaryStr, usedProvider, usedModel); err != nil {
 						logger.Warn("ai batch translate cache save failed", "module", "service", "action", "save", "resource", "ai", "result", "failed", "entry_id", eID, "error", err)
-					}
-					// 记录「摘要」所用服务，列表卡片徽章完成态据此显示提供商（/模型）。
-					if statusErr := s.summaryRepo.UpsertStatus(ctx, eID, false, language, "done", "", usedProvider, usedModel); statusErr != nil {
-						logger.Warn("ai batch translate status write failed", "module", "service", "action", "save", "resource", "ai", "result", "failed", "entry_id", eID, "status", "done", "error", statusErr)
 					}
 				}
 
 				// Send result
 				result := BatchTranslateResult{
-					ID:      a.ID,
-					Title:   translatedTitle,
-					Summary: translatedSummary,
+					ID:       a.ID,
+					Title:    translatedTitle,
+					Summary:  translatedSummary,
+					Provider: usedProvider,
+					Model:    usedModel,
 				}
 
 				select {

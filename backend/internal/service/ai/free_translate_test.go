@@ -252,6 +252,37 @@ func TestTranslateFreeTextChannelsRotatesInOrder(t *testing.T) {
 	}
 }
 
+// 回退到第二个通道时，必须报告**实际命中**的通道（不能永远是 channels[0]）。
+func TestTranslateFreeTextChannelsWithChannelReportsActualChannel(t *testing.T) {
+	googleServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer googleServer.Close()
+	youdaoServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"errorCode":0,"translation":["你好世界"]}`))
+	}))
+	defer youdaoServer.Close()
+
+	originalGoogle, originalYoudao := googleTranslateEndpoint, youdaoTranslateEndpoint
+	googleTranslateEndpoint = googleServer.URL
+	youdaoTranslateEndpoint = youdaoServer.URL
+	defer func() {
+		googleTranslateEndpoint = originalGoogle
+		youdaoTranslateEndpoint = originalYoudao
+	}()
+
+	got, usedChannel, err := TranslateFreeTextChannelsWithChannel(context.Background(), googleServer.Client(), []string{FreeChannelGoogle, FreeChannelYoudao}, "Hello world", "zh-CN")
+	if err != nil {
+		t.Fatalf("应回退到有道并成功: %v", err)
+	}
+	if got != "你好世界" {
+		t.Errorf("got %q, want 你好世界", got)
+	}
+	if usedChannel != FreeChannelYoudao {
+		t.Errorf("应报告实际命中的 youdao，得到 %q", usedChannel)
+	}
+}
+
 // 全部通道失败时，错误里要列出每一个通道。
 func TestTranslateFreeTextChannelsAllFail(t *testing.T) {
 	googleServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

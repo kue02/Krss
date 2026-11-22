@@ -101,15 +101,15 @@ func (mr *MockAIListTranslationRepositoryMockRecorder) GetBatch(ctx, entryIDs, l
 }
 
 // Save mocks base method.
-func (m *MockAIListTranslationRepository) Save(ctx context.Context, entryID int64, language, title, summary string) error {
+func (m *MockAIListTranslationRepository) Save(ctx context.Context, entryID int64, language, title, summary, provider, arg6 string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Save", ctx, entryID, language, title, summary)
+	ret := m.ctrl.Call(m, "Save", ctx, entryID, language, title, summary, provider, arg6)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Save indicates an expected call of Save.
-func (mr *MockAIListTranslationRepositoryMockRecorder) Save(ctx, entryID, language, title, summary any) *gomock.Call {
+func (mr *MockAIListTranslationRepositoryMockRecorder) Save(ctx, entryID, language, title, summary, provider, arg6 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Save", reflect.TypeOf((*MockAIListTranslationRepository)(nil).Save), ctx, entryID, language, title, summary)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Save", reflect.TypeOf((*MockAIListTranslationRepository)(nil).Save), ctx, entryID, language, title, summary, provider, arg6)
 }

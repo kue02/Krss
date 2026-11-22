@@ -83,8 +83,8 @@ func TestAIListTranslationRepository(t *testing.T) {
 	feedID := testutil.SeedFeed(t, db, model.Feed{Title: "F", URL: "u"})
 	entryID := testutil.SeedEntry(t, db, model.Entry{FeedID: feedID})
 
-	// Save
-	err := repo.Save(ctx, entryID, "en-US", "Trans Title", "Trans Summary")
+	// Save（连同提供商/模型）
+	err := repo.Save(ctx, entryID, "en-US", "Trans Title", "Trans Summary", "Google", "")
 	require.NoError(t, err)
 
 	// Get
@@ -92,6 +92,8 @@ func TestAIListTranslationRepository(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, trans)
 	require.Equal(t, "Trans Title", trans.Title)
+	require.Equal(t, "Google", trans.Provider)
+	require.Equal(t, "", trans.Model)
 
 	// Delete All
 	count, err := repo.DeleteAll(ctx)
@@ -108,14 +110,17 @@ func TestAIListTranslationRepository_GetBatchAndDelete(t *testing.T) {
 	entryID1 := testutil.SeedEntry(t, db, model.Entry{FeedID: feedID})
 	entryID2 := testutil.SeedEntry(t, db, model.Entry{FeedID: feedID})
 
-	err := repo.Save(ctx, entryID1, "en-US", "Title 1", "Summary 1")
+	err := repo.Save(ctx, entryID1, "en-US", "Title 1", "Summary 1", "OpenAI", "gpt-5-mini")
 	require.NoError(t, err)
-	err = repo.Save(ctx, entryID2, "en-US", "Title 2", "Summary 2")
+	err = repo.Save(ctx, entryID2, "en-US", "Title 2", "Summary 2", "Google", "")
 	require.NoError(t, err)
 
 	batch, err := repo.GetBatch(ctx, []int64{entryID1, entryID2}, "en-US")
 	require.NoError(t, err)
 	require.Len(t, batch, 2)
+	require.Equal(t, "OpenAI", batch[entryID1].Provider)
+	require.Equal(t, "gpt-5-mini", batch[entryID1].Model)
+	require.Equal(t, "Google", batch[entryID2].Provider)
 
 	err = repo.DeleteByEntryID(ctx, entryID1)
 	require.NoError(t, err)

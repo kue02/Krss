@@ -111,8 +111,8 @@ func TestAIService_TranslateBatch_CacheHit(t *testing.T) {
 	repo := newSettingsRepoStub()
 	listRepo := &listTranslationRepoStub{
 		batchResult: map[int64]*model.AIListTranslation{
-			1: {EntryID: 1, Title: "T1", Summary: "S1"},
-			2: {EntryID: 2, Title: "T2", Summary: "S2"},
+			1: {EntryID: 1, Title: "T1", Summary: "S1", Provider: "Google"},
+			2: {EntryID: 2, Title: "T2", Summary: "S2", Provider: "OpenAI", Model: "gpt-5-mini"},
 		},
 	}
 	svc := service.NewAIService(&summaryRepoStub{}, &translationRepoStub{}, listRepo, repo, ai.NewRateLimiter(100))
@@ -133,6 +133,11 @@ func TestAIService_TranslateBatch_CacheHit(t *testing.T) {
 	require.Equal(t, "T1", *results["1"].Title)
 	require.NotNil(t, results["1"].Summary)
 	require.Equal(t, "S1", *results["1"].Summary)
+	// 缓存命中也要带回提供商/模型：列表「摘要」徽标完成态据此显示
+	require.Equal(t, "Google", results["1"].Provider)
+	require.Equal(t, "", results["1"].Model)
+	require.Equal(t, "OpenAI", results["2"].Provider)
+	require.Equal(t, "gpt-5-mini", results["2"].Model)
 
 	select {
 	case err := <-errCh:
@@ -290,6 +295,11 @@ func (s *translationRepoStub) DeleteAll(ctx context.Context) (int64, error) {
 type listTranslationRepoStub struct {
 	deleteAllErr error
 	batchResult  map[int64]*model.AIListTranslation
+	// 记录最后一次 Save 的提供商/模型/译文，供测试断言
+	lastProvider string
+	lastModel    string
+	lastTitle    string
+	lastSummary  string
 }
 
 func (s *listTranslationRepoStub) Get(ctx context.Context, entryID int64, language string) (*model.AIListTranslation, error) {
@@ -303,7 +313,11 @@ func (s *listTranslationRepoStub) GetBatch(ctx context.Context, entryIDs []int64
 	return make(map[int64]*model.AIListTranslation), nil
 }
 
-func (s *listTranslationRepoStub) Save(ctx context.Context, entryID int64, language, title, summary string) error {
+func (s *listTranslationRepoStub) Save(ctx context.Context, entryID int64, language, title, summary, provider, model string) error {
+	s.lastTitle = title
+	s.lastSummary = summary
+	s.lastProvider = provider
+	s.lastModel = model
 	return nil
 }
 

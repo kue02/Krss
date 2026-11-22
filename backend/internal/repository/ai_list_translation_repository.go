@@ -13,7 +13,7 @@ import (
 type AIListTranslationRepository interface {
 	Get(ctx context.Context, entryID int64, language string) (*model.AIListTranslation, error)
 	GetBatch(ctx context.Context, entryIDs []int64, language string) (map[int64]*model.AIListTranslation, error)
-	Save(ctx context.Context, entryID int64, language, title, summary string) error
+	Save(ctx context.Context, entryID int64, language, title, summary, provider, model string) error
 	DeleteByEntryID(ctx context.Context, entryID int64) error
 	DeleteAll(ctx context.Context) (int64, error)
 }
@@ -29,7 +29,7 @@ func NewAIListTranslationRepository(db dbtx) AIListTranslationRepository {
 func (r *aiListTranslationRepository) Get(ctx context.Context, entryID int64, language string) (*model.AIListTranslation, error) {
 	row := r.db.QueryRowContext(
 		ctx,
-		`SELECT id, entry_id, language, title, summary, created_at
+		`SELECT id, entry_id, language, title, summary, provider, model, created_at
 		 FROM ai_list_translations WHERE entry_id = ? AND language = ?`,
 		entryID, language,
 	)
@@ -37,7 +37,7 @@ func (r *aiListTranslationRepository) Get(ctx context.Context, entryID int64, la
 	var t model.AIListTranslation
 	var createdAt string
 
-	err := row.Scan(&t.ID, &t.EntryID, &t.Language, &t.Title, &t.Summary, &createdAt)
+	err := row.Scan(&t.ID, &t.EntryID, &t.Language, &t.Title, &t.Summary, &t.Provider, &t.Model, &createdAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -56,7 +56,7 @@ func (r *aiListTranslationRepository) GetBatch(ctx context.Context, entryIDs []i
 	}
 
 	// Build query with placeholders
-	query := `SELECT id, entry_id, language, title, summary, created_at
+	query := `SELECT id, entry_id, language, title, summary, provider, model, created_at
 	          FROM ai_list_translations WHERE language = ? AND entry_id IN (`
 	args := make([]interface{}, 0, len(entryIDs)+1)
 	args = append(args, language)
@@ -81,7 +81,7 @@ func (r *aiListTranslationRepository) GetBatch(ctx context.Context, entryIDs []i
 		var t model.AIListTranslation
 		var createdAt string
 
-		if err := rows.Scan(&t.ID, &t.EntryID, &t.Language, &t.Title, &t.Summary, &createdAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.EntryID, &t.Language, &t.Title, &t.Summary, &t.Provider, &t.Model, &createdAt); err != nil {
 			return nil, err
 		}
 
@@ -92,19 +92,21 @@ func (r *aiListTranslationRepository) GetBatch(ctx context.Context, entryIDs []i
 	return result, rows.Err()
 }
 
-func (r *aiListTranslationRepository) Save(ctx context.Context, entryID int64, language, title, summary string) error {
+func (r *aiListTranslationRepository) Save(ctx context.Context, entryID int64, language, title, summary, provider, model string) error {
 	id := snowflake.NextID()
 	now := formatTime(time.Now())
 
 	_, err := r.db.ExecContext(
 		ctx,
-		`INSERT INTO ai_list_translations (id, entry_id, language, title, summary, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?)
+		`INSERT INTO ai_list_translations (id, entry_id, language, title, summary, provider, model, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(entry_id, language) DO UPDATE SET
 		   title = excluded.title,
 		   summary = excluded.summary,
+		   provider = excluded.provider,
+		   model = excluded.model,
 		   created_at = excluded.created_at`,
-		id, entryID, language, title, summary, now,
+		id, entryID, language, title, summary, provider, model, now,
 	)
 	return err
 }

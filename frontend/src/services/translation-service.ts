@@ -159,6 +159,17 @@ export async function translateArticlesBatch(
         title: result.title,
         summary: result.summary,
       });
+      // 记录这条「摘要」译文实际用的提供商/模型：列表卡片徽标完成态据此显示
+      // 「提供商（· 模型）」。后端缓存命中时也会带回上次的值。
+      if (result.provider || result.model) {
+        translationActions.setStatus(result.id, targetLanguage, {
+          summary: {
+            state: "done",
+            provider: result.provider,
+            model: result.model,
+          },
+        });
+      }
     }
   } catch (error) {
     // 取消（abort）不是「翻译失败」：向上抛出，让调用方按 AbortError 跳过失败态，
