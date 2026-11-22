@@ -89,10 +89,10 @@ func TestProviderDisplayName_FallsBackToProtocol(t *testing.T) {
 
 func TestMergeTranslationUsage(t *testing.T) {
 	cases := []struct {
-		name                                    string
-		baseS, baseP, baseM, cfgM, cfgP         string
-		hasChannel, fallback                     bool
-		wantS, wantP, wantM                      string
+		name                            string
+		baseS, baseP, baseM, cfgM, cfgP string
+		hasChannel, fallback            bool
+		wantS, wantP, wantM             string
 	}{
 		{"纯免费命中不改", "Google 翻译", "Google", "", "m", "P", true, false, "Google 翻译", "Google", ""},
 		{"纯模型不改", "m", "P", "m", "m", "P", false, false, "m", "P", "m"},
