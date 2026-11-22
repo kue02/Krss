@@ -18,8 +18,9 @@ import { useUISettingActions, useUISettingKey } from "@/hooks/useUISettings";
 /**
  * 主题色（用户 11-13：点名用 HeroUI 的 ColorPicker；20-1 按 HeroUI 官方取色面板重做）。
  *
- * 取值语义：`null` = 跟随当前主题自带的强调色（默认）；选了颜色就写进 `settings.accentColor`，
+ * 取值语义：`null` = 跟随当前主题自带的强调色（重置后即回到这个状态）；选了颜色就写进 `settings.accentColor`，
  * 由 `applyAccentColorToDocument()` 落到 `<html>` 的内联 `--accent` 上（明暗主题都跟着走）。
+ * 新装默认值 `"#000000"`（与生产实例一致）。
  *
  * **面板结构照 HeroUI 官方那套**（顶部预设色块行 → 取色区 → 色相条 + 右侧图标按钮 →
  * 底部带色块前缀的 hex 输入框），全部用组件库自己的件：

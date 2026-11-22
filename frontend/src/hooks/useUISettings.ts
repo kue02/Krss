@@ -395,15 +395,18 @@ export interface UISettingsPackageShape {
 }
 
 /**
- * 不在 defaultUISettings 里、或默认值是 `null` 的键 —— 它们的值类型不可能从默认值推出来，
+ * 不在 defaultUISettings 里、默认值是 `undefined` 的键 —— 类型不可能从默认值推出来，
  * 必须在这里显式放行，否则会被下面的类型闸门当成「脏值」丢掉。
- *
- * `accentColor`（22-2 附带修）：默认值是 `null`，而实际值是 `"#RRGGBB"` —— 老写法拿
- * `typeof fallback`（`"object"`）比 `typeof value`（`"string"`），一律判为类型不符 ⇒ **每次加载
- * （localStorage 与 服务端两条路都过这里）都把主题色丢掉**，界面回到「跟随主题」。
- * 21 批之前是 `{...defaultUISettings, ...JSON.parse(stored)}` 直接合并，没这个闸门 —— 这是 21 批引入的回归。
  */
-const OPTIONAL_UI_KEYS = new Set<string>(["scrollReadMode", "accentColor"]);
+const OPTIONAL_UI_KEYS = new Set<string>(["scrollReadMode"]);
+
+/**
+ * 默认值是字符串、但**允许显式 `null`** 的键。
+ * `accentColor`：新装默认 `"#000000"`（与生产实例一致），用户仍可显式清空成 `null`
+ * 表示「跟随当前主题自带的强调色」。`null` 的 `typeof` 是 `"object"`，过不了下面对
+ * `typeof fallback`（`"string"`）的比对，所以要在类型闸门前单独放行。
+ */
+const NULLABLE_STRING_KEYS = new Set<string>(["accentColor"]);
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -436,11 +439,11 @@ function sanitizeBag(input: unknown): Record<string, unknown> {
 
   for (const [key, value] of Object.entries(input)) {
     const fallback = defaults[key];
-    /**
-     * 默认值是 `null` 的键（`accentColor`）**推不出类型** —— `typeof null === "object"`，
-     * 拿它跟 `"#RRGGBB"`（string）比必然不符，老写法会把主题色直接丢掉（见 OPTIONAL_UI_KEYS 的说明）。
-     * 这类键一律走下面的白名单，不参与类型比对。
-     */
+    // 默认是字符串、但允许显式 null 的键（accentColor=「跟随主题」）：先于类型闸门放行。
+    if (NULLABLE_STRING_KEYS.has(key)) {
+      if (value === null || typeof value === "string") out[key] = value;
+      continue;
+    }
     if (fallback !== undefined && fallback !== null) {
       if (typeof value !== typeof fallback) continue;
       if (isPlainObject(fallback) && isPlainObject(value)) {
@@ -573,7 +576,7 @@ export const defaultUISettings: UISettings = {
   fieldRadius: "default",
   iconRadius: "default",
   sidebarFeedAppearance: "name_and_site",
-  accentColor: null,
+  accentColor: "#000000",
   showLineNumbers: false,
   uiScale: 1,
   scrollReadTimingByView: {
