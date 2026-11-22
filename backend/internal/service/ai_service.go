@@ -1097,6 +1097,9 @@ func (s *aiService) TranslateBatch(ctx context.Context, articles []BatchArticleI
 				 *   - 免费通道失败 + 开了「自动切回模型」+ 真有模型 ⇒ 用模型兜底；
 				 *   - 否则按真失败上报（前端会保留原文，不会显示半截）。
 				 */
+				// 记录本条实际用到的提供商/模型：列表卡片的「摘要」徽章完成态
+				// 要显示它（免费通道只显示提供商，走模型则显示提供商 · 模型）。
+				var usedProvider, usedModel string
 				var provider ai.Provider
 				providerReady := false
 				getProvider := func() (ai.Provider, error) {
@@ -1119,6 +1122,8 @@ func (s *aiService) TranslateBatch(ctx context.Context, articles []BatchArticleI
 					if len(freeChannels) > 0 {
 						translated, freeErr := ai.TranslateFreeTextChannels(ctx, freeClient, freeChannels, text, language)
 						if freeErr == nil {
+							_, usedProvider = channelDisplayName(freeChannels[0])
+							usedModel = ""
 							return strings.TrimSpace(translated), nil
 						}
 						// 免费通道失败：只有「配了模型 + 开了自动切回」才兜底
@@ -1140,6 +1145,7 @@ func (s *aiService) TranslateBatch(ctx context.Context, articles []BatchArticleI
 					if err != nil {
 						return "", err
 					}
+					usedProvider, usedModel = cfg.Provider, cfg.Model
 					return strings.TrimSpace(translated), nil
 				}
 
@@ -1181,6 +1187,10 @@ func (s *aiService) TranslateBatch(ctx context.Context, articles []BatchArticleI
 				if titleStr != "" || summaryStr != "" {
 					if err := s.listTranslationRepo.Save(ctx, eID, language, titleStr, summaryStr); err != nil {
 						logger.Warn("ai batch translate cache save failed", "module", "service", "action", "save", "resource", "ai", "result", "failed", "entry_id", eID, "error", err)
+					}
+					// 记录「摘要」所用服务，列表卡片徽章完成态据此显示提供商（/模型）。
+					if statusErr := s.summaryRepo.UpsertStatus(ctx, eID, false, language, "done", "", usedProvider, usedModel); statusErr != nil {
+						logger.Warn("ai batch translate status write failed", "module", "service", "action", "save", "resource", "ai", "result", "failed", "entry_id", eID, "status", "done", "error", statusErr)
 					}
 				}
 

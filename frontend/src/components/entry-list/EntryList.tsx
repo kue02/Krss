@@ -638,10 +638,12 @@ export function EntryList({
   });
 
   // 列表卡片的「AI 摘要」徽章：只读轮询后端摘要状态（不发翻译请求）。
+  // 全视图启用：文章列表的标题/摘要批量翻译也会在后端记入摘要状态，
+  // 这样卡片徽章完成态在任何视图都能显示「提供商（· 模型）」而不只是社交/通知视图。
   useListSummaryStatuses({
     entries,
     targetLanguage,
-    enabled: isActive && (isSocialView || isNotificationTimeline),
+    enabled: isActive,
     resetKey: scrollKey,
   });
 
