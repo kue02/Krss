@@ -24,7 +24,7 @@ type Provider interface {
 
 // Config holds the configuration for an AI provider.
 type Config struct {
-	Provider       string // openai, anthropic, compatible
+	Provider string // openai, anthropic, compatible
 	// ProviderName 是用户在「提供商」里给这份配置起的显示名（如 DeepSeek / 我的中转）。
 	// 仅用于界面展示（徽标悬停等），不参与适配器选择；为空时展示方退回 Provider。
 	ProviderName   string
