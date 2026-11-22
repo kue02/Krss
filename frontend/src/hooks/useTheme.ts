@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { LS_KEYS, readLocalValue, writeLocalValue } from "@/lib/settings-storage";
 import { registerSettingsGroup, scheduleSettingsFlush } from "@/lib/settings-sync";
+import { THEME_COLORS } from "@/styles/theme-colors";
 
 /**
  * 主题系统（Nextflux 皮肤）
@@ -92,14 +93,113 @@ function prefersDark(): boolean {
   );
 }
 
-/** 各配色主题的首屏/状态栏底色（与 index.html 里内联的取值保持一致） */
-const THEME_COLORS: Record<string, string> = {
-  light: "#E3E1DE",
-  stone: "#E3E1DE",
-  leaf: "#DFE7E1",
-  dark: "#242933",
-  "nord-dark": "#242933",
-};
+/**
+ * 运行时从浏览器读「用户看到的那片底色」，不再维护第二份颜色表：
+ * 先读 <html> 的 --background token（主题切换是瞬时的，不受 background-color 过渡影响），
+ * 再用 1×1 canvas 栅格化成 sRGB —— HeroUI 的 token 是 oklch，getComputedStyle 在
+ * Chromium 里会原样返回 oklch(...)，不能直接写进 meta。
+ * 读不到（jsdom 没有 canvas / 样式未就绪 / 透明）时退回 THEME_COLORS（实测值，见
+ * src/styles/theme-colors.ts）。
+ */
+const TRANSPARENT_COLORS = new Set([
+  "",
+  "transparent",
+  "rgba(0, 0, 0, 0)",
+  "rgba(0,0,0,0)",
+]);
+
+function cssColorToHex(color: string): string | null {
+  const value = color.trim();
+  if (!value || TRANSPARENT_COLORS.has(value.toLowerCase())) return null;
+  // jsdom 没有 CanvasRenderingContext2D；用类型存在性守卫，
+  // 避免测试里调用 getContext 刷 "not implemented" 噪声。
+  if (
+    typeof document === "undefined" ||
+    typeof CanvasRenderingContext2D === "undefined"
+  ) {
+    return null;
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = 1;
+  canvas.height = 1;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.clearRect(0, 0, 1, 1);
+  ctx.fillStyle = value;
+  ctx.fillRect(0, 0, 1, 1);
+  const data = ctx.getImageData(0, 0, 1, 1).data;
+  const r = data[0] ?? 0;
+  const g = data[1] ?? 0;
+  const b = data[2] ?? 0;
+  const a = data[3] ?? 0;
+  if (a === 0) return null;
+  return `#${[r, g, b]
+    .map((channel) => channel.toString(16).padStart(2, "0"))
+    .join("")
+    .toUpperCase()}`;
+}
+
+function readThemeColor(): string | null {
+  if (
+    typeof document === "undefined" ||
+    typeof window === "undefined" ||
+    typeof window.getComputedStyle !== "function"
+  ) {
+    return null;
+  }
+
+  const root = document.documentElement;
+  const token = window.getComputedStyle(root).getPropertyValue("--background");
+  const fromToken = cssColorToHex(token);
+  if (fromToken) return fromToken;
+
+  // token 读不到时退一步：读真正铺满屏幕的那几层（顺序 = 实际绘制层级）
+  for (const layer of [
+    document.querySelector(".app-shell"),
+    document.body,
+    root,
+  ]) {
+    if (!layer) continue;
+    const fromLayer = cssColorToHex(
+      window.getComputedStyle(layer).backgroundColor,
+    );
+    if (fromLayer) return fromLayer;
+  }
+  return null;
+}
+
+let themeColorFrame: number | null = null;
+
+function writeThemeColor(color: string): void {
+  document
+    .querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')
+    .forEach((meta) => {
+      meta.content = color;
+    });
+}
+
+function applyThemeColor(themeId: string): void {
+  const write = () => {
+    const color = readThemeColor() ?? THEME_COLORS[themeId];
+    if (color) writeThemeColor(color);
+  };
+
+  // 先同步写一次（data-theme 已设好，getComputedStyle 会强制重算）；
+  // 下一帧再补一次：首帧 CSS 尚未注入时读不到 --background，下一帧就能读到。
+  write();
+  if (
+    typeof window !== "undefined" &&
+    typeof window.requestAnimationFrame === "function"
+  ) {
+    if (themeColorFrame !== null) window.cancelAnimationFrame(themeColorFrame);
+    themeColorFrame = window.requestAnimationFrame(() => {
+      themeColorFrame = null;
+      if (document.documentElement.dataset.theme !== themeId) return;
+      write();
+    });
+  }
+}
 
 function applyTheme(config: ThemeConfig) {
   if (typeof document === "undefined") return;
@@ -113,14 +213,7 @@ function applyTheme(config: ThemeConfig) {
   root.dataset.theme = themeId;
 
   // PWA 状态栏/主屏图标底色跟随当前配色，而不是只跟亮暗
-  const themeColor = THEME_COLORS[themeId];
-  if (themeColor) {
-    document
-      .querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')
-      .forEach((meta) => {
-        meta.content = themeColor;
-      });
-  }
+  applyThemeColor(themeId);
 }
 
 export { THEME_COLORS };

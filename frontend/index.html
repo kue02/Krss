@@ -10,12 +10,12 @@
     <meta
       name="theme-color"
       media="(prefers-color-scheme: light)"
-      content="#E3E1DE"
+      content="#F5F5F5"
     />
     <meta
       name="theme-color"
       media="(prefers-color-scheme: dark)"
-      content="#242933"
+      content="#060607"
     />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -23,6 +23,38 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Krss" />
     <meta name="description" content="A modern RSS reader" />
+    <!--
+      首屏底色（无 JS 时也在）：值 = 浏览器实测的各主题 --background 计算色，
+      单一来源说明见 src/styles/theme-colors.ts；改主题 token 时必须同步这里。
+      样式必须放在下面的主题脚本之前，脚本才能同步读到首屏要显示的颜色。
+    -->
+    <style>
+      :root {
+        background-color: #f5f5f5;
+      }
+
+      :root[data-theme="stone"] {
+        background-color: #e3e0db;
+      }
+
+      :root[data-theme="leaf"] {
+        background-color: #dfe7e1;
+      }
+
+      :root[data-theme="dark"] {
+        background-color: #060607;
+      }
+
+      :root[data-theme="nord-dark"] {
+        background-color: #242933;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme]) {
+          background-color: #060607;
+        }
+      }
+    </style>
     <script>
       (() => {
         let mode = "system";
@@ -39,6 +71,14 @@
           // Use the system theme when storage is unavailable.
         }
 
+        // 与 useTheme 的枚举校验保持一致：野值不许把首屏带到不存在的主题上
+        if (lightTheme !== "light" && lightTheme !== "stone" && lightTheme !== "leaf") {
+          lightTheme = "light";
+        }
+        if (darkTheme !== "dark" && darkTheme !== "nord-dark") {
+          darkTheme = "dark";
+        }
+
         const prefersDark = window.matchMedia(
           "(prefers-color-scheme: dark)",
         ).matches;
@@ -47,32 +87,19 @@
         root.dataset.theme = isDark ? darkTheme : lightTheme;
         root.classList.toggle("dark", isDark);
         root.classList.toggle("light", !isDark);
+
+        // 首屏状态栏颜色：与上面内联底色同源（直接读计算后的 rgb，不维护第二份字面量）。
+        // 样式已在脚本之前解析，这里同步读到的就是首屏要显示的颜色。
+        const firstPaintColor = getComputedStyle(root).backgroundColor;
+        if (firstPaintColor && firstPaintColor !== "rgba(0, 0, 0, 0)") {
+          document
+            .querySelectorAll('meta[name="theme-color"]')
+            .forEach((meta) => {
+              meta.content = firstPaintColor;
+            });
+        }
       })();
     </script>
-    <style>
-      :root {
-        background-color: #e3e1de;
-      }
-
-      :root[data-theme="stone"] {
-        background-color: #e3e1de;
-      }
-
-      :root[data-theme="leaf"] {
-        background-color: #dfe7e1;
-      }
-
-      :root[data-theme="dark"],
-      :root[data-theme="nord-dark"] {
-        background-color: #242933;
-      }
-
-      @media (prefers-color-scheme: dark) {
-        :root:not([data-theme]) {
-          background-color: #242933;
-        }
-      }
-    </style>
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <link rel="icon" href="/logo-compact.svg" sizes="any" type="image/svg+xml" />
     <!-- 标签页/书签按 16px 渲染 ⇒ 用「仅字母版」（brand-spec §尺寸）；完整标志下限 32px -->

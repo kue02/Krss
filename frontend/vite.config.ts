@@ -4,6 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import path from "path";
 import { readFileSync } from "node:fs";
+import { THEME_COLORS } from "./src/styles/theme-colors";
 
 // 后端地址：并行开工时（另一条线占着 :8090）用 KRSS_DEV_BACKEND 指向自己的后端，例如
 //   KRSS_DEV_BACKEND=http://localhost:8082 bun run dev
@@ -36,8 +37,10 @@ export default defineConfig({
         name: "Krss - RSS Reader",
         short_name: "Krss",
         description: "A modern RSS reader",
-        theme_color: "#E3E1DE",
-        background_color: "#E3E1DE",
+        // 与运行时 theme-color 同一来源（实测 --background）。manifest 只能写死一个值，
+        // 取默认亮色底；暗色由页面运行时的 meta theme-color 覆盖。
+        theme_color: THEME_COLORS.light,
+        background_color: THEME_COLORS.light,
         display: "standalone",
         start_url: "/",
         scope: "/",
