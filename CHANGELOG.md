@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.9.1] - 2026-11-22
+
+### Changed
+
+- 新装实例的默认界面与生产实例对齐：图片视图默认使用「悬停大图」，正文引用默认卡片样式，侧栏订阅默认显示「名称和站点」，默认关闭代码行号，社交视图默认展开长文。
+- 新装实例的默认刷新与阅读行为调整：全局刷新并发 8→12、单站点并发 6→10，滚动即标记已读默认开启，默认内容类型顺序改为文章、图片、社交、通知。
+- 默认主题色改为 `#000000`（黑色）；仍可在外观设置中改回「跟随主题」。
+
 ## [1.1.9] - 2026-11-22
 
 ### Added
@@ -27,5 +35,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 修复开启翻译后正文排版被破坏的问题。
 - 「更多」面板里强制刷新的图标与面板内其它图标尺寸统一。
 
-[Unreleased]: https://github.com/kue02/Krss/compare/v1.1.9...HEAD
+[Unreleased]: https://github.com/kue02/Krss/compare/v1.1.9.1...HEAD
+[1.1.9.1]: https://github.com/kue02/Krss/compare/v1.1.9...v1.1.9.1
 [1.1.9]: https://github.com/kue02/Krss/compare/v1.1.8...v1.1.9
