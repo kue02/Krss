@@ -451,6 +451,18 @@ body.mobile-document-scroll-locked {
   text-decoration-skip-ink: auto;
 }
 
+/* 移动端列表卡片：长按卡片会弹 iOS/Android 原生文字选择（蓝框、放大镜、选择菜单），
+   和卡片自己的 useMobileLongPress（520ms）抢手势。这里只关**卡片根节点**的原生选择与
+   iOS 长按 callout；正文阅读区（EntryContent / .entry-content）不在 [data-entry-card]
+   里，桌面端也不命中这条媒体查询，复制能力不受影响。 */
+@media (max-width: 767px) {
+  [data-entry-card] {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+}
+
 .entry-content {
   --entry-border: --border;
   --entry-muted: --muted;

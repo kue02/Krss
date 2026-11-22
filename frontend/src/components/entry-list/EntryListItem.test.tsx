@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EntryListItem } from "./EntryListItem";
@@ -435,6 +436,51 @@ describe("EntryListItem", () => {
       );
 
       expect(screen.getByText("automation.muted_badge")).toBeTruthy();
+    });
+  });
+
+  describe("移动端长按不触发系统文字选择", () => {
+    it("普通卡片与社交卡片的根节点都带 data-entry-card 标记", () => {
+      const normal = render(
+        <EntryListItem
+          entry={entry}
+          feed={feed}
+          isSelected={false}
+          onClick={vi.fn()}
+        />,
+      );
+      expect(
+        normal.container.querySelector("[data-entry-card]"),
+      ).not.toBeNull();
+      normal.unmount();
+
+      const social = render(
+        <EntryListItem
+          entry={{ ...entry, url: "https://x.com/op7418/status/2100033975758856654" }}
+          feed={feed}
+          isSelected={false}
+          onClick={vi.fn()}
+          social
+        />,
+      );
+      expect(
+        social.container.querySelector("[data-entry-card]"),
+      ).not.toBeNull();
+    });
+
+    it("index.css 只在移动端禁用卡片选择，正文阅读区规则不被牵入", () => {
+      const css = readFileSync("src/index.css", "utf8");
+      const start = css.indexOf("@media (max-width: 767px)");
+      expect(start).toBeGreaterThanOrEqual(0);
+
+      const block = css.slice(start, css.indexOf("\n}", start) + 2);
+      expect(block).toContain("[data-entry-card]");
+      expect(block).toContain("user-select: none");
+      expect(block).toContain("-webkit-user-select: none");
+      expect(block).toContain("-webkit-touch-callout: none");
+      // 只禁卡片：不能把整个列表/正文区一起禁掉
+      expect(block).not.toContain(".entry-content");
+      expect(block).not.toContain("[data-entry-list]");
     });
   });
 
