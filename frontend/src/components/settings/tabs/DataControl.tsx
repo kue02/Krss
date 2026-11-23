@@ -90,12 +90,18 @@ export function DataControl() {
   // 缓存保留设置：清理文章保留天数 / 已清理文章保留期
   // 用户要求：两项都是「改动即保存」，不再单独放保存按钮。
   const [cacheDraft, setCacheDraft] = useState<CacheSettings | null>(null);
+  // 输入框单独存字符串，允许用户清空后重新输入；空串不会被当成 0 自动保存。
+  const [cacheInputs, setCacheInputs] = useState({
+    entry: "",
+    tombstone: "",
+  });
   const [cacheStatus, setCacheStatus] = useState<{
     kind: "saving" | "ok" | "error";
     text: string;
   } | null>(null);
   const lastSavedCacheRef = useRef("");
   const latestCacheRef = useRef("");
+  const cacheSavingRef = useRef(false);
 
   const { data: cacheSettings } = useQuery({
     queryKey: ["cacheSettings"],
@@ -104,12 +110,18 @@ export function DataControl() {
   });
 
   useEffect(() => {
-    if (cacheSettings) {
-      const serialized = JSON.stringify(cacheSettings);
-      lastSavedCacheRef.current = serialized;
-      latestCacheRef.current = serialized;
-      setCacheDraft(cacheSettings);
-    }
+    if (!cacheSettings) return;
+    // 本地有未保存输入时，后台 refetch 不能把用户正在编辑的值覆盖掉。
+    if (latestCacheRef.current !== lastSavedCacheRef.current) return;
+
+    const serialized = JSON.stringify(cacheSettings);
+    lastSavedCacheRef.current = serialized;
+    latestCacheRef.current = serialized;
+    setCacheDraft(cacheSettings);
+    setCacheInputs({
+      entry: String(cacheSettings.entryRetentionDays),
+      tombstone: String(cacheSettings.tombstoneRetentionDays),
+    });
   }, [cacheSettings]);
 
   // 改动后 500ms 自动保存。用户连续输入时只发最后一次；保存请求返回时若本地又改了，
@@ -121,32 +133,79 @@ export function DataControl() {
     if (serialized === lastSavedCacheRef.current) return;
 
     const timer = window.setTimeout(async () => {
+      // 同一时间只允许一个 PUT 在飞；若上一次还没回来，等它返回后如果值又变了，
+      // 收尾分支会重新触发这一轮自动保存。
+      if (cacheSavingRef.current) return;
+      cacheSavingRef.current = true;
       setCacheStatus({
         kind: "saving",
         text: t("data_control.cache_retention_saving"),
       });
       try {
         const saved = await updateCacheSettings(cacheDraft);
-        if (latestCacheRef.current !== serialized) return;
-        lastSavedCacheRef.current = JSON.stringify(saved);
+        const savedSerialized = JSON.stringify(saved);
+        lastSavedCacheRef.current = savedSerialized;
+        if (latestCacheRef.current !== serialized) {
+          // 这次响应对应的输入已经被用户改掉了。先把「服务器已保存的值」记下，
+          // 再触发一次渲染，让当前草稿重新走一遍自动保存（否则用户改回旧值时，
+          // 本地以为和已保存一致，服务器却停在这笔过期值上）。
+          setCacheDraft((prev) => (prev ? { ...prev } : prev));
+          return;
+        }
         setCacheDraft(saved);
+        setCacheInputs({
+          entry: String(saved.entryRetentionDays),
+          tombstone: String(saved.tombstoneRetentionDays),
+        });
         setCacheStatus({
           kind: "ok",
           text: t("data_control.cache_retention_saved"),
         });
         queryClient.invalidateQueries({ queryKey: ["cacheSettings"] });
       } catch (err) {
-        if (latestCacheRef.current !== serialized) return;
+        if (latestCacheRef.current !== serialized) {
+          // 失败的是旧请求，当前草稿还要继续保存。
+          setCacheDraft((prev) => (prev ? { ...prev } : prev));
+          return;
+        }
         const message =
           err instanceof Error
             ? err.message
             : t("data_control.cache_retention_save_failed");
         setCacheStatus({ kind: "error", text: message });
+      } finally {
+        cacheSavingRef.current = false;
       }
     }, 500);
 
     return () => window.clearTimeout(timer);
   }, [cacheDraft, queryClient, t]);
+
+  // 卸载（切设置 tab / 关闭弹窗）时，把 500ms 防抖窗口内还没发的改动补发一次。
+  useEffect(() => {
+    return () => {
+      if (
+        !latestCacheRef.current ||
+        latestCacheRef.current === lastSavedCacheRef.current
+      ) {
+        return;
+      }
+      try {
+        const draft = JSON.parse(latestCacheRef.current) as CacheSettings;
+        // 先把缓存写成最新草稿，避免重开设置页时又读到旧的 query 缓存。
+        queryClient.setQueryData(["cacheSettings"], draft);
+        void updateCacheSettings(draft)
+          .then((saved) => {
+            queryClient.setQueryData(["cacheSettings"], saved);
+          })
+          .catch(() => {
+            queryClient.invalidateQueries({ queryKey: ["cacheSettings"] });
+          });
+      } catch {
+        // 卸载阶段不再打扰用户；下次进入会从服务端重拉。
+      }
+    };
+  }, [queryClient]);
 
   const isImporting = task?.status === "running";
 
@@ -671,15 +730,22 @@ export function DataControl() {
                 type="number"
                 min={0}
                 step={1}
-                value={String(cacheDraft?.entryRetentionDays ?? 0)}
+                value={cacheInputs.entry}
                 onChange={(e) => {
-                  const v = Number(e.target.value);
-                  patchCacheDraft({
-                    entryRetentionDays: Number.isFinite(v)
-                      ? Math.max(0, Math.trunc(v))
-                      : 0,
-                  });
+                  const raw = e.target.value;
+                  setCacheInputs((prev) => ({ ...prev, entry: raw }));
+                  // 空串只是输入中间态，不能当成 0（0 表示全部清理）。
+                  if (raw.trim() === "") return;
+                  const v = Number(raw);
+                  if (!Number.isFinite(v) || v < 0) return;
+                  patchCacheDraft({ entryRetentionDays: Math.trunc(v) });
                 }}
+                onBlur={() =>
+                  setCacheInputs((prev) => ({
+                    ...prev,
+                    entry: String(cacheDraft?.entryRetentionDays ?? 0),
+                  }))
+                }
                 aria-label={t("data_control.cache_entry_retention_label")}
                 className="w-24"
               />
@@ -697,15 +763,22 @@ export function DataControl() {
                 type="number"
                 min={0}
                 step={1}
-                value={String(cacheDraft?.tombstoneRetentionDays ?? 0)}
+                value={cacheInputs.tombstone}
                 onChange={(e) => {
-                  const v = Number(e.target.value);
-                  patchCacheDraft({
-                    tombstoneRetentionDays: Number.isFinite(v)
-                      ? Math.max(0, Math.trunc(v))
-                      : 0,
-                  });
+                  const raw = e.target.value;
+                  setCacheInputs((prev) => ({ ...prev, tombstone: raw }));
+                  // 空串只是输入中间态，不能当成 0（0 表示永久保留）。
+                  if (raw.trim() === "") return;
+                  const v = Number(raw);
+                  if (!Number.isFinite(v) || v < 0) return;
+                  patchCacheDraft({ tombstoneRetentionDays: Math.trunc(v) });
                 }}
+                onBlur={() =>
+                  setCacheInputs((prev) => ({
+                    ...prev,
+                    tombstone: String(cacheDraft?.tombstoneRetentionDays ?? 0),
+                  }))
+                }
                 aria-label={t("data_control.cache_tombstone_retention_label")}
                 className="w-24"
               />
