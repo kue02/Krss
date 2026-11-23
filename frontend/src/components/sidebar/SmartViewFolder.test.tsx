@@ -18,6 +18,13 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
+// 单测里 FeedItem 被替换成普通 div，HeroUI ListBox 的集合只认 ListBox.Item 子元素会渲染不出来；
+// 这里把外观设成非 name_and_site 档，走普通 FeedItem 分支即可覆盖展开/动态列表逻辑。
+// 「第一栏订阅外观 = 名称+源站」的 ListBox 分支由浏览器实测（docs/dev/shots/smartviews-child-style.png）覆盖。
+vi.mock("@/hooks/useUISettings", () => ({
+  useUISettingKey: () => "name",
+}));
+
 // 只测智能文件夹本身的展开/动态列表逻辑，FeedItem 的渲染另有专门测试
 vi.mock("./FeedItem", () => ({
   FeedItem: ({ name, unreadCount }: { name: string; unreadCount?: number }) => (

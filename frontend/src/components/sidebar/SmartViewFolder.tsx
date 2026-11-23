@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Skeleton } from "@heroui/react";
+import { ListBox, Skeleton } from "@heroui/react";
 import { Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { Ripple } from "m3-ripple";
 import { cn } from "@/lib/utils";
@@ -17,6 +17,7 @@ import {
 import { ChevronIcon } from "@/components/ui/icons";
 import { ViewIcon } from "@/components/automation/ViewIcon";
 import { useCategoryState } from "@/hooks/useCategoryState";
+import { useUISettingKey } from "@/hooks/useUISettings";
 import { getViewMatchedFeeds } from "@/api";
 import type { FilterRule, ViewMatchedFeed } from "@/types/filters";
 import type { ContentType, Feed, Folder } from "@/types/api";
@@ -99,6 +100,10 @@ export function SmartViewFolder({
 }: SmartViewFolderProps) {
   const { t } = useTranslation();
   const [open, , toggle] = useCategoryState(`view:${view.id}`, false);
+  // 子项与「第一栏订阅外观」保持同一套根：`name_and_site` 档下订阅行用 HeroUI ListBox.Item，
+  // 否则会和侧栏普通订阅行的字号/内边距不一致（用户 2026-11-24）。
+  const feedAppearance = useUISettingKey("sidebarFeedAppearance");
+  const listBoxMode = feedAppearance === "name_and_site";
 
   // 只有展开时才请求（enabled: open）；staleTime=0 让每次重新展开都按当前条目重算，
   // 保证「匹配内容消失的源不再出现」是即时的，而不是 15s 内还留着旧结果。
@@ -204,6 +209,40 @@ export function SmartViewFolder({
                 <div className="ml-6 px-2 py-1 text-xs text-muted-foreground">
                   {t("sidebar.view_no_matches")}
                 </div>
+              ) : listBoxMode ? (
+                <ListBox
+                  aria-label={view.name}
+                  selectionMode="single"
+                  selectedKeys={
+                    new Set(
+                      resolved
+                        .filter((match) => isFeedSelected(match.feedId))
+                        .map((match) => match.feedId),
+                    )
+                  }
+                  onAction={(key) => onSelectFeed(String(key))}
+                  className="space-y-px"
+                >
+                  {resolved.map((match) => (
+                    <FeedItem
+                      asListBoxItem
+                      key={match.feedId}
+                      feedId={match.feedId}
+                      name={match.name}
+                      feedUrl={match.feedUrl}
+                      siteUrl={match.siteUrl}
+                      iconPath={match.iconPath}
+                      // 这里复用的是「视图内该订阅的命中条数」，不是未读数；仅为视觉对齐沿用 unreadCount 位置
+                      unreadCount={match.count}
+                      isActive={isFeedSelected(match.feedId)}
+                      onClick={() => onSelectFeed(match.feedId)}
+                      className="pl-6"
+                      folders={folders ?? []}
+                      folderId={match.folderId}
+                      contentType={match.contentType ?? contentType}
+                    />
+                  ))}
+                </ListBox>
               ) : (
                 resolved.map((match) => (
                   <FeedItem
