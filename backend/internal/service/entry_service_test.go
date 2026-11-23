@@ -690,7 +690,10 @@ func TestEntryService_List_WithFilters(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestEntryService_ClearEntryCache_ResetFailureIgnored(t *testing.T) {
+// TestEntryService_ClearEntryCache_DoesNotResetConditionalGet 固化新语义：
+// 只删「已读且未收藏」，不减 feeds 的 ETag，避免被删的已读文章在下轮刷新时
+// 以未读身份全量回灌，破坏「保留已收藏和未读」的预期。
+func TestEntryService_ClearEntryCache_DoesNotResetConditionalGet(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -699,33 +702,10 @@ func TestEntryService_ClearEntryCache_ResetFailureIgnored(t *testing.T) {
 	svc := service.NewEntryService(mockEntries, mockFeeds, mock.NewMockFolderRepository(ctrl), nil)
 
 	mockEntries.EXPECT().DeleteReadUnstarred(context.Background()).Return(int64(2), nil)
-	mockFeeds.EXPECT().ClearAllConditionalGet(context.Background()).Return(int64(0), errors.New("reset failed"))
 
 	count, err := svc.ClearEntryCache(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, int64(2), count)
-}
-
-// TestEntryService_ClearEntryCache_ResetsConditionalGet tests the BUG fix:
-// When clearing entry cache, the service should also reset all feeds' ETag/Last-Modified
-// to force a full refresh on next update. This prevents entries from being skipped
-// due to 304 Not Modified responses.
-// See: fix: Reset Conditional GET after clearing entry cache
-func TestEntryService_ClearEntryCache_ResetsConditionalGet(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockEntries := mock.NewMockEntryRepository(ctrl)
-	mockFeeds := mock.NewMockFeedRepository(ctrl)
-	svc := service.NewEntryService(mockEntries, mockFeeds, mock.NewMockFolderRepository(ctrl), nil)
-
-	// Both DeleteReadUnstarred and ClearAllConditionalGet should be called
-	mockEntries.EXPECT().DeleteReadUnstarred(context.Background()).Return(int64(5), nil)
-	mockFeeds.EXPECT().ClearAllConditionalGet(context.Background()).Return(int64(3), nil)
-
-	count, err := svc.ClearEntryCache(context.Background())
-	require.NoError(t, err)
-	require.Equal(t, int64(5), count)
 }
 
 // TestEntryService_ClearEntryCache_DeleteError tests that errors from DeleteReadUnstarred are returned

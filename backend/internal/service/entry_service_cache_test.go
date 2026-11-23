@@ -35,7 +35,6 @@ func TestEntryService_ClearEntryCache(t *testing.T) {
 	svc := service.NewEntryService(mockEntries, mockFeeds, mock.NewMockFolderRepository(ctrl), nil)
 
 	mockEntries.EXPECT().DeleteReadUnstarred(context.Background()).Return(int64(3), nil)
-	mockFeeds.EXPECT().ClearAllConditionalGet(context.Background()).Return(int64(2), nil)
 
 	count, err := svc.ClearEntryCache(context.Background())
 	require.NoError(t, err)

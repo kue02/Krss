@@ -1884,7 +1884,7 @@ const docTemplate = `{
         },
         "/entries/cache": {
             "delete": {
-                "description": "Delete read articles that are not starred (preserves starred and unread entries). Also resets all feeds' ETag/Last-Modified to force full refresh on next update.",
+                "description": "Delete read articles that are not starred (preserves starred and unread entries).",
                 "produces": [
                     "application/json"
                 ],

@@ -486,11 +486,9 @@ func (s *entryService) ClearEntryCache(ctx context.Context) (int64, error) {
 		logger.Error("entry cache clear failed", "module", "service", "action", "clear", "resource", "entry", "result", "failed", "error", err)
 		return 0, err
 	}
-	// 重置所有 feeds 的 Conditional GET 信息，强制下次刷新时全量拉取
-	// 避免因 304 Not Modified 导致已删除的文章无法被重新拉取
-	if _, resetErr := s.feeds.ClearAllConditionalGet(ctx); resetErr != nil {
-		logger.Warn("feed conditional get reset failed", "module", "service", "action", "update", "resource", "feed", "result", "failed", "error", resetErr)
-	}
+	// 不重置 feeds 的 Conditional GET：本次只清理「已读且未收藏」的条目，
+	// 若清空 ETag 强制全量回灌，被删的已读文章会以未读身份重新入库，
+	// 既违背「保留已收藏和未读」的预期，也会让列表头部涌入大量条目。
 	logger.Info("entry cache cleared", "module", "service", "action", "clear", "resource", "entry", "result", "ok", "count", deleted)
 	return deleted, nil
 }
