@@ -1,36 +1,77 @@
 package ai
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
 
 // 免 key 的翻译通道。
 //
-// 这两个通道不需要任何注册/密钥，直接 GET 就有结果，适合「只想翻译、不想配 API」的场景。
+// 这些通道不需要任何注册/密钥，直接请求就有结果，适合「只想翻译、不想配 API」的场景。
 // （Bing 的免费通道这条没做：edge.microsoft.com/translate/auth 现在返回 404，
 // www.bing.com/ttranslatev3 需要先从页面刮 IG/IID 还要过 captcha，实测拿到的是
 // {"ShowCaptcha":false} 的空结果，属于随时会烂的路子，不值得塞进设置里。）
 const (
-	FreeChannelGoogle = "google"
-	FreeChannelYoudao = "youdao"
+	FreeChannelGoogle    = "google"
+	FreeChannelYoudao    = "youdao"
+	FreeChannelMicrosoft = "microsoft"
+	FreeChannelBilibili  = "bilibili"
 )
 
 // 端点抽成变量，测试里可以换成 httptest 服务器。
 var (
-	googleTranslateEndpoint = "https://translate.googleapis.com/translate_a/single"
-	youdaoTranslateEndpoint = "https://aidemo.youdao.com/trans"
+	googleTranslateEndpoint    = "https://translate.googleapis.com/translate_a/single"
+	youdaoTranslateEndpoint    = "https://aidemo.youdao.com/trans"
+	microsoftTranslateEndpoint = "https://edge.microsoft.com/translate/translatetext"
+	bilibiliTranslateEndpoint  = "https://index-translate.bilibili.com/v1/chat/completions"
 )
 
 // FreeTranslateChannels 所有支持的免 key 通道，数组顺序即默认轮询顺序。
 // 设置页里用户可自行勾选、排序；实际轮询列表见 EffectiveFreeTranslateChannels。
-var FreeTranslateChannels = []string{FreeChannelGoogle, FreeChannelYoudao}
+var FreeTranslateChannels = []string{FreeChannelGoogle, FreeChannelYoudao, FreeChannelMicrosoft, FreeChannelBilibili}
+
+// translateHTTPError 是免 key 通道非 200 响应的结构化错误。
+// 调度器据此区分 429/503（读 Retry-After 做冷却）与其它 5xx（短冷却）。
+// 消息里保留 "translate request status %d" 以兼容既有断言。
+type translateHTTPError struct {
+	StatusCode int
+	RetryAfter time.Duration
+	Body       string
+}
+
+func (e *translateHTTPError) Error() string {
+	return fmt.Sprintf("translate request status %d", e.StatusCode)
+}
+
+// retryAfterFromHeader 解析 Retry-After：整数秒或 HTTP 日期；解析不出返回 0。
+func retryAfterFromHeader(resp *http.Response) time.Duration {
+	raw := strings.TrimSpace(resp.Header.Get("Retry-After"))
+	if raw == "" {
+		return 0
+	}
+	if secs, err := strconv.Atoi(raw); err == nil {
+		if secs < 0 {
+			return 0
+		}
+		return time.Duration(secs) * time.Second
+	}
+	if t, err := http.ParseTime(raw); err == nil {
+		if d := time.Until(t); d > 0 {
+			return d
+		}
+	}
+	return 0
+}
 
 // IsFreeTranslateChannel 判断某个通道名是不是免 key 通道。
 func IsFreeTranslateChannel(channel string) bool {
@@ -128,19 +169,7 @@ func TranslateFreeTextChannelsWithChannel(ctx context.Context, client *http.Clie
 	if len(normalized) == 0 {
 		return "", "", fmt.Errorf("no free translate channel configured")
 	}
-
-	failures := make([]string, 0, len(normalized))
-	for _, channel := range normalized {
-		if err := ctx.Err(); err != nil {
-			return "", "", err
-		}
-		translated, err := translateWithRetry(ctx, client, channel, text, targetLang)
-		if err == nil {
-			return translated, channel, nil
-		}
-		failures = append(failures, fmt.Sprintf("%s: %v", channel, err))
-	}
-	return "", "", fmt.Errorf("all free translate channels failed (%s)", strings.Join(failures, "; "))
+	return defaultFreeScheduler.translate(ctx, client, normalized, text, targetLang)
 }
 
 // translateWithRetry 对单个通道最多试两次：免费通道偶发 5xx / 空结果，重试一次再说失败。
@@ -170,6 +199,10 @@ func translateViaChannel(ctx context.Context, client *http.Client, channel, text
 		return translateViaGoogle(ctx, client, text, targetLang)
 	case FreeChannelYoudao:
 		return translateViaYoudao(ctx, client, text, targetLang)
+	case FreeChannelMicrosoft:
+		return translateViaMicrosoft(ctx, client, text, targetLang)
+	case FreeChannelBilibili:
+		return translateViaBilibili(ctx, client, text, targetLang)
 	default:
 		return "", fmt.Errorf("unknown free translate channel: %s", channel)
 	}
@@ -248,6 +281,103 @@ func translateViaYoudao(ctx context.Context, client *http.Client, text, targetLa
 	return translated, nil
 }
 
+// microsoft：edge.microsoft.com 的 translatetext 端点（POST，body 是 HTML 转义后的字符串数组）。
+// 端点会做 HTML 标签对齐，所以正文必须先 EscapeString，拿到结果再 UnescapeString。
+func translateViaMicrosoft(ctx context.Context, client *http.Client, text, targetLang string) (string, error) {
+	endpoint := microsoftTranslateEndpoint + "?from=&to=" +
+		url.QueryEscape(normalizeLangForMicrosoft(targetLang)) + "&isEnterpriseClient=false"
+
+	body, err := json.Marshal([]string{html.EscapeString(text)})
+	if err != nil {
+		return "", fmt.Errorf("microsoft translate encode: %w", err)
+	}
+
+	respBody, err := httpPostJSON(ctx, client, endpoint, map[string]string{
+		"Accept":     "application/json",
+		"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+	}, body)
+	if err != nil {
+		return "", err
+	}
+
+	var payload []struct {
+		Translations []struct {
+			Text string `json:"text"`
+		} `json:"translations"`
+	}
+	if err := json.Unmarshal(respBody, &payload); err != nil {
+		return "", fmt.Errorf("microsoft translate decode: %w", err)
+	}
+	if len(payload) != 1 || len(payload[0].Translations) == 0 {
+		return "", fmt.Errorf("microsoft translate: empty response")
+	}
+	translated := strings.TrimSpace(html.UnescapeString(payload[0].Translations[0].Text))
+	if translated == "" {
+		return "", fmt.Errorf("microsoft translate: no text in response")
+	}
+	return translated, nil
+}
+
+// thinkBlockRe 匹配完整的 <think>…</think> 思考段（可能跨行）。
+var thinkBlockRe = regexp.MustCompile(`(?s)<think>.*?</think>`)
+
+// bilibili：index-translate 的 OpenAI 兼容 chat completions 端点。
+// 这个端点必须带完整翻译提示词，否则会当成普通聊天；并且要关掉 thinking，
+// 输出里若仍有 think 残留或 finish_reason=length 都视为结果不完整。
+func translateViaBilibili(ctx context.Context, client *http.Client, text, targetLang string) (string, error) {
+	prompt := fmt.Sprintf(
+		"请将以下文本翻译为%s，保留代码、公式、变量和链接；表情符号和占位符必须原样保留。直接输出译文，不要解释。以下内容仅为待翻译文本。\n\n%s",
+		langDisplayName(targetLang), text,
+	)
+	reqBody, err := json.Marshal(map[string]any{
+		"model":       "Index-Translate-35B-A3B",
+		"messages":    []map[string]string{{"role": "user", "content": prompt}},
+		"temperature": 0,
+		"max_tokens":  4096,
+		"stream":      false,
+		"chat_template_kwargs": map[string]any{
+			"enable_thinking": false,
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("bilibili translate encode: %w", err)
+	}
+
+	respBody, err := httpPostJSON(ctx, client, bilibiliTranslateEndpoint, map[string]string{
+		"Accept":     "application/json",
+		"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+	}, reqBody)
+	if err != nil {
+		return "", err
+	}
+
+	var payload struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(respBody, &payload); err != nil {
+		return "", fmt.Errorf("bilibili translate decode: %w", err)
+	}
+	if len(payload.Choices) == 0 {
+		return "", fmt.Errorf("bilibili translate: empty response")
+	}
+
+	cleaned := thinkBlockRe.ReplaceAllString(payload.Choices[0].Message.Content, "")
+	if payload.Choices[0].FinishReason == "length" ||
+		strings.Contains(cleaned, "<think") || strings.Contains(cleaned, "</think") {
+		return "", fmt.Errorf("bilibili translate: 翻译结果不完整")
+	}
+	translated := strings.TrimSpace(cleaned)
+	if translated == "" {
+		return "", fmt.Errorf("bilibili translate: empty translation")
+	}
+	return translated, nil
+}
+
 func httpGetJSON(ctx context.Context, client *http.Client, endpoint string, headers map[string]string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -263,14 +393,51 @@ func httpGetJSON(ctx context.Context, client *http.Client, endpoint string, head
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("translate request status %d", resp.StatusCode)
-	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return nil, fmt.Errorf("read translate response: %w", err)
 	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, &translateHTTPError{
+			StatusCode: resp.StatusCode,
+			RetryAfter: retryAfterFromHeader(resp),
+			Body:       string(body),
+		}
+	}
 	return body, nil
+}
+
+// httpPostJSON POST 一个 JSON body；非 200 返回 *translateHTTPError（带 Retry-After）。
+func httpPostJSON(ctx context.Context, client *http.Client, endpoint string, headers map[string]string, body []byte) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("build translate request: %w", err)
+	}
+	if _, ok := headers["Content-Type"]; !ok {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("translate request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, fmt.Errorf("read translate response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, &translateHTTPError{
+			StatusCode: resp.StatusCode,
+			RetryAfter: retryAfterFromHeader(resp),
+			Body:       string(respBody),
+		}
+	}
+	return respBody, nil
 }
 
 // google 要 zh-CN / en 这样的写法
@@ -294,4 +461,53 @@ func normalizeLangForYoudao(lang string) string {
 	default:
 		return lang
 	}
+}
+
+// 微软翻译用 BCP-47：简/繁中文、塞尔维亚语要给明确书写体系，其余原样透传。
+func normalizeLangForMicrosoft(lang string) string {
+	switch strings.ToLower(strings.TrimSpace(lang)) {
+	case "", "zh", "zh-cn", "zh-hans", "zh-chs":
+		return "zh-Hans"
+	case "zh-tw", "zh-hant", "zh-hk", "zh-cht":
+		return "zh-Hant"
+	case "sr":
+		return "sr-Cyrl"
+	default:
+		return strings.TrimSpace(lang)
+	}
+}
+
+// langDisplayName 把目标语言代码翻成提示词里好读的语言名（如 zh-CN→简体中文、en→English）。
+// 复用 prompts.go 的 languageNames，再补常见基础语言码兜底；未知就用原代码。
+func langDisplayName(lang string) string {
+	lang = strings.TrimSpace(lang)
+	if lang == "" {
+		return "简体中文"
+	}
+	if name, ok := languageNames[lang]; ok {
+		return name
+	}
+	switch strings.ToLower(lang) {
+	case "zh", "zh-cn", "zh-hans", "zh-chs":
+		return "简体中文"
+	case "zh-tw", "zh-hant", "zh-hk", "zh-cht":
+		return "繁體中文"
+	case "en":
+		return "English"
+	case "ja":
+		return "日本語"
+	case "ko":
+		return "한국어"
+	case "fr":
+		return "Français"
+	case "de":
+		return "Deutsch"
+	case "es":
+		return "Español"
+	case "pt":
+		return "Português"
+	case "ru":
+		return "Русский"
+	}
+	return lang
 }

@@ -19,7 +19,7 @@ func TestOpenAIProvider_ResponsesEndpoints(t *testing.T) {
 	server := newOpenAITestServer(t)
 	defer server.Close()
 
-	provider, err := ai.NewOpenAIProvider("key", server.URL+"/v1/", "gpt-4o-mini", nil)
+	provider, err := ai.NewOpenAIProvider("key", server.URL+"/v1/", "gpt-4o-mini", nil, nil)
 	require.NoError(t, err)
 
 	testAndCompleteProvider(t, provider, "response-text")
@@ -31,7 +31,7 @@ func TestCompatibleProvider_ChatEndpoints(t *testing.T) {
 	server := newOpenAITestServer(t)
 	defer server.Close()
 
-	provider, err := ai.NewCompatibleProvider("key", server.URL+"/v1/", "gpt-4o-mini", nil)
+	provider, err := ai.NewCompatibleProvider("key", server.URL+"/v1/", "gpt-4o-mini", nil, nil)
 	require.NoError(t, err)
 
 	testAndCompleteProvider(t, provider, "chat-response")
@@ -43,7 +43,7 @@ func TestAnthropicProvider_MessageEndpoints(t *testing.T) {
 	server := newAnthropicTestServer(t)
 	defer server.Close()
 
-	provider, err := ai.NewAnthropicProvider("key", server.URL+"/", "claude-3-sonnet", nil)
+	provider, err := ai.NewAnthropicProvider("key", server.URL+"/", "claude-3-sonnet", nil, nil)
 	require.NoError(t, err)
 
 	testProvider(t, provider, "claude-response")
@@ -69,7 +69,7 @@ func TestOpenAIProvider_RequestOptionsAreMerged(t *testing.T) {
 	provider, err := ai.NewOpenAIProvider("key", server.URL+"/v1/", "gpt-4o-mini", map[string]any{
 		"custom_flag": "enabled",
 		"metadata":    map[string]any{"source": "test"},
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	testAndCompleteProvider(t, provider, "response-text")
@@ -92,7 +92,7 @@ func TestCompatibleProvider_RequestOptionsAreMerged(t *testing.T) {
 	provider, err := ai.NewCompatibleProvider("key", server.URL+"/v1/", "gpt-4o-mini", map[string]any{
 		"custom_flag": "enabled",
 		"extra_body":  map[string]any{"trace": true},
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	testAndCompleteProvider(t, provider, "chat-response")
@@ -115,7 +115,7 @@ func TestAnthropicProvider_RequestOptionsAreMerged(t *testing.T) {
 	provider, err := ai.NewAnthropicProvider("key", server.URL+"/", "claude-3-sonnet", map[string]any{
 		"custom_flag": "enabled",
 		"metadata":    map[string]any{"user_id": "test"},
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	testProvider(t, provider, "claude-response")
@@ -398,7 +398,7 @@ func TestCompatibleProvider_FallsBackToSSE(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider, err := ai.NewCompatibleProvider("key", server.URL+"/v1/", "gpt-4o-mini", nil)
+	provider, err := ai.NewCompatibleProvider("key", server.URL+"/v1/", "gpt-4o-mini", nil, nil)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -432,7 +432,7 @@ func TestCompatibleProvider_NonSSEErrorIsReturned(t *testing.T) {
 	}))
 	defer server.Close()
 
-	provider, err := ai.NewCompatibleProvider("key", server.URL+"/v1/", "gpt-4o-mini", nil)
+	provider, err := ai.NewCompatibleProvider("key", server.URL+"/v1/", "gpt-4o-mini", nil, nil)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -472,7 +472,7 @@ func TestCompatibleProvider_SSEFallbackKeepsRequestOptions(t *testing.T) {
 
 	provider, err := ai.NewCompatibleProvider("key", server.URL+"/v1/", "gpt-4o-mini", map[string]any{
 		"custom_flag": "enabled",
-	})
+	}, nil)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

@@ -2,11 +2,29 @@ package ai
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 )
+
+// 测试里把调度器参数放宽，避免限速/冷却让既有用例变慢或互相污染。
+// 需要验证冷却/并发的用例会自己再覆盖并把参数恢复。
+func TestMain(m *testing.M) {
+	freeChannelMaxConcurrency = 100
+	freeChannelPerSecond = 1000
+	freeChannelPerMinute = 100000
+	freeChannelMinGap = 0
+	freeChannelBaseCooldown = 0
+	freeChannelMaxCooldown = 0
+	defaultFreeScheduler.reset()
+	os.Exit(m.Run())
+}
 
 func TestIsFreeTranslateChannel(t *testing.T) {
 	cases := map[string]bool{
@@ -197,11 +215,11 @@ func TestEffectiveFreeTranslateChannels(t *testing.T) {
 		want       []string
 	}{
 		{"新键优先", []string{"youdao"}, "google", []string{"youdao"}},
-		{"新键为空退回旧键 google", []string{}, "google", []string{"google", "youdao"}},
-		{"旧键 youdao 排最前", nil, "youdao", []string{"youdao", "google"}},
+		{"新键为空退回旧键 google", []string{}, "google", []string{"google", "youdao", "microsoft", "bilibili"}},
+		{"旧键 youdao 排最前", nil, "youdao", []string{"youdao", "google", "microsoft", "bilibili"}},
 		{"新旧都空走模型", nil, "", nil},
 		{"旧键非法返回空", nil, "bing", nil},
-		{"新键全非法退回旧键", []string{"bing"}, "youdao", []string{"youdao", "google"}},
+		{"新键全非法退回旧键", []string{"bing"}, "youdao", []string{"youdao", "google", "microsoft", "bilibili"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -318,5 +336,272 @@ func TestTranslateFreeTextChannelsEmptyConfig(t *testing.T) {
 	}
 	if _, err := TranslateFreeTextChannels(context.Background(), nil, []string{FreeChannelGoogle}, "   ", "zh-CN"); err != nil {
 		t.Errorf("空文本应返回空且不报错，得到 %v", err)
+	}
+}
+
+// ---- 微软翻译 ----
+
+func TestTranslateViaMicrosoft(t *testing.T) {
+	var gotBody []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %s, want POST", r.Method)
+		}
+		if r.URL.Query().Get("to") != "zh-Hans" {
+			t.Errorf("to = %q, want zh-Hans", r.URL.Query().Get("to"))
+		}
+		if ct := r.Header.Get("Content-Type"); !strings.Contains(ct, "application/json") {
+			t.Errorf("content-type = %q", ct)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+		_, _ = w.Write([]byte(`[{"translations":[{"text":"你好 &amp; 世界"}]}]`))
+	}))
+	defer server.Close()
+
+	original := microsoftTranslateEndpoint
+	microsoftTranslateEndpoint = server.URL
+	defer func() { microsoftTranslateEndpoint = original }()
+
+	got, err := translateViaMicrosoft(context.Background(), server.Client(), "Hello & world", "zh-CN")
+	if err != nil {
+		t.Fatalf("translateViaMicrosoft: %v", err)
+	}
+	if got != "你好 & 世界" {
+		t.Errorf("got %q, want 你好 & 世界", got)
+	}
+	// 正文必须以 HTML 转义后的形式发出（端点会做标签对齐）。
+	if len(gotBody) != 1 || gotBody[0] != "Hello &amp; world" {
+		t.Errorf("body = %v, want [Hello &amp; world]", gotBody)
+	}
+}
+
+func TestNormalizeLangForMicrosoft(t *testing.T) {
+	cases := map[string]string{
+		"zh-CN": "zh-Hans",
+		"zh-TW": "zh-Hant",
+		"zh":    "zh-Hans",
+		"sr":    "sr-Cyrl",
+		"en":    "en",
+		"ja":    "ja",
+	}
+	for in, want := range cases {
+		if got := normalizeLangForMicrosoft(in); got != want {
+			t.Errorf("normalizeLangForMicrosoft(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// ---- B站翻译 ----
+
+func TestTranslateViaBilibili(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Model    string `json:"model"`
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+		if req.Model != "Index-Translate-35B-A3B" {
+			t.Errorf("model = %q", req.Model)
+		}
+		if len(req.Messages) != 1 || !strings.Contains(req.Messages[0].Content, "Hello world") ||
+			!strings.Contains(req.Messages[0].Content, "请将以下文本翻译为简体中文") {
+			t.Errorf("prompt 不正确: %+v", req.Messages)
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"你好世界"},"finish_reason":"stop"}]}`))
+	}))
+	defer server.Close()
+
+	original := bilibiliTranslateEndpoint
+	bilibiliTranslateEndpoint = server.URL
+	defer func() { bilibiliTranslateEndpoint = original }()
+
+	got, err := translateViaBilibili(context.Background(), server.Client(), "Hello world", "zh-CN")
+	if err != nil {
+		t.Fatalf("translateViaBilibili: %v", err)
+	}
+	if got != "你好世界" {
+		t.Errorf("got %q, want 你好世界", got)
+	}
+}
+
+func TestTranslateViaBilibiliStripsThink(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"<think>reasoning here</think>你好世界"},"finish_reason":"stop"}]}`))
+	}))
+	defer server.Close()
+
+	original := bilibiliTranslateEndpoint
+	bilibiliTranslateEndpoint = server.URL
+	defer func() { bilibiliTranslateEndpoint = original }()
+
+	got, err := translateViaBilibili(context.Background(), server.Client(), "Hello world", "zh-CN")
+	if err != nil {
+		t.Fatalf("translateViaBilibili: %v", err)
+	}
+	if got != "你好世界" {
+		t.Errorf("got %q, want 你好世界", got)
+	}
+}
+
+func TestTranslateViaBilibiliLengthIncomplete(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"半截译文"},"finish_reason":"length"}]}`))
+	}))
+	defer server.Close()
+
+	original := bilibiliTranslateEndpoint
+	bilibiliTranslateEndpoint = server.URL
+	defer func() { bilibiliTranslateEndpoint = original }()
+
+	if _, err := translateViaBilibili(context.Background(), server.Client(), "Hello world", "zh-CN"); err == nil {
+		t.Fatal("finish_reason=length 应报翻译结果不完整")
+	} else if !strings.Contains(err.Error(), "翻译结果不完整") {
+		t.Errorf("error = %q, want 翻译结果不完整", err.Error())
+	}
+}
+
+// ---- 调度器 ----
+
+// 429 + Retry-After：第一个通道进冷却，本轮直接跳到第二个成功；下一次调用也不再试冷却中的通道。
+func TestSchedulerSkipsCoolingChannelAfter429(t *testing.T) {
+	restore := setFastSchedulerParams()
+	defer restore()
+	defaultFreeScheduler.reset()
+
+	var googleHits int32
+	googleServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&googleHits, 1)
+		w.Header().Set("Retry-After", "2")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer googleServer.Close()
+	youdaoServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"errorCode":0,"translation":["你好世界"]}`))
+	}))
+	defer youdaoServer.Close()
+
+	originalGoogle, originalYoudao := googleTranslateEndpoint, youdaoTranslateEndpoint
+	googleTranslateEndpoint = googleServer.URL
+	youdaoTranslateEndpoint = youdaoServer.URL
+	defer func() {
+		googleTranslateEndpoint = originalGoogle
+		youdaoTranslateEndpoint = originalYoudao
+	}()
+
+	got, used, err := TranslateFreeTextChannelsWithChannel(context.Background(), googleServer.Client(), []string{FreeChannelGoogle, FreeChannelYoudao}, "Hello world", "zh-CN")
+	if err != nil {
+		t.Fatalf("应回退有道成功: %v", err)
+	}
+	if used != FreeChannelYoudao || got != "你好世界" {
+		t.Fatalf("used=%q got=%q, want youdao/你好世界", used, got)
+	}
+	if atomic.LoadInt32(&googleHits) != 1 {
+		t.Fatalf("首轮应只打一次 google，得到 %d", googleHits)
+	}
+
+	// 冷却中：第二次调用不应再打 google。
+	if _, used2, err2 := TranslateFreeTextChannelsWithChannel(context.Background(), googleServer.Client(), []string{FreeChannelGoogle, FreeChannelYoudao}, "Hello world", "zh-CN"); err2 != nil || used2 != FreeChannelYoudao {
+		t.Fatalf("第二次应仍用 youdao，得到 used=%q err=%v", used2, err2)
+	}
+	if atomic.LoadInt32(&googleHits) != 1 {
+		t.Errorf("冷却中不应再请求 google，得到 %d 次", googleHits)
+	}
+}
+
+// 429/503 连续失败时冷却时长按指数递增（2s → 4s → 8s）。
+func TestSchedulerCooldownEscalates(t *testing.T) {
+	oldBase, oldMax := freeChannelBaseCooldown, freeChannelMaxCooldown
+	freeChannelBaseCooldown = 2 * time.Second
+	freeChannelMaxCooldown = 5 * time.Minute
+	defer func() { freeChannelBaseCooldown, freeChannelMaxCooldown = oldBase, oldMax }()
+
+	fixed := time.Unix(1_700_000_000, 0)
+	s := newFreeChannelScheduler()
+	s.now = func() time.Time { return fixed }
+
+	step := func() time.Duration {
+		s.recordFailure("google", &translateHTTPError{StatusCode: http.StatusTooManyRequests})
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.states["google"].cooldownUntil.Sub(fixed)
+	}
+
+	if d := step(); d != 2*time.Second {
+		t.Errorf("第 1 次失败冷却 = %v, want 2s", d)
+	}
+	// 推进时间越过冷却，否则时长为“剩余”语义仍以 now 为基准计算，这里 now 固定所以直接看累加值。
+	if d := step(); d != 4*time.Second {
+		t.Errorf("第 2 次失败冷却 = %v, want 4s", d)
+	}
+	if d := step(); d != 8*time.Second {
+		t.Errorf("第 3 次失败冷却 = %v, want 8s", d)
+	}
+}
+
+// 并发上限：同一通道同时最多 freeChannelMaxConcurrency 个在飞请求。
+func TestSchedulerRespectsConcurrencyCap(t *testing.T) {
+	oldConc, oldPS, oldPM, oldGap := freeChannelMaxConcurrency, freeChannelPerSecond, freeChannelPerMinute, freeChannelMinGap
+	freeChannelMaxConcurrency = 2
+	freeChannelPerSecond = 100000
+	freeChannelPerMinute = 1000000
+	freeChannelMinGap = 0
+	defer func() {
+		freeChannelMaxConcurrency, freeChannelPerSecond, freeChannelPerMinute, freeChannelMinGap = oldConc, oldPS, oldPM, oldGap
+	}()
+
+	var inflight, maxInflight int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cur := atomic.AddInt32(&inflight, 1)
+		for {
+			prev := atomic.LoadInt32(&maxInflight)
+			if cur <= prev || atomic.CompareAndSwapInt32(&maxInflight, prev, cur) {
+				break
+			}
+		}
+		time.Sleep(30 * time.Millisecond)
+		atomic.AddInt32(&inflight, -1)
+		_, _ = w.Write([]byte(`[{"translations":[{"text":"你好"}]}]`))
+	}))
+	defer server.Close()
+
+	original := microsoftTranslateEndpoint
+	microsoftTranslateEndpoint = server.URL
+	defer func() { microsoftTranslateEndpoint = original }()
+
+	s := newFreeChannelScheduler()
+	var wg sync.WaitGroup
+	for i := 0; i < 12; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _, _ = s.translate(context.Background(), server.Client(), []string{FreeChannelMicrosoft}, "hi", "zh-CN")
+		}()
+	}
+	wg.Wait()
+
+	if maxInflight > int32(freeChannelMaxConcurrency) {
+		t.Errorf("最大并发 = %d, 超过上限 %d", maxInflight, freeChannelMaxConcurrency)
+	}
+}
+
+// setFastSchedulerParams 把调度器参数设为「不限速但保留冷却」的组合，返回恢复函数。
+func setFastSchedulerParams() func() {
+	oldConc, oldPS, oldPM, oldGap := freeChannelMaxConcurrency, freeChannelPerSecond, freeChannelPerMinute, freeChannelMinGap
+	oldBase, oldMax := freeChannelBaseCooldown, freeChannelMaxCooldown
+	freeChannelMaxConcurrency = 100
+	freeChannelPerSecond = 1000
+	freeChannelPerMinute = 100000
+	freeChannelMinGap = 0
+	freeChannelBaseCooldown = 2 * time.Second
+	freeChannelMaxCooldown = 5 * time.Minute
+	return func() {
+		freeChannelMaxConcurrency, freeChannelPerSecond, freeChannelPerMinute, freeChannelMinGap = oldConc, oldPS, oldPM, oldGap
+		freeChannelBaseCooldown, freeChannelMaxCooldown = oldBase, oldMax
 	}
 }
