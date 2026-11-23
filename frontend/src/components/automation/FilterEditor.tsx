@@ -121,7 +121,9 @@ const inputClass = cn(
 );
 
 function emptyCondition(): FilterCondition {
-  return { field: "title", operator: "contains", value: "" };
+  // 用户 11-23：自动化规则里的条件默认从「且」改成「或」。
+  // 新建条件直接带上 logic:"or"，保存到后端的 payload 一定带 "or"（不靠展示兜底）。
+  return { field: "title", operator: "contains", value: "", logic: "or" };
 }
 
 /**
@@ -418,7 +420,7 @@ export function FilterEditor({
       scopeId: input.scopeId ?? "",
       scopeIds: [...(input.scopeIds ?? [])].sort(),
       conditions: (input.conditions ?? []).map((condition) => ({
-        logic: condition.logic ?? "and",
+        logic: condition.logic ?? "or",
         negate: Boolean(condition.negate),
         field: condition.field,
         operator: condition.operator,
@@ -722,7 +724,7 @@ export function FilterEditor({
                           : "border-border text-muted-foreground hover:text-foreground",
                       )}
                     >
-                      {t(`automation.logic_${condition.logic ?? "and"}`)}
+                      {t(`automation.logic_${condition.logic ?? "or"}`)}
                     </button>
                   )}
                   {/* [&_[role=combobox]]:h-9 —— HeroUI Select 的高度长在它自己的 trigger 上，

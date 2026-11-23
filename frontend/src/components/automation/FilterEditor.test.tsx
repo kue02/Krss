@@ -262,6 +262,42 @@ describe("FilterEditor", () => {
   });
 
   /**
+   * 用户 11-23：自动化规则里的条件默认从「且」改成「或」。
+   * - 新建条件直接带 logic:"or"（payload 一定带 "or"，不靠展示兜底）
+   * - 第二行起的连接词按钮显示「或」
+   * - 点一下切回「且」
+   */
+  it("新建条件默认 logic=or、连接词显示「或」，点一下切回「且」", () => {
+    const onPayloadChange = vi.fn();
+    render(
+      <FilterEditor
+        initial={draft({ conditions: [] })}
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+        onPayloadChange={onPayloadChange}
+      />,
+    );
+    const lastPayload = () =>
+      onPayloadChange.mock.calls.at(-1)![0] as FilterWritePayload;
+
+    // 加第一条：新建条件就带 logic:"or"（首条连接词不展示，但数据要带上）
+    fireEvent.click(screen.getByText("+ automation.add_condition"));
+    const afterFirst = lastPayload().conditions;
+    expect(afterFirst).toHaveLength(1);
+    expect(afterFirst[0]?.logic).toBe("or");
+
+    // 加第二条：连接词按钮默认显示「或」
+    fireEvent.click(screen.getByText("+ automation.add_condition"));
+    expect(lastPayload().conditions[1]?.logic).toBe("or");
+    const toggle = screen.getByText("automation.logic_or");
+
+    // 点一下切回「且」
+    fireEvent.click(toggle);
+    expect(lastPayload().conditions[1]?.logic).toBe("and");
+    expect(screen.getByText("automation.logic_and")).toBeTruthy();
+  });
+
+  /**
    * 回归（用户第十一批 11-1「新建视图预览还是失败」）：
    * 预览曾经直接把 draft 发出去，而 draft 里没有 kind → 后端按「规则」校验，
    * 视图没有动作 → 400 invalid filter。预览与保存必须发同一份 payload。
