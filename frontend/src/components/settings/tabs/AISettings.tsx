@@ -40,7 +40,12 @@ import type {
 import { showToast } from "@/stores/toast-store";
 
 /** 免 key 免费翻译通道（可轮询的顺序由用户配置） */
-const FREE_TRANSLATE_CHANNELS = ["google", "youdao"] as const;
+const FREE_TRANSLATE_CHANNELS = [
+  "google",
+  "youdao",
+  "microsoft",
+  "bilibili",
+] as const;
 
 /** 自动保存的防抖间隔（行为区整块自动保存，拍板 ~800ms） */
 const AUTO_SAVE_DELAY_MS = 800;
@@ -167,6 +172,7 @@ function behaviorSnapshotOf(settings: AISettingsType): string {
     settings.translateChannel,
     settings.translateChannels ?? [],
     settings.fallbackToModel,
+    settings.useProxy,
     settings.autoTranslate,
     settings.autoSummary,
     settings.rateLimit,
@@ -304,7 +310,11 @@ export function AISettings() {
       ? t("ai_settings.translate_channel_google")
       : channel === "youdao"
         ? t("ai_settings.translate_channel_youdao")
-        : channel;
+        : channel === "microsoft"
+          ? t("ai_settings.translate_channel_microsoft")
+          : channel === "bilibili"
+            ? t("ai_settings.translate_channel_bilibili")
+            : channel;
   const setTranslateChannels = (next: string[]) => {
     if (!settings) return;
     setSettings({
@@ -1262,6 +1272,19 @@ export function AISettings() {
               checked={settings.fallbackToModel !== false}
               onCheckedChange={(checked) =>
                 handleChange("fallbackToModel", checked)
+              }
+            />
+          </SettingRow>
+
+          <SettingRow
+            label={t("ai_settings.ai_use_proxy")}
+            hint={t("ai_settings.ai_use_proxy_hint")}
+          >
+            <Switch
+              className="shrink-0"
+              checked={settings.useProxy !== false}
+              onCheckedChange={(checked) =>
+                handleChange("useProxy", checked)
               }
             />
           </SettingRow>

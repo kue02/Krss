@@ -43,6 +43,8 @@ export interface AISettings {
   translateChannels: string[];
   /** 免费通道失败时是否自动切回模型（默认开） */
   fallbackToModel: boolean;
+  /** AI 调用是否走代理（遵循「网络」里配置的代理），默认 true */
+  useProxy: boolean;
   autoTranslate: boolean;
   autoSummary: boolean;
   rateLimit: number;
