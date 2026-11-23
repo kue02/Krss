@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import type { Entry } from "@/types/api";
 import { useFilterViewStore } from "@/stores/filter-view-store";
+import { resetDeferredRemovals } from "./deferred-removal";
 
 const {
   mockRenderedEntryListItem,
@@ -1051,6 +1052,52 @@ describe("EntryList translation scheduling", () => {
     // 已读还是标了，但条目留在原地：不摘、也不补偿滚动
     expect(mockRemoveFromUnreadList).not.toHaveBeenCalled();
     expect(viewport.scrollTop).toBe(200);
+  });
+
+  it("5a：切换保存筛选视图（activeViewId 变）时摘掉滚动标掉的已读条目", async () => {
+    // 回归：之前 useScrollMarkRead 的 resetKey 只含 scrollKey/unreadOnly/scrollReadEnabled，
+    // 保存筛选视图切换不改变这些 ⇒ 不触发 flush，滚动标掉的已读条目留在旧视图缓存里
+    // （叠加 staleTime 不重拉，切回来还在）。把 activeViewId 并进 resetKey 后，
+    // 切视图即 flush：本段记的待摘 id 从 unreadOnly 缓存里摘掉。
+    vi.mocked(useGeneralSettings).mockReturnValue({
+      data: { markReadOnScroll: true },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    installScrollMarkObserver({ entryHeight: 40 });
+    resetDeferredRemovals();
+    useFilterViewStore.getState().clearView();
+
+    render(<EntryList {...defaultProps} unreadOnly />);
+    const viewport = screen.getByTestId("entry-list-viewport");
+    Object.defineProperty(viewport, "scrollTop", {
+      configurable: true,
+      writable: true,
+      value: 200,
+    });
+
+    await flushMarkReadBatch();
+
+    const firstCallOptions = mockMarkManyAsRead.mock.calls[0]?.[1] as
+      | { onSuccess?: () => void }
+      | undefined;
+    firstCallOptions?.onSuccess?.();
+
+    // 默认延迟摘除：还没离开列表，不摘
+    expect(mockRemoveFromUnreadList).not.toHaveBeenCalled();
+
+    // 切到「保存筛选视图」（作用域仍是 all:article，只有 viewId 变）
+    await act(async () => {
+      useFilterViewStore
+        .getState()
+        .selectView({ id: "v1", name: "视图1" }, "all:article");
+    });
+    await flushMarkReadBatch();
+
+    expect(mockRemoveFromUnreadList).toHaveBeenCalledWith(
+      new Set(["1", "2", "3", "4", "5"]),
+    );
+
+    useFilterViewStore.getState().clearView();
   });
 
   it("批量标记失败后允许后续重试", async () => {
