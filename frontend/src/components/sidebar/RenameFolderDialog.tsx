@@ -42,7 +42,12 @@ export function RenameFolderDialog({
     if (!folder || !canSubmit) return;
 
     try {
-      await updateFolder.mutateAsync({ id: folder.id, name: trimmed });
+      await updateFolder.mutateAsync({
+        id: folder.id,
+        name: trimmed,
+        // 保留原父级：updateFolder 省略 parentId 会被后端当成「移到根目录」（parent_id=NULL）
+        parentId: folder.parentId,
+      });
       onOpenChange(false);
     } catch {
       setError(t("folder.rename_failed"));

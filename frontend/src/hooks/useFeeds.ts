@@ -28,11 +28,13 @@ export function useUpdateFeed() {
       title: string;
       folderId?: string;
       summaryPromptReminder?: string;
+      sortOrder?: number;
     }) =>
       updateFeed(payload.id, {
         title: payload.title,
         folderId: payload.folderId,
         summaryPromptReminder: payload.summaryPromptReminder,
+        sortOrder: payload.sortOrder,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["feeds"] });

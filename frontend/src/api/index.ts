@@ -431,7 +431,7 @@ export async function createFolder(payload: {
 
 export async function updateFolder(
   id: string,
-  payload: { name: string; parentId?: string },
+  payload: { name: string; parentId?: string; sortOrder?: number },
 ): Promise<Folder> {
   return request<Folder>(`/api/folders/${id}`, {
     method: "PUT",
@@ -483,7 +483,12 @@ export async function createFeed(payload: {
 export async function updateFeed(
   id: string,
   // title 留空 = 「恢复默认名称」（52-3）：服务端重新抓一次取 feed 标题，抓不到退可读域名名。
-  payload: { title: string; folderId?: string; summaryPromptReminder?: string },
+  payload: {
+    title: string;
+    folderId?: string;
+    summaryPromptReminder?: string;
+    sortOrder?: number;
+  },
 ): Promise<Feed> {
   return request<Feed>(`/api/feeds/${id}`, {
     method: "PUT",
