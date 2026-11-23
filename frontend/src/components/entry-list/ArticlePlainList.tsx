@@ -40,18 +40,22 @@ export function ArticlePlainListRow({
       data-selected={selected ? "true" : undefined}
       aria-current={selected ? "true" : undefined}
       onClick={() => onSelectEntry?.(entry.id)}
-      className={`flex w-full items-center gap-2.5 border-b border-border px-4 py-2.5 text-left transition-colors hover:bg-item-hover ${
+      /* 尺度照图片「悬停大图」的行实测值：padding 10px 16px、标题 14.5px/500、
+         行高 1.45、图标 16px、右侧元信息 12px 且距标题 12px（gap 8 + ml 4） */
+      className={`flex w-full items-center gap-2 border-b border-border px-4 py-[10px] text-left transition-colors hover:bg-item-hover ${
         selected ? "bg-item-hover" : ""
       }`}
     >
       {feed && (
         <FeedAvatar iconPath={feed.iconPath} size={16} className="shrink-0" />
       )}
-      <span className="min-w-0 flex-1 truncate text-[15px] font-semibold leading-snug text-foreground">
+      <span className="min-w-0 flex-1 truncate text-[14.5px] font-medium leading-[1.45] text-foreground">
         {entry.title || entry.url || ""}
       </span>
       {meta && (
-        <span className="shrink-0 text-xs text-muted-foreground">{meta}</span>
+        <span className="ml-1 shrink-0 text-xs text-muted-foreground">
+          {meta}
+        </span>
       )}
     </button>
   );
