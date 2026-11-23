@@ -352,10 +352,25 @@ export function useMarkAsStarred() {
       queryClient.invalidateQueries({ queryKey: ["starredCount"] });
       // viewCounts 靠 useViewCounts 自带 120s 自动刷，这里不手动 invalidate
       //
-      // ⚠️ 这里**不要** invalidateQueries(["entries"])：星标不改变「只看未读 / 全部」的
+      // ⚠️ 默认**不要** invalidateQueries(["entries"])：星标本身不改变「只看未读 / 全部」的
       // 列表归属（unreadOnly 只按已读态过滤）。整表重拉会把刚在正文里自动标成已读、
       // 仅靠 deferred 机制留住的条目换掉 —— 条目随之消失、列表跳动（用户报的 BUG）。
       // 可见行的星标态已由上面的乐观 patch 更新，无需再重拉。
+      //
+      // 例外：取消星标（starred===false）时「仅星标」视图（starredOnly 过滤）需要重拉，
+      // 否则乐观 patch 只把该行 starred 改成 false，行仍留在星标列表里直到手动刷新。
+      // 只对 starredOnly===true 的 entries 查询 invalidate，其它视图一律不动，避免重新引入消失 bug。
+      if (!starred) {
+        queryClient.invalidateQueries({
+          queryKey: ["entries"],
+          predicate: (query) => {
+            const params = query.queryKey[1] as
+              | { starredOnly?: boolean }
+              | undefined;
+            return params?.starredOnly === true;
+          },
+        });
+      }
     },
 
     onError: (_, { id }, context) => {
