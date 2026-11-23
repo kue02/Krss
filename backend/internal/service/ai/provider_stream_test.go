@@ -377,3 +377,38 @@ func writeAnthropicStream(w http.ResponseWriter) {
 		flusher.Flush()
 	}
 }
+
+// TestCompatibleProvider_FallsBackToSSE covers gateways that ignore stream:false
+// and answer a non-streaming request with an SSE (text/event-stream) body. Both
+// Test and Complete must transparently fall back to accumulating the stream.
+func TestCompatibleProvider_FallsBackToSSE(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			http.NotFound(w, r)
+			return
+		}
+		// Always respond with SSE, regardless of the requested stream flag.
+		w.Header().Set("Content-Type", "text/event-stream")
+		data := `{"id":"x","object":"chat.completion.chunk","created":0,"model":"m","choices":[{"index":0,"delta":{"content":"fallback-text"},"finish_reason":null}]}`
+		_, _ = io.WriteString(w, "data: "+data+"\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+	}))
+	defer server.Close()
+
+	provider, err := ai.NewCompatibleProvider("key", server.URL+"/v1/", "gpt-4o-mini", nil)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	got, err := provider.Test(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "fallback-text", got)
+
+	got, err = provider.Complete(ctx, "sys", "content")
+	require.NoError(t, err)
+	require.Equal(t, "fallback-text", got)
+}
