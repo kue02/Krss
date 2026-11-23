@@ -18,8 +18,15 @@ import type {
 import type { ProxyDomainMemoryItem } from "@/types/api";
 import { cn } from "@/lib/utils";
 import { showToast } from "@/stores/toast-store";
+import { Button, Input } from "@heroui/react";
+import { ChevronRight, Globe, Network, Server, ShieldCheck } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { SegmentedControl } from "@/components/ui/segmented-control";
+import {
+  GroupLabel,
+  SectionCard,
+  SettingRow,
+} from "@/components/settings/settings-primitives";
 
 export function NetworkSettings() {
   const { t } = useTranslation();
@@ -216,143 +223,112 @@ export function NetworkSettings() {
       : t("settings.proxy_disabled_empty");
 
   return (
-    <div className="space-y-6">
-      {/* IP Stack */}
-      <section>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="min-w-0">
-            <div className="text-sm font-medium">{t("settings.ip_stack")}</div>
-            <div className="text-xs text-muted-foreground">
-              {t("settings.ip_stack_description")}
-            </div>
-          </div>
+    <div className="space-y-5">
+      {/* 网络栈：IP 协议优先级 */}
+      <SectionCard
+        icon={<Globe className="size-4" />}
+        title={t("settings.ip_stack")}
+        description={t("settings.ip_stack_description")}
+      >
+        <div className="px-1 py-2.5">
           <SegmentedControl
-            className="shrink-0"
             value={settings.ipStack}
             onValueChange={handleIPStackChange}
             options={ipStackOptions}
           />
         </div>
-      </section>
+      </SectionCard>
 
-      {/* Enable Proxy */}
-      <section>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="min-w-0">
-            <div className="text-sm font-medium">
-              {t("settings.proxy_enabled")}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {t("settings.proxy_enabled_description")}
-            </div>
-          </div>
+      {/* 代理总开关 + 模式 + 智能档记忆 */}
+      <SectionCard
+        icon={<Network className="size-4" />}
+        title={t("settings.proxy_enabled")}
+        description={t("settings.proxy_enabled_description")}
+        action={
           <Switch
             checked={settings.enabled}
             onCheckedChange={handleEnabledChange}
           />
-        </div>
-      </section>
-
-      {/* 全局代理模式（50 批 2.2）：全走代理 / 智能（先直连不通再代理 + 按域记忆） */}
-      <section
-        className={cn(!settings.enabled && "opacity-50 pointer-events-none")}
+        }
       >
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="min-w-0">
-            <div className="text-sm font-medium">
-              {t("settings.proxy_mode")}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {t("settings.proxy_mode_description")}
-            </div>
-          </div>
-          <SegmentedControl
-            className="shrink-0"
-            value={settings.mode}
-            onValueChange={handleModeChange}
-            options={proxyModeOptions}
-          />
-        </div>
-      </section>
+        <div className="divide-y divide-border/50">
+          <SettingRow
+            label={t("settings.proxy_mode")}
+            hint={t("settings.proxy_mode_description")}
+            disabled={!settings.enabled}
+          >
+            <SegmentedControl
+              className="shrink-0"
+              value={settings.mode}
+              onValueChange={handleModeChange}
+              options={proxyModeOptions}
+            />
+          </SettingRow>
 
-      {/* 智能档的域记忆（50 批 2.2）：哪些域学了直连/代理，可清空让它重新学 */}
-      {settings.mode === "smart" && (
-        <section>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="min-w-0">
-              <div className="text-sm font-medium">
-                {t("settings.proxy_memory_title")}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                {t("settings.proxy_memory_description")}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={handleClearMemory}
-              disabled={clearingMemory || !memory || memory.length === 0}
-              className={cn(
-                "h-8 shrink-0 rounded-md px-3 text-sm font-medium transition-colors",
-                "border border-border bg-background hover:bg-secondary",
-                "disabled:cursor-not-allowed disabled:opacity-50",
-              )}
+          {settings.mode === "smart" && (
+            <SettingRow
+              label={t("settings.proxy_memory_title")}
+              hint={t("settings.proxy_memory_description")}
             >
-              {t("settings.proxy_memory_clear")}
-            </button>
-          </div>
-          {memory && memory.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {memory.map((item) => (
-                <span
-                  key={item.host}
-                  className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground"
-                >
-                  {item.host}
-                  <span
-                    className={cn(
-                      "ml-1.5",
-                      item.mode === "proxy"
-                        ? "text-primary"
-                        : "text-green-600 dark:text-green-400",
-                    )}
-                  >
-                    {item.mode === "proxy"
-                      ? t("settings.proxy_memory_mode_proxy")
-                      : t("settings.proxy_memory_mode_direct")}
-                  </span>
-                </span>
-              ))}
-            </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onPress={handleClearMemory}
+                isDisabled={clearingMemory || !memory || memory.length === 0}
+              >
+                {t("settings.proxy_memory_clear")}
+              </Button>
+            </SettingRow>
           )}
-          {memory && memory.length === 0 && (
-            <p className="mt-2 text-xs text-muted-foreground">
-              {t("settings.proxy_memory_empty")}
-            </p>
-          )}
-        </section>
-      )}
+        </div>
 
-      {/* 按来源覆盖（14 批）：订阅 / 文件夹可以各自覆盖全局代理，就近优先 */}
-      <section>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="min-w-0">
-            <div className="text-sm font-medium">{t("proxy.section_title")}</div>
-            <div className="text-xs text-muted-foreground">
-              {t("proxy.section_description")}
-            </div>
+        {settings.mode === "smart" && memory && memory.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 px-1 pb-2 pt-1">
+            {memory.map((item) => (
+              <span
+                key={item.host}
+                className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground"
+              >
+                {item.host}
+                <span
+                  className={cn(
+                    "ml-1.5",
+                    item.mode === "proxy"
+                      ? "text-primary"
+                      : "text-green-600 dark:text-green-400",
+                  )}
+                >
+                  {item.mode === "proxy"
+                    ? t("settings.proxy_memory_mode_proxy")
+                    : t("settings.proxy_memory_mode_direct")}
+                </span>
+              </span>
+            ))}
           </div>
-          <button
-            type="button"
-            onClick={() => setManagerOpen(true)}
-            className={cn(
-              "h-8 shrink-0 rounded-md px-3 text-sm font-medium transition-colors",
-              "border border-border bg-background hover:bg-secondary",
-            )}
+        )}
+        {settings.mode === "smart" && memory && memory.length === 0 && (
+          <p className="px-1 pb-2 pt-1 text-xs text-muted-foreground">
+            {t("settings.proxy_memory_empty")}
+          </p>
+        )}
+      </SectionCard>
+
+      {/* 按来源覆盖：订阅 / 文件夹各自覆盖全局代理，就近优先 */}
+      <SectionCard
+        icon={<ShieldCheck className="size-4" />}
+        title={t("proxy.section_title")}
+        description={t("proxy.section_description")}
+        action={
+          <Button
+            size="sm"
+            variant="outline"
+            onPress={() => setManagerOpen(true)}
           >
             {t("proxy.manage")}
-          </button>
-        </div>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
+          </Button>
+        }
+      >
+        <div className="flex flex-wrap items-center gap-2 px-1 py-2.5">
           <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
             {t("proxy.counts_folders", { count: counts.folders })}
           </span>
@@ -369,194 +345,152 @@ export function NetworkSettings() {
             </span>
           )}
         </div>
-      </section>
+      </SectionCard>
 
-      {/* Proxy Configuration（50 批 2.1：关掉代理收成一行摘要，点开仍能编辑；测试按钮不再被禁用区困住） */}
-      <section>
+      {/* 代理配置：关掉代理后收成一行摘要，点开仍能编辑；测试按钮不再被禁用区困住 */}
+      <SectionCard
+        icon={<Server className="size-4" />}
+        title={t("settings.proxy_config_title")}
+      >
         {!settings.enabled && !configExpanded ? (
-          <button
-            type="button"
-            onClick={() => setConfigExpanded(true)}
-            className="flex w-full items-center justify-between gap-2 rounded-md border border-border px-3 py-2 text-left transition-colors duration-200 hover:bg-item-hover"
-          >
-            <span className="min-w-0 truncate text-sm text-muted-foreground">
-              {configSummary}
-            </span>
-            <svg
-              className="size-3.5 shrink-0 text-muted-foreground"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 5l7 7-7 7"
-              />
-            </svg>
-          </button>
-        ) : (
-        <div className="space-y-4">
-          {configExpanded && !settings.enabled && (
+          <div className="px-1 py-2.5">
             <button
               type="button"
-              onClick={() => setConfigExpanded(false)}
-              className="text-xs text-muted-foreground transition-colors duration-200 hover:text-foreground"
+              onClick={() => setConfigExpanded(true)}
+              className="flex w-full items-center justify-between gap-2 rounded-[var(--radius)] border border-border px-3 py-2 text-left transition-colors duration-200 hover:bg-item-hover"
             >
-              {t("settings.proxy_collapse")}
+              <span className="min-w-0 truncate text-sm text-muted-foreground">
+                {configSummary}
+              </span>
+              <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
             </button>
-          )}
-          {/* Proxy Type */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-sm font-medium">
-              {t("settings.proxy_type")}
-            </div>
-            <SegmentedControl
-              className="shrink-0"
-              value={settings.type}
-              onValueChange={handleTypeChange}
-              options={proxyTypeOptions}
-            />
           </div>
+        ) : (
+          <>
+            {configExpanded && !settings.enabled && (
+              <div className="px-1 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setConfigExpanded(false)}
+                  className="text-xs text-muted-foreground transition-colors duration-200 hover:text-foreground"
+                >
+                  {t("settings.proxy_collapse")}
+                </button>
+              </div>
+            )}
 
-          {/* Host and Port */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="sm:col-span-2">
-              <label className="text-sm font-medium">
-                {t("settings.proxy_host")}
-              </label>
-              <input
-                type="text"
-                value={settings.host}
-                onChange={(e) =>
-                  setSettings({ ...settings, host: e.target.value })
-                }
-                placeholder="127.0.0.1"
-                className={cn(
-                  "mt-1 h-9 w-full rounded-field border border-border bg-background px-3 text-sm",
-                  "placeholder:text-muted-foreground/50",
-                  "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
-                )}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium">
-                {t("settings.proxy_port")}
-              </label>
-              <input
-                type="number"
-                value={settings.port || ""}
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    port: parseInt(e.target.value, 10) || 0,
-                  })
-                }
-                placeholder="7890"
-                className={cn(
-                  "mt-1 h-9 w-full rounded-field border border-border bg-background px-3 text-sm",
-                  "placeholder:text-muted-foreground/50",
-                  "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
-                )}
-              />
-            </div>
-          </div>
+            <div className="divide-y divide-border/50">
+              <SettingRow label={t("settings.proxy_type")}>
+                <SegmentedControl
+                  className="shrink-0"
+                  value={settings.type}
+                  onValueChange={handleTypeChange}
+                  options={proxyTypeOptions}
+                />
+              </SettingRow>
 
-          {/* Authentication */}
-          <div>
-            <div className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              {t("settings.proxy_auth")}
+              <SettingRow label={t("settings.proxy_host")}>
+                <Input
+                  type="text"
+                  value={settings.host}
+                  onChange={(e) =>
+                    setSettings({ ...settings, host: e.target.value })
+                  }
+                  placeholder="127.0.0.1"
+                  className="w-44"
+                />
+              </SettingRow>
+
+              <SettingRow label={t("settings.proxy_port")}>
+                <Input
+                  type="number"
+                  value={settings.port || ""}
+                  onChange={(e) =>
+                    setSettings({
+                      ...settings,
+                      port: parseInt(e.target.value, 10) || 0,
+                    })
+                  }
+                  placeholder="7890"
+                  className="w-24"
+                />
+              </SettingRow>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="text-sm font-medium">
-                  {t("settings.proxy_username")}
-                </label>
-                <input
+
+            <GroupLabel>{t("settings.proxy_auth")}</GroupLabel>
+            <div className="divide-y divide-border/50">
+              <SettingRow label={t("settings.proxy_username")}>
+                <Input
                   type="text"
                   value={settings.username}
                   onChange={(e) =>
                     setSettings({ ...settings, username: e.target.value })
                   }
-                  className={cn(
-                    "mt-1 h-9 w-full rounded-field border border-border bg-background px-3 text-sm",
-                    "placeholder:text-muted-foreground/50",
-                    "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
-                  )}
+                  className="w-44"
                 />
-              </div>
-              <div>
-                <label className="text-sm font-medium">
-                  {t("settings.proxy_password")}
-                </label>
-                <input
+              </SettingRow>
+
+              <SettingRow label={t("settings.proxy_password")}>
+                <Input
                   type="password"
                   value={settings.password}
                   onChange={(e) =>
                     setSettings({ ...settings, password: e.target.value })
                   }
-                  className={cn(
-                    "mt-1 h-9 w-full rounded-field border border-border bg-background px-3 text-sm",
-                    "placeholder:text-muted-foreground/50",
-                    "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
-                  )}
+                  className="w-44"
                 />
-              </div>
+              </SettingRow>
             </div>
-          </div>
 
-          {/* Actions */}
-          <div className="flex flex-wrap items-center gap-2 pt-2">
-            <button
-              type="button"
-              onClick={handleTest}
-              disabled={isTesting || !canTest}
-              className={cn(
-                "h-9 rounded-[var(--radius)] px-4 text-sm font-medium transition-colors shrink-0",
-                "border border-border bg-background hover:bg-secondary",
-                "disabled:cursor-not-allowed disabled:opacity-50",
-                testStatus === "success" && "border-green-600 text-green-600",
-                testStatus === "error" && "border-destructive text-destructive",
-              )}
-            >
-              {isTesting
-                ? t("settings.proxy_testing")
-                : t("settings.proxy_test")}
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={isSaving}
-              className={cn(
-                "h-9 rounded-[var(--radius)] px-4 text-sm font-medium transition-colors shrink-0",
-                "bg-primary text-primary-foreground hover:bg-primary/90",
-                "disabled:cursor-not-allowed disabled:opacity-50",
-                saveStatus === "success" && "bg-green-600 hover:bg-green-600",
-                saveStatus === "error" && "bg-destructive hover:bg-destructive",
-              )}
-            >
-              {isSaving
-                ? t("settings.saving")
-                : saveStatus === "success"
-                  ? t("settings.saved")
-                  : t("settings.save")}
-            </button>
-            {testMessage && (
-              <span
+            <div className="flex flex-wrap items-center gap-2 px-1 pb-2 pt-3">
+              <Button
+                size="sm"
+                variant="outline"
+                onPress={handleTest}
+                isDisabled={isTesting || !canTest}
                 className={cn(
-                  "text-sm",
-                  testStatus === "success" && "text-green-600",
-                  testStatus === "error" && "text-destructive",
+                  testStatus === "success" && "border-green-600 text-green-600",
+                  testStatus === "error" &&
+                    "border-destructive text-destructive",
                 )}
               >
-                {testMessage}
-              </span>
-            )}
-          </div>
-        </div>
+                {isTesting
+                  ? t("settings.proxy_testing")
+                  : t("settings.proxy_test")}
+              </Button>
+              <Button
+                size="sm"
+                variant="primary"
+                onPress={handleSave}
+                isDisabled={isSaving}
+                className={cn(
+                  saveStatus === "success" &&
+                    "bg-green-600 text-white hover:bg-green-600",
+                  saveStatus === "error" &&
+                    "bg-destructive text-destructive-foreground hover:bg-destructive",
+                )}
+              >
+                {isSaving
+                  ? t("settings.saving")
+                  : saveStatus === "success"
+                    ? t("settings.saved")
+                    : t("settings.save")}
+              </Button>
+              {testMessage && (
+                <span
+                  className={cn(
+                    "text-sm",
+                    testStatus === "success" && "text-green-600",
+                    testStatus === "error" && "text-destructive",
+                  )}
+                >
+                  {testMessage}
+                </span>
+              )}
+            </div>
+          </>
         )}
-      </section>
+      </SectionCard>
 
       {/* 覆盖管理面板（弹层，与效果图一致：列表 + 单条 ⚙ 展开） */}
       <ProxyOverrideManager open={managerOpen} onOpenChange={setManagerOpen} />

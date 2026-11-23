@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, Trash2, Edit2, Check, X } from "lucide-react";
-import { Button, Label, NumberField } from "@heroui/react";
+import { Plus, Trash2, Edit2, Check, X, Gauge, Shield } from "lucide-react";
+import { Button, Input, Label, NumberField } from "@heroui/react";
 import {
   getDomainRateLimits,
   createDomainRateLimit,
@@ -13,6 +13,10 @@ import {
 } from "@/api";
 import type { FetchSettings, DomainRateLimit } from "@/types/settings";
 import { AutoRefreshHistorySection } from "@/components/settings/tabs/AutoRefreshHistorySection";
+import {
+  SectionCard,
+  SettingRow,
+} from "@/components/settings/settings-primitives";
 import { cn } from "@/lib/utils";
 
 export function AdvancedSettings() {
@@ -213,54 +217,46 @@ export function AdvancedSettings() {
   ];
 
   return (
-    <div className="space-y-6">
-      {/* 自动刷新历史（用户 12-17；第十九批重做，效果图见
-          mockups/auto-refresh-history.html（本地草图，未入库））：
-          定时刷新的结果不再弹框，来这里回看。列表形态、展开明细、清空确认都在它自己的文件里。 */}
+    <div className="space-y-5">
+      {/* 自动刷新历史（用户 12-17；第十九批重做）：定时刷新结果不再弹框，来这里回看。 */}
       <AutoRefreshHistorySection />
 
       {/* 拉取：频率与并发（用户 11-20） */}
       {fetchDraft && (
-        <section>
-          <div className="mb-4">
-            <div className="text-sm font-medium">
-              {t("settings.fetch_title")}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {t("settings.fetch_description")}
-            </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
+        <SectionCard
+          icon={<Gauge className="size-4" />}
+          title={t("settings.fetch_title")}
+          description={t("settings.fetch_description")}
+        >
+          <div className="divide-y divide-border/50">
             {fetchRows.map((row) => (
-              <NumberField
-                key={row.key}
-                value={fetchDraft[row.key]}
-                minValue={row.min}
-                maxValue={row.max}
-                onChange={(value) =>
-                  setFetchDraft((prev) => {
-                    if (!prev) return prev;
-                    const next = { ...prev, [row.key]: Number(value) || 0 };
-                    draftRef.current = next;
-                    return next;
-                  })
-                }
-                className="w-full"
-              >
-                <Label className="text-xs text-muted-foreground">
-                  {row.label}
-                </Label>
-                <NumberField.Group className="mt-1">
-                  <NumberField.DecrementButton>-</NumberField.DecrementButton>
-                  <NumberField.Input />
-                  <NumberField.IncrementButton>+</NumberField.IncrementButton>
-                </NumberField.Group>
-              </NumberField>
+              <SettingRow key={row.key} label={row.label} hint={row.hint}>
+                <NumberField
+                  value={fetchDraft[row.key]}
+                  minValue={row.min}
+                  maxValue={row.max}
+                  onChange={(value) =>
+                    setFetchDraft((prev) => {
+                      if (!prev) return prev;
+                      const next = { ...prev, [row.key]: Number(value) || 0 };
+                      draftRef.current = next;
+                      return next;
+                    })
+                  }
+                  className="w-32"
+                >
+                  <Label className="sr-only">{row.label}</Label>
+                  <NumberField.Group>
+                    <NumberField.DecrementButton>-</NumberField.DecrementButton>
+                    <NumberField.Input />
+                    <NumberField.IncrementButton>+</NumberField.IncrementButton>
+                  </NumberField.Group>
+                </NumberField>
+              </SettingRow>
             ))}
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3 px-1 pb-2 pt-3">
             <Button
               size="sm"
               variant="primary"
@@ -285,56 +281,45 @@ export function AdvancedSettings() {
               </span>
             )}
           </div>
-        </section>
+        </SectionCard>
       )}
 
       {/* Domain Rate Limits Section */}
-      <section>
-        <div className="mb-4">
-          <div className="text-sm font-medium">
-            {t("settings.advanced_domain_limits")}
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {t("settings.advanced_domain_limits_description")}
-          </div>
-        </div>
-
-        <div className="space-y-2">
+      <SectionCard
+        icon={<Shield className="size-4" />}
+        title={t("settings.advanced_domain_limits")}
+        description={t("settings.advanced_domain_limits_description")}
+      >
+        <div className="space-y-2 px-1 py-2.5">
           {/* Add Row */}
           <div className="flex flex-wrap items-center gap-2">
-            <input
+            <Input
               type="text"
               value={newHost}
               onChange={(e) => setNewHost(e.target.value)}
               placeholder="example.com"
-              className={cn(
-                "h-9 min-w-[120px] flex-1 rounded-field border border-border bg-background px-3 text-sm",
-                "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
-              )}
+              aria-label={t("settings.advanced_host")}
+              className="h-9 min-w-[120px] flex-1 text-sm"
             />
             <div className="flex shrink-0 items-center gap-2">
-              <input
+              <Input
                 type="number"
-                min="0"
                 value={newInterval}
                 onChange={(e) => setNewInterval(e.target.value)}
                 placeholder={t("settings.advanced_seconds")}
-                className={cn(
-                  "h-9 w-20 rounded-field border border-border bg-background px-3 text-sm",
-                  "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
-                )}
+                aria-label={t("settings.advanced_interval")}
+                className="h-9 w-24 text-sm"
               />
-              <button
-                type="button"
-                onClick={handleCreate}
-                disabled={!newHost.trim() || !isValidHostFormat(newHost)}
-                className={cn(
-                  "flex size-9 items-center justify-center rounded-[var(--radius)] border border-border bg-secondary text-secondary-foreground transition-colors hover:bg-secondary/80",
-                  "disabled:opacity-50 disabled:cursor-not-allowed",
-                )}
+              <Button
+                size="sm"
+                variant="secondary"
+                isIconOnly
+                onPress={handleCreate}
+                isDisabled={!newHost.trim() || !isValidHostFormat(newHost)}
+                aria-label={t("settings.advanced_add_domain")}
               >
                 <Plus className="size-4" />
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -361,9 +346,8 @@ export function AdvancedSettings() {
 
                     {isEditing ? (
                       <div className="flex shrink-0 items-center gap-1">
-                        <input
+                        <Input
                           type="number"
-                          min="0"
                           value={editInterval}
                           autoFocus
                           onChange={(e) =>
@@ -371,45 +355,53 @@ export function AdvancedSettings() {
                               Math.max(0, parseInt(e.target.value) || 0),
                             )
                           }
-                          className={cn(
-                            "h-9 w-20 rounded-field border border-border bg-background px-3 text-sm",
-                            "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
-                          )}
+                          aria-label={t("settings.advanced_interval")}
+                          className="h-9 w-24 text-sm"
                         />
-                        <button
-                          type="button"
-                          onClick={handleUpdate}
-                          className="flex size-9 items-center justify-center rounded-[var(--radius)] text-primary hover:bg-primary/10"
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          isIconOnly
+                          onPress={handleUpdate}
+                          aria-label={t("settings.advanced_edit")}
+                          className="text-primary hover:bg-primary/10"
                         >
                           <Check className="size-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={cancelEdit}
-                          className="flex size-9 items-center justify-center rounded-[var(--radius)] text-muted-foreground hover:bg-secondary"
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          isIconOnly
+                          onPress={cancelEdit}
+                          aria-label={t("actions.cancel")}
                         >
                           <X className="size-4" />
-                        </button>
+                        </Button>
                       </div>
                     ) : (
                       <div className="flex shrink-0 items-center gap-1">
                         <div className="w-20 text-center text-xs text-muted-foreground">
                           {item.intervalSeconds}s
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => startEdit(item)}
-                          className="flex size-9 items-center justify-center rounded-[var(--radius)] text-muted-foreground hover:bg-secondary hover:text-foreground"
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          isIconOnly
+                          onPress={() => startEdit(item)}
+                          aria-label={t("settings.advanced_edit")}
                         >
                           <Edit2 className="size-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(item.host)}
-                          className="flex size-9 items-center justify-center rounded-[var(--radius)] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          isIconOnly
+                          onPress={() => handleDelete(item.host)}
+                          aria-label={t("settings.advanced_delete")}
+                          className="hover:bg-destructive/10 hover:text-destructive"
                         >
                           <Trash2 className="size-4" />
-                        </button>
+                        </Button>
                       </div>
                     )}
                   </div>
@@ -418,7 +410,7 @@ export function AdvancedSettings() {
             </div>
           )}
         </div>
-      </section>
+      </SectionCard>
     </div>
   );
 }

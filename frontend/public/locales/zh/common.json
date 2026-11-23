@@ -221,6 +221,7 @@
     "proxy_disabled_summary": "代理已关闭 · {{type}} {{host}}:{{port}}（点开可编辑）",
     "proxy_disabled_empty": "代理已关闭 · 还没填代理地址（点开可编辑）",
     "proxy_collapse": "收起",
+    "proxy_config_title": "代理配置",
     "proxy_mode": "代理模式",
     "proxy_mode_description": "「全走代理」所有请求都经代理；「智能」先试直连，不通自动换代理并按域记住结论",
     "proxy_mode_proxy": "全走代理",
