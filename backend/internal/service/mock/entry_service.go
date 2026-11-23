@@ -134,6 +134,21 @@ func (mr *MockEntryServiceMockRecorder) List(ctx, params any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockEntryService)(nil).List), ctx, params)
 }
 
+// ListViewMatchedFeeds mocks base method.
+func (m *MockEntryService) ListViewMatchedFeeds(ctx context.Context, viewID int64, contentType *string) ([]service.ViewMatchedFeed, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListViewMatchedFeeds", ctx, viewID, contentType)
+	ret0, _ := ret[0].([]service.ViewMatchedFeed)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListViewMatchedFeeds indicates an expected call of ListViewMatchedFeeds.
+func (mr *MockEntryServiceMockRecorder) ListViewMatchedFeeds(ctx, viewID, contentType any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListViewMatchedFeeds", reflect.TypeOf((*MockEntryService)(nil).ListViewMatchedFeeds), ctx, viewID, contentType)
+}
+
 // MarkAllAsRead mocks base method.
 func (m *MockEntryService) MarkAllAsRead(ctx context.Context, feedID, folderID *int64, contentType *string) error {
 	m.ctrl.T.Helper()

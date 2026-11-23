@@ -566,6 +566,15 @@ function sanitizeBag(input: unknown): Record<string, unknown> {
     }
   }
 
+  // 字号 / 行高是跨设备同步的数值：本地存的旧值或别的设备写回来的越界值，
+  // 读进来先夹进合法区间，免得把正文撑爆 / 挤扁。
+  if (typeof out.entryFontSize === "number") {
+    out.entryFontSize = clampEntryFontSize(out.entryFontSize);
+  }
+  if (typeof out.entryLineHeight === "number") {
+    out.entryLineHeight = clampEntryLineHeight(out.entryLineHeight);
+  }
+
   return out;
 }
 
@@ -724,6 +733,39 @@ export const defaultUISettings: UISettings = {
   // 正文工具栏：默认七项全可见，顺序 = 现有渲染顺序
   entryToolbar: defaultEntryToolbar(),
 };
+
+/**
+ * 正文字号 / 行高的允许区间。
+ *
+ * 字号是「跨设备同步」的偏好：桌面用数字步进器、手机用 ±1，两边都得守住同一区间，
+ * 否则一端写进 40px、另一端读出来把正文撑爆。行高同理，保留一位小数。
+ */
+export const ENTRY_FONT_SIZE_MIN = 12;
+export const ENTRY_FONT_SIZE_MAX = 24;
+export const ENTRY_LINE_HEIGHT_MIN = 1.2;
+export const ENTRY_LINE_HEIGHT_MAX = 2.4;
+
+/** 把正文字号夹进 [12,24] 并取整数 */
+export function clampEntryFontSize(size: number): number {
+  if (!Number.isFinite(size)) return defaultUISettings.entryFontSize;
+  return Math.min(
+    ENTRY_FONT_SIZE_MAX,
+    Math.max(ENTRY_FONT_SIZE_MIN, Math.round(size)),
+  );
+}
+
+/** 把行高夹进 [1.2,2.4] 并保留一位小数 */
+export function clampEntryLineHeight(height: number): number {
+  if (!Number.isFinite(height)) return defaultUISettings.entryLineHeight;
+  return (
+    Math.round(
+      Math.min(
+        ENTRY_LINE_HEIGHT_MAX,
+        Math.max(ENTRY_LINE_HEIGHT_MIN, height),
+      ) * 10,
+    ) / 10
+  );
+}
 
 let cachedPackage: UISettingsPackageShape = readStoredPackage();
 let cachedSettings: UISettings = flatFromPackage(cachedPackage, currentDeviceClass());
@@ -952,11 +994,11 @@ export function useUISettingActions() {
   }, []);
 
   const setEntryFontSize = useCallback((size: number) => {
-    setUISetting("entryFontSize", size);
+    setUISetting("entryFontSize", clampEntryFontSize(size));
   }, []);
 
   const setEntryLineHeight = useCallback((height: number) => {
-    setUISetting("entryLineHeight", height);
+    setUISetting("entryLineHeight", clampEntryLineHeight(height));
   }, []);
 
   const setShowLineNumbers = useCallback((enabled: boolean) => {

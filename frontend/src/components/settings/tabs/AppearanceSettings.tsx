@@ -24,6 +24,10 @@ import {
   useUISettingKey,
   resolveGridStyle,
   resolvePictureLayout,
+  ENTRY_FONT_SIZE_MIN,
+  ENTRY_FONT_SIZE_MAX,
+  ENTRY_LINE_HEIGHT_MIN,
+  ENTRY_LINE_HEIGHT_MAX,
   resolveExperimentalLayoutVisibility,
   type ArticleLayout,
   type CardImageSize,
@@ -45,7 +49,7 @@ import type {
 } from "@/lib/timeline-model";
 import { updateAppearanceSettings } from "@/api";
 import { cn } from "@/lib/utils";
-import { Button, Input } from "@heroui/react";
+import { Button, Input, Label, NumberField } from "@heroui/react";
 import { FeedAvatar } from "@/components/ui/feed-avatar";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Select } from "@/components/ui/select";
@@ -655,31 +659,54 @@ export function AppearanceSettings() {
             />
           </SettingRow>
 
-          <SettingRow label={t("appearance_reading.font_size")}>
-            <SegmentedControl
-              className="shrink-0"
-              value={String(entryFontSize)}
-              onValueChange={(value) => setEntryFontSize(Number(value))}
-              options={[
-                { value: "15", label: "15" },
-                { value: "17", label: "17" },
-                { value: "19", label: "19" },
-                { value: "21", label: "21" },
-              ]}
-            />
+          <SettingRow
+            label={t("appearance_reading.font_size")}
+            hint={t("appearance_reading.font_size_hint")}
+          >
+            <NumberField
+              value={entryFontSize}
+              minValue={ENTRY_FONT_SIZE_MIN}
+              maxValue={ENTRY_FONT_SIZE_MAX}
+              step={1}
+              onChange={(value) => setEntryFontSize(Number(value))}
+              className="w-32"
+            >
+              <Label className="sr-only">
+                {t("appearance_reading.font_size")}
+              </Label>
+              <NumberField.Group>
+                <NumberField.DecrementButton>-</NumberField.DecrementButton>
+                <NumberField.Input />
+                <NumberField.IncrementButton>+</NumberField.IncrementButton>
+              </NumberField.Group>
+            </NumberField>
           </SettingRow>
 
-          <SettingRow label={t("appearance_reading.line_height")}>
-            <SegmentedControl
-              className="shrink-0"
-              value={String(entryLineHeight)}
-              onValueChange={(value) => setEntryLineHeight(Number(value))}
-              options={[
-                { value: "1.6", label: "1.6" },
-                { value: "1.8", label: "1.8" },
-                { value: "2", label: "2.0" },
-              ]}
-            />
+          <SettingRow
+            label={t("appearance_reading.line_height")}
+            hint={t("appearance_reading.line_height_hint")}
+          >
+            <NumberField
+              value={entryLineHeight}
+              minValue={ENTRY_LINE_HEIGHT_MIN}
+              maxValue={ENTRY_LINE_HEIGHT_MAX}
+              step={0.1}
+              formatOptions={{
+                minimumFractionDigits: 1,
+                maximumFractionDigits: 1,
+              }}
+              onChange={(value) => setEntryLineHeight(Number(value))}
+              className="w-32"
+            >
+              <Label className="sr-only">
+                {t("appearance_reading.line_height")}
+              </Label>
+              <NumberField.Group>
+                <NumberField.DecrementButton>-</NumberField.DecrementButton>
+                <NumberField.Input />
+                <NumberField.IncrementButton>+</NumberField.IncrementButton>
+              </NumberField.Group>
+            </NumberField>
           </SettingRow>
           <SettingRow label={t("appearance_reading.ui_scale")}>
             <SegmentedControl
@@ -698,42 +725,6 @@ export function AppearanceSettings() {
 
         <GroupLabel>{t("appearance_reading.group_cards")}</GroupLabel>
         <div className="divide-y divide-border/50">
-          <SettingRow label={t("appearance_reading.card_image")}>
-            <SegmentedControl
-              className="shrink-0"
-              value={cardImageSize}
-              onValueChange={(value) => setCardImageSize(value as CardImageSize)}
-              options={[
-                {
-                  value: "none",
-                  label: t("appearance_reading.card_image_none"),
-                },
-                {
-                  value: "small",
-                  label: t("appearance_reading.card_image_small"),
-                },
-                {
-                  value: "large",
-                  label: t("appearance_reading.card_image_large"),
-                },
-              ]}
-            />
-          </SettingRow>
-
-          <SettingRow label={t("appearance_reading.preview_lines")}>
-            <SegmentedControl
-              className="shrink-0"
-              value={String(cardPreviewLines)}
-              onValueChange={(value) => setCardPreviewLines(Number(value))}
-              options={[
-                { value: "0", label: t("appearance_reading.none") },
-                { value: "1", label: "1" },
-                { value: "2", label: "2" },
-                { value: "3", label: "3" },
-              ]}
-            />
-          </SettingRow>
-
           <SettingRow label={t("appearance_reading.sidebar_feed_appearance")}>
             <SegmentedControl
               className="shrink-0"
@@ -1206,110 +1197,155 @@ export function AppearanceSettings() {
                     点击用 Nextflux 式推进转场把正文推进第三栏。reader-transition 批新增，实验布局批增 rows，
                     m00883 批把 rows 移入实验、新增常规 inoreader（图片悬停大图去掉悬停）。 */ }
                 {view === "article" && (
-                  <SettingRow
-                    label={t("appearance_view.article_layout")}
-                    hint={
-                      articleLayout === "hover" && !expVisibility.articleHover
-                        ? t("appearance_view.experimental_disabled_hint")
-                        : articleLayout === "rows" && !expVisibility.articleRows
+                  <>
+                    <SettingRow
+                      label={t("appearance_view.article_layout")}
+                      hint={
+                        articleLayout === "hover" && !expVisibility.articleHover
                           ? t("appearance_view.experimental_disabled_hint")
-                          : expVisibility.articleHover &&
-                              articleLayout === "hover"
-                            ? t("appearance_view.article_layout_hover_hint")
-                            : undefined
-                    }
-                  >
-                    <SegmentedControl
-                      className="shrink-0"
-                      value={articleLayout}
-                      onValueChange={(value) =>
-                        setArticleLayout(value as ArticleLayout)
+                          : articleLayout === "rows" && !expVisibility.articleRows
+                            ? t("appearance_view.experimental_disabled_hint")
+                            : expVisibility.articleHover &&
+                                articleLayout === "hover"
+                              ? t("appearance_view.article_layout_hover_hint")
+                              : undefined
                       }
-                      options={[
-                        {
-                          value: "list",
-                          label: t("appearance_view.article_layout_list"),
-                        },
-                        {
-                          value: "inoreader",
-                          label: t("appearance_view.article_layout_inoreader"),
-                        },
-                        // 实验布局批：缩略图列表 / 悬停正文入口仅在实验开关打开时出现；关闭即隐藏，不因当前正选中而泄漏
-                        ...(expVisibility.articleRows
-                          ? [
-                              {
-                                value: "rows",
-                                label: t("appearance_view.article_layout_rows"),
-                              },
-                            ]
-                          : []),
-                        ...(expVisibility.articleHover
-                          ? [
-                              {
-                                value: "hover",
-                                label: t("appearance_view.article_layout_hover"),
-                              },
-                            ]
-                          : []),
-                      ]}
-                    />
-                  </SettingRow>
-                )}
-                {/* 实验布局批：文章正文推入方向（对所有文章布局生效） */}
-                {view === "article" && (
-                  <SettingRow
-                    label={t("appearance_view.article_push_direction")}
-                    hint={t("appearance_view.article_push_direction_hint")}
-                  >
-                    <SegmentedControl
-                      className="shrink-0"
-                      value={articlePushDirection}
-                      onValueChange={(value) =>
-                        setArticlePushDirection(
-                          value as "right" | "bottom" | "down",
-                        )
-                      }
-                      options={[
-                        {
-                          value: "right",
-                          label: t("appearance_view.article_push_direction_right"),
-                        },
-                        {
-                          value: "bottom",
-                          label: t("appearance_view.article_push_direction_bottom"),
-                        },
-                        {
-                          value: "down",
-                          label: t("appearance_view.article_push_direction_down"),
-                        },
-                      ]}
-                    />
-                  </SettingRow>
-                )}
-                {/* 实验布局批：正文是否覆盖第二栏条目栏（「向下」是合列滚动，这个开关无意义，隐藏） */}
-                {view === "article" && articlePushDirection !== "down" && (
-                  <SettingRow
-                    label={t("appearance_view.article_cover_list")}
-                    hint={t("appearance_view.article_cover_list_hint")}
-                  >
-                    <SegmentedControl
-                      className="shrink-0"
-                      value={articleCoverList ? "on" : "off"}
-                      onValueChange={(value) =>
-                        setArticleCoverList(value === "on")
-                      }
-                      options={[
-                        {
-                          value: "off",
-                          label: t("appearance_view.article_cover_off"),
-                        },
-                        {
-                          value: "on",
-                          label: t("appearance_view.article_cover_on"),
-                        },
-                      ]}
-                    />
-                  </SettingRow>
+                    >
+                      <SegmentedControl
+                        className="shrink-0"
+                        value={articleLayout}
+                        onValueChange={(value) =>
+                          setArticleLayout(value as ArticleLayout)
+                        }
+                        options={[
+                          {
+                            value: "list",
+                            label: t("appearance_view.article_layout_list"),
+                          },
+                          {
+                            value: "inoreader",
+                            label: t("appearance_view.article_layout_inoreader"),
+                          },
+                          // 实验布局批：缩略图列表 / 悬停正文入口仅在实验开关打开时出现；关闭即隐藏，不因当前正选中而泄漏
+                          ...(expVisibility.articleRows
+                            ? [
+                                {
+                                  value: "rows",
+                                  label: t("appearance_view.article_layout_rows"),
+                                },
+                              ]
+                            : []),
+                          ...(expVisibility.articleHover
+                            ? [
+                                {
+                                  value: "hover",
+                                  label: t("appearance_view.article_layout_hover"),
+                                },
+                              ]
+                            : []),
+                        ]}
+                      />
+                    </SettingRow>
+                    {/* 实验布局批：正文推入方向（对所有文章布局生效） */}
+                    <SettingRow
+                      label={t("appearance_view.article_push_direction")}
+                      hint={t("appearance_view.article_push_direction_hint")}
+                    >
+                      <SegmentedControl
+                        className="shrink-0"
+                        value={articlePushDirection}
+                        onValueChange={(value) =>
+                          setArticlePushDirection(
+                            value as "right" | "bottom" | "down",
+                          )
+                        }
+                        options={[
+                          {
+                            value: "right",
+                            label: t(
+                              "appearance_view.article_push_direction_right",
+                            ),
+                          },
+                          {
+                            value: "bottom",
+                            label: t(
+                              "appearance_view.article_push_direction_bottom",
+                            ),
+                          },
+                          {
+                            value: "down",
+                            label: t(
+                              "appearance_view.article_push_direction_down",
+                            ),
+                          },
+                        ]}
+                      />
+                    </SettingRow>
+                    {/* 实验布局批：正文是否覆盖第二栏条目栏（「向下」是合列滚动，这个开关无意义，隐藏） */}
+                    {articlePushDirection !== "down" && (
+                      <SettingRow
+                        label={t("appearance_view.article_cover_list")}
+                        hint={t("appearance_view.article_cover_list_hint")}
+                      >
+                        <SegmentedControl
+                          className="shrink-0"
+                          value={articleCoverList ? "on" : "off"}
+                          onValueChange={(value) =>
+                            setArticleCoverList(value === "on")
+                          }
+                          options={[
+                            {
+                              value: "off",
+                              label: t("appearance_view.article_cover_off"),
+                            },
+                            {
+                              value: "on",
+                              label: t("appearance_view.article_cover_on"),
+                            },
+                          ]}
+                        />
+                      </SettingRow>
+                    )}
+                    {/* 「列表图片」与「摘要行数」只作用于文章列表视图，挪进这里的文章专属块 */}
+                    <SettingRow label={t("appearance_reading.card_image")}>
+                      <SegmentedControl
+                        className="shrink-0"
+                        value={cardImageSize}
+                        onValueChange={(value) =>
+                          setCardImageSize(value as CardImageSize)
+                        }
+                        options={[
+                          {
+                            value: "none",
+                            label: t("appearance_reading.card_image_none"),
+                          },
+                          {
+                            value: "small",
+                            label: t("appearance_reading.card_image_small"),
+                          },
+                          {
+                            value: "large",
+                            label: t("appearance_reading.card_image_large"),
+                          },
+                        ]}
+                      />
+                    </SettingRow>
+                    <SettingRow label={t("appearance_reading.preview_lines")}>
+                      <SegmentedControl
+                        className="shrink-0"
+                        value={String(cardPreviewLines)}
+                        onValueChange={(value) =>
+                          setCardPreviewLines(Number(value))
+                        }
+                        options={[
+                          { value: "0", label: t("appearance_reading.none") },
+                          { value: "1", label: "1" },
+                          { value: "2", label: "2" },
+                          { value: "3", label: "3" },
+                        ]}
+                      />
+                    </SettingRow>
+                  </>
                 )}
                 {/* 图片视图档位（28-7 收敛为两档：网格 / 悬停大图；31-1 增第三档「照片墙」）。
                     原先的「瀑布流」与「网格」合并成一档「网格」，两者的差别降为下面那条「样式」。 */}

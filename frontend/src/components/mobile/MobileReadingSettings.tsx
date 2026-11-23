@@ -3,6 +3,10 @@ import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { readingFonts, resolveReadingFontStack } from "@/lib/reading-fonts";
 import {
+  ENTRY_FONT_SIZE_MAX,
+  ENTRY_FONT_SIZE_MIN,
+  ENTRY_LINE_HEIGHT_MAX,
+  ENTRY_LINE_HEIGHT_MIN,
   useUISettingActions,
   useUISettingKey,
 } from "@/hooks/useUISettings";
@@ -14,8 +18,6 @@ interface MobileReadingSettingsProps {
   onOpenChange: (open: boolean) => void;
 }
 
-const FONT_SIZES = [15, 16, 17, 19, 21];
-const LINE_HEIGHTS = ["1.6", "1.8", "2"];
 const THEMES: Theme[] = ["system", "light", "dark"];
 
 function ChoiceButton({
@@ -63,12 +65,22 @@ export function MobileReadingSettings({
     useUISettingActions();
   const { theme, setTheme } = useTheme();
 
-  const sizeIndex = Math.max(0, FONT_SIZES.indexOf(entryFontSize));
+  // 字号 / 行高是跨设备同步的数值（桌面用数字步进器可到任意整数/一位小数），
+  // 手机端不能再按下标走固定几档，否则桌面设成 18 时 indexOf 得到 -1。改成算术步进，
+  // 与桌面同一区间；真实夹取交给 setter（见 useUISettings 的 clampEntryFontSize/LineHeight）。
   const fontStack = resolveReadingFontStack(entryFontFamily);
 
+  const atMinSize = entryFontSize <= ENTRY_FONT_SIZE_MIN;
+  const atMaxSize = entryFontSize >= ENTRY_FONT_SIZE_MAX;
+  const atMinLineHeight = entryLineHeight <= ENTRY_LINE_HEIGHT_MIN + 1e-6;
+  const atMaxLineHeight = entryLineHeight >= ENTRY_LINE_HEIGHT_MAX - 1e-6;
+
   const stepSize = (direction: -1 | 1) => {
-    const next = FONT_SIZES[Math.min(FONT_SIZES.length - 1, Math.max(0, sizeIndex + direction))];
-    if (next !== undefined) setEntryFontSize(next);
+    setEntryFontSize(entryFontSize + direction);
+  };
+
+  const stepLineHeight = (direction: -1 | 1) => {
+    setEntryLineHeight(entryLineHeight + direction * 0.1);
   };
 
   return (
@@ -110,7 +122,7 @@ export function MobileReadingSettings({
             <button
               type="button"
               aria-label={t("entry.decrease_font_size")}
-              disabled={sizeIndex === 0}
+              disabled={atMinSize}
               onClick={() => stepSize(-1)}
               className="flex size-11 items-center justify-center rounded-xl text-foreground active:bg-item-hover disabled:opacity-35"
             >
@@ -122,7 +134,7 @@ export function MobileReadingSettings({
             <button
               type="button"
               aria-label={t("entry.increase_font_size")}
-              disabled={sizeIndex === FONT_SIZES.length - 1}
+              disabled={atMaxSize}
               onClick={() => stepSize(1)}
               className="flex size-11 items-center justify-center rounded-xl text-foreground active:bg-item-hover disabled:opacity-35"
             >
@@ -138,16 +150,28 @@ export function MobileReadingSettings({
           >
             {t("appearance_reading.line_height")}
           </h3>
-          <div className="grid grid-cols-3 gap-2">
-            {LINE_HEIGHTS.map((value) => (
-              <ChoiceButton
-                key={value}
-                active={String(entryLineHeight) === value}
-                onClick={() => setEntryLineHeight(Number(value))}
-              >
-                {value === "2" ? "2.0" : value}
-              </ChoiceButton>
-            ))}
+          <div className="flex items-center justify-between rounded-2xl border border-border/60 bg-default/30 p-1">
+            <button
+              type="button"
+              aria-label={t("entry.decrease_line_height")}
+              disabled={atMinLineHeight}
+              onClick={() => stepLineHeight(-1)}
+              className="flex size-11 items-center justify-center rounded-xl text-foreground active:bg-item-hover disabled:opacity-35"
+            >
+              <Minus className="size-4" />
+            </button>
+            <span className="text-sm font-semibold tabular-nums text-foreground">
+              {entryLineHeight.toFixed(1)}
+            </span>
+            <button
+              type="button"
+              aria-label={t("entry.increase_line_height")}
+              disabled={atMaxLineHeight}
+              onClick={() => stepLineHeight(1)}
+              className="flex size-11 items-center justify-center rounded-xl text-foreground active:bg-item-hover disabled:opacity-35"
+            >
+              <Plus className="size-4" />
+            </button>
           </div>
         </section>
 

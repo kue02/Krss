@@ -87,6 +87,8 @@ func main() {
 
 	// Initialize client factory for proxy and IP stack support
 	clientFactory := network.NewClientFactory(settingsService, settingsService).WithSourceProxy(proxySourceService).WithDomainMemory(newNetworkDomainMemory(domainMemoryRepo))
+	// 设置页「测试连接 / 探测模型」也走同一套代理（受 ai.use_proxy 控制）。
+	settingsService.SetClientFactory(clientFactory)
 
 	// Initialize Anubis solver for bypassing Anubis protection
 	anubisStore := anubis.NewStore(settingsRepo)

@@ -4821,6 +4821,53 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/views/{id}/matched-feeds": {
+            "get": {
+                "description": "Get the feeds currently matched by a saved view, with per-feed hit counts (dynamic; only count\u003e0)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "entries"
+                ],
+                "summary": "List feeds matched by a saved view",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "View ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Only count this content type (article, picture, notification, social)",
+                        "name": "contentType",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.viewMatchedFeedsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -4913,6 +4960,10 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                },
+                "useProxy": {
+                    "description": "UseProxy：AI 调用是否走代理（含智能代理），默认 true",
+                    "type": "boolean"
                 }
             }
         },
@@ -4980,6 +5031,10 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                },
+                "useProxy": {
+                    "description": "UseProxy：AI 调用是否走代理（含智能代理），默认 true",
+                    "type": "boolean"
                 }
             }
         },
@@ -7186,6 +7241,31 @@ const docTemplate = `{
                     "type": "object",
                     "additionalProperties": {
                         "type": "integer"
+                    }
+                }
+            }
+        },
+        "internal_handler.viewMatchedFeedItem": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "feedId": {
+                    "type": "string"
+                },
+                "feedTitle": {
+                    "type": "string"
+                }
+            }
+        },
+        "internal_handler.viewMatchedFeedsResponse": {
+            "type": "object",
+            "properties": {
+                "feeds": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_handler.viewMatchedFeedItem"
                     }
                 }
             }

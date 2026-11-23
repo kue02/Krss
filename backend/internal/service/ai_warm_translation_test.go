@@ -73,6 +73,9 @@ func newWarmTestService(t *testing.T, baseURL string, translationRepo *translati
 	settings.data[service.KeyAIModel] = "test-model"
 	settings.data[service.KeyAIAPIKey] = "test-key"
 	settings.data[service.KeyAIBaseURL] = baseURL
+	// 这些用例验证「走模型」的预热，显式关闭免费通道（新装默认会开启全部免费通道）。
+	settings.data[service.KeyAITranslateChannels] = "[]"
+	settings.data[service.KeyAITranslateChannel] = ""
 	return service.NewAIService(&summaryRepoStub{}, translationRepo, &listTranslationRepoStub{}, settings, ai.NewRateLimiter(1000))
 }
 

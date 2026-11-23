@@ -654,6 +654,9 @@ type settingsServiceStub struct {
 	proxyURL          string
 }
 
+// SetClientFactory：feed/refresh 测试不需要代理工厂。
+func (s *settingsServiceStub) SetClientFactory(factory *network.ClientFactory) {}
+
 type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {

@@ -184,6 +184,7 @@ export function EntryList({
    */
   const activeViewId = useFilterViewStore((state) => state.viewId);
   const activeViewName = useFilterViewStore((state) => state.viewName);
+  const viewUnreadCount = useFilterViewStore((state) => state.viewUnreadCount);
   const viewScopeKey = useFilterViewStore((state) => state.scopeKey);
   const clearView = useFilterViewStore((state) => state.clearView);
   const selectionScopeKey = useMemo(() => {
@@ -1516,12 +1517,11 @@ export function EntryList({
       : activeViewId && activeViewName
         ? activeViewName
         : title;
-  const headerSubtitle =
-    mutedOnly
-      ? t("automation.muted_view_hint")
-      : activeViewId
-        ? t("automation.view_active_hint")
-        : undefined;
+  // 保存筛选视图（activeViewId）不再显示那行「正在使用保存的筛选视图」副标题（用户 2026-11-23：
+  // 智能文件夹升级后，这条提示多余要去掉）；「已静音」回看视图的说明保留。
+  const headerSubtitle = mutedOnly
+    ? t("automation.muted_view_hint")
+    : undefined;
 
   return (
     <div
@@ -1548,7 +1548,9 @@ export function EntryList({
           title={headerTitle}
           subtitle={headerSubtitle}
           onBackFromFeedJump={feedJumpBackHref ? onBackFromFeedJump : undefined}
-          unreadCount={unreadCount}
+          unreadCount={
+            activeViewId ? (viewUnreadCount ?? unreadCount) : unreadCount
+          }
           unreadOnly={unreadOnly}
           /* 58-1：星标视图不显示「只看未读」切换（用户 2026-10-29） */
           showUnreadToggle={selection.type !== "starred"}

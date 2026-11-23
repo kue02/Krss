@@ -46,6 +46,10 @@ export function useFilterMutations() {
     queryClient.invalidateQueries({ queryKey: ["entries"] });
     queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
     queryClient.invalidateQueries({ queryKey: ["starredCount"] });
+    // 视图改名 / 改条件后：侧栏角标（viewCounts）与展开的匹配订阅（view-matched-feeds）
+    // 都要立刻跟着变，否则得手动刷新才更新（用户 2026-11-23 反馈）。
+    queryClient.invalidateQueries({ queryKey: ["viewCounts"] });
+    queryClient.invalidateQueries({ queryKey: ["view-matched-feeds"] });
   };
 
   const create = useMutation({

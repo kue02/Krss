@@ -12,6 +12,7 @@ package mock
 import (
 	context "context"
 	service "krss/backend/internal/service"
+	network "krss/backend/pkg/network"
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"
@@ -301,6 +302,18 @@ func (m *MockSettingsService) SetCacheSettings(ctx context.Context, settings *se
 func (mr *MockSettingsServiceMockRecorder) SetCacheSettings(ctx, settings any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetCacheSettings", reflect.TypeOf((*MockSettingsService)(nil).SetCacheSettings), ctx, settings)
+}
+
+// SetClientFactory mocks base method.
+func (m *MockSettingsService) SetClientFactory(factory *network.ClientFactory) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetClientFactory", factory)
+}
+
+// SetClientFactory indicates an expected call of SetClientFactory.
+func (mr *MockSettingsServiceMockRecorder) SetClientFactory(factory any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetClientFactory", reflect.TypeOf((*MockSettingsService)(nil).SetClientFactory), factory)
 }
 
 // SetFetchSettings mocks base method.

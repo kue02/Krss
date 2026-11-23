@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"net/http"
 	"strings"
 
 	"github.com/openai/openai-go/v3"
@@ -17,11 +18,15 @@ type CompatibleProvider struct {
 }
 
 // NewCompatibleProvider creates a new OpenAI-compatible provider.
-func NewCompatibleProvider(apiKey, baseURL, model string, requestOptions map[string]any) (*CompatibleProvider, error) {
-	client := openai.NewClient(
+func NewCompatibleProvider(apiKey, baseURL, model string, requestOptions map[string]any, httpClient *http.Client) (*CompatibleProvider, error) {
+	opts := []option.RequestOption{
 		option.WithAPIKey(apiKey),
 		option.WithBaseURL(baseURL),
-	)
+	}
+	if httpClient != nil {
+		opts = append(opts, option.WithHTTPClient(httpClient))
+	}
+	client := openai.NewClient(opts...)
 	return &CompatibleProvider{
 		client:         client,
 		model:          model,

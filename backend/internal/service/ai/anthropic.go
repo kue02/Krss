@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"net/http"
 	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -16,12 +17,15 @@ type AnthropicProvider struct {
 }
 
 // NewAnthropicProvider creates a new Anthropic provider.
-func NewAnthropicProvider(apiKey, baseURL, model string, requestOptions map[string]any) (*AnthropicProvider, error) {
+func NewAnthropicProvider(apiKey, baseURL, model string, requestOptions map[string]any, httpClient *http.Client) (*AnthropicProvider, error) {
 	opts := []option.RequestOption{
 		option.WithAPIKey(apiKey),
 	}
 	if baseURL != "" {
 		opts = append(opts, option.WithBaseURL(baseURL))
+	}
+	if httpClient != nil {
+		opts = append(opts, option.WithHTTPClient(httpClient))
 	}
 	client := anthropic.NewClient(opts...)
 	return &AnthropicProvider{

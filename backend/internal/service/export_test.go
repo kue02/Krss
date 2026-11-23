@@ -1,6 +1,10 @@
 package service
 
-import "context"
+import (
+	"context"
+	"net/http"
+	"time"
+)
 
 // Export for testing
 var IsValidURL = isValidURL
@@ -37,6 +41,7 @@ const (
 	KeyAIRateLimit         = keyAIRateLimit
 	KeyAITranslateChannel  = keyAITranslateChannel
 	KeyAITranslateChannels = keyAITranslateChannels
+	KeyAIUseProxy          = keyAIUseProxy
 	KeyMarkReadOnScroll    = keyMarkReadOnScroll
 	KeyNetworkEnabled      = keyNetworkEnabled
 	KeyNetworkType         = keyNetworkType
@@ -69,6 +74,22 @@ var (
 	ErrSamePasswordHelper            = ErrSamePassword
 	ErrInvalidTokenHelper            = ErrInvalidToken
 )
+
+// ProbeHTTPClientForTest exposes the settings probe client (nil = 直连) for tests.
+func ProbeHTTPClientForTest(svc SettingsService, ctx context.Context, timeout time.Duration) *http.Client {
+	if ss, ok := svc.(*settingsService); ok {
+		return ss.probeHTTPClient(ctx, timeout)
+	}
+	return nil
+}
+
+// AIProxyEnabledForTest exposes aiService.aiProxyEnabled for tests.
+func AIProxyEnabledForTest(svc AIService, ctx context.Context) bool {
+	if s, ok := svc.(*aiService); ok {
+		return s.aiProxyEnabled(ctx)
+	}
+	return false
+}
 
 // Refresh service helpers for tests.
 func SetRefreshServiceRefreshing(s RefreshService, v bool) {
@@ -103,3 +124,11 @@ func SetPluginLogMaxBytesForTest(n int64) (restore func()) {
 
 // ExcludedSettingKeysForTest 导出排除名单（55-22 守门测试：插件 secret 键必须都在里面）。
 func ExcludedSettingKeysForTest() []string { return excludedSettingKeys() }
+
+// FreeTranslateChannelsForTest exposes aiService.getFreeTranslateChannels for tests.
+func FreeTranslateChannelsForTest(svc AIService, ctx context.Context) []string {
+	if s, ok := svc.(*aiService); ok {
+		return s.getFreeTranslateChannels(ctx)
+	}
+	return nil
+}

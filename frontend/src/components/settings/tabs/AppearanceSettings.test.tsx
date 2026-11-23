@@ -7,6 +7,8 @@ const setReduceMotion = vi.fn();
 const setTimelineGranularityForView = vi.fn();
 const setTimelineCollapseForView = vi.fn();
 const setTimelineTimeBasisForView = vi.fn();
+const setEntryFontSize = vi.fn();
+const setEntryLineHeight = vi.fn();
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: "zh" } }),
@@ -158,6 +160,8 @@ vi.mock("@/hooks/useUISettings", async () => {
       setCardImageSize: vi.fn(),
       setCardPreviewLines: vi.fn(),
       setEntryFont: vi.fn(),
+      setEntryFontSize,
+      setEntryLineHeight,
       setFetchReadableForView,
       setExpandLongForView,
       setReduceMotion,
@@ -246,6 +250,57 @@ describe("AppearanceSettings 按视图设置", () => {
     fireEvent.click(within(row).getByText("on"));
 
     expect(setReduceMotion).toHaveBeenCalledWith(true);
+  });
+
+  it("正文字号 / 行高改为数字步进器（不再是固定几档），带范围提示", () => {
+    render(<AppearanceSettings />);
+
+    const sizeRow = rowOf("appearance_reading.font_size");
+    // 提示文案在，且控件不再是 SegmentedControl（mock 会渲染 data-value）
+    expect(
+      within(sizeRow).getByText("appearance_reading.font_size_hint"),
+    ).not.toBeNull();
+    expect(sizeRow.querySelector("[data-value]")).toBeNull();
+    const sizeInput = sizeRow.querySelector("input");
+    expect(sizeInput).not.toBeNull();
+    expect(sizeInput?.value).toBe("16");
+
+    const lhRow = rowOf("appearance_reading.line_height");
+    expect(
+      within(lhRow).getByText("appearance_reading.line_height_hint"),
+    ).not.toBeNull();
+    expect(lhRow.querySelector("[data-value]")).toBeNull();
+    const lhInput = lhRow.querySelector("input");
+    expect(lhInput).not.toBeNull();
+    // entryLineHeight=1.7，formatOptions 保留一位小数
+    expect(lhInput?.value).toBe("1.7");
+  });
+
+  it("「列表图片」「摘要行数」挪进文章视图专属块（卡片分组不再出现，各只剩一处）", () => {
+    render(<AppearanceSettings />);
+
+    expect(screen.getAllByText("appearance_reading.card_image")).toHaveLength(1);
+    expect(screen.getAllByText("appearance_reading.preview_lines")).toHaveLength(1);
+
+    // 四个视图各一组「显示分界限」：文章那组（index 0）里应同时含 article_layout 与挪来的两项
+    const articleViewRow = rowOf("appearance_view.show_splitter", 0);
+    const articleViewBlock = articleViewRow.parentElement as HTMLElement;
+    expect(
+      within(articleViewBlock).queryByText("appearance_view.article_layout"),
+    ).not.toBeNull();
+    expect(
+      within(articleViewBlock).queryByText("appearance_reading.card_image"),
+    ).not.toBeNull();
+    expect(
+      within(articleViewBlock).queryByText("appearance_reading.preview_lines"),
+    ).not.toBeNull();
+
+    // 图片视图那组不该再出现这两项
+    const pictureViewRow = rowOf("appearance_view.show_splitter", 1);
+    const pictureViewBlock = pictureViewRow.parentElement as HTMLElement;
+    expect(
+      within(pictureViewBlock).queryByText("appearance_reading.card_image"),
+    ).toBeNull();
   });
 
   /**
