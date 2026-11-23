@@ -53,6 +53,7 @@ import type {
   FilterRule,
   FilterWritePayload,
   FilterImpactResult,
+  ViewMatchedFeedsResponse,
 } from "@/types/filters";
 import type {
   MCPFeedCreatePayload,
@@ -1582,6 +1583,23 @@ export async function listFilterMatches(
     `/api/filters/${id}/matches?limit=${limit}`,
   );
   return data.matches ?? [];
+}
+
+/**
+ * 「智能文件夹」展开时拉当前的匹配订阅（动态）：只返回此刻仍有命中内容的源，
+ * 某源匹配到的内容消失后它就不再出现。
+ * `contentType` 缺省 = 不限（后端按视图自身配置处理）。
+ */
+export async function getViewMatchedFeeds(
+  viewId: string,
+  contentType?: ContentType,
+): Promise<ViewMatchedFeedsResponse> {
+  const params = new URLSearchParams();
+  if (contentType) params.set("contentType", contentType);
+  const qs = params.toString();
+  return request<ViewMatchedFeedsResponse>(
+    `/api/views/${viewId}/matched-feeds${qs ? `?${qs}` : ""}`,
+  );
 }
 
 /**

@@ -41,10 +41,10 @@ const filterMatchRetention = 5000
 
 // FilterWriteParams 新建/编辑规则的入参（Handler 校验后进来）。
 type FilterWriteParams struct {
-	Name       string                  `json:"name"`
-	Enabled    *bool                   `json:"enabled"`
-	Position   *int                    `json:"position"`
-	Kind       string                  `json:"kind"`
+	Name      string `json:"name"`
+	Enabled   *bool  `json:"enabled"`
+	Position  *int   `json:"position"`
+	Kind      string `json:"kind"`
 	ScopeType string `json:"scopeType"`
 	ScopeID   *int64 `json:"scopeId"`
 	// ScopeIDs 多选订阅（scope_type=feed；空 = 用 ScopeID 的单个）。用户 11-16：规则范围里订阅可多选。
@@ -52,7 +52,7 @@ type FilterWriteParams struct {
 	// ContentTypes 视图只在哪些内容类型下显示（空 = 都显示）。用户 11-5。
 	ContentTypes []string `json:"contentTypes"`
 	// Icon 视图自定义图标：`builtin:<key>` / `emoji:<字符>` / `data:image/...`（用户 11-5）。
-	Icon string `json:"icon"`
+	Icon       string                  `json:"icon"`
 	Conditions []model.FilterCondition `json:"conditions"`
 	Actions    model.FilterActions     `json:"actions"`
 }
@@ -68,11 +68,11 @@ type FilterPreviewItem struct {
 
 // FilterPreviewResult 干跑结果：扫了多少条、命中哪些、各动作会影响多少条。
 type FilterPreviewResult struct {
-	Scanned       int                 `json:"scanned"`
-	MatchedCount  int                 `json:"matchedCount"`
-	MuteCount     int                 `json:"muteCount"`
-	MarkReadCount int                 `json:"markReadCount"`
-	StarCount     int                 `json:"starCount"`
+	Scanned       int `json:"scanned"`
+	MatchedCount  int `json:"matchedCount"`
+	MuteCount     int `json:"muteCount"`
+	MarkReadCount int `json:"markReadCount"`
+	StarCount     int `json:"starCount"`
 	// AIChecked / AISkipped：这次预览里 AI 条件是「吃了缓存判定」还是「没判成」（预览绝不新发起模型调用）
 	AIChecked     int                 `json:"aiChecked"`
 	AISkipped     int                 `json:"aiSkipped"`
@@ -175,17 +175,17 @@ func (s *filterService) Create(ctx context.Context, params FilterWriteParams) (m
 		return model.Filter{}, err
 	}
 	filter := model.Filter{
-		Name:       strings.TrimSpace(params.Name),
-		Enabled:    true,
-		Position:   0,
-		Kind:       normalizeKind(params.Kind),
-		ScopeType:  params.ScopeType,
-		ScopeID:    params.ScopeID,
+		Name:         strings.TrimSpace(params.Name),
+		Enabled:      true,
+		Position:     0,
+		Kind:         normalizeKind(params.Kind),
+		ScopeType:    params.ScopeType,
+		ScopeID:      params.ScopeID,
 		ScopeIDs:     normalizeScopeIDs(params.ScopeIDs),
 		ContentTypes: normalizeViewContentTypes(params.ContentTypes),
 		Icon:         normalizeViewIcon(params.Kind, params.Icon),
 		Conditions:   params.Conditions,
-		Actions:    effectiveActions(params.Kind, params.Actions),
+		Actions:      effectiveActions(params.Kind, params.Actions),
 	}
 	if filter.ScopeType == "" {
 		filter.ScopeType = model.FilterScopeAll
@@ -390,7 +390,10 @@ func (s *filterService) CountViewMatches(ctx context.Context, contentType *strin
 	candidates, err := s.entries.List(ctx, repository.EntryListFilter{
 		ContentType: contentType,
 		Limit:       viewCountScanLimit,
-		// 计数要拿全文做条件求值（ContentTruncate=0），readable_content 省掉（buildEntryContext 不用它）。
+		// 侧栏角标和文件夹/订阅一样显示「未读条数」：只数未读命中（用户 2026-11-23）。
+		UnreadOnly: true,
+		// 计数与 listByView / ListViewMatchedFeeds / Preview 同一口径：全文求值（ContentTruncate=0），
+		// readable_content 省掉（buildEntryContext 不用它）。正文关键词落在 2000 字之后的条目也要计入。
 		ContentTruncate: 0,
 	})
 	if err != nil {

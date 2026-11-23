@@ -203,6 +203,21 @@ export interface FilterRevertResult {
   reverted: number;
 }
 
+/**
+ * 「智能文件夹」：某个保存视图在当前内容类型下动态命中的订阅。
+ * 由后端 `GET /api/views/:id/matched-feeds?contentType=` 返回，只含仍命中的源
+ * —— 匹配内容一旦消失，这个源就不再出现（动态）。
+ */
+export interface ViewMatchedFeed {
+  feedId: string;
+  feedTitle: string;
+  count: number;
+}
+
+export interface ViewMatchedFeedsResponse {
+  feeds: ViewMatchedFeed[];
+}
+
 /** 手动回溯的结果：扫了多少条历史条目、实际应用了多少条 */
 export interface FilterApplyHistoryResult {
   scanned: number;

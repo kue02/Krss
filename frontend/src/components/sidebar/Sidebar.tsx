@@ -27,18 +27,10 @@ import { StarredItem } from "./StarredItem";
 import { FeedCategory } from "./FeedCategory";
 import { computeFolderUnreadCounts } from "./folder-unread";
 import { ListBox } from "@heroui/react";
-import { ListOrdered, Pencil, RefreshCw, Trash2 } from "lucide-react";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuLabel,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import { ViewIcon } from "@/components/automation/ViewIcon";
+import { ListOrdered } from "lucide-react";
 import { useFilterEditorStore } from "@/stores/filter-editor-store";
 import { FeedItem } from "./FeedItem";
+import { SmartViewFolder } from "./SmartViewFolder";
 import { ContentTypeSwitcher } from "./ContentTypeSwitcher";
 import {
   useFilterMutations,
@@ -49,7 +41,6 @@ import { useUISettingKey } from "@/hooks/useUISettings";
 import { useFilterViewStore } from "@/stores/filter-view-store";
 import { useSettingsModalStore, useProfileModalStore } from "@/stores/settings-modal-store";
 import { shortcutsHelp } from "@/stores/shortcuts-store";
-import { feedItemStyles, sidebarItemIconStyles } from "./styles";
 import { RenameFolderDialog } from "./RenameFolderDialog";
 import { CreateFolderDialog } from "./CreateFolderDialog";
 import { FolderOverridesDialog } from "./FolderOverridesDialog";
@@ -1003,6 +994,21 @@ export function Sidebar({
     [filterList, contentType],
   );
   const activeViewId = useFilterViewStore((state) => state.viewId);
+  const activeViewName = useFilterViewStore((state) => state.viewName);
+  const setViewName = useFilterViewStore((state) => state.setViewName);
+  const setViewUnreadCount = useFilterViewStore((state) => state.setViewUnreadCount);
+  // 视图改名后中栏标题要立刻跟着变：filters 列表刷新回来后，把 store 里选中视图的名字同步成最新。
+  useEffect(() => {
+    if (!activeViewId) return;
+    const current = (filterList ?? []).find((item) => item.id === activeViewId);
+    if (current && current.name !== activeViewName) setViewName(current.name);
+  }, [filterList, activeViewId, activeViewName, setViewName]);
+  // 中栏视图标题的「N 条未读」和侧栏角标同源：把当前选中视图的未读数同步进 store。
+  const activeViewUnreadCount =
+    activeViewId && viewCounts ? (viewCounts[activeViewId] ?? 0) : null;
+  useEffect(() => {
+    setViewUnreadCount(activeViewUnreadCount);
+  }, [activeViewUnreadCount, setViewUnreadCount]);
   const openEdit = useFilterEditorStore((state) => state.openEdit);
   const { remove } = useFilterMutations();
   const selectView = useFilterViewStore((state) => state.selectView);
@@ -1152,50 +1158,22 @@ export function Sidebar({
                   </div>
                   <div className="mt-0.5 space-y-px">
                     {savedViews.map((view) => (
-                      <ContextMenu key={view.id}>
-                        <ContextMenuTrigger asChild>
-                      <div
-                        data-active={activeViewId === view.id}
-                        className={cn(feedItemStyles, "pl-2.5", isMobile && "h-10")}
-                        onClick={() => handleSelectView(view)}
-                      >
-                        <span className={sidebarItemIconStyles}>
-                          <ViewIcon icon={view.icon} />
-                        </span>
-                        <span className="grow truncate">{view.name}</span>
-                        {viewCountOf(viewCounts, view.id) > 0 && (
-                          <span className="shrink-0 text-[0.7rem] font-medium tabular-nums text-muted-foreground">
-                            {viewCountOf(viewCounts, view.id) > 99
-                              ? "99+"
-                              : viewCountOf(viewCounts, view.id)}
-                          </span>
-                        )}
-                      </div>
-                        </ContextMenuTrigger>
-                        {/* 视图右键菜单（用户 11-5）：编辑 / 删除 */}
-                        <ContextMenuContent>
-                          <ContextMenuLabel className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-medium text-muted-foreground">
-                            <ViewIcon icon={view.icon} />
-                            <span className="min-w-0 flex-1 truncate">{view.name}</span>
-                          </ContextMenuLabel>
-                          <ContextMenuSeparator />
-                          <ContextMenuItem onClick={() => handleRefreshView(view)}>
-                            <RefreshCw className="size-4 shrink-0 text-muted-foreground" />
-                            {t("actions.refresh")}
-                          </ContextMenuItem>
-                          <ContextMenuItem onClick={() => openEdit(view)}>
-                            <Pencil className="size-4 shrink-0 text-muted-foreground" />
-                            {t("actions.edit")}
-                          </ContextMenuItem>
-                          <ContextMenuItem
-                            className="text-destructive focus:text-destructive"
-                            onClick={() => remove.mutate({ id: view.id })}
-                          >
-                            <Trash2 className="size-4 shrink-0" />
-                            {t("actions.delete")}
-                          </ContextMenuItem>
-                        </ContextMenuContent>
-                      </ContextMenu>
+                      <SmartViewFolder
+                        key={view.id}
+                        view={view}
+                        count={viewCountOf(viewCounts, view.id)}
+                        isActive={activeViewId === view.id}
+                        isMobile={isMobile}
+                        contentType={contentType}
+                        feeds={feeds}
+                        folders={folders}
+                        isFeedSelected={isFeedSelected}
+                        onSelectView={() => handleSelectView(view)}
+                        onSelectFeed={onSelectFeed}
+                        onRefreshView={() => handleRefreshView(view)}
+                        onEdit={() => openEdit(view)}
+                        onDelete={() => remove.mutate({ id: view.id })}
+                      />
                     ))}
                   </div>
                 </div>

@@ -24,6 +24,11 @@ interface FilterViewStore {
    */
   mutedOnly: boolean;
   selectView: (view: { id: string; name: string }, scopeKey: string) => void;
+  /** 只更新当前选中视图的显示名：重命名后中栏标题要立刻跟着变，不必手动刷新 */
+  setViewName: (name: string) => void;
+  /** 当前选中视图的未读条数（与侧栏角标同源），供中栏标题显示「N 条未读」 */
+  viewUnreadCount: number | null;
+  setViewUnreadCount: (count: number | null) => void;
   clearView: () => void;
   setMutedOnly: (value: boolean) => void;
 }
@@ -35,6 +40,14 @@ export const useFilterViewStore = create<FilterViewStore>((set) => ({
   mutedOnly: false,
   selectView: (view, scopeKey) =>
     set({ viewId: view.id, viewName: view.name, scopeKey }),
-  clearView: () => set({ viewId: null, viewName: null, scopeKey: null }),
+  setViewName: (name) =>
+    set((state) => (state.viewId ? { viewName: name } : {})),
+  viewUnreadCount: null,
+  setViewUnreadCount: (count) =>
+    set((state) =>
+      state.viewUnreadCount === count ? {} : { viewUnreadCount: count },
+    ),
+  clearView: () =>
+    set({ viewId: null, viewName: null, scopeKey: null, viewUnreadCount: null }),
   setMutedOnly: (value) => set({ mutedOnly: value }),
 }));
