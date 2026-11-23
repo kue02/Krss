@@ -98,8 +98,10 @@ export function FilterEditorDialog() {
           }
         >
           {/* w-full 必须显式给：HeroUI 的 .drawer__dialog 自带 `width: calc(var(--spacing) * 96)`
-              （384px），只加宽 content 的话抽屉内容还是卡在 384px 里、右边留一大条空白（实测）。 */}
-          <Drawer.Dialog className="flex h-full min-h-0 w-full flex-col p-0">
+              （384px），只加宽 content 的话抽屉内容还是卡在 384px 里、右边留一大条空白（实测）。
+              max-w-none 同理：dialog 还带 `max-w-[85vw]`，视口窄于 847px 时它会把 dialog 压到
+              85vw 再右对齐，左边露出一条空白；宽度统一由上面的 content 决定。 */}
+          <Drawer.Dialog className="flex h-full min-h-0 w-full max-w-none flex-col p-0">
             <Drawer.Header className="shrink-0 border-b border-border px-5 py-3">
               <Drawer.Heading className="text-base font-semibold">
                 {title}

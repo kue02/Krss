@@ -719,7 +719,13 @@ export function FilterEditor({
                                   condition.logic === "or" ? "and" : "or",
                               })
                             }
-                            aria-label={t("automation.conditions")}
+                            // 按下态表示「当前是或」，读屏只会念出「已按下」容易误解，
+                            // 所以 aria-label 直接写清当前值和点一下会变成什么
+                            aria-label={`${t("automation.condition_logic")} ${index + 1}: ${t(
+                              `automation.logic_${condition.logic ?? "or"}`,
+                            )} → ${t(
+                              `automation.logic_${(condition.logic ?? "or") === "or" ? "and" : "or"}`,
+                            )}`}
                             className="h-6 min-h-6 rounded-full border border-border/60 px-2 text-[11px] font-medium text-muted-foreground data-[selected=true]:bg-foreground/10 data-[selected=true]:text-foreground"
                           >
                             {t(`automation.logic_${condition.logic ?? "or"}`)}
@@ -746,7 +752,7 @@ export function FilterEditor({
                           !
                         </ToggleButton>
                         <Select
-                          ariaLabel={t("automation.conditions")}
+                          ariaLabel={`${t("automation.condition_field")} ${index + 1}`}
                           value={condition.field}
                           onChange={(value) => {
                             const nextField = value as FilterConditionField;
@@ -770,7 +776,7 @@ export function FilterEditor({
                           className="w-32 shrink-0"
                         />
                         <Select
-                          ariaLabel={t("automation.conditions")}
+                          ariaLabel={`${t("automation.condition_operator")} ${index + 1}`}
                           value={condition.operator}
                           onChange={(value) =>
                             updateCondition(index, {
@@ -790,7 +796,7 @@ export function FilterEditor({
                               })
                             }
                             placeholder={valuePlaceholder(condition)}
-                            aria-label={t("automation.condition_value_placeholder")}
+                            aria-label={`${t("automation.condition_value")} ${index + 1}`}
                             // min-w：窄抽屉里原来会被挤成 22px 一条；
                             // 配合上面行的 flex-wrap，空间不够时它整行落到下一行
                             className="min-w-[10rem] flex-1"
