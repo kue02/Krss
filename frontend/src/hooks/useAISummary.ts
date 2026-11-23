@@ -87,6 +87,28 @@ export function useAISummary({
         setSummaryError(null);
         summaryRequestedRef.current = true;
         summaryManuallyDisabledRef.current = false;
+        // 问题③：缓存命中时也要回填摘要状态（含 provider/model），
+        // 否则「退出再进」后顶栏摘要按钮的 Tooltip 只能退回到动作文案。
+        void (async () => {
+          let usage: { provider?: string; model?: string } = {};
+          try {
+            const resp = await fetchCachedTranslations(
+              [entryId],
+              isReadableActive,
+            );
+            const status = resp.summaryStatuses?.[entryId];
+            if (status) {
+              usage = { provider: status.provider, model: status.model };
+            }
+          } catch {
+            usage = {};
+          }
+          if (cancelled) return;
+          translationActions.setSummaryStatus(entryId, targetLanguage, {
+            state: "done",
+            ...usage,
+          });
+        })();
       }
       cacheReadyRef.current = true;
       setCacheChecked(true);
@@ -94,7 +116,7 @@ export function useAISummary({
     return () => {
       cancelled = true;
     };
-  }, [entryId, isReadableActive]);
+  }, [entryId, isReadableActive, targetLanguage]);
 
   const generateSummary = useCallback(
     async (forReadability: boolean) => {
