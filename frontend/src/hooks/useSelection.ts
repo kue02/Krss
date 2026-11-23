@@ -116,13 +116,17 @@ export function useSelection(): UseSelectionReturn {
         buildPath(
           { type: "starred", viewOnly },
           null,
-          routeState.unreadOnly,
+          // 星标是「收藏」视图，不应该受当前未读筛选影响：
+          // 之前沿用 routeState.unreadOnly，从「只看未读」进星标会拼出
+          // `/starred?unread=true`，而此时收藏里多半没有未读条目 ⇒ 空列表。
+          // 这里（以及所有调用点）一律 unread=false。
+          false,
           routeState.contentType,
         ),
         options,
       );
     },
-    [navigate, routeState.unreadOnly, routeState.contentType],
+    [navigate, routeState.contentType],
   );
 
   /**
