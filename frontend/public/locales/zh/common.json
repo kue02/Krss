@@ -140,7 +140,7 @@
     "experimental_picture_wall_hint": "在图片布局选择器/顶栏里显示「照片墙」入口",
     "experimental_article_hover": "文章视图 · 悬停正文",
     "experimental_article_hover_hint": "在文章布局选择器与顶栏切换里显示「悬停正文」入口",
-            "advanced_add_domain": "添加域名",
+    "advanced_add_domain": "添加域名",
     "advanced_no_domains": "暂无域名限速配置",
     "advanced_host": "域名",
     "advanced_interval": "间隔",

@@ -140,7 +140,7 @@
     "experimental_picture_wall_hint": "Show the “Photo wall” entry in the picture layout picker/toolbar",
     "experimental_article_hover": "Article view · Hover body",
     "experimental_article_hover_hint": "Show the “Hover body” entry in the article layout picker and toolbar toggle",
-            "advanced_add_domain": "Add Domain",
+    "advanced_add_domain": "Add Domain",
     "advanced_no_domains": "No domain rate limits configured",
     "advanced_host": "Domain",
     "advanced_interval": "Interval",

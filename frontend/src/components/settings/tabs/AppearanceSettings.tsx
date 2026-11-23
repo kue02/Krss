@@ -1201,7 +1201,8 @@ export function AppearanceSettings() {
                     />
                   </SettingRow>
                 )}
-                {/* 文章视图：卡片列表（默认）/ 悬停大图（同图片视图第三档形态；\n                    点击用 Nextflux 式推进转场把正文推进第三栏）。reader-transition 批新增 */ }
+                {/* 文章视图：传统三栏（默认）/ 列表（紧凑行）/ 悬停正文（实验，仅开关打开时出现）；
+                    点击用 Nextflux 式推进转场把正文推进第三栏。reader-transition 批新增，实验布局批增 rows */ }
                 {view === "article" && (
                   <SettingRow
                     label={t("appearance_view.article_layout")}

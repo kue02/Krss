@@ -55,6 +55,10 @@ const scrollReadState = vi.hoisted(() => ({
 const uiOverride = vi.hoisted(() => ({
   articleLayout: undefined as unknown,
   pictureLayout: undefined as unknown,
+  experimentalFeaturesEnabled: undefined as unknown,
+  experimentalArticleHover: undefined as unknown,
+  experimentalPictureHover: undefined as unknown,
+  experimentalPictureWall: undefined as unknown,
 }));
 
 vi.mock("@/hooks/useScrollReadSetting", () => ({
@@ -383,6 +387,28 @@ describe("AppearanceSettings 按视图设置", () => {
     } finally {
       uiOverride.articleLayout = undefined;
       uiOverride.pictureLayout = undefined;
+    }
+  });
+
+  it("实验布局批（正向）：总开关与对应子项都打开时，选择器出现 hover/wall 入口", () => {
+    uiOverride.experimentalFeaturesEnabled = true;
+    uiOverride.experimentalArticleHover = true;
+    uiOverride.experimentalPictureHover = true;
+    uiOverride.experimentalPictureWall = true;
+    try {
+      render(<AppearanceSettings />);
+
+      const articleRow = rowOf("appearance_view.article_layout");
+      expect(within(articleRow).getByText("hover")).toBeTruthy();
+
+      const pictureRow = rowOf("appearance_view.picture_layout");
+      expect(within(pictureRow).getByText("hover")).toBeTruthy();
+      expect(within(pictureRow).getByText("wall")).toBeTruthy();
+    } finally {
+      uiOverride.experimentalFeaturesEnabled = undefined;
+      uiOverride.experimentalArticleHover = undefined;
+      uiOverride.experimentalPictureHover = undefined;
+      uiOverride.experimentalPictureWall = undefined;
     }
   });
 

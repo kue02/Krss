@@ -199,7 +199,7 @@ interface UISettings {
    */
   notificationBodyOnHover: boolean;
   /**
-   * 文章视图第二栏的排布：list = 传统三栏（默认）；rows = 列表（紧凑行）；hover = 悬停大图。
+   * 文章视图第二栏的排布：list = 传统三栏（默认）；rows = 列表（紧凑行）；hover = 悬停正文。
    * reader-transition 批新增（用户 2026-09-25）；实验布局批增 rows 与下面两项。
    */
   articleLayout: ArticleLayout;
