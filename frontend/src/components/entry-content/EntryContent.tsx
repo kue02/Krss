@@ -14,6 +14,7 @@ import { useScrollToTop } from "@/hooks/useScrollToTop";
 import { useReadability } from "@/hooks/useReadability";
 import { useAISummary } from "@/hooks/useAISummary";
 import { useAITranslation } from "@/hooks/useAITranslation";
+import { useTranslationStore } from "@/stores/translation-store";
 import { EntryContentHeader } from "./EntryContentHeader";
 import { EntryContentBody } from "./EntryContentBody";
 import { EntryToc } from "./EntryToc";
@@ -98,6 +99,13 @@ export function EntryContent({
     aiSettings,
   });
   const targetLanguage = aiSettings?.summaryLanguage ?? "zh-CN";
+  // 问题③：正文页顶栏按钮的 Tooltip 与列表徽章同口径，需要 status 里的 usage 元数据。
+  const summaryUsage = useTranslationStore((state) =>
+    entryId ? state.getSummaryStatus?.(entryId, targetLanguage) : undefined,
+  );
+  const translationUsage = useTranslationStore((state) =>
+    entryId ? state.getStatus?.(entryId, targetLanguage)?.content : undefined,
+  );
   // 订阅级覆盖优先（#8）：这个源单独设过「阅读模式 / 原文」就听它的，否则跟随全局
   const feedReaderMode = entry
     ? feeds.find((feed) => feed.id === entry.feedId)?.readerMode
@@ -129,6 +137,7 @@ export function EntryContent({
       isReadableActive,
       readableContent,
       autoSummary,
+      targetLanguage,
     });
 
   // AI Translation hook
@@ -245,11 +254,13 @@ export function EntryContent({
         hasSummary={!!aiSummary}
         onToggleSummary={handleToggleSummary}
         summaryError={summaryError}
+        summaryUsage={summaryUsage}
         isTranslating={isTranslating}
         hasTranslation={hasTranslation}
         translationDisabled={translationDisabled}
         onToggleTranslation={handleToggleTranslation}
         translationError={translationError}
+        translationUsage={translationUsage}
         isMobile={isMobile}
         onBack={onBack}
         onClose={onClose}

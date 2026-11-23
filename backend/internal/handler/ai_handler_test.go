@@ -791,3 +791,121 @@ func TestAIHandler_CachedTranslations_StatusLookupErrorStillOK(t *testing.T) {
 	require.Equal(t, "译文", resp.Translations["123"].Content)
 	require.Empty(t, resp.Statuses)
 }
+
+// ── 问题④：只读缓存摘要 GET /api/ai/summaries/:entryId ──────────────────
+
+func TestAIHandler_GetCachedSummary_Hit(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockAIService(ctrl)
+	h := handler.NewAIHandlerHelper(mockService)
+
+	mockService.EXPECT().
+		GetCachedSummary(gomock.Any(), int64(123), false).
+		Return(&model.AISummary{Summary: "已缓存的摘要"}, nil)
+
+	e := newTestEcho()
+	req := newJSONRequest(http.MethodGet, "/ai/summaries/123?isReadability=false", nil)
+	c, rec := newTestContext(e, req)
+	setPathParams(c, map[string]string{"entryId": "123"})
+
+	require.NoError(t, h.GetCachedSummary(c))
+
+	var resp handler.SummarizeResponse
+	assertJSONResponse(t, rec, http.StatusOK, &resp)
+	require.Equal(t, "已缓存的摘要", resp.Summary)
+	require.True(t, resp.Cached)
+}
+
+func TestAIHandler_GetCachedSummary_ReadabilityHit(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockAIService(ctrl)
+	h := handler.NewAIHandlerHelper(mockService)
+
+	mockService.EXPECT().
+		GetCachedSummary(gomock.Any(), int64(123), true).
+		Return(&model.AISummary{Summary: "readability summary"}, nil)
+
+	e := newTestEcho()
+	req := newJSONRequest(http.MethodGet, "/ai/summaries/123?isReadability=true", nil)
+	c, rec := newTestContext(e, req)
+	setPathParams(c, map[string]string{"entryId": "123"})
+
+	require.NoError(t, h.GetCachedSummary(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestAIHandler_GetCachedSummary_NoContent(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockAIService(ctrl)
+	h := handler.NewAIHandlerHelper(mockService)
+
+	mockService.EXPECT().
+		GetCachedSummary(gomock.Any(), int64(123), false).
+		Return(nil, nil)
+
+	e := newTestEcho()
+	req := newJSONRequest(http.MethodGet, "/ai/summaries/123", nil)
+	c, rec := newTestContext(e, req)
+	setPathParams(c, map[string]string{"entryId": "123"})
+
+	require.NoError(t, h.GetCachedSummary(c))
+	require.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+func TestAIHandler_GetCachedSummary_InvalidID(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockAIService(ctrl)
+	h := handler.NewAIHandlerHelper(mockService)
+
+	e := newTestEcho()
+	req := newJSONRequest(http.MethodGet, "/ai/summaries/not-a-number", nil)
+	c, rec := newTestContext(e, req)
+	setPathParams(c, map[string]string{"entryId": "not-a-number"})
+
+	require.NoError(t, h.GetCachedSummary(c))
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestAIHandler_GetCachedSummary_InvalidIsReadability(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockAIService(ctrl)
+	h := handler.NewAIHandlerHelper(mockService)
+
+	e := newTestEcho()
+	req := newJSONRequest(http.MethodGet, "/ai/summaries/123?isReadability=maybe", nil)
+	c, rec := newTestContext(e, req)
+	setPathParams(c, map[string]string{"entryId": "123"})
+
+	require.NoError(t, h.GetCachedSummary(c))
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestAIHandler_GetCachedSummary_ServiceError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockAIService(ctrl)
+	h := handler.NewAIHandlerHelper(mockService)
+
+	mockService.EXPECT().
+		GetCachedSummary(gomock.Any(), int64(123), false).
+		Return(nil, errors.New("db down"))
+
+	e := newTestEcho()
+	req := newJSONRequest(http.MethodGet, "/ai/summaries/123", nil)
+	c, rec := newTestContext(e, req)
+	setPathParams(c, map[string]string{"entryId": "123"})
+
+	require.NoError(t, h.GetCachedSummary(c))
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
+}

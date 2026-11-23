@@ -6,6 +6,7 @@ import {
   isTranslateBlockResult,
   isTranslateDone,
   isTranslateError,
+  fetchCachedTranslations,
   type TranslateBlockData,
 } from "@/api";
 import { needsTranslation } from "@/lib/language-detect";
@@ -526,6 +527,37 @@ export function useAITranslation({
         { content },
         translationMode,
       );
+
+      // 问题③：把本次实际使用的 service/provider/model 回填到翻译状态，
+      // 供正文页顶栏按钮的 Tooltip 显示（与列表徽章同口径）。
+      // SSE 不返回 usage，后端的 done 状态行里已经写好了，这里只读地取回来。
+      let cancelled = false;
+      void (async () => {
+        let usage: { service?: string; provider?: string; model?: string } = {};
+        try {
+          const resp = await fetchCachedTranslations(
+            [entry.id],
+            translationMode,
+          );
+          const status = resp.statuses?.[entry.id];
+          if (status) {
+            usage = {
+              service: status.service,
+              provider: status.provider,
+              model: status.model,
+            };
+          }
+        } catch {
+          usage = {};
+        }
+        if (cancelled) return;
+        translationActions.setStatus(entry.id, targetLanguage, {
+          content: { state: "done", ...usage },
+        });
+      })();
+      return () => {
+        cancelled = true;
+      };
     }
   }, [
     entry,
