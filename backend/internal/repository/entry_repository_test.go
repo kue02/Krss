@@ -385,6 +385,45 @@ func TestEntryRepository_TombstoneBlocksReinsertAfterPurge(t *testing.T) {
 	require.Equal(t, newURL, *entries[0].URL)
 }
 
+func TestEntryRepository_TombstoneNormalizesURLAndExpiresOld(t *testing.T) {
+	db := testutil.NewTestDB(t)
+	repo := repository.NewEntryRepository(db)
+	ctx := context.Background()
+
+	feedID := testutil.SeedFeed(t, db, model.Feed{Title: "F", URL: "u"})
+
+	// 200 天前的旧墓碑应在下一次清理时被清掉；新墓碑的 url 要去掉 fragment 后入库。
+	oldCreated := time.Now().Add(-200 * 24 * time.Hour).UTC().Format(time.RFC3339)
+	_, err := db.ExecContext(ctx,
+		`INSERT INTO entry_tombstones (feed_id, hash, url, created_at) VALUES (?, ?, ?, ?)`,
+		feedID, "old-hash", "https://example.com/old", oldCreated,
+	)
+	require.NoError(t, err)
+
+	title := "Read URL With Fragment"
+	rawURL := "https://example.com/a#section-2"
+	hash := hashString("some-guid")
+	testutil.SeedEntry(t, db, model.Entry{FeedID: feedID, Title: &title, URL: &rawURL, Hash: hash, Read: true, Starred: false})
+
+	_, err = repo.DeleteReadUnstarred(ctx)
+	require.NoError(t, err)
+
+	var oldCount int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM entry_tombstones WHERE hash = 'old-hash'`).Scan(&oldCount))
+	require.Equal(t, 0, oldCount)
+
+	var storedURL string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT url FROM entry_tombstones WHERE feed_id = ? AND hash = ?`, feedID, hash).Scan(&storedURL))
+	require.Equal(t, "https://example.com/a", storedURL)
+
+	// 同 URL（无 fragment）、hash 变化的新抓取仍应命中墓碑被挡住。
+	written, err := repo.CreateOrUpdateSkippingTombstones(ctx, model.Entry{
+		FeedID: feedID, Title: &title, URL: stringPtr("https://example.com/a"), Hash: hashString("changed-guid"),
+	})
+	require.NoError(t, err)
+	require.False(t, written)
+}
+
 func TestEntryRepository_ExistsByHash(t *testing.T) {
 	db := testutil.NewTestDB(t)
 	repo := repository.NewEntryRepository(db)
