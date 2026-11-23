@@ -87,6 +87,8 @@ interface EntryContentHeaderProps {
    * 否则展开容器一滚，工具栏就跟着正文滚走了、按钮点不到。
    */
   sticky?: boolean;
+  /** sticky 时距视口顶部的偏移（手机内联合列要避让列表的固定顶栏）。默认 top-0 */
+  stickyTopClassName?: string;
 }
 
 interface TranslationButtonState {
@@ -148,6 +150,7 @@ export function EntryContentHeader({
   isOriginalSiteActive = false,
   onToggleOriginalSite,
   sticky = false,
+  stickyTopClassName,
 }: EntryContentHeaderProps) {
   const { t } = useTranslation();
   const safeUrl = entry.url && isSafeUrl(entry.url) ? entry.url : null;
@@ -164,7 +167,13 @@ export function EntryContentHeader({
   if (isMobile) {
     return (
       <>
-        <div className="absolute inset-x-0 top-0 z-20">
+        <div
+          className={cn(
+            sticky
+              ? cn("sticky z-20", stickyTopClassName ?? "top-0")
+              : "absolute inset-x-0 top-0 z-20",
+          )}
+        >
           <div
             className={cn(
               "pointer-events-none absolute inset-0 border-b border-foreground/10 bg-overlay/80 backdrop-blur-xl transition-opacity duration-300 ease-in-out",
@@ -792,7 +801,9 @@ export function EntryContentHeader({
   return (
     <div
       className={cn(
-        sticky ? "sticky top-0 z-20" : "absolute inset-x-0 top-0 z-20",
+        sticky
+          ? cn("sticky z-20", stickyTopClassName ?? "top-0")
+          : "absolute inset-x-0 top-0 z-20",
       )}
     >
       {/* Background and Border Layer */}

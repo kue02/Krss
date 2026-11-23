@@ -11,9 +11,14 @@ vi.mock("@/hooks/useFeedMenuActions", () => ({
   useFeedMenuActions: () => ({ folders: [] }),
 }));
 
+const quickActionMocks = vi.hoisted(() => ({
+  read: vi.fn(),
+  star: vi.fn(),
+}));
+
 vi.mock("@/hooks/useEntries", () => ({
-  useMarkAsRead: () => ({ mutate: vi.fn() }),
-  useMarkAsStarred: () => ({ mutate: vi.fn() }),
+  useMarkAsRead: () => ({ mutate: quickActionMocks.read }),
+  useMarkAsStarred: () => ({ mutate: quickActionMocks.star }),
 }));
 
 vi.mock("@/hooks/useFilters", () => ({
@@ -122,8 +127,34 @@ describe("ArticlePlainListRow（文章「Inoreader列表」= inoreader）", () =
     // 默认「未读标记」= 圆点档，只在未读行出现
     expect(container.querySelectorAll('[data-unread-marker="dot"]')).toHaveLength(1);
     const unreadRow = container.querySelector('[data-entry-id="u1"]');
-    // 标记在行首来源图标处，而不是行尾
-    expect(unreadRow?.firstElementChild?.querySelector('[data-unread-marker="dot"]')).toBeTruthy();
+    // 快捷动作在最左，未读点仍然挂在来源图标处（不是行尾）
+    expect(unreadRow?.firstElementChild?.getAttribute("data-testid")).toBe(
+      "row-quick-actions",
+    );
+    expect(
+      unreadRow?.querySelector('[data-unread-marker="dot"]'),
+    ).toBeTruthy();
+  });
+
+  it("行首提供已读/未读与星标按钮，点击只改状态、不触发打开正文", () => {
+    quickActionMocks.read.mockClear();
+    quickActionMocks.star.mockClear();
+    const onSelectEntry = vi.fn();
+    render(
+      <ArticlePlainListRow
+        entry={makeEntry({ id: "q1", title: "快捷动作", read: false })}
+        feed={makeFeed({})}
+        onSelectEntry={onSelectEntry}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("row-read-toggle"));
+    expect(quickActionMocks.read).toHaveBeenCalledWith({ id: "q1", read: true });
+    fireEvent.click(screen.getByTestId("row-star-toggle"));
+    expect(quickActionMocks.star).toHaveBeenCalledWith({
+      id: "q1",
+      starred: true,
+    });
+    expect(onSelectEntry).not.toHaveBeenCalled();
   });
 
   it("右键弹出条目菜单（复用 EntryContextMenuContent，含星标项）", () => {

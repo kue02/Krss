@@ -926,6 +926,7 @@ function AuthenticatedApp() {
                               embedded
                               isMobile
                               containerRef={scrollRef}
+                              headerStickyTopClassName="top-[calc(2.75rem+env(safe-area-inset-top))]"
                               onClose={() => setMobileInlineEntryId(null)}
                             />
                           </Suspense>
