@@ -253,7 +253,10 @@ func (s *entryService) listByView(ctx context.Context, viewID int64, params Entr
 		return nil, ErrNotFound
 	}
 
-	// 视图的作用域覆盖列表里的 feedId/folderId；其余筛选参数继续生效
+	// 视图的作用域覆盖列表里的 feedId/folderId；其余筛选参数继续生效。
+	// 条件求值必须用全文（ContentTruncate=0）：用截断正文会漏掉「关键词落在 2000 字之后」的条目，
+	// 表现为角标 N 条、点进去/子项却少很多（用户 2026-11-23：83 vs 11，实测 72 条正文关键词在 4500~18000 字处）。
+	// 全口径统一为「全文匹配」——与 CountViewMatches、Preview、ListViewMatchedFeeds 一致。
 	scope := repository.EntryListFilter{
 		ContentType:     params.ContentType,
 		UnreadOnly:      params.UnreadOnly,
@@ -262,7 +265,7 @@ func (s *entryService) listByView(ctx context.Context, viewID int64, params Entr
 		IncludeMuted:    params.IncludeMuted,
 		MutedOnly:       params.MutedOnly,
 		Limit:           viewScanLimit,
-		ContentTruncate: repository.ListContentTruncate,
+		ContentTruncate: 0,
 	}
 	switch view.ScopeType {
 	case model.FilterScopeFeed:
@@ -336,10 +339,12 @@ func (s *entryService) ListViewMatchedFeeds(ctx context.Context, viewID int64, c
 	}
 
 	// 视图的作用域覆盖候选条目；contentType 收窄类型，其余筛选口径为零值（默认隐藏被静音的条目）。
+	// 与 listByView / CountViewMatches / Preview 同口径：全文求值（ContentTruncate=0），
+	// 否则正文关键词落在截断点之后的条目会从子项里消失，和角标对不上（用户 2026-11-23）。
 	scope := repository.EntryListFilter{
 		ContentType:     contentType,
 		Limit:           viewScanLimit,
-		ContentTruncate: repository.ListContentTruncate,
+		ContentTruncate: 0,
 	}
 	switch view.ScopeType {
 	case model.FilterScopeFeed:

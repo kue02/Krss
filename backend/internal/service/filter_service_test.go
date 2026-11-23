@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,7 +34,7 @@ func newFilterFixture(t *testing.T) *filterFixture {
 	filterRepo := repository.NewFilterRepository(dbConn)
 
 	return &filterFixture{
-		db:      dbConn,
+		db: dbConn,
 		service: service.NewFilterService(service.FilterServiceDeps{
 			Filters: filterRepo,
 			Entries: entryRepo,
@@ -582,6 +583,35 @@ func TestFilterService_CountViewMatches(t *testing.T) {
 	require.Equal(t, 1, byType[viewAll.ID])
 	require.Equal(t, 1, byType[viewFeed.ID])
 	require.Equal(t, 0, byType[viewNone.ID])
+}
+
+// 用户 2026-11-23：视图角标与「点进视图看到的列表」必须同一口径 —— 都按全文匹配。
+// 关键词落在 2000 字之后时角标也应计入，否则会出现「角标漏计、列表也缺条目」。
+func TestFilterService_CountViewMatches_MatchesFullContent(t *testing.T) {
+	fixture := newFilterFixture(t)
+	ctx := context.Background()
+
+	feed := fixture.seedFeed(t, "长文订阅", "article")
+	content := strings.Repeat("碎", repository.ListContentTruncate) + "关键词藏在截断点之后"
+	testutil.SeedEntry(t, fixture.db, model.Entry{
+		FeedID:  feed.ID,
+		Hash:    "long-1",
+		Title:   strPtr("一篇很长的文章"),
+		URL:     strPtr("https://example.com/long-1"),
+		Content: &content,
+	})
+
+	view, err := fixture.service.Create(ctx, service.FilterWriteParams{
+		Name:       "正文含关键词",
+		Kind:       model.FilterKindView,
+		ScopeType:  model.FilterScopeAll,
+		Conditions: []model.FilterCondition{{Field: model.FilterFieldContent, Operator: model.FilterOpContains, Value: "关键词"}},
+	})
+	require.NoError(t, err)
+
+	counts, err := fixture.service.CountViewMatches(ctx, nil)
+	require.NoError(t, err)
+	require.Equal(t, 1, counts[view.ID], "全文口径下，关键词在截断点之后也算命中（与列表一致）")
 }
 
 // 用户 11-16：规则的范围里「订阅」可以多选 —— 集合里任一命中即算在范围内，

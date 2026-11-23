@@ -390,7 +390,8 @@ func (s *filterService) CountViewMatches(ctx context.Context, contentType *strin
 	candidates, err := s.entries.List(ctx, repository.EntryListFilter{
 		ContentType: contentType,
 		Limit:       viewCountScanLimit,
-		// 计数要拿全文做条件求值（ContentTruncate=0），readable_content 省掉（buildEntryContext 不用它）。
+		// 计数与 listByView / ListViewMatchedFeeds / Preview 同一口径：全文求值（ContentTruncate=0），
+		// readable_content 省掉（buildEntryContext 不用它）。正文关键词落在 2000 字之后的条目也要计入。
 		ContentTruncate: 0,
 	})
 	if err != nil {

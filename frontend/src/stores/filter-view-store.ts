@@ -24,6 +24,8 @@ interface FilterViewStore {
    */
   mutedOnly: boolean;
   selectView: (view: { id: string; name: string }, scopeKey: string) => void;
+  /** 只更新当前选中视图的显示名：重命名后中栏标题要立刻跟着变，不必手动刷新 */
+  setViewName: (name: string) => void;
   clearView: () => void;
   setMutedOnly: (value: boolean) => void;
 }
@@ -35,6 +37,8 @@ export const useFilterViewStore = create<FilterViewStore>((set) => ({
   mutedOnly: false,
   selectView: (view, scopeKey) =>
     set({ viewId: view.id, viewName: view.name, scopeKey }),
+  setViewName: (name) =>
+    set((state) => (state.viewId ? { viewName: name } : {})),
   clearView: () => set({ viewId: null, viewName: null, scopeKey: null }),
   setMutedOnly: (value) => set({ mutedOnly: value }),
 }));
