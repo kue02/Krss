@@ -1427,7 +1427,15 @@ export async function deleteDomainRateLimit(host: string): Promise<void> {
 
 export async function listFilters(): Promise<FilterRule[]> {
   const data = await request<{ filters: FilterRule[] | null }>("/api/filters");
-  return data.filters ?? [];
+  // 后端对 logic=="" 的历史条件按 and 求值，且响应里 omitempty 会省掉该字段；
+  // 这里统一补成显式 "and"，让「缺省兜底 or」只在真正新建的条件上生效，老规则仍显示「且」。
+  return (data.filters ?? []).map((rule) => ({
+    ...rule,
+    conditions: (rule.conditions ?? []).map((condition) => ({
+      ...condition,
+      logic: condition.logic ?? "and",
+    })),
+  }));
 }
 
 export async function createFilter(
