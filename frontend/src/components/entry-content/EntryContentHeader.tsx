@@ -169,9 +169,9 @@ export function EntryContentHeader({
       <>
         <div
           className={cn(
-            sticky
-              ? cn("sticky z-20", stickyTopClassName ?? "top-0")
-              : "absolute inset-x-0 top-0 z-20",
+            /* 手机内联合列：标题栏放回正常文档流（relative），跟着正文一起滚。
+               absolute 会浮在正文顶上、吸顶又会压住列表的固定顶栏 —— 两者都不合适。 */
+            sticky ? "relative z-20" : "absolute inset-x-0 top-0 z-20",
           )}
         >
           <div
