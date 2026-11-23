@@ -599,6 +599,9 @@ function AuthenticatedApp() {
   const articlePushDirection = useUISettingKey("articlePushDirection");
   const isArticleInlineLayout =
     contentType === "article" && articlePushDirection === "down" && !isMobile;
+  /** 移动端详情页的推入方向：从右（水平）或 从下/向下（垂直上推，覆盖列表） */
+  const mobileDetailVertical =
+    articlePushDirection === "bottom" || articlePushDirection === "down";
 
   // 桌面三栏的第三栏：Nextflux 式转场（reader-transition 批）。
   // 未选 → 首次选中 = 整块从右侧推进；已选 → 换另一条 = 正文上下滑动。
@@ -893,8 +896,12 @@ function AuthenticatedApp() {
             className={cn(
               "mobile-detail-page fixed inset-0 z-30 h-[var(--app-dvh)] overflow-hidden bg-background transition-transform duration-300 ease-out",
               mobileView === "detail"
-                ? "translate-x-0"
-                : "pointer-events-none translate-x-full",
+                ? mobileDetailVertical
+                  ? "translate-y-0"
+                  : "translate-x-0"
+                : mobileDetailVertical
+                  ? "pointer-events-none translate-y-full"
+                  : "pointer-events-none translate-x-full",
             )}
             aria-hidden={mobileView !== "detail"}
             inert={mobileView !== "detail" ? true : undefined}

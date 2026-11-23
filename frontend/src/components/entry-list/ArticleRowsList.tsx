@@ -8,10 +8,13 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { useFeedMenuActions } from "@/hooks/useFeedMenuActions";
+import { useUISettingKey } from "@/hooks/useUISettings";
 import { getEntryImages } from "@/lib/extract-images";
 import { formatRelativeTime } from "@/lib/date-utils";
+import { cn } from "@/lib/utils";
 import type { Entry, Feed } from "@/types/api";
 import { EntryContextMenuContent } from "./EntryListItem";
+import { UnreadIndicator, unreadRowClass } from "./unread-indicator";
 
 interface ArticleRowsListRowProps {
   entry: Entry;
@@ -24,6 +27,8 @@ interface ArticleRowsListRowProps {
   onMarkAboveEntry?: (entryId: string) => void;
   /** 手机档：右键菜单在移动端不启用 */
   isMobile?: boolean;
+  /** 该订阅未读数（给「未读数」档角标用；圆点档不需要） */
+  feedUnreadCount?: number;
 }
 
 /**
@@ -41,8 +46,10 @@ export function ArticleRowsListRow({
   selectedEntryId,
   onMarkAboveEntry,
   isMobile = false,
+  feedUnreadCount,
 }: ArticleRowsListRowProps) {
   const { t } = useTranslation();
+  const unreadStyle = useUISettingKey("unreadStyle");
   const feedMenu = useFeedMenuActions();
   const feedMenuFolders = useMemo(
     () =>
@@ -59,6 +66,7 @@ export function ArticleRowsListRow({
     ? formatRelativeTime(entry.publishedAt, t)
     : "";
   const selected = entry.id === selectedEntryId;
+  const isUnread = !entry.read;
   const feedName = feed?.title ?? "";
 
   return (
@@ -70,10 +78,13 @@ export function ArticleRowsListRow({
           data-selected={selected ? "true" : undefined}
           aria-current={selected ? "true" : undefined}
           onClick={() => onSelectEntry?.(entry.id)}
-          className={`flex w-full items-stretch gap-3 border-b border-border px-4 py-2.5 text-left transition-colors hover:bg-item-hover ${
-            selected ? "bg-item-hover" : ""
-          }`}
+          className={cn(
+            "flex w-full items-stretch gap-3 border-b border-border px-4 py-2.5 text-left transition-colors hover:bg-item-hover",
+            selected && "bg-item-hover",
+            unreadRowClass(isUnread, !!entry.starred, selected, unreadStyle),
+          )}
         >
+      <UnreadIndicator unread={isUnread} count={feedUnreadCount} className="shrink-0">
       <div className="relative size-16 shrink-0 overflow-hidden rounded-md bg-muted">
         {thumbnail ? (
           <AuthedImage
@@ -89,6 +100,7 @@ export function ArticleRowsListRow({
           </div>
         )}
       </div>
+      </UnreadIndicator>
       <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
         <div className="line-clamp-2 text-sm font-medium leading-snug text-foreground">
           {entry.title || entry.url || ""}

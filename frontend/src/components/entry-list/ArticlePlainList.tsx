@@ -6,9 +6,12 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { useFeedMenuActions } from "@/hooks/useFeedMenuActions";
+import { useUISettingKey } from "@/hooks/useUISettings";
 import { formatRelativeTime } from "@/lib/date-utils";
+import { cn } from "@/lib/utils";
 import type { Entry, Feed } from "@/types/api";
 import { EntryContextMenuContent } from "./EntryListItem";
+import { UnreadIndicator, unreadRowClass } from "./unread-indicator";
 
 interface ArticlePlainListRowProps {
   entry: Entry;
@@ -21,6 +24,8 @@ interface ArticlePlainListRowProps {
   onMarkAboveEntry?: (entryId: string) => void;
   /** 手机档：右键菜单在移动端不启用（与条目卡片一致，走左滑动作） */
   isMobile?: boolean;
+  /** 该订阅未读数（给「未读数」档角标用；圆点档不需要） */
+  feedUnreadCount?: number;
 }
 
 /**
@@ -38,8 +43,10 @@ export function ArticlePlainListRow({
   selectedEntryId,
   onMarkAboveEntry,
   isMobile = false,
+  feedUnreadCount,
 }: ArticlePlainListRowProps) {
   const { t } = useTranslation();
+  const unreadStyle = useUISettingKey("unreadStyle");
   const feedMenu = useFeedMenuActions();
   const feedMenuFolders = useMemo(
     () =>
@@ -52,6 +59,7 @@ export function ArticlePlainListRow({
     ? formatRelativeTime(entry.publishedAt, t)
     : "";
   const selected = entry.id === selectedEntryId;
+  const isUnread = !entry.read;
   const feedName = feed?.title ?? "";
   const meta = [feedName, time].filter(Boolean).join(" · ");
 
@@ -66,13 +74,29 @@ export function ArticlePlainListRow({
           onClick={() => onSelectEntry?.(entry.id)}
           /* 尺度照图片「悬停大图」的行实测值：padding 10px 16px、标题 14.5px/500、
              行高 1.45、图标 16px、右侧元信息 12px 且距标题 12px（gap 8 + ml 4） */
-          className={`flex w-full items-center gap-2 border-b border-border px-4 py-[10px] text-left transition-colors hover:bg-item-hover ${
-            selected ? "bg-item-hover" : ""
-          }`}
-        >
-          {feed && (
-            <FeedAvatar iconPath={feed.iconPath} size={16} className="shrink-0" />
+          className={cn(
+            "flex w-full items-center gap-2 border-b border-border px-4 py-[10px] text-left transition-colors hover:bg-item-hover",
+            selected && "bg-item-hover",
+            unreadRowClass(isUnread, !!entry.starred, selected, unreadStyle),
           )}
+        >
+          {/* 未读标记沿用全站那套（设置 → 外观 → 阅读 →「未读标记」）：
+              圆点/角标挂在来源小图标左上角，变灰档整行降透明度 */}
+          <UnreadIndicator
+            unread={isUnread}
+            count={feedUnreadCount}
+            className="shrink-0"
+          >
+            {feed ? (
+              <FeedAvatar
+                iconPath={feed.iconPath}
+                size={16}
+                className="shrink-0"
+              />
+            ) : (
+              <span className="inline-block size-4 shrink-0" />
+            )}
+          </UnreadIndicator>
           <span className="min-w-0 flex-1 truncate text-[14.5px] font-medium leading-[1.45] text-foreground">
             {entry.title || entry.url || ""}
           </span>

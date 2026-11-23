@@ -106,6 +106,26 @@ describe("ArticlePlainListRow（文章「Inoreader列表」= inoreader）", () =
     expect(onSelectEntry).toHaveBeenCalledWith("e2");
   });
 
+  it("未读标记沿用全站样式，显示在行首（圆点/角标挂在来源图标左上角）", () => {
+    const { container } = render(
+      <>
+        <ArticlePlainListRow
+          entry={makeEntry({ id: "u1", title: "未读条目", read: false })}
+          feed={makeFeed({})}
+        />
+        <ArticlePlainListRow
+          entry={makeEntry({ id: "r1", title: "已读条目", read: true })}
+          feed={makeFeed({})}
+        />
+      </>,
+    );
+    // 默认「未读标记」= 圆点档，只在未读行出现
+    expect(container.querySelectorAll('[data-unread-marker="dot"]')).toHaveLength(1);
+    const unreadRow = container.querySelector('[data-entry-id="u1"]');
+    // 标记在行首来源图标处，而不是行尾
+    expect(unreadRow?.firstElementChild?.querySelector('[data-unread-marker="dot"]')).toBeTruthy();
+  });
+
   it("右键弹出条目菜单（复用 EntryContextMenuContent，含星标项）", () => {
     render(
       <ArticlePlainListRow
