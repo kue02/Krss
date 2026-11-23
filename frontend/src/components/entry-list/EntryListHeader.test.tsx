@@ -169,13 +169,13 @@ describe("EntryListHeader 移动端顶栏与 Web 图标统一", () => {
     return screen.getByLabelText(label);
   }
 
-  it("刷新/全部已读改用 Web 同款图标（16px），按钮盒仍是 44px", () => {
+  it("刷新/全部已读改用 Web 同款图标（统一 18px），按钮盒仍是 44px", () => {
     render(<EntryListHeader {...baseProps} isMobile onRefresh={vi.fn()} />);
 
     const refresh = mobileButton("entry.refresh_view");
     expect(refresh.className).toContain("size-11");
     const refreshSvg = refresh.querySelector("svg");
-    expect(refreshSvg?.getAttribute("class")).toBe("size-4");
+    expect(refreshSvg?.getAttribute("class")).toBe("size-[18px]");
     expect(refreshSvg?.querySelector("path")?.getAttribute("d")).toBe(
       REFRESH_ICON_PATH,
     );
@@ -183,13 +183,13 @@ describe("EntryListHeader 移动端顶栏与 Web 图标统一", () => {
     const markAllRead = mobileButton("entry.mark_all_read");
     expect(markAllRead.className).toContain("size-11");
     const checkSvg = markAllRead.querySelector("svg");
-    expect(checkSvg?.getAttribute("class")).toBe("size-4");
+    expect(checkSvg?.getAttribute("class")).toBe("size-[18px]");
     expect(checkSvg?.querySelector("path")?.getAttribute("d")).toBe(
       CHECK_CIRCLE_ICON_PATH,
     );
   });
 
-  it("未读切换沿用 Web 的 20px 实心/描边圆点，按钮盒仍是 44px", () => {
+  it("未读切换沿用 Web 的实心/描边圆点（统一 18px），按钮盒仍是 44px", () => {
     const { rerender } = render(
       <EntryListHeader {...baseProps} isMobile unreadOnly={false} />,
     );
@@ -198,7 +198,7 @@ describe("EntryListHeader 移动端顶栏与 Web 图标统一", () => {
     expect(outlineButton.className).toContain("size-11");
     expect(outlineButton.querySelector("circle")).toBeTruthy();
     expect(outlineButton.querySelector("svg")?.getAttribute("class")).toBe(
-      "size-5",
+      "size-[18px]",
     );
 
     rerender(<EntryListHeader {...baseProps} isMobile unreadOnly />);
@@ -207,8 +207,23 @@ describe("EntryListHeader 移动端顶栏与 Web 图标统一", () => {
     expect(filledButton.querySelector("path")).toBeNull();
     expect(filledButton.querySelector("circle")).toBeTruthy();
     expect(filledButton.querySelector("svg")?.getAttribute("class")).toBe(
-      "size-5",
+      "size-[18px]",
     );
+  });
+
+  it("顶栏四颗动作图标（刷新/未读切换/全部已读/更多）共用同一个 18px 字号类", () => {
+    render(<EntryListHeader {...baseProps} isMobile onRefresh={vi.fn()} />);
+
+    const labels = [
+      "entry.refresh_view",
+      "entry.show_unread_only",
+      "entry.mark_all_read",
+      "actions.more",
+    ];
+    for (const label of labels) {
+      const svg = mobileButton(label).querySelector("svg");
+      expect(svg?.getAttribute("class")).toContain("size-[18px]");
+    }
   });
 
   it("刷新中仍显示 RefreshSpinner（保留进度数字，不改尺寸）", () => {

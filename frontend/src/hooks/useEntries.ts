@@ -304,17 +304,70 @@ export function useMarkAsStarred() {
   return useMutation({
     mutationFn: ({ id, starred }: { id: string; starred: boolean }) =>
       updateEntryStarred(id, starred),
-    onSuccess: (_, { id, starred }) => {
+
+    // 乐观更新：点星标的瞬间就把单条缓存与列表行改成新状态，不等接口返回
+    onMutate: async ({ id, starred }) => {
+      // 先取消在途的请求，避免它们回来覆盖乐观更新
+      await queryClient.cancelQueries({ queryKey: ["entry", id] });
+      await queryClient.cancelQueries({ queryKey: ["entries"] });
+
+      // 快照旧值，出错时回滚
+      const previousEntry = queryClient.getQueryData<Entry>(["entry", id]);
+      const previousEntries = queryClient.getQueriesData<{
+        pages: { entries: Entry[] }[];
+      }>({
+        queryKey: ["entries"],
+      });
+
+      // 单条条目缓存
       queryClient.setQueryData(["entry", id], (old: Entry | undefined) => {
         if (!old) return old;
         return { ...old, starred };
       });
+
+      // 列表无限查询缓存：把匹配条目的 starred 就地 patch（不重拉）
+      queryClient.setQueriesData<{ pages: { entries: Entry[] }[] }>(
+        { queryKey: ["entries"] },
+        (old) => {
+          if (!old) return old;
+          return {
+            ...old,
+            pages: old.pages.map((page) => ({
+              ...page,
+              entries: page.entries.map((entry) =>
+                entry.id === id ? { ...entry, starred } : entry,
+              ),
+            })),
+          };
+        },
+      );
+
+      return { previousEntry, previousEntries };
+    },
+
+    onSuccess: (_, { id, starred }) => {
       // 47-1：若这条正被「先别摘」记着，同步快照里的星标态，
       // 免得列表重拉时 mergeDeferredRemovals 用旧快照把星标盖回去。
       patchDeferredEntry(id, { starred });
       queryClient.invalidateQueries({ queryKey: ["starredCount"] });
       // viewCounts 靠 useViewCounts 自带 120s 自动刷，这里不手动 invalidate
-      queryClient.invalidateQueries({ queryKey: ["entries"] });
+      //
+      // ⚠️ 这里**不要** invalidateQueries(["entries"])：星标不改变「只看未读 / 全部」的
+      // 列表归属（unreadOnly 只按已读态过滤）。整表重拉会把刚在正文里自动标成已读、
+      // 仅靠 deferred 机制留住的条目换掉 —— 条目随之消失、列表跳动（用户报的 BUG）。
+      // 可见行的星标态已由上面的乐观 patch 更新，无需再重拉。
+    },
+
+    onError: (_, { id }, context) => {
+      // 出错回滚到旧值
+      if (context?.previousEntry) {
+        queryClient.setQueryData(["entry", id], context.previousEntry);
+      }
+      if (context?.previousEntries) {
+        for (const [queryKey, data] of context.previousEntries) {
+          queryClient.setQueryData(queryKey, data);
+        }
+      }
     },
   });
 }

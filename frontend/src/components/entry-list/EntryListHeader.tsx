@@ -157,13 +157,13 @@ export function EntryListHeader({
   if (isMobile) {
     return (
       <>
-        <div className="flex h-11 items-center gap-1 px-1.5">
+        <div className="flex h-11 items-center gap-0.5 px-1">
           {onMenuClick ? (
             <button
               type="button"
               onClick={onMenuClick}
               aria-label={t("actions.show_sidebar")}
-              className="-ml-1.5 flex size-11 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
+              className="-ml-1 flex size-11 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
             >
               <MenuIcon className="size-5" />
             </button>
@@ -172,13 +172,13 @@ export function EntryListHeader({
               type="button"
               onClick={onBackFromFeedJump}
               aria-label={t("entry.back_to_previous")}
-              className="-ml-1.5 flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors active:bg-item-hover"
+              className="-ml-1 flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors active:bg-item-hover"
             >
               <BackIcon className="size-5" />
             </button>
           ) : null}
 
-          <div className="min-w-0 flex-1 px-0.5">
+          <div className="min-w-0 flex-1 px-1">
             <div className="flex items-center gap-1.5">
               <h1
                 className="min-w-0 truncate text-[15px] font-bold leading-5 tracking-[-0.01em] text-foreground active:opacity-60"
@@ -217,8 +217,8 @@ export function EntryListHeader({
                   remaining={Math.max(0, refreshTotal - refreshCompleted)}
                 />
               ) : (
-                /* 与 Web 端同一颗图标：图形 16px，按钮盒仍保持 44px 触摸热区 */
-                <RefreshIcon className="size-4" />
+                /* 与 Web 端同一颗图标；四颗顶栏图标统一 18px，按钮盒仍保持 44px 触摸热区 */
+                <RefreshIcon className="size-[18px]" />
               )}
             </button>
           ) : null}
@@ -235,9 +235,9 @@ export function EntryListHeader({
               )}
             >
               {unreadOnly ? (
-                <CircleFilledIcon className="size-5" />
+                <CircleFilledIcon className="size-[18px]" />
               ) : (
-                <CircleOutlineIcon className="size-5" />
+                <CircleOutlineIcon className="size-[18px]" />
               )}
             </button>
           ) : null}
@@ -247,15 +247,15 @@ export function EntryListHeader({
             aria-label={t("entry.mark_all_read")}
             className="flex size-11 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
           >
-            <CheckCircleIcon className="size-4" />
+            <CheckCircleIcon className="size-[18px]" />
           </button>
           <button
             type="button"
             onClick={() => setMoreOpen(true)}
             aria-label={t("actions.more")}
-            className="-mr-1.5 flex size-11 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
+            className="-mr-1 flex size-11 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
           >
-            <MoreHorizontal className="size-5" />
+            <MoreHorizontal className="size-[18px]" />
           </button>
         </div>
 

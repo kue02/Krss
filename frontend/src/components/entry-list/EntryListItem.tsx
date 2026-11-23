@@ -1035,6 +1035,15 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                 {...sourceProps}
                 className={cn("min-w-0 flex-1 font-bold", sourceProps?.className)}
               />
+              {/* 星标徽标：所有列表行（文章 + 移动端，经 MobileSwipeEntryRow 复用）都显示，
+                  纯展示、不影响跑马灯截断与时间贴右缘（MarqueeText flex-1 会把它推向右）。 */}
+              {entry.starred && (
+                <Star
+                  className="size-3 shrink-0 fill-amber-500 text-amber-500"
+                  aria-hidden="true"
+                  data-entry-starred-badge=""
+                />
+              )}
               {publishedAt && (
                 <span
                   data-entry-time=""
@@ -1057,18 +1066,18 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                 {/* 标题 */}
                 <div
                   className={cn(
-                    "text-[16px] font-semibold leading-[23px] wrap-anywhere sm:text-base sm:leading-6",
+                    // 行高与行数（leading / line-clamp）固定不变，保证卡片高度稳定；
+                    // 已读/未读用「字重 + 颜色」区分：未读粗体前景色、已读常规灰。
+                    // （真机实测 font-weight 400 与 600 下标题换行/卡片高度一致，读态切换不跳动。）
+                    "text-[16px] leading-[23px] wrap-anywhere sm:text-base sm:leading-6",
                     titleContainsUrl ? "line-clamp-3" : "line-clamp-2",
-                  // Nextflux 只用 opacity 表示已读；这里标题始终是前景色，
-                  // 已读/未读只差字重，避免再叠一层灰导致正文难以辨认
-                  // 已读 / 未读**不切字重**（对齐 Nextflux 的 ArticleCard：字体恒为 font-semibold，只用颜色区分）。
-                  // 原来读态切 font-medium：字重一变，同一条标题的换行就变，1 行 ↔ 2 行切换会改卡片高度，
-                  // 滚动时「标记已读」就会让整个列表跳一下（用户报的 BUG-2）。
-                  isUnread ? "text-foreground" : "text-muted-foreground",
-                )}
-              >
-                {displayTitle || fallbackTitle}
-              </div>
+                    isUnread
+                      ? "font-semibold text-foreground"
+                      : "font-normal text-muted-foreground",
+                  )}
+                >
+                  {displayTitle || fallbackTitle}
+                </div>
 
               {/* 摘要（行数可在 设置 → 外观 里调，0 = 不显示） */}
               {displaySummary && cardPreviewLines > 0 && !isExpanded && (
