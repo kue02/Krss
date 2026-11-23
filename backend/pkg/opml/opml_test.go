@@ -39,3 +39,31 @@ func TestOPML_Parse_InvalidXML(t *testing.T) {
 	_, err := Parse(strings.NewReader("<opml>"))
 	require.Error(t, err)
 }
+
+func TestOPML_CustomKrssAttributesRoundTrip(t *testing.T) {
+	doc := Document{
+		Version: "2.0",
+		Body: Body{Outlines: []Outline{
+			{Text: "Pics", Title: "Pics", KrssType: "picture", Outlines: []Outline{
+				{Text: "MCP", Title: "MCP", Type: "rss", XMLURL: "mcp://example/server", KrssType: "article", KrssSourceType: "mcp", KrssMCPConfig: `{"url":"mcp://example/server"}`},
+			}},
+			{Text: "Feed", Title: "Feed", Type: "rss", XMLURL: "https://a.com/rss", KrssType: "social", KrssSourceType: "rss"},
+		}},
+	}
+
+	encoded, err := Encode(doc)
+	require.NoError(t, err)
+	out := string(encoded)
+	require.Contains(t, out, `krssType="picture"`)
+	require.Contains(t, out, `krssSourceType="mcp"`)
+	require.Contains(t, out, `krssType="social"`)
+
+	parsed, err := Parse(strings.NewReader(out))
+	require.NoError(t, err)
+	require.Equal(t, "picture", parsed.Body.Outlines[0].KrssType)
+	child := parsed.Body.Outlines[0].Outlines[0]
+	require.Equal(t, "mcp", child.KrssSourceType)
+	require.Equal(t, `{"url":"mcp://example/server"}`, child.KrssMCPConfig)
+	require.Equal(t, "social", parsed.Body.Outlines[1].KrssType)
+	require.Equal(t, "rss", parsed.Body.Outlines[1].KrssSourceType)
+}
