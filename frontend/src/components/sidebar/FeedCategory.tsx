@@ -174,7 +174,7 @@ export function FeedCategory({
             data-dnd-drop={dropPosition ?? undefined}
             className={cn(
               feedItemStyles,
-              "group relative py-0.5 pl-2.5 pr-2",
+              "group relative py-0.5 pl-2.5 pr-2 max-md:h-10",
               dnd?.dragging?.kind === "folder" &&
                 dnd.dragging.id === folderId &&
                 "opacity-50",

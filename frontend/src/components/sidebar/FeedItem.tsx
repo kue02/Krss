@@ -341,7 +341,7 @@ export function FeedItem({
           data-dnd-drop={dropPosition ?? undefined}
           className={cn(
             feedItemStyles,
-            "group relative justify-between py-0.5 pr-2",
+            "group relative justify-between py-0.5 pr-2 max-md:h-10",
             dnd?.dragging?.kind === "feed" &&
               dnd.dragging.id === feedId &&
               "opacity-50",

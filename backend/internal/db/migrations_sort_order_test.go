@@ -10,14 +10,14 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// 迁移 39 的回填必须保持升级前的视觉顺序：folders 按 parent_id 分区、按 name 排；
+// 迁移 40 的回填必须保持升级前的视觉顺序：folders 按 parent_id 分区、按 name 排；
 // feeds 按 folder_id 分区、按 title 排；NULL 分区（根目录 / 未归类）各自独立成组。
 func TestMigrate_SortOrderBackfill_PreservesVisualOrder(t *testing.T) {
 	database, err := sql.Open("sqlite", "file:sortbackfill?mode=memory&cache=shared&_pragma=foreign_keys(1)")
 	require.NoError(t, err)
 	defer database.Close()
 
-	// 仅建迁移 39 之前的旧结构（无 sort_order 列）。
+	// 仅建迁移 40 之前的旧结构（无 sort_order 列）。
 	_, err = database.Exec(`
 		CREATE TABLE folders (
 			id INTEGER PRIMARY KEY,
