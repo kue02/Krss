@@ -27,6 +27,7 @@ import { selectionToParams, type SelectionType } from "@/hooks/useSelection";
 import { flattenUniqueEntries } from "@/lib/entry-pagination";
 import { stripHtml } from "@/lib/html-utils";
 import { EntryListItem } from "./EntryListItem";
+import { ArticleRowsList } from "./ArticleRowsList";
 import { MobileSwipeEntryRow } from "@/components/mobile/MobileSwipeEntryRow";
 import { EntryListHeader } from "./EntryListHeader";
 import { needsListTranslation as needsListTranslationAsync } from "@/lib/language-detect-async";
@@ -359,6 +360,8 @@ export function EntryList({
    */
   const articleLayout = useUISettingKey("articleLayout");
   const isArticleHover = contentType === "article" && articleLayout === "hover";
+  /** 实验布局批：文章「列表」布局（紧凑行，无悬停浮层） */
+  const isArticleRows = contentType === "article" && articleLayout === "rows";
   const [articleHoverAnchor, setArticleHoverAnchor] = useState<{
     id: string;
     x: number;
@@ -416,10 +419,11 @@ export function EntryList({
     [closeArticleHoverSoon],
   );
 
-  /** 28-1：顶栏左上角那颗「卡片列表 ↔ 悬停大图」切换（只有文章视图会拿到它） */
+  /** 28-1：顶栏左上角那颗文章档位切换（只有文章视图会拿到它）。
+   *  实验布局批：只在「传统三栏(list) ↔ 列表(rows)」间切，绝不含悬停正文（悬停正文只能去外观设置里选）。 */
   const { setArticleLayout } = useUISettingActions();
   const handleToggleArticleLayout = useCallback(() => {
-    setArticleLayout(articleLayout === "hover" ? "list" : "hover");
+    setArticleLayout(articleLayout === "rows" ? "list" : "rows");
   }, [articleLayout, setArticleLayout]);
   const timelineGranularity = resolveTimelineGranularity(
     useUISettingKey("timelineGranularityByView")?.[contentType],
@@ -671,9 +675,10 @@ export function EntryList({
   const [firstVisibleIndex, setFirstVisibleIndex] = useState(0);
   /**
    * 虚拟化只覆盖「标准文章列表扁平流」：article 内容类型 + list 档（非 hover 档）。
-   * 社交 / 通知时间线 / hover 浮层档都走原路径，一字不动。
+   * 社交 / 通知时间线 / hover 浮层档 / rows 紧凑行档都走原路径，一字不动。
    */
-  const useVirtualList = contentType === "article" && !isArticleHover;
+  const useVirtualList =
+    contentType === "article" && !isArticleHover && !isArticleRows;
   const virtualList = useVirtualizedArticleList({
     enabled: useVirtualList,
     scrollSurface,
@@ -1526,6 +1531,16 @@ export function EntryList({
                   targetLanguage={targetLanguage}
                   onSelectableEntriesChange={setTimelineSelectableEntries}
                   onSelectFeedFromEntry={onSelectFeedFromEntry}
+                />
+              ) : isArticleRows ? (
+                /* 实验布局批：文章「列表」布局 —— 紧凑行（缩略图+标题+元信息），无悬停浮层 */
+                <ArticleRowsList
+                  items={entries.map((entry) => ({
+                    entry,
+                    feed: feedsMap.get(entry.feedId),
+                  }))}
+                  onSelectEntry={handleSelectEntry}
+                  selectedEntryId={selectedEntryId}
                 />
               ) : useVirtualList ? (
                 <VirtualizedArticleList
