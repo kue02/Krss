@@ -275,7 +275,11 @@ func (s *entryService) listByView(ctx context.Context, viewID int64, params Entr
 			scope.FeedID = view.ScopeID
 		}
 	case model.FilterScopeFolder:
-		scope.FolderID = view.ScopeID
+		if len(view.ScopeIDs) > 0 {
+			scope.FolderIDs = view.ScopeIDs
+		} else {
+			scope.FolderID = view.ScopeID
+		}
 	}
 
 	candidates, err := s.entries.List(ctx, scope)

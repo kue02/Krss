@@ -938,8 +938,12 @@ export function Sidebar({
       if (view.scopeType === "feed") {
         ids = view.scopeIds?.length ? view.scopeIds : view.scopeId ? [view.scopeId] : [];
       } else if (view.scopeType === "folder") {
+        // 与 feed 分支对齐：多选文件夹时按 scopeIds 集合取订阅，否则回退单 scopeId。
+        const want = new Set(
+          view.scopeIds?.length ? view.scopeIds : view.scopeId ? [view.scopeId] : [],
+        );
         ids = (feeds ?? [])
-          .filter((feed) => feed.folderId === view.scopeId)
+          .filter((feed) => feed.folderId && want.has(feed.folderId))
           .map((feed) => feed.id);
       }
       void handleRefreshScope(ids, "view");
