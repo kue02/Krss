@@ -206,10 +206,6 @@ export function FeedCategory({
                 />
               </span>
             </button>
-            {/* 文件夹小图标（与菜单标题行一致），让「这是一个文件夹」一眼可辨 */}
-            <span className={sidebarItemIconStyles}>
-              <FolderIcon className="size-4 shrink-0" />
-            </span>
             {/* Folder name - clicking selects the folder */}
             <span className="grow truncate text-[0.8125rem] font-semibold">
               {name}
