@@ -7,6 +7,8 @@ interface StarredItemProps {
   isActive?: boolean;
   count?: number;
   onClick?: () => void;
+  /** 移动端抽屉里作为一级导航入口，用更高的点击行（40px）方便单手点 */
+  mobile?: boolean;
 }
 
 /**
@@ -21,13 +23,14 @@ export function StarredItem({
   isActive = false,
   count = 0,
   onClick,
+  mobile = false,
 }: StarredItemProps) {
   const { t } = useTranslation();
 
   return (
     <div
       data-active={isActive}
-      className={cn(feedItemStyles, "mt-1 pl-2.5")}
+      className={cn(feedItemStyles, "mt-1 pl-2.5", mobile && "h-10")}
       onClick={onClick}
     >
       <span className={sidebarItemIconStyles}>

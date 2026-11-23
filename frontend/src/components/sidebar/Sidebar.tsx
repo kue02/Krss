@@ -39,6 +39,7 @@ import { ViewIcon } from "@/components/automation/ViewIcon";
 import { useFilterEditorStore } from "@/stores/filter-editor-store";
 import { FeedItem } from "./FeedItem";
 import { ContentTypeSwitcher } from "./ContentTypeSwitcher";
+import { useMobileLayout } from "@/hooks/useMobileLayout";
 import {
   useFilterMutations,
   useFilters,
@@ -169,6 +170,8 @@ export function Sidebar({
 }: SidebarProps) {
   const { t } = useTranslation();
   const { user, logout } = useAuth();
+  // 移动端抽屉专用外观（桌面侧栏完全不受影响）
+  const { isMobile } = useMobileLayout();
   const setIsSettingsOpen = useSettingsModalStore((state) => state.setOpen);
   const setIsProfileOpen = useProfileModalStore((state) => state.setOpen);
   const [renamingFolder, setRenamingFolder] = useState<Folder | null>(null);
@@ -528,11 +531,70 @@ export function Sidebar({
     [contentType, onSelectAll, selectView],
   );
 
+  // 「订阅」区头部的右侧操作（全部展开 / 排序）—— 精修版直接放在标题行，
+  // 重组版放进可折叠的分区头里，两处共用这一份，避免重复维护。
+  const feedsHeaderActions = (
+    <div className="flex items-center gap-0.5">
+      <button
+        type="button"
+        onClick={handleToggleAllFolders}
+        title={allFoldersOpen ? t("sidebar.collapse_all") : t("sidebar.expand_all")}
+        aria-label={
+          allFoldersOpen ? t("sidebar.collapse_all") : t("sidebar.expand_all")
+        }
+        disabled={folderNames.length === 0}
+        className="flex size-6 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors duration-200 hover:bg-secondary/50 hover:text-foreground disabled:opacity-40"
+      >
+        {allFoldersOpen ? (
+          <ChevronsDownUpIcon className="size-3.5" />
+        ) : (
+          <ChevronsUpDownIcon className="size-3.5" />
+        )}
+      </button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            className="flex size-6 items-center justify-center rounded-[var(--radius)] text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+            aria-label={t("sidebar.sort_name")}
+          >
+            {sortBy === "name" ? (
+              <ArrowDownAZIcon className="size-3.5" />
+            ) : (
+              <CalendarIcon className="size-3.5" />
+            )}
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            onClick={() => setSortBy("name")}
+            className={cn(sortBy === "name" && "bg-secondary")}
+          >
+            <ArrowDownAZIcon className="mr-2 size-4" />
+            {t("sidebar.sort_name")}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => setSortBy("date")}
+            className={cn(sortBy === "date" && "bg-secondary")}
+          >
+            <CalendarIcon className="mr-2 size-4" />
+            {t("sidebar.sort_date")}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+
   return (
-    <div className="flex h-full flex-col bg-transparent">
+    <div
+      className={cn(
+        "flex h-full flex-col bg-transparent",
+        isMobile && "pt-0.5",
+      )}
+    >
       <SidebarHeader
         onAddClick={() => onAddClick?.(contentType)}
         onCreateFolder={() => setIsCreateFolderOpen(true)}
+        mobile={isMobile}
       />
 
       {showContentTypeSwitcher ? (
@@ -573,11 +635,17 @@ export function Sidebar({
                 count={isStarredViewSelected ? starredCountView : starredCountAll}
                 isActive={isStarredSelected}
                 onClick={onSelectStarred}
+                mobile={isMobile}
               />
 
               {/* 保存的筛选视图（设置 → 自动化 里维护；这里只是快捷入口，没有就不显示这一段） */}
               {savedViews.length > 0 && (
-                <div className="mb-1.5">
+                <div
+                  className={cn(
+                    "mb-1.5",
+                    isMobile && "mt-3 border-t border-border/50 pt-2",
+                  )}
+                >
                   <div className="px-2.5">
                     <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground/70">
                       {t("sidebar.views")}
@@ -589,7 +657,7 @@ export function Sidebar({
                         <ContextMenuTrigger asChild>
                       <div
                         data-active={activeViewId === view.id}
-                        className={cn(feedItemStyles, "pl-2.5")}
+                        className={cn(feedItemStyles, "pl-2.5", isMobile && "h-10")}
                         onClick={() => handleSelectView(view)}
                       >
                         <span className={sidebarItemIconStyles}>
@@ -634,63 +702,17 @@ export function Sidebar({
                 </div>
               )}
 
-              {/* Feed categories header with sort */}
-              <div className="flex items-center justify-between px-2.5">
+              {/* 订阅区标题行：移动端顶部加一条发丝分隔线，把「视图区 / 订阅区」分开 */}
+              <div
+                className={cn(
+                  "flex items-center justify-between px-2.5",
+                  isMobile && "mt-3 border-t border-border/60 pt-2",
+                )}
+              >
                 <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground/70">
                   {t("sidebar.feeds")}
                 </span>
-                <div className="flex items-center gap-0.5">
-                  {/* 全部展开 / 全部收起（放在排序之前，和 NextFlux 的订阅区头部一致） */}
-                  <button
-                    type="button"
-                    onClick={handleToggleAllFolders}
-                    title={
-                      allFoldersOpen
-                        ? t("sidebar.collapse_all")
-                        : t("sidebar.expand_all")
-                    }
-                    aria-label={
-                      allFoldersOpen
-                        ? t("sidebar.collapse_all")
-                        : t("sidebar.expand_all")
-                    }
-                    disabled={folderNames.length === 0}
-                    className="flex size-6 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors duration-200 hover:bg-secondary/50 hover:text-foreground disabled:opacity-40"
-                  >
-                    {allFoldersOpen ? (
-                      <ChevronsDownUpIcon className="size-3.5" />
-                    ) : (
-                      <ChevronsUpDownIcon className="size-3.5" />
-                    )}
-                  </button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button className="flex size-6 items-center justify-center rounded-[var(--radius)] text-muted-foreground hover:bg-secondary/50 hover:text-foreground">
-                      {sortBy === "name" ? (
-                        <ArrowDownAZIcon className="size-3.5" />
-                      ) : (
-                        <CalendarIcon className="size-3.5" />
-                      )}
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      onClick={() => setSortBy("name")}
-                      className={cn(sortBy === "name" && "bg-secondary")}
-                    >
-                      <ArrowDownAZIcon className="mr-2 size-4" />
-                      {t("sidebar.sort_name")}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => setSortBy("date")}
-                      className={cn(sortBy === "date" && "bg-secondary")}
-                    >
-                      <CalendarIcon className="mr-2 size-4" />
-                      {t("sidebar.sort_date")}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                </div>
+                {feedsHeaderActions}
               </div>
 
               {/* Feed categories —— 分组之间留一点间距，让「一组订阅」读起来是一块；
@@ -804,6 +826,7 @@ export function Sidebar({
           shortcutsHelp.toggle();
         }}
         onLogoutClick={logout}
+        mobile={isMobile}
       />
 
       {/* 设置 / 资料弹窗挂在 App 顶层（与 Sheet 平级），不在这里 ——
