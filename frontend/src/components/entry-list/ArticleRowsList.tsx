@@ -3,9 +3,15 @@ import { useTranslation } from "react-i18next";
 import { ImageOff } from "lucide-react";
 import { AuthedImage } from "@/components/ui/authed-image";
 import { FeedAvatar } from "@/components/ui/feed-avatar";
+import {
+  ContextMenu,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import { useFeedMenuActions } from "@/hooks/useFeedMenuActions";
 import { getEntryImages } from "@/lib/extract-images";
 import { formatRelativeTime } from "@/lib/date-utils";
 import type { Entry, Feed } from "@/types/api";
+import { EntryContextMenuContent } from "./EntryListItem";
 
 interface ArticleRowsListRowProps {
   entry: Entry;
@@ -14,6 +20,10 @@ interface ArticleRowsListRowProps {
   onSelectEntry?: (entryId: string) => void;
   /** 当前选中的条目 id（给行加选中态高亮） */
   selectedEntryId?: string | null;
+  /** 右键「标记上方为已读」（父级按当前列表顺序算上面有哪些） */
+  onMarkAboveEntry?: (entryId: string) => void;
+  /** 手机档：右键菜单在移动端不启用 */
+  isMobile?: boolean;
 }
 
 /**
@@ -29,8 +39,18 @@ export function ArticleRowsListRow({
   feed,
   onSelectEntry,
   selectedEntryId,
+  onMarkAboveEntry,
+  isMobile = false,
 }: ArticleRowsListRowProps) {
   const { t } = useTranslation();
+  const feedMenu = useFeedMenuActions();
+  const feedMenuFolders = useMemo(
+    () =>
+      feed
+        ? (feedMenu.folders ?? []).filter((folder) => folder.type === feed.type)
+        : [],
+    [feed, feedMenu.folders],
+  );
   const thumbnail = useMemo(() => {
     const images = getEntryImages(entry.thumbnailUrl, entry.content, entry.url);
     return images[0];
@@ -42,16 +62,18 @@ export function ArticleRowsListRow({
   const feedName = feed?.title ?? "";
 
   return (
-    <button
-      type="button"
-      data-entry-id={entry.id}
-      data-selected={selected ? "true" : undefined}
-      aria-current={selected ? "true" : undefined}
-      onClick={() => onSelectEntry?.(entry.id)}
-      className={`flex w-full items-stretch gap-3 border-b border-border px-4 py-2.5 text-left transition-colors hover:bg-item-hover ${
-        selected ? "bg-item-hover" : ""
-      }`}
-    >
+    <ContextMenu>
+      <ContextMenuTrigger asChild disabled={isMobile}>
+        <button
+          type="button"
+          data-entry-id={entry.id}
+          data-selected={selected ? "true" : undefined}
+          aria-current={selected ? "true" : undefined}
+          onClick={() => onSelectEntry?.(entry.id)}
+          className={`flex w-full items-stretch gap-3 border-b border-border px-4 py-2.5 text-left transition-colors hover:bg-item-hover ${
+            selected ? "bg-item-hover" : ""
+          }`}
+        >
       <div className="relative size-16 shrink-0 overflow-hidden rounded-md bg-muted">
         {thumbnail ? (
           <AuthedImage
@@ -83,8 +105,19 @@ export function ArticleRowsListRow({
           {feedName && time && <span aria-hidden="true">·</span>}
           {time && <span className="shrink-0">{time}</span>}
         </div>
-      </div>
-    </button>
+        </div>
+        </button>
+      </ContextMenuTrigger>
+      <EntryContextMenuContent
+        entry={entry}
+        feed={feed}
+        feedActions={feedMenu}
+        feedFolders={feedMenuFolders}
+        onMarkAbove={
+          onMarkAboveEntry ? () => onMarkAboveEntry(entry.id) : undefined
+        }
+      />
+    </ContextMenu>
   );
 }
 
@@ -94,6 +127,8 @@ interface ArticleRowsListProps {
   onSelectEntry?: (entryId: string) => void;
   /** 当前选中的条目 id（给行加选中态高亮） */
   selectedEntryId?: string | null;
+  onMarkAboveEntry?: (entryId: string) => void;
+  isMobile?: boolean;
 }
 
 /** 文章「列表」布局的非虚拟列表容器（小列表 / 单测直接用）。 */
@@ -101,6 +136,8 @@ export function ArticleRowsList({
   items,
   onSelectEntry,
   selectedEntryId,
+  onMarkAboveEntry,
+  isMobile,
 }: ArticleRowsListProps) {
   return (
     <ul className="w-full" data-testid="article-rows-list">
@@ -111,6 +148,8 @@ export function ArticleRowsList({
             feed={feed}
             onSelectEntry={onSelectEntry}
             selectedEntryId={selectedEntryId}
+            onMarkAboveEntry={onMarkAboveEntry}
+            isMobile={isMobile}
           />
         </li>
       ))}

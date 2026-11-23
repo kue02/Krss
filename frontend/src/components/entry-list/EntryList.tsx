@@ -1762,6 +1762,8 @@ export function EntryList({
                           feed={feedsMap.get(entry.feedId)}
                           onSelectEntry={handleSelectEntry}
                           selectedEntryId={selectedEntryId}
+                          onMarkAboveEntry={handleMarkAboveEntry}
+                          isMobile={isMobile}
                         />
                       );
                       return (
@@ -1786,6 +1788,8 @@ export function EntryList({
                             feed={feedsMap.get(entry.feedId)}
                             onSelectEntry={handleSelectEntry}
                             selectedEntryId={selectedEntryId}
+                            onMarkAboveEntry={handleMarkAboveEntry}
+                            isMobile={isMobile}
                           />
                         );
                         /* 手机档跟其它列表一致：左滑露出已读/星标 */
@@ -1815,6 +1819,8 @@ export function EntryList({
                           feed={feedsMap.get(entry.feedId)}
                           onSelectEntry={handleSelectEntry}
                           selectedEntryId={selectedEntryId}
+                          onMarkAboveEntry={handleMarkAboveEntry}
+                          isMobile={isMobile}
                         />
                         {inlinePaneFor(entry.id)}
                       </Fragment>
@@ -1830,6 +1836,8 @@ export function EntryList({
                             feed={feedsMap.get(entry.feedId)}
                             onSelectEntry={handleSelectEntry}
                             selectedEntryId={selectedEntryId}
+                            onMarkAboveEntry={handleMarkAboveEntry}
+                            isMobile={isMobile}
                           />
                           {inlinePaneFor(entry.id)}
                         </>

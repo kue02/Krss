@@ -18,6 +18,31 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
+vi.mock("@/hooks/useFeedMenuActions", () => ({
+  useFeedMenuActions: () => ({
+    folders: [],
+    onRefresh: vi.fn(),
+    onEdit: vi.fn(),
+    onDelete: vi.fn(),
+    onMoveToFolder: vi.fn(),
+    onChangeType: vi.fn(),
+  }),
+}));
+
+vi.mock("@/hooks/useFilters", () => ({
+  useUnmuteEntry: () => ({ mutate: vi.fn() }),
+  useCreateFilterException: () => ({ mutate: vi.fn(), isPending: false }),
+  useFilters: () => ({ data: [], isLoading: false, isError: false }),
+}));
+
+vi.mock("@/plugins/useContributions", () => ({
+  useContributions: () => [],
+}));
+
+vi.mock("@/plugins/useInvokePluginAction", () => ({
+  useInvokePluginAction: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
 vi.mock("@/hooks/useEntries", () => ({
   useEntriesInfinite: vi.fn(),
   useUnreadCounts: vi.fn(() => ({ data: undefined })),
@@ -92,6 +117,8 @@ vi.mock("./EntryListItem", async () => {
         />
       );
     }),
+    // 行内右键菜单内容（本文件不测菜单，只要存在即可；避免拉入真实 hook 依赖）
+    EntryContextMenuContent: () => null,
   };
 });
 

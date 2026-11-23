@@ -96,7 +96,7 @@ describe("条目右键菜单的受控 patch（56-16）", () => {
     expect(screen.getByText("automation.exception_entry")).toBeTruthy();
     expect(screen.getByText("automation.rule_from_entry")).toBeTruthy();
     // hide 项本身不该变成菜单里的一项（它没有 label 可言）
-    expect(screen.getAllByRole("menuitem")).toHaveLength(2);
+    expect(screen.getAllByRole("menuitem")).toHaveLength(3);
   });
 
   it("② op:\"hide\" 指向未登记的目标 → 什么都没被藏（菜单项数不变）", () => {
@@ -106,7 +106,7 @@ describe("条目右键菜单的受控 patch（56-16）", () => {
     renderMenu();
 
     expect(screen.getByText("entry.mark_read")).toBeTruthy();
-    expect(screen.getAllByRole("menuitem")).toHaveLength(3);
+    expect(screen.getAllByRole("menuitem")).toHaveLength(4);
   });
 
   it("③ 没有 hide 贡献 → 「标为已读」照旧在（默认行为不变）", () => {

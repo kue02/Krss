@@ -7,6 +7,36 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
+vi.mock("@/hooks/useFeedMenuActions", () => ({
+  useFeedMenuActions: () => ({
+    folders: [],
+    onRefresh: vi.fn(),
+    onEdit: vi.fn(),
+    onDelete: vi.fn(),
+    onMoveToFolder: vi.fn(),
+    onChangeType: vi.fn(),
+  }),
+}));
+
+vi.mock("@/hooks/useEntries", () => ({
+  useMarkAsRead: () => ({ mutate: vi.fn() }),
+  useMarkAsStarred: () => ({ mutate: vi.fn() }),
+}));
+
+vi.mock("@/hooks/useFilters", () => ({
+  useUnmuteEntry: () => ({ mutate: vi.fn() }),
+  useCreateFilterException: () => ({ mutate: vi.fn(), isPending: false }),
+  useFilters: () => ({ data: [], isLoading: false, isError: false }),
+}));
+
+vi.mock("@/plugins/useContributions", () => ({
+  useContributions: () => [],
+}));
+
+vi.mock("@/plugins/useInvokePluginAction", () => ({
+  useInvokePluginAction: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
 function makeEntry(overrides: Partial<Entry>): Entry {
   return {
     id: "e1",
