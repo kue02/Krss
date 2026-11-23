@@ -301,18 +301,17 @@ describe("EntryListItem", () => {
       );
       const badge = container.querySelector("[data-entry-starred-badge]");
       expect(badge).not.toBeNull();
-      expect(badge?.getAttribute("class")).toContain("fill-amber-500");
+      expect(badge?.getAttribute("class")).toContain("text-amber-500");
+      expect(badge?.getAttribute("class")).not.toContain("fill-amber-500");
       expect(badge?.getAttribute("class")).toContain("size-3.5");
       expect(badge?.getAttribute("aria-hidden")).toBe("true");
     });
   });
 
   describe("已读 / 未读的标题样式 + 星标徽标", () => {
-    // 用户要求恢复读态/未读态的字重差异：未读 font-semibold + 前景色，
-    // 已读 font-normal + 次要色。行高（leading-[23px]/sm:leading-6）与行数
-    // （line-clamp）保持不变；真机实测 font-weight 400 与 600 换行/卡片高度一致。
+    // 与 Web 端一致：字重恒为 font-semibold，只用颜色区分读态（改字重会改换行 → 卡片高度跳动）。
     // 注：jsdom 里没有 Tailwind 的 CSS，量不到 computed style，所以断言类名。
-    it("未读标题为 font-semibold + 前景色，已读为 font-normal + 次要色", () => {
+    it("未读/已读标题都是 font-semibold，只有文字颜色不同", () => {
       const unread = render(
         <EntryListItem
           entry={{ ...entry, read: false }}
@@ -336,8 +335,8 @@ describe("EntryListItem", () => {
         />,
       );
       const readClass = screen.getByText(entry.title!).className;
-      expect(readClass).toContain("font-normal");
-      expect(readClass).not.toContain("font-semibold");
+      expect(readClass).toContain("font-semibold");
+      expect(readClass).not.toContain("font-normal");
       expect(readClass).toContain("text-muted-foreground");
     });
 

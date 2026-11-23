@@ -687,8 +687,9 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                     </>
                   )}
                   {entry.starred && (
+                    /* 与 Web 端星标一致：描边五角星（不填充） */
                     <Star
-                      className="ml-1 size-3.5 shrink-0 fill-amber-500 text-amber-500"
+                      className="ml-1 size-3.5 shrink-0 text-amber-500"
                       aria-hidden="true"
                       data-entry-starred-badge=""
                     />
@@ -1042,8 +1043,9 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
               {/* 星标徽标：所有列表行（文章 + 移动端，经 MobileSwipeEntryRow 复用）都显示，
                   纯展示、不影响跑马灯截断与时间贴右缘（MarqueeText flex-1 会把它推向右）。 */}
               {entry.starred && (
+                /* 与 Web 端星标一致：描边五角星（不填充） */
                 <Star
-                  className="size-3.5 shrink-0 fill-amber-500 text-amber-500"
+                  className="size-3.5 shrink-0 text-amber-500"
                   aria-hidden="true"
                   data-entry-starred-badge=""
                 />
@@ -1070,14 +1072,12 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                 {/* 标题 */}
                 <div
                   className={cn(
-                    // 行高与行数（leading / line-clamp）固定不变，保证卡片高度稳定；
-                    // 已读/未读用「字重 + 颜色」区分：未读粗体前景色、已读常规灰。
-                    // （真机实测 font-weight 400 与 600 下标题换行/卡片高度一致，读态切换不跳动。）
-                    "text-[16px] leading-[23px] wrap-anywhere sm:text-base sm:leading-6",
+                    // 已读/未读的粗细与 Web 端保持一致：字重恒为 font-semibold，只用颜色区分。
+                    // （Web 端就是这套：改字重会让同一条标题的换行变化，进而卡片高度跳动 —— 旧 BUG-2。
+                    //   移动端直接复用 Web 端的这套写法，不再单独切字重。）
+                    "text-[16px] font-semibold leading-[23px] wrap-anywhere sm:text-base sm:leading-6",
                     titleContainsUrl ? "line-clamp-3" : "line-clamp-2",
-                    isUnread
-                      ? "font-semibold text-foreground"
-                      : "font-normal text-muted-foreground",
+                    isUnread ? "text-foreground" : "text-muted-foreground",
                   )}
                 >
                   {displayTitle || fallbackTitle}

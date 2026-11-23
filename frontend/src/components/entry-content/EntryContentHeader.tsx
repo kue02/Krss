@@ -216,8 +216,9 @@ export function EntryContentHeader({
                       : t("entry.add_to_starred")
                   }
                   className={cn(
+                    // 与 Web 端正文工具栏一致：未收藏为灰色（非前景色），收藏为琥珀色
                     "flex size-11 shrink-0 items-center justify-center rounded-full transition-colors active:bg-item-hover",
-                    entry.starred ? "text-amber-500" : "text-foreground",
+                    entry.starred ? "text-amber-500" : "text-muted-foreground",
                   )}
                 >
                   <svg
@@ -242,10 +243,11 @@ export function EntryContentHeader({
                   onClick={onToggleRead}
                   aria-label={t(readAction.labelKey)}
                   className={cn(
+                    // 与 Web 端一致：未读态给柔和强调底（bg-item-active）+ 前景色，已读态仅灰色
                     "flex size-11 shrink-0 items-center justify-center rounded-full transition-colors active:bg-item-hover",
                     entry.read
                       ? "text-muted-foreground"
-                      : "text-foreground",
+                      : "bg-item-active text-foreground",
                   )}
                 >
                   <readAction.Icon className="size-5" />

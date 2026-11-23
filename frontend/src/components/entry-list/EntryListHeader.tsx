@@ -202,6 +202,8 @@ export function EntryListHeader({
             ) : null}
           </div>
 
+          {/* 右侧动作区直接沿用 Web 端同一套：按钮 size-8、间距 gap-0.5、各图标尺寸按 Web 端
+              （刷新/全部已读 size-4、未读切换 size-5），不再在移动端另造一套尺寸。 */}
           {onRefresh ? (
             <button
               type="button"
@@ -210,15 +212,15 @@ export function EntryListHeader({
               aria-label={
                 isRefreshing ? t("entry.refreshing") : t("entry.refresh_view")
               }
-              className="flex size-11 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover disabled:opacity-60"
+              className="flex size-8 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover disabled:opacity-60"
             >
               {isRefreshing ? (
                 <RefreshSpinner
                   remaining={Math.max(0, refreshTotal - refreshCompleted)}
                 />
               ) : (
-                /* 与 Web 端同一颗图标；四颗顶栏图标统一 18px，按钮盒仍保持 44px 触摸热区 */
-                <RefreshIcon className="size-[18px]" />
+                /* 与 Web 端同一颗图标、同一尺寸 */
+                <RefreshIcon className="size-4" />
               )}
             </button>
           ) : null}
@@ -230,14 +232,14 @@ export function EntryListHeader({
                 unreadOnly ? t("entry.show_all") : t("entry.show_unread_only")
               }
               className={cn(
-                "flex size-11 shrink-0 items-center justify-center rounded-full transition-colors active:bg-item-hover",
+                "flex size-8 shrink-0 items-center justify-center rounded-full transition-colors active:bg-item-hover",
                 unreadOnly ? "text-accent" : "text-muted-foreground",
               )}
             >
               {unreadOnly ? (
-                <CircleFilledIcon className="size-[18px]" />
+                <CircleFilledIcon className="size-5" />
               ) : (
-                <CircleOutlineIcon className="size-[18px]" />
+                <CircleOutlineIcon className="size-5" />
               )}
             </button>
           ) : null}
@@ -245,17 +247,17 @@ export function EntryListHeader({
             type="button"
             onClick={onMarkAllRead}
             aria-label={t("entry.mark_all_read")}
-            className="flex size-11 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
+            className="flex size-8 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
           >
-            <CheckCircleIcon className="size-[18px]" />
+            <CheckCircleIcon className="size-4" />
           </button>
           <button
             type="button"
             onClick={() => setMoreOpen(true)}
             aria-label={t("actions.more")}
-            className="-mr-1 flex size-11 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
+            className="-mr-1 flex size-8 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
           >
-            <MoreHorizontal className="size-[18px]" />
+            <MoreHorizontal className="size-4" />
           </button>
         </div>
 
