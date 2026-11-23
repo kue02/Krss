@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertDialog, Button, Tabs } from "@heroui/react";
-import { Copy, RefreshCw } from "lucide-react";
+import { Copy, RefreshCw, Server } from "lucide-react";
 import { HeroSwitch } from "@/components/ui/hero-switch";
+import { SectionCard } from "@/components/settings/settings-primitives";
 import { cn } from "@/lib/utils";
 import {
   createMCPOutboundToken,
@@ -147,16 +148,12 @@ export function MCPOutboundSection() {
   }, [status?.tokenCreatedAt]);
 
   return (
-    <section>
-      <h3 className="mb-4 text-sm font-semibold text-muted-foreground">
-        {t("data_control.mcp_outbound_title")}
-      </h3>
-
-      <div className="space-y-4">
-        <p className="text-xs text-muted-foreground">
-          {t("data_control.mcp_outbound_hint")}
-        </p>
-
+    <SectionCard
+      icon={<Server className="size-4" />}
+      title={t("data_control.mcp_outbound_title")}
+      description={t("data_control.mcp_outbound_hint")}
+    >
+      <div className="space-y-3 py-1">
         {isLoading && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <RefreshCw className="size-3.5 animate-spin" />
@@ -487,6 +484,6 @@ export function MCPOutboundSection() {
           </AlertDialog.Container>
         </AlertDialog.Backdrop>
       </AlertDialog>
-    </section>
+    </SectionCard>
   );
 }

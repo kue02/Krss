@@ -147,6 +147,58 @@ func TestGetAIConfigForScene_MissingProviderIDFallsBack(t *testing.T) {
 	require.Equal(t, "main-model", cfg.Model)
 }
 
+// 60 批：一个提供商下挂多个模型 —— provider:<id>#<model> 指定具体模型，其余连接字段沿用该提供商。
+func TestGetAIConfigForScene_ModelOverride(t *testing.T) {
+	repo := newSceneSettingsStub()
+	repo.data["ai.provider"] = "openai"
+	repo.data["ai.api_key"] = "{{SECRET_eyv549m1}}"
+	repo.data["ai.model"] = "main-model"
+	repo.data["ai.providers"] = `[{"id":"p1","name":"DeepSeek","provider":"compatible","baseUrl":"https://api.deepseek.com/v1","model":"deepseek-chat","models":["deepseek-chat","deepseek-reasoner"],"apiKey":"sk-cheap-abcdef123456"}]`
+	repo.data["ai.scene_summary"] = "provider:p1#deepseek-reasoner"
+	svc := &aiService{settingsRepo: repo}
+
+	cfg, err := svc.getAIConfigForScene(context.Background(), SceneSummary)
+	require.NoError(t, err)
+	require.Equal(t, "deepseek-reasoner", cfg.Model, "指定模型优先于提供商默认模型")
+	require.Equal(t, "compatible", cfg.Provider)
+	require.Equal(t, "DeepSeek", cfg.ProviderName)
+	require.Equal(t, "https://api.deepseek.com/v1", cfg.BaseURL)
+	require.Equal(t, "sk-cheap-abcdef123456", cfg.APIKey)
+
+	// 翻译场景没配覆盖 → 仍跟随当前使用
+	cfg, err = svc.getAIConfigForScene(context.Background(), SceneTranslate)
+	require.NoError(t, err)
+	require.Equal(t, "main-model", cfg.Model)
+}
+
+// 场景键写入：provider:<id>#<model> 原样落库；id 不在清单里归空。
+func TestSetAISettings_SceneModelKey(t *testing.T) {
+	repo := newSceneSettingsStub()
+	repo.data["ai.providers"] = `[{"id":"p1","name":"P1","provider":"compatible","model":"m1","models":["m1","m2"]}]`
+	svc := NewSettingsService(repo, nil).(*settingsService)
+
+	err := svc.SetAISettings(context.Background(), &AISettings{
+		Provider:       "openai",
+		APIKey:         "{{SECRET_eyv549m1}}",
+		Model:          "main-model",
+		SceneSummary:   "provider:p1#m2",
+		SceneTranslate: "provider:p1#m1",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "provider:p1#m2", repo.data["ai.scene_summary"])
+	require.Equal(t, "provider:p1#m1", repo.data["ai.scene_translate"])
+
+	err = svc.SetAISettings(context.Background(), &AISettings{
+		Provider: "openai",
+		APIKey:   "{{SECRET_eyv549m1}}",
+		Model:    "main-model",
+		// 提供商被删 → 归空（跟随），不报错
+		SceneSummary: "provider:gone#m2",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "", repo.data["ai.scene_summary"])
+}
+
 // 场景键写入：未知值拒绝；free 归一化；provider id 校验（不在清单里归空）。
 func TestSetAISettings_SceneKeys(t *testing.T) {
 	repo := newSceneSettingsStub()

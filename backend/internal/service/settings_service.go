@@ -23,11 +23,17 @@ import (
 
 // AIProviderConfig 一个保存好的 AI 提供商配置（可存多个，随时切换当前使用）。
 type AIProviderConfig struct {
-	ID             string         `json:"id"`
-	Name           string         `json:"name"`
-	Provider       string         `json:"provider"`
-	BaseURL        string         `json:"baseUrl"`
-	Model          string         `json:"model"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Provider string `json:"provider"`
+	BaseURL  string `json:"baseUrl"`
+	// Model：该提供商的默认模型 —— 「当前使用」是它时就用这个出请求，
+	// 分场景只写到 provider:<id>（不带 #model）时也回落到它。
+	Model string `json:"model"`
+	// Models：该提供商可用的模型库（通常含默认模型）。同一个提供商可能同时提供
+	// 翻译、摘要等不同模型，分场景按 provider:<id>#<model> 从这里挑；老库没有这个
+	// 字段时读侧按 [Model] 兜底，不影响升级。
+	Models         []string       `json:"models,omitempty"`
 	APIKey         string         `json:"apiKey"`
 	RequestOptions map[string]any `json:"requestOptions,omitempty"`
 	// Placeholder：合成占位（51 批 1）。老实例没有保存过提供商列表时，getAIProviders
@@ -537,6 +543,16 @@ func (s *settingsService) SetAISettings(ctx context.Context, settings *AISetting
 	return nil
 }
 
+// splitSceneProvider 把 "provider:" 之后的部分拆成提供商 id 与可选模型（"id#model"）。
+// 模型名里可能有 "-" "/" "." 等，取第一个 # 之前为 id、之后为模型，够用且不歧义。
+func splitSceneProvider(after string) (id, model string) {
+	after = strings.TrimSpace(after)
+	if i := strings.Index(after, "#"); i >= 0 {
+		return strings.TrimSpace(after[:i]), strings.TrimSpace(after[i+1:])
+	}
+	return after, ""
+}
+
 // resolveSceneSetting 校验并归一化场景覆盖值：空/跟随 → ""；free → "free"（仅 freeAllowed）；
 // provider:<id> → id 在已保存清单里才原样返回，否则给空（按跟随处理）。
 func (s *settingsService) resolveSceneSetting(ctx context.Context, val string, freeAllowed bool) (string, error) {
@@ -551,13 +567,18 @@ func (s *settingsService) resolveSceneSetting(ctx context.Context, val string, f
 		return "free", nil
 	}
 	if after, ok := strings.CutPrefix(val, "provider:"); ok {
-		id := strings.TrimSpace(after)
+		// provider:<id> 用该提供商的默认模型；provider:<id>#<model> 用指定模型
+		// （同一提供商下挂多个模型时分场景各挑一个）。
+		id, model := splitSceneProvider(after)
 		if id == "" {
 			return "", nil
 		}
 		for _, item := range s.getAIProvidersRaw(ctx) {
 			if item.ID == id {
-				return "provider:" + id, nil
+				if model == "" {
+					return "provider:" + id, nil
+				}
+				return "provider:" + id + "#" + model, nil
 			}
 		}
 		return "", nil
