@@ -1,3 +1,4 @@
+import { useId } from "react";
 import type { ReactNode } from "react";
 import { Chip, Dropdown, Label } from "@heroui/react";
 import { ChevronDown } from "lucide-react";
@@ -45,11 +46,13 @@ export function ScopeMultiPicker({
       ? `${values.length}`
       : emptyLabel;
 
+  const hintId = useId();
+
   return (
     <div>
       <Dropdown>
         <Dropdown.Trigger
-          aria-label={ariaLabel ?? title}
+          aria-describedby={hint ? hintId : undefined}
           className="group flex h-auto w-full items-center justify-between gap-3 rounded-xl border border-border bg-background px-3.5 py-2.5 text-left outline-none transition-colors hover:bg-secondary/50 data-[focus-visible]:ring-2 data-[focus-visible]:ring-primary"
         >
           <span className="flex min-w-0 items-center gap-3">
@@ -88,7 +91,6 @@ export function ScopeMultiPicker({
                   : Array.from(keys).map(String);
               onValuesChange(next);
             }}
-            className="max-h-72 overflow-y-auto"
           >
             {options.map((option) => (
               <Dropdown.Item
@@ -96,7 +98,7 @@ export function ScopeMultiPicker({
                 id={option.value}
                 textValue={option.label}
               >
-                <Label>{option.label}</Label>
+                <Label className="max-w-[18rem] truncate">{option.label}</Label>
                 <Dropdown.ItemIndicator className="ms-auto" />
               </Dropdown.Item>
             ))}
@@ -104,7 +106,9 @@ export function ScopeMultiPicker({
         </Dropdown.Popover>
       </Dropdown>
       {hint ? (
-        <p className="mt-1.5 px-1 text-xs text-muted-foreground">{hint}</p>
+        <p id={hintId} className="mt-1.5 px-1 text-xs text-muted-foreground">
+          {hint}
+        </p>
       ) : null}
     </div>
   );

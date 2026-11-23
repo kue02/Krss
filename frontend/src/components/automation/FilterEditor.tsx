@@ -332,28 +332,28 @@ export function FilterEditor({
       {
         value: "all" as FilterScopeType,
         label: (
-          <span className="flex items-center gap-1.5">
+          <>
             <Layers className="size-4" />
             {t("automation.scope_all")}
-          </span>
+          </>
         ),
       },
       {
         value: "folder" as FilterScopeType,
         label: (
-          <span className="flex items-center gap-1.5">
+          <>
             <FolderClosed className="size-4" />
             {t("automation.scope_folder")}
-          </span>
+          </>
         ),
       },
       {
         value: "feed" as FilterScopeType,
         label: (
-          <span className="flex items-center gap-1.5">
+          <>
             <Rss className="size-4" />
             {t("automation.scope_feed")}
-          </span>
+          </>
         ),
       },
     ],
@@ -615,9 +615,10 @@ export function FilterEditor({
           title={t("automation.scope")}
         >
           <div className="space-y-3 px-1 py-3">
-            {/* 范围三段：卡片标题已写明「范围」，这里不再重复标签；收成居中一小段，别拉满整行留出大片空隙 */}
+            {/* 范围三段：卡片标题已写明「范围」，这里不再重复标签；收成居中一小段（桌面限宽 320，窄屏按可用宽度等分），别拉满整行留出大片空隙 */}
+            <div className="flex justify-center">
             <SegmentedControl
-              className="mx-auto w-fit [&_button]:justify-center [&_button]:px-5"
+              className="w-full max-w-xs [&_button]:flex-1 [&_button]:justify-center"
               value={draft.scopeType}
               onValueChange={(value) =>
                 update({
@@ -629,6 +630,7 @@ export function FilterEditor({
               }
               options={scopeOptions}
             />
+            </div>
             {draft.scopeType === "folder" && (
               // 文件夹范围同样可多选：勾几个分类，规则/视图就作用在这几个分类里的全部订阅上。
               // 多选用「备份与恢复」那种整行富字段（12-23 用户要求），不再用 SettingRow 套一颗朴素按钮。
@@ -649,7 +651,7 @@ export function FilterEditor({
                   value: folder.id,
                   label: folder.name,
                 }))}
-                emptyLabel={t("automation.scope_all_folders")}
+                emptyLabel={t("automation.scope_folder_placeholder")}
               />
             )}
             {draft.scopeType === "feed" && (
@@ -671,7 +673,7 @@ export function FilterEditor({
                   value: feed.id,
                   label: feed.title,
                 }))}
-                emptyLabel={t("automation.scope_all_feeds")}
+                emptyLabel={t("automation.scope_feed_placeholder")}
               />
             )}
           </div>
