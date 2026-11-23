@@ -1320,12 +1320,11 @@ export function EntryList({
       : activeViewId && activeViewName
         ? activeViewName
         : title;
-  const headerSubtitle =
-    mutedOnly
-      ? t("automation.muted_view_hint")
-      : activeViewId
-        ? t("automation.view_active_hint")
-        : undefined;
+  // 保存筛选视图（activeViewId）不再显示那行「正在使用保存的筛选视图」副标题（用户 2026-11-23：
+  // 智能文件夹升级后，这条提示多余要去掉）；「已静音」回看视图的说明保留。
+  const headerSubtitle = mutedOnly
+    ? t("automation.muted_view_hint")
+    : undefined;
 
   return (
     <div

@@ -32,6 +32,7 @@
     "import_success": "OPML imported",
     "import_failed": "OPML import failed",
     "views": "Views",
+    "view_no_matches": "No matching feeds",
     "starred_view": "Only starred in this view",
     "plugin_views": "Plugins"
   },
@@ -1344,7 +1345,6 @@
     "view_kind": "View",
     "view_actions_hint": "A view performs no actions: it is reading-only and never touches read/mute/star state.",
     "view_needs_condition": "A view needs at least one condition, otherwise it is just \"all\".",
-    "view_active_hint": "Using a saved view · leaves when you switch feed or content type",
     "delete_view_title": "Delete this view?",
     "delete_view_description": "Removes only this shortcut; entries and rules are untouched.",
     "action_translate": "Auto-translate",

@@ -32,6 +32,7 @@
     "import_success": "OPML 导入完成",
     "import_failed": "OPML 导入失败",
     "views": "视图",
+    "view_no_matches": "暂无匹配的订阅",
     "starred_view": "只看当前视图的星标",
     "plugin_views": "插件"
   },
@@ -1341,7 +1342,6 @@
     "view_kind": "视图",
     "view_actions_hint": "视图不执行动作：它是纯阅读入口，不改条目状态（已读 / 静音 / 星标都不动）。",
     "view_needs_condition": "视图至少要有一条条件，否则就等于「全部」。",
-    "view_active_hint": "正在使用保存的筛选视图 · 切换订阅或内容类型即退出",
     "delete_view_title": "删除这个视图？",
     "delete_view_description": "只删掉这个快捷入口，条目与规则都不受影响。",
     "action_translate": "自动翻译",
