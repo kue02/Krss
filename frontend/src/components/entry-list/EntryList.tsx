@@ -47,7 +47,10 @@ import { selectionScrollKey, entryListScrollPositions } from "./scroll-key";
 import { useScrollToTop } from "@/hooks/useScrollToTop";
 import { MobileDocumentHeader } from "@/components/layout/MobileDocumentHeader";
 import { cn } from "@/lib/utils";
-import { useVirtualizedArticleList } from "./useVirtualizedArticleList";
+import {
+  useVirtualizedArticleList,
+  VIRTUAL_PLAIN_ROW_ESTIMATE_PX,
+} from "./useVirtualizedArticleList";
 import { VirtualizedArticleList } from "./VirtualizedArticleList";
 import { useScrollMarkRead } from "./useScrollMarkRead";
 import { usePrependScrollAnchor } from "./usePrependScrollAnchor";
@@ -683,24 +686,62 @@ export function EntryList({
   inlineReadingRef.current = inlineActive && Boolean(selectedEntryId);
   useEffect(() => {
     if (!inlineActive || !selectedEntryId) return;
-    /* 用「相对滚动容器」的位移而不是 scrollIntoView：正文在列表末尾，距离可能有几千像素，
-       scrollIntoView 会顺带把外层容器一起滚（三栏布局里外层不该动），也会被后续布局变化打断。 */
-    const scrollToPane = () => {
-      const node = inlineContentRef.current;
-      const container = containerRef.current;
-      if (!node || !container) return;
-      const top =
-        node.getBoundingClientRect().top -
-        container.getBoundingClientRect().top +
-        container.scrollTop;
-      container.scrollTo({ top, behavior: reduceMotion ? "auto" : "smooth" });
+    const container = containerRef.current;
+    if (!container) return;
+
+    /* 把正文顶部对齐到滚动视口顶部。
+       不能用 scrollIntoView：正文在列表末尾，距离几千像素，scrollIntoView 会连带把外层
+       容器一起滚（三栏布局里外层不该动）。
+       也不能「算一次目标位置滚过去」：虚拟列表首帧按估计行高 148px 排，measureElement
+       之后才收成真实 42px 一行，列表总高会从 4220 缩到 2100 —— 目标位置算早了就冲过头，
+       正文被推到视口上方几千像素。所以这里逐帧盯正文相对视口的位置，差多少补多少，
+       一直盯 4 秒（正文懒加载、图片撑高、行高实测都在这段时间里发生），用户一动滚轮/
+       触摸/键盘就立刻收手，不再抢滚动权。 */
+    let cancelled = false;
+    const stop = () => {
+      cancelled = true;
     };
-    const frame = window.requestAnimationFrame(() => {
-      scrollToPane();
-      /* 正文是懒加载的，首帧可能还没撑出高度；下一帧再对一次位（幂等） */
-      window.requestAnimationFrame(scrollToPane);
-    });
-    return () => window.cancelAnimationFrame(frame);
+    container.addEventListener("wheel", stop, { passive: true });
+    container.addEventListener("touchstart", stop, { passive: true });
+    container.addEventListener("keydown", stop);
+
+    const offset = () => {
+      const node = inlineContentRef.current;
+      if (!node) return null;
+      return node.getBoundingClientRect().top - container.getBoundingClientRect().top;
+    };
+
+    let raf = 0;
+    let startedAt = 0;
+    let smoothDone = false;
+    const tick = (now: number) => {
+      if (cancelled) return;
+      if (startedAt === 0) startedAt = now;
+      const elapsed = now - startedAt;
+      const delta = offset();
+      if (delta !== null) {
+        if (!smoothDone) {
+          /* 第一帧先平滑滚过去（大位移用动画不吓人）；这段时间不做逐帧修正，免得互相打断 */
+          smoothDone = true;
+          if (Math.abs(delta) > 4) {
+            container.scrollTo({ top: container.scrollTop + delta, behavior: reduceMotion ? "auto" : "smooth" });
+          }
+        } else if (elapsed > 600 && Math.abs(delta) > 2) {
+          /* 平滑动画走完后开始兜底：列表高度变化、正文撑高都靠这里拉回 */
+          container.scrollTop += delta;
+        }
+      }
+      if (elapsed < 4000) raf = window.requestAnimationFrame(tick);
+    };
+    raf = window.requestAnimationFrame(tick);
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(raf);
+      container.removeEventListener("wheel", stop);
+      container.removeEventListener("touchstart", stop);
+      container.removeEventListener("keydown", stop);
+    };
   }, [inlineActive, selectedEntryId, reduceMotion]);
 
   useEffect(() => {
@@ -813,6 +854,8 @@ export function EntryList({
     scrollKey,
     containerRef,
     entries,
+    /* Inoreader列表 是固定 42px 单行档：按真实行高估，别用卡片档的 148px */
+    estimateSize: isArticlePlain ? VIRTUAL_PLAIN_ROW_ESTIMATE_PX : undefined,
   });
   useEffect(() => {
     const node = containerRef.current;
