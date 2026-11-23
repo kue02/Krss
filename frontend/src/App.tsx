@@ -594,7 +594,7 @@ function AuthenticatedApp() {
   /**
    * 「正文推入方向 = 向下」：条目栏与正文合为一列，正文接在被点那一行后面
    * （方案 2 · 整列一起滚，用户 11-23 拍板）。桌面把正文交给 EntryList 内联渲染，
-   * 三栏布局让出第三栏；移动端仍是列表 → 详情页，不受影响。
+   * 三栏布局让出第三栏；移动端同样走这份内联合列（不再用详情页盖上来）。
    */
   const articlePushDirection = useUISettingKey("articlePushDirection");
   const isArticleInlineLayout =
@@ -602,6 +602,21 @@ function AuthenticatedApp() {
   /** 移动端详情页的推入方向：从右（水平）或 从下/向下（垂直上推，覆盖列表） */
   const mobileDetailVertical =
     articlePushDirection === "bottom" || articlePushDirection === "down";
+  /**
+   * 移动端「向下」：与桌面同一份合列体验 —— 正文内联接在被点那一行后面，
+   * 与列表共用文档滚动、点开自动吸顶、同时只开一条。手机不用详情页盖上来，
+   * 所以选中态放在本地 state（不进 URL，避免触发详情页）。
+   */
+  const isArticleInlineMobile =
+    contentType === "article" && articlePushDirection === "down" && isMobile;
+  const [mobileInlineEntryId, setMobileInlineEntryId] = useState<string | null>(
+    null,
+  );
+  useEffect(() => {
+    /* 切内容类型 / 换方向 / 换设备档位时收起内联正文，避免状态串台 */
+    setMobileInlineEntryId(null);
+  }, [contentType, articlePushDirection, isMobile]);
+
 
   // 桌面三栏的第三栏：Nextflux 式转场（reader-transition 批）。
   // 未选 → 首次选中 = 整块从右侧推进；已选 → 换另一条 = 正文上下滑动。
@@ -874,13 +889,21 @@ function AuthenticatedApp() {
           >
             <EntryList
               selection={selection}
-              selectedEntryId={selectedEntryId}
-              onSelectEntry={selectEntry}
+              selectedEntryId={
+                isArticleInlineMobile ? mobileInlineEntryId : selectedEntryId
+              }
+              onSelectEntry={
+                isArticleInlineMobile ? setMobileInlineEntryId : selectEntry
+              }
               onMarkAllRead={handleMarkAllRead}
               unreadOnly={unreadOnly}
               onToggleUnreadOnly={toggleUnreadOnly}
               onToggleStarredViewOnly={handleToggleStarredViewOnly}
-              onCloseEntry={() => selectEntry(null)}
+              onCloseEntry={
+                isArticleInlineMobile
+                  ? () => setMobileInlineEntryId(null)
+                  : () => selectEntry(null)
+              }
               contentType={contentType}
               isMobile
               isActive={mobileView === "list"}
@@ -889,6 +912,27 @@ function AuthenticatedApp() {
               feedJumpBackHref={jumpBackHref}
               onBackFromFeedJump={handleBackFromFeedJump}
               onSearchClick={() => setIsSearchOpen(true)}
+              /* 移动端「向下」合列：正文接在被点行后，和列表一条滚动条 */
+              renderInlineContent={
+                isArticleInlineMobile
+                  ? (scrollRef) =>
+                      mobileInlineEntryId ? (
+                        <div className="pb-10">
+                          <Suspense fallback={<EntryContentFallback />}>
+                            <LazyEntryContent
+                              key={mobileInlineEntryId}
+                              entryId={mobileInlineEntryId}
+                              contentType={contentType}
+                              embedded
+                              isMobile
+                              containerRef={scrollRef}
+                              onClose={() => setMobileInlineEntryId(null)}
+                            />
+                          </Suspense>
+                        </div>
+                      ) : null
+                  : undefined
+              }
             />
           </section>
           {/* Detail remains an internal scroller and slides over the document list. */}
