@@ -32,9 +32,24 @@ export function SectionCard({
         className,
       )}
     >
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/50 px-4 py-3.5">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-[var(--radius)] bg-primary/10 text-primary">
+      <div
+        className={cn(
+          "flex flex-wrap justify-between gap-3 border-b border-border/50 px-4 py-3.5",
+          description ? "items-start" : "items-center",
+        )}
+      >
+        <div
+          className={cn(
+            "flex min-w-0 gap-3",
+            description ? "items-start" : "items-center",
+          )}
+        >
+          <span
+            className={cn(
+              "flex size-8 shrink-0 items-center justify-center rounded-[var(--radius)] bg-primary/10 text-primary",
+              description && "mt-0.5",
+            )}
+          >
             {icon}
           </span>
           <div className="min-w-0">
