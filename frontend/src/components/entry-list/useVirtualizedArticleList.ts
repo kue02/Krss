@@ -27,10 +27,18 @@ export interface UseVirtualizedArticleListOptions {
   scrollKey: string;
   containerRef: RefObject<HTMLDivElement | null>;
   entries: Entry[];
+  /** 估计行高（首屏占位用）。默认是卡片档的 148px；单行固定高度的档位传自己的值。 */
+  estimateSize?: number;
 }
 
 /** 首屏占位用的估计行高（下一张卡实测后即被替换，只影响首屏瞬间） */
 export const VIRTUAL_ARTICLE_ESTIMATE_PX = 148;
+/**
+ * 单行档（Inoreader列表）的估计行高：`px-4 py-2.5` + 一行 15px 文本 = 42px，固定不随内容变。
+ * 用 148 估这个档会让总高度先多算 3 倍，实测后骤然收缩 —— 首屏「滚到正文」这类
+ * 依赖列表高度的定位会跟着漂，所以按真实值给。
+ */
+export const VIRTUAL_PLAIN_ROW_ESTIMATE_PX = 42;
 /** 可视区上下各多渲染的行数（滚动时不白屏，又不至于挂太多 DOM） */
 export const VIRTUAL_ARTICLE_OVERSCAN = 8;
 
@@ -46,6 +54,7 @@ export function useVirtualizedArticleList({
   scrollKey,
   containerRef,
   entries,
+  estimateSize = VIRTUAL_ARTICLE_ESTIMATE_PX,
 }: UseVirtualizedArticleListOptions): VirtualizedArticleListState {
   const documentScroll = scrollSurface.kind === "document";
   const active = enabled && !documentScroll;
@@ -81,7 +90,7 @@ export function useVirtualizedArticleList({
     enabled: active,
     count: entries.length,
     getScrollElement: () => containerRef.current,
-    estimateSize: () => VIRTUAL_ARTICLE_ESTIMATE_PX,
+    estimateSize: () => estimateSize,
     overscan: VIRTUAL_ARTICLE_OVERSCAN,
     getItemKey: itemKeyOf,
   });
@@ -89,7 +98,7 @@ export function useVirtualizedArticleList({
   const winVirtualizer = useWindowVirtualizer<HTMLElement>({
     enabled: windowActive,
     count: entries.length,
-    estimateSize: () => VIRTUAL_ARTICLE_ESTIMATE_PX,
+    estimateSize: () => estimateSize,
     overscan: VIRTUAL_ARTICLE_OVERSCAN,
     getItemKey: itemKeyOf,
   });
