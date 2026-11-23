@@ -208,7 +208,8 @@ export function openFilterEditorForFolder(
       (item) =>
         (item.kind ?? "rule") === "rule" &&
         item.scopeType === "folder" &&
-        item.scopeId === folder.id,
+        item.scopeId === folder.id &&
+        !(item.scopeIds && item.scopeIds.length > 0),
     )
     .sort((a, b) => a.position - b.position)[0];
   if (reusable) {

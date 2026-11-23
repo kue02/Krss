@@ -215,6 +215,40 @@ func TestEntryRepository_List_Filters(t *testing.T) {
 	require.Len(t, entries, 2) // E1, E2
 }
 
+// 文件夹多选：FolderIDs 应同时命中多个文件夹下的订阅，并排除未归类的订阅。
+func TestEntryRepository_List_MultiFolderIDs(t *testing.T) {
+	db := testutil.NewTestDB(t)
+	repo := repository.NewEntryRepository(db)
+	ctx := context.Background()
+
+	folderA := testutil.SeedFolder(t, db, "FA", nil, "article")
+	folderB := testutil.SeedFolder(t, db, "FB", nil, "article")
+	feedA := testutil.SeedFeed(t, db, model.Feed{Title: "Feed A", URL: "ua", FolderID: &folderA})
+	feedB := testutil.SeedFeed(t, db, model.Feed{Title: "Feed B", URL: "ub", FolderID: &folderB})
+	feedNone := testutil.SeedFeed(t, db, model.Feed{Title: "Feed None", URL: "un"})
+
+	testutil.SeedEntry(t, db, model.Entry{FeedID: feedA, Title: stringPtr("EA")})
+	testutil.SeedEntry(t, db, model.Entry{FeedID: feedB, Title: stringPtr("EB")})
+	testutil.SeedEntry(t, db, model.Entry{FeedID: feedNone, Title: stringPtr("EN")})
+
+	entries, err := repo.List(ctx, repository.EntryListFilter{FolderIDs: []int64{folderA, folderB}})
+	require.NoError(t, err)
+	require.Len(t, entries, 2)
+	titles := map[string]bool{}
+	for _, e := range entries {
+		titles[*e.Title] = true
+	}
+	require.True(t, titles["EA"])
+	require.True(t, titles["EB"])
+	require.False(t, titles["EN"])
+
+	// 只选一个文件夹也应只命中该文件夹下的订阅。
+	entries, err = repo.List(ctx, repository.EntryListFilter{FolderIDs: []int64{folderB}})
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Equal(t, "EB", *entries[0].Title)
+}
+
 func TestEntryRepository_UpdateStatus(t *testing.T) {
 	db := testutil.NewTestDB(t)
 	repo := repository.NewEntryRepository(db)

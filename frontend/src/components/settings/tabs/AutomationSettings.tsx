@@ -40,6 +40,12 @@ function toWritePayload(rule: FilterRule, position: number): FilterWritePayload 
     kind: rule.kind === "view" ? "view" : "rule",
     scopeType: rule.scopeType,
     scopeId: rule.scopeId,
+    // 多选范围（订阅/文件夹）必须回填，否则设置页的启停/排序/拖拽保存会因
+    // 「scope 全空」被后端 ErrInvalidFilter 拒成 400（用户 11-23 文件夹多选）。
+    scopeIds: rule.scopeIds,
+    // 视图的内容类型与图标也要带上：后端 Update 对空值会覆盖清空。
+    contentTypes: rule.contentTypes,
+    icon: rule.icon,
     conditions: rule.conditions ?? [],
     actions: rule.actions ?? {},
   };
@@ -392,11 +398,17 @@ export function AutomationSettings() {
 
   const scopeLabel = (rule: FilterRule): string => {
     if (rule.scopeType === "feed") {
+      if (rule.scopeIds?.length) {
+        return t("automation.scope_selected_count", { count: rule.scopeIds.length });
+      }
       return rule.scopeId
         ? (feedTitles.get(rule.scopeId) ?? t("automation.scope_feed"))
         : t("automation.scope_feed");
     }
     if (rule.scopeType === "folder") {
+      if (rule.scopeIds?.length) {
+        return t("automation.scope_selected_count_folder", { count: rule.scopeIds.length });
+      }
       return rule.scopeId
         ? (folderNames.get(rule.scopeId) ?? t("automation.scope_folder"))
         : t("automation.scope_folder");

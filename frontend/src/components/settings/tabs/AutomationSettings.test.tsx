@@ -222,6 +222,41 @@ describe("AutomationSettings", () => {
     );
   });
 
+  it("多选文件夹规则上下移时 payload 带上 scopeIds（避免 scope 全空被后端拒 400）", () => {
+    // 回归：toWritePayload 曾只回填 scopeId，多文件夹规则的 scopeIds 被丢掉，
+    // 启停/排序/拖拽保存因 scope 全空被后端 ErrInvalidFilter 拒成 400。
+    rules.current = [
+      rule({
+        id: "rule-1",
+        name: "多选A",
+        position: 0,
+        scopeType: "folder",
+        scopeId: undefined,
+        scopeIds: ["fa", "fb"],
+      }),
+      rule({
+        id: "rule-2",
+        name: "多选B",
+        position: 1,
+        scopeType: "folder",
+        scopeId: undefined,
+        scopeIds: ["fc"],
+      }),
+    ];
+    render(<AutomationSettings />);
+
+    openRowMenu(0);
+    fireEvent.click(screen.getByText("automation.move_down"));
+
+    const payloads = updateMutate.mock.calls.map(
+      ([variables]) =>
+        variables as { id: string; payload: { scopeIds?: string[]; scopeType?: string } },
+    );
+    const first = payloads.find((p) => p.id === "rule-1");
+    expect(first?.payload.scopeType).toBe("folder");
+    expect(first?.payload.scopeIds).toEqual(["fa", "fb"]);
+  });
+
   it("删除走确认弹窗，确认时把「同时恢复」带给后端", () => {
     rules.current = [rule()];
     render(<AutomationSettings />);
