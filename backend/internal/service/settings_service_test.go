@@ -5,7 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"krss/backend/internal/service"
+	"krss/backend/pkg/network"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"krss/backend/internal/service/ai"
 
@@ -605,14 +611,14 @@ func TestSettingsService_SetCacheSettings_Nil(t *testing.T) {
 	require.ErrorIs(t, svc.SetCacheSettings(context.Background(), nil), service.ErrInvalid)
 }
 
-// ai.use_proxy 默认 true；保存 false 后能原样读回。
+// ai.use_proxy 默认 false（默认直连）；保存 true/false 后都能原样读回。
 func TestSettingsService_UseProxyDefaultAndRoundTrip(t *testing.T) {
 	repo := newSettingsRepoStub()
 	svc := service.NewSettingsService(repo, ai.NewRateLimiter(0))
 
 	settings, err := svc.GetAISettings(context.Background())
 	require.NoError(t, err)
-	require.True(t, settings.UseProxy, "键不存在时应默认 true")
+	require.False(t, settings.UseProxy, "键不存在时应默认 false（直连）")
 
 	require.NoError(t, svc.SetAISettings(context.Background(), &service.AISettings{
 		Provider: ai.ProviderOpenAI,
@@ -635,4 +641,86 @@ func TestSettingsService_UseProxyDefaultAndRoundTrip(t *testing.T) {
 	got, err = svc.GetAISettings(context.Background())
 	require.NoError(t, err)
 	require.True(t, got.UseProxy)
+}
+
+// countingTransport 记一次请求并交给默认 transport，便于断言「是否用了注入的代理客户端」。
+type countingTransport struct{ n *int32 }
+
+func (t countingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	atomic.AddInt32(t.n, 1)
+	return http.DefaultTransport.RoundTrip(r)
+}
+
+// probeServer 同时服务 Responses API 与 /models。
+func newProbeTestServer(t *testing.T) (*httptest.Server, *int32) {
+	t.Helper()
+	var hits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/models"):
+			_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"gpt-4","object":"model"}]}`))
+		case strings.HasSuffix(r.URL.Path, "/responses"):
+			_, _ = w.Write([]byte(`{"id":"resp_1","object":"response","created_at":0,"status":"completed","model":"gpt-4","output":[{"id":"msg_1","type":"message","role":"assistant","status":"completed","content":[{"type":"output_text","text":"ok","annotations":[]}]}],"parallel_tool_calls":true,"tool_choice":"auto","tools":[]}`))
+		default:
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &hits
+}
+
+// 默认（键不存在）探测走直连：即便注入了代理工厂，probeHTTPClient 也返回 nil。
+func TestSettingsService_ProbeHTTPClient_DefaultDirectEnabledProxy(t *testing.T) {
+	repo := newSettingsRepoStub()
+	svc := service.NewSettingsService(repo, ai.NewRateLimiter(0))
+	var n int32
+	injected := &http.Client{Transport: countingTransport{&n}}
+	svc.SetClientFactory(network.NewClientFactoryForTest(injected))
+
+	require.Nil(t, service.ProbeHTTPClientForTest(svc, context.Background(), time.Second), "默认应直连（nil）")
+
+	repo.data[service.KeyAIUseProxy] = "true"
+	require.Same(t, injected, service.ProbeHTTPClientForTest(svc, context.Background(), time.Second), "开启后应返回注入的代理客户端")
+
+	repo.data[service.KeyAIUseProxy] = "false"
+	require.Nil(t, service.ProbeHTTPClientForTest(svc, context.Background(), time.Second), "显式 false 应直连")
+}
+
+// TestAI / ListAIModels 两条路径：默认关闭走直连（不经过注入客户端），开启后走代理客户端。
+func TestSettingsService_TestAIAndListModels_FollowUseProxy(t *testing.T) {
+	srv, hits := newProbeTestServer(t)
+	repo := newSettingsRepoStub()
+	svc := service.NewSettingsService(repo, ai.NewRateLimiter(0))
+	proxyClient := &http.Client{Transport: countingTransport{hits}}
+	svc.SetClientFactory(network.NewClientFactoryForTest(proxyClient))
+
+	ctx := context.Background()
+
+	// 默认关闭：TestAI 走直连，注入的代理客户端零命中。
+	atomic.StoreInt32(hits, 0)
+	_, err := svc.TestAI(ctx, ai.ProviderOpenAI, "sk-test", srv.URL, "gpt-4", nil)
+	require.NoError(t, err)
+	require.Equal(t, int32(0), atomic.LoadInt32(hits), "默认关闭时 TestAI 应直连")
+
+	// 默认关闭：ListAIModels 走直连。
+	atomic.StoreInt32(hits, 0)
+	models, err := svc.ListAIModels(ctx, ai.ProviderOpenAI, "sk-test", srv.URL)
+	require.NoError(t, err)
+	require.Equal(t, []string{"gpt-4"}, models)
+	require.Equal(t, int32(0), atomic.LoadInt32(hits), "默认关闭时 ListAIModels 应直连")
+
+	// 开启后：两条路径都经过注入的代理客户端。
+	repo.data[service.KeyAIUseProxy] = "true"
+
+	atomic.StoreInt32(hits, 0)
+	_, err = svc.TestAI(ctx, ai.ProviderOpenAI, "sk-test", srv.URL, "gpt-4", nil)
+	require.NoError(t, err)
+	require.Greater(t, atomic.LoadInt32(hits), int32(0), "开启后 TestAI 应走代理客户端")
+
+	atomic.StoreInt32(hits, 0)
+	models, err = svc.ListAIModels(ctx, ai.ProviderOpenAI, "sk-test", srv.URL)
+	require.NoError(t, err)
+	require.Equal(t, []string{"gpt-4"}, models)
+	require.Greater(t, atomic.LoadInt32(hits), int32(0), "开启后 ListAIModels 应走代理客户端")
 }

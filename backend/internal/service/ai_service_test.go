@@ -712,3 +712,17 @@ func TestAIService_TranslateBatch_NewTranslationRecordsProvider(t *testing.T) {
 	require.Equal(t, "我的中转", listRepo.lastProvider, "缓存里也要记住提供商")
 	require.Equal(t, "m1", listRepo.lastModel)
 }
+
+// ai.use_proxy 默认关闭（直连），显式 "true" 才开启。
+func TestAIService_AIProxyEnabled_DefaultFalse(t *testing.T) {
+	repo := newSettingsRepoStub()
+	svc := service.NewAIService(&summaryRepoStub{}, &translationRepoStub{}, &listTranslationRepoStub{}, repo, ai.NewRateLimiter(0))
+
+	require.False(t, service.AIProxyEnabledForTest(svc, context.Background()), "键不存在时应默认关闭（直连）")
+
+	repo.data["ai.use_proxy"] = "true"
+	require.True(t, service.AIProxyEnabledForTest(svc, context.Background()))
+
+	repo.data["ai.use_proxy"] = "false"
+	require.False(t, service.AIProxyEnabledForTest(svc, context.Background()))
+}
