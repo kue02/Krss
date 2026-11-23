@@ -159,7 +159,7 @@ func TestFeedHandler_Update_Success(t *testing.T) {
 	}
 
 	mockService.EXPECT().
-		Update(gomock.Any(), int64(123), "Updated Title", gomock.Any(), gomock.Any()).
+		Update(gomock.Any(), int64(123), "Updated Title", gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(updatedFeed, nil)
 
 	err := h.Update(c)
@@ -191,7 +191,7 @@ func TestFeedHandler_Update_EmptyTitleRestoresDefault(t *testing.T) {
 	setPathParams(c, map[string]string{"id": "123"})
 
 	mockService.EXPECT().
-		Update(gomock.Any(), int64(123), "   ", (*int64)(nil), gomock.Any()).
+		Update(gomock.Any(), int64(123), "   ", (*int64)(nil), gomock.Any(), gomock.Any()).
 		Return(model.Feed{ID: 123, Title: "少数派", Type: "article"}, nil)
 
 	err := h.Update(c)
@@ -373,4 +373,40 @@ func TestFeedHandler_Preview_Success(t *testing.T) {
 	var resp handler.FeedPreviewResponse
 	assertJSONResponse(t, rec, http.StatusOK, &resp)
 	require.Equal(t, "Example Feed", resp.Title)
+}
+
+// 拖动排序：Update 请求体带可选 sortOrder，应原样透传给 service。
+func TestFeedHandler_Update_WithSortOrder(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockFeedService(ctrl)
+	mockRefreshService := mock.NewMockRefreshService(ctrl)
+	h := handler.NewFeedHandlerHelper(mockService, mockRefreshService)
+
+	e := newTestEcho()
+	req := newJSONRequest(http.MethodPut, "/feeds/123", map[string]interface{}{
+		"title":     "New Title",
+		"sortOrder": 7,
+	})
+	c, rec := newTestContext(e, req)
+	setPathParams(c, map[string]string{"id": "123"})
+
+	var gotSort *int64
+	mockService.EXPECT().
+		Update(gomock.Any(), int64(123), "New Title", gomock.Any(), gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ int64, _ string, _ *int64, _ *string, sortOrder *int64) (model.Feed, error) {
+			gotSort = sortOrder
+			return model.Feed{ID: 123, Title: "New Title", SortOrder: 7}, nil
+		})
+
+	err := h.Update(c)
+	require.NoError(t, err)
+	require.NotNil(t, gotSort)
+	require.Equal(t, int64(7), *gotSort)
+
+	var resp handler.FeedResponse
+	assertJSONResponse(t, rec, http.StatusOK, &resp)
+	require.Equal(t, "New Title", resp.Title)
+	require.Equal(t, 7, resp.SortOrder)
 }

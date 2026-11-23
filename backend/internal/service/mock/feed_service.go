@@ -192,18 +192,18 @@ func (mr *MockFeedServiceMockRecorder) Preview(ctx, feedURL any) *gomock.Call {
 }
 
 // Update mocks base method.
-func (m *MockFeedService) Update(ctx context.Context, id int64, title string, folderID *int64, summaryPromptReminder *string) (model.Feed, error) {
+func (m *MockFeedService) Update(ctx context.Context, id int64, title string, folderID *int64, summaryPromptReminder *string, sortOrder *int64) (model.Feed, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Update", ctx, id, title, folderID, summaryPromptReminder)
+	ret := m.ctrl.Call(m, "Update", ctx, id, title, folderID, summaryPromptReminder, sortOrder)
 	ret0, _ := ret[0].(model.Feed)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Update indicates an expected call of Update.
-func (mr *MockFeedServiceMockRecorder) Update(ctx, id, title, folderID, summaryPromptReminder any) *gomock.Call {
+func (mr *MockFeedServiceMockRecorder) Update(ctx, id, title, folderID, summaryPromptReminder, sortOrder any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockFeedService)(nil).Update), ctx, id, title, folderID, summaryPromptReminder)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockFeedService)(nil).Update), ctx, id, title, folderID, summaryPromptReminder, sortOrder)
 }
 
 // UpdateAIOverrides mocks base method.

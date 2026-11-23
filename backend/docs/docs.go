@@ -5448,6 +5448,9 @@ const docTemplate = `{
                 "siteUrl": {
                     "type": "string"
                 },
+                "sortOrder": {
+                    "type": "integer"
+                },
                 "sourceType": {
                     "description": "16 批：rss（默认）/ mcp；MCPConfig 只有 mcp 源才有。",
                     "type": "string"
@@ -5908,6 +5911,10 @@ const docTemplate = `{
                 "parentId": {
                     "type": "string"
                 },
+                "sortOrder": {
+                    "description": "SortOrder 拖动排序（迁移 39）：可选，Update 时传了才改；只传它（不带 name）即纯排序。",
+                    "type": "integer"
+                },
                 "type": {
                     "type": "string"
                 }
@@ -5939,6 +5946,9 @@ const docTemplate = `{
                 "proxyMode": {
                     "description": "代理覆盖（14 批）：inherit = 跟随父级文件夹链 → 全局；proxy / direct 是本层自己选的",
                     "type": "string"
+                },
+                "sortOrder": {
+                    "type": "integer"
                 },
                 "type": {
                     "type": "string"
@@ -6864,6 +6874,10 @@ const docTemplate = `{
                 "folderId": {
                     "type": "string"
                 },
+                "sortOrder": {
+                    "description": "SortOrder 拖动排序（迁移 39）：可选，传了才改；只传它（不带 title）即纯排序，不触发重抓默认名。",
+                    "type": "integer"
+                },
                 "summaryPromptReminder": {
                     "type": "string"
                 },
@@ -7493,7 +7507,15 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "model": {
+                    "description": "Model：该提供商的默认模型 —— 「当前使用」是它时就用这个出请求，\n分场景只写到 provider:\u003cid\u003e（不带 #model）时也回落到它。",
                     "type": "string"
+                },
+                "models": {
+                    "description": "Models：该提供商可用的模型库（通常含默认模型）。同一个提供商可能同时提供\n翻译、摘要等不同模型，分场景按 provider:\u003cid\u003e#\u003cmodel\u003e 从这里挑；老库没有这个\n字段时读侧按 [Model] 兜底，不影响升级。",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "name": {
                     "type": "string"
