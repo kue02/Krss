@@ -268,7 +268,7 @@ describe("PictureMasonry scroll mark read", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
-    // 本文件的用例针对的是「网格/瀑布流」这套图片墙实现，固定 layout 为 grid（默认已改成 hover）
+    // 本文件的用例针对的是「网格/瀑布流」这套图片墙实现，固定 layout 为 grid（默认已改成 grid）
     setUISetting("pictureLayout", "grid");
     originalIntersectionObserver = globalThis.IntersectionObserver;
     originalResizeObserver = globalThis.ResizeObserver;
