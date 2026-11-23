@@ -164,10 +164,6 @@ func (s *freeChannelScheduler) recordFailure(channel string, err error) {
 	if err == nil {
 		return
 	}
-	// 预算/ctx 造成的取消或超时是整体编排的问题，不算该通道的坏健康，别据此冷却。
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-		return
-	}
 	now := s.now()
 
 	var httpErr *translateHTTPError
@@ -273,7 +269,11 @@ func (s *freeChannelScheduler) translate(ctx context.Context, client *http.Clien
 				return "", false
 			}
 			lastErr[channel] = err
-			s.recordFailure(channel, err)
+			// 父 ctx 被调用方取消/超时属于整体编排问题（不是通道的错）：不计失败、不冷却。
+			// 注意：预算超时已由上面的 budgetHit 拦截；这里只挡「调用方主动取消/超时」。
+			if ctx.Err() == nil {
+				s.recordFailure(channel, err)
+			}
 			return "", false
 		}
 		s.recordSuccess(channel)
