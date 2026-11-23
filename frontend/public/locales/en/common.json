@@ -222,6 +222,7 @@
     "proxy_disabled_summary": "Proxy off · {{type}} {{host}}:{{port}} (click to edit)",
     "proxy_disabled_empty": "Proxy off · no address yet (click to edit)",
     "proxy_collapse": "Collapse",
+    "proxy_config_title": "Proxy configuration",
     "proxy_mode": "Proxy Mode",
     "proxy_mode_description": "\"Always proxy\" routes everything through the proxy; \"Smart\" tries direct first, falls back to proxy, and remembers per-domain",
     "proxy_mode_proxy": "Always proxy",
