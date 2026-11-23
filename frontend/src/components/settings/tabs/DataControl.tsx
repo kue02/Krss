@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertDialog, Button } from "@heroui/react";
+import { AlertDialog, Button, Description, Dropdown, Label } from "@heroui/react";
 import {
   startImportOPML,
   watchImportStatus,
   cancelImportOPML,
   exportOPML,
-  exportSettings,
   importSettings,
   exportFullBackup,
   importFullBackup,
@@ -17,8 +16,8 @@ import {
   clearReadabilityCache,
   clearEntryCache,
 } from "@/api";
-import type { ClearAICacheResponse, ClearCacheResponse, BackupImportResult } from "@/api";
-import { Archive, Download, Trash2, Upload } from "lucide-react";
+import type { ClearAICacheResponse, ClearCacheResponse, BackupImportResult, BackupSection } from "@/api";
+import { Archive, ChevronDown, Download, Trash2, Upload } from "lucide-react";
 import {
   SectionCard,
   SettingRow,
@@ -44,6 +43,52 @@ function isSettingsExportPayload(value: unknown): value is SettingsExportPayload
     typeof candidate.settings === "object" &&
     candidate.settings !== null
   );
+}
+
+/** 备份分区展示顺序（即下拉顺序）。 */
+const BACKUP_SECTION_ORDER: BackupSection[] = [
+  "subscriptions",
+  "settings",
+  "credentials",
+  "plugins",
+  "mcp",
+];
+
+interface BackupDocumentLike {
+  format?: unknown;
+  version?: unknown;
+  folders?: unknown;
+  feeds?: unknown;
+  settings?: unknown;
+  plugins?: unknown;
+  mcpServers?: unknown;
+  sections?: unknown;
+}
+
+type PendingImport =
+  | { kind: "backup"; name: string; file: File; sections: string[] }
+  | { kind: "settings"; name: string; version: number; settings: Record<string, string> };
+
+function isBackupDocument(value: unknown): value is BackupDocumentLike {
+  if (typeof value !== "object" || value === null) return false;
+  const c = value as BackupDocumentLike;
+  return typeof c.format === "string" && typeof c.version === "number";
+}
+
+/** 老备份没有 sections 字段时，从实际内容推断分区。 */
+function inferBackupSections(doc: BackupDocumentLike): BackupSection[] {
+  const set = new Set<BackupSection>();
+  if (Array.isArray(doc.folders) && doc.folders.length > 0) set.add("subscriptions");
+  if (Array.isArray(doc.feeds) && doc.feeds.length > 0) set.add("subscriptions");
+  if (
+    doc.settings &&
+    typeof doc.settings === "object" &&
+    Object.keys(doc.settings as Record<string, unknown>).length > 0
+  )
+    set.add("settings");
+  if (Array.isArray(doc.plugins) && doc.plugins.length > 0) set.add("plugins");
+  if (Array.isArray(doc.mcpServers) && doc.mcpServers.length > 0) set.add("mcp");
+  return BACKUP_SECTION_ORDER.filter((s) => set.has(s));
 }
 
 export function DataControl() {
@@ -147,116 +192,29 @@ export function DataControl() {
     }
   };
 
-  // ---------- 21 批：设置导出 / 导入 ----------
-
-  const settingsFileInputRef = useRef<HTMLInputElement>(null);
-  const [isExportingSettings, setIsExportingSettings] = useState(false);
-  const [pendingSettingsFile, setPendingSettingsFile] = useState<{
-    name: string;
-    payload: SettingsExportPayload;
-  } | null>(null);
-  const [isImportingSettings, setIsImportingSettings] = useState(false);
-  const [settingsImportCount, setSettingsImportCount] = useState<number | null>(
-    null,
-  );
-  const [settingsError, setSettingsError] = useState<string | null>(null);
-
-  /** 导出设置：拿到 JSON 存成文件（文件名带日期，多份备份能区分开） */
-  const handleExportSettings = async () => {
-    setIsExportingSettings(true);
-    setSettingsError(null);
-
-    try {
-      const payload = await exportSettings();
-      const blob = new Blob([JSON.stringify(payload, null, 2)], {
-        type: "application/json",
-      });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `krss-settings-${new Date().toISOString().slice(0, 10)}.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      setSettingsError(
-        err instanceof Error
-          ? err.message
-          : t("data_control.export_settings_failed"),
-      );
-    } finally {
-      setIsExportingSettings(false);
-    }
-  };
-
-  /** 选中文件：先本地粗校验，再弹确认（覆盖设置不可撤销） */
-  const handlePickSettingsFile = async (
-    event: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const file = event.target.files?.[0];
-    setSettingsImportCount(null);
-    setSettingsError(null);
-
-    try {
-      if (!file) return;
-      const parsed: unknown = JSON.parse(await file.text());
-      if (!isSettingsExportPayload(parsed)) {
-        setSettingsError(t("data_control.import_settings_invalid_file"));
-        return;
-      }
-      setPendingSettingsFile({ name: file.name, payload: parsed });
-    } catch {
-      setSettingsError(t("data_control.import_settings_invalid_file"));
-    } finally {
-      // 允许连续选同一份文件（不清空 value 时第二次 onChange 不触发）
-      if (settingsFileInputRef.current) settingsFileInputRef.current.value = "";
-    }
-  };
-
-  const handleConfirmImportSettings = async () => {
-    if (!pendingSettingsFile) return;
-    setIsImportingSettings(true);
-
-    try {
-      const result = await importSettings({
-        version: pendingSettingsFile.payload.version,
-        settings: pendingSettingsFile.payload.settings,
-      });
-      setSettingsImportCount(result.imported);
-      setPendingSettingsFile(null);
-      // 导入改的是**服务端**那份：立刻以服务端为准刷新本地四组，并让设置表单重新取数
-      await pullSettingsFromServer();
-      await queryClient.invalidateQueries();
-    } catch (err) {
-      setSettingsError(
-        err instanceof Error
-          ? err.message
-          : t("data_control.import_settings_failed"),
-      );
-      setPendingSettingsFile(null);
-    } finally {
-      setIsImportingSettings(false);
-    }
-  };
-
-  // ---------- 全量备份（整库）导出 / 导入 ----------
+  // ---------- 备份与恢复（设置 + 全量合并，多选分区） ----------
 
   const backupFileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedSections, setSelectedSections] = useState<Set<BackupSection>>(
+    () => new Set<BackupSection>(["subscriptions", "settings", "plugins", "mcp"]),
+  );
   const [isExportingBackup, setIsExportingBackup] = useState(false);
-  const [pendingBackupFile, setPendingBackupFile] = useState<File | null>(null);
+  const [exportConfirmOpen, setExportConfirmOpen] = useState(false);
+  const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
   const [isImportingBackup, setIsImportingBackup] = useState(false);
   const [backupImportResult, setBackupImportResult] =
     useState<BackupImportResult | null>(null);
   const [backupError, setBackupError] = useState<string | null>(null);
 
-  /** 导出整库备份：直接下载后端给的 JSON（前端不再 JSON.parse，避免 int64 精度丢）。 */
-  const handleExportBackup = async () => {
+  const includeCredentials = selectedSections.has("credentials");
+
+  const runExport = async () => {
     setIsExportingBackup(true);
     setBackupError(null);
-
     try {
-      await exportFullBackup();
+      await exportFullBackup(
+        BACKUP_SECTION_ORDER.filter((s) => selectedSections.has(s)),
+      );
     } catch (err) {
       setBackupError(
         err instanceof Error
@@ -265,28 +223,86 @@ export function DataControl() {
       );
     } finally {
       setIsExportingBackup(false);
+      setExportConfirmOpen(false);
     }
   };
 
-  /** 选中备份文件：不解析 JSON（保精度），直接弹确认。 */
-  const handlePickBackupFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleExportBackup = () => {
+    setBackupError(null);
+    if (selectedSections.size === 0) {
+      setBackupError(t("data_control.backup_select_at_least_one"));
+      return;
+    }
+    // 勾了敏感凭证：明文导出，先强确认
+    if (includeCredentials) {
+      setExportConfirmOpen(true);
+      return;
+    }
+    void runExport();
+  };
+
+  const handlePickBackupFile = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const file = event.target.files?.[0] ?? null;
     setBackupImportResult(null);
     setBackupError(null);
-    setPendingBackupFile(file);
-    // 允许连续选同一份文件
-    if (backupFileInputRef.current) backupFileInputRef.current.value = "";
+    try {
+      if (!file) return;
+      const parsed: unknown = JSON.parse(await file.text());
+      if (isBackupDocument(parsed)) {
+        setPendingImport({
+          kind: "backup",
+          name: file.name,
+          file,
+          sections: Array.isArray(parsed.sections)
+            ? (parsed.sections as string[])
+            : inferBackupSections(parsed),
+        });
+      } else if (isSettingsExportPayload(parsed)) {
+        // 兼容旧版「设置备份」文件：仍按设置导入
+        setPendingImport({
+          kind: "settings",
+          name: file.name,
+          version: parsed.version,
+          settings: parsed.settings as Record<string, string>,
+        });
+      } else {
+        setBackupError(t("data_control.backup_invalid_file"));
+      }
+    } catch {
+      setBackupError(t("data_control.backup_invalid_file"));
+    } finally {
+      if (backupFileInputRef.current) backupFileInputRef.current.value = "";
+    }
   };
 
   const handleConfirmImportBackup = async () => {
-    if (!pendingBackupFile) return;
+    if (!pendingImport) return;
     setIsImportingBackup(true);
-
+    setBackupError(null);
     try {
-      const result = await importFullBackup(pendingBackupFile);
-      setBackupImportResult(result);
-      setPendingBackupFile(null);
-      // 整库变了：文件夹 / 订阅 / 未读数全部重新取数
+      if (pendingImport.kind === "settings") {
+        const result = await importSettings({
+          version: pendingImport.version,
+          settings: pendingImport.settings,
+        });
+        setBackupImportResult({
+          foldersCreated: 0,
+          foldersSkipped: 0,
+          feedsCreated: 0,
+          feedsSkipped: 0,
+          settingsApplied: result.imported,
+          pluginsApplied: 0,
+          mcpServersCreated: 0,
+          mcpServersSkipped: 0,
+        });
+        await pullSettingsFromServer();
+      } else {
+        const result = await importFullBackup(pendingImport.file);
+        setBackupImportResult(result);
+      }
+      setPendingImport(null);
       await queryClient.invalidateQueries();
     } catch (err) {
       setBackupError(
@@ -294,7 +310,7 @@ export function DataControl() {
           ? err.message
           : t("data_control.import_full_backup_failed"),
       );
-      setPendingBackupFile(null);
+      setPendingImport(null);
     } finally {
       setIsImportingBackup(false);
     }
@@ -531,212 +547,227 @@ export function DataControl() {
         </div>
       </SectionCard>
 
-      {/* 设置备份：导出 / 导入整份设置（21 批） */}
+      {/* 备份与恢复：设置备份 + 全量备份合并，多选分区（含可选敏感凭证） */}
       <SectionCard
         icon={<Archive className="size-4" />}
-        title={t("data_control.settings_backup")}
+        title={t("data_control.backup_title")}
+        description={t("data_control.backup_description")}
       >
-        <div className="divide-y divide-border/50">
-          <SettingRow
-            label={t("data_control.export_settings")}
-            hint={t("data_control.export_settings_description")}
-          >
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              isDisabled={isExportingSettings}
-              onPress={() => void handleExportSettings()}
-            >
-              {t("data_control.export")}
-            </Button>
-          </SettingRow>
-
-          <SettingRow
-            label={t("data_control.import_settings")}
-            hint={t("data_control.import_settings_description")}
-          >
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              isDisabled={isImportingSettings}
-              onPress={() => settingsFileInputRef.current?.click()}
-            >
-              {t("data_control.import_settings")}
-            </Button>
-            <input
-              ref={settingsFileInputRef}
-              type="file"
-              accept="application/json,.json"
-              className="hidden"
-              onChange={(event) => void handlePickSettingsFile(event)}
-            />
-          </SettingRow>
-        </div>
-
-        {(settingsImportCount !== null || settingsError) && (
-          <div className="space-y-2 px-1 pb-2 pt-1">
-            {settingsImportCount !== null && (
-              <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-200">
-                {t("data_control.import_settings_success", {
-                  count: settingsImportCount,
-                })}
-              </div>
-            )}
-            {settingsError && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950">
-                <div className="font-medium text-red-800 dark:text-red-200">
-                  {t("data_control.import_settings_failed")}
-                </div>
-                <div className="mt-1 break-all text-red-700 dark:text-red-300">
-                  {settingsError}
-                </div>
+        <div className="space-y-3">
+          <div className="flex flex-col gap-1.5">
+            <div className="text-sm font-medium">
+              {t("data_control.backup_sections")}
+            </div>
+            <Dropdown>
+              <Dropdown.Trigger>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full justify-between sm:w-64"
+                >
+                  <span className="truncate">
+                    {t("data_control.backup_selected", {
+                      count: selectedSections.size,
+                    })}
+                  </span>
+                  <ChevronDown className="size-4 shrink-0 text-muted" />
+                </Button>
+              </Dropdown.Trigger>
+              <Dropdown.Popover>
+                <Dropdown.Menu
+                  selectionMode="multiple"
+                  selectedKeys={selectedSections}
+                  onSelectionChange={(keys) => {
+                    setSelectedSections(
+                      keys === "all"
+                        ? new Set<BackupSection>(BACKUP_SECTION_ORDER)
+                        : new Set<BackupSection>(
+                            Array.from(keys) as unknown as BackupSection[],
+                          ),
+                    );
+                  }}
+                >
+                  {BACKUP_SECTION_ORDER.map((section) => (
+                    <Dropdown.Item
+                      key={section}
+                      id={section}
+                      textValue={t(`data_control.backup_section_${section}`)}
+                    >
+                      <div className="flex flex-col">
+                        <Label>
+                          {t(`data_control.backup_section_${section}`)}
+                        </Label>
+                        <Description>
+                          {t(`data_control.backup_section_${section}_desc`)}
+                        </Description>
+                      </div>
+                      <Dropdown.ItemIndicator className="ms-auto" />
+                    </Dropdown.Item>
+                  ))}
+                </Dropdown.Menu>
+              </Dropdown.Popover>
+            </Dropdown>
+            {includeCredentials && (
+              <div className="text-xs text-warning">
+                {t("data_control.backup_credentials_warning")}
               </div>
             )}
           </div>
-        )}
 
-        {/* 导入确认：覆盖设置不可撤销，必须问一句 */}
+          <div className="divide-y divide-border/50">
+            <SettingRow
+              label={t("data_control.backup_export")}
+              hint={t("data_control.backup_export_desc")}
+            >
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                isDisabled={isExportingBackup || selectedSections.size === 0}
+                onPress={handleExportBackup}
+              >
+                <Download className="size-3.5" />
+                {t("data_control.export")}
+              </Button>
+            </SettingRow>
+
+            <SettingRow
+              label={t("data_control.backup_import")}
+              hint={t("data_control.backup_import_desc")}
+            >
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                isDisabled={isImportingBackup}
+                onPress={() => backupFileInputRef.current?.click()}
+              >
+                <Upload className="size-3.5" />
+                {t("data_control.backup_import")}
+              </Button>
+              <input
+                ref={backupFileInputRef}
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={handlePickBackupFile}
+              />
+            </SettingRow>
+          </div>
+
+          {(backupImportResult !== null || backupError) && (
+            <div className="space-y-2">
+              {backupImportResult !== null && (
+                <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-200">
+                  {t("data_control.import_full_backup_success", {
+                    folders: backupImportResult.foldersCreated,
+                    feeds: backupImportResult.feedsCreated,
+                    settings: backupImportResult.settingsApplied,
+                  })}
+                </div>
+              )}
+              {backupError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950">
+                  <div className="font-medium text-red-800 dark:text-red-200">
+                    {t("data_control.backup_import_failed")}
+                  </div>
+                  <div className="mt-1 break-all text-red-700 dark:text-red-300">
+                    {backupError}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* 导出确认：勾了敏感凭证 → 明文导出，强提醒 */}
         <AlertDialog>
           <Button className="hidden" aria-hidden />
           <AlertDialog.Backdrop
-            isOpen={pendingSettingsFile !== null}
-            onOpenChange={(open) => !open && setPendingSettingsFile(null)}
+            isOpen={exportConfirmOpen}
+            onOpenChange={(open) => !open && setExportConfirmOpen(false)}
           >
             <AlertDialog.Container>
               <AlertDialog.Dialog className="max-w-lg">
                 <AlertDialog.Header>
                   <AlertDialog.Heading>
-                    {t("data_control.import_settings_confirm_title")}
+                    {t("data_control.backup_export_confirm_title")}
                   </AlertDialog.Heading>
                 </AlertDialog.Header>
                 <AlertDialog.Body>
                   <div className="text-sm text-muted-foreground">
-                    {t("data_control.import_settings_confirm_body", {
-                      count: pendingSettingsFile
-                        ? Object.keys(pendingSettingsFile.payload.settings)
-                            .length
-                        : 0,
-                    })}
+                    {t("data_control.backup_export_confirm_body")}
                   </div>
-                  {pendingSettingsFile && (
-                    <div className="mt-2 break-all text-xs text-muted-foreground">
-                      {pendingSettingsFile.name}
-                    </div>
-                  )}
                 </AlertDialog.Body>
                 <AlertDialog.Footer>
                   <Button
                     size="sm"
                     variant="ghost"
-                    onPress={() => setPendingSettingsFile(null)}
+                    onPress={() => setExportConfirmOpen(false)}
                   >
                     {t("actions.cancel")}
                   </Button>
                   <Button
                     size="sm"
-                    isDisabled={isImportingSettings}
-                    onPress={() => void handleConfirmImportSettings()}
+                    variant="danger"
+                    isDisabled={isExportingBackup}
+                    onPress={() => void runExport()}
                   >
-                    {t("data_control.import_settings_confirm")}
+                    {t("data_control.backup_export_confirm")}
                   </Button>
                 </AlertDialog.Footer>
               </AlertDialog.Dialog>
             </AlertDialog.Container>
           </AlertDialog.Backdrop>
         </AlertDialog>
-      </SectionCard>
 
-      {/* 全量备份：整库（文件夹层级+类型、全部订阅、非敏感设置、插件、MCP 连接） */}
-      <SectionCard
-        icon={<Archive className="size-4" />}
-        title={t("data_control.full_backup")}
-      >
-        <div className="divide-y divide-border/50">
-          <SettingRow
-            label={t("data_control.export_full_backup")}
-            hint={t("data_control.export_full_backup_description")}
-          >
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              isDisabled={isExportingBackup}
-              onPress={() => void handleExportBackup()}
-            >
-              {t("data_control.export")}
-            </Button>
-          </SettingRow>
-
-          <SettingRow
-            label={t("data_control.import_full_backup")}
-            hint={t("data_control.import_full_backup_description")}
-          >
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              isDisabled={isImportingBackup}
-              onPress={() => backupFileInputRef.current?.click()}
-            >
-              {t("data_control.import_full_backup")}
-            </Button>
-            <input
-              ref={backupFileInputRef}
-              type="file"
-              accept="application/json,.json"
-              className="hidden"
-              onChange={handlePickBackupFile}
-            />
-          </SettingRow>
-        </div>
-
-        {(backupImportResult !== null || backupError) && (
-          <div className="space-y-2 px-1 pb-2 pt-1">
-            {backupImportResult !== null && (
-              <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-200">
-                {t("data_control.import_full_backup_success", {
-                  folders: backupImportResult.foldersCreated,
-                  feeds: backupImportResult.feedsCreated,
-                  settings: backupImportResult.settingsApplied,
-                })}
-              </div>
-            )}
-            {backupError && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950">
-                <div className="font-medium text-red-800 dark:text-red-200">
-                  {t("data_control.import_full_backup_failed")}
-                </div>
-                <div className="mt-1 break-all text-red-700 dark:text-red-300">
-                  {backupError}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 导入确认：会向库里合并文件夹/订阅/配置，必须问一句 */}
+        {/* 导入预览：按文件实际包含的分区恢复 */}
         <AlertDialog>
           <Button className="hidden" aria-hidden />
           <AlertDialog.Backdrop
-            isOpen={pendingBackupFile !== null}
-            onOpenChange={(open) => !open && setPendingBackupFile(null)}
+            isOpen={pendingImport !== null}
+            onOpenChange={(open) => !open && setPendingImport(null)}
           >
             <AlertDialog.Container>
               <AlertDialog.Dialog className="max-w-lg">
                 <AlertDialog.Header>
                   <AlertDialog.Heading>
-                    {t("data_control.import_full_backup_confirm_title")}
+                    {t("data_control.backup_import_confirm_title")}
                   </AlertDialog.Heading>
                 </AlertDialog.Header>
                 <AlertDialog.Body>
                   <div className="text-sm text-muted-foreground">
-                    {t("data_control.import_full_backup_confirm_body")}
+                    {t("data_control.backup_import_confirm_body")}
                   </div>
-                  {pendingBackupFile && (
-                    <div className="mt-2 break-all text-xs text-muted-foreground">
-                      {pendingBackupFile.name}
+                  {pendingImport && (
+                    <div className="mt-3 space-y-1.5 rounded-lg border border-border/60 p-3 text-sm">
+                      <div className="break-all text-xs text-muted-foreground">
+                        {pendingImport.name}
+                      </div>
+                      {pendingImport.kind === "settings" ? (
+                        <div className="font-medium">
+                          {t("data_control.backup_section_settings")} ·{" "}
+                          {t("data_control.backup_settings_count", {
+                            count: Object.keys(pendingImport.settings).length,
+                          })}
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                          {pendingImport.sections.length === 0 && (
+                            <span className="text-muted-foreground">
+                              {t("data_control.backup_sections_empty")}
+                            </span>
+                          )}
+                          {pendingImport.sections.map((section) => (
+                            <span
+                              key={section}
+                              className="rounded-full bg-secondary px-2 py-0.5 text-xs"
+                            >
+                              {t(`data_control.backup_section_${section}`)}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </AlertDialog.Body>
@@ -744,7 +775,7 @@ export function DataControl() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    onPress={() => setPendingBackupFile(null)}
+                    onPress={() => setPendingImport(null)}
                   >
                     {t("actions.cancel")}
                   </Button>
@@ -753,7 +784,7 @@ export function DataControl() {
                     isDisabled={isImportingBackup}
                     onPress={() => void handleConfirmImportBackup()}
                   >
-                    {t("data_control.import_full_backup_confirm")}
+                    {t("data_control.backup_import_confirm")}
                   </Button>
                 </AlertDialog.Footer>
               </AlertDialog.Dialog>

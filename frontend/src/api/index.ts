@@ -1641,18 +1641,34 @@ export interface BackupImportResult {
   mcpServersSkipped: number;
 }
 
+/** 备份可勾选的分区。 */
+export type BackupSection =
+  | "subscriptions"
+  | "settings"
+  | "credentials"
+  | "plugins"
+  | "mcp";
+
 /**
- * 导出整库备份 JSON（文件夹层级+类型、全部订阅、非敏感设置、插件、MCP 连接）。
+ * 导出备份 JSON。sections 决定包含哪些分区；默认订阅+设置+插件+MCP，不含敏感凭证。
  * 直接下载原始 Blob —— 不做 JSON.parse，避免 int64 ID 在 JS number 精度下被改写。
  */
-export async function exportFullBackup(): Promise<void> {
+export async function exportFullBackup(
+  sections: BackupSection[] = ["subscriptions", "settings", "plugins", "mcp"],
+): Promise<void> {
   const headers: HeadersInit = {};
   const token = getAuthToken();
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/backup/export`, { headers });
+  const wanted = new Set<BackupSection>(sections);
+  const query = new URLSearchParams();
+  for (const section of ["subscriptions", "settings", "credentials", "plugins", "mcp"] as const) {
+    query.set(section, wanted.has(section) ? "true" : "false");
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/backup/export?${query.toString()}`, { headers });
   if (!response.ok) {
     throw new ApiError("Export failed", response.status);
   }
