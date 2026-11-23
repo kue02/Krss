@@ -21,9 +21,33 @@ const (
 	backupVersion = 1
 )
 
+// 备份分区标识：前端多选下拉的取值，也是文件里 sections 字段的值。
+const (
+	BackupSectionSubscriptions = "subscriptions" // 文件夹层级 + 订阅
+	BackupSectionSettings      = "settings"      // 非敏感应用设置
+	BackupSectionCredentials   = "credentials"   // 敏感凭证（AI Key / 代理密码 / 插件密钥 / MCP 凭证）
+	BackupSectionPlugins       = "plugins"       // 插件启停状态
+	BackupSectionMCP           = "mcp"           // MCP 连接
+)
+
+// BackupExportOptions 决定导出哪些分区。Credentials 只影响设置里的敏感键与 MCP 凭证。
+type BackupExportOptions struct {
+	Subscriptions bool `json:"subscriptions"`
+	Settings      bool `json:"settings"`
+	Credentials   bool `json:"credentials"`
+	Plugins       bool `json:"plugins"`
+	MCP           bool `json:"mcp"`
+}
+
+// DefaultBackupExportOptions 默认导出全部分区，但**不含**敏感凭证。
+func DefaultBackupExportOptions() BackupExportOptions {
+	return BackupExportOptions{Subscriptions: true, Settings: true, Plugins: true, MCP: true}
+}
+
 // BackupService 整库备份：导出为一份 JSON，能把文件夹层级 + 订阅 + 关键配置重建回来。
 type BackupService interface {
 	Export(ctx context.Context) ([]byte, error)
+	ExportWithOptions(ctx context.Context, opts BackupExportOptions) ([]byte, error)
 	Import(ctx context.Context, reader io.Reader) (BackupImportResult, error)
 }
 
@@ -40,6 +64,8 @@ type BackupDocument struct {
 	Settings   map[string]string `json:"settings"`
 	Plugins    []BackupPlugin    `json:"plugins"`
 	MCPServers []BackupMCPServer `json:"mcpServers"`
+	// Sections 记录本文件实际包含的分区，导入端据此预览与恢复。
+	Sections []string `json:"sections"`
 	// Excluded 记录本备份**没有**包含的内容与原因，导入时据此提醒用户。
 	Excluded BackupExclusions `json:"excluded"`
 }
@@ -88,6 +114,16 @@ type BackupMCPServer struct {
 	FetchTimeoutSeconds    *int     `json:"fetchTimeoutSeconds,omitempty"`
 	FetchConcurrency       *int     `json:"fetchConcurrency,omitempty"`
 	RefreshIntervalMinutes *int     `json:"refreshIntervalMinutes,omitempty"`
+	// 以下凭证仅在「敏感凭证」勾选时出现；否则为空。
+	Headers           map[string]string `json:"headers,omitempty"`
+	OAuthClientID     string            `json:"oauthClientId,omitempty"`
+	OAuthClientSecret string            `json:"oauthClientSecret,omitempty"`
+	OAuthAccessToken  string            `json:"oauthAccessToken,omitempty"`
+	OAuthRefreshToken string            `json:"oauthRefreshToken,omitempty"`
+	OAuthTokenType    string            `json:"oauthTokenType,omitempty"`
+	OAuthScope        string            `json:"oauthScope,omitempty"`
+	OAuthAuthServer   string            `json:"oauthAuthServer,omitempty"`
+	OAuthExpiresAt    *time.Time        `json:"oauthExpiresAt,omitempty"`
 }
 
 type BackupExclusions struct {
@@ -133,51 +169,117 @@ func NewBackupService(
 	}
 }
 
+// Export 导出默认备份（全部分区，但不含敏感凭证）。
 func (s *backupService) Export(ctx context.Context) ([]byte, error) {
-	folders, err := s.folders.List(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("list folders: %w", err)
-	}
-	feeds, err := s.feeds.List(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("list feeds: %w", err)
+	return s.ExportWithOptions(ctx, DefaultBackupExportOptions())
+}
+
+// ExportWithOptions 按勾选的分区导出。Credentials 决定是否带上敏感设置与 MCP 凭证。
+func (s *backupService) ExportWithOptions(ctx context.Context, opts BackupExportOptions) ([]byte, error) {
+	doc := BackupDocument{
+		Format:     backupFormat,
+		Version:    backupVersion,
+		ExportedAt: time.Now().UTC(),
+		Folders:    []BackupFolder{},
+		Feeds:      []BackupFeed{},
+		Settings:   map[string]string{},
+		Plugins:    []BackupPlugin{},
+		MCPServers: []BackupMCPServer{},
+		Sections:   []string{},
+		Excluded: BackupExclusions{
+			Tables: []string{"entries", "entry_ai_judgements", "ai_summaries", "ai_translations", "ai_list_translations", "ai_summary_status", "ai_translation_status", "filter_matches", "filters", "plugin_data", "domain_rate_limits"},
+			Note:   "不含文章正文与 AI 缓存（可重新抓取生成）；不含筛选规则（引用会被重建的订阅/文件夹 ID）；不含插件 KV 数据（无全量枚举接口，可由插件重建）。登录密码哈希与 JWT 密钥始终不导出。",
+		},
 	}
 
-	settings := map[string]string{}
-	var excludedSettings []string
-	if s.settings != nil {
+	if opts.Subscriptions {
+		folders, err := s.folders.List(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("list folders: %w", err)
+		}
+		for _, f := range folders {
+			doc.Folders = append(doc.Folders, BackupFolder{
+				ID:          f.ID,
+				Name:        f.Name,
+				ParentID:    f.ParentID,
+				Type:        f.Type,
+				ProxyMode:   f.ProxyMode,
+				ProxyConfig: sanitizeProxyConfig(f.ProxyConfig),
+			})
+		}
+		feeds, err := s.feeds.List(ctx, nil)
+		if err != nil {
+			return nil, fmt.Errorf("list feeds: %w", err)
+		}
+		for _, f := range feeds {
+			doc.Feeds = append(doc.Feeds, BackupFeed{
+				ID:                    f.ID,
+				FolderID:              f.FolderID,
+				Title:                 f.Title,
+				URL:                   f.URL,
+				SiteURL:               f.SiteURL,
+				Description:           f.Description,
+				SummaryPromptReminder: f.SummaryPromptReminder,
+				Type:                  f.Type,
+				SourceType:            f.SourceType,
+				MCPConfig:             f.MCPConfig,
+				AutoTranslate:         f.AutoTranslate,
+				AutoSummary:           f.AutoSummary,
+				ReaderMode:            f.ReaderMode,
+				ProxyMode:             f.ProxyMode,
+				ProxyConfig:           sanitizeProxyConfig(f.ProxyConfig),
+			})
+		}
+		doc.Sections = append(doc.Sections, BackupSectionSubscriptions)
+	}
+
+	if (opts.Settings || opts.Credentials) && s.settings != nil {
 		all, err := s.settings.GetByPrefix(ctx, "")
 		if err != nil {
 			return nil, fmt.Errorf("list settings: %w", err)
 		}
 		for _, item := range all {
-			if isExcludedSettingKey(item.Key) {
-				excludedSettings = append(excludedSettings, item.Key)
-				continue
+			switch {
+			case isNeverExportSettingKey(item.Key):
+				doc.Excluded.Settings = append(doc.Excluded.Settings, item.Key)
+			case isSensitiveSettingKey(item.Key):
+				if opts.Credentials {
+					doc.Settings[item.Key] = item.Value
+				} else {
+					doc.Excluded.Settings = append(doc.Excluded.Settings, item.Key)
+				}
+			default:
+				if opts.Settings {
+					doc.Settings[item.Key] = item.Value
+				}
 			}
-			settings[item.Key] = item.Value
+		}
+		if opts.Settings {
+			doc.Sections = append(doc.Sections, BackupSectionSettings)
+		}
+		if opts.Credentials {
+			doc.Sections = append(doc.Sections, BackupSectionCredentials)
 		}
 	}
 
-	var plugins []BackupPlugin
-	if s.plugins != nil {
+	if opts.Plugins && s.plugins != nil {
 		states, err := s.plugins.List(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("list plugins: %w", err)
 		}
 		for _, p := range states {
-			plugins = append(plugins, BackupPlugin{ID: p.ID, Enabled: p.Enabled})
+			doc.Plugins = append(doc.Plugins, BackupPlugin{ID: p.ID, Enabled: p.Enabled})
 		}
+		doc.Sections = append(doc.Sections, BackupSectionPlugins)
 	}
 
-	var mcpServers []BackupMCPServer
-	if s.mcpServers != nil {
+	if opts.MCP && s.mcpServers != nil {
 		servers, err := s.mcpServers.List(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("list mcp servers: %w", err)
 		}
 		for _, srv := range servers {
-			mcpServers = append(mcpServers, BackupMCPServer{
+			item := BackupMCPServer{
 				Name:                   srv.Name,
 				Transport:              srv.Transport,
 				URL:                    srv.URL,
@@ -187,64 +289,30 @@ func (s *backupService) Export(ctx context.Context) ([]byte, error) {
 				FetchTimeoutSeconds:    srv.FetchTimeoutSeconds,
 				FetchConcurrency:       srv.FetchConcurrency,
 				RefreshIntervalMinutes: srv.RefreshIntervalMinutes,
-			})
+			}
+			if opts.Credentials {
+				item.Headers = srv.Headers
+				item.OAuthClientID = srv.OAuthClientID
+				item.OAuthClientSecret = srv.OAuthClientSecret
+				item.OAuthAccessToken = srv.OAuthAccessToken
+				item.OAuthRefreshToken = srv.OAuthRefreshToken
+				item.OAuthTokenType = srv.OAuthTokenType
+				item.OAuthScope = srv.OAuthScope
+				item.OAuthAuthServer = srv.OAuthAuthServer
+				item.OAuthExpiresAt = srv.OAuthExpiresAt
+			}
+			doc.MCPServers = append(doc.MCPServers, item)
 		}
-	}
-
-	doc := BackupDocument{
-		Format:     backupFormat,
-		Version:    backupVersion,
-		ExportedAt: time.Now().UTC(),
-		Folders:    make([]BackupFolder, 0, len(folders)),
-		Feeds:      make([]BackupFeed, 0, len(feeds)),
-		Settings:   settings,
-		Plugins:    plugins,
-		MCPServers: mcpServers,
-		Excluded: BackupExclusions{
-			Settings: append([]string(nil), excludedSettingKeys()...),
-			Tables:   []string{"entries", "entry_ai_judgements", "ai_summaries", "ai_translations", "ai_list_translations", "ai_summary_status", "ai_translation_status", "filter_matches", "filters", "plugin_data", "domain_rate_limits"},
-			Note:     "不含文章正文与 AI 缓存（可重新抓取生成）；不含筛选规则（引用会被重建的订阅/文件夹 ID）；不含插件 KV 数据（无全量枚举接口，可由插件重建）；凭证类设置与 MCP Headers/OAuth token 出于安全不导出。",
-		},
-	}
-
-	for _, f := range folders {
-		doc.Folders = append(doc.Folders, BackupFolder{
-			ID:          f.ID,
-			Name:        f.Name,
-			ParentID:    f.ParentID,
-			Type:        f.Type,
-			ProxyMode:   f.ProxyMode,
-			ProxyConfig: sanitizeProxyConfig(f.ProxyConfig),
-		})
-	}
-	for _, f := range feeds {
-		doc.Feeds = append(doc.Feeds, BackupFeed{
-			ID:                    f.ID,
-			FolderID:              f.FolderID,
-			Title:                 f.Title,
-			URL:                   f.URL,
-			SiteURL:               f.SiteURL,
-			Description:           f.Description,
-			SummaryPromptReminder: f.SummaryPromptReminder,
-			Type:                  f.Type,
-			SourceType:            f.SourceType,
-			MCPConfig:             f.MCPConfig,
-			AutoTranslate:         f.AutoTranslate,
-			AutoSummary:           f.AutoSummary,
-			ReaderMode:            f.ReaderMode,
-			ProxyMode:             f.ProxyMode,
-			ProxyConfig:           sanitizeProxyConfig(f.ProxyConfig),
-		})
+		doc.Sections = append(doc.Sections, BackupSectionMCP)
 	}
 
 	payload, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("marshal backup: %w", err)
 	}
-	logger.Info("backup export completed", "module", "service", "action", "export", "resource", "backup", "result", "ok", "folders", len(doc.Folders), "feeds", len(doc.Feeds), "settings", len(doc.Settings), "plugins", len(doc.Plugins), "mcp_servers", len(doc.MCPServers))
+	logger.Info("backup export completed", "module", "service", "action", "export", "resource", "backup", "result", "ok", "sections", doc.Sections, "folders", len(doc.Folders), "feeds", len(doc.Feeds), "settings", len(doc.Settings), "plugins", len(doc.Plugins), "mcp_servers", len(doc.MCPServers))
 	return payload, nil
 }
-
 func (s *backupService) Import(ctx context.Context, reader io.Reader) (BackupImportResult, error) {
 	var result BackupImportResult
 	data, err := io.ReadAll(reader)
@@ -274,7 +342,7 @@ func (s *backupService) Import(ctx context.Context, reader io.Reader) (BackupImp
 	if s.settings != nil && len(doc.Settings) > 0 {
 		toSet := make(map[string]string, len(doc.Settings))
 		for k, v := range doc.Settings {
-			if isExcludedSettingKey(k) {
+			if isNeverExportSettingKey(k) {
 				continue
 			}
 			toSet[k] = v
@@ -474,12 +542,21 @@ func (s *backupService) importMCPServers(ctx context.Context, servers []BackupMC
 			Transport:              bm.Transport,
 			URL:                    bm.URL,
 			AuthType:               bm.AuthType,
-			Enabled:                false, // 缺 Headers/OAuth，默认禁用，待用户重新授权
+			Enabled:                false, // 导入后默认禁用，待用户测试再启用
 			Purposes:               bm.Purposes,
 			UseGlobalFetch:         bm.UseGlobalFetch,
 			FetchTimeoutSeconds:    bm.FetchTimeoutSeconds,
 			FetchConcurrency:       bm.FetchConcurrency,
 			RefreshIntervalMinutes: bm.RefreshIntervalMinutes,
+			Headers:                bm.Headers,
+			OAuthClientID:          bm.OAuthClientID,
+			OAuthClientSecret:      bm.OAuthClientSecret,
+			OAuthAccessToken:       bm.OAuthAccessToken,
+			OAuthRefreshToken:      bm.OAuthRefreshToken,
+			OAuthTokenType:         bm.OAuthTokenType,
+			OAuthScope:             bm.OAuthScope,
+			OAuthAuthServer:        bm.OAuthAuthServer,
+			OAuthExpiresAt:         bm.OAuthExpiresAt,
 		}
 		if _, err := s.mcpServers.Create(ctx, server); err != nil {
 			return fmt.Errorf("create mcp server %s: %w", bm.Name, err)
@@ -493,6 +570,31 @@ func (s *backupService) importMCPServers(ctx context.Context, servers []BackupMC
 // isExcludedSettingKey 复用设置导出的凭证排除清单（含 "anubis.cookie.*" 通配前缀）。
 func isExcludedSettingKey(key string) bool {
 	for _, pattern := range excludedSettingKeys() {
+		if strings.HasSuffix(pattern, "*") {
+			if strings.HasPrefix(key, strings.TrimSuffix(pattern, "*")) {
+				return true
+			}
+			continue
+		}
+		if key == pattern {
+			return true
+		}
+	}
+	return false
+}
+
+// isNeverExportSettingKey 账号安全类键：任何情况下都不导出/导入。
+func isNeverExportSettingKey(key string) bool {
+	return matchSettingPatterns(key, neverExportSettingKeys())
+}
+
+// isSensitiveSettingKey 敏感凭证键：默认排除，仅在显式勾选「敏感凭证」时导出。
+func isSensitiveSettingKey(key string) bool {
+	return matchSettingPatterns(key, sensitiveSettingKeys())
+}
+
+func matchSettingPatterns(key string, patterns []string) bool {
+	for _, pattern := range patterns {
 		if strings.HasSuffix(pattern, "*") {
 			if strings.HasPrefix(key, strings.TrimSuffix(pattern, "*")) {
 				return true

@@ -57,6 +57,21 @@ func (mr *MockBackupServiceMockRecorder) Export(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Export", reflect.TypeOf((*MockBackupService)(nil).Export), ctx)
 }
 
+// ExportWithOptions mocks base method.
+func (m *MockBackupService) ExportWithOptions(ctx context.Context, opts service.BackupExportOptions) ([]byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExportWithOptions", ctx, opts)
+	ret0, _ := ret[0].([]byte)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ExportWithOptions indicates an expected call of ExportWithOptions.
+func (mr *MockBackupServiceMockRecorder) ExportWithOptions(ctx, opts any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExportWithOptions", reflect.TypeOf((*MockBackupService)(nil).ExportWithOptions), ctx, opts)
+}
+
 // Import mocks base method.
 func (m *MockBackupService) Import(ctx context.Context, reader io.Reader) (service.BackupImportResult, error) {
 	m.ctrl.T.Helper()

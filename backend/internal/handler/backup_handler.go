@@ -3,6 +3,7 @@ package handler
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -37,7 +38,14 @@ func (h *BackupHandler) RegisterRoutes(g *echo.Group) {
 // @Failure 500 {object} errorResponse
 // @Router /backup/export [get]
 func (h *BackupHandler) Export(c echo.Context) error {
-	payload, err := h.service.Export(c.Request().Context())
+	opts := service.BackupExportOptions{
+		Subscriptions: queryBoolDefault(c, "subscriptions", true),
+		Settings:      queryBoolDefault(c, "settings", true),
+		Credentials:   queryBoolDefault(c, "credentials", false),
+		Plugins:       queryBoolDefault(c, "plugins", true),
+		MCP:           queryBoolDefault(c, "mcp", true),
+	}
+	payload, err := h.service.ExportWithOptions(c.Request().Context(), opts)
 	if err != nil {
 		return writeServiceError(c, err)
 	}
@@ -64,4 +72,17 @@ func (h *BackupHandler) Import(c echo.Context) error {
 		return writeServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, result)
+}
+
+// queryBoolDefault 读取布尔查询参数；缺省或非法时返回 def。
+func queryBoolDefault(c echo.Context, name string, def bool) bool {
+	raw := c.QueryParam(name)
+	if raw == "" {
+		return def
+	}
+	v, err := strconv.ParseBool(raw)
+	if err != nil {
+		return def
+	}
+	return v
 }
