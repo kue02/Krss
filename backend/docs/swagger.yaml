@@ -2276,6 +2276,40 @@ paths:
       summary: Clear AI cache
       tags:
       - ai
+  /ai/summaries/{entryId}:
+    get:
+      description: Return the cached AI summary for an entry without triggering generation.
+        204 when not cached.
+      parameters:
+      - description: Entry ID
+        in: path
+        name: entryId
+        required: true
+        type: string
+      - description: Whether the summary is for readability content
+        in: query
+        name: isReadability
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Cached summary
+          schema:
+            $ref: '#/definitions/internal_handler.summarizeResponse'
+        "204":
+          description: No cached summary
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_handler.errorResponse'
+      summary: Get cached AI summary
+      tags:
+      - ai
   /ai/summarize:
     post:
       consumes:

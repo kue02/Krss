@@ -41,6 +41,56 @@ const docTemplate = `{
                 }
             }
         },
+        "/ai/summaries/{entryId}": {
+            "get": {
+                "description": "Return the cached AI summary for an entry without triggering generation. 204 when not cached.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ai"
+                ],
+                "summary": "Get cached AI summary",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Entry ID",
+                        "name": "entryId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Whether the summary is for readability content",
+                        "name": "isReadability",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Cached summary",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.summarizeResponse"
+                        }
+                    },
+                    "204": {
+                        "description": "No cached summary"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/ai/summarize": {
             "post": {
                 "description": "Generate an AI summary of the article content. Returns cached result if available, otherwise streams the response.",

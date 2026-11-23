@@ -36,6 +36,12 @@ import {
   MobileActionSheetItem,
 } from "@/components/mobile/MobileActionSheet";
 import { MobileReadingSettings } from "@/components/mobile/MobileReadingSettings";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { describeUsage } from "@/components/entry-list/machine-translated-badge";
 import type { Entry } from "@/types/api";
 
 interface EntryContentHeaderProps {
@@ -60,6 +66,10 @@ interface EntryContentHeaderProps {
   onToggleTranslation?: () => void;
   /** REQ3：翻译失败时的错误（有值则翻译按钮转红并显示原因）。 */
   translationError?: string | null;
+  /** 问题③：摘要实际使用的服务/提供商/模型，用于顶栏 Tooltip（与列表徽章同口径）。 */
+  summaryUsage?: { service?: string; provider?: string; model?: string } | null;
+  /** 问题③：翻译实际使用的服务/提供商/模型，用于顶栏 Tooltip（与列表徽章同口径）。 */
+  translationUsage?: { service?: string; provider?: string; model?: string } | null;
   isMobile?: boolean;
   onBack?: () => void;
   /**
@@ -130,6 +140,8 @@ export function EntryContentHeader({
   translationDisabled,
   onToggleTranslation,
   translationError,
+  summaryUsage,
+  translationUsage,
   isMobile,
   onBack,
   onClose,
@@ -406,6 +418,23 @@ export function EntryContentHeader({
   const translationTitle = translationFailed
     ? (translationError as string)
     : getTranslationButtonTitle(translationButtonState, t);
+  // 问题③：顶栏按钮的悬浮 Tooltip 文案 —— 与列表徽章同口径：
+  // 失败→错误原因；进行中→「翻译中/摘要翻译中」；完成→provider · model / service；
+  // 无元数据时退回到按钮原本的动作文案。
+  const summaryTooltip = summaryFailed
+    ? (summaryError as string)
+    : isLoadingSummary
+      ? t("entry.summary_translating")
+      : hasSummary
+        ? (describeUsage(summaryUsage ?? {}) ?? summaryTitle)
+        : t("entry.generate_summary");
+  const translationTooltip = translationFailed
+    ? (translationError as string)
+    : isTranslating
+      ? t("entry.translating")
+      : hasTranslation
+        ? (describeUsage(translationUsage ?? {}) ?? translationTitle)
+        : getTranslationButtonTitle(translationButtonState, t);
   const originalsiteTitle = isOriginalSiteActive
     ? t("entry.show_readable")
     : t("entry.original_site");
@@ -572,82 +601,84 @@ export function EntryContentHeader({
       case "summary":
         if (!onToggleSummary) return null;
         return (
-          <button
-            type="button"
-            onClick={onToggleSummary}
-            title={
-              summaryError && !isLoadingSummary
-                ? summaryError
-                : isLoadingSummary
-                  ? t("entry.cancel_summary")
-                  : hasSummary
-                    ? t("entry.hide_summary")
-                    : t("entry.generate_summary")
-            }
-            className={cn(
-              "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95",
-              summaryFailed
-                ? "bg-destructive/10 text-destructive hover:bg-destructive/20"
-                : hasSummary
-                  ? "bg-item-active text-foreground"
-                  : "text-muted-foreground hover:bg-item-hover hover:text-foreground",
-            )}
-          >
-            <span
-              className={cn(isLoadingSummary && "ai-icon-thinking-wrapper")}
-            >
-              <svg
-                className="size-5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                viewBox="0 0 24 24"
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={onToggleSummary}
+                aria-label={summaryTooltip}
+                className={cn(
+                  "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95",
+                  summaryFailed
+                    ? "bg-destructive/10 text-destructive hover:bg-destructive/20"
+                    : hasSummary
+                      ? "bg-item-active text-foreground"
+                      : "text-muted-foreground hover:bg-item-hover hover:text-foreground",
+                )}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-                />
-              </svg>
-            </span>
-          </button>
+                <span
+                  className={cn(isLoadingSummary && "ai-icon-thinking-wrapper")}
+                >
+                  <svg
+                    className="size-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                    />
+                  </svg>
+                </span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>{summaryTooltip}</TooltipContent>
+          </Tooltip>
         );
 
       case "translate":
         if (!onToggleTranslation) return null;
         return (
-          <button
-            type="button"
-            onClick={onToggleTranslation}
-            disabled={translationDisabled && !hasTranslation && !isTranslating}
-            title={
-              translationFailed
-                ? (translationError as string)
-                : getTranslationButtonTitle(translationButtonState, t)
-            }
-            className={cn(
-              "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95",
-              translationFailed
-                ? "bg-destructive/10 text-destructive hover:bg-destructive/20"
-                : getTranslationButtonClassName(translationButtonState),
-            )}
-          >
-            <span className={cn(isTranslating && "ai-icon-thinking-wrapper")}>
-              <svg
-                className="size-5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                viewBox="0 0 24 24"
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={onToggleTranslation}
+                disabled={
+                  translationDisabled && !hasTranslation && !isTranslating
+                }
+                aria-label={translationTooltip}
+                className={cn(
+                  "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95",
+                  translationFailed
+                    ? "bg-destructive/10 text-destructive hover:bg-destructive/20"
+                    : getTranslationButtonClassName(translationButtonState),
+                )}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"
-                />
-              </svg>
-            </span>
-          </button>
+                <span
+                  className={cn(isTranslating && "ai-icon-thinking-wrapper")}
+                >
+                  <svg
+                    className="size-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"
+                    />
+                  </svg>
+                </span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>{translationTooltip}</TooltipContent>
+          </Tooltip>
         );
 
       case "originalsite":

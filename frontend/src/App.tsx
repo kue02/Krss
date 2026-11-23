@@ -23,6 +23,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Sidebar } from "@/components/sidebar";
 import { AddFeedPage } from "@/components/add-feed";
 import { EntryList } from "@/components/entry-list";
+import {
+  selectionScrollKey,
+  entryListScrollPositions,
+} from "@/components/entry-list/scroll-key";
 import { PictureMasonry, Lightbox } from "@/components/picture-masonry";
 import { MobileTabBar } from "@/components/mobile/MobileTabBar";
 import {
@@ -332,12 +336,31 @@ function AuthenticatedApp() {
 
   // Mobile-aware selection handlers (all hooks must be before any conditional returns)
   // Use replace to avoid creating history entries for sidebar navigation
+
+  /**
+   * 5b（用户 2026-11-23）：Web 端点第一栏的**订阅 / 文件夹 / 视图入口**（含内容类型切换）时，
+   * 列表要回到顶部。EntryList 的滚动还原会按 `selection+contentType` 恢复旧位置，
+   * 所以先把目标列表位置清 0，再派发一次回顶，双保险。手机端走两段式（handleMobileTabSelect），
+   * 这里只在非移动端生效，不动手机行为。
+   */
+  const jumpToTopOnWeb = useCallback(
+    (key: string) => {
+      if (isMobile) return;
+      entryListScrollPositions.set(key, 0);
+      dispatchScrollToTop();
+    },
+    [isMobile],
+  );
+
   const handleSelectFeed = useCallback(
     (feedId: string) => {
+      jumpToTopOnWeb(
+        selectionScrollKey({ type: "feed", feedId }, contentType),
+      );
       closeSidebar();
       selectFeed(feedId, { replace: true });
     },
-    [selectFeed, closeSidebar],
+    [selectFeed, closeSidebar, jumpToTopOnWeb, contentType],
   );
 
   /**
@@ -378,10 +401,13 @@ function AuthenticatedApp() {
 
   const handleSelectFolder = useCallback(
     (folderId: string) => {
+      jumpToTopOnWeb(
+        selectionScrollKey({ type: "folder", folderId }, contentType),
+      );
       closeSidebar();
       selectFolder(folderId, { replace: true });
     },
-    [selectFolder, closeSidebar],
+    [selectFolder, closeSidebar, jumpToTopOnWeb, contentType],
   );
 
   /**
@@ -412,10 +438,13 @@ function AuthenticatedApp() {
 
   const handleSelectAll = useCallback(
     (type?: ContentType) => {
+      jumpToTopOnWeb(
+        selectionScrollKey({ type: "all" }, type ?? contentType),
+      );
       closeSidebar();
       selectAll(type, { replace: true });
     },
-    [selectAll, closeSidebar],
+    [selectAll, closeSidebar, jumpToTopOnWeb, contentType],
   );
 
   const handleMobileTabSelect = useCallback(

@@ -263,7 +263,7 @@ export function describeConditions(
       const negate = condition.negate ? "!" : "";
       const value = condition.value ? ` ${condition.value}` : "";
       const logic =
-        index === 0 ? "" : ` ${t(`automation.logic_${condition.logic ?? "and"}`)} `;
+        index === 0 ? "" : ` ${t(`automation.logic_${condition.logic ?? "or"}`)} `;
       return `${logic}${negate}${field} ${operator}${value}`;
     })
     .join("");

@@ -46,6 +46,7 @@ func TestHandler_RegisterRoutes(t *testing.T) {
 	routes := e.Routes()
 
 	assertRoute(t, routes, http.MethodPost, "/ai/summarize")
+	assertRoute(t, routes, http.MethodGet, "/ai/summaries/:entryId")
 	assertRoute(t, routes, http.MethodPost, "/ai/translate")
 	assertRoute(t, routes, http.MethodPost, "/ai/translate/batch")
 	assertRoute(t, routes, http.MethodPost, "/ai/translations/batch")

@@ -50,6 +50,7 @@ func NewAIHandler(service service.AIService) *AIHandler {
 
 func (h *AIHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/ai/summarize", h.Summarize)
+	g.GET("/ai/summaries/:entryId", h.GetCachedSummary)
 	g.POST("/ai/translate", h.Translate)
 	g.POST("/ai/translate/batch", h.TranslateBatch)
 	g.POST("/ai/translate/warm", h.WarmTranslate)
@@ -57,8 +58,49 @@ func (h *AIHandler) RegisterRoutes(g *echo.Group) {
 	g.DELETE("/ai/cache", h.ClearCache)
 }
 
-// WarmTranslate 预载专用：把译文算出来落缓存，**立刻**返回，不占客户端连接（50-1）。
+// GetCachedSummary 只读地取某条目已缓存的 AI 摘要（绝不触发生成）。
 //
+// 正文页退出再进入时，前端用它把「上次已经摘要过」的状态恢复成已选中，
+// 而不是显示成未摘要。没有缓存时返回 204，前端按「无摘要」处理。
+//
+// @Summary Get cached AI summary
+// @Description Return the cached AI summary for an entry without triggering generation. 204 when not cached.
+// @Tags ai
+// @Produce json
+// @Param entryId path string true "Entry ID"
+// @Param isReadability query bool false "Whether the summary is for readability content"
+// @Success 200 {object} summarizeResponse "Cached summary"
+// @Success 204 "No cached summary"
+// @Failure 400 {object} errorResponse
+// @Failure 500 {object} errorResponse
+// @Router /ai/summaries/{entryId} [get]
+func (h *AIHandler) GetCachedSummary(c echo.Context) error {
+	entryID, err := strconv.ParseInt(c.Param("entryId"), 10, 64)
+	if err != nil || entryID <= 0 {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid entry ID"})
+	}
+
+	isReadability := false
+	if raw := c.QueryParam("isReadability"); raw != "" {
+		parsed, parseErr := strconv.ParseBool(raw)
+		if parseErr != nil {
+			return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid isReadability"})
+		}
+		isReadability = parsed
+	}
+
+	cached, err := h.service.GetCachedSummary(c.Request().Context(), entryID, isReadability)
+	if err != nil {
+		logger.Warn("get cached summary failed", "module", "handler", "action", "request", "resource", "ai", "result", "failed", "entry_id", entryID, "error", err)
+		return c.JSON(http.StatusInternalServerError, errorResponse{Error: err.Error()})
+	}
+	if cached == nil || strings.TrimSpace(cached.Summary) == "" {
+		return c.NoContent(http.StatusNoContent)
+	}
+	return c.JSON(http.StatusOK, summarizeResponse{Summary: cached.Summary, Cached: true})
+}
+
+// WarmTranslate 预载专用：把译文算出来落缓存，**立刻**返回，不占客户端连接（50-1）。
 // 预载原先直接打流式接口，一条预载 = 一条长连接；浏览器同源 HTTP/1.1 只有 6 条并发，
 // 预载并发 3 + 正文 1 + 批次 1 就顶满，设置页和其他条目全被堵住（实测第 6 条时
 // /api/settings/ai 卡 45.6 秒）。这个接口把「算」和「等」拆开：客户端发起即结束。

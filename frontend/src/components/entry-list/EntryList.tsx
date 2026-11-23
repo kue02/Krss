@@ -1055,7 +1055,9 @@ export function EntryList({
     surface: scrollSurface,
     contentRootRef: containerRef,
     entries,
-    resetKey: `${scrollKey}\u0000${effectiveUnreadOnly}`,
+    // 保存筛选视图（activeViewId）切换时列表作用域不变、scrollKey 也不变，
+    // 必须把它并进 resetKey，让换视图也当成「换了个列表」重置锚点。
+    resetKey: `${scrollKey}\u0000${effectiveUnreadOnly}\u0000${activeViewId ?? ""}`,
     enabled: isActive,
     pausedRef: anchorStabilizePausedRef,
     // 有原生 anchoring 时 JS 不补：浏览器已经在同一帧补偿，JS 再补一次会重复/打架，
@@ -1071,7 +1073,11 @@ export function EntryList({
     enabled: scrollReadEnabled && isActive,
     unreadOnly: effectiveUnreadOnly,
     hasNextPage: Boolean(hasNextPage),
-    resetKey: `${scrollKey}\u0000${effectiveUnreadOnly}\u0000${scrollReadEnabled}`,
+    // 5a：保存筛选视图（activeViewId）切换不改变 selection/contentType/scrollKey，
+    // 之前 resetKey 不含它 ⇒ 切视图不触发 flush，滚动标掉的已读条目留在旧视图缓存里
+    // （叠加 QueryClient staleTime 30s 不重拉，切回来还在）。把 activeViewId 并入 resetKey，
+    // 切视图即 flush：把本段记的待摘 id 从 unreadOnly 缓存里摘掉，回来就看不到了。
+    resetKey: `${scrollKey}\u0000${effectiveUnreadOnly}\u0000${scrollReadEnabled}\u0000${activeViewId ?? ""}`,
     timing: scrollReadTimingByView?.[contentType] ?? "scrollPast",
     deferRemoval: scrollReadDeferRemoval !== false,
   });

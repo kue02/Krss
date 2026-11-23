@@ -115,7 +115,12 @@ export const useFilterEditorStore = create<FilterEditorStore>((set) => ({
         scopeIds: rule.scopeIds,
         contentTypes: rule.contentTypes,
         icon: rule.icon,
-        conditions: rule.conditions ?? [],
+        // 老规则缺 logic 时后端按 and 求值（见 filter_service.MatchConditions）；
+        // 读回来归一成显式 "and"，避免下方「缺省兜底 or」把老规则误显示成「或」。
+        conditions: (rule.conditions ?? []).map((condition) => ({
+          ...condition,
+          logic: condition.logic ?? "and",
+        })),
         actions: rule.actions ?? {},
       },
     }),
@@ -238,7 +243,8 @@ export function openFilterEditorForEntry(entry: Entry): void {
   const fragment = titleFragment(entry.title);
   if (fragment) {
     conditions.push({
-      logic: entry.author ? "or" : undefined,
+      // 默认连接词「或」：按此条建规则时，作者与标题片段之间是「或」的关系
+      logic: "or",
       field: "title",
       operator: "contains",
       value: fragment,
