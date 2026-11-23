@@ -444,6 +444,41 @@ describe("EntryList · 标准文章列表虚拟化", () => {
     expect(screen.getByTestId("mark-all-read-footer")).toBeTruthy();
   });
 
+  it("手机档「向下」合列：正文同样接在被点行后面、与列表共用文档滚动", async () => {
+    setUISetting("articleLayout", "inoreader");
+    setUISetting("articlePushDirection", "down");
+    const renderInlineContent = vi.fn(() => (
+      <div data-testid="inline-body">正文</div>
+    ));
+    render(
+      <EntryList
+        {...defaultProps}
+        isMobile
+        selectedEntryId="e-1"
+        renderInlineContent={renderInlineContent}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const viewport = screen.getByTestId("entry-list-viewport");
+    // 手机档本来就是文档滚动、不虚拟化；合列时正文照样插在被点行后面
+    expect(
+      viewport.querySelector('[data-virtual-list="true"]'),
+    ).toBeNull();
+    expect(rowIds()).toHaveLength(50);
+    expect(renderInlineContent).toHaveBeenCalled();
+    const pane = screen.getByTestId("inline-article-pane");
+    expect(pane.contains(screen.getByTestId("inline-body"))).toBe(true);
+    const row1 = viewport.querySelector('[data-entry-id="e-1"]') as HTMLElement;
+    expect(
+      row1.compareDocumentPosition(pane) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // 手机档同样把正文接在行间、不再让底部按钮让位
+    expect(screen.getByTestId("mark-all-read-footer")).toBeTruthy();
+  });
+
   it("文章「Inoreader列表」在手机档包一层左滑动作（与其它列表一致）", async () => {
     setUISetting("articleLayout", "inoreader");
     render(<EntryList {...defaultProps} isMobile />);

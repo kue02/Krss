@@ -701,6 +701,11 @@ export function EntryList({
     if (!inlineActive || !selectedEntryId) return;
     const container = containerRef.current;
     if (!container) return;
+    /* 手机端列表走文档滚动（container 只是个普通 div），所以用统一的 scroll surface
+       读写滚动位置；桌面仍是容器内滚动，同一套接口无差别。 */
+    const surface = scrollSurface;
+    const scrollHost: HTMLElement | Window =
+      surface.kind === "document" ? window : container;
 
     /* 把正文顶部对齐到滚动视口顶部（「点开自动吸顶」）。
        不能用 scrollIntoView：会连带把外层容器一起滚（三栏布局里外层不该动）。
@@ -714,26 +719,26 @@ export function EntryList({
       cancelled = true;
     };
     /* 用户一动手就交还滚动权：滚轮、触摸、键盘、拖滚动条、点滚动条轨道都算。
-       注意不能监听 scroll —— 下面每帧都在写 scrollTop，会被自己触发。 */
-    container.addEventListener("wheel", stop, { passive: true });
-    container.addEventListener("touchstart", stop, { passive: true });
-    container.addEventListener("pointerdown", stop);
-    container.addEventListener("keydown", stop);
+       注意不能监听 scroll —— 下面每帧都在写滚动位置，会被自己触发。 */
+    scrollHost.addEventListener("wheel", stop, { passive: true });
+    scrollHost.addEventListener("touchstart", stop, { passive: true });
+    scrollHost.addEventListener("pointerdown", stop);
+    scrollHost.addEventListener("keydown", stop);
 
     const offset = () => {
       const node = inlineContentRef.current;
       if (!node) return null;
-      return node.getBoundingClientRect().top - container.getBoundingClientRect().top;
+      return node.getBoundingClientRect().top - surface.getViewportRect().top;
     };
 
     const alignOnce = () => {
       const delta = offset();
       if (delta === null || Math.abs(delta) <= 2) return false;
-      const before = container.scrollTop;
-      container.scrollTop += delta;
+      const before = surface.getScrollTop();
+      surface.scrollBy(delta);
       /* 已经到底/到顶还差得远 = 这一屏放不下，再盯也不会推进，直接收手，
          免得 4 秒里一直和用户抢滚动（正文比视口高时就会这样）。 */
-      return Math.abs(container.scrollTop - before) > 1;
+      return Math.abs(surface.getScrollTop() - before) > 1;
     };
 
     let raf = 0;
@@ -741,10 +746,10 @@ export function EntryList({
       /* 减少动效：一次性对齐，不留逐帧修正 */
       alignOnce();
       return () => {
-        container.removeEventListener("wheel", stop);
-        container.removeEventListener("touchstart", stop);
-        container.removeEventListener("pointerdown", stop);
-        container.removeEventListener("keydown", stop);
+        scrollHost.removeEventListener("wheel", stop);
+        scrollHost.removeEventListener("touchstart", stop);
+        scrollHost.removeEventListener("pointerdown", stop);
+        scrollHost.removeEventListener("keydown", stop);
       };
     }
 
@@ -765,12 +770,12 @@ export function EntryList({
     return () => {
       cancelled = true;
       window.cancelAnimationFrame(raf);
-      container.removeEventListener("wheel", stop);
-      container.removeEventListener("touchstart", stop);
-      container.removeEventListener("pointerdown", stop);
-      container.removeEventListener("keydown", stop);
+      scrollHost.removeEventListener("wheel", stop);
+      scrollHost.removeEventListener("touchstart", stop);
+      scrollHost.removeEventListener("pointerdown", stop);
+      scrollHost.removeEventListener("keydown", stop);
     };
-  }, [inlineActive, selectedEntryId, reduceMotion]);
+  }, [inlineActive, selectedEntryId, reduceMotion, scrollSurface]);
 
   useEffect(() => {
     if (!inlineActive || !selectedEntryId) return;
