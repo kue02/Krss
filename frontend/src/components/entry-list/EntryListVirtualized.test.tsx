@@ -247,6 +247,7 @@ describe("EntryList · 标准文章列表虚拟化", () => {
     cleanup();
     restoreLayoutStubs();
     setUISetting("articleLayout", "list");
+    setUISetting("articlePushDirection", "right");
   });
 
   it("50 条时首屏只挂载可视区 + overscan（<=15 张），不再 50 卡全挂 DOM", async () => {
@@ -330,6 +331,68 @@ describe("EntryList · 标准文章列表虚拟化", () => {
     expect(ids.length).toBeLessThanOrEqual(15);
     // 行内是紧凑行（缩略图 + 标题），不是卡片
     expect(screen.getByText("Title e-1")).toBeTruthy();
+  });
+
+  it("文章「Inoreader列表」档（inoreader）走虚拟列表，行是来源图标+标题+右侧元信息", async () => {
+    setUISetting("articleLayout", "inoreader");
+    render(<EntryList {...defaultProps} />);
+    const viewport = screen.getByTestId("entry-list-viewport");
+    await act(async () => {
+      stubViewportScroll(viewport);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId("article-plain-list")).toBeTruthy();
+    expect(
+      viewport.querySelector('[data-virtual-list="true"]'),
+    ).not.toBeNull();
+
+    const ids = rowIds();
+    expect(ids[0]).toBe("e-1");
+    expect(ids.length).toBeLessThanOrEqual(15);
+    // 没有缩略图（64×64 那档是实验「缩略图列表」）
+    expect(viewport.querySelector(".size-16")).toBeNull();
+  });
+
+  it("「正文推入方向 = 向下」合列：正文接在列表末尾，选中后底部按钮让位", async () => {
+    setUISetting("articleLayout", "inoreader");
+    setUISetting("articlePushDirection", "down");
+    const renderInlineContent = vi.fn(() => (
+      <div data-testid="inline-body">正文</div>
+    ));
+    const { rerender } = render(
+      <EntryList
+        {...defaultProps}
+        renderInlineContent={renderInlineContent}
+      />,
+    );
+    const viewport = screen.getByTestId("entry-list-viewport");
+    await act(async () => {
+      stubViewportScroll(viewport);
+      await Promise.resolve();
+    });
+
+    // 未选中：pane 在树里但不可见，底部「全部标记为已读」还在
+    expect(screen.getByTestId("inline-article-pane")).toBeTruthy();
+    expect(screen.getByTestId("mark-all-read-footer")).toBeTruthy();
+
+    rerender(
+      <EntryList
+        {...defaultProps}
+        selectedEntryId="e-1"
+        renderInlineContent={renderInlineContent}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(renderInlineContent).toHaveBeenCalled();
+    const pane = screen.getByTestId("inline-article-pane");
+    expect(pane.className).not.toContain("hidden");
+    expect(pane.contains(screen.getByTestId("inline-body"))).toBe(true);
+    // 选中正文后这颗按钮会夹在列表与正文之间，让位
+    expect(screen.queryByTestId("mark-all-read-footer")).toBeNull();
   });
 
   it("文章 hover 档不虚拟化（悬停浮层认行的委托不受影响）", () => {

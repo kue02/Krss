@@ -56,33 +56,3 @@ export function ArticlePlainListRow({
     </button>
   );
 }
-
-interface ArticlePlainListProps {
-  items: { entry: Entry; feed?: Feed }[];
-  /** 行点击 → 打开正文（第三栏 / 合列内联） */
-  onSelectEntry?: (entryId: string) => void;
-  /** 当前选中的条目 id（给行加选中态高亮） */
-  selectedEntryId?: string | null;
-}
-
-/** 文章「列表」布局的非虚拟列表容器（小列表 / 单测直接用）。 */
-export function ArticlePlainList({
-  items,
-  onSelectEntry,
-  selectedEntryId,
-}: ArticlePlainListProps) {
-  return (
-    <ul className="w-full" data-testid="article-plain-list">
-      {items.map(({ entry, feed }) => (
-        <li key={entry.id}>
-          <ArticlePlainListRow
-            entry={entry}
-            feed={feed}
-            onSelectEntry={onSelectEntry}
-            selectedEntryId={selectedEntryId}
-          />
-        </li>
-      ))}
-    </ul>
-  );
-}
