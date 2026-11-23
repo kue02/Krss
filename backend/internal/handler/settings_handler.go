@@ -33,7 +33,7 @@ type aiSettingsResponse struct {
 	TranslateChannels []string `json:"translateChannels"`
 	// FallbackToModel：免费通道失败时是否自动切回模型
 	FallbackToModel bool `json:"fallbackToModel"`
-	// UseProxy：AI 调用是否走代理（含智能代理），默认 true
+	// UseProxy：AI 调用是否走代理（含智能代理），默认 false（默认直连）
 	UseProxy         bool                       `json:"useProxy"`
 	Providers        []service.AIProviderConfig `json:"providers"`
 	ActiveProviderID string                     `json:"activeProviderId"`
@@ -59,7 +59,7 @@ type aiSettingsRequest struct {
 	TranslateChannels []string `json:"translateChannels"`
 	// FallbackToModel：免费通道失败时是否自动切回模型
 	FallbackToModel bool `json:"fallbackToModel"`
-	// UseProxy：AI 调用是否走代理（含智能代理），默认 true
+	// UseProxy：AI 调用是否走代理（含智能代理），默认 false（默认直连）
 	UseProxy         *bool                      `json:"useProxy"`
 	Providers        []service.AIProviderConfig `json:"providers"`
 	ActiveProviderID string                     `json:"activeProviderId"`
@@ -341,8 +341,8 @@ func (h *SettingsHandler) UpdateAISettings(c echo.Context) error {
 		}
 	}
 
-	// useProxy 用 *bool：请求没带这个字段（部分 PUT）时保留数据库现值，避免误关代理。
-	useProxy := true
+	// useProxy 用 *bool：请求没带这个字段（部分 PUT）时保留数据库现值，避免误改代理开关。
+	useProxy := false
 	if req.UseProxy != nil {
 		useProxy = *req.UseProxy
 	} else if cur, err := h.service.GetAISettings(c.Request().Context()); err == nil && cur != nil {

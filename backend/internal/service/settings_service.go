@@ -60,7 +60,7 @@ type AISettings struct {
 	TranslateChannels []string `json:"translateChannels"`
 	// FallbackToModel：免费通道失败时是否自动切回模型（默认开）
 	FallbackToModel bool `json:"fallbackToModel"`
-	// UseProxy：AI 调用是否走代理（含智能代理），默认 true
+	// UseProxy：AI 调用是否走代理（含智能代理），默认 false（默认直连）
 	UseProxy bool `json:"useProxy"`
 	// 保存的提供商列表 + 当前使用哪一个（上面的 Provider/APIKey/... 始终等于当前使用的那份）
 	Providers        []AIProviderConfig `json:"providers"`
@@ -329,7 +329,7 @@ func (s *settingsService) SetClientFactory(factory *network.ClientFactory) {
 // probeHTTPClient 设置页探测（测试连接 / 模型列表）用的客户端：
 // ai.use_proxy 开着且有工厂时走代理（全局，feedID=0）；否则返回 nil 表示直连（用默认客户端）。
 func (s *settingsService) probeHTTPClient(ctx context.Context, timeout time.Duration) *http.Client {
-	if s.clientFactory != nil && s.getBoolDefault(ctx, keyAIUseProxy, true) {
+	if s.clientFactory != nil && s.getBoolDefault(ctx, keyAIUseProxy, false) {
 		return s.clientFactory.NewHTTPClientForFeed(ctx, 0, timeout)
 	}
 	return nil
@@ -382,7 +382,7 @@ func (s *settingsService) GetAISettings(ctx context.Context) (*AISettings, error
 		settings.TranslateChannels = []string{} // 契约统一：空列表返回 []，不返回 null
 	}
 	settings.FallbackToModel = s.getBoolDefault(ctx, keyAIFallbackToModel, true)
-	settings.UseProxy = s.getBoolDefault(ctx, keyAIUseProxy, true)
+	settings.UseProxy = s.getBoolDefault(ctx, keyAIUseProxy, false)
 	if val, err := s.getInt(ctx, keyAIRateLimit); err == nil && val > 0 {
 		settings.RateLimit = val
 	} else {

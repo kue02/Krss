@@ -1,6 +1,10 @@
 package service
 
-import "context"
+import (
+	"context"
+	"net/http"
+	"time"
+)
 
 // Export for testing
 var IsValidURL = isValidURL
@@ -70,6 +74,22 @@ var (
 	ErrSamePasswordHelper            = ErrSamePassword
 	ErrInvalidTokenHelper            = ErrInvalidToken
 )
+
+// ProbeHTTPClientForTest exposes the settings probe client (nil = 直连) for tests.
+func ProbeHTTPClientForTest(svc SettingsService, ctx context.Context, timeout time.Duration) *http.Client {
+	if ss, ok := svc.(*settingsService); ok {
+		return ss.probeHTTPClient(ctx, timeout)
+	}
+	return nil
+}
+
+// AIProxyEnabledForTest exposes aiService.aiProxyEnabled for tests.
+func AIProxyEnabledForTest(svc AIService, ctx context.Context) bool {
+	if s, ok := svc.(*aiService); ok {
+		return s.aiProxyEnabled(ctx)
+	}
+	return false
+}
 
 // Refresh service helpers for tests.
 func SetRefreshServiceRefreshing(s RefreshService, v bool) {

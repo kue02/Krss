@@ -305,11 +305,11 @@ func (s *aiService) feedIDForEntry(ctx context.Context, entryID int64) int64 {
 	return entry.FeedID
 }
 
-// aiProxyEnabled 读「AI 调用是否走代理」（含智能代理），默认 true。
+// aiProxyEnabled 读「AI 调用是否走代理」（含智能代理），默认 false（默认直连）。
 func (s *aiService) aiProxyEnabled(ctx context.Context) bool {
 	st, err := s.settingsRepo.Get(ctx, "ai.use_proxy")
 	if err != nil || st == nil || st.Value == "" {
-		return true
+		return false
 	}
 	return st.Value == "true"
 }
