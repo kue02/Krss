@@ -103,7 +103,9 @@ describe("EntryContextMenuContent 的插件插槽（56-11）", () => {
     // 条目自有的三项照旧（标为已读 / 豁免这类内容 / 按此条新建规则），再加插件那一项
     expect(screen.getByText("automation.exception_entry")).toBeTruthy();
     expect(screen.getByText("automation.rule_from_entry")).toBeTruthy();
-    expect(screen.getAllByRole("menuitem")).toHaveLength(4);
+    // 「已读/未读」下面新增的星标项（未加星时显示「加星标」）
+    expect(screen.getByText("entry.star")).toBeTruthy();
+    expect(screen.getAllByRole("menuitem")).toHaveLength(5);
   });
 
   it("② 挂点上没有贡献 → 菜单照常渲染，一个多余项都不加（不崩）", () => {
@@ -113,7 +115,8 @@ describe("EntryContextMenuContent 的插件插槽（56-11）", () => {
     // 条目自己的三项都在
     expect(screen.getByText("automation.exception_entry")).toBeTruthy();
     expect(screen.getByText("automation.rule_from_entry")).toBeTruthy();
-    expect(screen.getAllByRole("menuitem")).toHaveLength(3);
+    expect(screen.getByText("entry.star")).toBeTruthy();
+    expect(screen.getAllByRole("menuitem")).toHaveLength(4);
     expect(screen.queryByText("推送到手机（Bark）")).toBeNull();
   });
 });

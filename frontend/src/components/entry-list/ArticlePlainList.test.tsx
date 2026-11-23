@@ -7,6 +7,29 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
+vi.mock("@/hooks/useFeedMenuActions", () => ({
+  useFeedMenuActions: () => ({ folders: [] }),
+}));
+
+vi.mock("@/hooks/useEntries", () => ({
+  useMarkAsRead: () => ({ mutate: vi.fn() }),
+  useMarkAsStarred: () => ({ mutate: vi.fn() }),
+}));
+
+vi.mock("@/hooks/useFilters", () => ({
+  useUnmuteEntry: () => ({ mutate: vi.fn() }),
+  useCreateFilterException: () => ({ mutate: vi.fn(), isPending: false }),
+  useFilters: () => ({ data: [], isLoading: false, isError: false }),
+}));
+
+vi.mock("@/plugins/useContributions", () => ({
+  useContributions: () => [],
+}));
+
+vi.mock("@/plugins/useInvokePluginAction", () => ({
+  useInvokePluginAction: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
 function makeEntry(overrides: Partial<Entry>): Entry {
   return {
     id: "e1",
@@ -81,5 +104,17 @@ describe("ArticlePlainListRow（文章「Inoreader列表」= inoreader）", () =
 
     fireEvent.click(otherRow as Element);
     expect(onSelectEntry).toHaveBeenCalledWith("e2");
+  });
+
+  it("右键弹出条目菜单（复用 EntryContextMenuContent，含星标项）", () => {
+    render(
+      <ArticlePlainListRow
+        entry={makeEntry({ id: "e1", title: "右键我" })}
+        feed={makeFeed({})}
+      />,
+    );
+    fireEvent.contextMenu(screen.getByText("右键我"));
+    expect(screen.getByText("entry.star")).toBeTruthy();
+    expect(screen.getByText("automation.exception_entry")).toBeTruthy();
   });
 });
