@@ -1,12 +1,27 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  Button,
   Checkbox,
-  Fieldset,
+  Input,
   ToggleButton,
   ToggleButtonGroup,
 } from "@heroui/react";
-import { cn } from "@/lib/utils";
+import {
+  Eye,
+  ListFilter,
+  PenLine,
+  Plus,
+  SlidersHorizontal,
+  Sparkles,
+  Target,
+  X,
+} from "lucide-react";
+import {
+  GroupLabel,
+  SectionCard,
+  SettingRow,
+} from "@/components/settings/settings-primitives";
 import { HeroSwitch } from "@/components/ui/hero-switch";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Select } from "@/components/ui/select";
@@ -111,14 +126,6 @@ const ACTION_HINT_KEYS: Record<string, string> = {
   summarize: "summarize_hint",
   webhook: "webhook_hint",
 };
-
-const inputClass = cn(
-  // text-foreground：HeroUI 抽屉的 .drawer__body 默认是 muted 文字色，输入值要多一层才够黑
-  // h-9（36px）：用户 11-4 说条件那里的输入框太小；抽屉里所有输入框统一到这一档
-  "h-9 w-full rounded-md border border-border bg-background px-2.5 text-sm text-foreground",
-  "placeholder:text-muted-foreground/50",
-  "focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary",
-);
 
 function emptyCondition(): FilterCondition {
   // 用户 11-23：自动化规则里的条件默认从「且」改成「或」。
@@ -516,64 +523,69 @@ export function FilterEditor({
 
   return (
     <div className="flex h-full min-h-0 flex-col text-foreground">
-      <div className="min-h-0 flex-1 space-y-5 overflow-auto px-5 py-4">
-        {/* 名称 + 启用 */}
-        <section className="space-y-3">
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">
-              {t("automation.name")}
-            </label>
-            <input
-              type="text"
-              value={draft.name}
-              onChange={(event) => update({ name: event.target.value })}
-              placeholder={t("automation.name_placeholder")}
-              className={cn(inputClass, "mt-1 h-9")}
-            />
-          </div>
-          <div className="contents">
-            <div className="min-w-0">
-              <div className="text-sm font-medium">{t("automation.enabled")}</div>
-              <div className="text-xs text-muted-foreground">
-                {t("automation.enabled_hint")}
+      <div className="min-h-0 flex-1 space-y-4 overflow-auto px-5 py-5">
+        {/* 基本信息：名称 + 启用 */}
+        <SectionCard
+          icon={<PenLine className="size-4" />}
+          title={t("automation.section_basic")}
+        >
+          <div className="divide-y divide-border/50">
+            <div className="px-1 py-2.5">
+              <div className="mb-2 text-sm text-foreground">
+                {t("automation.name")}
               </div>
+              <Input
+                type="text"
+                value={draft.name}
+                onChange={(event) => update({ name: event.target.value })}
+                placeholder={t("automation.name_placeholder")}
+                aria-label={t("automation.name")}
+                className="w-full"
+              />
             </div>
-            <HeroSwitch
-              aria-label={t("automation.enabled")}
-              isSelected={draft.enabled ?? true}
-              onChange={(checked) => update({ enabled: checked })}
-            />
+            <SettingRow
+              label={t("automation.enabled")}
+              hint={t("automation.enabled_hint")}
+            >
+              <HeroSwitch
+                aria-label={t("automation.enabled")}
+                isSelected={draft.enabled ?? true}
+                onChange={(checked) => update({ enabled: checked })}
+              />
+            </SettingRow>
           </div>
-        </section>
+        </SectionCard>
 
         {/* 自然语言建规则：模型的一句话解释 + 被修正/丢弃的东西（绝不悄悄改） */}
         {(notes || warnings.length > 0) && (
-          <section className="space-y-1 rounded-md border border-border bg-secondary/20 px-3 py-2">
-            <div className="text-xs font-medium">
-              {t("automation.nl_draft_title")}
+          <SectionCard
+            icon={<Sparkles className="size-4" />}
+            title={t("automation.nl_draft_title")}
+          >
+            <div className="space-y-1 px-1 py-2.5">
+              {notes && (
+                <div className="text-xs leading-relaxed text-muted-foreground">
+                  {notes}
+                </div>
+              )}
+              {warnings.map((warning, index) => (
+                <div key={index} className="text-xs text-destructive">
+                  {warning}
+                </div>
+              ))}
             </div>
-            {notes && (
-              <div className="text-xs text-muted-foreground">{notes}</div>
-            )}
-            {warnings.map((warning, index) => (
-              <div key={index} className="text-xs text-destructive">
-                {warning}
-              </div>
-            ))}
-          </section>
+          </SectionCard>
         )}
 
-        {/* 范围 —— 13-1（效果图改法 B）：与下面的动作区共用同一条网格
-            （标签列 88px + 控件列 1fr，控件从控件列起点左对齐），范围收成一行 */}
-        <section className="border-t border-border pt-4">
-          <div className="grid grid-cols-[88px_minmax(0,1fr)] items-center gap-x-3 gap-y-[7px]">
-            <span className="text-xs text-muted-foreground">
-              {t("automation.scope")}
-            </span>
-            <div className="flex min-w-0 justify-start">
+        {/* 范围 */}
+        <SectionCard
+          icon={<Target className="size-4" />}
+          title={t("automation.scope")}
+        >
+          <div className="divide-y divide-border/50">
+            {/* 范围三段：卡片标题已经写明「范围」，这一行不再重复标签，直接铺满 */}
+            <div className="px-1 py-3">
               <SegmentedControl
-                // 改法 B：范围这三段与下面三个三态组同宽（控件列 250px 里的等宽三段）——
-                // 原来按内容撑（实测 80/52/52），右缘参差、与三态组的左缘也对不齐
                 className="w-full [&_button]:flex-1"
                 value={draft.scopeType}
                 onValueChange={(value) =>
@@ -586,12 +598,9 @@ export function FilterEditor({
               />
             </div>
             {draft.scopeType === "folder" && (
-              <>
-                <span className="text-xs text-muted-foreground">
-                  {t("automation.scope_folder")}
-                </span>
+              <SettingRow label={t("automation.scope_folder")}>
                 <Select
-                  ariaLabel={t("automation.scope")}
+                  ariaLabel={t("automation.scope_folder")}
                   value={draft.scopeId ?? ""}
                   onChange={(value) => update({ scopeId: value })}
                   options={[
@@ -604,230 +613,231 @@ export function FilterEditor({
                       label: folder.name,
                     })),
                   ]}
-                  className="w-full max-w-[18rem]"
+                  className="w-56"
                 />
-              </>
+              </SettingRow>
             )}
             {draft.scopeType === "feed" && (
-              <>
-                <span className="text-xs text-muted-foreground">
-                  {t("automation.scope_feed")}
-                </span>
-                <div className="min-w-0 space-y-1">
-                  {/* 订阅范围可多选（用户 11-16）：勾几个源，规则/视图就作用在这几个源上 */}
-                  <FeedScopePicker
-                    ariaLabel={t("automation.scope")}
-                    values={draft.scopeIds ?? (draft.scopeId ? [draft.scopeId] : [])}
-                    onValuesChange={(values) =>
-                      update({
-                        scopeIds: values,
-                        // 多选后不再写单选字段，免得两个字段各说一套
-                        scopeId: undefined,
-                      })
-                    }
-                    options={(feeds ?? []).map((feed) => ({
-                      value: feed.id,
-                      label: feed.title,
-                    }))}
-                  />
-                  <div className="text-xs text-muted-foreground">
-                    {t("automation.scope_feed_multi_hint")}
-                  </div>
-                </div>
-              </>
+              <SettingRow
+                label={t("automation.scope_feed")}
+                hint={t("automation.scope_feed_multi_hint")}
+              >
+                {/* 订阅范围可多选（用户 11-16）：勾几个源，规则/视图就作用在这几个源上 */}
+                <FeedScopePicker
+                  ariaLabel={t("automation.scope_feed")}
+                  values={draft.scopeIds ?? (draft.scopeId ? [draft.scopeId] : [])}
+                  onValuesChange={(values) =>
+                    update({
+                      scopeIds: values,
+                      // 多选后不再写单选字段，免得两个字段各说一套
+                      scopeId: undefined,
+                    })
+                  }
+                  options={(feeds ?? []).map((feed) => ({
+                    value: feed.id,
+                    label: feed.title,
+                  }))}
+                />
+              </SettingRow>
             )}
           </div>
-        </section>
+        </SectionCard>
 
         {/* 视图专属（用户 11-5）：固定只在某些内容类型下显示 + 自定义图标 */}
         {isView && (
-          <section className="space-y-2 border-t border-border pt-4">
-            <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              {t("automation.view_display")}
+          <SectionCard
+            icon={<Eye className="size-4" />}
+            title={t("automation.view_display")}
+            description={t("automation.view_only_in_hint")}
+          >
+            <div className="divide-y divide-border/50">
+              <SettingRow label={t("automation.view_only_in")}>
+                <ToggleButtonGroup
+                  selectionMode="multiple"
+                  size="sm"
+                  selectedKeys={draft.contentTypes ?? []}
+                  onSelectionChange={(keys) =>
+                    update({
+                      contentTypes: [...keys].map(String) as ContentType[],
+                    })
+                  }
+                >
+                  {CONTENT_TYPE_ORDER.map((type) => (
+                    <ToggleButton key={type} id={type}>
+                      {t(`content_type.${type}`)}
+                    </ToggleButton>
+                  ))}
+                </ToggleButtonGroup>
+              </SettingRow>
+              <SettingRow label={t("automation.view_icon")}>
+                <ViewIconPicker
+                  value={draft.icon ?? ""}
+                  onChange={(icon) => update({ icon })}
+                />
+              </SettingRow>
             </div>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-xs text-muted-foreground">
-                {t("automation.view_only_in")}
-              </span>
-              <ToggleButtonGroup
-                selectionMode="multiple"
-                size="sm"
-                selectedKeys={draft.contentTypes ?? []}
-                onSelectionChange={(keys) =>
-                  update({
-                    contentTypes: [...keys].map(String) as ContentType[],
-                  })
-                }
-              >
-                {CONTENT_TYPE_ORDER.map((type) => (
-                  <ToggleButton key={type} id={type}>
-                    {t(`content_type.${type}`)}
-                  </ToggleButton>
-                ))}
-              </ToggleButtonGroup>
-            </div>
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs text-muted-foreground">
-                {t("automation.view_icon")}
-              </span>
-              <ViewIconPicker
-                value={draft.icon ?? ""}
-                onChange={(icon) => update({ icon })}
-              />
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {t("automation.view_only_in_hint")}
-            </div>
-          </section>
+          </SectionCard>
         )}
 
         {/* 条件 */}
-        <section className="space-y-2 border-t border-border pt-4">
-          <div className="flex items-center justify-between">
-            <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              {t("automation.conditions")}
-            </div>
-            <button
-              type="button"
-              onClick={addCondition}
-              className="text-xs text-primary hover:underline"
-            >
-              + {t("automation.add_condition")}
-            </button>
-          </div>
-
-          {draft.conditions.length === 0 && (
-            <div className="text-xs text-muted-foreground">
-              {t("automation.conditions_any")}
-            </div>
-          )}
-
-          <div className="space-y-1.5">
-            {draft.conditions.map((condition, index) => {
-              const needsValue = !FILTER_OPERATORS_WITHOUT_VALUE.includes(
-                condition.operator,
-              );
-              return (
-                <div key={index} className="space-y-1">
-                  {index > 0 && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        updateCondition(index, {
-                          logic: condition.logic === "or" ? "and" : "or",
-                        })
-                      }
-                      className={cn(
-                        "rounded-full border px-2 py-0.5 text-[11px] transition-colors",
-                        condition.logic === "or"
-                          ? "border-primary/40 bg-primary/10 text-primary"
-                          : "border-border text-muted-foreground hover:text-foreground",
+        <SectionCard
+          icon={<ListFilter className="size-4" />}
+          title={t("automation.conditions")}
+          description={isView ? t("automation.view_needs_condition") : undefined}
+          action={
+            <Button size="sm" variant="outline" onPress={addCondition}>
+              <Plus className="size-3.5" />
+              {t("automation.add_condition")}
+            </Button>
+          }
+        >
+          <div className="px-1 py-2.5">
+            {draft.conditions.length === 0 ? (
+              <div className="rounded-[var(--radius)] border border-dashed border-border/70 px-3 py-6 text-center text-xs text-muted-foreground">
+                {t("automation.conditions_any")}
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {draft.conditions.map((condition, index) => {
+                  const needsValue = !FILTER_OPERATORS_WITHOUT_VALUE.includes(
+                    condition.operator,
+                  );
+                  return (
+                    <div key={index} className="space-y-1.5">
+                      {index > 0 && (
+                        <div className="flex items-center gap-2 pl-1">
+                          {/* 连接词用 HeroUI ToggleButton。选中态刻意不用 accent：
+                              这套主题的 --accent 是黑白，暗色下会变成黑底黑字；
+                              用 foreground 派生色，两套主题都翻得过来 */}
+                          <ToggleButton
+                            size="sm"
+                            variant="ghost"
+                            isSelected={(condition.logic ?? "or") === "or"}
+                            onChange={() =>
+                              updateCondition(index, {
+                                logic:
+                                  condition.logic === "or" ? "and" : "or",
+                              })
+                            }
+                            aria-label={t("automation.conditions")}
+                            className="h-6 min-h-6 rounded-full border border-border/60 px-2 text-[11px] font-medium text-muted-foreground data-[selected=true]:bg-foreground/10 data-[selected=true]:text-foreground"
+                          >
+                            {t(`automation.logic_${condition.logic ?? "or"}`)}
+                          </ToggleButton>
+                          <span className="h-px flex-1 bg-border/50" />
+                        </div>
                       )}
-                    >
-                      {t(`automation.logic_${condition.logic ?? "or"}`)}
-                    </button>
-                  )}
-                  {/* [&_[role=combobox]]:h-9 —— HeroUI Select 的高度长在它自己的 trigger 上，
-                      这里用后代选择器把它和 input/按钮一起抬到同一档，别让一行里三种高度 */}
-                  <div className="flex flex-wrap items-center gap-1.5 [&_[role=combobox]]:h-9 [&_[role=combobox]]:min-h-9">
-                    <button
-                      type="button"
-                      title={t("automation.negate")}
-                      aria-pressed={Boolean(condition.negate)}
-                      onClick={() =>
-                        updateCondition(index, { negate: !condition.negate })
-                      }
-                      className={cn(
-                        "h-9 w-9 shrink-0 rounded-[var(--radius)] border text-sm font-medium transition-colors",
-                        condition.negate
-                          ? "border-destructive/40 bg-destructive/10 text-destructive"
-                          : "border-border text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      !
-                    </button>
-                    <Select
-                      ariaLabel={t("automation.conditions")}
-                      value={condition.field}
-                      onChange={(value) => {
-                        const nextField = value as FilterConditionField;
-                        // AI 相关性只配 is_relevant（后端也拦）；换回普通字段时把操作符复位
-                        if (nextField === "ai_relevance") {
-                          updateCondition(index, {
-                            field: nextField,
-                            operator: "is_relevant",
-                          });
-                          return;
-                        }
-                        updateCondition(index, {
-                          field: nextField,
-                          operator:
-                            condition.operator === "is_relevant"
-                              ? "contains"
-                              : condition.operator,
-                        });
-                      }}
-                      options={fieldOptions}
-                      className="w-32 shrink-0"
-                    />
-                    <Select
-                      ariaLabel={t("automation.conditions")}
-                      value={condition.operator}
-                      onChange={(value) =>
-                        updateCondition(index, {
-                          operator: value as FilterConditionOperator,
-                        })
-                      }
-                      options={operatorOptions}
-                      className="w-28 shrink-0"
-                    />
-                    {needsValue ? (
-                      <input
-                        type="text"
-                        value={condition.value ?? ""}
-                        onChange={(event) =>
-                          updateCondition(index, { value: event.target.value })
-                        }
-                        placeholder={valuePlaceholder(condition)}
-                        // min-w：窄抽屉（350px）里原来会被挤成 22px 一条；
-                        // 配合上面行的 flex-wrap，空间不够时它整行落到下一行
-                        className={cn(inputClass, "min-w-[10rem] flex-1")}
-                      />
-                    ) : (
-                      <div className="flex h-9 flex-1 items-center px-2.5 text-xs text-muted-foreground">
-                        {t("automation.condition_value_empty")}
+                      {/* [&_[role=combobox]]:h-9 —— HeroUI Select 的高度长在它自己的 trigger 上，
+                          这里用后代选择器把它和 input/按钮一起抬到同一档，别让一行里三种高度 */}
+                      <div className="flex flex-wrap items-center gap-1.5 rounded-[var(--radius)] border border-border/60 bg-card/40 p-1.5 [&_[role=combobox]]:h-9 [&_[role=combobox]]:min-h-9">
+                        {/* 取反：HeroUI ToggleButton，选中时走 destructive 的底色，
+                            一眼能看出这条条件是「不满足」 */}
+                        <ToggleButton
+                          isIconOnly
+                          size="sm"
+                          variant="ghost"
+                          isSelected={Boolean(condition.negate)}
+                          onChange={() =>
+                            updateCondition(index, { negate: !condition.negate })
+                          }
+                          aria-label={t("automation.negate")}
+                          className="size-9 min-w-9 shrink-0 rounded-[var(--radius)] border border-border/70 text-sm font-medium text-muted-foreground data-[selected=true]:border-destructive/40 data-[selected=true]:bg-destructive/10 data-[selected=true]:text-destructive"
+                        >
+                          !
+                        </ToggleButton>
+                        <Select
+                          ariaLabel={t("automation.conditions")}
+                          value={condition.field}
+                          onChange={(value) => {
+                            const nextField = value as FilterConditionField;
+                            // AI 相关性只配 is_relevant（后端也拦）；换回普通字段时把操作符复位
+                            if (nextField === "ai_relevance") {
+                              updateCondition(index, {
+                                field: nextField,
+                                operator: "is_relevant",
+                              });
+                              return;
+                            }
+                            updateCondition(index, {
+                              field: nextField,
+                              operator:
+                                condition.operator === "is_relevant"
+                                  ? "contains"
+                                  : condition.operator,
+                            });
+                          }}
+                          options={fieldOptions}
+                          className="w-32 shrink-0"
+                        />
+                        <Select
+                          ariaLabel={t("automation.conditions")}
+                          value={condition.operator}
+                          onChange={(value) =>
+                            updateCondition(index, {
+                              operator: value as FilterConditionOperator,
+                            })
+                          }
+                          options={operatorOptions}
+                          className="w-28 shrink-0"
+                        />
+                        {needsValue ? (
+                          <Input
+                            type="text"
+                            value={condition.value ?? ""}
+                            onChange={(event) =>
+                              updateCondition(index, {
+                                value: event.target.value,
+                              })
+                            }
+                            placeholder={valuePlaceholder(condition)}
+                            aria-label={t("automation.condition_value_placeholder")}
+                            // min-w：窄抽屉里原来会被挤成 22px 一条；
+                            // 配合上面行的 flex-wrap，空间不够时它整行落到下一行
+                            className="min-w-[10rem] flex-1"
+                          />
+                        ) : (
+                          <div className="flex h-9 flex-1 items-center px-2.5 text-xs text-muted-foreground">
+                            {t("automation.condition_value_empty")}
+                          </div>
+                        )}
+                        <Button
+                          isIconOnly
+                          size="sm"
+                          variant="ghost"
+                          aria-label={t("automation.remove_condition")}
+                          onPress={() => removeCondition(index)}
+                          className="size-9 min-w-9 shrink-0 text-muted-foreground hover:text-destructive"
+                        >
+                          <X className="size-4" />
+                        </Button>
                       </div>
-                    )}
-                    <button
-                      type="button"
-                      title={t("automation.remove_condition")}
-                      onClick={() => removeCondition(index)}
-                      className="h-9 w-9 shrink-0 rounded-[var(--radius)] border border-border text-muted-foreground transition-colors hover:text-destructive"
-                    >
-                      ×
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        </section>
+        </SectionCard>
 
         {/* 动作（视图没有动作区：它只筛条目、不写数据） */}
         {isView ? (
-          <section className="space-y-2 border-t border-border pt-4">
-            <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              {t("automation.view_kind")}
+          /* 视图没有动作区：与其空着，不如说清「它是什么、建好之后在哪」——
+             这两句都不重复标题下的那句「视图不执行动作」 */
+          <SectionCard
+            icon={<SlidersHorizontal className="size-4" />}
+            title={t("automation.view_kind")}
+            description={t("automation.view_actions_hint")}
+          >
+            <div className="px-1 py-2.5 text-xs leading-relaxed text-muted-foreground">
+              {t("automation.views_hint")}
             </div>
-            <div className="text-xs text-muted-foreground">
-              {t("automation.view_actions_hint")}
-            </div>
-          </section>
+          </SectionCard>
         ) : (
-          <section className="space-y-2 border-t border-border pt-4">
-            <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              {t("automation.actions")}
-            </div>
+          <SectionCard
+            icon={<SlidersHorizontal className="size-4" />}
+            title={t("automation.actions")}
+            description={t("automation.actions_hint")}
+          >
             {/*
               12-12：动作区按用途分三组（用户选定方案）——
               ① 条目状态（静音 / 已读 / 加星 三个互斥维度 + 只保留匹配）
@@ -836,66 +846,56 @@ export function FilterEditor({
               成对的动作仍然用 HeroUI 三态组（不变 / 正向 / 反向）—— 一对动作做成两个开关会允许
               「同时又静音又取消静音」这种自相矛盾的组合；单项动作一律 HeroUI Switch。
             */}
-
-            {/* ① 条目状态 */}
-            <Fieldset className="border-t border-border/60 pt-3.5 mt-3.5">
-              <Fieldset.Legend className="col-span-2 text-xs font-medium text-foreground">
-                {t("automation.action_group_state")}
-              </Fieldset.Legend>
-            <div className="grid grid-cols-[88px_minmax(0,1fr)] items-center gap-x-3 gap-y-[7px]">
-              <Fieldset.Group className="contents">
-                {ACTION_PAIRS.map(({ positive, negative }) => {
-                  const value = draft.actions[positive]
-                    ? "positive"
-                    : draft.actions[negative]
-                      ? "negative"
-                      : "none";
-                  // 「只保留匹配」本身会把不匹配的静音，再叠「静音」等于全静音 —— 挡掉这个误操作
-                  const muteBlocked = positive === "mute" && keepOnlyBlocksMute;
-                  return (
-                    // 13-1：行包装用 contents，让「标签 + 控件」直接成为上面那条网格的两格
-                    <div
-                      key={positive}
-                      className="contents"
+            <GroupLabel>{t("automation.action_group_state")}</GroupLabel>
+            <div className="divide-y divide-border/50">
+              {ACTION_PAIRS.map(({ positive, negative }) => {
+                const value = draft.actions[positive]
+                  ? "positive"
+                  : draft.actions[negative]
+                    ? "negative"
+                    : "none";
+                // 「只保留匹配」本身会把不匹配的静音，再叠「静音」等于全静音 —— 挡掉这个误操作
+                const muteBlocked = positive === "mute" && keepOnlyBlocksMute;
+                return (
+                  <SettingRow
+                    key={positive}
+                    label={t(`automation.${DIMENSION_LABEL_KEYS[positive]}`)}
+                  >
+                    <ToggleButtonGroup
+                      className="w-60 [&_button]:flex-1"
+                      selectionMode="single"
+                      size="sm"
+                      selectedKeys={[value]}
+                      onSelectionChange={(keys) => {
+                        const next = [...keys][0];
+                        setActionDimension(
+                          positive,
+                          negative,
+                          (next ?? "none") as "none" | "positive" | "negative",
+                        );
+                      }}
                     >
-                      <span className="text-xs text-muted-foreground">
-                        {t(`automation.${DIMENSION_LABEL_KEYS[positive]}`)}
-                      </span>
-                      <ToggleButtonGroup
-                        className="w-full [&_button]:flex-1"
-                        selectionMode="single"
-                        size="sm"
-                        selectedKeys={[value]}
-                        onSelectionChange={(keys) => {
-                          const next = [...keys][0];
-                          setActionDimension(
-                            positive,
-                            negative,
-                            (next ?? "none") as "none" | "positive" | "negative",
-                          );
-                        }}
-                      >
-                        <ToggleButton id="none">
-                          {t("automation.action_none")}
-                        </ToggleButton>
-                        <ToggleButton id="positive" isDisabled={muteBlocked}>
-                          {t(`automation.${ACTION_LABEL_KEYS[positive]}`)}
-                        </ToggleButton>
-                        <ToggleButton id="negative">
-                          {t(`automation.${ACTION_LABEL_KEYS[negative]}`)}
-                        </ToggleButton>
-                      </ToggleButtonGroup>
-                    </div>
-                  );
-                })}
-              </Fieldset.Group>
-              <div className="contents">
-                <span
-                  className="text-xs text-muted-foreground"
-                  title={t("automation.keep_only_hint")}
-                >
-                  {t("automation.action_keep_only")}
-                </span>
+                      <ToggleButton id="none">
+                        {t("automation.action_none")}
+                      </ToggleButton>
+                      <ToggleButton id="positive" isDisabled={muteBlocked}>
+                        {t(`automation.${ACTION_LABEL_KEYS[positive]}`)}
+                      </ToggleButton>
+                      <ToggleButton id="negative">
+                        {t(`automation.${ACTION_LABEL_KEYS[negative]}`)}
+                      </ToggleButton>
+                    </ToggleButtonGroup>
+                  </SettingRow>
+                );
+              })}
+              <SettingRow
+                label={t("automation.action_keep_only")}
+                hint={
+                  keepOnlyBlocksMute
+                    ? t("automation.mute_blocked_by_keep_only")
+                    : t("automation.keep_only_hint")
+                }
+              >
                 <HeroSwitch
                   aria-label={t("automation.action_keep_only")}
                   isSelected={Boolean(draft.actions.keepOnly)}
@@ -906,28 +906,15 @@ export function FilterEditor({
                     })
                   }
                 />
-              </div>
-              {keepOnlyBlocksMute && (
-                <div className="col-span-2 text-xs text-muted-foreground">
-                  {t("automation.mute_blocked_by_keep_only")}
-                </div>
-              )}
+              </SettingRow>
             </div>
-            </Fieldset>
 
-            {/* ② 内容加工 */}
-            <Fieldset className="border-t border-border/60 pt-3.5 mt-3.5">
-              <Fieldset.Legend className="col-span-2 text-xs font-medium text-foreground">
-                {t("automation.action_group_content")}
-              </Fieldset.Legend>
-            <div className="grid grid-cols-[88px_minmax(0,1fr)] items-center gap-x-3 gap-y-[7px]">
-              <div className="contents">
-                <span
-                  className="text-xs text-muted-foreground"
-                  title={t(`automation.${ACTION_HINT_KEYS["translate"]}`)}
-                >
-                  {t("automation.action_translate")}
-                </span>
+            <GroupLabel>{t("automation.action_group_content")}</GroupLabel>
+            <div className="divide-y divide-border/50">
+              <SettingRow
+                label={t("automation.action_translate")}
+                hint={t(`automation.${ACTION_HINT_KEYS["translate"]}`)}
+              >
                 <HeroSwitch
                   aria-label={t("automation.action_translate")}
                   isSelected={Boolean(draft.actions.translate)}
@@ -935,14 +922,11 @@ export function FilterEditor({
                     update({ actions: { ...draft.actions, translate: checked } })
                   }
                 />
-              </div>
-              <div className="contents">
-                <span
-                  className="text-xs text-muted-foreground"
-                  title={t(`automation.${ACTION_HINT_KEYS["summarize"]}`)}
-                >
-                  {t("automation.action_summarize")}
-                </span>
+              </SettingRow>
+              <SettingRow
+                label={t("automation.action_summarize")}
+                hint={t(`automation.${ACTION_HINT_KEYS["summarize"]}`)}
+              >
                 <HeroSwitch
                   aria-label={t("automation.action_summarize")}
                   isSelected={Boolean(draft.actions.summarize)}
@@ -950,23 +934,15 @@ export function FilterEditor({
                     update({ actions: { ...draft.actions, summarize: checked } })
                   }
                 />
-              </div>
+              </SettingRow>
             </div>
-            </Fieldset>
 
-            {/* ③ 对外 */}
-            <Fieldset className="border-t border-border/60 pt-3.5 mt-3.5">
-              <Fieldset.Legend className="col-span-2 text-xs font-medium text-foreground">
-                {t("automation.action_group_external")}
-              </Fieldset.Legend>
-            <div className="grid grid-cols-[88px_minmax(0,1fr)] items-center gap-x-3 gap-y-[7px]">
-              <div className="contents">
-                <span
-                  className="text-xs text-muted-foreground"
-                  title={t(`automation.${ACTION_HINT_KEYS["webhook"]}`)}
-                >
-                  {t("automation.action_webhook")}
-                </span>
+            <GroupLabel>{t("automation.action_group_external")}</GroupLabel>
+            <div className="divide-y divide-border/50">
+              <SettingRow
+                label={t("automation.action_webhook")}
+                hint={t(`automation.${ACTION_HINT_KEYS["webhook"]}`)}
+              >
                 <HeroSwitch
                   aria-label={t("automation.action_webhook")}
                   isSelected={Boolean(draft.actions.webhook)}
@@ -974,34 +950,34 @@ export function FilterEditor({
                     update({ actions: { ...draft.actions, webhook: checked } })
                   }
                 />
-              </div>
+              </SettingRow>
               {draft.actions.webhook && (
-                <input
-                  type="text"
-                  value={draft.actions.webhookUrl ?? ""}
-                  onChange={(event) =>
-                    update({
-                      actions: {
-                        ...draft.actions,
-                        webhookUrl: event.target.value,
-                      },
-                    })
-                  }
-                  placeholder={t("automation.webhook_url_placeholder")}
-                  className={cn(inputClass, "col-start-2")}
-                />
+                <div className="px-1 py-2.5">
+                  <Input
+                    type="text"
+                    value={draft.actions.webhookUrl ?? ""}
+                    onChange={(event) =>
+                      update({
+                        actions: {
+                          ...draft.actions,
+                          webhookUrl: event.target.value,
+                        },
+                      })
+                    }
+                    placeholder={t("automation.webhook_url_placeholder")}
+                    aria-label={t("automation.action_webhook")}
+                    className="w-full"
+                  />
+                </div>
               )}
             </div>
-            </Fieldset>
 
             {/* ④ 插件动作（55-14）：字段形状由插件声明，这里只按声明画；
                 停用的插件/动作不渲染 —— 想用就去 设置 → 插件 打开它 */}
             {pluginActions.length > 0 && (
-              <Fieldset className="border-t border-border/60 pt-3.5 mt-3.5">
-                <Fieldset.Legend className="text-xs font-medium text-foreground">
-                  {t("automation.plugin_actions")}
-                </Fieldset.Legend>
-                <div className="space-y-2">
+              <>
+                <GroupLabel>{t("automation.plugin_actions")}</GroupLabel>
+                <div className="space-y-2 px-1 pb-2.5 pt-1">
                   {pluginActions.map((action) => {
                     const ref = draft.actions.pluginActions?.find(
                       (item) =>
@@ -1056,33 +1032,28 @@ export function FilterEditor({
                     {t("automation.plugin_actions_hint")}
                   </div>
                 </div>
-              </Fieldset>
+              </>
             )}
-
-            {/* 只留一行总说明（其余都进 tooltip） */}
-            <div className="text-xs text-muted-foreground">
-              {t("automation.actions_hint")}
-            </div>
-          </section>
+          </SectionCard>
         )}
 
-        {/* 预览结果 */}
+        {/* 预览结果：一次性结果卡，跟着设置页的卡片语言走（不抢 SectionCard 的标题栏） */}
         {previewResult && (
-          <section className="space-y-1 rounded-md border border-border bg-secondary/20 px-3 py-2">
-            <div className="text-xs font-medium">
+          <section className="rounded-2xl border border-border/60 bg-card/30 p-3 shadow-nf-sm">
+            <div className="text-sm font-semibold text-foreground">
               {t("automation.preview_summary", {
                 scanned: previewResult.scanned,
                 matched: previewResult.matchedCount,
               })}
             </div>
             {previewResult.matchedCount === 0 ? (
-              <div className="text-xs text-muted-foreground">
+              <div className="mt-1 text-xs text-muted-foreground">
                 {t("automation.preview_empty", {
                   scanned: previewResult.scanned,
                 })}
               </div>
             ) : (
-              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                 {previewResult.muteCount > 0 && (
                   <span>
                     {t("automation.preview_mute", {
@@ -1108,7 +1079,7 @@ export function FilterEditor({
             )}
             {/* AI 条件在预览里只吃已有判定缓存：这里把「没判成多少条」说清楚 */}
             {(previewResult.aiSkipped ?? 0) > 0 && (
-              <div className="text-xs text-muted-foreground">
+              <div className="mt-1 text-xs text-muted-foreground">
                 {t("automation.preview_ai_skipped", {
                   count: previewResult.aiSkipped ?? 0,
                 })}
@@ -1118,7 +1089,7 @@ export function FilterEditor({
               </div>
             )}
             {previewResult.matched.length > 0 && (
-              <ul className="max-h-40 space-y-0.5 overflow-auto pt-1">
+              <ul className="mt-2 max-h-40 space-y-0.5 overflow-auto border-t border-border/50 pt-2">
                 {previewResult.matched.map((item) => (
                   <li
                     key={item.id}
@@ -1138,7 +1109,7 @@ export function FilterEditor({
         )}
 
         {(validationError || saveError || preview.isError) && (
-          <div className="text-xs text-destructive">
+          <div className="rounded-[var(--radius)] border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
             {validationError ??
               saveError ??
               (preview.isError ? t("automation.preview_failed") : null)}
@@ -1147,20 +1118,17 @@ export function FilterEditor({
       </div>
 
       {/* 底部常驻操作区 */}
-      <div className="flex items-center gap-2 border-t border-border px-5 py-3">
-        <button
-          type="button"
-          onClick={handlePreview}
-          disabled={preview.isPending}
-          className={cn(
-            "h-8 rounded-[var(--radius)] border border-border px-3 text-sm font-medium transition-colors",
-            "hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50",
-          )}
+      <div className="flex items-center gap-2 border-t border-border/60 bg-card/30 px-5 py-3">
+        <Button
+          size="sm"
+          variant="outline"
+          isDisabled={preview.isPending}
+          onPress={handlePreview}
         >
           {preview.isPending
             ? t("automation.preview_running")
             : t("automation.preview")}
-        </button>
+        </Button>
         <div className="flex-1" />
         {/* 56-14：插件往底栏加的按钮（这个挂点没有贡献就不占位）。
             点击先走 beforeInvoke 保存这份草稿：新建规则时还没 id，直接推就是一条
@@ -1171,24 +1139,12 @@ export function FilterEditor({
           selection={filterSelection(filterId)}
           beforeInvoke={async () => filterSelection(await saveDraft())}
         />
-        <button
-          type="button"
-          onClick={onCancel}
-          className="h-8 rounded-[var(--radius)] px-3 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-        >
+        <Button size="sm" variant="ghost" onPress={onCancel}>
           {t("automation.cancel")}
-        </button>
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={saving}
-          className={cn(
-            "h-8 rounded-[var(--radius)] bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors",
-            "hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50",
-          )}
-        >
+        </Button>
+        <Button size="sm" variant="primary" isDisabled={saving} onPress={handleSubmit}>
           {saving ? t("automation.saving") : t("automation.save")}
-        </button>
+        </Button>
       </div>
     </div>
   );

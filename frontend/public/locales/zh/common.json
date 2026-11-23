@@ -1252,6 +1252,7 @@
     "deleted": "规则已删除",
     "name": "名称",
     "name_placeholder": "例如：屏蔽推广",
+    "section_basic": "基本信息",
     "enabled": "启用",
     "enabled_hint": "停用后不参与匹配，条目不受影响",
     "scope": "范围",

@@ -94,10 +94,12 @@ export function FilterEditorDialog() {
                 "inset-x-0 bottom-0 top-auto h-dvh w-full max-w-none rounded-none"
               : // 桌面：右侧抽屉。**必须显式贴边**：HeroUI 的 content 默认 left/right 齐设（过约束），
                 // 只给宽度会让浏览器按 left 解，抽屉会跑到左边去（实测 x=0）。
-                "left-auto right-0 top-0 h-dvh w-[620px] max-w-[96vw] rounded-none"
+                "left-auto right-0 top-0 h-dvh w-[720px] max-w-[96vw] rounded-none"
           }
         >
-          <Drawer.Dialog className="flex h-full min-h-0 flex-col p-0">
+          {/* w-full 必须显式给：HeroUI 的 .drawer__dialog 自带 `width: calc(var(--spacing) * 96)`
+              （384px），只加宽 content 的话抽屉内容还是卡在 384px 里、右边留一大条空白（实测）。 */}
+          <Drawer.Dialog className="flex h-full min-h-0 w-full flex-col p-0">
             <Drawer.Header className="shrink-0 border-b border-border px-5 py-3">
               <Drawer.Heading className="text-base font-semibold">
                 {title}
