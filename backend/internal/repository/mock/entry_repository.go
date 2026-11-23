@@ -85,6 +85,21 @@ func (mr *MockEntryRepositoryMockRecorder) CreateOrUpdate(ctx, entry any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateOrUpdate", reflect.TypeOf((*MockEntryRepository)(nil).CreateOrUpdate), ctx, entry)
 }
 
+// CreateOrUpdateSkippingTombstones mocks base method.
+func (m *MockEntryRepository) CreateOrUpdateSkippingTombstones(ctx context.Context, entry model.Entry) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateOrUpdateSkippingTombstones", ctx, entry)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateOrUpdateSkippingTombstones indicates an expected call of CreateOrUpdateSkippingTombstones.
+func (mr *MockEntryRepositoryMockRecorder) CreateOrUpdateSkippingTombstones(ctx, entry any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateOrUpdateSkippingTombstones", reflect.TypeOf((*MockEntryRepository)(nil).CreateOrUpdateSkippingTombstones), ctx, entry)
+}
+
 // DeleteReadUnstarred mocks base method.
 func (m *MockEntryRepository) DeleteReadUnstarred(ctx context.Context) (int64, error) {
 	m.ctrl.T.Helper()

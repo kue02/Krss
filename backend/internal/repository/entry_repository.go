@@ -81,6 +81,9 @@ type EntryRepository interface {
 	// 返回 (改了归属的条数, 因重复被删掉的条数)。
 	MoveFeedEntries(ctx context.Context, fromFeedID, toFeedID int64) (moved int64, deduped int64, err error)
 	CreateOrUpdate(ctx context.Context, entry model.Entry) error
+	// CreateOrUpdateSkippingTombstones 与 CreateOrUpdate 相同，但若 (feed_id, hash) 或
+	// (feed_id, 规范化 url) 命中 entry_tombstones 则直接跳过、不写库，返回 false。
+	CreateOrUpdateSkippingTombstones(ctx context.Context, entry model.Entry) (bool, error)
 	ExistsByHash(ctx context.Context, feedID int64, hash string) (bool, error)
 	ExistsByLegacyURL(ctx context.Context, feedID int64, rawURL string, hash string) (bool, error)
 	// GetExistingEntry 取「入库时会撞到的那一行」（22-4：「更新 N 条」按内容真变计数用）。
@@ -562,6 +565,28 @@ func parseTimePtr(s string) *time.Time {
 }
 
 func (r *entryRepository) CreateOrUpdate(ctx context.Context, entry model.Entry) error {
+	_, err := r.createOrUpdate(ctx, entry, false)
+	return err
+}
+
+// CreateOrUpdateSkippingTombstones 与 CreateOrUpdate 相同，但写入前先查 entry_tombstones：
+// 若 (feed_id, hash) 或 (feed_id, 规范化 url) 命中墓碑，就直接跳过、不写库并返回 false。
+// 这是「清理文章缓存」后防止被删文章在下次刷新时重新入库变回未读的关键闸门。
+func (r *entryRepository) CreateOrUpdateSkippingTombstones(ctx context.Context, entry model.Entry) (bool, error) {
+	return r.createOrUpdate(ctx, entry, true)
+}
+
+func (r *entryRepository) createOrUpdate(ctx context.Context, entry model.Entry, respectTombstones bool) (bool, error) {
+	if respectTombstones {
+		hit, err := r.isTombstoned(ctx, entry)
+		if err != nil {
+			return false, err
+		}
+		if hit {
+			return false, nil
+		}
+	}
+
 	id := snowflake.NextID()
 	now := formatTime(time.Now())
 
@@ -622,10 +647,10 @@ func (r *entryRepository) CreateOrUpdate(ctx context.Context, entry model.Entry)
 			entry.Hash,
 		)
 		if err != nil {
-			return err
+			return false, err
 		}
 		if affected, err := result.RowsAffected(); err == nil && affected > 0 {
-			return nil
+			return true, nil
 		}
 	}
 
@@ -653,7 +678,37 @@ func (r *entryRepository) CreateOrUpdate(ctx context.Context, entry model.Entry)
 		now,
 		now,
 	)
-	return err
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// isTombstoned 判断这条待入库条目是否命中墓碑：feed 相同且 hash 相等，
+// 或 feed 相同且 url 规范化（去 fragment）后相等。hash 为空时不按空 hash 命中；
+// url 为空时也不参与 url 比较。墓碑表只存指纹，不含正文/标题。
+func (r *entryRepository) isTombstoned(ctx context.Context, entry model.Entry) (bool, error) {
+	hashCond := "0"
+	args := []interface{}{entry.FeedID}
+	if entry.Hash != "" {
+		hashCond = "hash = ?"
+		args = append(args, entry.Hash)
+	}
+	urlCond := "0"
+	if entry.URL != nil && *entry.URL != "" {
+		urlCond = "(CASE WHEN instr(url, '#') > 0 THEN substr(url, 1, instr(url, '#') - 1) ELSE url END) = ?"
+		args = append(args, urlutil.StripFragment(*entry.URL))
+	}
+
+	query := fmt.Sprintf(
+		`SELECT COUNT(*) FROM entry_tombstones WHERE feed_id = ? AND (%s OR %s)`,
+		hashCond, urlCond,
+	)
+	var count int
+	if err := r.db.QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 func (r *entryRepository) ExistsByHash(ctx context.Context, feedID int64, hash string) (bool, error) {
@@ -797,10 +852,47 @@ func (r *entryRepository) ClearAllReadableContent(ctx context.Context) (int64, e
 
 // DeleteReadUnstarred 删除「已读且未收藏」的条目：只删 starred = 0 AND read = 1，
 // 保留已收藏（starred = 1）与未读（read = 0）的条目。
+//
+// 删除前先把这些条目的指纹（feed_id + hash + url）写进 entry_tombstones。
+// **必须先写墓碑再删除**：否则一旦删除成功、随后的刷新又把同一文章抓回来，
+// 它会以 read 默认 0 重新 INSERT，刚清掉的文章就回流成未读。先写墓碑后删，
+// 保证「删掉的那批」在再次入库时一定被 CreateOrUpdateSkippingTombstones 挡住。
+// 两步尽量放在同一事务里（*sql.DB 支持 BeginTx；测试用的 dbtx 若不支持则退回顺序执行）。
 func (r *entryRepository) DeleteReadUnstarred(ctx context.Context) (int64, error) {
-	result, err := r.db.ExecContext(ctx, `DELETE FROM entries WHERE starred = 0 AND read = 1`)
+	if txer, ok := r.db.(interface {
+		BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
+	}); ok {
+		tx, err := txer.BeginTx(ctx, nil)
+		if err != nil {
+			return 0, fmt.Errorf("begin delete read unstarred: %w", err)
+		}
+		count, err := deleteReadUnstarred(ctx, tx)
+		if err != nil {
+			_ = tx.Rollback()
+			return 0, err
+		}
+		if err := tx.Commit(); err != nil {
+			return 0, fmt.Errorf("commit delete read unstarred: %w", err)
+		}
+		return count, nil
+	}
+	return deleteReadUnstarred(ctx, r.db)
+}
+
+func deleteReadUnstarred(ctx context.Context, db dbtx) (int64, error) {
+	now := formatTime(time.Now())
+	if _, err := db.ExecContext(ctx,
+		`INSERT OR IGNORE INTO entry_tombstones (feed_id, hash, url, created_at)
+		 SELECT feed_id, hash, url, ? FROM entries
+		  WHERE starred = 0 AND read = 1 AND hash <> ''`,
+		now,
+	); err != nil {
+		return 0, fmt.Errorf("insert entry tombstones: %w", err)
+	}
+
+	result, err := db.ExecContext(ctx, `DELETE FROM entries WHERE starred = 0 AND read = 1`)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("delete read unstarred entries: %w", err)
 	}
 	return result.RowsAffected()
 }

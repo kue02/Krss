@@ -92,11 +92,11 @@ func TestFeedService_Add_Success(t *testing.T) {
 		},
 	)
 
-	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, entry model.Entry) error {
+	mockEntries.EXPECT().CreateOrUpdateSkippingTombstones(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, entry model.Entry) (bool, error) {
 			require.Equal(t, int64(123), entry.FeedID)
 			require.NotEmpty(t, *entry.URL)
-			return nil
+			return true, nil
 		},
 	).Times(1)
 
@@ -241,7 +241,7 @@ func TestFeedService_Add_EntryCreateErrorIgnored(t *testing.T) {
 		},
 	)
 
-	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).Return(errors.New("entry error")).Times(1)
+	mockEntries.EXPECT().CreateOrUpdateSkippingTombstones(gomock.Any(), gomock.Any()).Return(false, errors.New("entry error")).Times(1)
 
 	clientFactory := network.NewClientFactoryForTest(client)
 	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, clientFactory, nil, nil)
@@ -286,7 +286,7 @@ func TestFeedService_Add_IconFetchUpdatesPath(t *testing.T) {
 		UpdateIconPath(gomock.Any(), int64(123), "example.com.png").
 		Return(nil)
 
-	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).Return(nil).Times(1)
+	mockEntries.EXPECT().CreateOrUpdateSkippingTombstones(gomock.Any(), gomock.Any()).Return(true, nil).Times(1)
 
 	clientFactory := network.NewClientFactoryForTest(client)
 	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, mockIcons, nil, clientFactory, nil, nil)
@@ -877,7 +877,7 @@ func TestFeedService_Add_TitleOverride(t *testing.T) {
 			return feed, nil
 		},
 	)
-	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	mockEntries.EXPECT().CreateOrUpdateSkippingTombstones(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
 
 	clientFactory := network.NewClientFactoryForTest(client)
 	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, clientFactory, nil, nil)
@@ -1219,7 +1219,7 @@ func TestFeedService_Add_IconFetchError(t *testing.T) {
 		FetchAndSaveIconForFeed(gomock.Any(), int64(123), "https://example.com/icon.png", "https://example.com").
 		Return("", errors.New("icon fetch error"))
 
-	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	mockEntries.EXPECT().CreateOrUpdateSkippingTombstones(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
 
 	clientFactory := network.NewClientFactoryForTest(client)
 	svc := service.NewFeedService(mockFeeds, nil, mockEntries, mockIcons, nil, clientFactory, nil, nil)
@@ -1475,7 +1475,7 @@ func TestFeedService_Add_SameTypeSucceeds(t *testing.T) {
 		},
 	)
 
-	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	mockEntries.EXPECT().CreateOrUpdateSkippingTombstones(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
 
 	clientFactory := network.NewClientFactoryForTest(client)
 	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, clientFactory, nil, nil)
