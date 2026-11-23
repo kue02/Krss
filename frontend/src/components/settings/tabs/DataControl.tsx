@@ -102,6 +102,7 @@ export function DataControl() {
   const lastSavedCacheRef = useRef("");
   const latestCacheRef = useRef("");
   const cacheSavingRef = useRef(false);
+  const savingCacheRef = useRef("");
 
   const { data: cacheSettings } = useQuery({
     queryKey: ["cacheSettings"],
@@ -137,6 +138,7 @@ export function DataControl() {
       // 收尾分支会重新触发这一轮自动保存。
       if (cacheSavingRef.current) return;
       cacheSavingRef.current = true;
+      savingCacheRef.current = serialized;
       setCacheStatus({
         kind: "saving",
         text: t("data_control.cache_retention_saving"),
@@ -175,6 +177,7 @@ export function DataControl() {
         setCacheStatus({ kind: "error", text: message });
       } finally {
         cacheSavingRef.current = false;
+        savingCacheRef.current = "";
       }
     }, 500);
 
@@ -187,6 +190,13 @@ export function DataControl() {
       if (
         !latestCacheRef.current ||
         latestCacheRef.current === lastSavedCacheRef.current
+      ) {
+        return;
+      }
+      // 同一笔值已经在飞时不用重复补发；只有卸载前又改了值才需要补。
+      if (
+        cacheSavingRef.current &&
+        latestCacheRef.current === savingCacheRef.current
       ) {
         return;
       }
