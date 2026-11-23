@@ -11,6 +11,7 @@ import { formatRelativeTime } from "@/lib/date-utils";
 import { cn } from "@/lib/utils";
 import type { Entry, Feed } from "@/types/api";
 import { EntryContextMenuContent } from "./EntryListItem";
+import { RowQuickActions } from "./RowQuickActions";
 import { UnreadIndicator, unreadRowClass } from "./unread-indicator";
 
 interface ArticlePlainListRowProps {
@@ -80,6 +81,8 @@ export function ArticlePlainListRow({
             unreadRowClass(isUnread, !!entry.starred, selected, unreadStyle),
           )}
         >
+          {/* 已读/未读 + 星标：固定在来源图标左侧（用户 2026-11-24 要求） */}
+          <RowQuickActions entry={entry} />
           {/* 未读标记沿用全站那套（设置 → 外观 → 阅读 →「未读标记」）：
               圆点/角标挂在来源小图标左上角，变灰档整行降透明度 */}
           <UnreadIndicator

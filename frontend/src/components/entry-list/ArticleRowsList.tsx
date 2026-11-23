@@ -14,6 +14,7 @@ import { formatRelativeTime } from "@/lib/date-utils";
 import { cn } from "@/lib/utils";
 import type { Entry, Feed } from "@/types/api";
 import { EntryContextMenuContent } from "./EntryListItem";
+import { RowQuickActions } from "./RowQuickActions";
 import { UnreadIndicator, unreadRowClass } from "./unread-indicator";
 
 interface ArticleRowsListRowProps {
@@ -84,6 +85,7 @@ export function ArticleRowsListRow({
             unreadRowClass(isUnread, !!entry.starred, selected, unreadStyle),
           )}
         >
+      <RowQuickActions entry={entry} className="self-center" />
       <UnreadIndicator unread={isUnread} count={feedUnreadCount} className="shrink-0">
       <div className="relative size-16 shrink-0 overflow-hidden rounded-md bg-muted">
         {thumbnail ? (

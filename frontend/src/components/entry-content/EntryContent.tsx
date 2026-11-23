@@ -45,6 +45,8 @@ interface EntryContentProps {
   onBack?: () => void;
   /** 28-5：桌面正文区左上角的关闭按钮（与移动端 onBack 同位置，图标用 X） */
   onClose?: () => void;
+  /** 内嵌 sticky 时距视口顶的偏移类（手机内联合列要避开列表固定顶栏） */
+  headerStickyTopClassName?: string;
 }
 
 export function EntryContent({
@@ -55,6 +57,7 @@ export function EntryContent({
   containerRef,
   onBack,
   onClose,
+  headerStickyTopClassName,
 }: EntryContentProps) {
   const { t } = useTranslation();
   const { data: entry, isLoading } = useEntry(entryId);
@@ -268,6 +271,7 @@ export function EntryContent({
         onToggleOriginalSite={() => setShowOriginalSite((value) => !value)}
         /** 39-1：内嵌时工具栏跟宿主容器一起滚（sticky），第三栏那套是 absolute 盖在面板上 */
         sticky={embedded}
+        stickyTopClassName={headerStickyTopClassName}
       />
       {/* 23-4：阅读进度条锁在工具栏（h-12 = 48px）正下方。
           跟着真实滚动容器（正文那个元素滚动）走；看原站时滚的是 iframe，进度条没有意义。
