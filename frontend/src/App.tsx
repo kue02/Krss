@@ -591,6 +591,14 @@ function AuthenticatedApp() {
      选中后正文浮层从方向侧盖住条目栏。 */
   const articleCoverList = useUISettingKey("articleCoverList");
   const isArticleCoverLayout = contentType === "article" && articleCoverList;
+  /**
+   * 「正文推入方向 = 向下」：条目栏与正文合为一列，正文接在列表末尾
+   * （方案 2 · 整列一起滚，用户 11-23 拍板）。桌面把正文交给 EntryList 内联渲染，
+   * 三栏布局让出第三栏；移动端仍是列表 → 详情页，不受影响。
+   */
+  const articlePushDirection = useUISettingKey("articlePushDirection");
+  const isArticleInlineLayout =
+    contentType === "article" && articlePushDirection === "down" && !isMobile;
 
   // 桌面三栏的第三栏：Nextflux 式转场（reader-transition 批）。
   // 未选 → 首次选中 = 整块从右侧推进；已选 → 换另一条 = 正文上下滑动。
@@ -650,6 +658,26 @@ function AuthenticatedApp() {
       onSelectFeedFromEntry={handleJumpToFeed}
       feedJumpBackHref={jumpBackHref}
       onBackFromFeedJump={handleBackFromFeedJump}
+      /* 合列模式（向下）：正文接在列表末尾，共用列表那条滚动条 */
+      renderInlineContent={
+        isArticleInlineLayout
+          ? (scrollRef) =>
+              selectedEntryId ? (
+                <div className="pb-10">
+                  <Suspense fallback={<EntryContentFallback />}>
+                    <LazyEntryContent
+                      key={selectedEntryId}
+                      entryId={selectedEntryId}
+                      contentType={contentType}
+                      embedded
+                      containerRef={scrollRef}
+                      onClose={() => selectEntry(null)}
+                    />
+                  </Suspense>
+                </div>
+              ) : null
+          : undefined
+      }
     />
   );
 
@@ -1080,6 +1108,8 @@ function AuthenticatedApp() {
           (isArticleHoverLayout || isArticleCoverLayout) && !selectedEntryId
         }
         coverList={isArticleCoverLayout}
+        /* 「向下」合列：没有第三栏，正文由列表自己接在末尾（共用一条滚动条） */
+        inlineContent={isArticleInlineLayout}
       />
       <ImagePreview />
         <VideoPreview />

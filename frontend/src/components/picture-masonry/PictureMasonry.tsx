@@ -166,6 +166,7 @@ export function PictureMasonry({
     experimentalPictureHover: useUISettingKey("experimentalPictureHover"),
     experimentalPictureWall: useUISettingKey("experimentalPictureWall"),
     experimentalArticleHover: useUISettingKey("experimentalArticleHover"),
+    experimentalArticleRows: useUISettingKey("experimentalArticleRows"),
   });
   // 实验布局批：图片可切换档位严格按实验可见性生成（关闭即隐藏，不因当前正选中而泄漏）。
   // 常规只有「网格」；hover/wall 仅在对应实验开关打开时进入循环。

@@ -358,12 +358,13 @@ describe("AppearanceSettings 按视图设置", () => {
   });
 
 
-  it("实验布局批：实验关闭时，文章布局选择器不含 hover、图片选择器只余网格", () => {
+  it("实验布局批：实验关闭时，文章布局只余常规两档（传统三栏 / Inoreader列表）、图片选择器只余网格", () => {
     render(<AppearanceSettings />);
 
     const articleRow = rowOf("appearance_view.article_layout");
     expect(within(articleRow).getByText("list")).toBeTruthy();
-    expect(within(articleRow).getByText("rows")).toBeTruthy();
+    expect(within(articleRow).getByText("inoreader")).toBeTruthy();
+    expect(within(articleRow).queryByText("rows")).toBeNull();
     expect(within(articleRow).queryByText("hover")).toBeNull();
 
     const pictureRow = rowOf("appearance_view.picture_layout");

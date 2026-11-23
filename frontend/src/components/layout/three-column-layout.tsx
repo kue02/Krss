@@ -155,6 +155,12 @@ interface ThreeColumnLayoutProps {
    * 未选中（hideContent）时正文浮层透明不可点，条目栏独占。关时维持经典三栏。
    */
   coverList?: boolean;
+  /**
+   * 实验布局批：文章「正文推入方向 = 向下」的**合列**模式（方案 2 · 整列一起滚）。
+   * 开时不再有第三栏：条目栏吃满剩余宽度，正文由列表自己接在末尾、共用一个滚动条
+   * （正文节点由 `EntryList` 的 `renderInlineContent` 渲染，这里只负责让出第三栏的位置）。
+   */
+  inlineContent?: boolean;
 }
 
 export function ThreeColumnLayout({
@@ -166,6 +172,7 @@ export function ThreeColumnLayout({
   showSidebar = true,
   hideContent = false,
   coverList = false,
+  inlineContent = false,
 }: ThreeColumnLayoutProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [windowWidth, setWindowWidth] = useState(
@@ -296,10 +303,18 @@ export function ThreeColumnLayout({
         )}
       </div>
 
-      {/* List + Content —— coverList（文章覆盖模式）时，正文浮层盖在条目栏之上，
-          条目栏吃满剩余宽度（仿 Inoreader 列表模式）；否则维持经典三栏
-          （条目栏固定宽 + 正文为第三栏）。 */}
-      {coverList ? (
+      {/* List + Content —— 三种形态：
+          1) inlineContent（「正文推入方向 = 向下」，方案 2 · 整列一起滚）：没有第三栏，
+             条目栏吃满剩余宽度，正文由列表自己接在末尾、共用同一条滚动条；
+          2) coverList（覆盖模式）：正文浮层盖在条目栏之上（仿 Inoreader 列表模式）；
+          3) 经典三栏：条目栏固定宽 + 正文为第三栏。 */}
+      {inlineContent ? (
+        !hideList && (
+          <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-background safe-area-top">
+            {list}
+          </div>
+        )
+      ) : coverList ? (
         !hideList && (
           <div className="relative flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-background safe-area-top">
             <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-background">

@@ -31,11 +31,13 @@ export function AdvancedSettings() {
   const experimentalPictureHover = useUISettingKey("experimentalPictureHover");
   const experimentalPictureWall = useUISettingKey("experimentalPictureWall");
   const experimentalArticleHover = useUISettingKey("experimentalArticleHover");
+  const experimentalArticleRows = useUISettingKey("experimentalArticleRows");
   const {
     setExperimentalFeaturesEnabled,
     setExperimentalPictureHover,
     setExperimentalPictureWall,
     setExperimentalArticleHover,
+    setExperimentalArticleRows,
   } = useUISettingActions();
   const [items, setItems] = useState<DomainRateLimit[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -432,7 +434,7 @@ export function AdvancedSettings() {
 
       {/* 实验性设置（实验布局批）：这些尚未定型、可能被移除或破坏性更新。
           开关只控制「实验布局入口」在选择器/顶栏的可见性 —— 关闭仅隐藏入口，
-          已选中的实验布局仍照常渲染。总开关关 = 下面三项全隐藏。 */}
+          已选中的实验布局仍照常渲染。总开关关 = 下面四项全隐藏。 */}
       <SectionCard
         icon={<FlaskConical className="size-5" />}
         title={t("settings.experimental_title")}
@@ -483,6 +485,18 @@ export function AdvancedSettings() {
               onCheckedChange={setExperimentalArticleHover}
               disabled={!experimentalMaster}
               aria-label={t("settings.experimental_article_hover")}
+            />
+          </SettingRow>
+          <SettingRow
+            label={t("settings.experimental_article_rows")}
+            hint={t("settings.experimental_article_rows_hint")}
+            disabled={!experimentalMaster}
+          >
+            <Switch
+              checked={experimentalArticleRows}
+              onCheckedChange={setExperimentalArticleRows}
+              disabled={!experimentalMaster}
+              aria-label={t("settings.experimental_article_rows")}
             />
           </SettingRow>
         </div>
