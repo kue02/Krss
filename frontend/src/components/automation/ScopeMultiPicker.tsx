@@ -1,80 +1,111 @@
-import { useState } from "react";
-import { useTranslation } from "react-i18next";
-import { Button, Checkbox, CheckboxGroup, Popover } from "@heroui/react";
+import type { ReactNode } from "react";
+import { Chip, Dropdown, Label } from "@heroui/react";
 import { ChevronDown } from "lucide-react";
-import { MarqueeText } from "@/components/ui/marquee-text";
 
 /**
  * 规则/视图「范围」的多选器（订阅多选 用户 11-16，文件夹也多选 12-x 补）。
  *
- * 触发器只报个数（用户 12-3 原话：「弹框打钩，外面不要显示选择了什么，只显示选择了多少个就行」），
- * 勾选在弹框里做；选中的值直接是 id 数组，与后端 `scopeIds` 一一对应。
+ * 12-23 重做：改参考「设置 → 数据控制 → 备份与恢复」那个多选分区的样子 ——
+ * 一整行圆角字段：左侧图标块 + 「标题 / 已选摘要」两行 + 右侧数量 Chip 与展开箭头，
+ * 点开是带勾选指示的菜单。比原来那颗朴素的 outline 按钮体面，也更贴合设置页的卡片语言。
  *
- * 订阅与文件夹共用同一套交互，只是空态与计数文案不同，所以做成泛型组件：
- * 由调用方传 `emptyLabel` / `selectedLabel`（作用域不同，文案不同）。
- *
- * 用 HeroUI 的 `Popover` + `CheckboxGroup`（组件库现成的，不手搓）。
+ * 订阅与文件夹共用同一套交互，只是标题、空态与图标不同，所以做成泛型组件，
+ * 由调用方传 `title` / `emptyLabel` / `icon` / `hint`。
  */
 export function ScopeMultiPicker({
   values,
   onValuesChange,
   options,
   ariaLabel,
+  title,
   emptyLabel,
-  selectedLabel,
+  icon,
+  hint,
 }: {
   values: string[];
   onValuesChange: (values: string[]) => void;
   options: Array<{ value: string; label: string }>;
   ariaLabel?: string;
+  /** 字段名（触发器的第一行），如「文件夹」「订阅」 */
+  title: string;
+  /** 一个都没选时摘要位置显示的文案，如「全部文件夹」 */
   emptyLabel: string;
-  selectedLabel: (count: number) => string;
+  /** 左侧图标块里的图标（lucide 元素，size-4） */
+  icon?: ReactNode;
+  /** 触发器下方的一行小提示 */
+  hint?: string;
 }) {
-  const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
+  const selectedLabels = options
+    .filter((option) => values.includes(option.value))
+    .map((option) => option.label);
+  // 与「备份分区」一致：摘要直接列出已选的名字（多了就截断）；一个都没选显示空态文案。
+  const summary = selectedLabels.length
+    ? selectedLabels.join(" · ")
+    : values.length > 0
+      ? `${values.length}`
+      : emptyLabel;
 
   return (
-    <Popover.Root isOpen={open} onOpenChange={setOpen}>
-      <Popover.Trigger>
-        <Button
-          aria-label={ariaLabel}
-          variant="outline"
-          size="sm"
-          className="w-full justify-between"
+    <div>
+      <Dropdown>
+        <Dropdown.Trigger
+          aria-label={ariaLabel ?? title}
+          className="group flex h-auto w-full items-center justify-between gap-3 rounded-xl border border-border bg-background px-3.5 py-2.5 text-left outline-none transition-colors hover:bg-secondary/50 data-[focus-visible]:ring-2 data-[focus-visible]:ring-primary"
         >
-          <span className="truncate">
-            {values.length === 0 ? emptyLabel : selectedLabel(values.length)}
+          <span className="flex min-w-0 items-center gap-3">
+            {icon ? (
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
+                {icon}
+              </span>
+            ) : null}
+            <span className="flex min-w-0 flex-col">
+              <span className="text-sm font-medium text-foreground">{title}</span>
+              <span className="truncate text-xs text-muted-foreground">
+                {summary}
+              </span>
+            </span>
           </span>
-          <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
-        </Button>
-      </Popover.Trigger>
-      <Popover.Content>
-        <Popover.Dialog className="w-80 p-2">
-          <CheckboxGroup
-            aria-label={ariaLabel ?? t("automation.scope")}
-            value={values}
-            onChange={(next) => onValuesChange(next.map(String))}
-            className="max-h-64 overflow-y-auto"
+          <span className="flex shrink-0 items-center gap-2">
+            <Chip
+              size="sm"
+              variant="tertiary"
+              className="border border-border tabular-nums text-muted-foreground"
+            >
+              {values.length}
+            </Chip>
+            <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-aria-expanded:rotate-180" />
+          </span>
+        </Dropdown.Trigger>
+        <Dropdown.Popover>
+          <Dropdown.Menu
+            aria-label={ariaLabel ?? title}
+            selectionMode="multiple"
+            selectedKeys={new Set(values)}
+            onSelectionChange={(keys) => {
+              const next =
+                keys === "all"
+                  ? options.map((option) => option.value)
+                  : Array.from(keys).map(String);
+              onValuesChange(next);
+            }}
+            className="max-h-72 overflow-y-auto"
           >
             {options.map((option) => (
-              // `flex-row` 不能省：`.checkbox` 组件层写死 flex-direction:column，
-              // 不顶掉的话每个选项会「勾选框一行、名字一行」，几十个就是几十组两行（13-2 同一个坑）
-              <Checkbox
+              <Dropdown.Item
                 key={option.value}
-                value={option.value}
-                className="flex w-full flex-row items-center gap-2 rounded px-2 py-1 hover:bg-secondary/40"
+                id={option.value}
+                textValue={option.label}
               >
-                <Checkbox.Control>
-                  <Checkbox.Indicator />
-                </Checkbox.Control>
-                <Checkbox.Content className="min-w-0 flex-1">
-                  <MarqueeText className="text-sm" text={option.label} />
-                </Checkbox.Content>
-              </Checkbox>
+                <Label>{option.label}</Label>
+                <Dropdown.ItemIndicator className="ms-auto" />
+              </Dropdown.Item>
             ))}
-          </CheckboxGroup>
-        </Popover.Dialog>
-      </Popover.Content>
-    </Popover.Root>
+          </Dropdown.Menu>
+        </Dropdown.Popover>
+      </Dropdown>
+      {hint ? (
+        <p className="mt-1.5 px-1 text-xs text-muted-foreground">{hint}</p>
+      ) : null}
+    </div>
   );
 }
