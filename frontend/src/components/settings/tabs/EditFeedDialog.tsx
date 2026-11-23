@@ -12,6 +12,10 @@ import { copyToClipboard } from "@/stores/toast-store";
 import { useUpdateFeedProxy, useProxySources } from "@/hooks/useProxySources";
 import { TriStateControl } from "@/components/ui/tri-state-control";
 import { ProxyEffectiveLine } from "@/components/settings/ProxyEffectiveLine";
+import {
+  GroupLabel,
+  SettingRow,
+} from "@/components/settings/settings-primitives";
 import { MCPSubscriptionWizard } from "@/components/settings/tabs/MCPSubscriptionWizard";
 import { cn } from "@/lib/utils";
 import { Copy } from "lucide-react";
@@ -260,44 +264,33 @@ export function EditFeedDialog({
               {error}
             </div>
           )}
-          {/* 订阅级 AI 覆盖：单独成一块，不要和底部按钮挤在一行 */}
-          <div className="space-y-1 border-t border-border pt-4">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-sm text-foreground">
-                {t("feeds.auto_translate")}
-              </span>
-              <TriStateControl
-                value={autoTranslate}
-                onChange={(v) => setAutoTranslate(v === "smart" ? null : v)}
-              />
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-sm text-foreground">
-                {t("feeds.auto_summary")}
-              </span>
-              <TriStateControl
-                value={autoSummary}
-                onChange={(v) => setAutoSummary(v === "smart" ? null : v)}
-              />
-            </div>
-            {/* 正文打开方式：阅读模式（提取正文）/ 原文 */}
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-sm text-foreground">
-                {t("feeds.reader_mode")}
-              </span>
-              <TriStateControl
-                value={readerMode}
-                onChange={(v) => setReaderMode(v === "smart" ? null : v)}
-                onLabel={t("feeds.reader_mode_on")}
-                offLabel={t("feeds.reader_mode_off")}
-              />
-            </div>
-            {/* 代理（14 批）：跟随上级（文件夹链 → 全局）/ 走代理 / 直连；下面直接显示这一条实际会怎么走 */}
-            <div className="space-y-1 pt-1">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-sm text-foreground">
-                  {t("proxy.override_label")}
-                </span>
+          {/* 订阅级 AI / 代理覆盖：单独成一块，不要和底部按钮挤在一行 */}
+          <div className="border-t border-border/60 pt-1">
+            <GroupLabel>{t("feeds.overrides_group")}</GroupLabel>
+            <div className="divide-y divide-border/50">
+              <SettingRow label={t("feeds.auto_translate")}>
+                <TriStateControl
+                  value={autoTranslate}
+                  onChange={(v) => setAutoTranslate(v === "smart" ? null : v)}
+                />
+              </SettingRow>
+              <SettingRow label={t("feeds.auto_summary")}>
+                <TriStateControl
+                  value={autoSummary}
+                  onChange={(v) => setAutoSummary(v === "smart" ? null : v)}
+                />
+              </SettingRow>
+              {/* 正文打开方式：阅读模式（提取正文）/ 原文 */}
+              <SettingRow label={t("feeds.reader_mode")}>
+                <TriStateControl
+                  value={readerMode}
+                  onChange={(v) => setReaderMode(v === "smart" ? null : v)}
+                  onLabel={t("feeds.reader_mode_on")}
+                  offLabel={t("feeds.reader_mode_off")}
+                />
+              </SettingRow>
+              {/* 代理（14 批）：跟随上级（文件夹链 → 全局）/ 走代理 / 直连；下面直接显示这一条实际会怎么走 */}
+              <SettingRow label={t("proxy.override_label")}>
                 <TriStateControl
                   value={proxyMode === "inherit" ? null : proxyMode === "proxy"}
                   onChange={(next) =>
@@ -309,10 +302,10 @@ export function EditFeedDialog({
                   onLabel={t("proxy.use_proxy")}
                   offLabel={t("proxy.direct")}
                 />
-              </div>
-              <div className="flex justify-end">
-                <ProxyEffectiveLine effective={shownEffective} />
-              </div>
+              </SettingRow>
+            </div>
+            <div className="flex justify-end px-1 pb-1 pt-1">
+              <ProxyEffectiveLine effective={shownEffective} />
             </div>
           </div>
 
