@@ -169,49 +169,49 @@ describe("EntryListHeader 移动端顶栏与 Web 图标统一", () => {
     return screen.getByLabelText(label);
   }
 
-  it("刷新/全部已读改用 Web 同款图标（统一 18px），按钮盒仍是 44px", () => {
+  it("刷新/全部已读直接沿用 Web 端（按钮 size-8、图标 size-4）", () => {
     render(<EntryListHeader {...baseProps} isMobile onRefresh={vi.fn()} />);
 
     const refresh = mobileButton("entry.refresh_view");
-    expect(refresh.className).toContain("size-11");
+    expect(refresh.className).toContain("size-8");
     const refreshSvg = refresh.querySelector("svg");
-    expect(refreshSvg?.getAttribute("class")).toBe("size-[18px]");
+    expect(refreshSvg?.getAttribute("class")).toBe("size-4");
     expect(refreshSvg?.querySelector("path")?.getAttribute("d")).toBe(
       REFRESH_ICON_PATH,
     );
 
     const markAllRead = mobileButton("entry.mark_all_read");
-    expect(markAllRead.className).toContain("size-11");
+    expect(markAllRead.className).toContain("size-8");
     const checkSvg = markAllRead.querySelector("svg");
-    expect(checkSvg?.getAttribute("class")).toBe("size-[18px]");
+    expect(checkSvg?.getAttribute("class")).toBe("size-4");
     expect(checkSvg?.querySelector("path")?.getAttribute("d")).toBe(
       CHECK_CIRCLE_ICON_PATH,
     );
   });
 
-  it("未读切换沿用 Web 的实心/描边圆点（统一 18px），按钮盒仍是 44px", () => {
+  it("未读切换沿用 Web 的实心/描边圆点（按钮 size-8、图标 size-5）", () => {
     const { rerender } = render(
       <EntryListHeader {...baseProps} isMobile unreadOnly={false} />,
     );
 
     const outlineButton = mobileButton("entry.show_unread_only");
-    expect(outlineButton.className).toContain("size-11");
+    expect(outlineButton.className).toContain("size-8");
     expect(outlineButton.querySelector("circle")).toBeTruthy();
     expect(outlineButton.querySelector("svg")?.getAttribute("class")).toBe(
-      "size-[18px]",
+      "size-5",
     );
 
     rerender(<EntryListHeader {...baseProps} isMobile unreadOnly />);
     const filledButton = mobileButton("entry.show_all");
-    expect(filledButton.className).toContain("size-11");
+    expect(filledButton.className).toContain("size-8");
     expect(filledButton.querySelector("path")).toBeNull();
     expect(filledButton.querySelector("circle")).toBeTruthy();
     expect(filledButton.querySelector("svg")?.getAttribute("class")).toBe(
-      "size-[18px]",
+      "size-5",
     );
   });
 
-  it("顶栏四颗动作图标（刷新/未读切换/全部已读/更多）共用同一个 18px 字号类", () => {
+  it("顶栏四颗动作按钮（刷新/未读切换/全部已读/更多）都是 Web 端的 size-8 按钮盒", () => {
     render(<EntryListHeader {...baseProps} isMobile onRefresh={vi.fn()} />);
 
     const labels = [
@@ -221,8 +221,7 @@ describe("EntryListHeader 移动端顶栏与 Web 图标统一", () => {
       "actions.more",
     ];
     for (const label of labels) {
-      const svg = mobileButton(label).querySelector("svg");
-      expect(svg?.getAttribute("class")).toContain("size-[18px]");
+      expect(mobileButton(label).className).toContain("size-8");
     }
   });
 
