@@ -37,6 +37,7 @@ const (
 	KeyAIRateLimit         = keyAIRateLimit
 	KeyAITranslateChannel  = keyAITranslateChannel
 	KeyAITranslateChannels = keyAITranslateChannels
+	KeyAIUseProxy          = keyAIUseProxy
 	KeyMarkReadOnScroll    = keyMarkReadOnScroll
 	KeyNetworkEnabled      = keyNetworkEnabled
 	KeyNetworkType         = keyNetworkType

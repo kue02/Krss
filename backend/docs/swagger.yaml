@@ -61,6 +61,9 @@ definitions:
         items:
           type: string
         type: array
+      useProxy:
+        description: UseProxy：AI 调用是否走代理（含智能代理），默认 true
+        type: boolean
     type: object
   internal_handler.aiSettingsResponse:
     properties:
@@ -107,6 +110,9 @@ definitions:
         items:
           type: string
         type: array
+      useProxy:
+        description: UseProxy：AI 调用是否走代理（含智能代理），默认 true
+        type: boolean
     type: object
   internal_handler.aiTestRequest:
     properties:

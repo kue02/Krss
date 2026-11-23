@@ -86,13 +86,13 @@ func TestGetTranslateTextPrompt_UnknownLanguage(t *testing.T) {
 }
 
 func TestAnthropicProvider_Name(t *testing.T) {
-	provider, err := ai.NewAnthropicProvider("key", "", "claude-3", nil)
+	provider, err := ai.NewAnthropicProvider("key", "", "claude-3", nil, nil)
 	require.NoError(t, err)
 	require.Equal(t, ai.ProviderAnthropic, provider.Name())
 }
 
 func TestAnthropicProvider_WithBaseURL(t *testing.T) {
-	provider, err := ai.NewAnthropicProvider("key", "https://example.com", "claude-3", nil)
+	provider, err := ai.NewAnthropicProvider("key", "https://example.com", "claude-3", nil, nil)
 	require.NoError(t, err)
 	require.Equal(t, ai.ProviderAnthropic, provider.Name())
 }

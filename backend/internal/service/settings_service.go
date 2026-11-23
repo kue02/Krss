@@ -59,6 +59,8 @@ type AISettings struct {
 	TranslateChannels []string `json:"translateChannels"`
 	// FallbackToModel：免费通道失败时是否自动切回模型（默认开）
 	FallbackToModel bool `json:"fallbackToModel"`
+	// UseProxy：AI 调用是否走代理（含智能代理），默认 true
+	UseProxy bool `json:"useProxy"`
 	// 保存的提供商列表 + 当前使用哪一个（上面的 Provider/APIKey/... 始终等于当前使用的那份）
 	Providers        []AIProviderConfig `json:"providers"`
 	ActiveProviderID string             `json:"activeProviderId"`
@@ -173,6 +175,7 @@ const (
 	keyAITranslateChannel  = "ai.translate_channel"
 	keyAITranslateChannels = "ai.translate_channels"
 	keyAIFallbackToModel   = "ai.fallback_to_model"
+	keyAIUseProxy          = "ai.use_proxy"
 	keyAIProviders         = "ai.providers"
 	keyAIActiveProvider    = "ai.active_provider_id"
 	// 分场景模型覆盖（50 批 1.2）：空 = 跟随当前提供商；provider:<id> = 用已保存的那份；free = 免费通道（仅翻译）
@@ -359,6 +362,7 @@ func (s *settingsService) GetAISettings(ctx context.Context) (*AISettings, error
 		settings.TranslateChannels = []string{} // 契约统一：空列表返回 []，不返回 null
 	}
 	settings.FallbackToModel = s.getBoolDefault(ctx, keyAIFallbackToModel, true)
+	settings.UseProxy = s.getBoolDefault(ctx, keyAIUseProxy, true)
 	if val, err := s.getInt(ctx, keyAIRateLimit); err == nil && val > 0 {
 		settings.RateLimit = val
 	} else {
@@ -516,6 +520,14 @@ func (s *settingsService) SetAISettings(ctx context.Context, settings *AISetting
 	if err := s.repo.Set(ctx, keyAIFallbackToModel, fallbackVal); err != nil {
 		logger.Warn("ai settings update fallback flag failed", "module", "service", "action", "update", "resource", "settings", "result", "failed", "error", err)
 		return fmt.Errorf("set fallback flag: %w", err)
+	}
+	useProxyVal := "false"
+	if settings.UseProxy {
+		useProxyVal = "true"
+	}
+	if err := s.repo.Set(ctx, keyAIUseProxy, useProxyVal); err != nil {
+		logger.Warn("ai settings update use proxy flag failed", "module", "service", "action", "update", "resource", "settings", "result", "failed", "error", err)
+		return fmt.Errorf("set use proxy flag: %w", err)
 	}
 	channels := ai.NormalizeFreeTranslateChannels(settings.TranslateChannels)
 	if len(channels) == 0 && ai.IsFreeTranslateChannel(settings.TranslateChannel) {
@@ -1546,6 +1558,7 @@ func importableSettingKeys() []string {
 		keyAITranslateChannel,
 		keyAITranslateChannels,
 		keyAIFallbackToModel,
+		keyAIUseProxy,
 		keyAIActiveProvider,
 		keyAISceneTranslate,
 		keyAISceneSummary,

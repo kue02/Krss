@@ -172,7 +172,7 @@ func (s *aiService) Summarize(ctx context.Context, entryID int64, content, title
 	}
 
 	// Create provider
-	provider, err := ai.NewProvider(cfg)
+	provider, err := s.newAIProvider(ctx, entryID, cfg)
 	if err != nil {
 		logger.Warn("ai provider create failed", "module", "service", "action", "fetch", "resource", "ai", "result", "failed", "provider", cfg.Provider, "model", cfg.Model, "error", err)
 		_ = s.summaryRepo.UpsertStatus(ctx, entryID, isReadability, language, "failed", err.Error(), providerDisplayName(cfg), cfg.Model)
@@ -302,6 +302,24 @@ func (s *aiService) feedIDForEntry(ctx context.Context, entryID int64) int64 {
 		return 0
 	}
 	return entry.FeedID
+}
+
+// aiProxyEnabled 读「AI 调用是否走代理」（含智能代理），默认 true。
+func (s *aiService) aiProxyEnabled(ctx context.Context) bool {
+	st, err := s.settingsRepo.Get(ctx, "ai.use_proxy")
+	if err != nil || st == nil || st.Value == "" {
+		return true
+	}
+	return st.Value == "true"
+}
+
+// newAIProvider 构造模型提供商：开关开着且有代理工厂时注入按订阅解析的 HTTP 客户端
+// （timeout=0 不设客户端超时，靠 ctx 控制；含 smart: 智能代理）。
+func (s *aiService) newAIProvider(ctx context.Context, entryID int64, cfg ai.Config) (ai.Provider, error) {
+	if s.aiProxyEnabled(ctx) && s.clientFactory != nil {
+		cfg.HTTPClient = s.clientFactory.NewHTTPClientForFeed(ctx, s.feedIDForEntry(ctx, entryID), 0)
+	}
+	return ai.NewProvider(cfg)
 }
 
 // isModelFallbackEnabled 读「免费通道失败时是否自动切回模型」（默认开）。
@@ -498,7 +516,7 @@ func (s *aiService) Complete(ctx context.Context, systemPrompt, content string) 
 	if err != nil {
 		return "", err
 	}
-	provider, err := ai.NewProvider(cfg)
+	provider, err := s.newAIProvider(ctx, 0, cfg)
 	if err != nil {
 		return "", err
 	}
@@ -683,6 +701,10 @@ func channelDisplayName(channel string) (service, provider string) {
 		return "Google 翻译", "Google"
 	case "youdao":
 		return "有道翻译", "有道"
+	case "microsoft":
+		return "微软翻译", "微软"
+	case "bilibili":
+		return "B站翻译", "哔哩哔哩"
 	default:
 		return channel, channel
 	}
@@ -925,7 +947,7 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 					return
 				}
 				// Create provider for this goroutine
-				provider, err := ai.NewProvider(cfg)
+				provider, err := s.newAIProvider(ctx, entryID, cfg)
 				if err != nil {
 					select {
 					case errCh <- fmt.Errorf("create provider: %w", err):
@@ -1188,7 +1210,7 @@ func (s *aiService) TranslateBatch(ctx context.Context, articles []BatchArticleI
 					if providerReady {
 						return provider, nil
 					}
-					p, err := ai.NewProvider(cfg)
+					p, err := s.newAIProvider(ctx, 0, cfg)
 					if err != nil {
 						return nil, err
 					}

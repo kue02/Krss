@@ -453,14 +453,14 @@ func TestSettingsService_TranslateChannelsRoundTrip(t *testing.T) {
 	require.Empty(t, got2.TranslateChannel)
 }
 
-// 老库：只有旧单值 google、没有新键，读出来要自动变成 [google, youdao]（升级即获得轮询）。
+// 老库：只有旧单值 google、没有新键，读出来要自动变成 [google, youdao, microsoft, bilibili]（升级即获得全部轮询通道）。
 func TestSettingsService_TranslateChannelsLegacyDerived(t *testing.T) {
 	repo := newSettingsRepoStub()
 	repo.data[service.KeyAITranslateChannel] = "google"
 	svc := service.NewSettingsService(repo, ai.NewRateLimiter(0))
 	got, err := svc.GetAISettings(context.Background())
 	require.NoError(t, err)
-	require.Equal(t, []string{"google", "youdao"}, got.TranslateChannels)
+	require.Equal(t, []string{"google", "youdao", "microsoft", "bilibili"}, got.TranslateChannels)
 }
 
 // 切换「当前使用」不能把旧 active 的真实 key 套到新 active 上，且平铺 ai.api_key 要跟到新 active。
@@ -603,4 +603,36 @@ func TestSettingsService_SetCacheSettings_Nil(t *testing.T) {
 	svc := service.NewSettingsService(repo, ai.NewRateLimiter(0))
 
 	require.ErrorIs(t, svc.SetCacheSettings(context.Background(), nil), service.ErrInvalid)
+}
+
+// ai.use_proxy 默认 true；保存 false 后能原样读回。
+func TestSettingsService_UseProxyDefaultAndRoundTrip(t *testing.T) {
+	repo := newSettingsRepoStub()
+	svc := service.NewSettingsService(repo, ai.NewRateLimiter(0))
+
+	settings, err := svc.GetAISettings(context.Background())
+	require.NoError(t, err)
+	require.True(t, settings.UseProxy, "键不存在时应默认 true")
+
+	require.NoError(t, svc.SetAISettings(context.Background(), &service.AISettings{
+		Provider: ai.ProviderOpenAI,
+		BaseURL:  "https://api.example.com",
+		Model:    "gpt-4",
+		UseProxy: false,
+	}))
+	require.Equal(t, "false", repo.data[service.KeyAIUseProxy])
+	got, err := svc.GetAISettings(context.Background())
+	require.NoError(t, err)
+	require.False(t, got.UseProxy)
+
+	require.NoError(t, svc.SetAISettings(context.Background(), &service.AISettings{
+		Provider: ai.ProviderOpenAI,
+		BaseURL:  "https://api.example.com",
+		Model:    "gpt-4",
+		UseProxy: true,
+	}))
+	require.Equal(t, "true", repo.data[service.KeyAIUseProxy])
+	got, err = svc.GetAISettings(context.Background())
+	require.NoError(t, err)
+	require.True(t, got.UseProxy)
 }

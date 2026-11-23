@@ -678,3 +678,42 @@ func TestSettingsHandler_UpdateCacheSettings_InvalidRequest(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
+
+// useProxy 在 handler 往返：Get 回填、Update 透传到 service。
+func TestSettingsHandler_UseProxyRoundTrip(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockSettingsService(ctrl)
+	h := handler.NewSettingsHandlerHelper(mockService, nil)
+	e := newTestEcho()
+
+	// Get：回填 useProxy
+	reqGet := newJSONRequest(http.MethodGet, "/settings/ai", nil)
+	cGet, recGet := newTestContext(e, reqGet)
+	mockService.EXPECT().GetAISettings(gomock.Any()).Return(&service.AISettings{Provider: "openai", UseProxy: true}, nil)
+	require.NoError(t, h.GetAISettings(cGet))
+	var resp handler.AISettingsResponse
+	assertJSONResponse(t, recGet, http.StatusOK, &resp)
+	require.True(t, resp.UseProxy)
+
+	// Update：请求里的 useProxy 透传给 service
+	reqBody := map[string]interface{}{
+		"provider": "openai",
+		"baseUrl":  "https://api.openai.com/v1",
+		"model":    "gpt-4",
+		"useProxy": false,
+	}
+	reqPut := newJSONRequest(http.MethodPut, "/settings/ai", reqBody)
+	cPut, _ := newTestContext(e, reqPut)
+	mockService.EXPECT().
+		SetAISettings(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, settings *service.AISettings) error {
+			require.False(t, settings.UseProxy)
+			return nil
+		})
+	mockService.EXPECT().
+		GetAISettings(gomock.Any()).
+		Return(&service.AISettings{Provider: "openai", BaseURL: "https://api.openai.com/v1", Model: "gpt-4"}, nil)
+	require.NoError(t, h.UpdateAISettings(cPut))
+}
