@@ -288,6 +288,23 @@ describe("EntryListItem", () => {
       fireEvent.click(screen.getByText(/看这个/));
       expect(onClick).toHaveBeenCalledWith("entry-1");
     });
+
+    it("星标条目在社交视图来源行也显示星标徽标（与文章视图同一套样式）", () => {
+      const { container } = render(
+        <EntryListItem
+          entry={{ ...socialEntry, starred: true }}
+          feed={feed}
+          isSelected={false}
+          onClick={() => {}}
+          social
+        />,
+      );
+      const badge = container.querySelector("[data-entry-starred-badge]");
+      expect(badge).not.toBeNull();
+      expect(badge?.getAttribute("class")).toContain("fill-amber-500");
+      expect(badge?.getAttribute("class")).toContain("size-3.5");
+      expect(badge?.getAttribute("aria-hidden")).toBe("true");
+    });
   });
 
   describe("已读 / 未读的标题样式 + 星标徽标", () => {

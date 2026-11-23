@@ -21,6 +21,7 @@ vi.mock("@/api", () => ({
 }));
 
 import { useMarkAsRead, useMarkAsStarred } from "./useEntries";
+import { updateEntryStarred } from "@/api";
 
 function makeEntry(id: string, read = false): Entry {
   return {
@@ -108,6 +109,8 @@ describe("useMarkAsRead —— 47-1 手动标已读不当场摘条目", () => {
 describe("useMarkAsStarred —— 59 星标乐观更新不触发 entries 重拉", () => {
   beforeEach(() => {
     resetDeferredRemovals();
+    vi.mocked(updateEntryStarred).mockReset();
+    vi.mocked(updateEntryStarred).mockResolvedValue(undefined);
   });
 
   it("mutate(starred:true) 乐观写入 entries 列表与单条缓存，成功后不 invalidate entries", async () => {
@@ -150,5 +153,104 @@ describe("useMarkAsStarred —— 59 星标乐观更新不触发 entries 重拉"
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["starredCount"] }),
     );
     expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ["entries"] });
+  });
+
+  it("onError 时把单条缓存与列表缓存回滚到原 starred 值", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    seed(client);
+    client.setQueryData(["entry", "b"], makeEntry("b"));
+    vi.mocked(updateEntryStarred).mockRejectedValueOnce(new Error("network"));
+
+    const { result } = renderHook(() => useMarkAsStarred(), {
+      wrapper: wrapper(client),
+    });
+
+    await act(async () => {
+      result.current.mutate({ id: "b", starred: true });
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    // 回滚：单条与列表里的 b 都恢复成原来的 starred=false
+    expect(client.getQueryData<Entry>(["entry", "b"])?.starred).toBe(false);
+    const allList = client.getQueryData<{
+      pages: { entries: Entry[] }[];
+    }>(["entries", { unreadOnly: false, tag: "all" }]);
+    expect(
+      allList?.pages[0]?.entries.find((e) => e.id === "b")?.starred,
+    ).toBe(false);
+  });
+
+  it("取消星标(starred:false) 时列表与单条缓存里的 starred 变 false", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    // 造一个已星标的条目
+    client.setQueryData(["entries", { unreadOnly: false, tag: "all" }], {
+      pages: [
+        { entries: [{ ...makeEntry("b"), starred: true }], hasMore: false },
+      ],
+    });
+    client.setQueryData(["entry", "b"], { ...makeEntry("b"), starred: true });
+
+    const { result } = renderHook(() => useMarkAsStarred(), {
+      wrapper: wrapper(client),
+    });
+
+    await act(async () => {
+      result.current.mutate({ id: "b", starred: false });
+    });
+
+    await waitFor(() =>
+      expect(client.getQueryData<Entry>(["entry", "b"])?.starred).toBe(false),
+    );
+    const allList = client.getQueryData<{
+      pages: { entries: Entry[] }[];
+    }>(["entries", { unreadOnly: false, tag: "all" }]);
+    expect(
+      allList?.pages[0]?.entries.find((e) => e.id === "b")?.starred,
+    ).toBe(false);
+  });
+
+  it("取消星标(starred:false) 时只对 starredOnly 视图的 entries 查询做 invalidate", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    seed(client); // unreadOnly / all 两个普通视图
+    client.setQueryData(["entries", { starredOnly: true }], {
+      pages: [
+        { entries: [{ ...makeEntry("b"), starred: true }], hasMore: false },
+      ],
+    });
+
+    const { result } = renderHook(() => useMarkAsStarred(), {
+      wrapper: wrapper(client),
+    });
+
+    await act(async () => {
+      result.current.mutate({ id: "b", starred: false });
+    });
+
+    // starredOnly 视图被标记失效（会重拉 → 取消星标的行随之消失）
+    await waitFor(() => {
+      const starredOnlyQuery = client
+        .getQueryCache()
+        .findAll({ queryKey: ["entries"] })
+        .find(
+          (q) =>
+            (q.queryKey[1] as { starredOnly?: boolean } | undefined)
+              ?.starredOnly === true,
+        );
+      expect(starredOnlyQuery?.state.isInvalidated).toBe(true);
+    });
+
+    // 普通（未读/全部）视图不受影响，避免重新引入「读时收藏条目消失」的 bug
+    const unreadQuery = client
+      .getQueryCache()
+      .findAll({ queryKey: ["entries"] })
+      .find((q) => (q.queryKey[1] as { tag?: string } | undefined)?.tag === "u");
+    expect(unreadQuery?.state.isInvalidated).toBe(false);
   });
 });

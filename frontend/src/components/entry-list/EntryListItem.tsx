@@ -687,7 +687,11 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                     </>
                   )}
                   {entry.starred && (
-                    <Star className="ml-1 size-3.5 shrink-0 text-amber-500" />
+                    <Star
+                      className="ml-1 size-3.5 shrink-0 fill-amber-500 text-amber-500"
+                      aria-hidden="true"
+                      data-entry-starred-badge=""
+                    />
                   )}
                   {/* REQ3：正文三态标记（有译文 / 翻译中 / 失败） */}
                   {contentBadgeState && (
@@ -1039,7 +1043,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                   纯展示、不影响跑马灯截断与时间贴右缘（MarqueeText flex-1 会把它推向右）。 */}
               {entry.starred && (
                 <Star
-                  className="size-3 shrink-0 fill-amber-500 text-amber-500"
+                  className="size-3.5 shrink-0 fill-amber-500 text-amber-500"
                   aria-hidden="true"
                   data-entry-starred-badge=""
                 />
