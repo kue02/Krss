@@ -25,6 +25,7 @@ import { SidebarHeader } from "./SidebarHeader";
 import { SidebarAccountBar } from "./SidebarAccountBar";
 import { StarredItem } from "./StarredItem";
 import { FeedCategory } from "./FeedCategory";
+import { computeFolderUnreadCounts } from "./folder-unread";
 import { ListBox } from "@heroui/react";
 import { ListOrdered, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import {
@@ -310,17 +311,10 @@ export function Sidebar({
     return counts;
   }, [allFeeds, unreadCounts, visibleContentTypes]);
 
-  const folderUnreadCounts = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const feed of feeds) {
-      if (feed.folderId) {
-        const current = map.get(feed.folderId) || 0;
-        const feedUnread = unreadCounts.get(feed.id) || 0;
-        map.set(feed.folderId, current + feedUnread);
-      }
-    }
-    return map;
-  }, [feeds, unreadCounts]);
+  const folderUnreadCounts = useMemo(
+    () => computeFolderUnreadCounts(folders, feeds, unreadCounts),
+    [folders, feeds, unreadCounts],
+  );
 
   // Group feeds by folder (uses animatedContentType for content sync with animation)
   const { foldersWithFeeds, uncategorizedFeeds } = groupFeedsByFolder(
