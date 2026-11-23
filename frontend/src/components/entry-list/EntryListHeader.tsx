@@ -157,13 +157,13 @@ export function EntryListHeader({
   if (isMobile) {
     return (
       <>
-        <div className="flex h-11 items-center gap-1 px-1.5">
+        <div className="flex h-11 items-center gap-0.5 px-1">
           {onMenuClick ? (
             <button
               type="button"
               onClick={onMenuClick}
               aria-label={t("actions.show_sidebar")}
-              className="-ml-1.5 flex size-11 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
+              className="-ml-1 flex size-11 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
             >
               <MenuIcon className="size-5" />
             </button>
@@ -172,13 +172,13 @@ export function EntryListHeader({
               type="button"
               onClick={onBackFromFeedJump}
               aria-label={t("entry.back_to_previous")}
-              className="-ml-1.5 flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors active:bg-item-hover"
+              className="-ml-1 flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors active:bg-item-hover"
             >
               <BackIcon className="size-5" />
             </button>
           ) : null}
 
-          <div className="min-w-0 flex-1 px-0.5">
+          <div className="min-w-0 flex-1 px-1">
             <div className="flex items-center gap-1.5">
               <h1
                 className="min-w-0 truncate text-[15px] font-bold leading-5 tracking-[-0.01em] text-foreground active:opacity-60"
@@ -202,6 +202,8 @@ export function EntryListHeader({
             ) : null}
           </div>
 
+          {/* 右侧动作区直接沿用 Web 端同一套：按钮 size-8、间距 gap-0.5、各图标尺寸按 Web 端
+              （刷新/全部已读 size-4、未读切换 size-5），不再在移动端另造一套尺寸。 */}
           {onRefresh ? (
             <button
               type="button"
@@ -210,14 +212,14 @@ export function EntryListHeader({
               aria-label={
                 isRefreshing ? t("entry.refreshing") : t("entry.refresh_view")
               }
-              className="flex size-11 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover disabled:opacity-60"
+              className="flex size-8 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover disabled:opacity-60"
             >
               {isRefreshing ? (
                 <RefreshSpinner
                   remaining={Math.max(0, refreshTotal - refreshCompleted)}
                 />
               ) : (
-                /* 与 Web 端同一颗图标：图形 16px，按钮盒仍保持 44px 触摸热区 */
+                /* 与 Web 端同一颗图标、同一尺寸 */
                 <RefreshIcon className="size-4" />
               )}
             </button>
@@ -230,7 +232,7 @@ export function EntryListHeader({
                 unreadOnly ? t("entry.show_all") : t("entry.show_unread_only")
               }
               className={cn(
-                "flex size-11 shrink-0 items-center justify-center rounded-full transition-colors active:bg-item-hover",
+                "flex size-8 shrink-0 items-center justify-center rounded-full transition-colors active:bg-item-hover",
                 unreadOnly ? "text-accent" : "text-muted-foreground",
               )}
             >
@@ -245,7 +247,7 @@ export function EntryListHeader({
             type="button"
             onClick={onMarkAllRead}
             aria-label={t("entry.mark_all_read")}
-            className="flex size-11 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
+            className="flex size-8 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
           >
             <CheckCircleIcon className="size-4" />
           </button>
@@ -253,9 +255,9 @@ export function EntryListHeader({
             type="button"
             onClick={() => setMoreOpen(true)}
             aria-label={t("actions.more")}
-            className="-mr-1.5 flex size-11 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
+            className="-mr-1 flex size-8 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
           >
-            <MoreHorizontal className="size-5" />
+            <MoreHorizontal className="size-4" />
           </button>
         </div>
 

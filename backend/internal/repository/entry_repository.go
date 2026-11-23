@@ -80,7 +80,12 @@ type EntryRepository interface {
 	// MoveFeedEntries 把 from 订阅的条目改归到 to：先删掉与目标同 hash 的重复项（保留目标那份），再改归属。
 	// 返回 (改了归属的条数, 因重复被删掉的条数)。
 	MoveFeedEntries(ctx context.Context, fromFeedID, toFeedID int64) (moved int64, deduped int64, err error)
+	// Deprecated: 生产入库路径必须使用 CreateOrUpdateSkippingTombstones；本方法会绕过
+	// entry_tombstones 检查，仅保留给测试/特殊场景，误用会让清理过的文章回流。
 	CreateOrUpdate(ctx context.Context, entry model.Entry) error
+	// CreateOrUpdateSkippingTombstones 与 CreateOrUpdate 相同，但若 (feed_id, hash) 或
+	// (feed_id, 规范化 url) 命中 entry_tombstones 则直接跳过、不写库，返回 false。
+	CreateOrUpdateSkippingTombstones(ctx context.Context, entry model.Entry) (bool, error)
 	ExistsByHash(ctx context.Context, feedID int64, hash string) (bool, error)
 	ExistsByLegacyURL(ctx context.Context, feedID int64, rawURL string, hash string) (bool, error)
 	// GetExistingEntry 取「入库时会撞到的那一行」（22-4：「更新 N 条」按内容真变计数用）。
@@ -89,7 +94,11 @@ type EntryRepository interface {
 	// 都没有返回 (nil, nil)。
 	GetExistingEntry(ctx context.Context, feedID int64, hash string, rawURL string) (*model.Entry, error)
 	ClearAllReadableContent(ctx context.Context) (int64, error)
-	DeleteUnstarred(ctx context.Context) (int64, error)
+	// DeleteReadUnstarred 删除「已读且未收藏」的条目（保留已收藏和未读）。
+	// entryBefore != nil 时只删 COALESCE(updated_at, created_at) < entryBefore 的（最近阅读/更新时间早于该时刻）；
+	// nil = 不设时间门槛，清理全部已读未收藏（老行为）。
+	// tombstoneBefore != nil 时清理 created_at < tombstoneBefore 的旧墓碑；nil = 永不清墓碑（永久保留）。
+	DeleteReadUnstarred(ctx context.Context, entryBefore *time.Time, tombstoneBefore *time.Time) (int64, error)
 	// GetIDsByHashes 按 feed 内 hash 批量取条目 ID（规则引擎在入库后定位刚写进去的那批条目）。
 	GetIDsByHashes(ctx context.Context, feedID int64, hashes []string) (map[string]int64, error)
 	// ApplyFilterState 写入规则标记（muted / filter_id，可选 read / starred）。
@@ -561,6 +570,28 @@ func parseTimePtr(s string) *time.Time {
 }
 
 func (r *entryRepository) CreateOrUpdate(ctx context.Context, entry model.Entry) error {
+	_, err := r.createOrUpdate(ctx, entry, false)
+	return err
+}
+
+// CreateOrUpdateSkippingTombstones 与 CreateOrUpdate 相同，但写入前先查 entry_tombstones：
+// 若 (feed_id, hash) 或 (feed_id, 规范化 url) 命中墓碑，就直接跳过、不写库并返回 false。
+// 这是「清理文章缓存」后防止被删文章在下次刷新时重新入库变回未读的关键闸门。
+func (r *entryRepository) CreateOrUpdateSkippingTombstones(ctx context.Context, entry model.Entry) (bool, error) {
+	return r.createOrUpdate(ctx, entry, true)
+}
+
+func (r *entryRepository) createOrUpdate(ctx context.Context, entry model.Entry, respectTombstones bool) (bool, error) {
+	if respectTombstones {
+		hit, err := r.isTombstoned(ctx, entry)
+		if err != nil {
+			return false, err
+		}
+		if hit {
+			return false, nil
+		}
+	}
+
 	id := snowflake.NextID()
 	now := formatTime(time.Now())
 
@@ -621,10 +652,10 @@ func (r *entryRepository) CreateOrUpdate(ctx context.Context, entry model.Entry)
 			entry.Hash,
 		)
 		if err != nil {
-			return err
+			return false, err
 		}
 		if affected, err := result.RowsAffected(); err == nil && affected > 0 {
-			return nil
+			return true, nil
 		}
 	}
 
@@ -652,7 +683,37 @@ func (r *entryRepository) CreateOrUpdate(ctx context.Context, entry model.Entry)
 		now,
 		now,
 	)
-	return err
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// isTombstoned 判断这条待入库条目是否命中墓碑：feed 相同且 hash 相等，
+// 或 feed 相同且 url 规范化（去 fragment）后相等。hash 为空时不按空 hash 命中；
+// url 为空时也不参与 url 比较。墓碑表只存指纹，不含正文/标题。
+func (r *entryRepository) isTombstoned(ctx context.Context, entry model.Entry) (bool, error) {
+	hashCond := "0"
+	args := []interface{}{entry.FeedID}
+	if entry.Hash != "" {
+		hashCond = "hash = ?"
+		args = append(args, entry.Hash)
+	}
+	urlCond := "0"
+	if entry.URL != nil && *entry.URL != "" {
+		urlCond = "url = ?"
+		args = append(args, urlutil.StripFragment(*entry.URL))
+	}
+
+	query := fmt.Sprintf(
+		`SELECT COUNT(*) FROM entry_tombstones WHERE feed_id = ? AND (%s OR %s)`,
+		hashCond, urlCond,
+	)
+	var count int
+	if err := r.db.QueryRowContext(ctx, query, args...).Scan(&count); err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 func (r *entryRepository) ExistsByHash(ctx context.Context, feedID int64, hash string) (bool, error) {
@@ -794,10 +855,77 @@ func (r *entryRepository) ClearAllReadableContent(ctx context.Context) (int64, e
 	return result.RowsAffected()
 }
 
-func (r *entryRepository) DeleteUnstarred(ctx context.Context) (int64, error) {
-	result, err := r.db.ExecContext(ctx, `DELETE FROM entries WHERE starred = 0`)
+// DeleteReadUnstarred 删除「已读且未收藏」的条目：只删 starred = 0 AND read = 1，
+// 保留已收藏（starred = 1）与未读（read = 0）的条目。
+//
+// 删除前先把这些条目的指纹（feed_id + hash + url）写进 entry_tombstones。
+// **必须先写墓碑再删除**：否则一旦删除成功、随后的刷新又把同一文章抓回来，
+// 它会以 read 默认 0 重新 INSERT，刚清掉的文章就回流成未读。先写墓碑后删，
+// 保证「删掉的那批」在再次入库时一定被 CreateOrUpdateSkippingTombstones 挡住。
+// 两步尽量放在同一事务里（*sql.DB 支持 BeginTx；测试用的 dbtx 若不支持则退回顺序执行）。
+func (r *entryRepository) DeleteReadUnstarred(ctx context.Context, entryBefore *time.Time, tombstoneBefore *time.Time) (int64, error) {
+	if txer, ok := r.db.(interface {
+		BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
+	}); ok {
+		tx, err := txer.BeginTx(ctx, nil)
+		if err != nil {
+			return 0, fmt.Errorf("begin delete read unstarred: %w", err)
+		}
+		count, err := deleteReadUnstarred(ctx, tx, entryBefore, tombstoneBefore)
+		if err != nil {
+			_ = tx.Rollback()
+			return 0, err
+		}
+		if err := tx.Commit(); err != nil {
+			return 0, fmt.Errorf("commit delete read unstarred: %w", err)
+		}
+		return count, nil
+	}
+	return deleteReadUnstarred(ctx, r.db, entryBefore, tombstoneBefore)
+}
+
+// deleteReadUnstarred 在同一事务里先写墓碑再删条目，保证「删掉的那批」再次入库时被挡住。
+//
+// entryBefore != nil 时删除集合限定为「最近阅读/更新时间（COALESCE(updated_at, created_at)）早于
+// entryBefore」的已读未收藏条目；nil = 不限时间（清全部，老行为）。墓碑写入用同一套时间条件，
+// 只覆盖「本次真正删除的那批」，不会把保留期内的近期已读文章也打上墓碑。
+// tombstoneBefore != nil 时顺带清理更早的旧墓碑；nil = 永久保留，不做墓碑过期清理。
+func deleteReadUnstarred(ctx context.Context, db dbtx, entryBefore *time.Time, tombstoneBefore *time.Time) (int64, error) {
+	now := time.Now()
+
+	// 删除/墓碑共用的时间门槛（两者必须一致：墓碑只覆盖本次实际删除的集合）。
+	// updated_at 在标已读时会刷新，符合「最近阅读/更新时间」口径；created_at 作兜底。
+	entryWhere := `starred = 0 AND read = 1`
+	var entryArgs []any
+	if entryBefore != nil {
+		entryWhere += ` AND COALESCE(updated_at, created_at) < ?`
+		entryArgs = append(entryArgs, formatTime(*entryBefore))
+	}
+
+	// 墓碑过期：仅在 tombstoneBefore != nil 时执行；nil = 永久保留（0 天）。
+	if tombstoneBefore != nil {
+		if _, err := db.ExecContext(ctx,
+			`DELETE FROM entry_tombstones WHERE created_at < ?`,
+			formatTime(*tombstoneBefore),
+		); err != nil {
+			return 0, fmt.Errorf("expire old entry tombstones: %w", err)
+		}
+	}
+
+	// 先写墓碑（用同一 entryWhere 条件，只覆盖本次删除的那批；hash 为空的条目无法作为指纹，跳过）。
+	insertSQL := `INSERT OR IGNORE INTO entry_tombstones (feed_id, hash, url, created_at)
+		 SELECT feed_id, hash,
+		        CASE WHEN instr(url, '#') > 0 THEN substr(url, 1, instr(url, '#') - 1) ELSE url END,
+		        ? FROM entries
+		  WHERE ` + entryWhere + ` AND hash <> ''`
+	insertArgs := append([]any{formatTime(now)}, entryArgs...)
+	if _, err := db.ExecContext(ctx, insertSQL, insertArgs...); err != nil {
+		return 0, fmt.Errorf("insert entry tombstones: %w", err)
+	}
+
+	result, err := db.ExecContext(ctx, `DELETE FROM entries WHERE `+entryWhere, entryArgs...)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("delete read unstarred entries: %w", err)
 	}
 	return result.RowsAffected()
 }

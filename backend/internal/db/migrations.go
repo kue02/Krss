@@ -696,6 +696,25 @@ func runMigrations(db *sql.DB) error {
 		return err
 	}
 
+	// Migration 39: 条目墓碑表。设置里的「清理文章缓存」删除「已读且未收藏」的条目时，
+	// 只在这里记录一条**极小的指纹**（feed_id + hash + url，不含正文/标题），不软删整行。
+	// 目的是阻止清理后的文章在下次刷新（源返回 200 且带 items，尤其「强制刷新」）时
+	// 被当成新文章重新 INSERT、read 默认 0 又变回未读。同一 feed 同一文章再次入库时，
+	// 仓储层会查这张表直接跳过。feed 删除时条目级联删掉，墓碑也随之 ON DELETE CASCADE 清理。
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS entry_tombstones (
+			feed_id    INTEGER NOT NULL,
+			hash       TEXT NOT NULL,
+			url        TEXT,
+			created_at TEXT NOT NULL,
+			PRIMARY KEY (feed_id, hash),
+			FOREIGN KEY (feed_id) REFERENCES feeds(id) ON DELETE CASCADE
+		);
+		CREATE INDEX IF NOT EXISTS idx_entry_tombstones_feed_url ON entry_tombstones(feed_id, url);
+	`); err != nil {
+		return fmt.Errorf("create entry_tombstones table: %w", err)
+	}
+
 	return nil
 }
 

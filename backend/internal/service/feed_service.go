@@ -210,8 +210,13 @@ func (s *feedService) Add(ctx context.Context, feedURL string, folderID *int64, 
 		if entry.URL == nil || *entry.URL == "" {
 			continue
 		}
-		if err := s.entries.CreateOrUpdate(ctx, entry); err != nil {
+		written, err := s.entries.CreateOrUpdateSkippingTombstones(ctx, entry)
+		if err != nil {
 			logger.Warn("entry create failed", "module", "service", "action", "create", "resource", "entry", "result", "failed", "feed_id", created.ID, "feed_title", created.Title, "host", network.ExtractHost(*entry.URL), "error", err)
+			continue
+		}
+		if !written {
+			// 命中墓碑（清理缓存时删过这篇）：不再当成新条目。
 			continue
 		}
 		newEntries = append(newEntries, entry)
@@ -316,8 +321,13 @@ func (s *feedService) AddMCP(ctx context.Context, input MCPFeedAddInput) (model.
 		if entry.URL == nil || *entry.URL == "" {
 			continue
 		}
-		if err := s.entries.CreateOrUpdate(ctx, entry); err != nil {
+		written, err := s.entries.CreateOrUpdateSkippingTombstones(ctx, entry)
+		if err != nil {
 			logger.Warn("entry create failed", "module", "service", "action", "create", "resource", "entry", "result", "failed", "feed_id", created.ID, "error", err)
+			continue
+		}
+		if !written {
+			// 命中墓碑（清理缓存时删过这篇）：不再当成新条目。
 			continue
 		}
 		newEntries = append(newEntries, entry)

@@ -15,10 +15,13 @@ const mockOn = vi.fn();
 const mockOff = vi.fn();
 
 // Store the embla options passed to useEmblaCarousel
-let capturedEmblaOptions: { startIndex?: number } = {};
+let capturedEmblaOptions: {
+  startIndex?: number;
+  watchDrag?: () => boolean;
+} = {};
 
 vi.mock("embla-carousel-react", () => ({
-  default: (options: { startIndex?: number }) => {
+  default: (options: { startIndex?: number; watchDrag?: () => boolean }) => {
     capturedEmblaOptions = options;
     return [
       vi.fn(), // emblaRef
@@ -31,6 +34,31 @@ vi.mock("embla-carousel-react", () => ({
         off: mockOff,
       },
     ];
+  },
+}));
+
+// Mock useImageZoom so tests can drive isZoomed/scale and assert the resetKey
+const { mockZoomState, capturedZoomResetKeys, mockToggleZoomAt } = vi.hoisted(
+  () => ({
+    mockZoomState: { scale: 1, isZoomed: false },
+    capturedZoomResetKeys: [] as string[],
+    mockToggleZoomAt: vi.fn(),
+  }),
+);
+
+vi.mock("@/hooks/useImageZoom", () => ({
+  useImageZoom: (resetKey?: string) => {
+    capturedZoomResetKeys.push(resetKey ?? "");
+    return {
+      containerRef: { current: null },
+      scale: mockZoomState.scale,
+      offset: { x: 0, y: 0 },
+      isZoomed: mockZoomState.isZoomed,
+      reset: vi.fn(),
+      toggleZoomAt: mockToggleZoomAt,
+      handlers: {},
+      style: { transform: "none" },
+    };
   },
 }));
 
@@ -55,20 +83,26 @@ vi.mock("framer-motion", () => ({
       children,
       className,
       onClick,
+      onPointerDown,
     }: {
       children: React.ReactNode;
       className?: string;
       onClick?: () => void;
+      onPointerDown?: React.PointerEventHandler<HTMLDivElement>;
     }) => (
-      <div className={className} onClick={onClick}>
+      <div className={className} onClick={onClick} onPointerDown={onPointerDown}>
         {children}
       </div>
     ),
   },
 }));
 
-const mockImages = [
-  "https://example.com/img1.jpg",
+// 固定 t() 回显 key，便于断言 aria-label
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
+
+const mockImages = [  "https://example.com/img1.jpg",
   "https://example.com/img2.jpg",
   "https://example.com/img3.jpg",
 ];
@@ -81,6 +115,7 @@ describe("ImagePreview", () => {
     mockSelectedScrollSnap.mockClear();
     mockOn.mockClear();
     mockOff.mockClear();
+    mockToggleZoomAt.mockClear();
     capturedEmblaOptions = {};
     useImagePreviewStore.getState().reset();
   });
@@ -426,6 +461,147 @@ describe("ImagePreview", () => {
       unmount();
 
       expect(mockOff).toHaveBeenCalledWith("select", expect.any(Function));
+    });
+  });
+
+  describe("image zoom 接入", () => {
+    beforeEach(() => {
+      mockZoomState.scale = 1;
+      mockZoomState.isZoomed = false;
+      capturedZoomResetKeys.length = 0;
+    });
+
+    it("useImageZoom 的 resetKey 随当前图片变化（换图复位缩放）", () => {
+      useImagePreviewStore.getState().open(mockImages, 0);
+      render(<ImagePreview />);
+
+      expect(capturedZoomResetKeys[capturedZoomResetKeys.length - 1]).toBe(
+        `0:${mockImages[0]}`,
+      );
+
+      act(() => {
+        useImagePreviewStore.getState().setIndex(1);
+      });
+
+      expect(capturedZoomResetKeys[capturedZoomResetKeys.length - 1]).toBe(
+        `1:${mockImages[1]}`,
+      );
+    });
+
+    it("scale>1 时禁用 embla 拖拽翻页（watchDrag 返回 false）", () => {
+      mockZoomState.scale = 2;
+      mockZoomState.isZoomed = true;
+      useImagePreviewStore.getState().open(mockImages, 0);
+
+      render(<ImagePreview />);
+
+      expect(typeof capturedEmblaOptions.watchDrag).toBe("function");
+      expect(capturedEmblaOptions.watchDrag!()).toBe(false);
+    });
+
+    it("scale===1 时允许 embla 拖拽翻页（watchDrag 返回 true）", () => {
+      useImagePreviewStore.getState().open(mockImages, 0);
+
+      render(<ImagePreview />);
+
+      expect(capturedEmblaOptions.watchDrag!()).toBe(true);
+    });
+
+    it("scale===1 时点击图片关闭预览", async () => {
+      useImagePreviewStore.getState().open(mockImages, 0);
+      const { container } = render(<ImagePreview />);
+
+      const carousel = container.querySelector(
+        ".overflow-hidden.touch-manipulation",
+      );
+      expect(carousel).not.toBeNull();
+
+      fireEvent.click(carousel!);
+      // 关闭带 ~320ms 延时（给双击留取消窗口），等它触发
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 420));
+      });
+
+      expect(useImagePreviewStore.getState().isOpen).toBe(false);
+    });
+
+    it("双击（两次 click）触发缩放且不关闭预览（不依赖原生 dblclick）", async () => {
+      useImagePreviewStore.getState().open(mockImages, 0);
+      const { container } = render(<ImagePreview />);
+
+      const carousel = container.querySelector(
+        ".overflow-hidden.touch-manipulation",
+      );
+      expect(carousel).not.toBeNull();
+
+      fireEvent.click(carousel!);
+      fireEvent.click(carousel!);
+
+      expect(mockToggleZoomAt).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 420));
+      });
+
+      // 第二次点按已取消关闭定时器，预览应仍然打开
+      expect(useImagePreviewStore.getState().isOpen).toBe(true);
+    });
+
+    it("scale>1 时点击图片不关闭预览", async () => {
+      mockZoomState.scale = 2;
+      mockZoomState.isZoomed = true;
+      useImagePreviewStore.getState().open(mockImages, 0);
+      const { container } = render(<ImagePreview />);
+
+      const carousel = container.querySelector(
+        ".overflow-hidden.touch-manipulation",
+      );
+      expect(carousel).not.toBeNull();
+
+      fireEvent.click(carousel!);
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 320));
+      });
+
+      expect(useImagePreviewStore.getState().isOpen).toBe(true);
+    });
+  });
+
+  describe("可访问性与单图拖动", () => {
+    beforeEach(() => {
+      mockZoomState.scale = 1;
+      mockZoomState.isZoomed = false;
+      capturedZoomResetKeys.length = 0;
+    });
+
+    it("关闭与左右翻页按钮都有 aria-label", () => {
+      useImagePreviewStore.getState().open(mockImages, 0);
+      render(<ImagePreview />);
+
+      expect(
+        screen.getByRole("button", { name: "entry.image_close" }),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole("button", { name: "entry.image_prev" }),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole("button", { name: "entry.image_next" }),
+      ).toBeTruthy();
+    });
+
+    it("单图未放大时拖动超过阈值不关闭预览", () => {
+      useImagePreviewStore.getState().open([mockImages[0]!]);
+      const { container } = render(<ImagePreview />);
+
+      const img = container.querySelector("img");
+      expect(img).not.toBeNull();
+      const stage = img!.parentElement!;
+
+      // 按下后横向拖动 60px 再抬起 —— 应识别为拖动，不当作点击
+      fireEvent.pointerDown(stage, { clientX: 100, clientY: 100 });
+      fireEvent.click(stage, { clientX: 160, clientY: 100 });
+
+      expect(useImagePreviewStore.getState().isOpen).toBe(true);
     });
   });
 });

@@ -27,11 +27,6 @@ interface UseSelectionReturn {
   ) => void;
   selectFolder: (folderId: string, options?: NavigateOptions) => void;
   selectStarred: (options?: NavigateOptions, viewOnly?: boolean) => void;
-  /** 中栏底部筛选胶囊：一次导航切换 全部 / 未读 / 星标 */
-  selectFilter: (
-    filter: "all" | "unread" | "starred",
-    options?: NavigateOptions,
-  ) => void;
   selectedEntryId: string | null;
   selectEntry: (entryId: string | null, options?: NavigateOptions) => void;
   unreadOnly: boolean;
@@ -129,58 +124,6 @@ export function useSelection(): UseSelectionReturn {
     [navigate, routeState.contentType],
   );
 
-  /**
-   * 中栏底部筛选胶囊用：在 全部 / 未读 / 星标 三者间一次导航切换。
-   * 不要在调用方叠加 selectAll + toggleUnreadOnly —— 两次导航都基于旧 routeState，
-   * 后者会覆盖前者（表现为「点了全部却还在星标页」）。
-   *
-   * 24-2：未读 / 全部只翻 `unreadOnly`，当前订阅 / 文件夹原样保留；
-   * 星标维持跳全局（viewOnly 按 20-2 的默认档）。
-   */
-  const selectFilter = useCallback(
-    (filter: "all" | "unread" | "starred", options?: NavigateOptions) => {
-      if (filter === "starred") {
-        navigate(
-          buildPath(
-            {
-              type: "starred",
-              // 20-2：进入星标视图默认「只当前视图」（已在星标里则保持当前档位）
-              viewOnly:
-                routeState.selection.type === "starred"
-                  ? routeState.selection.viewOnly
-                  : true,
-            },
-            null,
-            // 星标维持旧语义：跳全局星标、不带 ?unread（24-2 只改未读/全部两档）
-            false,
-            routeState.contentType,
-          ),
-          options,
-        );
-        return;
-      }
-      // 47-1：中栏胶囊的「未读 / 全部」也是同一档选择，一起记住
-      setUISetting("unreadOnly", filter === "unread");
-      navigate(
-        buildPath(
-          // 星标视图里点未读 / 全部 = 退出星标回普通列表（否则永远卡在星标里）
-          routeState.selection.type === "starred"
-            ? { type: "all" }
-            : routeState.selection,
-          null,
-          filter === "unread",
-          routeState.contentType,
-        ),
-        options,
-      );
-    },
-    [
-      navigate,
-      routeState.contentType,
-      routeState.selection,
-    ],
-  );
-
   const selectEntry = useCallback(
     (entryId: string | null, options?: NavigateOptions) => {
       if (entryId !== null) {
@@ -247,7 +190,6 @@ export function useSelection(): UseSelectionReturn {
   );
 
   return {
-    selectFilter,
     selection: routeState.selection,
     selectAll,
     selectFeed,

@@ -1884,7 +1884,7 @@ const docTemplate = `{
         },
         "/entries/cache": {
             "delete": {
-                "description": "Delete all unstarred entries (preserves starred entries). Also resets all feeds' ETag/Last-Modified to force full refresh on next update.",
+                "description": "Delete read articles that are not starred (preserves starred and unread entries).",
                 "produces": [
                     "application/json"
                 ],
@@ -4271,6 +4271,70 @@ const docTemplate = `{
                 }
             }
         },
+        "/settings/cache": {
+            "get": {
+                "description": "Retention windows for clearing article cache. entryRetentionDays: only delete read+unstarred entries idle longer than this, 0 = clear all. tombstoneRetentionDays: keep purged-article tombstones this long, 0 = keep forever. Default 30 / 180.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "settings"
+                ],
+                "summary": "Get cache cleanup settings",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.cacheSettingsResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Partial update. Explicit 0 is valid: entry 0 = clear all, tombstone 0 = keep forever. Out-of-range values are clamped (entry 0..3650, tombstone 0..36500).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "settings"
+                ],
+                "summary": "Update cache cleanup settings",
+                "parameters": [
+                    {
+                        "description": "Cache settings",
+                        "name": "settings",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.cacheSettingsRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.cacheSettingsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/settings/export": {
             "get": {
                 "description": "Export settings as a readable JSON file; credential keys are excluded",
@@ -5042,6 +5106,28 @@ const docTemplate = `{
                             }
                         }
                     }
+                }
+            }
+        },
+        "internal_handler.cacheSettingsRequest": {
+            "type": "object",
+            "properties": {
+                "entryRetentionDays": {
+                    "type": "integer"
+                },
+                "tombstoneRetentionDays": {
+                    "type": "integer"
+                }
+            }
+        },
+        "internal_handler.cacheSettingsResponse": {
+            "type": "object",
+            "properties": {
+                "entryRetentionDays": {
+                    "type": "integer"
+                },
+                "tombstoneRetentionDays": {
+                    "type": "integer"
                 }
             }
         },
@@ -7493,7 +7579,15 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "model": {
+                    "description": "Model：该提供商的默认模型 —— 「当前使用」是它时就用这个出请求，\n分场景只写到 provider:\u003cid\u003e（不带 #model）时也回落到它。",
                     "type": "string"
+                },
+                "models": {
+                    "description": "Models：该提供商可用的模型库（通常含默认模型）。同一个提供商可能同时提供\n翻译、摘要等不同模型，分场景按 provider:\u003cid\u003e#\u003cmodel\u003e 从这里挑；老库没有这个\n字段时读侧按 [Model] 兜底，不影响升级。",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "name": {
                     "type": "string"

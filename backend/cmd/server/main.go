@@ -131,7 +131,9 @@ func main() {
 	// 条目列表要能按「保存筛选视图」（filters.kind = view）筛，所以 entryService 也拿到 filterRepo；
 	// 55-21：条目详情读取走插件阅读期处理（注册表没接上 = 老行为，原样返回）。
 	entryService := service.NewEntryService(entryRepo, feedRepo, folderRepo, filterRepo).
-		WithPlugins(pluginRegistry)
+		WithPlugins(pluginRegistry).
+		// 1123：清理缓存时按可配置的保留期决定删哪些、墓碑留多久。
+		WithCacheSettings(settingsService)
 	readabilityService := service.NewReadabilityService(entryRepo, clientFactory, anubisSolver)
 	domainRateLimitService := service.NewDomainRateLimitService(domainRateLimitRepo)
 	refreshService := service.NewRefreshService(feedRepo, entryRepo, settingsService, iconService, clientFactory, anubisSolver, domainRateLimitService, filterService, mcpService).

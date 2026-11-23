@@ -687,7 +687,12 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                     </>
                   )}
                   {entry.starred && (
-                    <Star className="ml-1 size-3.5 shrink-0 text-amber-500" />
+                    /* 与 Web 端星标一致：描边五角星（不填充） */
+                    <Star
+                      className="ml-1 size-3.5 shrink-0 text-amber-500"
+                      aria-hidden="true"
+                      data-entry-starred-badge=""
+                    />
                   )}
                   {/* REQ3：正文三态标记（有译文 / 翻译中 / 失败） */}
                   {contentBadgeState && (
@@ -1035,6 +1040,16 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                 {...sourceProps}
                 className={cn("min-w-0 flex-1 font-bold", sourceProps?.className)}
               />
+              {/* 星标徽标：所有列表行（文章 + 移动端，经 MobileSwipeEntryRow 复用）都显示，
+                  纯展示、不影响跑马灯截断与时间贴右缘（MarqueeText flex-1 会把它推向右）。 */}
+              {entry.starred && (
+                /* 与 Web 端星标一致：描边五角星（不填充） */
+                <Star
+                  className="size-3.5 shrink-0 text-amber-500"
+                  aria-hidden="true"
+                  data-entry-starred-badge=""
+                />
+              )}
               {publishedAt && (
                 <span
                   data-entry-time=""
@@ -1057,18 +1072,16 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                 {/* 标题 */}
                 <div
                   className={cn(
+                    // 已读/未读的粗细与 Web 端保持一致：字重恒为 font-semibold，只用颜色区分。
+                    // （Web 端就是这套：改字重会让同一条标题的换行变化，进而卡片高度跳动 —— 旧 BUG-2。
+                    //   移动端直接复用 Web 端的这套写法，不再单独切字重。）
                     "text-[16px] font-semibold leading-[23px] wrap-anywhere sm:text-base sm:leading-6",
                     titleContainsUrl ? "line-clamp-3" : "line-clamp-2",
-                  // Nextflux 只用 opacity 表示已读；这里标题始终是前景色，
-                  // 已读/未读只差字重，避免再叠一层灰导致正文难以辨认
-                  // 已读 / 未读**不切字重**（对齐 Nextflux 的 ArticleCard：字体恒为 font-semibold，只用颜色区分）。
-                  // 原来读态切 font-medium：字重一变，同一条标题的换行就变，1 行 ↔ 2 行切换会改卡片高度，
-                  // 滚动时「标记已读」就会让整个列表跳一下（用户报的 BUG-2）。
-                  isUnread ? "text-foreground" : "text-muted-foreground",
-                )}
-              >
-                {displayTitle || fallbackTitle}
-              </div>
+                    isUnread ? "text-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  {displayTitle || fallbackTitle}
+                </div>
 
               {/* 摘要（行数可在 设置 → 外观 里调，0 = 不显示） */}
               {displaySummary && cardPreviewLines > 0 && !isExpanded && (

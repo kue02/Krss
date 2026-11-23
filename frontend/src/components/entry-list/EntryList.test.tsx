@@ -1253,19 +1253,6 @@ describe("EntryList translation scheduling", () => {
     expect(lastParams).not.toHaveProperty("includeMuted");
   });
 
-  it("胶囊三态（星标 / 未读 / 全部）都走导航回调，不再有「已静音」", () => {
-    const onFilterChange = vi.fn();
-    render(<EntryList {...defaultProps} onFilterChange={onFilterChange} />);
-
-    expect(screen.queryByText("entry_filter.muted")).toBeNull();
-
-    fireEvent.click(screen.getByText("entry_filter.all"));
-    expect(onFilterChange).toHaveBeenCalledWith("all");
-
-    const lastParams = vi.mocked(useEntriesInfinite).mock.calls.at(-1)?.[0];
-    expect(lastParams).not.toHaveProperty("mutedOnly");
-  });
-
   it("「已静音」视图把标题换成「已静音」并给出说明", () => {
     // 标题与说明挂在 EntryListHeader 上，而本文件把它 mock 成 null（见文件顶部），
     // 所以这里只断言 EntryList 确实把「已静音」态翻译进了列表参数；标题渲染由
@@ -1282,7 +1269,6 @@ describe("EntryList translation scheduling", () => {
       <EntryList
         {...defaultProps}
         selection={{ type: "starred" }}
-        onFilterChange={vi.fn()}
       />,
     );
 

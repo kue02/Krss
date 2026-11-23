@@ -47,13 +47,16 @@ type EntryService interface {
 	GetStarredCount(ctx context.Context, contentType string) (int, error)
 	// ClearReadabilityCache clears all readable_content from entries
 	ClearReadabilityCache(ctx context.Context) (int64, error)
-	// ClearEntryCache deletes all unstarred entries
+	// ClearEntryCache deletes read and unstarred entries (preserves starred and unread entries)
 	ClearEntryCache(ctx context.Context) (int64, error)
 	// WithPlugins 装上插件注册表（55-21：条目详情读取时跑阅读期处理器）。
 	// builder 形状照 RefreshService.WithPlugins：main.go 构造处一行接上，不传 = 老行为。
 	WithPlugins(registry *plugin.Registry) EntryService
 	// WithEntryProcessorTimeout 覆盖单个阅读期处理器的超时（默认 2s；测试用短超时）。
 	WithEntryProcessorTimeout(timeout time.Duration) EntryService
+	// WithCacheSettings 装上缓存清理设置来源（1123）：清理时按保留期计算时间门槛。
+	// builder 形状同 WithPlugins：main.go 构造处一行接上，不传 = 用默认保留期。
+	WithCacheSettings(settings SettingsService) EntryService
 }
 
 // entryProcessorTimeout 单个阅读期处理器的超时（插件运行时安全）。
@@ -70,6 +73,8 @@ type entryService struct {
 	plugins *plugin.Registry
 	// processorTimeout 单个处理器的超时；默认 entryProcessorTimeout，测试可改小。
 	processorTimeout time.Duration
+	// settings 缓存清理设置来源（1123）；nil = 用默认保留期（30/180 天）。
+	settings SettingsService
 }
 
 func NewEntryService(
@@ -100,6 +105,12 @@ func (s *entryService) WithEntryProcessorTimeout(timeout time.Duration) EntrySer
 	if timeout > 0 {
 		s.processorTimeout = timeout
 	}
+	return s
+}
+
+// WithCacheSettings 装上缓存清理设置来源（1123）：不传 = 清理时用默认保留期。
+func (s *entryService) WithCacheSettings(settings SettingsService) EntryService {
+	s.settings = settings
 	return s
 }
 
@@ -481,16 +492,42 @@ func (s *entryService) ClearReadabilityCache(ctx context.Context) (int64, error)
 }
 
 func (s *entryService) ClearEntryCache(ctx context.Context) (int64, error) {
-	deleted, err := s.entries.DeleteUnstarred(ctx)
+	// 1123：清理范围由设置决定。已读保留期 entryDays：0 = 清全部（老行为）；
+	// 墓碑保留期 tombDays：0 = 永久保留（不让旧墓碑过期）。
+	entryDays := DefaultCacheEntryRetentionDays
+	tombDays := DefaultCacheTombstoneRetentionDays
+	if s.settings != nil {
+		if cs, err := s.settings.GetCacheSettings(ctx); err != nil {
+			// 设置读失败不能拖垮清理：回退默认保留期，照常清理。
+			logger.Error("read cache settings failed, use defaults", "module", "service", "action", "clear", "resource", "entry", "result", "failed", "error", err)
+		} else if cs != nil {
+			entryDays = cs.EntryRetentionDays
+			tombDays = cs.TombstoneRetentionDays
+		}
+	}
+
+	now := time.Now()
+	var entryBefore, tombstoneBefore *time.Time
+	if entryDays > 0 {
+		t := now.AddDate(0, 0, -entryDays)
+		entryBefore = &t
+	}
+	if tombDays > 0 {
+		t := now.AddDate(0, 0, -tombDays)
+		tombstoneBefore = &t
+	}
+
+	deleted, err := s.entries.DeleteReadUnstarred(ctx, entryBefore, tombstoneBefore)
 	if err != nil {
 		logger.Error("entry cache clear failed", "module", "service", "action", "clear", "resource", "entry", "result", "failed", "error", err)
 		return 0, err
 	}
-	// 重置所有 feeds 的 Conditional GET 信息，强制下次刷新时全量拉取
-	// 避免因 304 Not Modified 导致已删除的文章无法被重新拉取
-	if _, resetErr := s.feeds.ClearAllConditionalGet(ctx); resetErr != nil {
-		logger.Warn("feed conditional get reset failed", "module", "service", "action", "update", "resource", "feed", "result", "failed", "error", resetErr)
-	}
+	// 不重置 feeds 的 Conditional GET：本次只清理「已读且未收藏」的条目，
+	// 若清空 ETag，下一轮轮询会立刻全量回灌，被删的已读文章会以未读身份重新入库，
+	// 既违背「保留已收藏和未读」的预期，也会让列表头部涌入大量条目。
+	// 条目本身是硬删（不保留正文），但 DeleteReadUnstarred 会先写入极小的指纹墓碑
+	// （entry_tombstones：feed_id + hash + url），之后刷新即使拿到全量 items 也会被
+	// CreateOrUpdateSkippingTombstones 挡住，不会把清理过的文章重新插回来。
 	logger.Info("entry cache cleared", "module", "service", "action", "clear", "resource", "entry", "result", "ok", "count", deleted)
 	return deleted, nil
 }

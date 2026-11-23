@@ -92,11 +92,11 @@ func TestFeedService_Add_Success(t *testing.T) {
 		},
 	)
 
-	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, entry model.Entry) error {
+	mockEntries.EXPECT().CreateOrUpdateSkippingTombstones(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, entry model.Entry) (bool, error) {
 			require.Equal(t, int64(123), entry.FeedID)
 			require.NotEmpty(t, *entry.URL)
-			return nil
+			return true, nil
 		},
 	).Times(1)
 
@@ -241,7 +241,7 @@ func TestFeedService_Add_EntryCreateErrorIgnored(t *testing.T) {
 		},
 	)
 
-	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).Return(errors.New("entry error")).Times(1)
+	mockEntries.EXPECT().CreateOrUpdateSkippingTombstones(gomock.Any(), gomock.Any()).Return(false, errors.New("entry error")).Times(1)
 
 	clientFactory := network.NewClientFactoryForTest(client)
 	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, clientFactory, nil, nil)
@@ -286,7 +286,7 @@ func TestFeedService_Add_IconFetchUpdatesPath(t *testing.T) {
 		UpdateIconPath(gomock.Any(), int64(123), "example.com.png").
 		Return(nil)
 
-	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).Return(nil).Times(1)
+	mockEntries.EXPECT().CreateOrUpdateSkippingTombstones(gomock.Any(), gomock.Any()).Return(true, nil).Times(1)
 
 	clientFactory := network.NewClientFactoryForTest(client)
 	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, mockIcons, nil, clientFactory, nil, nil)
@@ -674,6 +674,18 @@ func (s *settingsServiceStub) SetFetchSettings(ctx context.Context, settings *se
 	return nil
 }
 
+// 1123：缓存清理设置 —— feed/refresh 测试返回默认值即可。
+func (s *settingsServiceStub) GetCacheSettings(ctx context.Context) (*service.CacheSettings, error) {
+	return &service.CacheSettings{
+		EntryRetentionDays:     service.DefaultCacheEntryRetentionDays,
+		TombstoneRetentionDays: service.DefaultCacheTombstoneRetentionDays,
+	}, nil
+}
+
+func (s *settingsServiceStub) SetCacheSettings(ctx context.Context, settings *service.CacheSettings) error {
+	return nil
+}
+
 // 21 批：界面设置整包 / 导出导入 —— 这个 stub 只服务于 feed/refresh 的测试，返回空实现即可。
 func (s *settingsServiceStub) GetUISettings(ctx context.Context) (*service.UISettings, error) {
 	return &service.UISettings{Empty: true}, nil
@@ -877,7 +889,7 @@ func TestFeedService_Add_TitleOverride(t *testing.T) {
 			return feed, nil
 		},
 	)
-	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	mockEntries.EXPECT().CreateOrUpdateSkippingTombstones(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
 
 	clientFactory := network.NewClientFactoryForTest(client)
 	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, clientFactory, nil, nil)
@@ -1219,7 +1231,7 @@ func TestFeedService_Add_IconFetchError(t *testing.T) {
 		FetchAndSaveIconForFeed(gomock.Any(), int64(123), "https://example.com/icon.png", "https://example.com").
 		Return("", errors.New("icon fetch error"))
 
-	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	mockEntries.EXPECT().CreateOrUpdateSkippingTombstones(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
 
 	clientFactory := network.NewClientFactoryForTest(client)
 	svc := service.NewFeedService(mockFeeds, nil, mockEntries, mockIcons, nil, clientFactory, nil, nil)
@@ -1475,7 +1487,7 @@ func TestFeedService_Add_SameTypeSucceeds(t *testing.T) {
 		},
 	)
 
-	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	mockEntries.EXPECT().CreateOrUpdateSkippingTombstones(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
 
 	clientFactory := network.NewClientFactoryForTest(client)
 	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, nil, nil, clientFactory, nil, nil)

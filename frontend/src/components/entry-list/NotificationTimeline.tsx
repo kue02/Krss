@@ -431,7 +431,13 @@ const TimelineCard = memo(function TimelineCard({
             <span className="ml-auto flex shrink-0 items-center gap-1">
               {/* 54-5：预览文字显示的是译文时挂语言图标（判据 = store 里真有译文） */}
               {translation?.content && <MachineTranslatedBadge />}
-              {entry.starred && <Star className="size-3 fill-amber-500 text-amber-500" />}
+              {entry.starred && (
+                <Star
+                  className="size-3.5 shrink-0 text-amber-500"
+                  aria-hidden="true"
+                  data-entry-starred-badge=""
+                />
+              )}
               {entry.muted && (
                 <span className="rounded-[3px] border border-border/60 bg-secondary/40 px-1 py-px text-[10px] leading-4">
                   {t("automation.muted_badge")}

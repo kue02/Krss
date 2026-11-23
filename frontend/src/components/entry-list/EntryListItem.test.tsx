@@ -288,14 +288,30 @@ describe("EntryListItem", () => {
       fireEvent.click(screen.getByText(/看这个/));
       expect(onClick).toHaveBeenCalledWith("entry-1");
     });
+
+    it("星标条目在社交视图来源行也显示星标徽标（与文章视图同一套样式）", () => {
+      const { container } = render(
+        <EntryListItem
+          entry={{ ...socialEntry, starred: true }}
+          feed={feed}
+          isSelected={false}
+          onClick={() => {}}
+          social
+        />,
+      );
+      const badge = container.querySelector("[data-entry-starred-badge]");
+      expect(badge).not.toBeNull();
+      expect(badge?.getAttribute("class")).toContain("text-amber-500");
+      expect(badge?.getAttribute("class")).not.toContain("fill-amber-500");
+      expect(badge?.getAttribute("class")).toContain("size-3.5");
+      expect(badge?.getAttribute("aria-hidden")).toBe("true");
+    });
   });
 
-  describe("已读 / 未读的样式不改变布局（BUG-2 回归）", () => {
-    // 原来读态把标题从 font-semibold 切成 font-medium：字重一变，同一条标题的换行数就可能变
-    // （1 行 ↔ 2 行），卡片高度跟着变 —— 滚动时「标记已读」会让整个列表跳一下。
-    // 对齐 Nextflux 的 ArticleCard：字体恒为 semibold，只用颜色区分读态。
-    // 注：jsdom 里没有 Tailwind 的 CSS，量 computed style 拿不到字重，所以断言类名。
-    it("未读与已读的标题类名都是 font-semibold，只有文字颜色类不同", () => {
+  describe("已读 / 未读的标题样式 + 星标徽标", () => {
+    // 与 Web 端一致：字重恒为 font-semibold，只用颜色区分读态（改字重会改换行 → 卡片高度跳动）。
+    // 注：jsdom 里没有 Tailwind 的 CSS，量不到 computed style，所以断言类名。
+    it("未读/已读标题都是 font-semibold，只有文字颜色不同", () => {
       const unread = render(
         <EntryListItem
           entry={{ ...entry, read: false }}
@@ -306,7 +322,7 @@ describe("EntryListItem", () => {
       );
       const unreadClass = screen.getByText(entry.title!).className;
       expect(unreadClass).toContain("font-semibold");
-      expect(unreadClass).not.toContain("font-medium");
+      expect(unreadClass).not.toContain("font-normal");
       expect(unreadClass).toContain("text-foreground");
       unread.unmount();
 
@@ -320,8 +336,35 @@ describe("EntryListItem", () => {
       );
       const readClass = screen.getByText(entry.title!).className;
       expect(readClass).toContain("font-semibold");
-      expect(readClass).not.toContain("font-medium");
+      expect(readClass).not.toContain("font-normal");
       expect(readClass).toContain("text-muted-foreground");
+    });
+
+    it("星标条目在来源行显示星标徽标，未星标不显示", () => {
+      const starred = render(
+        <EntryListItem
+          entry={{ ...entry, starred: true }}
+          feed={feed}
+          isSelected={false}
+          onClick={vi.fn()}
+        />,
+      );
+      expect(
+        starred.container.querySelector("[data-entry-starred-badge]"),
+      ).not.toBeNull();
+      starred.unmount();
+
+      const plain = render(
+        <EntryListItem
+          entry={{ ...entry, starred: false }}
+          feed={feed}
+          isSelected={false}
+          onClick={vi.fn()}
+        />,
+      );
+      expect(
+        plain.container.querySelector("[data-entry-starred-badge]"),
+      ).toBeNull();
     });
   });
 
