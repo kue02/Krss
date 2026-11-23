@@ -1,11 +1,14 @@
-import { useEffect, useCallback, useRef, useMemo } from "react";
+import { useEffect, useCallback, useRef, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import useEmblaCarousel from "embla-carousel-react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { useImagePreviewStore } from "@/stores/image-preview-store";
 import { AuthedImage } from "@/components/ui/authed-image";
+import { useImageZoom } from "@/hooks/useImageZoom";
 
 export function ImagePreview() {
+  const { t } = useTranslation();
   const { isOpen, images, currentIndex, close, reset, setIndex } =
     useImagePreviewStore();
 
@@ -29,6 +32,16 @@ export function ImagePreview() {
   }
   wasOpenRef.current = isOpen;
 
+  // 手势缩放 / 双指捏合 / 放大后拖动平移；换图或关闭时自动复位
+  const zoom = useImageZoom(`${currentIndex}:${images[currentIndex] ?? ""}`);
+
+  // 用 ref 暴露当前是否处于放大态，供 embla 的 watchDrag 实时判断，
+  // 这样放大时禁用翻页、复位后自动恢复，无需 reInit。
+  const isZoomedRef = useRef(zoom.isZoomed);
+  useEffect(() => {
+    isZoomedRef.current = zoom.isZoomed;
+  }, [zoom.isZoomed]);
+
   // Memoize options to prevent unnecessary reInit (which would skip animations)
   const emblaOptions = useMemo(
     () => ({
@@ -36,6 +49,8 @@ export function ImagePreview() {
       startIndex: initialIndexRef.current,
       skipSnaps: false,
       duration: 25,
+      // 放大时禁掉 embla 的单指拖拽翻页：此时横向拖动应该平移图片而不是翻页
+      watchDrag: () => !isZoomedRef.current,
     }),
     // Recreate options when preview opens (images change) or when initial index changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -160,23 +175,64 @@ export function ImagePreview() {
     };
   }, [isOpen]);
 
+  // 打开时短暂显示一次操作提示（缩放用法），几秒后淡出
+  const [showHint, setShowHint] = useState(false);
+  useEffect(() => {
+    if (!isOpen) {
+      setShowHint(false);
+      return;
+    }
+    setShowHint(true);
+    const timer = window.setTimeout(() => setShowHint(false), 2600);
+    return () => window.clearTimeout(timer);
+  }, [isOpen]);
+
+  // 放大后隐藏提示
+  useEffect(() => {
+    if (zoom.isZoomed) setShowHint(false);
+  }, [zoom.isZoomed]);
+
   const handleCarouselPointerDown = useCallback((e: React.PointerEvent) => {
     pointerDownPos.current = { x: e.clientX, y: e.clientY };
   }, []);
 
-  const handleCarouselClick = useCallback(
+  // 点击图片：仅在未放大且未发生拖动时关闭。
+  // 用短延时关闭，以便和「双击放大」相区分（第二次点击会取消关闭）。
+  const tapTimerRef = useRef<number | null>(null);
+  const clearTapTimer = useCallback(() => {
+    if (tapTimerRef.current !== null) {
+      window.clearTimeout(tapTimerRef.current);
+      tapTimerRef.current = null;
+    }
+  }, []);
+  useEffect(() => clearTapTimer, [clearTapTimer]);
+
+  const handleTapClose = useCallback(
     (e: React.MouseEvent) => {
-      // Only close if pointer moved less than 5px (pure click, not drag)
+      e.stopPropagation();
+      // 放大状态下单击不关闭（双击复位由 useImageZoom 处理）
+      if (zoom.isZoomed) {
+        pointerDownPos.current = null;
+        return;
+      }
+      // 拖动 / 滑动超过 5px 视为滑动手势，不当作点击
       if (pointerDownPos.current) {
         const dx = Math.abs(e.clientX - pointerDownPos.current.x);
         const dy = Math.abs(e.clientY - pointerDownPos.current.y);
-        if (dx < 5 && dy < 5) {
-          close();
-        }
+        pointerDownPos.current = null;
+        if (dx >= 5 || dy >= 5) return;
       }
-      pointerDownPos.current = null;
+      // 延迟关闭：给双击缩放留出取消窗口
+      if (tapTimerRef.current !== null) {
+        clearTapTimer();
+        return;
+      }
+      tapTimerRef.current = window.setTimeout(() => {
+        tapTimerRef.current = null;
+        close();
+      }, 280);
     },
-    [close],
+    [close, clearTapTimer, zoom.isZoomed],
   );
 
   const handleOverlayClick = useCallback(() => {
@@ -226,6 +282,16 @@ export function ImagePreview() {
             </div>
           )}
 
+          {/* Zoom hint */}
+          <div
+            className={cn(
+              "pointer-events-none absolute bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] left-1/2 z-10 -translate-x-1/2 rounded-full bg-white/10 px-3 py-1.5 text-xs text-white/90 backdrop-blur-sm transition-opacity duration-500",
+              showHint ? "opacity-100" : "opacity-0",
+            )}
+          >
+            {t("entry.image_zoom_hint")}
+          </div>
+
           {/* Image carousel */}
           <div className="flex min-h-0 flex-1 items-center justify-center">
             {images.length === 1 ? (
@@ -235,36 +301,51 @@ export function ImagePreview() {
                 exit={{ scale: 0.9, opacity: 0 }}
                 transition={{ duration: 0.2 }}
                 className="relative flex size-full items-center justify-center safe-area-x"
+                ref={zoom.containerRef}
+                {...zoom.handlers}
+                onClick={handleTapClose}
               >
                 <AuthedImage
                   src={images[0]}
                   alt=""
                   className="max-h-full max-w-full object-contain"
+                  style={zoom.style}
                 />
               </motion.div>
             ) : (
+              // 外层挂缩放容器与手势（滚轮 / 双击 / 捏合 / 放大后拖动平移），
+              // 内层保留 embla 的指针记录与点击关闭。
               <div
-                ref={emblaRef}
-                className="size-full min-h-0 overflow-hidden touch-manipulation"
-                onPointerDown={handleCarouselPointerDown}
-                onClick={handleCarouselClick}
+                ref={zoom.containerRef}
+                className="size-full min-h-0"
+                {...zoom.handlers}
               >
-                <div className="flex size-full min-h-0 touch-pan-y will-change-transform">
-                  {images.map((src, index) => (
-                    <div
-                      key={src}
-                      className="flex min-h-0 min-w-0 flex-[0_0_100%] items-center justify-center will-change-transform"
-                    >
-                      <AuthedImage
-                        src={src}
-                        alt=""
-                        className="max-h-full max-w-full object-contain"
-                        loading={
-                          Math.abs(index - currentIndex) <= 1 ? "eager" : "lazy"
-                        }
-                      />
-                    </div>
-                  ))}
+                <div
+                  ref={emblaRef}
+                  className="size-full min-h-0 overflow-hidden touch-manipulation"
+                  onPointerDown={handleCarouselPointerDown}
+                  onClick={handleTapClose}
+                >
+                  <div className="flex size-full min-h-0 touch-pan-y will-change-transform">
+                    {images.map((src, index) => (
+                      <div
+                        key={src}
+                        className="flex min-h-0 min-w-0 flex-[0_0_100%] items-center justify-center will-change-transform"
+                      >
+                        <AuthedImage
+                          src={src}
+                          alt=""
+                          className="max-h-full max-w-full object-contain"
+                          style={
+                            index === currentIndex ? zoom.style : undefined
+                          }
+                          loading={
+                            Math.abs(index - currentIndex) <= 1 ? "eager" : "lazy"
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}

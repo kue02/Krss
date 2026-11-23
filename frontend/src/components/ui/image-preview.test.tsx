@@ -15,10 +15,13 @@ const mockOn = vi.fn();
 const mockOff = vi.fn();
 
 // Store the embla options passed to useEmblaCarousel
-let capturedEmblaOptions: { startIndex?: number } = {};
+let capturedEmblaOptions: {
+  startIndex?: number;
+  watchDrag?: () => boolean;
+} = {};
 
 vi.mock("embla-carousel-react", () => ({
-  default: (options: { startIndex?: number }) => {
+  default: (options: { startIndex?: number; watchDrag?: () => boolean }) => {
     capturedEmblaOptions = options;
     return [
       vi.fn(), // emblaRef
@@ -31,6 +34,27 @@ vi.mock("embla-carousel-react", () => ({
         off: mockOff,
       },
     ];
+  },
+}));
+
+// Mock useImageZoom so tests can drive isZoomed/scale and assert the resetKey
+const { mockZoomState, capturedZoomResetKeys } = vi.hoisted(() => ({
+  mockZoomState: { scale: 1, isZoomed: false },
+  capturedZoomResetKeys: [] as string[],
+}));
+
+vi.mock("@/hooks/useImageZoom", () => ({
+  useImageZoom: (resetKey?: string) => {
+    capturedZoomResetKeys.push(resetKey ?? "");
+    return {
+      containerRef: { current: null },
+      scale: mockZoomState.scale,
+      offset: { x: 0, y: 0 },
+      isZoomed: mockZoomState.isZoomed,
+      reset: vi.fn(),
+      handlers: {},
+      style: { transform: "none" },
+    };
   },
 }));
 
@@ -426,6 +450,87 @@ describe("ImagePreview", () => {
       unmount();
 
       expect(mockOff).toHaveBeenCalledWith("select", expect.any(Function));
+    });
+  });
+
+  describe("image zoom 接入", () => {
+    beforeEach(() => {
+      mockZoomState.scale = 1;
+      mockZoomState.isZoomed = false;
+      capturedZoomResetKeys.length = 0;
+    });
+
+    it("useImageZoom 的 resetKey 随当前图片变化（换图复位缩放）", () => {
+      useImagePreviewStore.getState().open(mockImages, 0);
+      render(<ImagePreview />);
+
+      expect(capturedZoomResetKeys[capturedZoomResetKeys.length - 1]).toBe(
+        `0:${mockImages[0]}`,
+      );
+
+      act(() => {
+        useImagePreviewStore.getState().setIndex(1);
+      });
+
+      expect(capturedZoomResetKeys[capturedZoomResetKeys.length - 1]).toBe(
+        `1:${mockImages[1]}`,
+      );
+    });
+
+    it("scale>1 时禁用 embla 拖拽翻页（watchDrag 返回 false）", () => {
+      mockZoomState.scale = 2;
+      mockZoomState.isZoomed = true;
+      useImagePreviewStore.getState().open(mockImages, 0);
+
+      render(<ImagePreview />);
+
+      expect(typeof capturedEmblaOptions.watchDrag).toBe("function");
+      expect(capturedEmblaOptions.watchDrag!()).toBe(false);
+    });
+
+    it("scale===1 时允许 embla 拖拽翻页（watchDrag 返回 true）", () => {
+      useImagePreviewStore.getState().open(mockImages, 0);
+
+      render(<ImagePreview />);
+
+      expect(capturedEmblaOptions.watchDrag!()).toBe(true);
+    });
+
+    it("scale===1 时点击图片关闭预览", async () => {
+      useImagePreviewStore.getState().open(mockImages, 0);
+      const { container } = render(<ImagePreview />);
+
+      const carousel = container.querySelector(
+        ".overflow-hidden.touch-manipulation",
+      );
+      expect(carousel).not.toBeNull();
+
+      fireEvent.click(carousel!);
+      // 关闭带 ~280ms 延时（给双击留取消窗口），等它触发
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 320));
+      });
+
+      expect(useImagePreviewStore.getState().isOpen).toBe(false);
+    });
+
+    it("scale>1 时点击图片不关闭预览", async () => {
+      mockZoomState.scale = 2;
+      mockZoomState.isZoomed = true;
+      useImagePreviewStore.getState().open(mockImages, 0);
+      const { container } = render(<ImagePreview />);
+
+      const carousel = container.querySelector(
+        ".overflow-hidden.touch-manipulation",
+      );
+      expect(carousel).not.toBeNull();
+
+      fireEvent.click(carousel!);
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 320));
+      });
+
+      expect(useImagePreviewStore.getState().isOpen).toBe(true);
     });
   });
 });
