@@ -654,7 +654,9 @@ func TestAIService_TranslateBatch_FreeChannelWithoutModelDoesNotFailFast(t *test
 func TestAIService_TranslateBatch_NoChannelNoModelFails(t *testing.T) {
 	repo := newSettingsRepoStub()
 	repo.data["ai.summary_language"] = "zh-CN"
-	// ai.translate_channel 留空 = 走模型；模型没配
+	// 显式关闭免费通道（新装默认开启全部）= 走模型；模型没配
+	repo.data["ai.translate_channels"] = "[]"
+	repo.data["ai.translate_channel"] = ""
 	listRepo := &listTranslationRepoStub{batchResult: map[int64]*model.AIListTranslation{}}
 	svc := service.NewAIService(&summaryRepoStub{}, &translationRepoStub{}, listRepo, repo, ai.NewRateLimiter(100))
 
@@ -725,4 +727,29 @@ func TestAIService_AIProxyEnabled_DefaultFalse(t *testing.T) {
 
 	repo.data["ai.use_proxy"] = "false"
 	require.False(t, service.AIProxyEnabledForTest(svc, context.Background()))
+}
+
+// getFreeTranslateChannels 三条路径：全新安装→全部；仅旧单值→只保留它；显式空→关闭。
+func TestAIService_GetFreeTranslateChannels_Defaults(t *testing.T) {
+	newSvc := func(repo *settingsRepoStub) service.AIService {
+		return service.NewAIService(&summaryRepoStub{}, &translationRepoStub{}, &listTranslationRepoStub{}, repo, ai.NewRateLimiter(0))
+	}
+
+	// 1) 两个键都不存在 → 全新安装，默认全部免费通道。
+	repo := newSettingsRepoStub()
+	got := service.FreeTranslateChannelsForTest(newSvc(repo), context.Background())
+	require.Equal(t, []string{"google", "youdao", "microsoft", "bilibili"}, got)
+
+	// 2) 只有 legacy=google → 只保留 google，不再扩容。
+	repo2 := newSettingsRepoStub()
+	repo2.data["ai.translate_channel"] = "google"
+	got2 := service.FreeTranslateChannelsForTest(newSvc(repo2), context.Background())
+	require.Equal(t, []string{"google"}, got2)
+
+	// 3) 显式空列表 + 旧键为空 → 关闭免费通道（空）。
+	repo3 := newSettingsRepoStub()
+	repo3.data["ai.translate_channels"] = "[]"
+	repo3.data["ai.translate_channel"] = ""
+	got3 := service.FreeTranslateChannelsForTest(newSvc(repo3), context.Background())
+	require.Empty(t, got3)
 }

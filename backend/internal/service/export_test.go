@@ -124,3 +124,11 @@ func SetPluginLogMaxBytesForTest(n int64) (restore func()) {
 
 // ExcludedSettingKeysForTest 导出排除名单（55-22 守门测试：插件 secret 键必须都在里面）。
 func ExcludedSettingKeysForTest() []string { return excludedSettingKeys() }
+
+// FreeTranslateChannelsForTest exposes aiService.getFreeTranslateChannels for tests.
+func FreeTranslateChannelsForTest(svc AIService, ctx context.Context) []string {
+	if s, ok := svc.(*aiService); ok {
+		return s.getFreeTranslateChannels(ctx)
+	}
+	return nil
+}

@@ -459,10 +459,19 @@ func TestSettingsService_TranslateChannelsRoundTrip(t *testing.T) {
 	require.Empty(t, got2.TranslateChannel)
 }
 
-// 老库：只有旧单值 google、没有新键，读出来要自动变成 [google, youdao, microsoft, bilibili]（升级即获得全部轮询通道）。
+// 老库只有旧单值 google → 只保留 google，不再扩容。
 func TestSettingsService_TranslateChannelsLegacyDerived(t *testing.T) {
 	repo := newSettingsRepoStub()
 	repo.data[service.KeyAITranslateChannel] = "google"
+	svc := service.NewSettingsService(repo, ai.NewRateLimiter(0))
+	got, err := svc.GetAISettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, []string{"google"}, got.TranslateChannels)
+}
+
+// 全新安装（两个通道键都不存在）→ 默认勾选全部免费通道。
+func TestSettingsService_FreshInstallDefaultsAllChannels(t *testing.T) {
+	repo := newSettingsRepoStub()
 	svc := service.NewSettingsService(repo, ai.NewRateLimiter(0))
 	got, err := svc.GetAISettings(context.Background())
 	require.NoError(t, err)
