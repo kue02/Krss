@@ -395,6 +395,18 @@ describe("EntryList · 标准文章列表虚拟化", () => {
     expect(screen.queryByTestId("mark-all-read-footer")).toBeNull();
   });
 
+  it("文章「Inoreader列表」在手机档包一层左滑动作（与其它列表一致）", async () => {
+    setUISetting("articleLayout", "inoreader");
+    render(<EntryList {...defaultProps} isMobile />);
+
+    const viewport = screen.getByTestId("entry-list-viewport");
+    // 手机档不虚拟化（走 document 滚动），但每行都要包一层左滑动作
+    expect(screen.getByTestId("article-plain-list")).toBeTruthy();
+    const rows = viewport.querySelectorAll("[data-swipe-row]");
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows[0]?.querySelector("[data-entry-id]")).not.toBeNull();
+  });
+
   it("文章 hover 档不虚拟化（悬停浮层认行的委托不受影响）", () => {
     setUISetting("articleLayout", "hover");
     render(<EntryList {...defaultProps} />);

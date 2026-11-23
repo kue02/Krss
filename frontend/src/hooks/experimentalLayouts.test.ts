@@ -16,15 +16,6 @@ beforeEach(() => {
 });
 
 describe("实验布局批：articleLayout 归一与预设", () => {
-  it("resolveArticleLayout 把未知/历史值归一到 list，保留 rows/hover", async () => {
-    const mod = await freshModule();
-    expect(mod.resolveArticleLayout("rows")).toBe("rows");
-    expect(mod.resolveArticleLayout("hover")).toBe("hover");
-    expect(mod.resolveArticleLayout("list")).toBe("list");
-    expect(mod.resolveArticleLayout("masonry")).toBe("list");
-    expect(mod.resolveArticleLayout("")).toBe("list");
-  });
-
   it("articleLayoutPreset：rows → bottom + cover；list/hover → right + 不 cover", async () => {
     const mod = await freshModule();
     expect(mod.articleLayoutPreset("rows")).toEqual({

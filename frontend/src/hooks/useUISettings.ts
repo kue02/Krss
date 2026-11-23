@@ -387,14 +387,6 @@ export function resolveGridStyle(
   return layout === "grid" ? "square" : "masonry";
 }
 
-/** 实验布局批：把 articleLayout 归一（认不得的值退回默认 list）。 */
-export function resolveArticleLayout(layout: string): ArticleLayout {
-  if (layout === "inoreader" || layout === "rows" || layout === "hover") {
-    return layout;
-  }
-  return "list";
-}
-
 /**
  * 实验布局批：某一档文章布局的「自动预设」——切换布局时由 setArticleLayout 统一套用。
  *   list      → right + cover=false
