@@ -140,6 +140,10 @@ func (f *feedRepoStub) UpdateSiteURL(context.Context, int64, string) error {
 	panic("not implemented")
 }
 
+func (f *feedRepoStub) UpdateSortOrder(context.Context, int64, int64) error {
+	panic("not implemented")
+}
+
 func pngBytes(t *testing.T, width, height int) []byte {
 	t.Helper()
 	img := image.NewRGBA(image.Rect(0, 0, width, height))

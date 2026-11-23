@@ -5534,6 +5534,9 @@ const docTemplate = `{
                 "siteUrl": {
                     "type": "string"
                 },
+                "sortOrder": {
+                    "type": "integer"
+                },
                 "sourceType": {
                     "description": "16 批：rss（默认）/ mcp；MCPConfig 只有 mcp 源才有。",
                     "type": "string"
@@ -5994,6 +5997,10 @@ const docTemplate = `{
                 "parentId": {
                     "type": "string"
                 },
+                "sortOrder": {
+                    "description": "SortOrder 拖动排序（迁移 39）：可选，Update 时传了才改；只传它（不带 name）即纯排序。",
+                    "type": "integer"
+                },
                 "type": {
                     "type": "string"
                 }
@@ -6025,6 +6032,9 @@ const docTemplate = `{
                 "proxyMode": {
                     "description": "代理覆盖（14 批）：inherit = 跟随父级文件夹链 → 全局；proxy / direct 是本层自己选的",
                     "type": "string"
+                },
+                "sortOrder": {
+                    "type": "integer"
                 },
                 "type": {
                     "type": "string"
@@ -6949,6 +6959,10 @@ const docTemplate = `{
             "properties": {
                 "folderId": {
                     "type": "string"
+                },
+                "sortOrder": {
+                    "description": "SortOrder 拖动排序（迁移 39）：可选，传了才改；只传它（不带 title）即纯排序，不触发重抓默认名。",
+                    "type": "integer"
                 },
                 "summaryPromptReminder": {
                     "type": "string"

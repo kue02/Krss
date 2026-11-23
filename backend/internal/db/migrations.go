@@ -715,6 +715,98 @@ func runMigrations(db *sql.DB) error {
 		return fmt.Errorf("create entry_tombstones table: %w", err)
 	}
 
+	// Migration 40: 侧栏拖动排序（1123）—— folders / feeds 各加 sort_order，列表改按它排。
+	// 新列默认 0（新库空表无所谓）；升级老库时按「当前视觉顺序」回填 0..n-1，
+	// 避免升级后侧栏顺序突变（folders 现按 name、feeds 现按 title 显示）。
+	// 回填只做一次（migrateSortOrderBackfill 用 schema_migrations 记版本），
+	// 否则每次启动都会把用户拖好的顺序覆盖回按名字排序。
+	if err := addColumnIfMissing(db, "folders", "sort_order",
+		`ALTER TABLE folders ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "feeds", "sort_order",
+		`ALTER TABLE feeds ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`); err != nil {
+		return err
+	}
+	if err := migrateSortOrderBackfill(db); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// migrateSortOrderBackfill 按迁移前的视觉顺序回填 folders / feeds 的 sort_order（迁移 40）。
+//
+// 迁移前：folders 列表 `ORDER BY name`、feeds 列表 `ORDER BY title`。为了升级后侧栏顺序
+// 与升级前一致，这里用窗口函数按「当前分组 + 当前排序」生成 0..n-1 的序号：
+//   - folders 按 parent_id 分区、分区内按 name（再按 id 兜底保证唯一稳定）；
+//   - feeds 按 folder_id 分区、分区内按 title（再按 id 兜底）。
+//
+// COALESCE(parent_id, -1) / COALESCE(folder_id, -1)：把「根目录 / 未归类」（NULL）也当成
+// 一个分区，而不是被 NULL 拆散，从而保持这些条目原本按名字排的相对顺序。
+//
+// 只回填一次：用户之后拖出来的顺序不能被下次启动的回填覆盖，用 schema_migrations 记版本 40。
+func migrateSortOrderBackfill(db *sql.DB) error {
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
+		version    INTEGER PRIMARY KEY,
+		applied_at TEXT NOT NULL
+	)`); err != nil {
+		return fmt.Errorf("create schema_migrations: %w", err)
+	}
+
+	var applied int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE version = 40`).Scan(&applied); err != nil {
+		return fmt.Errorf("check sort_order migration: %w", err)
+	}
+	if applied > 0 {
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin sort_order migration: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`
+		UPDATE folders
+		SET sort_order = ranked.rn
+		FROM (
+			SELECT id AS rid,
+			       ROW_NUMBER() OVER (
+			           PARTITION BY COALESCE(parent_id, -1)
+			           ORDER BY name, id
+			       ) - 1 AS rn
+			FROM folders
+		) AS ranked
+		WHERE folders.id = ranked.rid
+	`); err != nil {
+		return fmt.Errorf("backfill folder sort_order: %w", err)
+	}
+
+	if _, err := tx.Exec(`
+		UPDATE feeds
+		SET sort_order = ranked.rn
+		FROM (
+			SELECT id AS rid,
+			       ROW_NUMBER() OVER (
+			           PARTITION BY COALESCE(folder_id, -1)
+			           ORDER BY title, id
+			       ) - 1 AS rn
+			FROM feeds
+		) AS ranked
+		WHERE feeds.id = ranked.rid
+	`); err != nil {
+		return fmt.Errorf("backfill feed sort_order: %w", err)
+	}
+
+	if _, err := tx.Exec(`INSERT INTO schema_migrations (version, applied_at) VALUES (40, ?)`,
+		time.Now().UTC().Format(time.RFC3339)); err != nil {
+		return fmt.Errorf("mark sort_order migration: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit sort_order migration: %w", err)
+	}
 	return nil
 }
 

@@ -37,7 +37,10 @@ type FeedService interface {
 	AddWithoutFetch(ctx context.Context, feedURL string, folderID *int64, titleOverride string, feedType string) (model.Feed, bool, error)
 	Preview(ctx context.Context, feedURL string) (FeedPreview, error)
 	List(ctx context.Context, folderID *int64) ([]model.Feed, error)
-	Update(ctx context.Context, id int64, title string, folderID *int64, summaryPromptReminder *string) (model.Feed, error)
+	// Update 改标题/文件夹/摘要提示；sortOrder 非 nil 时一并写拖动排序（迁移 39）。
+	// 只传 sortOrder（title 为空）时视为「纯拖动排序」：只改 sort_order，
+	// 不走「空标题=恢复默认名」（52-3）与移动文件夹的逻辑。
+	Update(ctx context.Context, id int64, title string, folderID *int64, summaryPromptReminder *string, sortOrder *int64) (model.Feed, error)
 	// MoveToFolder 只挪文件夹、不动标题（52-5 自动分组用）。
 	// 为什么不复用 Update：Update 的语义是「空标题=恢复默认名」（52-3），
 	// 而分组时标题原样保留 —— 走 Update 会白白重抓一次，还可能覆盖用户起的名字。
@@ -474,13 +477,24 @@ func (s *feedService) List(ctx context.Context, folderID *int64) ([]model.Feed, 
 	return feeds, nil
 }
 
-func (s *feedService) Update(ctx context.Context, id int64, title string, folderID *int64, summaryPromptReminder *string) (model.Feed, error) {
+func (s *feedService) Update(ctx context.Context, id int64, title string, folderID *int64, summaryPromptReminder *string, sortOrder *int64) (model.Feed, error) {
 	feed, err := s.feeds.GetByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return model.Feed{}, ErrNotFound
 		}
 		return model.Feed{}, fmt.Errorf("get feed: %w", err)
+	}
+
+	// 纯拖动排序：前端只传 sortOrder、不带 title。只改 sort_order，
+	// 不能走下面「空标题=恢复默认名」的重抓逻辑，也不动文件夹。
+	if strings.TrimSpace(title) == "" && sortOrder != nil {
+		if err := s.feeds.UpdateSortOrder(ctx, id, *sortOrder); err != nil {
+			logger.Error("feed sort order update failed", "module", "service", "action", "update", "resource", "feed", "result", "failed", "feed_id", id, "error", err)
+			return model.Feed{}, err
+		}
+		logger.Info("feed sort order updated", "module", "service", "action", "update", "resource", "feed", "result", "ok", "feed_id", id, "sort_order", *sortOrder)
+		return s.feeds.GetByID(ctx, id)
 	}
 
 	// 52-3：名称清空 = 恢复默认名称（用户拍板：重新抓一次取 feed 标题，抓不到退域名）。
@@ -530,6 +544,13 @@ func (s *feedService) Update(ctx context.Context, id int64, title string, folder
 	if err != nil {
 		logger.Error("feed update failed", "module", "service", "action", "update", "resource", "feed", "result", "failed", "feed_id", id, "error", err)
 		return model.Feed{}, err
+	}
+	if sortOrder != nil {
+		if err := s.feeds.UpdateSortOrder(ctx, id, *sortOrder); err != nil {
+			logger.Error("feed sort order update failed", "module", "service", "action", "update", "resource", "feed", "result", "failed", "feed_id", id, "error", err)
+			return model.Feed{}, err
+		}
+		updated.SortOrder = int(*sortOrder)
 	}
 	logger.Info("feed updated", "module", "service", "action", "update", "resource", "feed", "result", "ok", "feed_id", updated.ID, "feed_title", updated.Title)
 	return updated, nil

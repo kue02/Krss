@@ -87,18 +87,18 @@ func (mr *MockFolderServiceMockRecorder) List(ctx any) *gomock.Call {
 }
 
 // Update mocks base method.
-func (m *MockFolderService) Update(ctx context.Context, id int64, name string, parentID *int64) (model.Folder, error) {
+func (m *MockFolderService) Update(ctx context.Context, id int64, name string, parentID, sortOrder *int64) (model.Folder, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Update", ctx, id, name, parentID)
+	ret := m.ctrl.Call(m, "Update", ctx, id, name, parentID, sortOrder)
 	ret0, _ := ret[0].(model.Folder)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Update indicates an expected call of Update.
-func (mr *MockFolderServiceMockRecorder) Update(ctx, id, name, parentID any) *gomock.Call {
+func (mr *MockFolderServiceMockRecorder) Update(ctx, id, name, parentID, sortOrder any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockFolderService)(nil).Update), ctx, id, name, parentID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockFolderService)(nil).Update), ctx, id, name, parentID, sortOrder)
 }
 
 // UpdateProxyOverride mocks base method.
