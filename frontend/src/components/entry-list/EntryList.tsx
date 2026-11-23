@@ -1843,10 +1843,12 @@ export function EntryList({
               {/* 「正文推入方向 = 向下」（方案 2 · 整列一起滚）：正文接在列表最后一行后面，
                   与列表共用同一条滚动条 —— 点条目后往下滚就是正文，往上滚回列表。 */}
               {inlineActive ? (
+                /* 没选条目时留一个 0 高占位：ref 得一直在，选中后才好逐帧对齐；
+                   但边框要跟着藏起来，否则列表末尾会多出一条悬空分隔线。 */
                 <div
                   ref={inlineContentRef}
                   data-testid="inline-article-pane"
-                  className="w-full border-t border-border"
+                  className={cn("w-full", selectedEntryId ? "border-t border-border" : "hidden")}
                 >
                   {renderInlineContent?.(containerRef)}
                 </div>
