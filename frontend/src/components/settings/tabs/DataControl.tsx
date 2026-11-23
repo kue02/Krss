@@ -374,13 +374,14 @@ export function DataControl() {
                       style={{ width: `${(task.current / task.total) * 100}%` }}
                     />
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleCancel}
-                    className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onPress={() => void handleCancel()}
+                    className="h-6 min-w-0 px-2 text-xs text-muted-foreground"
                   >
                     {t("data_control.stop")}
-                  </button>
+                  </Button>
                 </div>
                 <div className="text-xs text-muted-foreground">
                   {task.feed

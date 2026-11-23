@@ -464,6 +464,8 @@
     "providers_empty": "还没有提供商，点右上角「添加」新建一个",
     "model_count": "{{count}} 个模型",
     "scene_default_model": "默认模型",
+    "scene_free": "免费翻译通道",
+    "scene_provider_gone": "提供商已删除（将跟随当前使用）",
     "probe_models": "探测模型",
     "probing": "探测中…",
     "probe_failed": "探测模型失败",

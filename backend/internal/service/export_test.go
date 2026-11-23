@@ -26,6 +26,8 @@ const (
 	KeyUserPasswordHash    = keyUserPasswordHash
 	KeyUserJWTSecret       = keyUserJWTSecret
 	KeyAIProvider          = keyAIProvider
+	KeyAIProviders         = keyAIProviders
+	KeyAIActiveProvider    = keyAIActiveProvider
 	KeyAIAPIKey            = keyAIAPIKey
 	KeyAIBaseURL           = keyAIBaseURL
 	KeyAIModel             = keyAIModel

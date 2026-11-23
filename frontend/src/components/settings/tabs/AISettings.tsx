@@ -577,21 +577,40 @@ export function AISettings() {
     };
   };
 
-  // 未保存改动只看提供商草稿；行为区自己自动保存
+  // 未保存改动 = 提供商草稿差异 + 行为区尚未落库的改动（防抖窗口内或保存失败时都要拦一下）
   const providerDirty =
     draft !== null &&
     draftBaseline !== null &&
     draftSnapshot(draft) !== draftBaseline;
-  useSettingsDirty("ai", providerDirty, t("settings.dirty_label_ai"), () => {
-    void handleSaveDraft();
-  });
+  const behaviorSnapshot = settings ? behaviorSnapshotOf(settings) : null;
+  const behaviorDirty =
+    settings !== null &&
+    behaviorBaselineRef.current !== null &&
+    behaviorSnapshot !== null &&
+    behaviorSnapshot !== behaviorBaselineRef.current;
+  const flushPending = async () => {
+    if (draft) {
+      await handleSaveDraft();
+      return;
+    }
+    if (behaviorDirty) {
+      await persistProviders(realProviders, activeProviderId);
+    }
+  };
+  useSettingsDirty(
+    "ai",
+    providerDirty || behaviorDirty,
+    t("settings.dirty_label_ai"),
+    () => {
+      void flushPending();
+    },
+  );
 
   useEffect(() => {
     providerDirtyRef.current = providerDirty;
   }, [providerDirty]);
 
   // ---------- 行为区自动保存（防抖 ~800ms，行内反馈） ----------
-  const behaviorSnapshot = settings ? behaviorSnapshotOf(settings) : null;
   useEffect(() => {
     if (!settings || !behaviorSnapshot) return;
     const baselineSnapshot = behaviorBaselineRef.current;
@@ -662,15 +681,19 @@ export function AISettings() {
     if (sceneOptions.some((option) => option.value === current)) {
       return sceneOptions;
     }
-    // 旧值 provider:<id>（不带模型）或提供商被删：保留原值，标出可读名，别悄悄清空
+    // 旧值 provider:<id>（不带模型）/ 免费通道 / 提供商被删：保留原值，标出可读名，别悄悄清空
     let label = current;
-    if (current.startsWith("provider:")) {
+    if (current === "free") {
+      label = t("ai_settings.scene_free");
+    } else if (current.startsWith("provider:")) {
       const [id, model] = current.slice("provider:".length).split("#");
       const found = realProviders.find((item) => item.id === id);
       if (found) {
         label = `${found.name || found.provider} · ${
           model || found.model || t("ai_settings.scene_default_model")
         }`;
+      } else {
+        label = t("ai_settings.scene_provider_gone");
       }
     }
     return [{ value: current, label }, ...sceneOptions];
@@ -780,7 +803,10 @@ export function AISettings() {
             <Button
               size="sm"
               variant="outline"
-              isDisabled={isProbing || !draft.baseUrl.trim()}
+              isDisabled={
+                isProbing ||
+                (isBaseURLRequiredDraft && !draft.baseUrl.trim())
+              }
               onPress={() => void handleProbeModels()}
             >
               {isProbing ? (
@@ -811,14 +837,16 @@ export function AISettings() {
                   )}
                 >
                   {model}
-                  <button
-                    type="button"
-                    onClick={() => removeModel(model)}
-                    title={t("actions.delete")}
-                    className="text-muted-foreground transition-colors hover:text-destructive"
+                  <Button
+                    isIconOnly
+                    size="sm"
+                    variant="ghost"
+                    aria-label={t("actions.delete")}
+                    onPress={() => removeModel(model)}
+                    className="size-4 min-w-4 text-muted-foreground hover:text-destructive"
                   >
                     <X className="size-3" />
-                  </button>
+                  </Button>
                 </span>
               ))}
             </div>

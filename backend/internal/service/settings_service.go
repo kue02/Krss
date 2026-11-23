@@ -602,9 +602,16 @@ func (s *settingsService) setAIProviders(ctx context.Context, settings *AISettin
 			}
 		}
 	}
-	// 当前使用的配置的密钥一定在 ai.api_key 里
-	if currentKey, err := s.getString(ctx, keyAIAPIKey); err == nil && currentKey != "" {
-		storedKeys[settings.ActiveProviderID] = currentKey
+	// 旧实例可能只有平铺 ai.api_key（还没把密钥写进 keyAIProviders）。
+	// 只有在「从没切过当前使用」（keyAIActiveProvider 为空）时才把平铺 key 补给当前那张卡；
+	// 否则会把旧 active 的 key 错误套到新 active 的 id 上，切换当前使用就会静默丢 key。
+	prevActiveID := ""
+	if v, err := s.getString(ctx, keyAIActiveProvider); err == nil {
+		prevActiveID = v
+	}
+	flatKey := ""
+	if v, err := s.getString(ctx, keyAIAPIKey); err == nil {
+		flatKey = v
 	}
 
 	activeID := settings.ActiveProviderID
@@ -623,7 +630,12 @@ func (s *settingsService) setAIProviders(ctx context.Context, settings *AISettin
 			continue
 		}
 		if entry.APIKey == "" || isMaskedKey(entry.APIKey) {
-			entry.APIKey = storedKeys[entry.ID]
+			if stored := storedKeys[entry.ID]; stored != "" {
+				entry.APIKey = stored
+			} else if entry.ID == activeID && flatKey != "" && prevActiveID == "" && (settings.APIKey == "" || isMaskedKey(settings.APIKey)) {
+				// 仅兼容「从未写过 providers 密钥」的老实例，避免切换当前使用时串 key。
+				entry.APIKey = flatKey
+			}
 		}
 		entry.Placeholder = false
 		list = append(list, entry)
@@ -638,6 +650,15 @@ func (s *settingsService) setAIProviders(ctx context.Context, settings *AISettin
 	}
 	if err := s.repo.Set(ctx, keyAIActiveProvider, activeID); err != nil {
 		return fmt.Errorf("set active provider: %w", err)
+	}
+	// 当前使用的提供商的真实密钥同步到平铺 ai.api_key，保证仍读平铺字段的路径拿到的是当前那家。
+	for _, item := range list {
+		if item.ID == activeID && item.APIKey != "" {
+			if err := s.repo.Set(ctx, keyAIAPIKey, item.APIKey); err != nil {
+				return fmt.Errorf("sync api key: %w", err)
+			}
+			break
+		}
 	}
 	return nil
 }

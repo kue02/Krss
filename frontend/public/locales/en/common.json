@@ -467,6 +467,8 @@
     "providers_empty": "No providers yet — click \"Add\" at the top right",
     "model_count": "{{count}} models",
     "scene_default_model": "Default model",
+    "scene_free": "Free translate channel",
+    "scene_provider_gone": "Provider removed (will follow current)",
     "probe_models": "Detect models",
     "probing": "Detecting…",
     "probe_failed": "Failed to detect models",
