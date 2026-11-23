@@ -531,7 +531,7 @@ export const defaultUISettings: UISettings = {
   feedColWidth: 256,
   entryColWidth: 336,
   sidebarVisible: true,
-  pictureLayout: "hover",
+  pictureLayout: "grid",
   gridStyle: "masonry",
   hoverRowHeight: "compact",
   hoverImageSize: "small",
