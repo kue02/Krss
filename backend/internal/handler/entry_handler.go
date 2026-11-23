@@ -40,6 +40,8 @@ func (h *EntryHandler) RegisterRoutes(g *echo.Group) {
 	g.DELETE("/entries/cache", h.ClearEntryCache)
 	g.GET("/unread-counts", h.GetUnreadCounts)
 	g.GET("/starred-count", h.GetStarredCount)
+	// 智能文件夹：展开「保存筛选视图」时取该视图当前匹配到的订阅列表（动态聚合）。
+	g.GET("/views/:id/matched-feeds", h.ViewMatchedFeeds)
 }
 
 type entryResponse struct {
@@ -89,6 +91,18 @@ type updateStarredRequest struct {
 
 type starredCountResponse struct {
 	Count int `json:"count"`
+}
+
+// viewMatchedFeedItem 某订阅在当前视图下命中的条目数（feedId 字符串化，对齐前端大整数惯例）。
+type viewMatchedFeedItem struct {
+	FeedID    string `json:"feedId"`
+	FeedTitle string `json:"feedTitle"`
+	Count     int    `json:"count"`
+}
+
+// viewMatchedFeedsResponse 某视图当前匹配到的订阅列表（只含 count>0 的订阅）。
+type viewMatchedFeedsResponse struct {
+	Feeds []viewMatchedFeedItem `json:"feeds"`
 }
 
 type entryClearResponse struct {
@@ -569,6 +583,48 @@ func (h *EntryHandler) GetStarredCount(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, starredCountResponse{Count: count})
+}
+
+// ViewMatchedFeeds returns the feeds currently matched by a saved view.
+// @Summary List feeds matched by a saved view
+// @Description Get the feeds currently matched by a saved view, with per-feed hit counts (dynamic; only count>0)
+// @Tags entries
+// @Produce json
+// @Param id path int true "View ID"
+// @Param contentType query string false "Only count this content type (article, picture, notification, social)"
+// @Success 200 {object} viewMatchedFeedsResponse
+// @Failure 400 {object} errorResponse
+// @Failure 404 {object} errorResponse
+// @Router /views/{id}/matched-feeds [get]
+func (h *EntryHandler) ViewMatchedFeeds(c echo.Context) error {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid id"})
+	}
+
+	var contentType *string
+	if raw := c.QueryParam("contentType"); raw != "" {
+		if raw != "article" && raw != "picture" && raw != "notification" && raw != "social" {
+			return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid contentType"})
+		}
+		contentType = &raw
+	}
+
+	feeds, err := h.service.ListViewMatchedFeeds(c.Request().Context(), id, contentType)
+	if err != nil {
+		logger.Error("entry list view matched feeds failed", "module", "handler", "action", "list", "resource", "entry", "result", "failed", "view_id", id, "error", err)
+		return writeServiceError(c, err)
+	}
+
+	items := make([]viewMatchedFeedItem, len(feeds))
+	for i, feed := range feeds {
+		items[i] = viewMatchedFeedItem{
+			FeedID:    strconv.FormatInt(feed.FeedID, 10),
+			FeedTitle: feed.FeedTitle,
+			Count:     feed.Count,
+		}
+	}
+	return c.JSON(http.StatusOK, viewMatchedFeedsResponse{Feeds: items})
 }
 
 // ClearReadabilityCache clears all readable_content from entries.
