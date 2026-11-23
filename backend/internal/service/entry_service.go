@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"sort"
 	"strings"
 	"time"
 
@@ -31,6 +32,14 @@ type EntryListParams struct {
 	Offset    int
 }
 
+// ViewMatchedFeed 「保存筛选视图」当前命中的订阅聚合：某订阅在这个视图下当前有多少条内容。
+// 侧栏把视图展开成「智能文件夹」时，用它列出「这个视图当前匹配到的订阅源」。
+type ViewMatchedFeed struct {
+	FeedID    int64
+	FeedTitle string
+	Count     int
+}
+
 type EntryService interface {
 	List(ctx context.Context, params EntryListParams) ([]model.Entry, error)
 	// Search 关键词检索（FTS5），供搜索弹窗用
@@ -45,6 +54,9 @@ type EntryService interface {
 	GetUnreadCounts(ctx context.Context) (map[int64]int, error)
 	// GetStarredCount 星标数；contentType 为空串 = 全部内容类型。
 	GetStarredCount(ctx context.Context, contentType string) (int, error)
+	// ListViewMatchedFeeds 按「保存筛选视图」聚合当前命中的订阅（智能文件夹展开用）。
+	// 只返回 count>0 的订阅；contentType 为 nil = 不按内容类型过滤。
+	ListViewMatchedFeeds(ctx context.Context, viewID int64, contentType *string) ([]ViewMatchedFeed, error)
 	// ClearReadabilityCache clears all readable_content from entries
 	ClearReadabilityCache(ctx context.Context) (int64, error)
 	// ClearEntryCache deletes read and unstarred entries (preserves starred and unread entries)
@@ -303,6 +315,89 @@ func (s *entryService) listByView(ctx context.Context, viewID int64, params Entr
 	logger.Debug("entry list by view", "module", "service", "action", "list", "resource", "entry", "result", "ok",
 		"view_id", viewID, "scanned", len(candidates), "matched", len(matched))
 	return matched, nil
+}
+
+// ListViewMatchedFeeds 按「保存筛选视图」聚合当前命中的订阅（侧栏「智能文件夹」展开用）。
+//
+// 求值完全复用 listByView 的同一套函数（ScopeMatches / buildEntryContext / MatchConditions），
+// 保证「展开看到的订阅列表」与「点进去看到的条目」语义一致：没命中内容的订阅不出现。
+// 不分页 —— 这是聚合全部命中的订阅，不是翻页。返回按 count 降序、再按 feedTitle 升序。
+func (s *entryService) ListViewMatchedFeeds(ctx context.Context, viewID int64, contentType *string) ([]ViewMatchedFeed, error) {
+	view, err := s.filters.GetByID(ctx, viewID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	if view.Kind != model.FilterKindView {
+		return nil, ErrNotFound
+	}
+
+	// 视图的作用域覆盖候选条目；contentType 收窄类型，其余筛选口径为零值（默认隐藏被静音的条目）。
+	scope := repository.EntryListFilter{
+		ContentType:     contentType,
+		Limit:           viewScanLimit,
+		ContentTruncate: repository.ListContentTruncate,
+	}
+	switch view.ScopeType {
+	case model.FilterScopeFeed:
+		if len(view.ScopeIDs) > 0 {
+			scope.FeedIDs = view.ScopeIDs
+		} else {
+			scope.FeedID = view.ScopeID
+		}
+	case model.FilterScopeFolder:
+		scope.FolderID = view.ScopeID
+	}
+
+	candidates, err := s.entries.List(ctx, scope)
+	if err != nil {
+		logger.Error("entry list view matched feeds failed", "module", "service", "action", "list", "resource", "entry", "result", "failed", "view_id", viewID, "error", err)
+		return nil, err
+	}
+
+	feedByID, folderNames, err := s.viewContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	counts := make(map[int64]int)
+	titles := make(map[int64]string)
+	for _, entry := range candidates {
+		feed, ok := feedByID[entry.FeedID]
+		if !ok {
+			continue
+		}
+		if !ScopeMatches(view, feed) {
+			continue
+		}
+		entryCtx := buildEntryContext(entry, feed, folderNames)
+		// 视图不执行动作，AI 条件自然也不该在浏览时花钱：这里不注入判定函数（判不成 = 不命中）。
+		if !MatchConditions(entryCtx, view.Conditions, now, nil) {
+			continue
+		}
+		counts[feed.ID]++
+		if _, seen := titles[feed.ID]; !seen {
+			titles[feed.ID] = feed.Title
+		}
+	}
+
+	feeds := make([]ViewMatchedFeed, 0, len(counts))
+	for feedID, count := range counts {
+		feeds = append(feeds, ViewMatchedFeed{FeedID: feedID, FeedTitle: titles[feedID], Count: count})
+	}
+	sort.Slice(feeds, func(i, j int) bool {
+		if feeds[i].Count != feeds[j].Count {
+			return feeds[i].Count > feeds[j].Count
+		}
+		return feeds[i].FeedTitle < feeds[j].FeedTitle
+	})
+
+	logger.Debug("entry list view matched feeds", "module", "service", "action", "list", "resource", "entry", "result", "ok",
+		"view_id", viewID, "scanned", len(candidates), "feeds", len(feeds))
+	return feeds, nil
 }
 
 // viewContext 视图求值要用订阅元数据与分类名（与规则引擎共用同一份上下文构造）。
