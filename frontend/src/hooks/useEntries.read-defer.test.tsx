@@ -20,7 +20,7 @@ vi.mock("@/api", () => ({
   getStarredCount: vi.fn(),
 }));
 
-import { useMarkAsRead } from "./useEntries";
+import { useMarkAsRead, useMarkAsStarred } from "./useEntries";
 
 function makeEntry(id: string, read = false): Entry {
   return {
@@ -102,5 +102,53 @@ describe("useMarkAsRead —— 47-1 手动标已读不当场摘条目", () => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["entries"] }),
     );
     expect(deferredRemovalIds()).not.toContain("a");
+  });
+});
+
+describe("useMarkAsStarred —— 59 星标乐观更新不触发 entries 重拉", () => {
+  beforeEach(() => {
+    resetDeferredRemovals();
+  });
+
+  it("mutate(starred:true) 乐观写入 entries 列表与单条缓存，成功后不 invalidate entries", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    seed(client);
+    // 单条条目缓存（正文页读的就是这条）
+    client.setQueryData(["entry", "b"], makeEntry("b"));
+    const invalidateSpy = vi.spyOn(client, "invalidateQueries");
+
+    const { result } = renderHook(() => useMarkAsStarred(), {
+      wrapper: wrapper(client),
+    });
+
+    await act(async () => {
+      result.current.mutate({ id: "b", starred: true });
+    });
+
+    // 乐观：两个 entries 列表里 b 的 starred 都已置真
+    const unreadList = client.getQueryData<{
+      pages: { entries: Entry[] }[];
+    }>(["entries", { unreadOnly: true, tag: "u" }]);
+    expect(
+      unreadList?.pages[0]?.entries.find((e) => e.id === "b")?.starred,
+    ).toBe(true);
+
+    const allList = client.getQueryData<{
+      pages: { entries: Entry[] }[];
+    }>(["entries", { unreadOnly: false, tag: "all" }]);
+    expect(
+      allList?.pages[0]?.entries.find((e) => e.id === "b")?.starred,
+    ).toBe(true);
+
+    // 单条缓存同样置真
+    expect(client.getQueryData<Entry>(["entry", "b"])?.starred).toBe(true);
+
+    // 成功后只刷星标数量，绝不重拉 entries（否则刚读过的条目会消失、列表跳动）
+    await waitFor(() =>
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["starredCount"] }),
+    );
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ["entries"] });
   });
 });
