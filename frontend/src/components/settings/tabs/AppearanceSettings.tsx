@@ -1209,7 +1209,9 @@ export function AppearanceSettings() {
                     hint={
                       expVisibility.articleHover
                         ? t("appearance_view.article_layout_hover_hint")
-                        : undefined
+                        : articleLayout === "hover"
+                          ? t("appearance_view.experimental_disabled_hint")
+                          : undefined
                     }
                   >
                     <SegmentedControl
@@ -1293,7 +1295,17 @@ export function AppearanceSettings() {
                 {/* 图片视图档位（28-7 收敛为两档：网格 / 悬停大图；31-1 增第三档「照片墙」）。
                     原先的「瀑布流」与「网格」合并成一档「网格」，两者的差别降为下面那条「样式」。 */}
                 {view === "picture" && (
-                  <SettingRow label={t("appearance_view.picture_layout")}>
+                  <SettingRow
+                    label={t("appearance_view.picture_layout")}
+                    hint={
+                      (resolvedPictureLayout === "hover" &&
+                        !expVisibility.pictureHover) ||
+                      (resolvedPictureLayout === "wall" &&
+                        !expVisibility.pictureWall)
+                        ? t("appearance_view.experimental_disabled_hint")
+                        : undefined
+                    }
+                  >
                     <SegmentedControl
                       className="shrink-0"
                       value={resolvedPictureLayout}

@@ -380,10 +380,17 @@ describe("AppearanceSettings 按视图设置", () => {
 
       const articleRow = rowOf("appearance_view.article_layout");
       expect(within(articleRow).queryByText("hover")).toBeNull();
+      // 当前正用着已停用的实验布局时，给出解释性提示（不再让分段控件「无高亮」且无说明）
+      expect(
+        within(articleRow).getByText("appearance_view.experimental_disabled_hint"),
+      ).toBeTruthy();
 
       const pictureRow = rowOf("appearance_view.picture_layout");
       expect(within(pictureRow).queryByText("hover")).toBeNull();
       expect(within(pictureRow).queryByText("wall")).toBeNull();
+      expect(
+        within(pictureRow).getByText("appearance_view.experimental_disabled_hint"),
+      ).toBeTruthy();
     } finally {
       uiOverride.articleLayout = undefined;
       uiOverride.pictureLayout = undefined;
