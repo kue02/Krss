@@ -8,7 +8,7 @@ import type { Entry } from "@/types/api";
 import type { ScrollSurface } from "./scroll-surface";
 
 /**
- * 标准文章列表扁平流的虚拟化（`type=article` + list 档专用）。
+ * 标准文章列表扁平流的虚拟化（`type=article` 的常规档与「缩略图列表」档共用）。
  *
  * 只解决「50 张卡全挂 DOM」：首屏只挂载可视区 + overscan 行，其余用总高度垫片占位。
  * 行高动态测量（`measureElement`）：每张卡文本/缩略图长短不一，估计值只做首屏占位，
@@ -19,7 +19,7 @@ import type { ScrollSurface } from "./scroll-surface";
  *   虚拟化只消费还原后的 scrollTop，不接管。
  * - 滚动标已读 / 预载 / 翻译调度：它们按 `[data-entry-id]` 认行，行还是同一份
  *   `EntryListItem`（props 接口不变，只包虚拟容器），querySelector 全能命中。
- * - 多选 / 悬停浮层：虚拟容器只包 list 档，hover 档（`isArticleHover`）走原路径。
+ * - 多选 / 悬停浮层：虚拟容器不包 hover 档（`isArticleHover` 走原路径）。
  */
 export interface UseVirtualizedArticleListOptions {
   enabled: boolean;

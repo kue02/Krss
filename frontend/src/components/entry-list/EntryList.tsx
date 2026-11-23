@@ -421,18 +421,19 @@ export function EntryList({
       "list",
       "inoreader",
     ];
-    /* 实验两档：开关开着才进循环；正用着（即使开关已关）也留着，免得按钮变成「回不去」 */
-    if (articleExpVisibility.articleRows || articleLayout === "rows") {
+    /* 实验两档：只按开关进循环 —— 关掉就从选择器与顶栏一起消失。
+       正用着已停用的档时不再把它塞回来（那是「入口泄漏」），
+       保留渲染 + 列表顶部逃生条负责把人带回常规档。 */
+    if (articleExpVisibility.articleRows) {
       order.push("rows");
     }
-    if (articleExpVisibility.articleHover || articleLayout === "hover") {
+    if (articleExpVisibility.articleHover) {
       order.push("hover");
     }
     return order;
   }, [
     articleExpVisibility.articleHover,
     articleExpVisibility.articleRows,
-    articleLayout,
   ]);
   /** 实验布局批：正用着已停用的实验档（悬停正文 / 缩略图列表）——保留渲染，给一条「切回常规」逃生条 */
   const showDisabledArticleHoverNotice =
@@ -497,7 +498,8 @@ export function EntryList({
   );
 
   /** 28-1：顶栏左上角那颗文章档位切换（只有文章视图会拿到它）。
-   *  实验布局批：在「可见档位」里循环（传统三栏 → 列表 → [悬停正文]）；悬停正文仅在实验开关打开时进入循环。 */
+   *  实验布局批：在「可见档位」里循环（传统三栏 → Inoreader列表 → [缩略图列表] → [悬停正文]）；
+   *  后两档仅在对应实验开关打开时进入循环。 */
   const { setArticleLayout } = useUISettingActions();
   const handleToggleArticleLayout = useCallback(() => {
     const idx = Math.max(
@@ -701,8 +703,11 @@ export function EntryList({
     const stop = () => {
       cancelled = true;
     };
+    /* 用户一动手就交还滚动权：滚轮、触摸、键盘、拖滚动条、点滚动条轨道都算。
+       注意不能监听 scroll —— 下面每帧都在写 scrollTop，会被自己触发。 */
     container.addEventListener("wheel", stop, { passive: true });
     container.addEventListener("touchstart", stop, { passive: true });
+    container.addEventListener("pointerdown", stop);
     container.addEventListener("keydown", stop);
 
     const offset = () => {
@@ -711,19 +716,38 @@ export function EntryList({
       return node.getBoundingClientRect().top - container.getBoundingClientRect().top;
     };
 
+    const alignOnce = () => {
+      const delta = offset();
+      if (delta === null || Math.abs(delta) <= 2) return false;
+      const before = container.scrollTop;
+      container.scrollTop += delta;
+      /* 已经到底/到顶还差得远 = 这一屏放不下，再盯也不会推进，直接收手，
+         免得 4 秒里一直和用户抢滚动（正文比视口高时就会这样）。 */
+      return Math.abs(container.scrollTop - before) > 1;
+    };
+
     let raf = 0;
+    if (reduceMotion) {
+      /* 减少动效：一次性对齐，不留逐帧修正 */
+      alignOnce();
+      return () => {
+        container.removeEventListener("wheel", stop);
+        container.removeEventListener("touchstart", stop);
+        container.removeEventListener("pointerdown", stop);
+        container.removeEventListener("keydown", stop);
+      };
+    }
+
     let startedAt = 0;
     const tick = (now: number) => {
       if (cancelled) return;
       if (startedAt === 0) startedAt = now;
       const elapsed = now - startedAt;
+      const progressed = alignOnce();
+      /* 已经对齐（progressed=false 且差值够小）或推不动了，就没必要继续盯 */
       const delta = offset();
-      /* 每帧直接补位，不用平滑滚动：距离常有几千像素，平滑动画跑的同时列表还在因为
-         实测行高/正文懒加载改高度，两者互相追会一直差一截。直接跳过去，后面几帧只做
-         毫米级修正，看起来反而稳。 */
-      if (delta !== null && Math.abs(delta) > 2) {
-        container.scrollTop += delta;
-      }
+      const settled = delta === null || Math.abs(delta) <= 2;
+      if (!settled && !progressed) return;
       if (elapsed < 4000) raf = window.requestAnimationFrame(tick);
     };
     raf = window.requestAnimationFrame(tick);
@@ -733,6 +757,7 @@ export function EntryList({
       window.cancelAnimationFrame(raf);
       container.removeEventListener("wheel", stop);
       container.removeEventListener("touchstart", stop);
+      container.removeEventListener("pointerdown", stop);
       container.removeEventListener("keydown", stop);
     };
   }, [inlineActive, selectedEntryId, reduceMotion]);
@@ -740,10 +765,12 @@ export function EntryList({
   useEffect(() => {
     if (!inlineActive || !selectedEntryId) return;
     if (inlineMarkedRef.current === selectedEntryId) return;
-    inlineMarkedRef.current = selectedEntryId;
     const index = entries.findIndex((item) => item.id === selectedEntryId);
     const target = index >= 0 ? entries[index] : undefined;
-    if (target && !target.read) {
+    /* 深链进来时 entries 可能还没到；找不到就先不记账，等列表到位再补标 */
+    if (!target) return;
+    inlineMarkedRef.current = selectedEntryId;
+    if (!target.read) {
       markAsRead({ id: selectedEntryId, read: true, skipInvalidate: true });
       deferEntryRemoval(selectedEntryId, { ...target, read: true }, index);
     }
@@ -1718,14 +1745,22 @@ export function EntryList({
                   <VirtualizedArticleList
                     virtualList={virtualList}
                     entries={entries}
-                    renderItem={(entry) => (
-                      <ArticlePlainListRow
-                        entry={entry}
-                        feed={feedsMap.get(entry.feedId)}
-                        onSelectEntry={handleSelectEntry}
-                        selectedEntryId={selectedEntryId}
-                      />
-                    )}
+                    renderItem={(entry) => {
+                      const row = (
+                        <ArticlePlainListRow
+                          entry={entry}
+                          feed={feedsMap.get(entry.feedId)}
+                          onSelectEntry={handleSelectEntry}
+                          selectedEntryId={selectedEntryId}
+                        />
+                      );
+                      /* 手机档跟其它列表一致：左滑露出已读/星标 */
+                      return isMobile ? (
+                        <MobileSwipeEntryRow entry={entry}>{row}</MobileSwipeEntryRow>
+                      ) : (
+                        row
+                      );
+                    }}
                   />
                 </div>
               ) : isArticleRows ? (
@@ -1820,7 +1855,7 @@ export function EntryList({
                   与列表头那颗同接口 onMarkAllRead）。
                   宽度跟时间线/社交卡片同款居中可读宽度，免得在宽栏下失控拉满。 */}
               {/* 合列模式（向下）时这颗按钮会夹在列表与正文中间，反而挡路 —— 隐藏 */}
-              {entries.length > 0 && !inlineActive && (
+              {entries.length > 0 && !(inlineActive && selectedEntryId) && (
                 <div className="mx-auto mt-1 w-full max-w-[clamp(45ch,60vw,65ch)] px-2">
                   <button
                     type="button"
@@ -1833,7 +1868,8 @@ export function EntryList({
                   </button>
                 </div>
               )}
-              {scrollReadEndPaddingHeight > 0 && (
+              {/* 合列（向下）时这段留白会夹在列表末尾与正文之间，白滚一屏才看到正文 */}
+              {!inlineActive && scrollReadEndPaddingHeight > 0 && (
                 <div
                   aria-hidden="true"
                   data-testid="scroll-read-end-padding"

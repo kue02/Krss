@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { ArticlePlainList } from "./ArticlePlainList";
+import { ArticlePlainListRow } from "./ArticlePlainList";
 import type { Entry, Feed } from "@/types/api";
 
 vi.mock("react-i18next", () => ({
@@ -28,26 +28,21 @@ function makeFeed(overrides: Partial<Feed>): Feed {
   } as Feed;
 }
 
-describe("ArticlePlainList（文章「Inoreader列表」= inoreader）", () => {
+describe("ArticlePlainListRow（文章「Inoreader列表」= inoreader）", () => {
   it("渲染来源图标 + 加粗标题 + 右侧来源·时间，且没有缩略图与摘要", () => {
     const { container } = render(
-      <ArticlePlainList
-        items={[
-          {
-            entry: makeEntry({
-              id: "e1",
-              title: "第一篇标题",
-              content: "<p>这是一段正文摘要，不该出现在列表里</p>",
-              thumbnailUrl: "https://example.com/t.jpg",
-              publishedAt: "2026-11-20T00:00:00Z",
-            }),
-            feed: makeFeed({ id: "f1", title: "来源甲", iconPath: "a.png" }),
-          },
-        ]}
+      <ArticlePlainListRow
+        entry={makeEntry({
+          id: "e1",
+          title: "第一篇标题",
+          content: "<p>这是一段正文摘要，不该出现在列表里</p>",
+          thumbnailUrl: "https://example.com/t.jpg",
+          publishedAt: "2026-11-20T00:00:00Z",
+        })}
+        feed={makeFeed({ id: "f1", title: "来源甲", iconPath: "a.png" })}
       />,
     );
 
-    expect(screen.getByTestId("article-plain-list")).toBeTruthy();
     expect(screen.getByText("第一篇标题")).toBeTruthy();
     expect(screen.getByText(/来源甲/)).toBeTruthy();
     // 唯一的 <img> 是 16px 的来源小图标，不是 64×64 缩略图
@@ -62,19 +57,25 @@ describe("ArticlePlainList（文章「Inoreader列表」= inoreader）", () => {
 
   it("点击行回调 onSelectEntry(entry.id)，选中行带 data-selected", () => {
     const onSelectEntry = vi.fn();
-    render(
-      <ArticlePlainList
-        items={[
-          { entry: makeEntry({ id: "e1", title: "已选中" }), feed: makeFeed({}) },
-          { entry: makeEntry({ id: "e2", title: "未选中" }), feed: makeFeed({}) },
-        ]}
-        onSelectEntry={onSelectEntry}
-        selectedEntryId="e1"
-      />,
+    const { container } = render(
+      <>
+        <ArticlePlainListRow
+          entry={makeEntry({ id: "e1", title: "已选中" })}
+          feed={makeFeed({})}
+          onSelectEntry={onSelectEntry}
+          selectedEntryId="e1"
+        />
+        <ArticlePlainListRow
+          entry={makeEntry({ id: "e2", title: "未选中" })}
+          feed={makeFeed({})}
+          onSelectEntry={onSelectEntry}
+          selectedEntryId="e1"
+        />
+      </>,
     );
 
-    const selectedRow = document.querySelector('[data-entry-id="e1"]');
-    const otherRow = document.querySelector('[data-entry-id="e2"]');
+    const selectedRow = container.querySelector('[data-entry-id="e1"]');
+    const otherRow = container.querySelector('[data-entry-id="e2"]');
     expect(selectedRow?.getAttribute("data-selected")).toBe("true");
     expect(otherRow?.getAttribute("data-selected")).toBeNull();
 

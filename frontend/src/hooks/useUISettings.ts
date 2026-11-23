@@ -926,7 +926,7 @@ export function useUISettingActions() {
     setUISetting("articleCoverList", cover);
   }, []);
 
-  /** 实验性设置总开关（关 = 三项实验布局入口全隐藏） */
+  /** 实验性设置总开关（关 = 四项实验布局入口全隐藏） */
   const setExperimentalFeaturesEnabled = useCallback((enabled: boolean) => {
     setUISetting("experimentalFeaturesEnabled", enabled);
   }, []);
