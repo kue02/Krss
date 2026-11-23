@@ -85,9 +85,10 @@ export function useImageZoom(resetKey?: unknown) {
     [applyScale, scale],
   );
 
-  const onDoubleClick = useCallback(
-    (event: React.MouseEvent) => {
-      event.stopPropagation();
+  /** 在某个屏幕坐标处「放大到 2x / 已放大则复位」。
+   *  单独抽出来，触屏双击（dblclick 在 iOS 常不派发）也能复用同一套逻辑。 */
+  const toggleZoomAt = useCallback(
+    (clientX: number, clientY: number) => {
       if (scale > 1) {
         reset();
         return;
@@ -95,13 +96,21 @@ export function useImageZoom(resetKey?: unknown) {
       const rect = containerRef.current?.getBoundingClientRect();
       const anchor = rect
         ? {
-            x: event.clientX - (rect.left + rect.width / 2),
-            y: event.clientY - (rect.top + rect.height / 2),
+            x: clientX - (rect.left + rect.width / 2),
+            y: clientY - (rect.top + rect.height / 2),
           }
         : undefined;
       applyScale(2, anchor);
     },
     [applyScale, reset, scale],
+  );
+
+  const onDoubleClick = useCallback(
+    (event: React.MouseEvent) => {
+      event.stopPropagation();
+      toggleZoomAt(event.clientX, event.clientY);
+    },
+    [toggleZoomAt],
   );
 
   const onPointerDown = useCallback(
@@ -183,6 +192,7 @@ export function useImageZoom(resetKey?: unknown) {
     offset,
     isZoomed,
     reset,
+    toggleZoomAt,
     handlers: {
       onWheel,
       onDoubleClick,

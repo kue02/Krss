@@ -192,13 +192,23 @@ export function ImagePreview() {
     if (zoom.isZoomed) setShowHint(false);
   }, [zoom.isZoomed]);
 
+  const pointerTypeRef = useRef<string>("mouse");
   const handleCarouselPointerDown = useCallback((e: React.PointerEvent) => {
     pointerDownPos.current = { x: e.clientX, y: e.clientY };
+    pointerTypeRef.current = e.pointerType || "mouse";
   }, []);
 
   // 点击图片：仅在未放大且未发生拖动时关闭。
   // 用短延时关闭，以便和「双击放大」相区分（第二次点击会取消关闭）。
+  // 双击判定自己按 tap 间隔做，不依赖原生 dblclick —— iOS Safari 对非表单元素
+  // 常不派发 dblclick，原来「双击缩放」在真机上会失效，慢一点的第二次点按还会
+  // 被 280ms 的关闭定时器抢先触发，表现为「想缩放却把大图关了」。
   const tapTimerRef = useRef<number | null>(null);
+  const lastTapRef = useRef<{ t: number; x: number; y: number } | null>(null);
+  const suppressDblClickRef = useRef(0);
+  const TAP_CLOSE_DELAY = 320;
+  const DOUBLE_TAP_MS = 320;
+  const DOUBLE_TAP_SLOP = 30;
   const clearTapTimer = useCallback(() => {
     if (tapTimerRef.current !== null) {
       window.clearTimeout(tapTimerRef.current);
@@ -210,11 +220,6 @@ export function ImagePreview() {
   const handleTapClose = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      // 放大状态下单击不关闭（双击复位由 useImageZoom 处理）
-      if (zoom.isZoomed) {
-        pointerDownPos.current = null;
-        return;
-      }
       // 拖动 / 滑动超过 5px 视为滑动手势，不当作点击
       if (pointerDownPos.current) {
         const dx = Math.abs(e.clientX - pointerDownPos.current.x);
@@ -222,6 +227,28 @@ export function ImagePreview() {
         pointerDownPos.current = null;
         if (dx >= 5 || dy >= 5) return;
       }
+
+      const now = performance.now();
+      const last = lastTapRef.current;
+      const isDoubleTap =
+        !!last &&
+        now - last.t <= DOUBLE_TAP_MS &&
+        Math.hypot(e.clientX - last.x, e.clientY - last.y) <= DOUBLE_TAP_SLOP;
+
+      if (isDoubleTap) {
+        clearTapTimer();
+        lastTapRef.current = null;
+        // 手动双击已处理，压掉随后浏览器补发的原生 dblclick，避免二次切换
+        suppressDblClickRef.current = now;
+        zoom.toggleZoomAt(e.clientX, e.clientY);
+        return;
+      }
+
+      lastTapRef.current = { t: now, x: e.clientX, y: e.clientY };
+
+      // 放大状态下单击不关闭（只记录，等第二次点按做复位）
+      if (zoom.isZoomed) return;
+
       // 延迟关闭：给双击缩放留出取消窗口
       if (tapTimerRef.current !== null) {
         clearTapTimer();
@@ -230,9 +257,19 @@ export function ImagePreview() {
       tapTimerRef.current = window.setTimeout(() => {
         tapTimerRef.current = null;
         close();
-      }, 280);
+      }, TAP_CLOSE_DELAY);
     },
-    [close, clearTapTimer, zoom.isZoomed],
+    [close, clearTapTimer, zoom],
+  );
+
+  // 原生 dblclick 兜底（鼠标/触控板）；触屏双击已被上面的 tap 逻辑处理时忽略。
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (performance.now() - suppressDblClickRef.current < 500) return;
+      zoom.toggleZoomAt(e.clientX, e.clientY);
+    },
+    [zoom],
   );
 
   const handleOverlayClick = useCallback(() => {
@@ -305,6 +342,7 @@ export function ImagePreview() {
                 className="relative flex size-full items-center justify-center safe-area-x"
                 ref={zoom.containerRef}
                 {...zoom.handlers}
+                onDoubleClick={handleDoubleClick}
                 onPointerDown={(e) => {
                   // 记录起点以区分点击/拖动；同时保留缩放平移的 pointer 处理
                   handleCarouselPointerDown(e);
@@ -326,6 +364,7 @@ export function ImagePreview() {
                 ref={zoom.containerRef}
                 className="size-full min-h-0"
                 {...zoom.handlers}
+                onDoubleClick={handleDoubleClick}
               >
                 <div
                   ref={emblaRef}

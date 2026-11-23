@@ -177,7 +177,7 @@ export function EntryContentHeader({
                 type="button"
                 onClick={onClose ?? onBack}
                 aria-label={onClose ? t("actions.close") : t("actions.back")}
-                className="-ml-1.5 flex size-11 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
+                className="-ml-1 flex size-9 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
               >
                 {onClose ? (
                   <X className="size-5" />
@@ -217,7 +217,7 @@ export function EntryContentHeader({
                   }
                   className={cn(
                     // 与 Web 端正文工具栏一致：未收藏为灰色（非前景色），收藏为琥珀色
-                    "flex size-11 shrink-0 items-center justify-center rounded-full transition-colors active:bg-item-hover",
+                    "flex size-9 shrink-0 items-center justify-center rounded-full transition-colors active:bg-item-hover",
                     entry.starred ? "text-amber-500" : "text-muted-foreground",
                   )}
                 >
@@ -244,7 +244,7 @@ export function EntryContentHeader({
                   aria-label={t(readAction.labelKey)}
                   className={cn(
                     // 与 Web 端一致：未读态给柔和强调底（bg-item-active）+ 前景色，已读态仅灰色
-                    "flex size-11 shrink-0 items-center justify-center rounded-full transition-colors active:bg-item-hover",
+                    "flex size-9 shrink-0 items-center justify-center rounded-full transition-colors active:bg-item-hover",
                     entry.read
                       ? "text-muted-foreground"
                       : "bg-item-active text-foreground",
@@ -258,7 +258,7 @@ export function EntryContentHeader({
                 type="button"
                 onClick={() => setMoreOpen(true)}
                 aria-label={t("actions.more")}
-                className="-mr-1.5 flex size-11 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
+                className="-mr-1 flex size-9 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
               >
                 <MoreHorizontal className="size-5" />
               </button>

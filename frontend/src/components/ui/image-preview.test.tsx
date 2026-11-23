@@ -38,10 +38,13 @@ vi.mock("embla-carousel-react", () => ({
 }));
 
 // Mock useImageZoom so tests can drive isZoomed/scale and assert the resetKey
-const { mockZoomState, capturedZoomResetKeys } = vi.hoisted(() => ({
-  mockZoomState: { scale: 1, isZoomed: false },
-  capturedZoomResetKeys: [] as string[],
-}));
+const { mockZoomState, capturedZoomResetKeys, mockToggleZoomAt } = vi.hoisted(
+  () => ({
+    mockZoomState: { scale: 1, isZoomed: false },
+    capturedZoomResetKeys: [] as string[],
+    mockToggleZoomAt: vi.fn(),
+  }),
+);
 
 vi.mock("@/hooks/useImageZoom", () => ({
   useImageZoom: (resetKey?: string) => {
@@ -52,6 +55,7 @@ vi.mock("@/hooks/useImageZoom", () => ({
       offset: { x: 0, y: 0 },
       isZoomed: mockZoomState.isZoomed,
       reset: vi.fn(),
+      toggleZoomAt: mockToggleZoomAt,
       handlers: {},
       style: { transform: "none" },
     };
@@ -111,6 +115,7 @@ describe("ImagePreview", () => {
     mockSelectedScrollSnap.mockClear();
     mockOn.mockClear();
     mockOff.mockClear();
+    mockToggleZoomAt.mockClear();
     capturedEmblaOptions = {};
     useImagePreviewStore.getState().reset();
   });
@@ -512,12 +517,34 @@ describe("ImagePreview", () => {
       expect(carousel).not.toBeNull();
 
       fireEvent.click(carousel!);
-      // 关闭带 ~280ms 延时（给双击留取消窗口），等它触发
+      // 关闭带 ~320ms 延时（给双击留取消窗口），等它触发
       await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 320));
+        await new Promise((resolve) => setTimeout(resolve, 420));
       });
 
       expect(useImagePreviewStore.getState().isOpen).toBe(false);
+    });
+
+    it("双击（两次 click）触发缩放且不关闭预览（不依赖原生 dblclick）", async () => {
+      useImagePreviewStore.getState().open(mockImages, 0);
+      const { container } = render(<ImagePreview />);
+
+      const carousel = container.querySelector(
+        ".overflow-hidden.touch-manipulation",
+      );
+      expect(carousel).not.toBeNull();
+
+      fireEvent.click(carousel!);
+      fireEvent.click(carousel!);
+
+      expect(mockToggleZoomAt).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 420));
+      });
+
+      // 第二次点按已取消关闭定时器，预览应仍然打开
+      expect(useImagePreviewStore.getState().isOpen).toBe(true);
     });
 
     it("scale>1 时点击图片不关闭预览", async () => {
