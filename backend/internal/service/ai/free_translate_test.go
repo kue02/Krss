@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -22,6 +23,7 @@ func TestMain(m *testing.M) {
 	freeChannelMinGap = 0
 	freeChannelBaseCooldown = 0
 	freeChannelMaxCooldown = 0
+	freeChannelNetworkBaseCooldown = 0
 	defaultFreeScheduler.reset()
 	os.Exit(m.Run())
 }
@@ -541,6 +543,71 @@ func TestSchedulerCooldownEscalates(t *testing.T) {
 	}
 	if d := step(); d != 8*time.Second {
 		t.Errorf("第 3 次失败冷却 = %v, want 8s", d)
+	}
+}
+
+// 网络级失败（非 HTTP 状态码）也要冷却；但预算/ctx 造成的超时不算通道坏健康。
+func TestSchedulerCoolsOnNetworkError(t *testing.T) {
+	oldNet, oldMax := freeChannelNetworkBaseCooldown, freeChannelMaxCooldown
+	freeChannelNetworkBaseCooldown = 3 * time.Second
+	freeChannelMaxCooldown = 5 * time.Minute
+	defer func() { freeChannelNetworkBaseCooldown, freeChannelMaxCooldown = oldNet, oldMax }()
+
+	fixed := time.Unix(1_700_000_000, 0)
+	s := newFreeChannelScheduler()
+	s.now = func() time.Time { return fixed }
+	s.recordFailure("google", errors.New("dial tcp 1.2.3.4:443: i/o timeout"))
+
+	s.mu.Lock()
+	got := s.states["google"].cooldownUntil.Sub(fixed)
+	fails := s.states["google"].consecutiveFails
+	s.mu.Unlock()
+	if got != 3*time.Second || fails != 1 {
+		t.Fatalf("网络失败冷却 = %v / fails=%d, want 3s/1", got, fails)
+	}
+
+	// 预算超时（context.DeadlineExceeded）不计入坏健康。
+	s2 := newFreeChannelScheduler()
+	s2.now = func() time.Time { return fixed }
+	s2.recordFailure("google", context.DeadlineExceeded)
+	s2.mu.Lock()
+	cool := s2.states["google"].cooldownUntil
+	fails2 := s2.states["google"].consecutiveFails
+	s2.mu.Unlock()
+	if !cool.IsZero() || fails2 != 0 {
+		t.Fatalf("ctx 超时不应冷却/计连续失败，得到 cooldown=%v fails=%d", cool, fails2)
+	}
+}
+
+// 单次翻译总预算：慢通道被预算截断，后续通道标注 skipped (budget)，且不冷却该通道。
+func TestSchedulerRespectsTotalBudget(t *testing.T) {
+	oldBudget, oldNet, oldMax := freeChannelTotalBudget, freeChannelNetworkBaseCooldown, freeChannelMaxCooldown
+	freeChannelTotalBudget = 80 * time.Millisecond
+	freeChannelNetworkBaseCooldown = 3 * time.Second
+	freeChannelMaxCooldown = 5 * time.Minute
+	defer func() {
+		freeChannelTotalBudget, freeChannelNetworkBaseCooldown, freeChannelMaxCooldown = oldBudget, oldNet, oldMax
+	}()
+
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(200 * time.Millisecond)
+		_, _ = w.Write([]byte(`[{"translations":[{"text":"你好"}]}]`))
+	}))
+	defer slow.Close()
+	original := microsoftTranslateEndpoint
+	microsoftTranslateEndpoint = slow.URL
+	defer func() { microsoftTranslateEndpoint = original }()
+
+	s := newFreeChannelScheduler()
+	_, _, err := s.translate(context.Background(), slow.Client(), []string{FreeChannelMicrosoft, FreeChannelBilibili}, "hi", "zh-CN")
+	if err == nil || !strings.Contains(err.Error(), "skipped (budget)") {
+		t.Fatalf("预算耗尽应报 skipped (budget)，得到 %v", err)
+	}
+	s.mu.Lock()
+	fails := s.states[FreeChannelMicrosoft].consecutiveFails
+	s.mu.Unlock()
+	if fails != 0 {
+		t.Fatalf("预算超时不应计连续失败，得到 %d", fails)
 	}
 }
 

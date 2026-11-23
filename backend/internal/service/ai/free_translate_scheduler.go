@@ -28,6 +28,12 @@ var (
 	freeChannelMinGap         = 120 * time.Millisecond
 	freeChannelBaseCooldown   = 2 * time.Second
 	freeChannelMaxCooldown    = 5 * time.Minute
+	// freeChannelNetworkBaseCooldown：网络级失败（连接超时/DNS/连接重置，非 HTTP 状态）的退避基数，
+	// 3s→6s→12s… 封顶同 freeChannelMaxCooldown。避免「被墙的通道每次都被优先重试、等满客户端超时」。
+	freeChannelNetworkBaseCooldown = 3 * time.Second
+	// freeChannelTotalBudget：单次翻译（跨所有通道两轮）的总时间预算，<=0 表示不限。
+	// 防止 4 通道 × 单通道超时把一次翻译拖到几十秒。
+	freeChannelTotalBudget = 30 * time.Second
 )
 
 // freeChannelScheduler 是一个进程内的免费通道调度器。
@@ -155,25 +161,29 @@ func (s *freeChannelScheduler) recordFailure(channel string, err error) {
 	st := s.stateFor(channel)
 	st.failures++
 
-	var httpErr *translateHTTPError
-	if !errors.As(err, &httpErr) {
+	if err == nil {
+		return
+	}
+	// 预算/ctx 造成的取消或超时是整体编排的问题，不算该通道的坏健康，别据此冷却。
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 		return
 	}
 	now := s.now()
+
+	var httpErr *translateHTTPError
+	if !errors.As(err, &httpErr) {
+		// 网络级失败（连接超时 / DNS / 连接重置等，非 HTTP 状态码）：同样指数退避冷却，
+		// 否则被墙的通道每次都会被优先重试、等到客户端超时，正是要消除的「被一个通道拖垮」。
+		st.consecutiveFails++
+		st.cooldownUntil = now.Add(backoffCooldown(freeChannelNetworkBaseCooldown, st.consecutiveFails))
+		return
+	}
 
 	switch {
 	case httpErr.StatusCode == http.StatusTooManyRequests || httpErr.StatusCode == http.StatusServiceUnavailable:
 		// 429 / 503：连续失败 +1，冷却 = max(Retry-After, base<<min(fails-1,5))，封顶。
 		st.consecutiveFails++
-		shift := st.consecutiveFails - 1
-		if shift > 5 {
-			shift = 5
-		}
-		if shift < 0 {
-			shift = 0
-		}
-		backoff := freeChannelBaseCooldown << uint(shift)
-		cooldown := backoff
+		cooldown := backoffCooldown(freeChannelBaseCooldown, st.consecutiveFails)
 		if httpErr.RetryAfter > cooldown {
 			cooldown = httpErr.RetryAfter
 		}
@@ -189,8 +199,24 @@ func (s *freeChannelScheduler) recordFailure(channel string, err error) {
 	}
 }
 
+// backoffCooldown 指数退避：base << min(fails-1,5)，封顶 freeChannelMaxCooldown。
+func backoffCooldown(base time.Duration, fails int) time.Duration {
+	shift := fails - 1
+	if shift < 0 {
+		shift = 0
+	}
+	if shift > 5 {
+		shift = 5
+	}
+	d := base << uint(shift)
+	if d > freeChannelMaxCooldown {
+		d = freeChannelMaxCooldown
+	}
+	return d
+}
+
 // translate 是核心编排：按顺序尝试每个通道，第一轮全失败后对 deferred 的通道做第二轮兜底，
-// 仍全失败则返回聚合错误（每个通道的最后错误）。
+// 仍全失败则返回聚合错误（每个通道的最后错误）。整轮受 freeChannelTotalBudget 总预算约束。
 func (s *freeChannelScheduler) translate(ctx context.Context, client *http.Client, channels []string, text, targetLang string) (string, string, error) {
 	if client == nil {
 		client = http.DefaultClient
@@ -200,23 +226,58 @@ func (s *freeChannelScheduler) translate(ctx context.Context, client *http.Clien
 		return "", "", fmt.Errorf("no free translate channel configured")
 	}
 
-	lastErr := make(map[string]error, len(chs))
-	deferred := make([]string, 0, len(chs))
-
-	// attempt 尝试单个通道一次。返回 (result, channel, ok, ctxErr)。
-	attempt := func(channel string) (string, bool, error) {
-		if !s.tryReserve(channel, s.now()) {
-			return "", false, nil // 不可用：留给调用方 deferred
+	// 总预算：<=0 表示不限。防止 4 通道 × 单通道超时把一次翻译拖到几十秒。
+	var deadline time.Time
+	if freeChannelTotalBudget > 0 {
+		deadline = s.now().Add(freeChannelTotalBudget)
+	}
+	budgetLeft := func() (time.Duration, bool) {
+		if deadline.IsZero() {
+			return 0, true
 		}
-		translated, err := translateViaChannel(ctx, client, channel, text, targetLang)
+		rem := deadline.Sub(s.now())
+		return rem, rem > 0
+	}
+
+	lastErr := make(map[string]error, len(chs))
+	skipReason := make(map[string]string, len(chs))
+	deferred := make([]string, 0, len(chs))
+	budgetExhausted := false
+
+	// attempt 尝试单个通道一次，返回 (result, ok)。不可用（冷却/并发/限速/预算）返回 false。
+	attempt := func(channel string) (string, bool) {
+		rem, ok := budgetLeft()
+		if !ok {
+			budgetExhausted = true
+			skipReason[channel] = "skipped (budget)"
+			return "", false
+		}
+		if !s.tryReserve(channel, s.now()) {
+			skipReason[channel] = "skipped (rate limited/cooldown)"
+			return "", false
+		}
+		attemptCtx := ctx
+		cancel := context.CancelFunc(func() {})
+		if !deadline.IsZero() {
+			attemptCtx, cancel = context.WithTimeout(ctx, rem)
+		}
+		translated, err := translateViaChannel(attemptCtx, client, channel, text, targetLang)
+		// 预算超时（而非上游/网络自身超时）不算通道坏健康：不 recordFailure，也不记该通道错误。
+		budgetHit := err != nil && !deadline.IsZero() && attemptCtx.Err() == context.DeadlineExceeded && ctx.Err() == nil
+		cancel()
 		s.release(channel)
 		if err != nil {
+			if budgetHit {
+				budgetExhausted = true
+				skipReason[channel] = "skipped (budget)"
+				return "", false
+			}
 			lastErr[channel] = err
 			s.recordFailure(channel, err)
-			return "", false, nil
+			return "", false
 		}
 		s.recordSuccess(channel)
-		return translated, true, nil
+		return translated, true
 	}
 
 	// 第一轮：按配置顺序。
@@ -224,45 +285,63 @@ func (s *freeChannelScheduler) translate(ctx context.Context, client *http.Clien
 		if err := ctx.Err(); err != nil {
 			return "", "", err
 		}
-		translated, ok, _ := attempt(channel)
+		translated, ok := attempt(channel)
 		if ok {
 			return translated, channel, nil
 		}
 		if _, tried := lastErr[channel]; !tried {
-			// 因冷却/并发/限速没能尝试：进第二轮兜底。
+			// 因冷却/并发/限速/预算没能尝试：进第二轮兜底。
 			deferred = append(deferred, channel)
+		}
+		if budgetExhausted {
+			break
 		}
 	}
 
 	// 第二轮：短暂等待后，只尝试此刻已允许的 deferred 通道。
-	if len(deferred) > 0 {
+	if len(deferred) > 0 && !budgetExhausted {
 		if err := ctx.Err(); err != nil {
 			return "", "", err
 		}
-		select {
-		case <-time.After(200 * time.Millisecond):
-		case <-ctx.Done():
-			return "", "", ctx.Err()
+		wait := 200 * time.Millisecond
+		if rem, ok := budgetLeft(); !ok {
+			budgetExhausted = true
+		} else if rem < wait {
+			wait = rem
 		}
-		for _, channel := range deferred {
-			if err := ctx.Err(); err != nil {
-				return "", "", err
+		if !budgetExhausted {
+			select {
+			case <-time.After(wait):
+			case <-ctx.Done():
+				return "", "", ctx.Err()
 			}
-			translated, ok, _ := attempt(channel)
-			if ok {
-				return translated, channel, nil
+			for _, channel := range deferred {
+				if err := ctx.Err(); err != nil {
+					return "", "", err
+				}
+				translated, ok := attempt(channel)
+				if ok {
+					return translated, channel, nil
+				}
+				if budgetExhausted {
+					break
+				}
 			}
 		}
 	}
 
-	// 全失败：聚合每个通道的最后错误。
+	// 全失败：聚合每个通道的最后错误 / 跳过原因。
 	parts := make([]string, 0, len(chs))
 	for _, channel := range chs {
 		if e, ok := lastErr[channel]; ok {
 			parts = append(parts, fmt.Sprintf("%s: %v", channel, e))
-		} else {
-			parts = append(parts, fmt.Sprintf("%s: skipped (rate limited/cooldown)", channel))
+			continue
 		}
+		if r, ok := skipReason[channel]; ok {
+			parts = append(parts, fmt.Sprintf("%s: %s", channel, r))
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s: skipped (rate limited/cooldown)", channel))
 	}
 	return "", "", fmt.Errorf("all free translate channels failed (%s)", strings.Join(parts, "; "))
 }
