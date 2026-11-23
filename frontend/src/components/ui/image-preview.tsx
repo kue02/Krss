@@ -256,6 +256,8 @@ export function ImagePreview() {
               type="button"
               className="flex size-10 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
               onClick={close}
+              aria-label={t("entry.image_close")}
+              title={t("entry.image_close")}
             >
               <svg
                 className="size-6"
@@ -303,6 +305,11 @@ export function ImagePreview() {
                 className="relative flex size-full items-center justify-center safe-area-x"
                 ref={zoom.containerRef}
                 {...zoom.handlers}
+                onPointerDown={(e) => {
+                  // 记录起点以区分点击/拖动；同时保留缩放平移的 pointer 处理
+                  handleCarouselPointerDown(e);
+                  zoom.handlers.onPointerDown?.(e);
+                }}
                 onClick={handleTapClose}
               >
                 <AuthedImage
@@ -355,6 +362,7 @@ export function ImagePreview() {
               <>
                 <button
                   type="button"
+                  aria-label={t("entry.image_prev")}
                   className={cn(
                     "absolute left-4 top-1/2 z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white transition-colors",
                     currentIndex === 0 ? "invisible" : "hover:bg-white/20",
@@ -381,6 +389,7 @@ export function ImagePreview() {
                 </button>
                 <button
                   type="button"
+                  aria-label={t("entry.image_next")}
                   className={cn(
                     "absolute right-4 top-1/2 z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white transition-colors",
                     currentIndex === images.length - 1
