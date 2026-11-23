@@ -206,3 +206,69 @@ func TestBackupService_Import_InvalidFormat(t *testing.T) {
 	_, err = svc.Import(ctx, bytes.NewReader([]byte(`not json`)))
 	require.ErrorIs(t, err, service.ErrInvalid)
 }
+
+// TestBackupService_Export_SensitiveAndNeverKeys 断言默认导出不含敏感凭证与永不出导键，
+// 勾选凭证后才带出敏感键，但永不出导键（password_hash / jwt_secret）永不出现。
+func TestBackupService_Export_SensitiveAndNeverKeys(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.NewTestDB(t)
+	folders := repository.NewFolderRepository(db)
+	feeds := repository.NewFeedRepository(db)
+	settings := repository.NewSettingsRepository(db)
+	plugins := repository.NewPluginRepository(db)
+	mcp := repository.NewMCPServerRepository(db)
+
+	for _, kv := range [][2]string{
+		{"ui.theme", "dark"},
+		{"ai.api_key", "sk-secret"},
+		{"general.rsshub_access_key", "rh-secret"},
+		{"rsshub.access_key", "plugin-secret"},
+		{"plugin.rsshub.access_key", "plugin-secret"},
+		{"mcp.outbound_token", "mcp-secret"},
+		{"mcp.outbound_token_prefix", "mcp-prefix"},
+		{"notify.bark_url", "https://api.day.app/DEVICEKEY"},
+		{"user.password_hash", "HASH"},
+		{"user.jwt_secret", "JWTSECRET"},
+	} {
+		require.NoError(t, settings.Set(ctx, kv[0], kv[1]))
+	}
+
+	svc := service.NewBackupService(folders, feeds, settings, plugins, mcp)
+
+	// ---- 默认导出（不含敏感凭证）----
+	payload, err := svc.Export(ctx)
+	require.NoError(t, err)
+	var doc struct {
+		Settings map[string]string `json:"settings"`
+	}
+	require.NoError(t, json.Unmarshal(payload, &doc))
+	for _, k := range []string{
+		"ai.api_key", "general.rsshub_access_key", "rsshub.access_key", "plugin.rsshub.access_key",
+		"mcp.outbound_token", "mcp.outbound_token_prefix", "notify.bark_url",
+		"user.password_hash", "user.jwt_secret",
+	} {
+		_, ok := doc.Settings[k]
+		require.Falsef(t, ok, "默认导出不应包含敏感/永不出导键 %q", k)
+	}
+	require.Equal(t, "dark", doc.Settings["ui.theme"], "普通设置应正常导出")
+
+	// ---- 显式勾选凭证 ----
+	opts := service.DefaultBackupExportOptions()
+	opts.Credentials = true
+	payload2, err := svc.ExportWithOptions(ctx, opts)
+	require.NoError(t, err)
+	var doc2 struct {
+		Settings map[string]string `json:"settings"`
+	}
+	require.NoError(t, json.Unmarshal(payload2, &doc2))
+	require.Equal(t, "sk-secret", doc2.Settings["ai.api_key"])
+	require.Equal(t, "rh-secret", doc2.Settings["general.rsshub_access_key"])
+	require.Equal(t, "plugin-secret", doc2.Settings["rsshub.access_key"])
+	require.Equal(t, "plugin-secret", doc2.Settings["plugin.rsshub.access_key"])
+	require.Equal(t, "mcp-secret", doc2.Settings["mcp.outbound_token"])
+	require.Equal(t, "https://api.day.app/DEVICEKEY", doc2.Settings["notify.bark_url"])
+	_, hasHash := doc2.Settings["user.password_hash"]
+	_, hasJWT := doc2.Settings["user.jwt_secret"]
+	require.False(t, hasHash, "永不出导键即使勾选凭证也不能导出")
+	require.False(t, hasJWT, "永不出导键即使勾选凭证也不能导出")
+}

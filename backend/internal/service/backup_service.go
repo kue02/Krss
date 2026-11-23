@@ -338,7 +338,8 @@ func (s *backupService) Import(ctx context.Context, reader io.Reader) (BackupImp
 		return result, err
 	}
 
-	// 设置：凭证类与通配前缀一律跳过（安全策略与导出对称）。
+	// 设置：只跳过「永不出导」键（user.password_hash / user.jwt_secret）。
+	// 敏感凭证（ai.api_key 等）若出现在文件里则照常导入 —— 导入按文件实际包含的分区恢复。
 	if s.settings != nil && len(doc.Settings) > 0 {
 		toSet := make(map[string]string, len(doc.Settings))
 		for k, v := range doc.Settings {
@@ -590,7 +591,8 @@ func isNeverExportSettingKey(key string) bool {
 
 // isSensitiveSettingKey 敏感凭证键：默认排除，仅在显式勾选「敏感凭证」时导出。
 func isSensitiveSettingKey(key string) bool {
-	return matchSettingPatterns(key, sensitiveSettingKeys())
+	return matchSettingPatterns(key, sensitiveSettingKeys()) ||
+		matchSettingPatterns(key, extraSensitiveSettingKeys())
 }
 
 func matchSettingPatterns(key string, patterns []string) bool {
