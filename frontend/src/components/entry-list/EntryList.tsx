@@ -681,6 +681,10 @@ export function EntryList({
   const inlineMarkedRef = useRef<string | null>(null);
   /* 只有真接了内联正文（桌面合列）才滚/标已读；移动端仍是列表→详情页，不插手 */
   const inlineActive = isArticleInline && Boolean(renderInlineContent);
+  /* 合列且已选中正文时关掉虚拟化：虚拟列表的行是 position:absolute + transform 包裹，
+     正文 pane 插在这种祖先里会让 EntryContentHeader 的 sticky 失效（工具栏会浮在正文
+     中部）。关掉虚拟化后 pane 落在普通文档流里，sticky 正常，正文也能滚动吸顶。 */
+  const inlineNoVirtual = inlineActive && Boolean(selectedEntryId);
   /* 合列正文接在「被点那一行」的后面（不是列表末尾）：读正文时还能继续往下滚看到
      后续条目；selectedEntryId 唯一 ⇒ 同时只有一条正文，点别的行就是换正文、上一条收起。 */
   const inlinePaneFor = (entryId: string | null) =>
@@ -873,7 +877,8 @@ export function EntryList({
    * 虚拟化只覆盖「标准文章扁平流」：article 内容类型 + 非 hover 档（含 list 与 rows）。
    * 社交 / 通知时间线 / hover 浮层档走原路径，一字不动。
    */
-  const useVirtualList = contentType === "article" && !isArticleHover;
+  const useVirtualList =
+    contentType === "article" && !isArticleHover && !inlineNoVirtual;
   const virtualList = useVirtualizedArticleList({
     enabled: useVirtualList,
     scrollSurface,
@@ -1749,10 +1754,8 @@ export function EntryList({
                 /* 常规「Inoreader列表」—— 来源图标 + 加粗标题 + 右侧来源·时间，
                    没有缩略图、没有摘要、没有悬停浮层（就是图片视图「悬停大图」去掉悬停）。 */
                 <div className="w-full" data-testid="article-plain-list">
-                  <VirtualizedArticleList
-                    virtualList={virtualList}
-                    entries={entries}
-                    renderItem={(entry) => {
+                  {inlineNoVirtual ? (
+                    entries.map((entry) => {
                       const row = (
                         <ArticlePlainListRow
                           entry={entry}
@@ -1761,29 +1764,52 @@ export function EntryList({
                           selectedEntryId={selectedEntryId}
                         />
                       );
-                      /* 手机档跟其它列表一致：左滑露出已读/星标 */
                       return (
-                        <>
+                        <Fragment key={entry.id}>
                           {isMobile ? (
                             <MobileSwipeEntryRow entry={entry}>{row}</MobileSwipeEntryRow>
                           ) : (
                             row
                           )}
                           {inlinePaneFor(entry.id)}
-                        </>
+                        </Fragment>
                       );
-                    }}
-                  />
+                    })
+                  ) : (
+                    <VirtualizedArticleList
+                      virtualList={virtualList}
+                      entries={entries}
+                      renderItem={(entry) => {
+                        const row = (
+                          <ArticlePlainListRow
+                            entry={entry}
+                            feed={feedsMap.get(entry.feedId)}
+                            onSelectEntry={handleSelectEntry}
+                            selectedEntryId={selectedEntryId}
+                          />
+                        );
+                        /* 手机档跟其它列表一致：左滑露出已读/星标 */
+                        return (
+                          <>
+                            {isMobile ? (
+                              <MobileSwipeEntryRow entry={entry}>{row}</MobileSwipeEntryRow>
+                            ) : (
+                              row
+                            )}
+                            {inlinePaneFor(entry.id)}
+                          </>
+                        );
+                      }}
+                    />
+                  )}
                 </div>
               ) : isArticleRows ? (
                 /* 实验布局批：文章「列表」布局 —— 紧凑行（缩略图+标题+元信息），无悬停浮层。
                    走通用虚拟容器（大列表性能），jsdom 测不到尺寸时内部全量渲染。 */
                 <div className="w-full" data-testid="article-rows-list">
-                  <VirtualizedArticleList
-                    virtualList={virtualList}
-                    entries={entries}
-                    renderItem={(entry) => (
-                      <>
+                  {inlineNoVirtual ? (
+                    entries.map((entry) => (
+                      <Fragment key={entry.id}>
                         <ArticleRowsListRow
                           entry={entry}
                           feed={feedsMap.get(entry.feedId)}
@@ -1791,9 +1817,25 @@ export function EntryList({
                           selectedEntryId={selectedEntryId}
                         />
                         {inlinePaneFor(entry.id)}
-                      </>
-                    )}
-                  />
+                      </Fragment>
+                    ))
+                  ) : (
+                    <VirtualizedArticleList
+                      virtualList={virtualList}
+                      entries={entries}
+                      renderItem={(entry) => (
+                        <>
+                          <ArticleRowsListRow
+                            entry={entry}
+                            feed={feedsMap.get(entry.feedId)}
+                            onSelectEntry={handleSelectEntry}
+                            selectedEntryId={selectedEntryId}
+                          />
+                          {inlinePaneFor(entry.id)}
+                        </>
+                      )}
+                    />
+                  )}
                 </div>
               ) : useVirtualList ? (
                 <VirtualizedArticleList
