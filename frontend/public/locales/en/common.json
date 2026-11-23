@@ -917,9 +917,6 @@
     "description": "Click to refresh and apply the update"
   },
   "entry_filter": {
-    "all": "All",
-    "unread": "Unread",
-    "starred": "Starred",
     "muted": "Muted"
   },
   "shortcuts": {

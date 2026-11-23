@@ -70,15 +70,4 @@ describe("useSelection selectStarred（问题2）", () => {
     expect(url).toContain("scope=all");
   });
 
-  it("selectFilter('starred') 维持既有语义：跳全局星标且 unread=false", () => {
-    const { result } = renderHook(() => useSelection(), { wrapper });
-
-    act(() => {
-      result.current.selectFilter("starred", { replace: true });
-    });
-
-    const url = mocks.navigate.mock.calls[0]?.[0] as string;
-    expect(url).toContain("unread=false");
-    expect(url).not.toContain("unread=true");
-  });
 });

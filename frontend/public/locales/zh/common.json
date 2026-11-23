@@ -914,9 +914,6 @@
     "description": "点击刷新以应用更新"
   },
   "entry_filter": {
-    "all": "全部",
-    "unread": "未读",
-    "starred": "星标",
     "muted": "已静音"
   },
   "shortcuts": {

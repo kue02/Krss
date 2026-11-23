@@ -79,7 +79,7 @@ const REFRESH_MAX_WAIT_MS = 180_000;
  */
 const FORCE_REFRESH_CONFIRM_THRESHOLD = 20;
 
-/** 底部筛选胶囊已移除；此类型仍用于列表请求参数 filterValue。 */
+/** 列表筛选态（星标 / 未读 / 全部）；底部胶囊已移除，仅作请求参数与视图判断。 */
 type EntryFilter = "all" | "unread" | "starred";
 
 interface EntryListProps {
@@ -137,9 +137,9 @@ export function EntryList({
 
   const { t } = useTranslation();
   /**
-   * 「已静音」是独立于三态胶囊的回看态（2026-09-17 起入口在 设置 → 自动化）。
+   * 「已静音」是独立的回看态（2026-09-17 起入口在 设置 → 自动化）。
    *
-   * 星标 / 未读对应路由里的 selection 与 unreadOnly，切换一次导航；「已静音」没有对应的
+   * 星标 / 未读对应路由里的 selection 与 unreadOnly；「已静音」没有对应的
    * 路由维度（路由参数不该为一个回看视图扩容），所以由 filter-view-store 承载，
    * 只体现在 listEntries 的 mutedOnly 参数上。切到别的订阅 / 视图 / 已读态时自动退出。
    */
@@ -188,8 +188,7 @@ export function EntryList({
     clearView,
   ]);
 
-  // 中栏胶囊的三态（星标 > 未读 > 全部）。「已静音」不再是胶囊的一态 ——
-  // 它是独立的回看入口，入口在 设置 → 自动化（2026-09-17 用户要求），状态见 mutedOnly
+  // 列表筛选态（星标 > 未读 > 全部）。「已静音」是独立回看入口（设置 → 自动化），状态见 mutedOnly
   const filterValue: EntryFilter =
     selection.type === "starred"
       ? "starred"
@@ -1313,7 +1312,7 @@ export function EntryList({
     }
   }, [unreadCounts, selection, feeds, contentType]);
 
-  // 底部筛选胶囊的当前态 filterValue 在文件上方定义（列表参数要用到它）
+  // filterValue 见文件上方，用于请求参数与标题判断
   // 「已静音」是回看视图：标题跟着变，并给一行说明（这条视图里看到的不是新内容，而是被规则收起来的）
   const headerTitle =
     mutedOnly
@@ -1501,13 +1500,13 @@ export function EntryList({
             <EntryListEmpty />
           ) : (
             <div
-              className="w-full pb-16"
+              className={cn("w-full", usesDocumentScroll && "pb-16")}
               /* 31-2：文章 hover 档的悬停认行靠事件委托（对行零改动）；别的档不挂监听 */
               onMouseOver={isArticleHover ? handleArticleHoverOver : undefined}
               onMouseOut={isArticleHover ? handleArticleHoverOut : undefined}
               data-article-body-hover={isArticleHover ? "true" : undefined}
             >
-              {/* pb-16：底部悬浮的「星标 / 未读 / 已静音 / 全部」胶囊会盖住内容，留白让最后一条能滚上来 */}
+              {/* 移动端底部 Tab 栏会盖住内容，留白让最后一条能滚上来；桌面/平板已无悬浮胶囊，不再留白 */}
               {isNotificationTimeline ? (
                 <NotificationTimeline
                   entries={entries}
@@ -1600,7 +1599,7 @@ export function EntryList({
                 })
               )}
               {/* 24-5：列表尾整宽弱边框「全部标记为已读」（语义=清当前范围未读，
-                  与列表头那颗同接口 onMarkAllRead；胶囊浮在下面，pb-16 已留白）。
+                  与列表头那颗同接口 onMarkAllRead）。
                   宽度跟时间线/社交卡片同款居中可读宽度，免得在宽栏下失控拉满。 */}
               {entries.length > 0 && (
                 <div className="mx-auto mt-1 w-full max-w-[clamp(45ch,60vw,65ch)] px-2">
