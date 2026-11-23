@@ -6,6 +6,7 @@ type Feed struct {
 	ID                    int64
 	FolderID              *int64
 	Title                 string
+	SortOrder             int // 侧栏拖动排序（迁移 39）：同一文件夹下 0..n，越小越靠前；列表按 sort_order, title 排
 	URL                   string
 	SiteURL               *string
 	Description           *string

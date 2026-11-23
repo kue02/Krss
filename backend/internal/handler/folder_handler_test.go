@@ -1,6 +1,7 @@
 package handler_test
 
 import (
+	"context"
 	"krss/backend/internal/handler"
 	"net/http"
 	"testing"
@@ -95,7 +96,7 @@ func TestFolderHandler_Update_Success(t *testing.T) {
 	}
 
 	mockService.EXPECT().
-		Update(gomock.Any(), int64(123), "Updated Name", gomock.Any()).
+		Update(gomock.Any(), int64(123), "Updated Name", gomock.Any(), gomock.Any()).
 		Return(folder, nil)
 
 	err := h.Update(c)
@@ -178,4 +179,39 @@ func TestFolderHandler_DeleteBatch_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, http.StatusNoContent, rec.Code)
+}
+
+// 拖动排序：Update 请求体带可选 sortOrder，应原样透传给 service。
+func TestFolderHandler_Update_WithSortOrder(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockFolderService(ctrl)
+	h := handler.NewFolderHandlerHelper(mockService)
+
+	e := newTestEcho()
+	req := newJSONRequest(http.MethodPut, "/folders/123", map[string]interface{}{
+		"name":      "Updated Name",
+		"sortOrder": 5,
+	})
+	c, rec := newTestContext(e, req)
+	setPathParams(c, map[string]string{"id": "123"})
+
+	var gotSort *int64
+	mockService.EXPECT().
+		Update(gomock.Any(), int64(123), "Updated Name", gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ int64, _ string, _ *int64, sortOrder *int64) (model.Folder, error) {
+			gotSort = sortOrder
+			return model.Folder{ID: 123, Name: "Updated Name", SortOrder: 5}, nil
+		})
+
+	err := h.Update(c)
+	require.NoError(t, err)
+	require.NotNil(t, gotSort)
+	require.Equal(t, int64(5), *gotSort)
+
+	var resp handler.FolderResponse
+	assertJSONResponse(t, rec, http.StatusOK, &resp)
+	require.Equal(t, "Updated Name", resp.Name)
+	require.Equal(t, 5, resp.SortOrder)
 }

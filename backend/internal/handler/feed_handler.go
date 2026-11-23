@@ -69,6 +69,8 @@ type updateFeedRequest struct {
 	Title                 string  `json:"title"`
 	FolderID              *string `json:"folderId"`
 	SummaryPromptReminder *string `json:"summaryPromptReminder"`
+	// SortOrder 拖动排序（迁移 39）：可选，传了才改；只传它（不带 title）即纯排序，不触发重抓默认名。
+	SortOrder *int64 `json:"sortOrder"`
 }
 
 // 改地址时撞上另一个订阅（RSSHub 换实例后同源）：带上是哪条，前端据此弹「确认合并」
@@ -123,6 +125,7 @@ type feedResponse struct {
 	ID                    string  `json:"id"`
 	FolderID              *string `json:"folderId,omitempty"`
 	Title                 string  `json:"title"`
+	SortOrder             int     `json:"sortOrder"`
 	URL                   string  `json:"url"`
 	SiteURL               *string `json:"siteUrl,omitempty"`
 	Description           *string `json:"description,omitempty"`
@@ -387,7 +390,7 @@ func (h *FeedHandler) Update(c echo.Context) error {
 		}
 		folderID = &fid
 	}
-	feed, err := h.service.Update(c.Request().Context(), id, req.Title, folderID, req.SummaryPromptReminder)
+	feed, err := h.service.Update(c.Request().Context(), id, req.Title, folderID, req.SummaryPromptReminder, req.SortOrder)
 	if err != nil {
 		logger.Error("feed update failed", "module", "handler", "action", "update", "resource", "feed", "result", "failed", "feed_id", id, "error", err)
 		return writeServiceError(c, err)
@@ -878,6 +881,7 @@ func toFeedResponse(feed model.Feed) feedResponse {
 		ID:                    idToString(feed.ID),
 		FolderID:              idPtrToString(feed.FolderID),
 		Title:                 feed.Title,
+		SortOrder:             feed.SortOrder,
 		URL:                   feed.URL,
 		SiteURL:               feed.SiteURL,
 		Description:           feed.Description,
