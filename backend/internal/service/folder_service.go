@@ -132,19 +132,27 @@ func (s *folderService) Update(ctx context.Context, id int64, name string, paren
 	} else if hasCycle {
 		return model.Folder{}, ErrInvalid
 	}
+	var parentType string
 	if parentID != nil {
-		if _, err := s.folders.GetByID(ctx, *parentID); err != nil {
+		parent, err := s.folders.GetByID(ctx, *parentID)
+		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return model.Folder{}, ErrNotFound
 			}
 			return model.Folder{}, fmt.Errorf("check parent folder: %w", err)
 		}
+		parentType = parent.Type
 	}
-	if _, err := s.folders.GetByID(ctx, id); err != nil {
+	current, err := s.folders.GetByID(ctx, id)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return model.Folder{}, ErrNotFound
 		}
 		return model.Folder{}, fmt.Errorf("get folder: %w", err)
+	}
+	// 与订阅侧对齐：目标父文件夹必须与自身内容类型一致，否则拒绝（防跨类型嵌套）。
+	if parentID != nil && parentType != "" && current.Type != "" && parentType != current.Type {
+		return model.Folder{}, ErrInvalid
 	}
 	if existing, err := s.folders.FindByName(ctx, trimmed, parentID); err != nil {
 		return model.Folder{}, fmt.Errorf("check folder name: %w", err)

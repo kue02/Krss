@@ -40,15 +40,18 @@ func (r *folderRepository) Create(ctx context.Context, name string, parentID *in
 	if folderType == "" {
 		folderType = "article"
 	}
+	// sort_order 取同父容器最大值 +1，新文件夹排到末尾（而不是恒为 0 挤到最前）。
 	_, err := r.db.ExecContext(
 		ctx,
-		`INSERT INTO folders (id, name, parent_id, type, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO folders (id, name, parent_id, type, created_at, updated_at, sort_order)
+		 VALUES (?, ?, ?, ?, ?, ?, COALESCE((SELECT MAX(sort_order) + 1 FROM folders WHERE parent_id IS ?), 0))`,
 		id,
 		name,
 		nullableInt64(parentID),
 		folderType,
 		formatTime(now),
 		formatTime(now),
+		nullableInt64(parentID),
 	)
 	if err != nil {
 		return model.Folder{}, fmt.Errorf("create folder: %w", err)

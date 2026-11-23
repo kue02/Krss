@@ -154,6 +154,31 @@ func TestFolderService_Update_Success(t *testing.T) {
 	require.Equal(t, "New Name", folder.Name)
 }
 
+func TestFolderService_Update_CrossTypeParentRejected(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockFolders := mock.NewMockFolderRepository(ctrl)
+	mockFeeds := mock.NewMockFeedRepository(ctrl)
+	svc := service.NewFolderService(mockFolders, mockFeeds)
+	ctx := context.Background()
+
+	folderID := int64(123)
+	parentID := int64(200)
+
+	// detectCycle 走一次 GetByID(parent)；随后类型校验再取一次父与自身。
+	mockFolders.EXPECT().
+		GetByID(ctx, parentID).
+		Return(model.Folder{ID: parentID, Name: "ArticleParent", Type: "article"}, nil).
+		Times(2)
+	mockFolders.EXPECT().
+		GetByID(ctx, folderID).
+		Return(model.Folder{ID: folderID, Name: "SocialChild", Type: "social"}, nil)
+
+	_, err := svc.Update(ctx, folderID, "SocialChild", &parentID, nil)
+	require.ErrorIs(t, err, service.ErrInvalid)
+}
+
 func TestFolderService_Update_DirectCycle(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

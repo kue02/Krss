@@ -54,10 +54,11 @@ func (r *feedRepository) Create(ctx context.Context, feed model.Feed) (model.Fee
 	if feed.Type == "" {
 		feed.Type = "article"
 	}
+	// sort_order 取同文件夹最大值 +1，新订阅排到末尾（而不是恒为 0 挤到最前）。
 	_, err := r.db.ExecContext(
 		ctx,
-		`INSERT INTO feeds (id, folder_id, title, url, site_url, description, summary_prompt_reminder, type, etag, last_modified, error_message, created_at, updated_at, source_type, mcp_config)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO feeds (id, folder_id, title, url, site_url, description, summary_prompt_reminder, type, etag, last_modified, error_message, created_at, updated_at, source_type, mcp_config, sort_order)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT MAX(sort_order) + 1 FROM feeds WHERE folder_id IS ?), 0))`,
 		feed.ID,
 		nullableInt64(feed.FolderID),
 		feed.Title,
@@ -73,6 +74,7 @@ func (r *feedRepository) Create(ctx context.Context, feed model.Feed) (model.Fee
 		formatTime(now),
 		feedSourceTypeOrDefault(feed),
 		nullableString(feed.MCPConfig),
+		nullableInt64(feed.FolderID),
 	)
 	if err != nil {
 		return model.Feed{}, fmt.Errorf("create feed: %w", err)
