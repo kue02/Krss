@@ -222,6 +222,8 @@ export function EntryList({
   const containerRef = useRef<HTMLDivElement>(null);
   /** 「向下」合列模式下接在列表末尾的正文块（点条目后要滚到它） */
   const inlineContentRef = useRef<HTMLDivElement>(null);
+  /** 合列正在读正文（供分页逻辑判断：别在这时追加下一页，否则正文会被顶下去） */
+  const inlineReadingRef = useRef(false);
   const headerRef = useRef<HTMLDivElement>(null);
   const listWrapperRef = useRef<HTMLDivElement>(null);
   const usesDocumentScroll = Boolean(isMobile);
@@ -560,6 +562,9 @@ export function EntryList({
 
   const maybeFetchNextPage = useCallback(() => {
     if (!isActive || !hasNextPage || isFetchingNextPage) return;
+    /* 「向下」合列正在读正文：正文在列表末尾，这时再追加下一页会把正文往下顶走。
+       等用户关掉正文（或离开合列档）后，滚动到底自然会续上。 */
+    if (inlineReadingRef.current) return;
 
     if (scrollSurface.getDistanceToBottom() <= 600) {
       fetchNextPage();
@@ -675,15 +680,25 @@ export function EntryList({
   const inlineMarkedRef = useRef<string | null>(null);
   /* 只有真接了内联正文（桌面合列）才滚/标已读；移动端仍是列表→详情页，不插手 */
   const inlineActive = isArticleInline && Boolean(renderInlineContent);
+  inlineReadingRef.current = inlineActive && Boolean(selectedEntryId);
   useEffect(() => {
     if (!inlineActive || !selectedEntryId) return;
-    const node = inlineContentRef.current;
-    if (!node) return;
+    /* 用「相对滚动容器」的位移而不是 scrollIntoView：正文在列表末尾，距离可能有几千像素，
+       scrollIntoView 会顺带把外层容器一起滚（三栏布局里外层不该动），也会被后续布局变化打断。 */
+    const scrollToPane = () => {
+      const node = inlineContentRef.current;
+      const container = containerRef.current;
+      if (!node || !container) return;
+      const top =
+        node.getBoundingClientRect().top -
+        container.getBoundingClientRect().top +
+        container.scrollTop;
+      container.scrollTo({ top, behavior: reduceMotion ? "auto" : "smooth" });
+    };
     const frame = window.requestAnimationFrame(() => {
-      node.scrollIntoView({
-        behavior: reduceMotion ? "auto" : "smooth",
-        block: "start",
-      });
+      scrollToPane();
+      /* 正文是懒加载的，首帧可能还没撑出高度；下一帧再对一次位（幂等） */
+      window.requestAnimationFrame(scrollToPane);
     });
     return () => window.cancelAnimationFrame(frame);
   }, [inlineActive, selectedEntryId, reduceMotion]);
