@@ -48,7 +48,7 @@ export function SectionCard({
         </div>
         {action && <div className="shrink-0">{action}</div>}
       </div>
-      <div className="px-3 py-1.5">{children}</div>
+      {children != null && <div className="px-3 py-1.5">{children}</div>}
     </section>
   );
 }

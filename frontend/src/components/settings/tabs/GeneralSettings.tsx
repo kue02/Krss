@@ -158,7 +158,7 @@ export function GeneralSettings() {
   };
 
   const inputClass =
-    "h-9 w-full min-w-0 rounded-md border border-border bg-background px-3 text-sm focus:border-primary focus:outline-none";
+    "h-9 w-full min-w-0 rounded-field border border-border bg-background px-3 text-sm focus:border-primary focus:ring-2 focus:ring-primary/30 focus:outline-none";
 
   return (
     <div className="space-y-5">

@@ -304,6 +304,7 @@ export function AdvancedSettings() {
             <div className="flex shrink-0 items-center gap-2">
               <Input
                 type="number"
+                min="0"
                 value={newInterval}
                 onChange={(e) => setNewInterval(e.target.value)}
                 placeholder={t("settings.advanced_seconds")}
@@ -335,7 +336,7 @@ export function AdvancedSettings() {
                 return (
                   <div
                     key={item.id}
-                    className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-card p-2"
+                    className="flex flex-wrap items-center gap-2 rounded-md px-2 py-1.5 transition-colors hover:bg-secondary/25"
                   >
                     <div
                       className="min-w-[120px] flex-1 px-2 text-sm font-mono truncate"
@@ -348,6 +349,7 @@ export function AdvancedSettings() {
                       <div className="flex shrink-0 items-center gap-1">
                         <Input
                           type="number"
+                          min="0"
                           value={editInterval}
                           autoFocus
                           onChange={(e) =>

@@ -239,7 +239,7 @@ export function FeedsSettings() {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-border">
+            <div className="overflow-x-auto rounded-lg">
               <table className="w-full min-w-[600px] text-sm">
                 <thead className="bg-secondary/50">
                   <tr>

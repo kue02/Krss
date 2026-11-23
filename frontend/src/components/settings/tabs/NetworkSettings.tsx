@@ -397,6 +397,7 @@ export function NetworkSettings() {
                     setSettings({ ...settings, host: e.target.value })
                   }
                   placeholder="127.0.0.1"
+                  aria-label={t("settings.proxy_host")}
                   className="w-44"
                 />
               </SettingRow>
@@ -412,6 +413,7 @@ export function NetworkSettings() {
                     })
                   }
                   placeholder="7890"
+                  aria-label={t("settings.proxy_port")}
                   className="w-24"
                 />
               </SettingRow>
@@ -426,6 +428,7 @@ export function NetworkSettings() {
                   onChange={(e) =>
                     setSettings({ ...settings, username: e.target.value })
                   }
+                  aria-label={t("settings.proxy_username")}
                   className="w-44"
                 />
               </SettingRow>
@@ -437,6 +440,7 @@ export function NetworkSettings() {
                   onChange={(e) =>
                     setSettings({ ...settings, password: e.target.value })
                   }
+                  aria-label={t("settings.proxy_password")}
                   className="w-44"
                 />
               </SettingRow>

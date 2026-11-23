@@ -210,7 +210,7 @@ export function AutoRefreshHistorySection() {
       title={t("settings.auto_refresh_history")}
       description={t("settings.auto_refresh_history_hint")}
       action={
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
           {records.length > 0 && (
             <ToggleButtonGroup
               selectionMode="single"

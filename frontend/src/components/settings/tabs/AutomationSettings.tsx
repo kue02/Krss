@@ -493,7 +493,7 @@ export function AutomationSettings() {
         title={t("automation.rules_title")}
         description={t("automation.subtitle")}
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <span className="rounded-full border border-border/60 bg-secondary/40 px-2 py-px text-[11px] tabular-nums text-muted-foreground">
               {sorted.length}
             </span>
@@ -606,7 +606,7 @@ export function AutomationSettings() {
         title={t("automation.views_title")}
         description={t("automation.views_hint")}
         action={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <span className="rounded-full border border-border/60 bg-secondary/40 px-2 py-px text-[11px] tabular-nums text-muted-foreground">
               {views.length}
             </span>

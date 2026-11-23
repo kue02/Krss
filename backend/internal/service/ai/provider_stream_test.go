@@ -412,3 +412,85 @@ func TestCompatibleProvider_FallsBackToSSE(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "fallback-text", got)
 }
+
+// TestCompatibleProvider_NonSSEErrorIsReturned makes sure a genuine server error
+// (JSON body, not text/event-stream) is surfaced as-is and never triggers the
+// streaming fallback — only text/event-stream failures should retry.
+func TestCompatibleProvider_NonSSEErrorIsReturned(t *testing.T) {
+	var sawStreamRequest bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			http.NotFound(w, r)
+			return
+		}
+		if isStreamRequest(readBody(t, r)) {
+			sawStreamRequest = true
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = io.WriteString(w, `{"error":{"message":"boom","type":"server_error"}}`)
+	}))
+	defer server.Close()
+
+	provider, err := ai.NewCompatibleProvider("key", server.URL+"/v1/", "gpt-4o-mini", nil)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err = provider.Test(ctx)
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), "text/event-stream")
+
+	_, err = provider.Complete(ctx, "sys", "content")
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), "text/event-stream")
+
+	require.False(t, sawStreamRequest, "a non-SSE error must not trigger the streaming fallback")
+}
+
+// TestCompatibleProvider_SSEFallbackKeepsRequestOptions verifies the retried
+// streaming request still carries the configured requestOptions.
+func TestCompatibleProvider_SSEFallbackKeepsRequestOptions(t *testing.T) {
+	bodies := make([]map[string]any, 0, 4)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			http.NotFound(w, r)
+			return
+		}
+		bodies = append(bodies, decodeBody(t, readBody(t, r)))
+		// Always answer with SSE regardless of the requested stream flag.
+		w.Header().Set("Content-Type", "text/event-stream")
+		data := `{"id":"x","object":"chat.completion.chunk","created":0,"model":"m","choices":[{"index":0,"delta":{"content":"fallback-text"},"finish_reason":null}]}`
+		_, _ = io.WriteString(w, "data: "+data+"\n\n")
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+	}))
+	defer server.Close()
+
+	provider, err := ai.NewCompatibleProvider("key", server.URL+"/v1/", "gpt-4o-mini", map[string]any{
+		"custom_flag": "enabled",
+	})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	got, err := provider.Test(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "fallback-text", got)
+
+	require.GreaterOrEqual(t, len(bodies), 2, "expected a non-stream attempt and a streaming retry")
+	var sawStream, sawPlain bool
+	for _, body := range bodies {
+		require.Equal(t, "enabled", body["custom_flag"], "requestOptions must survive the fallback")
+		if stream, _ := body["stream"].(bool); stream {
+			sawStream = true
+		} else {
+			sawPlain = true
+		}
+	}
+	require.True(t, sawPlain && sawStream)
+}
