@@ -60,7 +60,7 @@ type aiSettingsRequest struct {
 	// FallbackToModel：免费通道失败时是否自动切回模型
 	FallbackToModel bool `json:"fallbackToModel"`
 	// UseProxy：AI 调用是否走代理（含智能代理），默认 true
-	UseProxy         bool                       `json:"useProxy"`
+	UseProxy         *bool                      `json:"useProxy"`
 	Providers        []service.AIProviderConfig `json:"providers"`
 	ActiveProviderID string                     `json:"activeProviderId"`
 	// 分场景模型覆盖（50 批 1.2）：空 = 跟随当前使用；provider:<id> / free（仅翻译）
@@ -341,6 +341,14 @@ func (h *SettingsHandler) UpdateAISettings(c echo.Context) error {
 		}
 	}
 
+	// useProxy 用 *bool：请求没带这个字段（部分 PUT）时保留数据库现值，避免误关代理。
+	useProxy := true
+	if req.UseProxy != nil {
+		useProxy = *req.UseProxy
+	} else if cur, err := h.service.GetAISettings(c.Request().Context()); err == nil && cur != nil {
+		useProxy = cur.UseProxy
+	}
+
 	settings := &service.AISettings{
 		Provider:          req.Provider,
 		APIKey:            req.APIKey,
@@ -357,7 +365,7 @@ func (h *SettingsHandler) UpdateAISettings(c echo.Context) error {
 		SceneSummary:      req.SceneSummary,
 		SceneAutomation:   req.SceneAutomation,
 		FallbackToModel:   req.FallbackToModel,
-		UseProxy:          req.UseProxy,
+		UseProxy:          useProxy,
 
 		Providers:        req.Providers,
 		ActiveProviderID: req.ActiveProviderID,

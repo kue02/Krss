@@ -172,26 +172,6 @@ func TranslateFreeTextChannelsWithChannel(ctx context.Context, client *http.Clie
 	return defaultFreeScheduler.translate(ctx, client, normalized, text, targetLang)
 }
 
-// translateWithRetry 对单个通道最多试两次：免费通道偶发 5xx / 空结果，重试一次再说失败。
-func translateWithRetry(ctx context.Context, client *http.Client, channel, text, targetLang string) (string, error) {
-	var lastErr error
-	for attempt := 0; attempt < 2; attempt++ {
-		if attempt > 0 {
-			select {
-			case <-time.After(900 * time.Millisecond):
-			case <-ctx.Done():
-				return "", ctx.Err()
-			}
-		}
-		translated, err := translateViaChannel(ctx, client, channel, text, targetLang)
-		if err == nil {
-			return translated, nil
-		}
-		lastErr = err
-	}
-	return "", lastErr
-}
-
 // translateViaChannel 按通道分发到底层实现。
 func translateViaChannel(ctx context.Context, client *http.Client, channel, text, targetLang string) (string, error) {
 	switch channel {
@@ -252,6 +232,21 @@ func translateViaGoogle(ctx context.Context, client *http.Client, text, targetLa
 	return translated, nil
 }
 
+// youdaoErrorCode 把有道响应里「有时数字、有时字符串」的 errorCode 归一成 int；解析不出返回 0。
+func youdaoErrorCode(v any) int {
+	switch code := v.(type) {
+	case float64:
+		return int(code)
+	case int:
+		return code
+	case string:
+		if n, err := strconv.Atoi(strings.TrimSpace(code)); err == nil {
+			return n
+		}
+	}
+	return 0
+}
+
 // youdao：aidemo 的 trans 端点（fanyi.youdao.com/translate 那个老接口已经不给数据了）。
 func translateViaYoudao(ctx context.Context, client *http.Client, text, targetLang string) (string, error) {
 	endpoint := youdaoTranslateEndpoint + "?from=Auto&to=" +
@@ -273,6 +268,10 @@ func translateViaYoudao(ctx context.Context, client *http.Client, text, targetLa
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return "", fmt.Errorf("youdao translate decode: %w", err)
+	}
+	// 有道限流时 HTTP 仍是 200，只在 errorCode 里给 411 —— 转成 429 让调度器走冷却/退避。
+	if code := youdaoErrorCode(payload.ErrorCode); code == 411 {
+		return "", &translateHTTPError{StatusCode: http.StatusTooManyRequests, Body: "youdao errorCode=411 (rate limited)"}
 	}
 	translated := strings.TrimSpace(strings.Join(payload.Translation, ""))
 	if translated == "" {
@@ -319,7 +318,7 @@ func translateViaMicrosoft(ctx context.Context, client *http.Client, text, targe
 }
 
 // thinkBlockRe 匹配完整的 <think>…</think> 思考段（可能跨行）。
-var thinkBlockRe = regexp.MustCompile(`(?s)<think>.*?</think>`)
+var thinkBlockRe = regexp.MustCompile(`(?is)<think>.*?</think>`)
 
 // bilibili：index-translate 的 OpenAI 兼容 chat completions 端点。
 // 这个端点必须带完整翻译提示词，否则会当成普通聊天；并且要关掉 thinking，
@@ -367,8 +366,9 @@ func translateViaBilibili(ctx context.Context, client *http.Client, text, target
 	}
 
 	cleaned := thinkBlockRe.ReplaceAllString(payload.Choices[0].Message.Content, "")
+	lowerCleaned := strings.ToLower(cleaned)
 	if payload.Choices[0].FinishReason == "length" ||
-		strings.Contains(cleaned, "<think") || strings.Contains(cleaned, "</think") {
+		strings.Contains(lowerCleaned, "<think") || strings.Contains(lowerCleaned, "</think") {
 		return "", fmt.Errorf("bilibili translate: 翻译结果不完整")
 	}
 	translated := strings.TrimSpace(cleaned)
