@@ -375,6 +375,11 @@ describe("EntryList · 标准文章列表虚拟化", () => {
     // 未选中：没有正文 pane，底部「全部标记为已读」照常在
     expect(screen.queryByTestId("inline-article-pane")).toBeNull();
     expect(screen.getByTestId("mark-all-read-footer")).toBeTruthy();
+    // 未选中时仍走虚拟列表（只挂可视区）
+    expect(
+      viewport.querySelector('[data-virtual-list="true"]'),
+    ).not.toBeNull();
+    expect(rowIds().length).toBeLessThanOrEqual(15);
 
     rerender(
       <EntryList
@@ -386,6 +391,13 @@ describe("EntryList · 标准文章列表虚拟化", () => {
     await act(async () => {
       await Promise.resolve();
     });
+
+    // 选中后关掉虚拟化：pane 落进普通文档流（否则 sticky 工具栏会失效），
+    // 整表全量渲染，后续条目都在 DOM 里可继续下滑查看。
+    expect(
+      viewport.querySelector('[data-virtual-list="true"]'),
+    ).toBeNull();
+    expect(rowIds()).toHaveLength(manyEntries.length);
 
     expect(renderInlineContent).toHaveBeenCalled();
     const pane = screen.getByTestId("inline-article-pane");

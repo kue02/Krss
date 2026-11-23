@@ -592,7 +592,7 @@ function AuthenticatedApp() {
   const articleCoverList = useUISettingKey("articleCoverList");
   const isArticleCoverLayout = contentType === "article" && articleCoverList;
   /**
-   * 「正文推入方向 = 向下」：条目栏与正文合为一列，正文接在列表末尾
+   * 「正文推入方向 = 向下」：条目栏与正文合为一列，正文接在被点那一行后面
    * （方案 2 · 整列一起滚，用户 11-23 拍板）。桌面把正文交给 EntryList 内联渲染，
    * 三栏布局让出第三栏；移动端仍是列表 → 详情页，不受影响。
    */
@@ -658,7 +658,7 @@ function AuthenticatedApp() {
       onSelectFeedFromEntry={handleJumpToFeed}
       feedJumpBackHref={jumpBackHref}
       onBackFromFeedJump={handleBackFromFeedJump}
-      /* 合列模式（向下）：正文接在列表末尾，共用列表那条滚动条 */
+      /* 合列模式（向下）：正文接在被点那一行后面，共用列表那条滚动条 */
       renderInlineContent={
         isArticleInlineLayout
           ? (scrollRef) =>
