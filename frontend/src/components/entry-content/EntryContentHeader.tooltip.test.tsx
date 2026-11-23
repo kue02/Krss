@@ -7,8 +7,8 @@ import type { Entry } from "@/types/api";
 /**
  * 问题③：正文页顶栏的摘要 / 翻译按钮悬浮文案（Tooltip）与列表徽章同口径。
  * 这里验证文案选择：完成态显示 provider · model（或 service），失败态显示错误原因。
- * Tooltip 未悬浮时正文不挂载，但 button 的 `title` 用的就是同一份 Tooltip 文案，
- * 因此直接断言 title 即可稳定覆盖「文案选择」逻辑。
+ * Tooltip 未悬浮时正文不挂载，但 button 的 `aria-label` 用的就是同一份 Tooltip 文案，
+ * 因此直接断言 aria-label 即可稳定覆盖「文案选择」逻辑（不再用原生 title，避免和 HeroUI Tooltip 双弹）。
  */
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -69,7 +69,7 @@ describe("EntryContentHeader 顶栏按钮 Tooltip 文案（问题③）", () => 
       summaryUsage: { provider: "OpenAI", model: "gpt-4o" },
     });
     expect(
-      container.querySelector('button[title="OpenAI · gpt-4o"]'),
+      container.querySelector('button[aria-label="OpenAI · gpt-4o"]'),
     ).not.toBeNull();
   });
 
@@ -79,7 +79,7 @@ describe("EntryContentHeader 顶栏按钮 Tooltip 文案（问题③）", () => 
       onToggleSummary: vi.fn(),
     });
     expect(
-      container.querySelector('button[title="entry.hide_summary"]'),
+      container.querySelector('button[aria-label="entry.hide_summary"]'),
     ).not.toBeNull();
   });
 
@@ -90,7 +90,7 @@ describe("EntryContentHeader 顶栏按钮 Tooltip 文案（问题③）", () => 
       summaryError: "summary boom",
     });
     expect(
-      container.querySelector('button[title="summary boom"]'),
+      container.querySelector('button[aria-label="summary boom"]'),
     ).not.toBeNull();
   });
 
@@ -103,7 +103,7 @@ describe("EntryContentHeader 顶栏按钮 Tooltip 文案（问题③）", () => 
       translationUsage: { service: "Google" },
     });
     expect(
-      container.querySelector('button[title="Google"]'),
+      container.querySelector('button[aria-label="Google"]'),
     ).not.toBeNull();
   });
 
@@ -116,7 +116,7 @@ describe("EntryContentHeader 顶栏按钮 Tooltip 文案（问题③）", () => 
       translationError: "translate boom",
     });
     expect(
-      container.querySelector('button[title="translate boom"]'),
+      container.querySelector('button[aria-label="translate boom"]'),
     ).not.toBeNull();
   });
 });

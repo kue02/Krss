@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // ErrUntranslatedTargetLanguage 表示模型兜底输出经判定「没有任何目标语言译文」。
@@ -18,6 +19,9 @@ var (
 	controlCharRe = regexp.MustCompile(`[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]`)
 	// 紧跟在开标签之后、或整段开头的替换字符 / 豆腐块（HTML 块翻译里常见的「<p>□原文」）。
 	junkAfterOpenRe = regexp.MustCompile("(^|>)[\uFFFD\u25A1]+")
+	// 媒体占位符（{{__MEDIA_PLACEHOLDER_0__}}）与 URL 不是自然语言，不能算作「原文有大量拉丁字母」。
+	mediaPlaceholderRe = regexp.MustCompile(`\{\{[^{}]*\}\}`)
+	urlRe              = regexp.MustCompile(`(?i)\b(?:https?://|www\.)\S+`)
 )
 
 // SanitizeModelOutput 清洗模型兜底输出里的「非译文垃圾」：
@@ -122,6 +126,14 @@ func looksLikeCode(s string) bool {
 	return nonSpace > 0 && float64(codePunct)/float64(nonSpace) > 0.08
 }
 
+// stripNonProse 去掉媒体占位符和 URL —— 它们不是自然语言，
+// 直接参与拉丁字母统计会把「一条只有图片/链接的块」误判成「大段英文没翻译」。
+func stripNonProse(s string) string {
+	s = mediaPlaceholderRe.ReplaceAllString(s, " ")
+	s = urlRe.ReplaceAllString(s, " ")
+	return s
+}
+
 // IsUntranslatedText 判断「目标语言是中文时，译文几乎不含中日韩字符、而原文有大量拉丁字母」，
 // 即模型明显没翻译（把原文照抄回来）。原文拉丁字母太少（如短标题）时无法可靠判断，返回 false。
 func IsUntranslatedText(original, translated, language string) bool {
@@ -134,12 +146,17 @@ func IsUntranslatedText(original, translated, language string) bool {
 		// 原文非空、译文为空 —— 视为无效输出。
 		return orig != ""
 	}
-	latinOrig := countLatin(orig)
+	// 短文本（短标题、图片说明、纯链接/占位符）统计不稳定，宁可不判，避免误伤把整篇拖垮。
+	prose := strings.TrimSpace(stripNonProse(orig))
+	if utf8.RuneCountInString(prose) < 40 {
+		return false
+	}
+	latinOrig := countLatin(prose)
 	if latinOrig < 20 {
 		// 原文没什么拉丁字母（可能已是中文），不判未翻译。
 		return false
 	}
-	if looksLikeCode(orig) {
+	if looksLikeCode(prose) {
 		// 代码块 / 标记片段：没有可翻译的自然语言，跳过判定。
 		return false
 	}

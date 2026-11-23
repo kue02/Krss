@@ -119,6 +119,34 @@ func TestIsUntranslatedText(t *testing.T) {
 			language:   "zh-CN",
 			want:       false,
 		},
+		{
+			name:       "只有媒体占位符 → 不判（占位符拉丁字母不算原文）",
+			original:   "<p>{{__MEDIA_PLACEHOLDER_0__}}</p>",
+			translated: "<p>{{__MEDIA_PLACEHOLDER_0__}}</p>",
+			language:   "zh-CN",
+			want:       false,
+		},
+		{
+			name:       "只有 URL → 不判（链接不是自然语言）",
+			original:   "https://example.com/a/very/long/path/that/is/not/prose/at/all",
+			translated: "https://example.com/a/very/long/path/that/is/not/prose/at/all",
+			language:   "zh-CN",
+			want:       false,
+		},
+		{
+			name:       "短文本照抄 → 不判（统计样本不足）",
+			original:   "Short title here",
+			translated: "Short title here",
+			language:   "zh-CN",
+			want:       false,
+		},
+		{
+			name:       "长文案夹占位符但确实没翻 → 仍判未翻译",
+			original:   "{{__MEDIA_PLACEHOLDER_0__}} This is a long English paragraph that should definitely be translated into Chinese for the reader, but the model just copied it.",
+			translated: "{{__MEDIA_PLACEHOLDER_0__}} This is a long English paragraph that should definitely be translated into Chinese for the reader, but the model just copied it.",
+			language:   "zh-CN",
+			want:       true,
+		},
 	}
 
 	for _, tc := range cases {
