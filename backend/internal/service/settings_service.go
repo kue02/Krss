@@ -364,22 +364,32 @@ func (s *settingsService) GetAISettings(ctx context.Context) (*AISettings, error
 	}
 	settings.AutoTranslate = s.getBool(ctx, keyAIAutoTranslate)
 	settings.AutoSummary = s.getBool(ctx, keyAIAutoSummary)
-	if val, err := s.getString(ctx, keyAITranslateChannel); err == nil {
-		settings.TranslateChannel = val
+	hasLegacyKey := false
+	if setting, err := s.repo.Get(ctx, keyAITranslateChannel); err == nil && setting != nil {
+		hasLegacyKey = true
+		settings.TranslateChannel = setting.Value
 	}
-	if val, err := s.getString(ctx, keyAITranslateChannels); err == nil && strings.TrimSpace(val) != "" {
-		var channels []string
-		if jsonErr := json.Unmarshal([]byte(val), &channels); jsonErr == nil {
-			settings.TranslateChannels = ai.NormalizeFreeTranslateChannels(channels)
+	hasChannelsKey := false
+	if setting, err := s.repo.Get(ctx, keyAITranslateChannels); err == nil && setting != nil {
+		hasChannelsKey = true
+		if v := strings.TrimSpace(setting.Value); v != "" {
+			var channels []string
+			if jsonErr := json.Unmarshal([]byte(v), &channels); jsonErr == nil {
+				settings.TranslateChannels = ai.NormalizeFreeTranslateChannels(channels)
+			}
 		}
 	}
-	// 兼容旧库：没有新键（或解析为空）时，按旧单值推导出「轮询 + 回退」列表，
-	// 让老用户升级后无需重新保存也能享受轮询。
+	// B 方案：老用户只有旧单值时只保留它，不再自动补其它通道。
 	if len(settings.TranslateChannels) == 0 {
 		settings.TranslateChannels = ai.EffectiveFreeTranslateChannels(nil, settings.TranslateChannel)
 	}
 	if settings.TranslateChannels == nil {
-		settings.TranslateChannels = []string{} // 契约统一：空列表返回 []，不返回 null
+		if !hasChannelsKey && !hasLegacyKey {
+			// 全新安装：默认勾选全部免费通道
+			settings.TranslateChannels = ai.DefaultFreeTranslateChannels()
+		} else {
+			settings.TranslateChannels = []string{} // 显式为空 = 关闭免费通道，走模型
+		}
 	}
 	settings.FallbackToModel = s.getBoolDefault(ctx, keyAIFallbackToModel, true)
 	settings.UseProxy = s.getBoolDefault(ctx, keyAIUseProxy, false)
@@ -551,7 +561,7 @@ func (s *settingsService) SetAISettings(ctx context.Context, settings *AISetting
 	}
 	channels := ai.NormalizeFreeTranslateChannels(settings.TranslateChannels)
 	if len(channels) == 0 && ai.IsFreeTranslateChannel(settings.TranslateChannel) {
-		// 老调用方只给了单值：按旧值推导出轮询列表（本身 + 其它可用通道）
+		// 老调用方只给了单值：按旧值推导（仅保留该单值）
 		channels = ai.EffectiveFreeTranslateChannels(nil, settings.TranslateChannel)
 	}
 	if channels == nil {

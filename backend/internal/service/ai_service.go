@@ -333,22 +333,34 @@ func (s *aiService) isModelFallbackEnabled(ctx context.Context) bool {
 }
 
 // getFreeTranslateChannels 读「翻译通道」设置，返回按顺序轮询的免费通道列表：
-// 优先读 ai.translate_channels（JSON 数组，用户可在设置里勾选/排序），没有再退回旧的
-// 单值 ai.translate_channel（并自动把其它可用通道排在后面，从而实现轮询 + 回退）。
+// 优先读 ai.translate_channels（JSON 数组，尊重用户勾选与顺序）；若它没有有效值则用旧
+// 单值 ai.translate_channel（B 方案：只保留该单值，不再自动补充其它通道）。
+// 仅当两个键都从未保存过（全新安装）才默认启用全部免费通道。
 // 返回空表示不走免费通道，翻译直接用配置的模型。
 func (s *aiService) getFreeTranslateChannels(ctx context.Context) []string {
 	var configured []string
-	if setting, err := s.settingsRepo.Get(ctx, "ai.translate_channels"); err == nil && setting != nil && strings.TrimSpace(setting.Value) != "" {
-		if err := json.Unmarshal([]byte(setting.Value), &configured); err != nil {
-			logger.Warn("ai translate channels parse failed", "module", "service", "action", "fetch", "resource", "ai", "result", "failed", "error", err)
-			configured = nil
+	hasChannelsKey := false
+	if setting, err := s.settingsRepo.Get(ctx, "ai.translate_channels"); err == nil && setting != nil {
+		hasChannelsKey = true
+		if strings.TrimSpace(setting.Value) != "" {
+			if err := json.Unmarshal([]byte(setting.Value), &configured); err != nil {
+				logger.Warn("ai translate channels parse failed", "module", "service", "action", "fetch", "resource", "ai", "result", "failed", "error", err)
+				configured = nil
+			}
 		}
 	}
-	var legacy string
+	legacy := ""
+	hasLegacyKey := false
 	if setting, err := s.settingsRepo.Get(ctx, "ai.translate_channel"); err == nil && setting != nil {
+		hasLegacyKey = true
 		legacy = setting.Value
 	}
-	return ai.EffectiveFreeTranslateChannels(configured, legacy)
+	channels := ai.EffectiveFreeTranslateChannels(configured, legacy)
+	if channels == nil && !hasChannelsKey && !hasLegacyKey {
+		// 全新安装：从未保存过通道设置 → 默认启用全部免费通道
+		channels = ai.DefaultFreeTranslateChannels()
+	}
+	return channels
 }
 
 func (s *aiService) GetSummaryLanguage(ctx context.Context) string {

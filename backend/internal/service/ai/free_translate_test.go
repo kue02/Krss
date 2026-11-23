@@ -216,11 +216,11 @@ func TestEffectiveFreeTranslateChannels(t *testing.T) {
 		want       []string
 	}{
 		{"新键优先", []string{"youdao"}, "google", []string{"youdao"}},
-		{"新键为空退回旧键 google", []string{}, "google", []string{"google", "youdao", "microsoft", "bilibili"}},
-		{"旧键 youdao 排最前", nil, "youdao", []string{"youdao", "google", "microsoft", "bilibili"}},
+		{"新键为空退回旧键 google（不再扩容）", []string{}, "google", []string{"google"}},
+		{"旧键 youdao 只保留自己", nil, "youdao", []string{"youdao"}},
 		{"新旧都空走模型", nil, "", nil},
 		{"旧键非法返回空", nil, "bing", nil},
-		{"新键全非法退回旧键", []string{"bing"}, "youdao", []string{"youdao", "google", "microsoft", "bilibili"}},
+		{"新键全非法退回旧键（不再扩容）", []string{"bing"}, "youdao", []string{"youdao"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -234,6 +234,24 @@ func TestEffectiveFreeTranslateChannels(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestDefaultFreeTranslateChannels(t *testing.T) {
+	got := DefaultFreeTranslateChannels()
+	want := []string{"google", "youdao", "microsoft", "bilibili"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+	// 返回的是副本，改动不影响包级列表。
+	got[0] = "mutated"
+	if FreeTranslateChannels[0] != "google" {
+		t.Fatalf("DefaultFreeTranslateChannels 应返回副本")
 	}
 }
 

@@ -108,25 +108,23 @@ func NormalizeFreeTranslateChannels(channels []string) []string {
 }
 
 // EffectiveFreeTranslateChannels 计算实际要轮询的通道列表：
-//   - 新键（ai.translate_channels，数组）非空 → 用它（已归一化，顺序即轮询顺序）；
-//   - 否则退回旧键（ai.translate_channel，单个通道）：把它排在最前、其余可用通道跟在后面
-//     （老用户只配了 google / youdao 的，升级后自动获得「轮询 + 回退」能力）；
-//   - 旧键也为空 → 返回空（表示不走免费通道，翻译直接走配置的模型）。
+//   - 新键（数组）归一后非空 → 直接用它（尊重用户勾选与顺序）；
+//   - 否则若有合法旧单值 → 只保留该单值（B 方案：不再自动补充其它通道）；
+//   - 否则返回 nil（由上层决定是否套用「全新安装默认全部」）。
 func EffectiveFreeTranslateChannels(configured []string, legacy string) []string {
 	if normalized := NormalizeFreeTranslateChannels(configured); len(normalized) > 0 {
 		return normalized
 	}
 	legacy = strings.TrimSpace(legacy)
-	if !IsFreeTranslateChannel(legacy) {
-		return nil
+	if IsFreeTranslateChannel(legacy) {
+		return []string{legacy}
 	}
-	out := []string{legacy}
-	for _, c := range FreeTranslateChannels {
-		if c != legacy {
-			out = append(out, c)
-		}
-	}
-	return out
+	return nil
+}
+
+// DefaultFreeTranslateChannels 返回全新安装时的默认通道（全部免费通道的副本）。
+func DefaultFreeTranslateChannels() []string {
+	return append([]string(nil), FreeTranslateChannels...)
 }
 
 // TranslateFreeText 用单个免 key 通道翻译一段纯文本（保留旧语义：google 失败会自动回退
