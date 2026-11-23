@@ -494,6 +494,9 @@ export function Sidebar({
     ): DropPosition | null => {
       const dragged = draggingRef.current;
       if (!dragged || dragged.id === target.id) return null;
+      // 内容类型不同的条目之间不允许拖拽移动（订阅/文件夹只能留在同类型视图内），
+      // 否则后端会以 ErrInvalid 拒绝，表现为「保存失败」。
+      if (dragged.type !== target.type) return null;
       const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
       const y = event.clientY - rect.top;
       const h = rect.height || 1;
@@ -514,7 +517,7 @@ export function Sidebar({
 
   /** 订阅重排/移入后持久化：先乐观改缓存，再逐项 PUT；失败回滚 + toast */
   const persistFeedLayout = useCallback(
-    async (containerId: string | undefined, ordered: Feed[]) => {
+    async (containerId: string | undefined, ordered: Feed[], movedId: string) => {
       const snapshot = queryClient.getQueryData<Feed[]>(["feeds"]);
       queryClient.setQueryData<Feed[]>(["feeds"], (old) =>
         old?.map((feed) => {
@@ -525,13 +528,18 @@ export function Sidebar({
       );
       try {
         await Promise.all(
-          ordered.map((feed, index) =>
-            updateFeedApi(feed.id, {
-              title: feed.title,
-              folderId: containerId,
-              sortOrder: index,
-            }),
-          ),
+          ordered.map((feed, index) => {
+            // 只有被拖动的订阅才改归属（folderId）；其余兄弟只更新排序号，
+            // 走「title 空 + sortOrder」的纯排序分支，避免误触标题重抓/跨文件夹校验。
+            if (feed.id === movedId) {
+              return updateFeedApi(feed.id, {
+                title: feed.title,
+                folderId: containerId,
+                sortOrder: index,
+              });
+            }
+            return updateFeedApi(feed.id, { title: "", sortOrder: index });
+          }),
         );
         setSortBy("custom");
       } catch {
@@ -547,7 +555,11 @@ export function Sidebar({
 
   /** 文件夹重排/移入后持久化（parentId 同时承载「移入/移出」语义） */
   const persistFolderLayout = useCallback(
-    async (parentId: string | undefined, ordered: Folder[]) => {
+    async (
+      parentId: string | undefined,
+      ordered: Folder[],
+      movedId: string,
+    ) => {
       const snapshot = queryClient.getQueryData<Folder[]>(["folders"]);
       queryClient.setQueryData<Folder[]>(["folders"], (old) =>
         old?.map((folder) => {
@@ -558,13 +570,19 @@ export function Sidebar({
       );
       try {
         await Promise.all(
-          ordered.map((folder, index) =>
-            updateFolderApi(folder.id, {
-              name: folder.name,
-              parentId,
-              sortOrder: index,
-            }),
-          ),
+          ordered.map((folder, index) => {
+            // 只有被拖动的文件夹才改父级（parentId）；其余兄弟只更新排序号，
+            // 走「name 空 + sortOrder」的纯排序分支，避免把兄弟的父级一起改掉
+            // （历史上会出现把 NO.1 这类父级跨类型的文件夹拖去错误父级 → ErrInvalid）。
+            if (folder.id === movedId) {
+              return updateFolderApi(folder.id, {
+                name: folder.name,
+                parentId,
+                sortOrder: index,
+              });
+            }
+            return updateFolderApi(folder.id, { name: "", sortOrder: index });
+          }),
         );
         setSortBy("custom");
       } catch {
@@ -610,7 +628,7 @@ export function Sidebar({
         draggedFeed,
         ...siblings.slice(insertAt),
       ];
-      void persistFeedLayout(containerId, ordered);
+      void persistFeedLayout(containerId, ordered, dragged.id);
     },
     [allFeeds, feeds, persistFeedLayout, sortFeeds],
   );
@@ -648,7 +666,7 @@ export function Sidebar({
         draggedFolder,
         ...siblings.slice(insertAt),
       ];
-      void persistFolderLayout(parentId, ordered);
+      void persistFolderLayout(parentId, ordered, dragged.id);
     },
     [allFolders, folders, persistFolderLayout, sortFolders],
   );
@@ -667,9 +685,9 @@ export function Sidebar({
         if (rowKind === "folder" && position === "inside") {
           applyFeedDrop(dragged, target.id, null, "inside");
         } else if (rowKind === "feed") {
-          const targetFeed = allFeeds.find((feed) => feed.id === target.id);
-          if (targetFeed)
-            applyFeedDrop(dragged, targetFeed.folderId, target.id, position);
+          // 用「目标行所显示的容器」（页面呈现的父级），而不是数据里的真实 folderId，
+          // 避免跨类型脏数据（如 NO.1）导致落点父级算错。
+          applyFeedDrop(dragged, target.containerId, target.id, position);
         }
         return;
       }
@@ -678,16 +696,12 @@ export function Sidebar({
         if (position === "inside") {
           applyFolderDrop(dragged, target.id, null, "inside");
         } else {
-          const targetFolder = allFolders.find(
-            (folder) => folder.id === target.id,
+          applyFolderDrop(
+            dragged,
+            target.containerId,
+            target.id,
+            position,
           );
-          if (targetFolder)
-            applyFolderDrop(
-              dragged,
-              targetFolder.parentId,
-              target.id,
-              position,
-            );
         }
       }
     },
@@ -746,6 +760,33 @@ export function Sidebar({
           event.dataTransfer.setData("text/plain", entity.id);
         } catch {
           // 某些浏览器在只读 dataTransfer 上 setData 会抛，忽略即可
+        }
+        // 自定义拖拽影像：默认影像会把整行（含背景/子级）抓成一大块灰影，
+        // 出现「整块重影」。这里只用一个紧凑的小标签做影像，跟随光标即可，
+        // 原行本身通过 opacity-50 变淡，视觉上不会出现两块一样大的重影。
+        const node = event.currentTarget as HTMLElement;
+        if (node) {
+          const label = ((node.innerText || "").split("\n")[0] ?? "").trim();
+          const ghost = document.createElement("div");
+          ghost.textContent = label;
+          ghost.style.cssText =
+            "position:fixed;top:-1000px;left:-1000px;display:inline-flex;" +
+            "align-items:center;padding:5px 11px;border-radius:9px;" +
+            "font-size:13px;font-weight:500;line-height:1.2;white-space:nowrap;" +
+            "pointer-events:none;opacity:0.96;" +
+            "box-shadow:0 6px 20px rgba(0,0,0,0.18);" +
+            "border:1px solid rgba(127,127,127,0.25);";
+          ghost.style.background =
+            getComputedStyle(document.body).backgroundColor || "#ffffff";
+          ghost.style.color = getComputedStyle(node).color;
+          document.body.appendChild(ghost);
+          try {
+            const gr = ghost.getBoundingClientRect();
+            event.dataTransfer.setDragImage(ghost, 14, gr.height / 2);
+          } catch {
+            // setDragImage 在不支持的浏览器上会抛，忽略
+          }
+          window.setTimeout(() => ghost.remove(), 0);
         }
       },
       onDragEnd: () => {
@@ -1364,6 +1405,7 @@ function SidebarScrollArea({
 function FolderNode({
   node,
   depth,
+  containerId,
   listBoxMode,
   selectedFeedKeys,
   folderUnreadCounts,
@@ -1388,6 +1430,7 @@ function FolderNode({
 }: {
   node: FolderTreeNode;
   depth: number;
+  containerId?: string;
   listBoxMode: boolean;
   selectedFeedKeys: Set<string> | string[];
   folderUnreadCounts: Map<string, number>;
@@ -1441,7 +1484,7 @@ function FolderNode({
       name={folder.name}
       stateKey={folder.id}
       depth={depth}
-      parentId={folder.parentId}
+      containerId={containerId}
       contentType={folder.type}
       folderOptions={folders}
       unreadCount={folderUnreadCounts.get(folder.id) || 0}
@@ -1459,6 +1502,7 @@ function FolderNode({
           key={child.folder.id}
           node={child}
           depth={depth + 1}
+          containerId={folder.id}
           {...childProps}
         />
       ))}

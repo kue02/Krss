@@ -297,6 +297,9 @@ export function FeedItem({
         className={cn(
           "group",
           hasError && "text-red-500 dark:text-red-400",
+          dnd?.dragging?.kind === "feed" &&
+            dnd.dragging.id === feedId &&
+            "opacity-50",
           dropPosition === "inside" &&
             "bg-primary/10 ring-1 ring-inset ring-primary/40",
           dropPosition === "before" &&
@@ -339,6 +342,9 @@ export function FeedItem({
           className={cn(
             feedItemStyles,
             "group relative justify-between py-0.5 pr-2",
+            dnd?.dragging?.kind === "feed" &&
+              dnd.dragging.id === feedId &&
+              "opacity-50",
             dropPosition === "inside" &&
               "bg-primary/10 ring-1 ring-inset ring-primary/40",
             dropPosition === "before" &&

@@ -71,8 +71,8 @@ interface FeedCategoryProps {
   stateKey?: string;
   /** 21-2：嵌套深度（子文件夹缩进） */
   depth?: number;
-  /** 拖拽用：父文件夹 id（顶层为 undefined）与内容类型 */
-  parentId?: string;
+  /** 拖拽用：这一行在页面上所处的容器文件夹 id（顶层为 undefined）与内容类型 */
+  containerId?: string;
   contentType?: ContentType;
   /** 同内容类型的全部文件夹（用于「移动到文件夹」候选与后代排除） */
   folderOptions?: Folder[];
@@ -96,7 +96,7 @@ export function FeedCategory({
   isSelected = false,
   stateKey,
   depth = 0,
-  parentId,
+  containerId,
   contentType,
   folderOptions,
   onSelect,
@@ -128,7 +128,7 @@ export function FeedCategory({
             kind: "folder",
             id: folderId,
             type: contentType ?? "article",
-            containerId: parentId,
+            containerId,
           },
           "folder",
         )
@@ -175,6 +175,9 @@ export function FeedCategory({
             className={cn(
               feedItemStyles,
               "group relative py-0.5 pl-2.5 pr-2",
+              dnd?.dragging?.kind === "folder" &&
+                dnd.dragging.id === folderId &&
+                "opacity-50",
               dropPosition === "inside" &&
                 "bg-primary/10 ring-1 ring-inset ring-primary/40",
               dropPosition === "before" &&
