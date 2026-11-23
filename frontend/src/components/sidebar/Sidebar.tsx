@@ -1002,12 +1002,19 @@ export function Sidebar({
   const activeViewId = useFilterViewStore((state) => state.viewId);
   const activeViewName = useFilterViewStore((state) => state.viewName);
   const setViewName = useFilterViewStore((state) => state.setViewName);
+  const setViewUnreadCount = useFilterViewStore((state) => state.setViewUnreadCount);
   // 视图改名后中栏标题要立刻跟着变：filters 列表刷新回来后，把 store 里选中视图的名字同步成最新。
   useEffect(() => {
     if (!activeViewId) return;
     const current = (filterList ?? []).find((item) => item.id === activeViewId);
     if (current && current.name !== activeViewName) setViewName(current.name);
   }, [filterList, activeViewId, activeViewName, setViewName]);
+  // 中栏视图标题的「N 条未读」和侧栏角标同源：把当前选中视图的未读数同步进 store。
+  const activeViewUnreadCount =
+    activeViewId && viewCounts ? (viewCounts[activeViewId] ?? 0) : null;
+  useEffect(() => {
+    setViewUnreadCount(activeViewUnreadCount);
+  }, [activeViewUnreadCount, setViewUnreadCount]);
   const openEdit = useFilterEditorStore((state) => state.openEdit);
   const { remove } = useFilterMutations();
   const selectView = useFilterViewStore((state) => state.selectView);

@@ -238,6 +238,9 @@ func TestEntryService_ListViewMatchedFeeds_FeedScopeSingle(t *testing.T) {
 	target := fixture.seedFeed(t, "目标源", "article")
 	other := fixture.seedFeed(t, "别人", "article")
 	fixture.seedEntry(t, target.ID, "t1", "赞助商：目标", timePtr(time.Now()))
+	// 已读的命中不算进子项未读角标（用户 2026-11-23：和「订阅」一样按未读计数）
+	readTitle := "赞助商：已读"
+	testutil.SeedEntry(t, fixture.db, model.Entry{FeedID: target.ID, Hash: "t2", Title: &readTitle, Read: true})
 	fixture.seedEntry(t, other.ID, "x1", "赞助商：别人", timePtr(time.Now()))
 
 	view := fixture.create(t, service.FilterWriteParams{
@@ -253,7 +256,7 @@ func TestEntryService_ListViewMatchedFeeds_FeedScopeSingle(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, feeds, 1)
 	require.Equal(t, target.ID, feeds[0].FeedID)
-	require.Equal(t, 1, feeds[0].Count)
+	require.Equal(t, 1, feeds[0].Count, "只数未读命中，已读的那条不计入")
 }
 
 // 被静音的命中条目默认不计入（与 listByView 默认隐藏静音一致）。

@@ -160,6 +160,7 @@ export function EntryList({
    */
   const activeViewId = useFilterViewStore((state) => state.viewId);
   const activeViewName = useFilterViewStore((state) => state.viewName);
+  const viewUnreadCount = useFilterViewStore((state) => state.viewUnreadCount);
   const viewScopeKey = useFilterViewStore((state) => state.scopeKey);
   const clearView = useFilterViewStore((state) => state.clearView);
   const selectionScopeKey = useMemo(() => {
@@ -1351,7 +1352,9 @@ export function EntryList({
           title={headerTitle}
           subtitle={headerSubtitle}
           onBackFromFeedJump={feedJumpBackHref ? onBackFromFeedJump : undefined}
-          unreadCount={unreadCount}
+          unreadCount={
+            activeViewId ? (viewUnreadCount ?? unreadCount) : unreadCount
+          }
           unreadOnly={unreadOnly}
           /* 58-1：星标视图不显示「只看未读」切换（用户 2026-10-29） */
           showUnreadToggle={selection.type !== "starred"}

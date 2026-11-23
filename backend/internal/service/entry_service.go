@@ -341,9 +341,11 @@ func (s *entryService) ListViewMatchedFeeds(ctx context.Context, viewID int64, c
 	// 视图的作用域覆盖候选条目；contentType 收窄类型，其余筛选口径为零值（默认隐藏被静音的条目）。
 	// 与 listByView / CountViewMatches / Preview 同口径：全文求值（ContentTruncate=0），
 	// 否则正文关键词落在截断点之后的条目会从子项里消失，和角标对不上（用户 2026-11-23）。
+	// 子项角标和侧栏文件夹/订阅一致，显示「未读条数」：只统计未读命中。
 	scope := repository.EntryListFilter{
 		ContentType:     contentType,
 		Limit:           viewScanLimit,
+		UnreadOnly:      true,
 		ContentTruncate: 0,
 	}
 	switch view.ScopeType {
