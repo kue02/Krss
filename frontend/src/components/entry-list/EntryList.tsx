@@ -713,23 +713,16 @@ export function EntryList({
 
     let raf = 0;
     let startedAt = 0;
-    let smoothDone = false;
     const tick = (now: number) => {
       if (cancelled) return;
       if (startedAt === 0) startedAt = now;
       const elapsed = now - startedAt;
       const delta = offset();
-      if (delta !== null) {
-        if (!smoothDone) {
-          /* 第一帧先平滑滚过去（大位移用动画不吓人）；这段时间不做逐帧修正，免得互相打断 */
-          smoothDone = true;
-          if (Math.abs(delta) > 4) {
-            container.scrollTo({ top: container.scrollTop + delta, behavior: reduceMotion ? "auto" : "smooth" });
-          }
-        } else if (elapsed > 600 && Math.abs(delta) > 2) {
-          /* 平滑动画走完后开始兜底：列表高度变化、正文撑高都靠这里拉回 */
-          container.scrollTop += delta;
-        }
+      /* 每帧直接补位，不用平滑滚动：距离常有几千像素，平滑动画跑的同时列表还在因为
+         实测行高/正文懒加载改高度，两者互相追会一直差一截。直接跳过去，后面几帧只做
+         毫米级修正，看起来反而稳。 */
+      if (delta !== null && Math.abs(delta) > 2) {
+        container.scrollTop += delta;
       }
       if (elapsed < 4000) raf = window.requestAnimationFrame(tick);
     };
