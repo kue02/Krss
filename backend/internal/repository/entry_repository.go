@@ -89,7 +89,8 @@ type EntryRepository interface {
 	// 都没有返回 (nil, nil)。
 	GetExistingEntry(ctx context.Context, feedID int64, hash string, rawURL string) (*model.Entry, error)
 	ClearAllReadableContent(ctx context.Context) (int64, error)
-	DeleteUnstarred(ctx context.Context) (int64, error)
+	// DeleteReadUnstarred 删除「已读且未收藏」的条目（保留已收藏和未读）。
+	DeleteReadUnstarred(ctx context.Context) (int64, error)
 	// GetIDsByHashes 按 feed 内 hash 批量取条目 ID（规则引擎在入库后定位刚写进去的那批条目）。
 	GetIDsByHashes(ctx context.Context, feedID int64, hashes []string) (map[string]int64, error)
 	// ApplyFilterState 写入规则标记（muted / filter_id，可选 read / starred）。
@@ -794,8 +795,10 @@ func (r *entryRepository) ClearAllReadableContent(ctx context.Context) (int64, e
 	return result.RowsAffected()
 }
 
-func (r *entryRepository) DeleteUnstarred(ctx context.Context) (int64, error) {
-	result, err := r.db.ExecContext(ctx, `DELETE FROM entries WHERE starred = 0`)
+// DeleteReadUnstarred 删除「已读且未收藏」的条目：只删 starred = 0 AND read = 1，
+// 保留已收藏（starred = 1）与未读（read = 0）的条目。
+func (r *entryRepository) DeleteReadUnstarred(ctx context.Context) (int64, error) {
+	result, err := r.db.ExecContext(ctx, `DELETE FROM entries WHERE starred = 0 AND read = 1`)
 	if err != nil {
 		return 0, err
 	}

@@ -34,7 +34,7 @@ func TestEntryService_ClearEntryCache(t *testing.T) {
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	svc := service.NewEntryService(mockEntries, mockFeeds, mock.NewMockFolderRepository(ctrl), nil)
 
-	mockEntries.EXPECT().DeleteUnstarred(context.Background()).Return(int64(3), nil)
+	mockEntries.EXPECT().DeleteReadUnstarred(context.Background()).Return(int64(3), nil)
 	mockFeeds.EXPECT().ClearAllConditionalGet(context.Background()).Return(int64(2), nil)
 
 	count, err := svc.ClearEntryCache(context.Background())
@@ -56,7 +56,7 @@ func TestEntryService_ClearCaches_RepositoryError(t *testing.T) {
 	_, err := svc.ClearReadabilityCache(context.Background())
 	require.ErrorIs(t, err, errReadability)
 
-	mockEntries.EXPECT().DeleteUnstarred(context.Background()).Return(int64(0), errEntries)
+	mockEntries.EXPECT().DeleteReadUnstarred(context.Background()).Return(int64(0), errEntries)
 	_, err = svc.ClearEntryCache(context.Background())
 	require.ErrorIs(t, err, errEntries)
 }
