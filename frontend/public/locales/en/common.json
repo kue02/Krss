@@ -747,7 +747,6 @@
     "cache_tombstone_retention_label": "Retention for cleared articles",
     "cache_tombstone_retention_hint": "Cleared articles won't be re-added by a refresh within this many days; 0 = keep forever",
     "cache_retention_unit": "days",
-    "cache_retention_save": "Save",
     "cache_retention_saving": "Saving...",
     "cache_retention_saved": "Saved",
     "cache_retention_save_failed": "Save failed",

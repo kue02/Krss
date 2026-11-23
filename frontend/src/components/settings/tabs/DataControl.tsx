@@ -88,12 +88,14 @@ export function DataControl() {
   const [clearEntryError, setClearEntryError] = useState<string | null>(null);
 
   // 缓存保留设置：清理文章保留天数 / 已清理文章保留期
+  // 用户要求：两项都是「改动即保存」，不再单独放保存按钮。
   const [cacheDraft, setCacheDraft] = useState<CacheSettings | null>(null);
-  const [cacheSaving, setCacheSaving] = useState(false);
   const [cacheStatus, setCacheStatus] = useState<{
-    kind: "ok" | "error";
+    kind: "saving" | "ok" | "error";
     text: string;
   } | null>(null);
+  const lastSavedCacheRef = useRef("");
+  const latestCacheRef = useRef("");
 
   const { data: cacheSettings } = useQuery({
     queryKey: ["cacheSettings"],
@@ -103,9 +105,48 @@ export function DataControl() {
 
   useEffect(() => {
     if (cacheSettings) {
+      const serialized = JSON.stringify(cacheSettings);
+      lastSavedCacheRef.current = serialized;
+      latestCacheRef.current = serialized;
       setCacheDraft(cacheSettings);
     }
   }, [cacheSettings]);
+
+  // 改动后 500ms 自动保存。用户连续输入时只发最后一次；保存请求返回时若本地又改了，
+  // 不能拿旧响应覆盖新草稿（否则数字会跳回去）。
+  useEffect(() => {
+    if (!cacheDraft) return;
+    const serialized = JSON.stringify(cacheDraft);
+    latestCacheRef.current = serialized;
+    if (serialized === lastSavedCacheRef.current) return;
+
+    const timer = window.setTimeout(async () => {
+      setCacheStatus({
+        kind: "saving",
+        text: t("data_control.cache_retention_saving"),
+      });
+      try {
+        const saved = await updateCacheSettings(cacheDraft);
+        if (latestCacheRef.current !== serialized) return;
+        lastSavedCacheRef.current = JSON.stringify(saved);
+        setCacheDraft(saved);
+        setCacheStatus({
+          kind: "ok",
+          text: t("data_control.cache_retention_saved"),
+        });
+        queryClient.invalidateQueries({ queryKey: ["cacheSettings"] });
+      } catch (err) {
+        if (latestCacheRef.current !== serialized) return;
+        const message =
+          err instanceof Error
+            ? err.message
+            : t("data_control.cache_retention_save_failed");
+        setCacheStatus({ kind: "error", text: message });
+      }
+    }, 500);
+
+    return () => window.clearTimeout(timer);
+  }, [cacheDraft, queryClient, t]);
 
   const isImporting = task?.status === "running";
 
@@ -345,30 +386,6 @@ export function DataControl() {
 
   const patchCacheDraft = (patch: Partial<CacheSettings>) => {
     setCacheDraft((prev) => (prev ? { ...prev, ...patch } : prev));
-  };
-
-  const handleSaveCacheSettings = async () => {
-    if (!cacheDraft) return;
-    setCacheSaving(true);
-    setCacheStatus(null);
-
-    try {
-      const saved = await updateCacheSettings(cacheDraft);
-      setCacheDraft(saved);
-      setCacheStatus({
-        kind: "ok",
-        text: t("data_control.cache_retention_saved"),
-      });
-      queryClient.invalidateQueries({ queryKey: ["cacheSettings"] });
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : t("data_control.cache_retention_save_failed");
-      setCacheStatus({ kind: "error", text: message });
-    } finally {
-      setCacheSaving(false);
-    }
   };
 
   return (
@@ -697,24 +714,18 @@ export function DataControl() {
               </span>
             </div>
           </SettingRow>
-          <div className="flex items-center gap-3 px-1 py-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="primary"
-              isDisabled={cacheSaving || !cacheDraft}
-              onPress={handleSaveCacheSettings}
-            >
-              {cacheSaving
-                ? t("data_control.cache_retention_saving")
-                : t("data_control.cache_retention_save")}
-            </Button>
+          <div
+            className="flex h-6 items-center justify-end px-1 text-xs"
+            aria-live="polite"
+          >
             {cacheStatus && (
               <span
                 className={
-                  cacheStatus.kind === "ok"
-                    ? "text-xs text-green-600 dark:text-green-400"
-                    : "text-xs text-red-600 dark:text-red-400"
+                  cacheStatus.kind === "error"
+                    ? "text-red-600 dark:text-red-400"
+                    : cacheStatus.kind === "saving"
+                      ? "text-muted-foreground"
+                      : "text-green-600 dark:text-green-400"
                 }
               >
                 {cacheStatus.text}
