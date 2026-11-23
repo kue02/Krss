@@ -7,6 +7,7 @@ import (
 
 	"krss/backend/internal/model"
 	"krss/backend/internal/repository"
+	"krss/backend/internal/repository/testutil"
 	"krss/backend/internal/service"
 
 	"github.com/stretchr/testify/require"
@@ -156,4 +157,128 @@ func TestEntryService_ListViewMatchedFeeds_ContentTypeNarrowing(t *testing.T) {
 	require.Len(t, narrowed, 1)
 	require.Equal(t, articleFeed.ID, narrowed[0].FeedID)
 	require.Equal(t, 1, narrowed[0].Count)
+}
+
+// seedFeedInFolder 造一条属于指定文件夹的订阅。
+func (f *filterFixture) seedFeedInFolder(t *testing.T, title, feedType string, folderID int64) model.Feed {
+	t.Helper()
+	feed := model.Feed{
+		Title:    title,
+		URL:      "https://example.com/" + title + ".xml",
+		Type:     feedType,
+		FolderID: &folderID,
+	}
+	feed.ID = testutil.SeedFeed(t, f.db, feed)
+	return feed
+}
+
+// scope=folder：只聚合该文件夹内的订阅，别的文件夹命中不算。
+func TestEntryService_ListViewMatchedFeeds_FolderScope(t *testing.T) {
+	fixture := newFilterFixture(t)
+	ctx := context.Background()
+
+	folderA := testutil.SeedFolder(t, fixture.db, "文件夹A", nil, "article")
+	folderB := testutil.SeedFolder(t, fixture.db, "文件夹B", nil, "article")
+
+	feedA := fixture.seedFeedInFolder(t, "A源", "article", folderA)
+	feedB := fixture.seedFeedInFolder(t, "B源", "article", folderB)
+	fixture.seedEntry(t, feedA.ID, "fa-1", "赞助商：A", timePtr(time.Now()))
+	fixture.seedEntry(t, feedB.ID, "fb-1", "赞助商：B", timePtr(time.Now()))
+
+	view := fixture.create(t, service.FilterWriteParams{
+		Name:       "A文件夹含赞助商",
+		Kind:       model.FilterKindView,
+		ScopeType:  model.FilterScopeFolder,
+		ScopeID:    &folderA,
+		Conditions: []model.FilterCondition{{Field: model.FilterFieldTitle, Operator: model.FilterOpContains, Value: "赞助商"}},
+	})
+
+	svc := newEntryServiceForViews(fixture)
+	feeds, err := svc.ListViewMatchedFeeds(ctx, view.ID, nil)
+	require.NoError(t, err)
+	require.Len(t, feeds, 1)
+	require.Equal(t, feedA.ID, feeds[0].FeedID)
+	require.Equal(t, 1, feeds[0].Count)
+}
+
+// scope=feed 且 ScopeIDs 多选：只统计多选里的订阅，未选中的同关键词订阅不算。
+func TestEntryService_ListViewMatchedFeeds_FeedScopeMulti(t *testing.T) {
+	fixture := newFilterFixture(t)
+	ctx := context.Background()
+
+	in1 := fixture.seedFeed(t, "选一", "article")
+	in2 := fixture.seedFeed(t, "选二", "article")
+	out := fixture.seedFeed(t, "未选", "article")
+	fixture.seedEntry(t, in1.ID, "i1", "赞助商：1", timePtr(time.Now()))
+	fixture.seedEntry(t, in2.ID, "i2", "赞助商：2", timePtr(time.Now()))
+	fixture.seedEntry(t, out.ID, "o1", "赞助商：3", timePtr(time.Now()))
+
+	view := fixture.create(t, service.FilterWriteParams{
+		Name:       "多选订阅含赞助商",
+		Kind:       model.FilterKindView,
+		ScopeType:  model.FilterScopeFeed,
+		ScopeIDs:   []int64{in1.ID, in2.ID},
+		Conditions: []model.FilterCondition{{Field: model.FilterFieldTitle, Operator: model.FilterOpContains, Value: "赞助商"}},
+	})
+
+	svc := newEntryServiceForViews(fixture)
+	feeds, err := svc.ListViewMatchedFeeds(ctx, view.ID, nil)
+	require.NoError(t, err)
+	require.Len(t, feeds, 2)
+	ids := []int64{feeds[0].FeedID, feeds[1].FeedID}
+	require.ElementsMatch(t, []int64{in1.ID, in2.ID}, ids)
+	require.NotContains(t, ids, out.ID)
+}
+
+// scope=feed 且单 ScopeID：只统计该订阅。
+func TestEntryService_ListViewMatchedFeeds_FeedScopeSingle(t *testing.T) {
+	fixture := newFilterFixture(t)
+	ctx := context.Background()
+
+	target := fixture.seedFeed(t, "目标源", "article")
+	other := fixture.seedFeed(t, "别人", "article")
+	fixture.seedEntry(t, target.ID, "t1", "赞助商：目标", timePtr(time.Now()))
+	fixture.seedEntry(t, other.ID, "x1", "赞助商：别人", timePtr(time.Now()))
+
+	view := fixture.create(t, service.FilterWriteParams{
+		Name:       "单订阅含赞助商",
+		Kind:       model.FilterKindView,
+		ScopeType:  model.FilterScopeFeed,
+		ScopeID:    &target.ID,
+		Conditions: []model.FilterCondition{{Field: model.FilterFieldTitle, Operator: model.FilterOpContains, Value: "赞助商"}},
+	})
+
+	svc := newEntryServiceForViews(fixture)
+	feeds, err := svc.ListViewMatchedFeeds(ctx, view.ID, nil)
+	require.NoError(t, err)
+	require.Len(t, feeds, 1)
+	require.Equal(t, target.ID, feeds[0].FeedID)
+	require.Equal(t, 1, feeds[0].Count)
+}
+
+// 被静音的命中条目默认不计入（与 listByView 默认隐藏静音一致）。
+func TestEntryService_ListViewMatchedFeeds_ExcludesMuted(t *testing.T) {
+	fixture := newFilterFixture(t)
+	ctx := context.Background()
+
+	feed := fixture.seedFeed(t, "混音源", "article")
+	fixture.seedEntry(t, feed.ID, "m-1", "赞助商：可见", timePtr(time.Now()))
+
+	mutedTitle := "赞助商：已静音"
+	muted := model.Entry{FeedID: feed.ID, Hash: "m-2", Title: &mutedTitle, Muted: true}
+	testutil.SeedEntry(t, fixture.db, muted)
+
+	view := fixture.create(t, service.FilterWriteParams{
+		Name:       "含赞助商",
+		Kind:       model.FilterKindView,
+		ScopeType:  model.FilterScopeAll,
+		Conditions: []model.FilterCondition{{Field: model.FilterFieldTitle, Operator: model.FilterOpContains, Value: "赞助商"}},
+	})
+
+	svc := newEntryServiceForViews(fixture)
+	feeds, err := svc.ListViewMatchedFeeds(ctx, view.ID, nil)
+	require.NoError(t, err)
+	require.Len(t, feeds, 1)
+	require.Equal(t, feed.ID, feeds[0].FeedID)
+	require.Equal(t, 1, feeds[0].Count, "静音条目不应计入")
 }

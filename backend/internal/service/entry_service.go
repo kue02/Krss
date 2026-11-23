@@ -321,7 +321,8 @@ func (s *entryService) listByView(ctx context.Context, viewID int64, params Entr
 //
 // 求值完全复用 listByView 的同一套函数（ScopeMatches / buildEntryContext / MatchConditions），
 // 保证「展开看到的订阅列表」与「点进去看到的条目」语义一致：没命中内容的订阅不出现。
-// 不分页 —— 这是聚合全部命中的订阅，不是翻页。返回按 count 降序、再按 feedTitle 升序。
+// count 是该订阅在视图内的全体命中数（与 listByView 同一口径，不随「只看未读」等临时胶囊变化）。
+// 不分页 —— 这是聚合全部命中的订阅，不是翻页。返回按 count 降序、再按 feedTitle 升序（并列再按 feedId，保证稳定）。
 func (s *entryService) ListViewMatchedFeeds(ctx context.Context, viewID int64, contentType *string) ([]ViewMatchedFeed, error) {
 	view, err := s.filters.GetByID(ctx, viewID)
 	if err != nil {
@@ -392,7 +393,10 @@ func (s *entryService) ListViewMatchedFeeds(ctx context.Context, viewID int64, c
 		if feeds[i].Count != feeds[j].Count {
 			return feeds[i].Count > feeds[j].Count
 		}
-		return feeds[i].FeedTitle < feeds[j].FeedTitle
+		if feeds[i].FeedTitle != feeds[j].FeedTitle {
+			return feeds[i].FeedTitle < feeds[j].FeedTitle
+		}
+		return feeds[i].FeedID < feeds[j].FeedID
 	})
 
 	logger.Debug("entry list view matched feeds", "module", "service", "action", "list", "resource", "entry", "result", "ok",

@@ -100,12 +100,13 @@ export function SmartViewFolder({
   const { t } = useTranslation();
   const [open, , toggle] = useCategoryState(`view:${view.id}`, false);
 
-  // 只有展开时才请求（enabled: open）；15s 内的展开直接复用缓存，避免来回切时反复打接口
+  // 只有展开时才请求（enabled: open）；staleTime=0 让每次重新展开都按当前条目重算，
+  // 保证「匹配内容消失的源不再出现」是即时的，而不是 15s 内还留着旧结果。
   const { data, isLoading } = useQuery({
     queryKey: ["view-matched-feeds", view.id, contentType],
     queryFn: () => getViewMatchedFeeds(view.id, contentType),
     enabled: open,
-    staleTime: 15_000,
+    staleTime: 0,
   });
 
   const resolved = useMemo(
@@ -212,6 +213,7 @@ export function SmartViewFolder({
                     feedUrl={match.feedUrl}
                     siteUrl={match.siteUrl}
                     iconPath={match.iconPath}
+                    // 这里复用的是「视图内该订阅的命中条数」，不是未读数；仅为视觉对齐沿用 unreadCount 位置
                     unreadCount={match.count}
                     isActive={isFeedSelected(match.feedId)}
                     onClick={() => onSelectFeed(match.feedId)}
