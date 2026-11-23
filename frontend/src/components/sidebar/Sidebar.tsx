@@ -98,6 +98,9 @@ const sidebarScrollPositions = new Map<string, number>();
 
 type SortBy = "name" | "date" | "custom";
 
+// 侧栏排序方式持久化：否则拖拽自定义排序刷新后会回退到名称序，用户会误以为拖拽没生效。
+const SORT_BY_STORAGE_KEY = "krss.sidebar.sortBy";
+
 // ASCII first (English/numbers before Chinese)
 function compareNames(a: string, b: string): number {
   /* eslint-disable no-control-regex */
@@ -185,7 +188,25 @@ export function Sidebar({
   const [bulkOverridesFolderId, setBulkOverridesFolderId] = useState<
     string | null
   >(null);
-  const [sortBy, setSortBy] = useState<SortBy>("name");
+  const [sortBy, setSortBy] = useState<SortBy>(() => {
+    try {
+      const saved = localStorage.getItem(SORT_BY_STORAGE_KEY);
+      if (saved === "name" || saved === "date" || saved === "custom") {
+        return saved;
+      }
+    } catch {
+      // localStorage 不可用时回退名称序
+    }
+    return "name";
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SORT_BY_STORAGE_KEY, sortBy);
+    } catch {
+      // 忽略持久化失败
+    }
+  }, [sortBy]);
 
   const visibleContentTypes = useMemo(() => {
     const current = appearanceSettings?.contentTypes;
@@ -760,6 +781,16 @@ export function Sidebar({
     };
   };
 
+  /** 事件是否落在某个可拖行内部（这类事件交给行自己的 handler）。 */
+  const originatesInsideRow = (event: React.DragEvent): boolean => {
+    const rowEl = (event.target as HTMLElement | null)?.closest?.(
+      '[draggable="true"]',
+    );
+    return (
+      !!rowEl && (event.currentTarget as HTMLElement).contains(rowEl)
+    );
+  };
+
   const dndContainerProps = (): ReturnType<
     SidebarDndValue["containerProps"]
   > => {
@@ -767,12 +798,13 @@ export function Sidebar({
     return {
       onDragOver: (event: React.DragEvent) => {
         if (!draggingRef.current) return;
-        // 只接管真正落在容器空白处的事件（行内的 dragover 已 stopPropagation）
-        if (event.target !== event.currentTarget) return;
+        // 行内的 dragover/drop 由行自己的 handler 处理（会 stopPropagation）。
+        // 这里只忽略「落在某个可拖行内部」的事件；容器空白、行间 wrapper 缝隙都算根区落点。
+        if (originatesInsideRow(event)) return;
         event.preventDefault();
       },
       onDrop: (event: React.DragEvent) => {
-        if (event.target !== event.currentTarget) return;
+        if (originatesInsideRow(event)) return;
         handleRootDrop(event);
       },
     };
