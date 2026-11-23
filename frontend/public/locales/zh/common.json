@@ -738,7 +738,7 @@
     "clear_readability_cache": "清理 Readability 缓存",
     "clear_readability_cache_description": "删除所有提取的正文内容",
     "clear_entry_cache": "清理文章缓存",
-    "clear_entry_cache_description": "删除已读且未收藏的文章 (保留已收藏和未读的文章)",
+    "clear_entry_cache_description": "按上方保留天数清理已读且未收藏的文章 (保留已收藏和未读的文章)",
     "cache_entry_retention_label": "保留最近已读文章",
     "cache_entry_retention_hint": "只清理早于设定天数的已读未收藏文章（按最近阅读/更新时间计算）；0 = 全部清理",
     "cache_tombstone_retention_label": "已清理文章的保留期",
