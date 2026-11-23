@@ -79,6 +79,11 @@ func (r *feedRepository) Create(ctx context.Context, feed model.Feed) (model.Fee
 	if err != nil {
 		return model.Feed{}, fmt.Errorf("create feed: %w", err)
 	}
+	var sortOrder int
+	if err := r.db.QueryRowContext(ctx, `SELECT sort_order FROM feeds WHERE id = ?`, feed.ID).Scan(&sortOrder); err != nil {
+		return model.Feed{}, fmt.Errorf("read feed sort order: %w", err)
+	}
+	feed.SortOrder = sortOrder
 	feed.CreatedAt = now
 	feed.UpdatedAt = now
 	return feed, nil

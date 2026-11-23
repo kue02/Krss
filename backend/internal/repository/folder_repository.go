@@ -57,6 +57,11 @@ func (r *folderRepository) Create(ctx context.Context, name string, parentID *in
 		return model.Folder{}, fmt.Errorf("create folder: %w", err)
 	}
 
+	var sortOrder int
+	if err := r.db.QueryRowContext(ctx, `SELECT sort_order FROM folders WHERE id = ?`, id).Scan(&sortOrder); err != nil {
+		return model.Folder{}, fmt.Errorf("read folder sort order: %w", err)
+	}
+
 	return model.Folder{
 		ID:        id,
 		Name:      name,
@@ -64,6 +69,7 @@ func (r *folderRepository) Create(ctx context.Context, name string, parentID *in
 		Type:      folderType,
 		CreatedAt: now,
 		UpdatedAt: now,
+		SortOrder: sortOrder,
 	}, nil
 }
 
