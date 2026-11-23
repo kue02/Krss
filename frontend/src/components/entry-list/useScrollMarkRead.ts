@@ -6,7 +6,11 @@ import {
   useState,
   type RefObject,
 } from "react";
-import { useMarkManyAsRead, useRemoveFromUnreadList } from "@/hooks/useEntries";
+import {
+  useMarkManyAsRead,
+  useRemoveFromUnreadList,
+  useRemoveReadEntriesFromUnreadList,
+} from "@/hooks/useEntries";
 import type { Entry } from "@/types/api";
 import type { ScrollSurface } from "./scroll-surface";
 import { clearDeferredRemovals, deferEntryRemoval, deferredRemovalIds as getDeferredRemovalIds } from "./deferred-removal";
@@ -71,6 +75,7 @@ export function useScrollMarkRead({
 }: UseScrollMarkReadOptions): UseScrollMarkReadResult {
   const { mutate: markManyAsRead } = useMarkManyAsRead();
   const removeFromUnreadList = useRemoveFromUnreadList();
+  const removeReadEntriesFromUnreadList = useRemoveReadEntriesFromUnreadList();
   const seenEntryIds = useRef(new Set<string>());
   const markedReadIds = useRef(new Set<string>());
   /**
@@ -198,6 +203,15 @@ export function useScrollMarkRead({
       removeFromUnreadList(pendingIds);
       deferredRemovalIds.current.clear();
     }
+
+    /**
+     * 兜底：把「只看未读」缓存里所有 read=true 的条目一并摘掉。
+     * 解决「点开条目」路径（EntryContent 卸载走 deferUnreadRemovals）和「滚动批次还没落账
+     * 就导航」竞态下的漏记账 —— 这些已读条目会留在 unreadOnly 缓存里，表现为「已读却不消失」，
+     * 只有刷新或重拉才清。离开列表时按 read 扫一遍，谁读过就统一摘，不依赖具体 id 记账。
+     */
+    removeReadEntriesFromUnreadList();
+
     // 22-3：同时把「先别消失」的记账清掉 —— 这一步之后回来的列表本来就不该再有它们
     clearDeferredRemovals();
 
@@ -215,7 +229,7 @@ export function useScrollMarkRead({
       clearTimeout(graceTimer.current);
       graceTimer.current = null;
     }
-  }, [removeFromUnreadList, resetKey]);
+  }, [removeFromUnreadList, removeReadEntriesFromUnreadList, resetKey]);
 
   useEffect(() => {
     return () => {

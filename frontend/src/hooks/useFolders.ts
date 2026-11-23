@@ -55,8 +55,17 @@ export function useUpdateFolderType() {
 export function useUpdateFolder() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { id: string; name: string }) =>
-      updateFolder(payload.id, { name: payload.name }),
+    mutationFn: (payload: {
+      id: string;
+      name: string;
+      parentId?: string;
+      sortOrder?: number;
+    }) =>
+      updateFolder(payload.id, {
+        name: payload.name,
+        parentId: payload.parentId,
+        sortOrder: payload.sortOrder,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["folders"] });
       queryClient.invalidateQueries({ queryKey: ["feeds"] });

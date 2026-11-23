@@ -18,6 +18,7 @@ const {
   mockTranslationActionsGet,
   mockMarkManyAsRead,
   mockRemoveFromUnreadList,
+  mockRemoveReadEntriesFromUnreadList,
 } = vi.hoisted(() => ({
   mockRenderedEntryListItem: vi.fn(),
   mockNeedsTranslation: vi.fn(() => Promise.resolve(true)),
@@ -27,6 +28,7 @@ const {
   mockTranslationActionsGet: vi.fn((): any => undefined),
   mockMarkManyAsRead: vi.fn(),
   mockRemoveFromUnreadList: vi.fn(),
+  mockRemoveReadEntriesFromUnreadList: vi.fn(),
 }));
 
 vi.mock("react-i18next", () => ({
@@ -38,6 +40,7 @@ vi.mock("@/hooks/useEntries", () => ({
   useUnreadCounts: vi.fn(() => ({ data: undefined })),
   useMarkManyAsRead: vi.fn(() => ({ mutate: mockMarkManyAsRead })),
   useRemoveFromUnreadList: vi.fn(() => mockRemoveFromUnreadList),
+  useRemoveReadEntriesFromUnreadList: vi.fn(() => mockRemoveReadEntriesFromUnreadList),
   // 键盘快捷键（useEntryHotkeys）会用到这两个；补上以免 mock 缺导出
   useMarkAsRead: vi.fn(() => ({ mutate: vi.fn() })),
   useMarkAsStarred: vi.fn(() => ({ mutate: vi.fn() })),

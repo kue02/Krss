@@ -16,7 +16,9 @@ import (
 type FolderService interface {
 	Create(ctx context.Context, name string, parentID *int64, folderType string) (model.Folder, error)
 	List(ctx context.Context) ([]model.Folder, error)
-	Update(ctx context.Context, id int64, name string, parentID *int64) (model.Folder, error)
+	// Update 改名/改父级；sortOrder 非 nil 时一并写拖动排序（迁移 39）。
+	// 只传 sortOrder（name 为空）时视为「纯拖动排序」：只改 sort_order，不动名称与父级。
+	Update(ctx context.Context, id int64, name string, parentID *int64, sortOrder *int64) (model.Folder, error)
 	UpdateType(ctx context.Context, id int64, folderType string) error
 	// UpdateProxyOverride 写文件夹级代理覆盖（迁移 26）：跟随父级 / 走代理 / 直连
 	UpdateProxyOverride(ctx context.Context, id int64, update ProxyOverrideUpdate) (model.Folder, error)
@@ -100,8 +102,24 @@ func (s *folderService) List(ctx context.Context) ([]model.Folder, error) {
 	return folders, nil
 }
 
-func (s *folderService) Update(ctx context.Context, id int64, name string, parentID *int64) (model.Folder, error) {
+func (s *folderService) Update(ctx context.Context, id int64, name string, parentID *int64, sortOrder *int64) (model.Folder, error) {
 	trimmed := strings.TrimSpace(name)
+	// 纯拖动排序：前端只传 sortOrder、不带 name（拖动排序不想动名称与父级）。
+	// 只更新 sort_order，跳过「名称不能为空」校验与父级改动，避免把文件夹挪到根目录。
+	if trimmed == "" && sortOrder != nil {
+		if _, err := s.folders.GetByID(ctx, id); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return model.Folder{}, ErrNotFound
+			}
+			return model.Folder{}, fmt.Errorf("get folder: %w", err)
+		}
+		if err := s.folders.UpdateSortOrder(ctx, id, *sortOrder); err != nil {
+			logger.Error("folder sort order update failed", "module", "service", "action", "update", "resource", "folder", "result", "failed", "folder_id", id, "error", err)
+			return model.Folder{}, err
+		}
+		logger.Info("folder sort order updated", "module", "service", "action", "update", "resource", "folder", "result", "ok", "folder_id", id, "sort_order", *sortOrder)
+		return s.folders.GetByID(ctx, id)
+	}
 	if trimmed == "" {
 		return model.Folder{}, ErrInvalid
 	}
@@ -114,19 +132,27 @@ func (s *folderService) Update(ctx context.Context, id int64, name string, paren
 	} else if hasCycle {
 		return model.Folder{}, ErrInvalid
 	}
+	var parentType string
 	if parentID != nil {
-		if _, err := s.folders.GetByID(ctx, *parentID); err != nil {
+		parent, err := s.folders.GetByID(ctx, *parentID)
+		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return model.Folder{}, ErrNotFound
 			}
 			return model.Folder{}, fmt.Errorf("check parent folder: %w", err)
 		}
+		parentType = parent.Type
 	}
-	if _, err := s.folders.GetByID(ctx, id); err != nil {
+	current, err := s.folders.GetByID(ctx, id)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return model.Folder{}, ErrNotFound
 		}
 		return model.Folder{}, fmt.Errorf("get folder: %w", err)
+	}
+	// 与订阅侧对齐：目标父文件夹必须与自身内容类型一致，否则拒绝（防跨类型嵌套）。
+	if parentID != nil && parentType != "" && current.Type != "" && parentType != current.Type {
+		return model.Folder{}, ErrInvalid
 	}
 	if existing, err := s.folders.FindByName(ctx, trimmed, parentID); err != nil {
 		return model.Folder{}, fmt.Errorf("check folder name: %w", err)
@@ -138,6 +164,13 @@ func (s *folderService) Update(ctx context.Context, id int64, name string, paren
 	if err != nil {
 		logger.Error("folder update failed", "module", "service", "action", "update", "resource", "folder", "result", "failed", "folder_id", id, "error", err)
 		return model.Folder{}, err
+	}
+	if sortOrder != nil {
+		if err := s.folders.UpdateSortOrder(ctx, id, *sortOrder); err != nil {
+			logger.Error("folder sort order update failed", "module", "service", "action", "update", "resource", "folder", "result", "failed", "folder_id", id, "error", err)
+			return model.Folder{}, err
+		}
+		updated.SortOrder = int(*sortOrder)
 	}
 	logger.Info("folder updated", "module", "service", "action", "update", "resource", "folder", "result", "ok", "folder_id", updated.ID)
 	return updated, nil

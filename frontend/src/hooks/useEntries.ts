@@ -242,6 +242,49 @@ export function useMarkManyAsRead() {
   });
 }
 
+/**
+ * 兜底清理：把「只看未读」缓存里**所有已读（read === true）**的条目一次性摘掉。
+ *
+ * 为什么需要它：延迟摘除（`deferRemoval`）只对**记过账**的 id 生效。但「点开条目」
+ * 路径（`EntryContent` 卸载走 `deferUnreadRemovals`）和「滚动标已读批次还没落账就导航」
+ * 的竞态，都会出现「服务端已标已读、乐观更新也把缓存里的 read 置真，却没进 deferred 记账」
+ * 的条目。这类条目留在 unreadOnly 缓存里，回到列表时就变成「已读却不消失」，只有刷新
+ * 或重拉才会清（用户报的 BUG：「分享」读完 → 点回内容类型视图 → 再回「分享」不消失）。
+ *
+ * 语义：任何时候**离开**一个列表，unreadOnly 缓存里都不该再出现已读条目。所以在
+ * `useScrollMarkRead` 的 flush effect（resetKey 变 = 离开列表）里调用它，按 read 字段
+ * 扫一遍所有 unreadOnly 查询，把已读条目统一摘掉 —— 不依赖具体 id 记账，覆盖所有路径。
+ */
+export function useRemoveReadEntriesFromUnreadList() {
+  const queryClient = useQueryClient();
+
+  return useCallback(() => {
+    const queries = queryClient.getQueriesData<{
+      pages: { entries: Entry[]; hasMore?: boolean }[];
+    }>({
+      queryKey: ["entries"],
+    });
+
+    for (const [queryKey, data] of queries) {
+      const params = queryKey[1] as EntryListParams | undefined;
+      // 只处理「只看未读」的查询：非 unreadOnly 列表本来就可以有已读条目
+      if (!params?.unreadOnly || !data) continue;
+
+      let changed = false;
+      const pages = data.pages.map((page) => {
+        const kept = page.entries.filter((entry) => !entry.read);
+        if (kept.length === page.entries.length) return page;
+        changed = true;
+        return { ...page, entries: kept };
+      });
+
+      if (changed) {
+        queryClient.setQueryData(queryKey, { ...data, pages });
+      }
+    }
+  }, [queryClient]);
+}
+
 /** Remove specific entries from unreadOnly list cache (for delayed removal) */
 export function useRemoveFromUnreadList() {
   const queryClient = useQueryClient();

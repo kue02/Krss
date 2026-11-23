@@ -200,8 +200,9 @@ func main() {
 
 	pluginHandler := handler.NewPluginHandler(pluginService)
 	exportHandler := handler.NewExportHandler(service.NewExportService(settingsService))
+	backupHandler := handler.NewBackupHandler(service.NewBackupService(folderRepo, feedRepo, settingsRepo, pluginRepo, mcpServerRepo))
 
-	router := transport.NewRouter(folderHandler, feedHandler, entryHandler, opmlHandler, iconHandler, proxyHandler, settingsHandler, aiHandler, authHandler, domainRateLimitHandler, filterHandler, proxySourceHandler, mcpHandler, mcpEndpointHandler, pluginHandler, exportHandler, authService, cfg.StaticDir, cfg.EnableSwagger)
+	router := transport.NewRouter(folderHandler, feedHandler, entryHandler, opmlHandler, iconHandler, proxyHandler, settingsHandler, aiHandler, authHandler, domainRateLimitHandler, filterHandler, proxySourceHandler, mcpHandler, mcpEndpointHandler, pluginHandler, exportHandler, backupHandler, authService, cfg.StaticDir, cfg.EnableSwagger)
 	pprofServer := startPprofServer(cfg.PprofAddr)
 
 	// 定时刷新：间隔来自设置（设置 → 高级 → 拉取），每轮重新读一次 —— 改完下一轮生效，不用重启

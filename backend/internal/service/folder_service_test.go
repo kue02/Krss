@@ -149,9 +149,34 @@ func TestFolderService_Update_Success(t *testing.T) {
 		Update(ctx, folderID, "New Name", (*int64)(nil)).
 		Return(model.Folder{ID: folderID, Name: "New Name"}, nil)
 
-	folder, err := svc.Update(ctx, folderID, "New Name", nil)
+	folder, err := svc.Update(ctx, folderID, "New Name", nil, nil)
 	require.NoError(t, err)
 	require.Equal(t, "New Name", folder.Name)
+}
+
+func TestFolderService_Update_CrossTypeParentRejected(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockFolders := mock.NewMockFolderRepository(ctrl)
+	mockFeeds := mock.NewMockFeedRepository(ctrl)
+	svc := service.NewFolderService(mockFolders, mockFeeds)
+	ctx := context.Background()
+
+	folderID := int64(123)
+	parentID := int64(200)
+
+	// detectCycle 走一次 GetByID(parent)；随后类型校验再取一次父与自身。
+	mockFolders.EXPECT().
+		GetByID(ctx, parentID).
+		Return(model.Folder{ID: parentID, Name: "ArticleParent", Type: "article"}, nil).
+		Times(2)
+	mockFolders.EXPECT().
+		GetByID(ctx, folderID).
+		Return(model.Folder{ID: folderID, Name: "SocialChild", Type: "social"}, nil)
+
+	_, err := svc.Update(ctx, folderID, "SocialChild", &parentID, nil)
+	require.ErrorIs(t, err, service.ErrInvalid)
 }
 
 func TestFolderService_Update_DirectCycle(t *testing.T) {
@@ -166,7 +191,7 @@ func TestFolderService_Update_DirectCycle(t *testing.T) {
 	folderID := int64(123)
 
 	// Attempt to set parent to self
-	_, err := svc.Update(ctx, folderID, "Test", &folderID)
+	_, err := svc.Update(ctx, folderID, "Test", &folderID, nil)
 	require.ErrorIs(t, err, service.ErrInvalid)
 }
 
@@ -196,7 +221,7 @@ func TestFolderService_Update_IndirectCycle(t *testing.T) {
 		Return(folderB, nil)
 
 	// Try to set A's parent to C (would create cycle: A -> C -> B -> A)
-	_, err := svc.Update(ctx, idA, "A", &idC)
+	_, err := svc.Update(ctx, idA, "A", &idC, nil)
 	require.ErrorIs(t, err, service.ErrInvalid)
 }
 
@@ -365,7 +390,7 @@ func TestFolderService_Update_NameConflict(t *testing.T) {
 		FindByName(ctx, "Existing Name", &parentID).
 		Return(existingFolder, nil)
 
-	_, err := svc.Update(ctx, folderID, "Existing Name", &parentID)
+	_, err := svc.Update(ctx, folderID, "Existing Name", &parentID, nil)
 	require.ErrorIs(t, err, service.ErrConflict)
 }
 
@@ -394,7 +419,7 @@ func TestFolderService_Update_SameNameOK(t *testing.T) {
 		Update(ctx, folderID, "Same Name", (*int64)(nil)).
 		Return(model.Folder{ID: folderID, Name: "Same Name"}, nil)
 
-	_, err := svc.Update(ctx, folderID, "Same Name", nil)
+	_, err := svc.Update(ctx, folderID, "Same Name", nil, nil)
 	require.NoError(t, err)
 }
 
@@ -469,7 +494,7 @@ func TestFolderService_Update_CycleDetectionError(t *testing.T) {
 		GetByID(ctx, parentID).
 		Return(model.Folder{}, dbError)
 
-	_, err := svc.Update(ctx, folderID, "Test", &parentID)
+	_, err := svc.Update(ctx, folderID, "Test", &parentID, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}

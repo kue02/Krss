@@ -290,6 +290,20 @@ func (mr *MockFeedRepositoryMockRecorder) UpdateSiteURL(ctx, id, siteURL any) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateSiteURL", reflect.TypeOf((*MockFeedRepository)(nil).UpdateSiteURL), ctx, id, siteURL)
 }
 
+// UpdateSortOrder mocks base method.
+func (m *MockFeedRepository) UpdateSortOrder(ctx context.Context, id, sortOrder int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateSortOrder", ctx, id, sortOrder)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateSortOrder indicates an expected call of UpdateSortOrder.
+func (mr *MockFeedRepositoryMockRecorder) UpdateSortOrder(ctx, id, sortOrder any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateSortOrder", reflect.TypeOf((*MockFeedRepository)(nil).UpdateSortOrder), ctx, id, sortOrder)
+}
+
 // UpdateType mocks base method.
 func (m *MockFeedRepository) UpdateType(ctx context.Context, id int64, feedType string) error {
 	m.ctrl.T.Helper()

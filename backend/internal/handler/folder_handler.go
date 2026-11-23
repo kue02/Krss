@@ -23,6 +23,8 @@ type folderRequest struct {
 	Name     string  `json:"name"`
 	ParentID *string `json:"parentId"`
 	Type     string  `json:"type"`
+	// SortOrder 拖动排序（迁移 39）：可选，Update 时传了才改；只传它（不带 name）即纯排序。
+	SortOrder *int64 `json:"sortOrder"`
 }
 
 type updateFolderTypeRequest struct {
@@ -38,6 +40,7 @@ type folderResponse struct {
 	Name      string  `json:"name"`
 	ParentID  *string `json:"parentId,omitempty"`
 	Type      string  `json:"type"`
+	SortOrder int     `json:"sortOrder"`
 	CreatedAt string  `json:"createdAt"`
 	UpdatedAt string  `json:"updatedAt"`
 	// 代理覆盖（14 批）：inherit = 跟随父级文件夹链 → 全局；proxy / direct 是本层自己选的
@@ -196,7 +199,7 @@ func (h *FolderHandler) Update(c echo.Context) error {
 		}
 		parentID = &pid
 	}
-	folder, err := h.service.Update(c.Request().Context(), id, req.Name, parentID)
+	folder, err := h.service.Update(c.Request().Context(), id, req.Name, parentID, req.SortOrder)
 	if err != nil {
 		logger.Error("folder update failed", "module", "handler", "action", "update", "resource", "folder", "result", "failed", "folder_id", id, "error", err)
 		return writeServiceError(c, err)
@@ -302,6 +305,7 @@ func toFolderResponse(folder model.Folder) folderResponse {
 		Name:        folder.Name,
 		ParentID:    idPtrToString(folder.ParentID),
 		Type:        folder.Type,
+		SortOrder:   folder.SortOrder,
 		CreatedAt:   folder.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:   folder.UpdatedAt.UTC().Format(time.RFC3339),
 		ProxyMode:   service.ProxyModeToString(folder.ProxyMode),

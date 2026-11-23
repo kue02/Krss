@@ -6,12 +6,14 @@ import { setUISetting } from "@/hooks/useUISettings";
 const {
   mockMarkManyAsRead,
   mockRemoveFromUnreadList,
+  mockRemoveReadEntriesFromUnreadList,
   mockFetchNextPage,
   mockVisibleEntryCount,
   mockWindowScrollTo,
 } = vi.hoisted(() => ({
   mockMarkManyAsRead: vi.fn(),
   mockRemoveFromUnreadList: vi.fn(),
+  mockRemoveReadEntriesFromUnreadList: vi.fn(),
   mockFetchNextPage: vi.fn(),
   mockVisibleEntryCount: { value: Number.POSITIVE_INFINITY },
   mockWindowScrollTo: vi.fn(),
@@ -57,6 +59,7 @@ vi.mock("@/hooks/useEntries", () => ({
   useUnreadCounts: vi.fn(() => ({ data: undefined })),
   useMarkManyAsRead: vi.fn(() => ({ mutate: mockMarkManyAsRead })),
   useRemoveFromUnreadList: vi.fn(() => mockRemoveFromUnreadList),
+  useRemoveReadEntriesFromUnreadList: vi.fn(() => mockRemoveReadEntriesFromUnreadList),
 }));
 
 vi.mock("@/hooks/useFeeds", () => ({

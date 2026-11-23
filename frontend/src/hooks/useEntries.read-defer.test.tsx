@@ -20,7 +20,11 @@ vi.mock("@/api", () => ({
   getStarredCount: vi.fn(),
 }));
 
-import { useMarkAsRead, useMarkAsStarred } from "./useEntries";
+import {
+  useMarkAsRead,
+  useMarkAsStarred,
+  useRemoveReadEntriesFromUnreadList,
+} from "./useEntries";
 import { updateEntryStarred } from "@/api";
 
 function makeEntry(id: string, read = false): Entry {
@@ -252,5 +256,44 @@ describe("useMarkAsStarred —— 59 星标乐观更新不触发 entries 重拉"
       .findAll({ queryKey: ["entries"] })
       .find((q) => (q.queryKey[1] as { tag?: string } | undefined)?.tag === "u");
     expect(unreadQuery?.state.isInvalidated).toBe(false);
+  });
+});
+
+describe("useRemoveReadEntriesFromUnreadList —— 离开列表按 read 兜底摘除已读条目", () => {
+  it("摘掉 unreadOnly 里的已读条目、保留未读，且不动非 unreadOnly 查询", () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    // unreadOnly：a 已读（模拟「点开路径/竞态」漏记账的残留）、b 未读
+    client.setQueryData(["entries", { unreadOnly: true, tag: "u" }], {
+      pages: [
+        { entries: [makeEntry("a", true), makeEntry("b", false)], hasMore: false },
+      ],
+    });
+    // 非 unreadOnly：本来就允许有已读条目，不应被动
+    client.setQueryData(["entries", { unreadOnly: false, tag: "all" }], {
+      pages: [
+        { entries: [makeEntry("a", true), makeEntry("b", false)], hasMore: false },
+      ],
+    });
+
+    const { result } = renderHook(() => useRemoveReadEntriesFromUnreadList(), {
+      wrapper: wrapper(client),
+    });
+    act(() => {
+      result.current();
+    });
+
+    const unread = client.getQueryData<{ pages: { entries: Entry[] }[] }>([
+      "entries",
+      { unreadOnly: true, tag: "u" },
+    ]);
+    expect(unread?.pages[0]?.entries.map((e) => e.id)).toEqual(["b"]);
+
+    const all = client.getQueryData<{ pages: { entries: Entry[] }[] }>([
+      "entries",
+      { unreadOnly: false, tag: "all" },
+    ]);
+    expect(all?.pages[0]?.entries.map((e) => e.id)).toEqual(["a", "b"]);
   });
 });

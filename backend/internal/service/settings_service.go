@@ -1584,21 +1584,50 @@ func importableSettingKeys() []string {
 	}
 }
 
-// excludedSettingKeys 导出时排除的键，会原样写进导出文件里（让用户知道漏了哪些、为什么）。
-func excludedSettingKeys() []string {
+// neverExportSettingKeys 账号安全类键：任何情况下都不导出/导入（随实例走，导出反而危险且无用）。
+func neverExportSettingKeys() []string {
+	return []string{
+		keyUserPasswordHash,
+		keyUserJWTSecret,
+	}
+}
+
+// sensitiveSettingKeys 敏感凭证键：默认排除，仅在用户显式勾选「敏感凭证」时才导出。
+// **新增插件 secret 字段时同步这里**（有守门测试 settings_plugin_secret_test.go 盯着：漏了会红）。
+// 注意：这里的键必须能通过「插件 secret 声明」守门测试，故 plugin.* 类放在 extraSensitiveSettingKeys。
+func sensitiveSettingKeys() []string {
 	return []string{
 		keyAIAPIKey,
 		keyAIProviders,
 		keyNetworkPassword,
-		keyUserPasswordHash,
-		keyUserJWTSecret,
 		// 站点会话 cookie：按前缀整体排除（anubis.cookie.<host>）
 		"anubis.cookie.*",
-		// 插件密钥：**新增插件 secret 字段时同步这里**（有守门测试
-		// settings_plugin_secret_test.go 盯着：漏了会红，不用靠人记）。
 		// 地址里带设备 key，等同于凭证。
 		"plugin.bark.url",
+		// 旧键（migration 保留）：值等同 plugin.bark.url，同样含设备 key。
+		"notify.bark_url",
+		// Krss 对外 MCP 的 Bearer token（含前缀 / 哈希等派生值）。
+		"mcp.outbound_token",
+		"mcp.outbound_token_prefix",
+		"mcp.outbound_token_hash",
+		// RSSHub 实例 ACCESS_KEY 的旧键。
+		"general.rsshub_access_key",
 	}
+}
+
+// extraSensitiveSettingKeys：属于敏感凭证、但因前端需要明文拼地址而不能声明为 secret 的键。
+// 不进 excludedSettingKeys（守门测试只认 secret 声明），但备份导出默认仍排除它们。
+func extraSensitiveSettingKeys() []string {
+	return []string{
+		"plugin.rsshub.access_key",
+		"rsshub.access_key",
+	}
+}
+
+// excludedSettingKeys 默认导出排除清单（= 永不出导 + 敏感凭证），保留给设置导出与守门测试。
+func excludedSettingKeys() []string {
+	out := append([]string{}, neverExportSettingKeys()...)
+	return append(out, sensitiveSettingKeys()...)
 }
 
 // validateImportedValue 对导入的结构化值做一次真校验 —— 白名单只管「键认不认」，

@@ -144,6 +144,20 @@ func (mr *MockFolderRepositoryMockRecorder) UpdateProxyOverride(ctx, id, mode, c
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateProxyOverride", reflect.TypeOf((*MockFolderRepository)(nil).UpdateProxyOverride), ctx, id, mode, cfg)
 }
 
+// UpdateSortOrder mocks base method.
+func (m *MockFolderRepository) UpdateSortOrder(ctx context.Context, id, sortOrder int64) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateSortOrder", ctx, id, sortOrder)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateSortOrder indicates an expected call of UpdateSortOrder.
+func (mr *MockFolderRepositoryMockRecorder) UpdateSortOrder(ctx, id, sortOrder any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateSortOrder", reflect.TypeOf((*MockFolderRepository)(nil).UpdateSortOrder), ctx, id, sortOrder)
+}
+
 // UpdateType mocks base method.
 func (m *MockFolderRepository) UpdateType(ctx context.Context, id int64, folderType string) error {
 	m.ctrl.T.Helper()

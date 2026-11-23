@@ -28,6 +28,7 @@ func NewRouter(
 	mcpEndpointHandler *handler.MCPEndpointHandler,
 	pluginHandler *handler.PluginHandler,
 	exportHandler *handler.ExportHandler,
+	backupHandler *handler.BackupHandler,
 	authService service.AuthService,
 	staticDir string,
 	enableSwagger bool,
@@ -70,6 +71,7 @@ func NewRouter(
 	// 插件模块（55 批）：清单 / 启停 / 设置 / 测试动作
 	pluginHandler.RegisterRoutes(api)
 	exportHandler.RegisterRoutes(api)
+	backupHandler.RegisterRoutes(api)
 
 	// MCP 出向端点 /mcp：**不走 JWT** —— 它用长期 token（MCP 客户端只会带这个）
 	mcpEndpointHandler.RegisterRoutes(e)

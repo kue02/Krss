@@ -15,7 +15,15 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { ChevronIcon, FolderIcon } from "@/components/ui/icons";
-import { FolderCog, ListFilter, Pencil, RefreshCw, Tags, Trash2 } from "lucide-react";
+import {
+  FolderCog,
+  FolderInput,
+  ListFilter,
+  Pencil,
+  RefreshCw,
+  Tags,
+  Trash2,
+} from "lucide-react";
 import { useContextMenu } from "@/hooks/useContextMenu";
 import { useCategoryState } from "@/hooks/useCategoryState";
 import { Ripple } from "m3-ripple";
@@ -23,13 +31,35 @@ import { feedItemStyles, sidebarItemIconStyles } from "./styles";
 import { openFilterEditorForFolder } from "@/stores/filter-editor-store";
 import type { FilterRule } from "@/types/filters";
 import { contentTypeMeta } from "@/lib/content-type-meta";
-import type { ContentType } from "@/types/api";
+import type { ContentType, Folder } from "@/types/api";
+import { useSidebarDndOptional } from "./sidebar-dnd";
 
 /** 12-19：文件夹右键「更改类型」子菜单的图标 —— 与中栏切换器/订阅右键共用同一份 `contentTypeMeta`（11-6 抽的） */
 function ContentTypeIcon({ type }: { type: ContentType }) {
   const Icon = contentTypeMeta[type].icon;
   return <Icon className="size-4 shrink-0 text-muted-foreground" />;
 }
+
+/** 收集 rootId 的所有后代文件夹 id（含多级），用于「移动到文件夹」候选排除自身子树、防成环 */
+function collectDescendantIds(rootId: string, list: Folder[]): Set<string> {
+  const childrenByParent = new Map<string, Folder[]>();
+  for (const folder of list) {
+    if (!folder.parentId) continue;
+    const siblings = childrenByParent.get(folder.parentId) ?? [];
+    siblings.push(folder);
+    childrenByParent.set(folder.parentId, siblings);
+  }
+  const result = new Set<string>();
+  const stack = [...(childrenByParent.get(rootId) ?? [])];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    if (result.has(node.id)) continue;
+    result.add(node.id);
+    stack.push(...(childrenByParent.get(node.id) ?? []));
+  }
+  return result;
+}
+
 interface FeedCategoryProps {
   name: string;
   folderId: string;
@@ -41,6 +71,11 @@ interface FeedCategoryProps {
   stateKey?: string;
   /** 21-2：嵌套深度（子文件夹缩进） */
   depth?: number;
+  /** 拖拽用：这一行在页面上所处的容器文件夹 id（顶层为 undefined）与内容类型 */
+  containerId?: string;
+  contentType?: ContentType;
+  /** 同内容类型的全部文件夹（用于「移动到文件夹」候选与后代排除） */
+  folderOptions?: Folder[];
   onSelect?: () => void;
   onBulkOverrides?: (folderId: string) => void;
   /** 12-9：刷新这个分类下的所有订阅 */
@@ -48,6 +83,8 @@ interface FeedCategoryProps {
   onRename?: (folderId: string) => void;
   onDelete?: (folderId: string) => void;
   onChangeType?: (folderId: string, type: ContentType) => void;
+  /** 「移动到文件夹」：parentId 为 null 表示移到顶层 */
+  onMoveToFolder?: (folderId: string, parentId: string | null) => void;
 }
 
 export function FeedCategory({
@@ -59,16 +96,47 @@ export function FeedCategory({
   isSelected = false,
   stateKey,
   depth = 0,
+  containerId,
+  contentType,
+  folderOptions,
   onSelect,
   onBulkOverrides,
   onRefresh,
   onRename,
   onDelete,
   onChangeType,
+  onMoveToFolder,
 }: FeedCategoryProps) {
   const { t } = useTranslation();
   const [open, , toggle] = useCategoryState(stateKey ?? name, defaultOpen);
   const triggerRef = useRef<HTMLDivElement>(null);
+  const dnd = useSidebarDndOptional();
+
+  /** 「移动到文件夹」候选：同类型文件夹里，排除自己与自己的所有后代（否则会成环） */
+  const moveTargets = (() => {
+    if (!onMoveToFolder || !folderOptions) return [];
+    const descendants = collectDescendantIds(folderId, folderOptions);
+    return folderOptions.filter(
+      (folder) => folder.id !== folderId && !descendants.has(folder.id),
+    );
+  })();
+
+  const rowDndProps =
+    dnd && dnd.canDrag
+      ? dnd.rowProps(
+          {
+            kind: "folder",
+            id: folderId,
+            type: contentType ?? "article",
+            containerId,
+          },
+          "folder",
+        )
+      : {};
+  const dropPosition =
+    dnd?.dropTarget?.kind === "folder" && dnd.dropTarget.id === folderId
+      ? dnd.dropTarget.position
+      : null;
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent | { pageX: number; pageY: number }) => {
@@ -103,9 +171,23 @@ export function FeedCategory({
         <ContextMenuTrigger asChild ref={triggerRef}>
           <div
             data-active={isSelected}
-            className={cn(feedItemStyles, "group relative py-0.5 pl-2.5 pr-2")}
+            data-dnd-drop={dropPosition ?? undefined}
+            className={cn(
+              feedItemStyles,
+              "group relative py-0.5 pl-2.5 pr-2",
+              dnd?.dragging?.kind === "folder" &&
+                dnd.dragging.id === folderId &&
+                "opacity-50",
+              dropPosition === "inside" &&
+                "bg-primary/10 ring-1 ring-inset ring-primary/40",
+              dropPosition === "before" &&
+                "before:content-[''] before:absolute before:inset-x-1 before:-top-px before:h-0.5 before:rounded-full before:bg-primary",
+              dropPosition === "after" &&
+                "after:content-[''] after:absolute after:inset-x-1 after:-bottom-px after:h-0.5 after:rounded-full after:bg-primary",
+            )}
             onClick={onSelect}
             {...contextMenuProps}
+            {...rowDndProps}
           >
           <Ripple hoverOpacity={0} pressedOpacity={0.05} duration={100} />
             {/* Arrow button - only this toggles expand/collapse */}
@@ -198,6 +280,28 @@ export function FeedCategory({
                   <ContentTypeIcon type="social" />
                   {t("content_type.social")}
                 </ContextMenuItem>
+              </ContextMenuSubContent>
+            </ContextMenuSub>
+          )}
+          {onMoveToFolder && (
+            <ContextMenuSub>
+              <ContextMenuSubTrigger>
+                <FolderInput className="size-4 shrink-0 text-muted-foreground" />
+                {t("actions.move_to_folder")}
+              </ContextMenuSubTrigger>
+              <ContextMenuSubContent>
+                <ContextMenuItem onClick={() => onMoveToFolder(folderId, null)}>
+                  <FolderInput className="size-4 shrink-0 text-muted-foreground" />
+                  {t("actions.move_to_root")}
+                </ContextMenuItem>
+                {moveTargets.map((folder) => (
+                  <ContextMenuItem
+                    key={folder.id}
+                    onClick={() => onMoveToFolder(folderId, folder.id)}
+                  >
+                    {folder.name}
+                  </ContextMenuItem>
+                ))}
               </ContextMenuSubContent>
             </ContextMenuSub>
           )}

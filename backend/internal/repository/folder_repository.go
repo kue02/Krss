@@ -18,6 +18,8 @@ type FolderRepository interface {
 	FindByName(ctx context.Context, name string, parentID *int64) (*model.Folder, error)
 	List(ctx context.Context) ([]model.Folder, error)
 	Update(ctx context.Context, id int64, name string, parentID *int64) (model.Folder, error)
+	// UpdateSortOrder 只更新单条文件夹的拖动排序值（迁移 39），不碰名称/父级/类型。
+	UpdateSortOrder(ctx context.Context, id int64, sortOrder int64) error
 	UpdateType(ctx context.Context, id int64, folderType string) error
 	// UpdateProxyOverride 只写代理覆盖两列（迁移 26）：mode nil = 跟随父级文件夹链 → 全局。
 	UpdateProxyOverride(ctx context.Context, id int64, mode *model.ProxyMode, cfg *model.ProxyOverrideConfig) error
@@ -38,18 +40,26 @@ func (r *folderRepository) Create(ctx context.Context, name string, parentID *in
 	if folderType == "" {
 		folderType = "article"
 	}
+	// sort_order 取同父容器最大值 +1，新文件夹排到末尾（而不是恒为 0 挤到最前）。
 	_, err := r.db.ExecContext(
 		ctx,
-		`INSERT INTO folders (id, name, parent_id, type, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO folders (id, name, parent_id, type, created_at, updated_at, sort_order)
+		 VALUES (?, ?, ?, ?, ?, ?, COALESCE((SELECT MAX(sort_order) + 1 FROM folders WHERE parent_id IS ?), 0))`,
 		id,
 		name,
 		nullableInt64(parentID),
 		folderType,
 		formatTime(now),
 		formatTime(now),
+		nullableInt64(parentID),
 	)
 	if err != nil {
 		return model.Folder{}, fmt.Errorf("create folder: %w", err)
+	}
+
+	var sortOrder int
+	if err := r.db.QueryRowContext(ctx, `SELECT sort_order FROM folders WHERE id = ?`, id).Scan(&sortOrder); err != nil {
+		return model.Folder{}, fmt.Errorf("read folder sort order: %w", err)
 	}
 
 	return model.Folder{
@@ -59,11 +69,12 @@ func (r *folderRepository) Create(ctx context.Context, name string, parentID *in
 		Type:      folderType,
 		CreatedAt: now,
 		UpdatedAt: now,
+		SortOrder: sortOrder,
 	}, nil
 }
 
 func (r *folderRepository) GetByID(ctx context.Context, id int64) (model.Folder, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id, name, parent_id, type, created_at, updated_at, proxy_mode, proxy_config FROM folders WHERE id = ?`, id)
+	row := r.db.QueryRowContext(ctx, `SELECT id, name, parent_id, type, created_at, updated_at, proxy_mode, proxy_config, sort_order FROM folders WHERE id = ?`, id)
 
 	var folder model.Folder
 	var parentID sql.NullInt64
@@ -72,7 +83,7 @@ func (r *folderRepository) GetByID(ctx context.Context, id int64) (model.Folder,
 	var updatedAt string
 	var proxyMode sql.NullInt64
 	var proxyConfig sql.NullString
-	if err := row.Scan(&folder.ID, &folder.Name, &parentID, &folderType, &createdAt, &updatedAt, &proxyMode, &proxyConfig); err != nil {
+	if err := row.Scan(&folder.ID, &folder.Name, &parentID, &folderType, &createdAt, &updatedAt, &proxyMode, &proxyConfig, &folder.SortOrder); err != nil {
 		return model.Folder{}, fmt.Errorf("get folder: %w", err)
 	}
 	if parentID.Valid {
@@ -99,10 +110,10 @@ func (r *folderRepository) GetByID(ctx context.Context, id int64) (model.Folder,
 }
 
 func (r *folderRepository) FindByName(ctx context.Context, name string, parentID *int64) (*model.Folder, error) {
-	query := `SELECT id, name, parent_id, type, created_at, updated_at, proxy_mode, proxy_config FROM folders WHERE name = ? AND parent_id IS NULL`
+	query := `SELECT id, name, parent_id, type, created_at, updated_at, proxy_mode, proxy_config, sort_order FROM folders WHERE name = ? AND parent_id IS NULL`
 	args := []interface{}{name}
 	if parentID != nil {
-		query = `SELECT id, name, parent_id, type, created_at, updated_at, proxy_mode, proxy_config FROM folders WHERE name = ? AND parent_id = ?`
+		query = `SELECT id, name, parent_id, type, created_at, updated_at, proxy_mode, proxy_config, sort_order FROM folders WHERE name = ? AND parent_id = ?`
 		args = []interface{}{name, *parentID}
 	}
 
@@ -114,7 +125,7 @@ func (r *folderRepository) FindByName(ctx context.Context, name string, parentID
 	var updatedAt string
 	var proxyMode sql.NullInt64
 	var proxyConfig sql.NullString
-	if err := row.Scan(&folder.ID, &folder.Name, &parent, &folderType, &createdAt, &updatedAt, &proxyMode, &proxyConfig); err != nil {
+	if err := row.Scan(&folder.ID, &folder.Name, &parent, &folderType, &createdAt, &updatedAt, &proxyMode, &proxyConfig, &folder.SortOrder); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
@@ -144,7 +155,7 @@ func (r *folderRepository) FindByName(ctx context.Context, name string, parentID
 }
 
 func (r *folderRepository) List(ctx context.Context) ([]model.Folder, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, name, parent_id, type, created_at, updated_at, proxy_mode, proxy_config FROM folders ORDER BY name`)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, name, parent_id, type, created_at, updated_at, proxy_mode, proxy_config, sort_order FROM folders ORDER BY sort_order, name`)
 	if err != nil {
 		return nil, fmt.Errorf("list folders: %w", err)
 	}
@@ -159,7 +170,7 @@ func (r *folderRepository) List(ctx context.Context) ([]model.Folder, error) {
 		var updatedAt string
 		var proxyMode sql.NullInt64
 		var proxyConfig sql.NullString
-		if err := rows.Scan(&folder.ID, &folder.Name, &parentID, &folderType, &createdAt, &updatedAt, &proxyMode, &proxyConfig); err != nil {
+		if err := rows.Scan(&folder.ID, &folder.Name, &parentID, &folderType, &createdAt, &updatedAt, &proxyMode, &proxyConfig, &folder.SortOrder); err != nil {
 			return nil, fmt.Errorf("scan folder: %w", err)
 		}
 		if parentID.Valid {
@@ -204,6 +215,21 @@ func (r *folderRepository) Update(ctx context.Context, id int64, name string, pa
 	}
 
 	return r.GetByID(ctx, id)
+}
+
+// UpdateSortOrder 只更新单条文件夹的拖动排序值（迁移 39）。
+func (r *folderRepository) UpdateSortOrder(ctx context.Context, id int64, sortOrder int64) error {
+	_, err := r.db.ExecContext(
+		ctx,
+		`UPDATE folders SET sort_order = ?, updated_at = ? WHERE id = ?`,
+		sortOrder,
+		formatTime(time.Now()),
+		id,
+	)
+	if err != nil {
+		return fmt.Errorf("update folder sort order: %w", err)
+	}
+	return nil
 }
 
 func (r *folderRepository) UpdateType(ctx context.Context, id int64, folderType string) error {

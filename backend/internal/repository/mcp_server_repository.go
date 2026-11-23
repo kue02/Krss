@@ -91,8 +91,9 @@ func (r *mcpServerRepository) Create(ctx context.Context, server model.MCPServer
 		`INSERT INTO mcp_servers (id, name, transport, url, headers, auth_type, enabled, is_connected, last_error,
 			tool_count, resource_count, purposes, use_global_fetch, fetch_timeout_seconds, fetch_concurrency,
 			refresh_interval_minutes, last_used_at, created_at, updated_at,
-			last_transport, oauth_client_id, oauth_client_secret)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			last_transport, oauth_client_id, oauth_client_secret, oauth_access_token, oauth_refresh_token,
+			oauth_expires_at, oauth_token_type, oauth_scope, oauth_auth_server)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		server.ID,
 		server.Name,
 		server.Transport,
@@ -115,6 +116,12 @@ func (r *mcpServerRepository) Create(ctx context.Context, server model.MCPServer
 		nullableString(stringPtrOrNil(server.LastTransport)),
 		nullableString(stringPtrOrNil(server.OAuthClientID)),
 		nullableString(stringPtrOrNil(server.OAuthClientSecret)),
+		nullableString(stringPtrOrNil(server.OAuthAccessToken)),
+		nullableString(stringPtrOrNil(server.OAuthRefreshToken)),
+		nullableTime(server.OAuthExpiresAt),
+		nullableString(stringPtrOrNil(server.OAuthTokenType)),
+		nullableString(stringPtrOrNil(server.OAuthScope)),
+		nullableString(stringPtrOrNil(server.OAuthAuthServer)),
 	)
 	if err != nil {
 		return model.MCPServer{}, fmt.Errorf("create mcp server: %w", err)
