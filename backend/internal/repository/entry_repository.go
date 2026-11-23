@@ -19,6 +19,8 @@ type EntryListFilter struct {
 	// FeedIDs 多选订阅（规则/视图的范围支持多选，用户 11-16）；非空时优先于 FeedID。
 	FeedIDs      []int64
 	FolderID     *int64
+	// FolderIDs 多选文件夹（范围 = 文件夹时可多选）；非空时优先于 FolderID。
+	FolderIDs    []int64
 	ContentType  *string
 	UnreadOnly   bool
 	StarredOnly  bool
@@ -194,13 +196,20 @@ func (r *entryRepository) List(ctx context.Context, filter EntryListFilter) ([]m
 	`
 
 	var conditions []string
-	needFeedsJoin := filter.FolderID != nil || filter.ContentType != nil
+	needFeedsJoin := filter.FolderID != nil || len(filter.FolderIDs) > 0 || filter.ContentType != nil
 
 	if needFeedsJoin {
 		query += " INNER JOIN feeds f ON e.feed_id = f.id"
 	}
 
-	if filter.FolderID != nil {
+	if len(filter.FolderIDs) > 0 {
+		placeholders := strings.Repeat("?,", len(filter.FolderIDs))
+		placeholders = placeholders[:len(placeholders)-1]
+		conditions = append(conditions, "f.folder_id IN ("+placeholders+")")
+		for _, id := range filter.FolderIDs {
+			args = append(args, id)
+		}
+	} else if filter.FolderID != nil {
 		conditions = append(conditions, "f.folder_id = ?")
 		args = append(args, *filter.FolderID)
 	}

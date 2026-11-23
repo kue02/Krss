@@ -195,6 +195,12 @@ func TestScopeMatches(t *testing.T) {
 	// 订阅没有分类时，分类规则不覆盖它
 	orphan := model.Feed{ID: 99}
 	require.False(t, service.ScopeMatches(model.Filter{ScopeType: model.FilterScopeFolder, ScopeID: &folderID}, orphan))
+
+	// 多选文件夹：集合里命中即可；没命中或订阅无分类都不覆盖
+	multiFolder := model.Filter{ScopeType: model.FilterScopeFolder, ScopeIDs: []int64{otherFolder, folderID}}
+	require.True(t, service.ScopeMatches(multiFolder, feed))
+	require.False(t, service.ScopeMatches(model.Filter{ScopeType: model.FilterScopeFolder, ScopeIDs: []int64{otherFolder}}, feed))
+	require.False(t, service.ScopeMatches(model.Filter{ScopeType: model.FilterScopeFolder, ScopeIDs: []int64{folderID}}, orphan))
 }
 
 func TestValidateFilterParams(t *testing.T) {
@@ -266,6 +272,21 @@ func TestValidateFilterParams(t *testing.T) {
 	keepOnlyWithRead := valid
 	keepOnlyWithRead.Actions = model.FilterActions{KeepOnly: true, MarkRead: true}
 	require.NoError(t, service.ValidateFilterParams(keepOnlyWithRead))
+
+	// 多选文件夹：单个 scope_id 与多个 scope_ids 都合法，一个都没有才拦
+	folderMulti := service.FilterWriteParams{
+		Name:       "多选文件夹",
+		ScopeType:  model.FilterScopeFolder,
+		ScopeIDs:   []int64{7, 8, 9},
+		Conditions: []model.FilterCondition{{Field: model.FilterFieldTitle, Operator: model.FilterOpContains, Value: "x"}},
+		Actions:    model.FilterActions{Mute: true},
+	}
+	require.NoError(t, service.ValidateFilterParams(folderMulti))
+
+	folderNoScope := folderMulti
+	folderNoScope.ScopeIDs = nil
+	folderNoScope.ScopeID = nil
+	require.ErrorIs(t, service.ValidateFilterParams(folderNoScope), service.ErrInvalidFilter)
 }
 
 // 47-4（用户 2026-10-12）：带空格 / 跨标签的文本条件要能命中。

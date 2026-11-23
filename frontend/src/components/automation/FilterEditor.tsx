@@ -26,7 +26,7 @@ import { HeroSwitch } from "@/components/ui/hero-switch";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Select } from "@/components/ui/select";
 import { ViewIconPicker } from "@/components/automation/ViewIconPicker";
-import { FeedScopePicker } from "@/components/automation/FeedScopePicker";
+import { ScopeMultiPicker } from "@/components/automation/ScopeMultiPicker";
 import { PluginActionFields } from "@/components/automation/PluginActionFields";
 import { PluginSlot } from "@/plugins/PluginSlot";
 import { CONTENT_TYPE_ORDER } from "@/lib/content-type-meta";
@@ -379,7 +379,12 @@ export function FilterEditor({
         });
       }
     }
-    if (payload.scopeType === "folder" && !payload.scopeId) {
+    // 文件夹范围：多选（scopeIds）或单选（scopeId）有一个就够
+    if (
+      payload.scopeType === "folder" &&
+      !payload.scopeId &&
+      (payload.scopeIds ?? []).length === 0
+    ) {
       return t("automation.invalid");
     }
     // 订阅范围：多选（scopeIds）或单选（scopeId）有一个就够
@@ -591,29 +596,38 @@ export function FilterEditor({
                 onValueChange={(value) =>
                   update({
                     scopeType: value,
-                    scopeId: value === "all" ? undefined : draft.scopeId,
+                    // 切换范围类型时清空已选（订阅 id 与文件夹 id 不是一套，别串味）
+                    scopeId: undefined,
+                    scopeIds: [],
                   })
                 }
                 options={scopeOptions}
               />
             </div>
             {draft.scopeType === "folder" && (
-              <SettingRow label={t("automation.scope_folder")}>
-                <Select
+              <SettingRow
+                label={t("automation.scope_folder")}
+                hint={t("automation.scope_folder_multi_hint")}
+              >
+                {/* 文件夹范围同样可多选：勾几个分类，规则/视图就作用在这几个分类里的全部订阅上 */}
+                <ScopeMultiPicker
                   ariaLabel={t("automation.scope_folder")}
-                  value={draft.scopeId ?? ""}
-                  onChange={(value) => update({ scopeId: value })}
-                  options={[
-                    {
-                      value: "",
-                      label: t("automation.scope_folder_placeholder"),
-                    },
-                    ...(folders ?? []).map((folder) => ({
-                      value: folder.id,
-                      label: folder.name,
-                    })),
-                  ]}
-                  className="w-56"
+                  values={draft.scopeIds ?? (draft.scopeId ? [draft.scopeId] : [])}
+                  onValuesChange={(values) =>
+                    update({
+                      scopeIds: values,
+                      // 多选后不再写单选字段，免得两个字段各说一套
+                      scopeId: undefined,
+                    })
+                  }
+                  options={(folders ?? []).map((folder) => ({
+                    value: folder.id,
+                    label: folder.name,
+                  }))}
+                  emptyLabel={t("automation.scope_all_folders")}
+                  selectedLabel={(count) =>
+                    t("automation.scope_selected_count_folder", { count })
+                  }
                 />
               </SettingRow>
             )}
@@ -623,7 +637,7 @@ export function FilterEditor({
                 hint={t("automation.scope_feed_multi_hint")}
               >
                 {/* 订阅范围可多选（用户 11-16）：勾几个源，规则/视图就作用在这几个源上 */}
-                <FeedScopePicker
+                <ScopeMultiPicker
                   ariaLabel={t("automation.scope_feed")}
                   values={draft.scopeIds ?? (draft.scopeId ? [draft.scopeId] : [])}
                   onValuesChange={(values) =>
@@ -637,6 +651,10 @@ export function FilterEditor({
                     value: feed.id,
                     label: feed.title,
                   }))}
+                  emptyLabel={t("automation.scope_all_feeds")}
+                  selectedLabel={(count) =>
+                    t("automation.scope_selected_count", { count })
+                  }
                 />
               </SettingRow>
             )}
