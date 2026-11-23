@@ -80,6 +80,8 @@ type EntryRepository interface {
 	// MoveFeedEntries 把 from 订阅的条目改归到 to：先删掉与目标同 hash 的重复项（保留目标那份），再改归属。
 	// 返回 (改了归属的条数, 因重复被删掉的条数)。
 	MoveFeedEntries(ctx context.Context, fromFeedID, toFeedID int64) (moved int64, deduped int64, err error)
+	// Deprecated: 生产入库路径必须使用 CreateOrUpdateSkippingTombstones；本方法会绕过
+	// entry_tombstones 检查，仅保留给测试/特殊场景，误用会让清理过的文章回流。
 	CreateOrUpdate(ctx context.Context, entry model.Entry) error
 	// CreateOrUpdateSkippingTombstones 与 CreateOrUpdate 相同，但若 (feed_id, hash) 或
 	// (feed_id, 规范化 url) 命中 entry_tombstones 则直接跳过、不写库，返回 false。
@@ -696,7 +698,7 @@ func (r *entryRepository) isTombstoned(ctx context.Context, entry model.Entry) (
 	}
 	urlCond := "0"
 	if entry.URL != nil && *entry.URL != "" {
-		urlCond = "(CASE WHEN instr(url, '#') > 0 THEN substr(url, 1, instr(url, '#') - 1) ELSE url END) = ?"
+		urlCond = "url = ?"
 		args = append(args, urlutil.StripFragment(*entry.URL))
 	}
 
@@ -879,13 +881,26 @@ func (r *entryRepository) DeleteReadUnstarred(ctx context.Context) (int64, error
 	return deleteReadUnstarred(ctx, r.db)
 }
 
+const tombstoneRetention = 180 * 24 * time.Hour
+
 func deleteReadUnstarred(ctx context.Context, db dbtx) (int64, error) {
-	now := formatTime(time.Now())
+	now := time.Now()
+	// 墓碑不是永久判决：只保留最近 180 天，既限制表增长，也避免若干年后
+	// 同一 URL 被真正的新文章复用时仍被永久挡住。用户「刚看完清掉又刷新」的场景
+	// 远在保留期内，仍会被挡住。
+	if _, err := db.ExecContext(ctx,
+		`DELETE FROM entry_tombstones WHERE created_at < ?`,
+		formatTime(now.Add(-tombstoneRetention)),
+	); err != nil {
+		return 0, fmt.Errorf("expire old entry tombstones: %w", err)
+	}
 	if _, err := db.ExecContext(ctx,
 		`INSERT OR IGNORE INTO entry_tombstones (feed_id, hash, url, created_at)
-		 SELECT feed_id, hash, url, ? FROM entries
+		 SELECT feed_id, hash,
+		        CASE WHEN instr(url, '#') > 0 THEN substr(url, 1, instr(url, '#') - 1) ELSE url END,
+		        ? FROM entries
 		  WHERE starred = 0 AND read = 1 AND hash <> ''`,
-		now,
+		formatTime(now),
 	); err != nil {
 		return 0, fmt.Errorf("insert entry tombstones: %w", err)
 	}
