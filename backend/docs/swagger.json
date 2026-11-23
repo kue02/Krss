@@ -1793,6 +1793,67 @@
                 }
             }
         },
+        "/backup/export": {
+            "get": {
+                "description": "导出完整备份 JSON：文件夹层级+类型、全部订阅（含类型/来源/MCP 配置/覆盖项）、非敏感设置、插件启停、MCP 连接配置。凭证类不导出。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "backup"
+                ],
+                "summary": "Export full backup",
+                "responses": {
+                    "200": {
+                        "description": "backup json",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/backup/import": {
+            "post": {
+                "description": "接受导出文件，重建文件夹层级与订阅（含类型/归属），按 URL/名称去重；应用非敏感设置、插件启停与 MCP 连接配置。",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "backup"
+                ],
+                "summary": "Import full backup",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/krss_backend_internal_service.BackupImportResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/entries": {
             "get": {
                 "description": "Get a list of entries with optional filters and pagination",
@@ -7523,6 +7584,35 @@
                 "requestOptions": {
                     "type": "object",
                     "additionalProperties": {}
+                }
+            }
+        },
+        "krss_backend_internal_service.BackupImportResult": {
+            "type": "object",
+            "properties": {
+                "feedsCreated": {
+                    "type": "integer"
+                },
+                "feedsSkipped": {
+                    "type": "integer"
+                },
+                "foldersCreated": {
+                    "type": "integer"
+                },
+                "foldersSkipped": {
+                    "type": "integer"
+                },
+                "mcpServersCreated": {
+                    "type": "integer"
+                },
+                "mcpServersSkipped": {
+                    "type": "integer"
+                },
+                "pluginsApplied": {
+                    "type": "integer"
+                },
+                "settingsApplied": {
+                    "type": "integer"
                 }
             }
         },

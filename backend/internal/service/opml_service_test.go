@@ -118,13 +118,13 @@ func TestOPMLService_Export_SortsAndBuildsOutlines(t *testing.T) {
 	feedRepo := mock_repo.NewMockFeedRepository(ctrl)
 
 	folders := []model.Folder{
-		{ID: 1, Name: "B Folder"},
-		{ID: 2, Name: "a folder"},
+		{ID: 1, Name: "B Folder", Type: "picture"},
+		{ID: 2, Name: "a folder", Type: "article"},
 	}
 	feeds := []model.Feed{
-		{ID: 10, Title: "Z Feed", URL: "https://z.com/rss"},
-		{ID: 11, Title: "A Feed", URL: "https://a.com/rss"},
-		{ID: 12, Title: "Child", URL: "https://c.com/rss", FolderID: int64Ptr(1), SiteURL: strPtr("https://c.com")},
+		{ID: 10, Title: "Z Feed", URL: "https://z.com/rss", Type: "social", SourceType: model.FeedSourceRSS},
+		{ID: 11, Title: "A Feed", URL: "https://a.com/rss", Type: "article", SourceType: model.FeedSourceRSS},
+		{ID: 12, Title: "Child", URL: "https://c.com/rss", FolderID: int64Ptr(1), SiteURL: strPtr("https://c.com"), Type: "picture", SourceType: model.FeedSourceRSS},
 	}
 
 	folderRepo.EXPECT().List(gomock.Any()).Return(folders, nil)
@@ -147,6 +147,87 @@ func TestOPMLService_Export_SortsAndBuildsOutlines(t *testing.T) {
 	require.Len(t, child, 1)
 	require.Equal(t, "https://c.com/rss", child[0].XMLURL)
 	require.Equal(t, "https://c.com", child[0].HTMLURL)
+
+	// 类型属性：文件夹与订阅的真实类型都要写进 krssType，来源写进 krssSourceType。
+	require.Equal(t, "picture", doc.Body.Outlines[1].KrssType) // B Folder
+	require.Equal(t, "article", doc.Body.Outlines[0].KrssType) // a folder
+	require.Equal(t, "picture", child[0].KrssType)
+	require.Equal(t, "rss", child[0].KrssSourceType)
+	require.Equal(t, "social", doc.Body.Outlines[3].KrssType) // Z Feed
+}
+
+func TestOPMLService_Import_RestoresTypedFeedsAndFolders(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	const typedOPML = `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <body>
+    <outline text="Pics" krssType="picture">
+      <outline text="Pic Feed" xmlUrl="https://p.com/rss" krssType="picture" krssSourceType="rss" />
+    </outline>
+    <outline text="Social Feed" xmlUrl="https://s.com/rss" krssType="social" krssSourceType="rss" />
+  </body>
+</opml>`
+
+	folderRepo := mock_repo.NewMockFolderRepository(ctrl)
+	folderService := &folderServiceStub{nextID: 10}
+	feedService := &feedServiceStub{nextID: 100}
+
+	folderRepo.EXPECT().FindByName(gomock.Any(), "Pics", (*int64)(nil)).Return(nil, nil)
+
+	svc := service.NewOPMLService(folderService, feedService, nil, nil, folderRepo, nil)
+	result, err := svc.Import(context.Background(), strings.NewReader(typedOPML), nil)
+	require.NoError(t, err)
+	require.Equal(t, 1, result.FoldersCreated)
+	require.Equal(t, 2, result.FeedsCreated)
+
+	// 文件夹类型按 krssType 还原（不再写死 article）。
+	require.Len(t, folderService.created, 1)
+	require.Equal(t, "picture", folderService.created[0].Type)
+
+	// 嵌套订阅与文件夹同类型，AddWithoutFetch 直接按 picture 建；
+	// 根级订阅默认为 article，随后 UpdateType 纠正成 social。
+	require.Len(t, feedService.calls, 2)
+	require.Equal(t, "picture", feedService.calls[0].feedType)
+	require.Equal(t, "article", feedService.calls[1].feedType)
+	require.Len(t, feedService.updateTypeCalls, 1)
+	require.Equal(t, int64(101), feedService.updateTypeCalls[0].id)
+	require.Equal(t, "social", feedService.updateTypeCalls[0].feedType)
+}
+
+func TestOPMLService_Import_RecreatesMCPFeed(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	const mcpOPML = `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <body>
+    <outline text="MCP Feed" xmlUrl="mcp://server/x" type="rss" krssType="article" krssSourceType="mcp" krssMCPConfig='{"url":"mcp://server/x"}' />
+  </body>
+</opml>`
+
+	folderRepo := mock_repo.NewMockFolderRepository(ctrl)
+	feedRepo := mock_repo.NewMockFeedRepository(ctrl)
+	feedService := &feedServiceStub{nextID: 1}
+
+	feedRepo.EXPECT().FindByURL(gomock.Any(), "mcp://server/x").Return(nil, nil)
+	feedRepo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, f model.Feed) (model.Feed, error) {
+			require.Equal(t, model.FeedSourceMCP, f.SourceType)
+			require.Equal(t, "mcp://server/x", f.URL)
+			require.NotNil(t, f.MCPConfig)
+			require.Equal(t, `{"url":"mcp://server/x"}`, *f.MCPConfig)
+			f.ID = 500
+			return f, nil
+		})
+
+	svc := service.NewOPMLService(nil, feedService, nil, nil, folderRepo, feedRepo)
+	result, err := svc.Import(context.Background(), strings.NewReader(mcpOPML), nil)
+	require.NoError(t, err)
+	require.Equal(t, 1, result.FeedsCreated)
+	// MCP 订阅不走 AddWithoutFetch（URL 非 http(s)）。
+	require.Empty(t, feedService.calls)
 }
 
 type folderServiceStub struct {
@@ -183,13 +264,20 @@ func (s *folderServiceStub) Delete(ctx context.Context, id int64) error {
 }
 
 type feedServiceStub struct {
-	nextID int64
-	calls  []feedAddCall
+	nextID          int64
+	calls           []feedAddCall
+	updateTypeCalls []updateTypeCall
 }
 
 type feedAddCall struct {
 	url      string
 	folderID *int64
+	feedType string
+}
+
+type updateTypeCall struct {
+	id       int64
+	feedType string
 }
 
 func (s *feedServiceStub) Add(ctx context.Context, feedURL string, folderID *int64, titleOverride string, feedType string) (model.Feed, error) {
@@ -205,7 +293,7 @@ func (s *feedServiceStub) UpdateMCPConfig(ctx context.Context, id int64, input s
 }
 
 func (s *feedServiceStub) AddWithoutFetch(ctx context.Context, feedURL string, folderID *int64, titleOverride string, feedType string) (model.Feed, bool, error) {
-	s.calls = append(s.calls, feedAddCall{url: feedURL, folderID: folderID})
+	s.calls = append(s.calls, feedAddCall{url: feedURL, folderID: folderID, feedType: feedType})
 	feed := model.Feed{ID: s.nextID, URL: feedURL, FolderID: folderID, Title: titleOverride, Type: feedType}
 	s.nextID++
 	return feed, true, nil
@@ -228,6 +316,7 @@ func (s *feedServiceStub) MoveToFolder(ctx context.Context, id int64, folderID *
 }
 
 func (s *feedServiceStub) UpdateType(ctx context.Context, id int64, feedType string) error {
+	s.updateTypeCalls = append(s.updateTypeCalls, updateTypeCall{id: id, feedType: feedType})
 	return nil
 }
 

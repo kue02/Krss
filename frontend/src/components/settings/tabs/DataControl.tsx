@@ -9,13 +9,15 @@ import {
   exportOPML,
   exportSettings,
   importSettings,
+  exportFullBackup,
+  importFullBackup,
   clearAICache,
   clearAnubisCookies,
   clearIconCache,
   clearReadabilityCache,
   clearEntryCache,
 } from "@/api";
-import type { ClearAICacheResponse, ClearCacheResponse } from "@/api";
+import type { ClearAICacheResponse, ClearCacheResponse, BackupImportResult } from "@/api";
 import { Archive, Download, Trash2, Upload } from "lucide-react";
 import {
   SectionCard,
@@ -235,6 +237,66 @@ export function DataControl() {
       setPendingSettingsFile(null);
     } finally {
       setIsImportingSettings(false);
+    }
+  };
+
+  // ---------- 全量备份（整库）导出 / 导入 ----------
+
+  const backupFileInputRef = useRef<HTMLInputElement>(null);
+  const [isExportingBackup, setIsExportingBackup] = useState(false);
+  const [pendingBackupFile, setPendingBackupFile] = useState<File | null>(null);
+  const [isImportingBackup, setIsImportingBackup] = useState(false);
+  const [backupImportResult, setBackupImportResult] =
+    useState<BackupImportResult | null>(null);
+  const [backupError, setBackupError] = useState<string | null>(null);
+
+  /** 导出整库备份：直接下载后端给的 JSON（前端不再 JSON.parse，避免 int64 精度丢）。 */
+  const handleExportBackup = async () => {
+    setIsExportingBackup(true);
+    setBackupError(null);
+
+    try {
+      await exportFullBackup();
+    } catch (err) {
+      setBackupError(
+        err instanceof Error
+          ? err.message
+          : t("data_control.export_full_backup_failed"),
+      );
+    } finally {
+      setIsExportingBackup(false);
+    }
+  };
+
+  /** 选中备份文件：不解析 JSON（保精度），直接弹确认。 */
+  const handlePickBackupFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    setBackupImportResult(null);
+    setBackupError(null);
+    setPendingBackupFile(file);
+    // 允许连续选同一份文件
+    if (backupFileInputRef.current) backupFileInputRef.current.value = "";
+  };
+
+  const handleConfirmImportBackup = async () => {
+    if (!pendingBackupFile) return;
+    setIsImportingBackup(true);
+
+    try {
+      const result = await importFullBackup(pendingBackupFile);
+      setBackupImportResult(result);
+      setPendingBackupFile(null);
+      // 整库变了：文件夹 / 订阅 / 未读数全部重新取数
+      await queryClient.invalidateQueries();
+    } catch (err) {
+      setBackupError(
+        err instanceof Error
+          ? err.message
+          : t("data_control.import_full_backup_failed"),
+      );
+      setPendingBackupFile(null);
+    } finally {
+      setIsImportingBackup(false);
     }
   };
 
@@ -578,6 +640,120 @@ export function DataControl() {
                     onPress={() => void handleConfirmImportSettings()}
                   >
                     {t("data_control.import_settings_confirm")}
+                  </Button>
+                </AlertDialog.Footer>
+              </AlertDialog.Dialog>
+            </AlertDialog.Container>
+          </AlertDialog.Backdrop>
+        </AlertDialog>
+      </SectionCard>
+
+      {/* 全量备份：整库（文件夹层级+类型、全部订阅、非敏感设置、插件、MCP 连接） */}
+      <SectionCard
+        icon={<Archive className="size-4" />}
+        title={t("data_control.full_backup")}
+      >
+        <div className="divide-y divide-border/50">
+          <SettingRow
+            label={t("data_control.export_full_backup")}
+            hint={t("data_control.export_full_backup_description")}
+          >
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              isDisabled={isExportingBackup}
+              onPress={() => void handleExportBackup()}
+            >
+              {t("data_control.export")}
+            </Button>
+          </SettingRow>
+
+          <SettingRow
+            label={t("data_control.import_full_backup")}
+            hint={t("data_control.import_full_backup_description")}
+          >
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              isDisabled={isImportingBackup}
+              onPress={() => backupFileInputRef.current?.click()}
+            >
+              {t("data_control.import_full_backup")}
+            </Button>
+            <input
+              ref={backupFileInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={handlePickBackupFile}
+            />
+          </SettingRow>
+        </div>
+
+        {(backupImportResult !== null || backupError) && (
+          <div className="space-y-2 px-1 pb-2 pt-1">
+            {backupImportResult !== null && (
+              <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-200">
+                {t("data_control.import_full_backup_success", {
+                  folders: backupImportResult.foldersCreated,
+                  feeds: backupImportResult.feedsCreated,
+                  settings: backupImportResult.settingsApplied,
+                })}
+              </div>
+            )}
+            {backupError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950">
+                <div className="font-medium text-red-800 dark:text-red-200">
+                  {t("data_control.import_full_backup_failed")}
+                </div>
+                <div className="mt-1 break-all text-red-700 dark:text-red-300">
+                  {backupError}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 导入确认：会向库里合并文件夹/订阅/配置，必须问一句 */}
+        <AlertDialog>
+          <Button className="hidden" aria-hidden />
+          <AlertDialog.Backdrop
+            isOpen={pendingBackupFile !== null}
+            onOpenChange={(open) => !open && setPendingBackupFile(null)}
+          >
+            <AlertDialog.Container>
+              <AlertDialog.Dialog className="max-w-lg">
+                <AlertDialog.Header>
+                  <AlertDialog.Heading>
+                    {t("data_control.import_full_backup_confirm_title")}
+                  </AlertDialog.Heading>
+                </AlertDialog.Header>
+                <AlertDialog.Body>
+                  <div className="text-sm text-muted-foreground">
+                    {t("data_control.import_full_backup_confirm_body")}
+                  </div>
+                  {pendingBackupFile && (
+                    <div className="mt-2 break-all text-xs text-muted-foreground">
+                      {pendingBackupFile.name}
+                    </div>
+                  )}
+                </AlertDialog.Body>
+                <AlertDialog.Footer>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onPress={() => setPendingBackupFile(null)}
+                  >
+                    {t("actions.cancel")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    isDisabled={isImportingBackup}
+                    onPress={() => void handleConfirmImportBackup()}
+                  >
+                    {t("data_control.import_full_backup_confirm")}
                   </Button>
                 </AlertDialog.Footer>
               </AlertDialog.Dialog>

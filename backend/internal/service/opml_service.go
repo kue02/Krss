@@ -172,7 +172,9 @@ func (s *opmlService) importOutline(
 	}
 
 	folderName := pickOutlineTitle(outline)
-	folder, created, err := s.ensureFolder(ctx, folderName, parentID)
+	// 优先用导出时写入的 krss:type 还原文件夹类型；外部 OPML 没有该属性时回退 article（保持旧行为）。
+	ownType := pickFolderType(outline)
+	folder, created, err := s.ensureFolder(ctx, folderName, parentID, ownType)
 	if err != nil {
 		return err
 	}
@@ -192,9 +194,12 @@ func (s *opmlService) importOutline(
 	return nil
 }
 
-func (s *opmlService) ensureFolder(ctx context.Context, name string, parentID *int64) (model.Folder, bool, error) {
+func (s *opmlService) ensureFolder(ctx context.Context, name string, parentID *int64, folderType string) (model.Folder, bool, error) {
 	if strings.TrimSpace(name) == "" {
 		name = "Untitled"
+	}
+	if strings.TrimSpace(folderType) == "" {
+		folderType = "article"
 	}
 
 	// Try to find existing folder first
@@ -205,7 +210,7 @@ func (s *opmlService) ensureFolder(ctx context.Context, name string, parentID *i
 	}
 
 	// Create new folder using FolderService
-	folder, err := s.folderService.Create(ctx, name, parentID, "article")
+	folder, err := s.folderService.Create(ctx, name, parentID, folderType)
 	if err != nil {
 		if errors.Is(err, ErrConflict) {
 			// Race condition: folder was created between check and create
@@ -251,20 +256,108 @@ func (s *opmlService) importFeed(
 		return nil
 	}
 
-	// Use AddWithoutFetch to quickly create feed record without network request
+	// MCP 订阅：URL 不是 http(s)，无法走 AddWithoutFetch（它要求 http/https）。
+	// 用显式的 krss:sourceType=mcp 或 mcp:// 前缀识别，直接写库重建，避免误建成普通 RSS。
+	if isMCPFeedOutline(outline, feedURL) {
+		return s.importMCPFeed(ctx, outline, feedURL, title, folderID, result)
+	}
+
+	// 用 AddWithoutFetch 快速创建订阅记录（不发网络请求）。
+	// 它要求 feed 类型与所在文件夹类型一致，所以先按 folderType 建，再用 UpdateType 纠正成真实类型。
+	feedType := resolveFeedType(outline, folderType)
 	feed, isNew, err := s.feedService.AddWithoutFetch(ctx, feedURL, folderID, title, folderType)
 	if err != nil {
 		return fmt.Errorf("add feed %s: %w", feedURL, err)
 	}
 
-	if isNew {
-		result.FeedsCreated++
-		*newFeedIDs = append(*newFeedIDs, feed.ID)
-	} else {
+	if !isNew {
 		result.FeedsSkipped++
+		return nil
 	}
 
+	if feedType != "" && feedType != folderType {
+		if err := s.feedService.UpdateType(ctx, feed.ID, feedType); err != nil {
+			logger.Warn("opml import update feed type failed", "module", "service", "action", "import", "resource", "opml", "result", "failed", "feed_id", feed.ID, "feed_type", feedType, "error", err)
+		}
+	}
+
+	result.FeedsCreated++
+	*newFeedIDs = append(*newFeedIDs, feed.ID)
 	return nil
+}
+
+// importMCPFeed 重建一条 MCP 订阅。MCP 订阅的 URL 形如 mcp://…，无法用 AddWithoutFetch 校验，
+// 因此直接调用仓储 Create，并显式写入 source_type=mcp 与 mcp_config。
+func (s *opmlService) importMCPFeed(
+	ctx context.Context,
+	outline opml.Outline,
+	feedURL string,
+	title string,
+	folderID *int64,
+	result *ImportResult,
+) error {
+	if s.feeds == nil {
+		result.FeedsSkipped++
+		return nil
+	}
+
+	existing, err := s.feeds.FindByURL(ctx, feedURL)
+	if err != nil {
+		return fmt.Errorf("find mcp feed: %w", err)
+	}
+	if existing != nil {
+		result.FeedsSkipped++
+		return nil
+	}
+
+	feedType := resolveFeedType(outline, "article")
+	var mcpConfig *string
+	if cfg := strings.TrimSpace(outline.KrssMCPConfig); cfg != "" {
+		c := cfg
+		mcpConfig = &c
+	}
+
+	if _, err := s.feeds.Create(ctx, model.Feed{
+		FolderID:   folderID,
+		Title:      title,
+		URL:        feedURL,
+		Type:       feedType,
+		SourceType: model.FeedSourceMCP,
+		MCPConfig:  mcpConfig,
+	}); err != nil {
+		return fmt.Errorf("create mcp feed %s: %w", feedURL, err)
+	}
+
+	result.FeedsCreated++
+	return nil
+}
+
+// isMCPFeedOutline 判断一个 outline 是否为 MCP 订阅：
+// 显式 krss:sourceType=mcp，或 URL 以 mcp:// 开头。
+func isMCPFeedOutline(outline opml.Outline, feedURL string) bool {
+	if strings.EqualFold(strings.TrimSpace(outline.KrssSourceType), model.FeedSourceMCP) {
+		return true
+	}
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(feedURL)), "mcp://")
+}
+
+// resolveFeedType 取订阅的真实内容类型：优先 krss:type，其次沿用所在文件夹类型，最后 article。
+func resolveFeedType(outline opml.Outline, folderType string) string {
+	if t := strings.TrimSpace(outline.KrssType); t != "" {
+		return t
+	}
+	if strings.TrimSpace(folderType) != "" {
+		return folderType
+	}
+	return "article"
+}
+
+// pickFolderType 取文件夹的真实内容类型：优先 krss:type，缺省 article。
+func pickFolderType(outline opml.Outline) string {
+	if t := strings.TrimSpace(outline.KrssType); t != "" {
+		return t
+	}
+	return "article"
 }
 
 func isFeedOutline(outline opml.Outline) bool {
@@ -348,8 +441,9 @@ func buildFolderOutline(node *folderNode) opml.Outline {
 	})
 
 	outline := opml.Outline{
-		Text:  node.folder.Name,
-		Title: node.folder.Name,
+		Text:     node.folder.Name,
+		Title:    node.folder.Name,
+		KrssType: node.folder.Type,
 	}
 	for _, child := range node.child {
 		outline.Outlines = append(outline.Outlines, buildFolderOutline(child))
@@ -361,14 +455,23 @@ func buildFolderOutline(node *folderNode) opml.Outline {
 }
 
 func buildFeedOutline(feed model.Feed) opml.Outline {
+	sourceType := feed.SourceType
+	if strings.TrimSpace(sourceType) == "" {
+		sourceType = model.FeedSourceRSS
+	}
 	outline := opml.Outline{
-		Text:   feed.Title,
-		Title:  feed.Title,
-		Type:   "rss",
-		XMLURL: feed.URL,
+		Text:           feed.Title,
+		Title:          feed.Title,
+		Type:           "rss",
+		XMLURL:         feed.URL,
+		KrssType:       feed.Type,
+		KrssSourceType: sourceType,
 	}
 	if feed.SiteURL != nil {
 		outline.HTMLURL = *feed.SiteURL
+	}
+	if feed.MCPConfig != nil {
+		outline.KrssMCPConfig = *feed.MCPConfig
 	}
 	return outline
 }
