@@ -286,7 +286,8 @@ const freeTranslateTimeout = 20 * time.Second
 // entryID > 0 时按「这条条目所属订阅」生效的代理（订阅 → 文件夹父级链 → 全局）；
 // 拿不到条目信息时退回全局那份，行为与改造前一致。
 func (s *aiService) httpClientForTranslate(ctx context.Context, entryID int64) *http.Client {
-	if s.clientFactory != nil {
+	// 免费翻译也受 ai.use_proxy 约束：开着走代理（含智能代理），关掉直接连。
+	if s.aiProxyEnabled(ctx) && s.clientFactory != nil {
 		return s.clientFactory.NewHTTPClientForFeed(ctx, s.feedIDForEntry(ctx, entryID), freeTranslateTimeout)
 	}
 	return &http.Client{Timeout: freeTranslateTimeout}

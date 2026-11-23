@@ -59,6 +59,7 @@ func TestSettingsHandler_UpdateAISettings_Success(t *testing.T) {
 			"temperature": 0.2,
 			"extra_body":  map[string]any{"trace": true},
 		},
+		"useProxy": true,
 	}
 	req := newJSONRequest(http.MethodPut, "/settings/ai", reqBody)
 	c, rec := newTestContext(e, req)
@@ -116,6 +117,7 @@ func TestSettingsHandler_UpdateAISettings_EmptyProvidersAllowsNoModel(t *testing
 	reqBody := map[string]interface{}{
 		"provider": "openai",
 		"model":    "",
+		"useProxy": true,
 	}
 	req := newJSONRequest(http.MethodPut, "/settings/ai", reqBody)
 	c, rec := newTestContext(e, req)
@@ -143,6 +145,7 @@ func TestSettingsHandler_UpdateAISettings_FreeTranslateChannelWithoutModel(t *te
 				"provider":         "openai",
 				"model":            "",
 				"translateChannel": channel,
+				"useProxy":         true,
 			}
 			req := newJSONRequest(http.MethodPut, "/settings/ai", reqBody)
 			c, rec := newTestContext(e, req)
@@ -179,6 +182,7 @@ func TestSettingsHandler_UpdateAISettings_FreeTranslateChannelsWithoutModel(t *t
 		"provider":          "openai",
 		"model":             "",
 		"translateChannels": []string{"youdao"},
+		"useProxy":          true,
 	}
 	req := newJSONRequest(http.MethodPut, "/settings/ai", reqBody)
 	c, rec := newTestContext(e, req)
