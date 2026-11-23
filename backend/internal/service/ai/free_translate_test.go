@@ -3,7 +3,6 @@ package ai
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -546,36 +545,59 @@ func TestSchedulerCooldownEscalates(t *testing.T) {
 	}
 }
 
-// 网络级失败（非 HTTP 状态码）也要冷却；但预算/ctx 造成的超时不算通道坏健康。
+// 真实 http.Client 超时（父 ctx 未取消）也要冷却；父 ctx 被调用方取消则不冷却。
 func TestSchedulerCoolsOnNetworkError(t *testing.T) {
 	oldNet, oldMax := freeChannelNetworkBaseCooldown, freeChannelMaxCooldown
 	freeChannelNetworkBaseCooldown = 3 * time.Second
 	freeChannelMaxCooldown = 5 * time.Minute
 	defer func() { freeChannelNetworkBaseCooldown, freeChannelMaxCooldown = oldNet, oldMax }()
 
-	fixed := time.Unix(1_700_000_000, 0)
-	s := newFreeChannelScheduler()
-	s.now = func() time.Time { return fixed }
-	s.recordFailure("google", errors.New("dial tcp 1.2.3.4:443: i/o timeout"))
+	var hits int32
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		time.Sleep(300 * time.Millisecond)
+		_, _ = w.Write([]byte(`[{"translations":[{"text":"你好"}]}]`))
+	}))
+	defer slow.Close()
+	orig := microsoftTranslateEndpoint
+	microsoftTranslateEndpoint = slow.URL
+	defer func() { microsoftTranslateEndpoint = orig }()
 
+	// 真实 http.Client 超时：错误 errors.Is(..., context.DeadlineExceeded) 为 true，但父 ctx 未取消，
+	// 必须被当成网络级失败冷却（不能因为像 ctx 超时就被跳过）。
+	s := newFreeChannelScheduler()
+	timedClient := &http.Client{Timeout: 40 * time.Millisecond}
+	if _, _, err := s.translate(context.Background(), timedClient, []string{FreeChannelMicrosoft}, "hi", "zh-CN"); err == nil {
+		t.Fatal("真实超时应当报错")
+	}
 	s.mu.Lock()
-	got := s.states["google"].cooldownUntil.Sub(fixed)
-	fails := s.states["google"].consecutiveFails
+	cool := s.states[FreeChannelMicrosoft].cooldownUntil
+	fails := s.states[FreeChannelMicrosoft].consecutiveFails
 	s.mu.Unlock()
-	if got != 3*time.Second || fails != 1 {
-		t.Fatalf("网络失败冷却 = %v / fails=%d, want 3s/1", got, fails)
+	if cool.IsZero() || fails == 0 {
+		t.Fatalf("真实 http 超时应冷却并计连续失败，得到 cooldown=%v fails=%d", cool, fails)
 	}
 
-	// 预算超时（context.DeadlineExceeded）不计入坏健康。
+	// 冷却中的通道下一次应被跳过，不再打到端点。
+	before := atomic.LoadInt32(&hits)
+	if _, _, err := s.translate(context.Background(), timedClient, []string{FreeChannelMicrosoft}, "hi", "zh-CN"); err == nil {
+		t.Fatal("冷却中仍应报错（无可用通道）")
+	}
+	if after := atomic.LoadInt32(&hits); after != before {
+		t.Fatalf("冷却中的通道不应再被请求，hits %d -> %d", before, after)
+	}
+
+	// 父 ctx 被调用方取消/超时：不计失败、不冷却（这不是通道的错）。
 	s2 := newFreeChannelScheduler()
-	s2.now = func() time.Time { return fixed }
-	s2.recordFailure("google", context.DeadlineExceeded)
+	ctx2, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+	defer cancel()
+	_, _, _ = s2.translate(ctx2, slow.Client(), []string{FreeChannelMicrosoft}, "hi", "zh-CN")
 	s2.mu.Lock()
-	cool := s2.states["google"].cooldownUntil
-	fails2 := s2.states["google"].consecutiveFails
+	cool2 := s2.states[FreeChannelMicrosoft].cooldownUntil
+	fails2 := s2.states[FreeChannelMicrosoft].consecutiveFails
 	s2.mu.Unlock()
-	if !cool.IsZero() || fails2 != 0 {
-		t.Fatalf("ctx 超时不应冷却/计连续失败，得到 cooldown=%v fails=%d", cool, fails2)
+	if !cool2.IsZero() || fails2 != 0 {
+		t.Fatalf("父 ctx 取消不应冷却/计连续失败，得到 cooldown=%v fails=%d", cool2, fails2)
 	}
 }
 
