@@ -1624,6 +1624,70 @@ export async function importSettings(
   });
 }
 
+/** 全量备份导入结果（后端 service.BackupImportResult 的镜像）。 */
+export interface BackupImportResult {
+  foldersCreated: number;
+  foldersSkipped: number;
+  feedsCreated: number;
+  feedsSkipped: number;
+  settingsApplied: number;
+  pluginsApplied: number;
+  mcpServersCreated: number;
+  mcpServersSkipped: number;
+}
+
+/**
+ * 导出整库备份 JSON（文件夹层级+类型、全部订阅、非敏感设置、插件、MCP 连接）。
+ * 直接下载原始 Blob —— 不做 JSON.parse，避免 int64 ID 在 JS number 精度下被改写。
+ */
+export async function exportFullBackup(): Promise<void> {
+  const headers: HeadersInit = {};
+  const token = getAuthToken();
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/backup/export`, { headers });
+  if (!response.ok) {
+    throw new ApiError("Export failed", response.status);
+  }
+  const blob = await response.blob();
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `krss-backup-${stamp}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/** 导入整库备份：把文件原样 POST（同样避开 JSON 解析精度问题），返回各计数。 */
+export async function importFullBackup(
+  file: File,
+): Promise<BackupImportResult> {
+  const headers: HeadersInit = { "Content-Type": "application/json" };
+  const token = getAuthToken();
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/backup/import`, {
+    method: "POST",
+    headers,
+    body: file,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new ApiError(text || "Import failed", response.status);
+  }
+  return (await response.json()) as BackupImportResult;
+}
+
 // ---------- MCP 入向：MCP 取到的内容当 Feed 处理 ----------
 //
 // 连接与工具清单都在服务端管，前端只拿引用（与 Folo 的连接层形状一致）。
