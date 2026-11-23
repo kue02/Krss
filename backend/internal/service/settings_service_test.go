@@ -526,3 +526,81 @@ func TestSettingsService_LegacyFlatKeySeedsProvider(t *testing.T) {
 	require.Equal(t, "legacy-key-real", saved[0].APIKey, "老实例平铺 key 要补给 default 卡")
 	require.Equal(t, "legacy-key-real", repo.data[service.KeyAIAPIKey])
 }
+
+// ---------- 1123：缓存清理设置（保留期） ----------
+
+func TestSettingsService_GetCacheSettings_Defaults(t *testing.T) {
+	repo := newSettingsRepoStub()
+	svc := service.NewSettingsService(repo, ai.NewRateLimiter(0))
+
+	got, err := svc.GetCacheSettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, service.DefaultCacheEntryRetentionDays, got.EntryRetentionDays)
+	require.Equal(t, service.DefaultCacheTombstoneRetentionDays, got.TombstoneRetentionDays)
+}
+
+// 显式 0 是合法值，不能被「没配置」的默认值吞掉。
+func TestSettingsService_GetCacheSettings_ExplicitZero(t *testing.T) {
+	repo := newSettingsRepoStub()
+	repo.data[service.KeyCacheEntryRetentionDays] = "0"
+	repo.data[service.KeyCacheTombstoneRetentionDays] = "0"
+	svc := service.NewSettingsService(repo, ai.NewRateLimiter(0))
+
+	got, err := svc.GetCacheSettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 0, got.EntryRetentionDays)
+	require.Equal(t, 0, got.TombstoneRetentionDays)
+}
+
+// 解析失败回默认；负数按 0。
+func TestSettingsService_GetCacheSettings_ParseFailureAndNegative(t *testing.T) {
+	repo := newSettingsRepoStub()
+	repo.data[service.KeyCacheEntryRetentionDays] = "not-a-number"
+	repo.data[service.KeyCacheTombstoneRetentionDays] = "-5"
+	svc := service.NewSettingsService(repo, ai.NewRateLimiter(0))
+
+	got, err := svc.GetCacheSettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, service.DefaultCacheEntryRetentionDays, got.EntryRetentionDays, "解析失败回默认")
+	require.Equal(t, 0, got.TombstoneRetentionDays, "负数按 0")
+}
+
+// 写入夹紧到合法区间，并能原样读回（含 0）。
+func TestSettingsService_SetCacheSettings_ClampsAndRoundTrips(t *testing.T) {
+	repo := newSettingsRepoStub()
+	svc := service.NewSettingsService(repo, ai.NewRateLimiter(0))
+
+	require.NoError(t, svc.SetCacheSettings(context.Background(), &service.CacheSettings{
+		EntryRetentionDays:     5000,
+		TombstoneRetentionDays: -3,
+	}))
+	got, err := svc.GetCacheSettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 3650, got.EntryRetentionDays, "超上限夹到 3650")
+	require.Equal(t, 0, got.TombstoneRetentionDays, "负数按 0")
+
+	require.NoError(t, svc.SetCacheSettings(context.Background(), &service.CacheSettings{
+		EntryRetentionDays:     40000,
+		TombstoneRetentionDays: 40000,
+	}))
+	got, err = svc.GetCacheSettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 3650, got.EntryRetentionDays)
+	require.Equal(t, 36500, got.TombstoneRetentionDays)
+
+	require.NoError(t, svc.SetCacheSettings(context.Background(), &service.CacheSettings{
+		EntryRetentionDays:     0,
+		TombstoneRetentionDays: 0,
+	}))
+	got, err = svc.GetCacheSettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 0, got.EntryRetentionDays)
+	require.Equal(t, 0, got.TombstoneRetentionDays)
+}
+
+func TestSettingsService_SetCacheSettings_Nil(t *testing.T) {
+	repo := newSettingsRepoStub()
+	svc := service.NewSettingsService(repo, ai.NewRateLimiter(0))
+
+	require.ErrorIs(t, svc.SetCacheSettings(context.Background(), nil), service.ErrInvalid)
+}

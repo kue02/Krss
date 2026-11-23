@@ -600,3 +600,81 @@ func TestSettingsHandler_UpdateNetworkSettings_InvalidRequest(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
+
+func TestSettingsHandler_GetCacheSettings_Success(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockSettingsService(ctrl)
+	h := handler.NewSettingsHandlerHelper(mockService, nil)
+
+	e := newTestEcho()
+	req := newJSONRequest(http.MethodGet, "/settings/cache", nil)
+	c, rec := newTestContext(e, req)
+
+	mockService.EXPECT().GetCacheSettings(gomock.Any()).Return(&service.CacheSettings{
+		EntryRetentionDays:     30,
+		TombstoneRetentionDays: 180,
+	}, nil)
+
+	err := h.GetCacheSettings(c)
+	require.NoError(t, err)
+
+	var resp handler.CacheSettingsResponse
+	assertJSONResponse(t, rec, http.StatusOK, &resp)
+	require.Equal(t, 30, resp.EntryRetentionDays)
+	require.Equal(t, 180, resp.TombstoneRetentionDays)
+}
+
+func TestSettingsHandler_UpdateCacheSettings_ExplicitZero(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockSettingsService(ctrl)
+	h := handler.NewSettingsHandlerHelper(mockService, nil)
+
+	e := newTestEcho()
+	req := newJSONRequest(http.MethodPut, "/settings/cache", map[string]interface{}{
+		"entryRetentionDays":     0,
+		"tombstoneRetentionDays": 0,
+	})
+	c, rec := newTestContext(e, req)
+
+	// UpdateCacheSettings：先读当前做部分合并 → 写 → 再读回。
+	mockService.EXPECT().GetCacheSettings(gomock.Any()).Return(&service.CacheSettings{
+		EntryRetentionDays:     30,
+		TombstoneRetentionDays: 180,
+	}, nil)
+	mockService.EXPECT().SetCacheSettings(gomock.Any(), &service.CacheSettings{
+		EntryRetentionDays:     0,
+		TombstoneRetentionDays: 0,
+	}).Return(nil)
+	mockService.EXPECT().GetCacheSettings(gomock.Any()).Return(&service.CacheSettings{
+		EntryRetentionDays:     0,
+		TombstoneRetentionDays: 0,
+	}, nil)
+
+	err := h.UpdateCacheSettings(c)
+	require.NoError(t, err)
+
+	var resp handler.CacheSettingsResponse
+	assertJSONResponse(t, rec, http.StatusOK, &resp)
+	require.Equal(t, 0, resp.EntryRetentionDays)
+	require.Equal(t, 0, resp.TombstoneRetentionDays)
+}
+
+func TestSettingsHandler_UpdateCacheSettings_InvalidRequest(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockSettingsService(ctrl)
+	h := handler.NewSettingsHandlerHelper(mockService, nil)
+
+	e := newTestEcho()
+	req := newJSONRequestRaw(http.MethodPut, "/settings/cache", `{"entryRetentionDays":`)
+	c, rec := newTestContext(e, req)
+
+	err := h.UpdateCacheSettings(c)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+}

@@ -306,7 +306,7 @@ func TestEntryRepository_ClearCaches(t *testing.T) {
 	require.Equal(t, int64(1), count)
 
 	// Delete read & unstarred：只删「已读未收藏」一条
-	count, err = repo.DeleteReadUnstarred(ctx)
+	count, err = repo.DeleteReadUnstarred(ctx, nil, nil)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), count)
 
@@ -354,7 +354,7 @@ func TestEntryRepository_TombstoneBlocksReinsertAfterPurge(t *testing.T) {
 	hash := hashString(url)
 	testutil.SeedEntry(t, db, model.Entry{FeedID: feedID, Title: &title, URL: &url, Hash: hash, Read: true, Starred: false})
 
-	count, err := repo.DeleteReadUnstarred(ctx)
+	count, err := repo.DeleteReadUnstarred(ctx, nil, nil)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), count)
 
@@ -405,7 +405,8 @@ func TestEntryRepository_TombstoneNormalizesURLAndExpiresOld(t *testing.T) {
 	hash := hashString("some-guid")
 	testutil.SeedEntry(t, db, model.Entry{FeedID: feedID, Title: &title, URL: &rawURL, Hash: hash, Read: true, Starred: false})
 
-	_, err = repo.DeleteReadUnstarred(ctx)
+	tombstoneCutoff := time.Now().AddDate(0, 0, -180)
+	_, err = repo.DeleteReadUnstarred(ctx, nil, &tombstoneCutoff)
 	require.NoError(t, err)
 
 	var oldCount int
@@ -621,4 +622,52 @@ func stringPtr(s string) *string {
 func hashString(input string) string {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(input)))
 	return hex.EncodeToString(sum[:])
+}
+
+// 1123：按保留期清理 —— 只删「最近阅读/更新时间早于 N 天」的已读未收藏，近期的保留；
+// 墓碑只覆盖本次真正删除的那批（近期保留的文章不打墓碑）。
+func TestEntryRepository_DeleteReadUnstarredHonorsEntryRetention(t *testing.T) {
+	db := testutil.NewTestDB(t)
+	repo := repository.NewEntryRepository(db)
+	ctx := context.Background()
+
+	feedID := testutil.SeedFeed(t, db, model.Feed{Title: "F", URL: "u"})
+
+	oldURL := "https://example.com/old"
+	recentURL := "https://example.com/recent"
+	oldID := testutil.SeedEntry(t, db, model.Entry{FeedID: feedID, Read: true, Starred: false, URL: stringPtr(oldURL)})
+	testutil.SeedEntry(t, db, model.Entry{FeedID: feedID, Read: true, Starred: false, URL: stringPtr(recentURL)})
+	starredID := testutil.SeedEntry(t, db, model.Entry{FeedID: feedID, Read: true, Starred: true, URL: stringPtr("https://example.com/starred")})
+	unreadID := testutil.SeedEntry(t, db, model.Entry{FeedID: feedID, Read: false, Starred: false, URL: stringPtr("https://example.com/unread")})
+
+	// 把「旧的已读」「已收藏」「未读」三条的读写时间挪到 40 天前（近期那条保持 now）。
+	old := time.Now().AddDate(0, 0, -40).UTC().Format(time.RFC3339)
+	for _, id := range []int64{oldID, starredID, unreadID} {
+		_, err := db.ExecContext(ctx, `UPDATE entries SET created_at = ?, updated_at = ? WHERE id = ?`, old, old, id)
+		require.NoError(t, err)
+	}
+
+	cutoff := time.Now().AddDate(0, 0, -30)
+	deleted, err := repo.DeleteReadUnstarred(ctx, &cutoff, nil)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), deleted, "只删超过 30 天的已读未收藏")
+
+	entries, err := repo.List(ctx, repository.EntryListFilter{})
+	require.NoError(t, err)
+	require.Len(t, entries, 3)
+	var haveRecent bool
+	for _, e := range entries {
+		if e.URL != nil && *e.URL == recentURL {
+			haveRecent = true
+		}
+		require.False(t, e.Read && !e.Starred && e.URL != nil && *e.URL == oldURL, "40 天前的已读未收藏应被删除")
+	}
+	require.True(t, haveRecent, "近期的已读未收藏必须保留")
+
+	var tombCount int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM entry_tombstones`).Scan(&tombCount))
+	require.Equal(t, 1, tombCount, "墓碑只覆盖本次真正删除的那批")
+	var tombHash string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT hash FROM entry_tombstones`).Scan(&tombHash))
+	require.Equal(t, hashString(oldURL), tombHash)
 }

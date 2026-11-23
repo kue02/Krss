@@ -95,7 +95,10 @@ type EntryRepository interface {
 	GetExistingEntry(ctx context.Context, feedID int64, hash string, rawURL string) (*model.Entry, error)
 	ClearAllReadableContent(ctx context.Context) (int64, error)
 	// DeleteReadUnstarred 删除「已读且未收藏」的条目（保留已收藏和未读）。
-	DeleteReadUnstarred(ctx context.Context) (int64, error)
+	// entryBefore != nil 时只删 COALESCE(updated_at, created_at) < entryBefore 的（最近阅读/更新时间早于该时刻）；
+	// nil = 不设时间门槛，清理全部已读未收藏（老行为）。
+	// tombstoneBefore != nil 时清理 created_at < tombstoneBefore 的旧墓碑；nil = 永不清墓碑（永久保留）。
+	DeleteReadUnstarred(ctx context.Context, entryBefore *time.Time, tombstoneBefore *time.Time) (int64, error)
 	// GetIDsByHashes 按 feed 内 hash 批量取条目 ID（规则引擎在入库后定位刚写进去的那批条目）。
 	GetIDsByHashes(ctx context.Context, feedID int64, hashes []string) (map[string]int64, error)
 	// ApplyFilterState 写入规则标记（muted / filter_id，可选 read / starred）。
@@ -860,7 +863,7 @@ func (r *entryRepository) ClearAllReadableContent(ctx context.Context) (int64, e
 // 它会以 read 默认 0 重新 INSERT，刚清掉的文章就回流成未读。先写墓碑后删，
 // 保证「删掉的那批」在再次入库时一定被 CreateOrUpdateSkippingTombstones 挡住。
 // 两步尽量放在同一事务里（*sql.DB 支持 BeginTx；测试用的 dbtx 若不支持则退回顺序执行）。
-func (r *entryRepository) DeleteReadUnstarred(ctx context.Context) (int64, error) {
+func (r *entryRepository) DeleteReadUnstarred(ctx context.Context, entryBefore *time.Time, tombstoneBefore *time.Time) (int64, error) {
 	if txer, ok := r.db.(interface {
 		BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
 	}); ok {
@@ -868,7 +871,7 @@ func (r *entryRepository) DeleteReadUnstarred(ctx context.Context) (int64, error
 		if err != nil {
 			return 0, fmt.Errorf("begin delete read unstarred: %w", err)
 		}
-		count, err := deleteReadUnstarred(ctx, tx)
+		count, err := deleteReadUnstarred(ctx, tx, entryBefore, tombstoneBefore)
 		if err != nil {
 			_ = tx.Rollback()
 			return 0, err
@@ -878,34 +881,49 @@ func (r *entryRepository) DeleteReadUnstarred(ctx context.Context) (int64, error
 		}
 		return count, nil
 	}
-	return deleteReadUnstarred(ctx, r.db)
+	return deleteReadUnstarred(ctx, r.db, entryBefore, tombstoneBefore)
 }
 
-const tombstoneRetention = 180 * 24 * time.Hour
-
-func deleteReadUnstarred(ctx context.Context, db dbtx) (int64, error) {
+// deleteReadUnstarred 在同一事务里先写墓碑再删条目，保证「删掉的那批」再次入库时被挡住。
+//
+// entryBefore != nil 时删除集合限定为「最近阅读/更新时间（COALESCE(updated_at, created_at)）早于
+// entryBefore」的已读未收藏条目；nil = 不限时间（清全部，老行为）。墓碑写入用同一套时间条件，
+// 只覆盖「本次真正删除的那批」，不会把保留期内的近期已读文章也打上墓碑。
+// tombstoneBefore != nil 时顺带清理更早的旧墓碑；nil = 永久保留，不做墓碑过期清理。
+func deleteReadUnstarred(ctx context.Context, db dbtx, entryBefore *time.Time, tombstoneBefore *time.Time) (int64, error) {
 	now := time.Now()
-	// 墓碑不是永久判决：只保留最近 180 天，既限制表增长，也避免若干年后
-	// 同一 URL 被真正的新文章复用时仍被永久挡住。用户「刚看完清掉又刷新」的场景
-	// 远在保留期内，仍会被挡住。
-	if _, err := db.ExecContext(ctx,
-		`DELETE FROM entry_tombstones WHERE created_at < ?`,
-		formatTime(now.Add(-tombstoneRetention)),
-	); err != nil {
-		return 0, fmt.Errorf("expire old entry tombstones: %w", err)
+
+	// 删除/墓碑共用的时间门槛（两者必须一致：墓碑只覆盖本次实际删除的集合）。
+	// updated_at 在标已读时会刷新，符合「最近阅读/更新时间」口径；created_at 作兜底。
+	entryWhere := `starred = 0 AND read = 1`
+	var entryArgs []any
+	if entryBefore != nil {
+		entryWhere += ` AND COALESCE(updated_at, created_at) < ?`
+		entryArgs = append(entryArgs, formatTime(*entryBefore))
 	}
-	if _, err := db.ExecContext(ctx,
-		`INSERT OR IGNORE INTO entry_tombstones (feed_id, hash, url, created_at)
+
+	// 墓碑过期：仅在 tombstoneBefore != nil 时执行；nil = 永久保留（0 天）。
+	if tombstoneBefore != nil {
+		if _, err := db.ExecContext(ctx,
+			`DELETE FROM entry_tombstones WHERE created_at < ?`,
+			formatTime(*tombstoneBefore),
+		); err != nil {
+			return 0, fmt.Errorf("expire old entry tombstones: %w", err)
+		}
+	}
+
+	// 先写墓碑（用同一 entryWhere 条件，只覆盖本次删除的那批；hash 为空的条目无法作为指纹，跳过）。
+	insertSQL := `INSERT OR IGNORE INTO entry_tombstones (feed_id, hash, url, created_at)
 		 SELECT feed_id, hash,
 		        CASE WHEN instr(url, '#') > 0 THEN substr(url, 1, instr(url, '#') - 1) ELSE url END,
 		        ? FROM entries
-		  WHERE starred = 0 AND read = 1 AND hash <> ''`,
-		formatTime(now),
-	); err != nil {
+		  WHERE ` + entryWhere + ` AND hash <> ''`
+	insertArgs := append([]any{formatTime(now)}, entryArgs...)
+	if _, err := db.ExecContext(ctx, insertSQL, insertArgs...); err != nil {
 		return 0, fmt.Errorf("insert entry tombstones: %w", err)
 	}
 
-	result, err := db.ExecContext(ctx, `DELETE FROM entries WHERE starred = 0 AND read = 1`)
+	result, err := db.ExecContext(ctx, `DELETE FROM entries WHERE `+entryWhere, entryArgs...)
 	if err != nil {
 		return 0, fmt.Errorf("delete read unstarred entries: %w", err)
 	}

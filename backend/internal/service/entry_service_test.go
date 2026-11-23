@@ -701,7 +701,7 @@ func TestEntryService_ClearEntryCache_DoesNotResetConditionalGet(t *testing.T) {
 	mockFeeds := mock.NewMockFeedRepository(ctrl)
 	svc := service.NewEntryService(mockEntries, mockFeeds, mock.NewMockFolderRepository(ctrl), nil)
 
-	mockEntries.EXPECT().DeleteReadUnstarred(context.Background()).Return(int64(2), nil)
+	mockEntries.EXPECT().DeleteReadUnstarred(context.Background(), gomock.Any(), gomock.Any()).Return(int64(2), nil)
 
 	count, err := svc.ClearEntryCache(context.Background())
 	require.NoError(t, err)
@@ -718,7 +718,7 @@ func TestEntryService_ClearEntryCache_DeleteError(t *testing.T) {
 	svc := service.NewEntryService(mockEntries, mockFeeds, mock.NewMockFolderRepository(ctrl), nil)
 
 	dbErr := errors.New("delete failed")
-	mockEntries.EXPECT().DeleteReadUnstarred(context.Background()).Return(int64(0), dbErr)
+	mockEntries.EXPECT().DeleteReadUnstarred(context.Background(), gomock.Any(), gomock.Any()).Return(int64(0), dbErr)
 
 	_, err := svc.ClearEntryCache(context.Background())
 	require.ErrorIs(t, err, dbErr)

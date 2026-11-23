@@ -14,6 +14,7 @@ import (
 	model "krss/backend/internal/model"
 	repository "krss/backend/internal/repository"
 	reflect "reflect"
+	time "time"
 
 	gomock "go.uber.org/mock/gomock"
 )
@@ -101,18 +102,18 @@ func (mr *MockEntryRepositoryMockRecorder) CreateOrUpdateSkippingTombstones(ctx,
 }
 
 // DeleteReadUnstarred mocks base method.
-func (m *MockEntryRepository) DeleteReadUnstarred(ctx context.Context) (int64, error) {
+func (m *MockEntryRepository) DeleteReadUnstarred(ctx context.Context, entryBefore, tombstoneBefore *time.Time) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteReadUnstarred", ctx)
+	ret := m.ctrl.Call(m, "DeleteReadUnstarred", ctx, entryBefore, tombstoneBefore)
 	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // DeleteReadUnstarred indicates an expected call of DeleteReadUnstarred.
-func (mr *MockEntryRepositoryMockRecorder) DeleteReadUnstarred(ctx any) *gomock.Call {
+func (mr *MockEntryRepositoryMockRecorder) DeleteReadUnstarred(ctx, entryBefore, tombstoneBefore any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteReadUnstarred", reflect.TypeOf((*MockEntryRepository)(nil).DeleteReadUnstarred), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteReadUnstarred", reflect.TypeOf((*MockEntryRepository)(nil).DeleteReadUnstarred), ctx, entryBefore, tombstoneBefore)
 }
 
 // ExistsByHash mocks base method.

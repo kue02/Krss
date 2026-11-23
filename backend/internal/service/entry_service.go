@@ -54,6 +54,9 @@ type EntryService interface {
 	WithPlugins(registry *plugin.Registry) EntryService
 	// WithEntryProcessorTimeout 覆盖单个阅读期处理器的超时（默认 2s；测试用短超时）。
 	WithEntryProcessorTimeout(timeout time.Duration) EntryService
+	// WithCacheSettings 装上缓存清理设置来源（1123）：清理时按保留期计算时间门槛。
+	// builder 形状同 WithPlugins：main.go 构造处一行接上，不传 = 用默认保留期。
+	WithCacheSettings(settings SettingsService) EntryService
 }
 
 // entryProcessorTimeout 单个阅读期处理器的超时（插件运行时安全）。
@@ -70,6 +73,8 @@ type entryService struct {
 	plugins *plugin.Registry
 	// processorTimeout 单个处理器的超时；默认 entryProcessorTimeout，测试可改小。
 	processorTimeout time.Duration
+	// settings 缓存清理设置来源（1123）；nil = 用默认保留期（30/180 天）。
+	settings SettingsService
 }
 
 func NewEntryService(
@@ -100,6 +105,12 @@ func (s *entryService) WithEntryProcessorTimeout(timeout time.Duration) EntrySer
 	if timeout > 0 {
 		s.processorTimeout = timeout
 	}
+	return s
+}
+
+// WithCacheSettings 装上缓存清理设置来源（1123）：不传 = 清理时用默认保留期。
+func (s *entryService) WithCacheSettings(settings SettingsService) EntryService {
+	s.settings = settings
 	return s
 }
 
@@ -481,7 +492,32 @@ func (s *entryService) ClearReadabilityCache(ctx context.Context) (int64, error)
 }
 
 func (s *entryService) ClearEntryCache(ctx context.Context) (int64, error) {
-	deleted, err := s.entries.DeleteReadUnstarred(ctx)
+	// 1123：清理范围由设置决定。已读保留期 entryDays：0 = 清全部（老行为）；
+	// 墓碑保留期 tombDays：0 = 永久保留（不让旧墓碑过期）。
+	entryDays := DefaultCacheEntryRetentionDays
+	tombDays := DefaultCacheTombstoneRetentionDays
+	if s.settings != nil {
+		if cs, err := s.settings.GetCacheSettings(ctx); err != nil {
+			// 设置读失败不能拖垮清理：回退默认保留期，照常清理。
+			logger.Error("read cache settings failed, use defaults", "module", "service", "action", "clear", "resource", "entry", "result", "failed", "error", err)
+		} else if cs != nil {
+			entryDays = cs.EntryRetentionDays
+			tombDays = cs.TombstoneRetentionDays
+		}
+	}
+
+	now := time.Now()
+	var entryBefore, tombstoneBefore *time.Time
+	if entryDays > 0 {
+		t := now.AddDate(0, 0, -entryDays)
+		entryBefore = &t
+	}
+	if tombDays > 0 {
+		t := now.AddDate(0, 0, -tombDays)
+		tombstoneBefore = &t
+	}
+
+	deleted, err := s.entries.DeleteReadUnstarred(ctx, entryBefore, tombstoneBefore)
 	if err != nil {
 		logger.Error("entry cache clear failed", "module", "service", "action", "clear", "resource", "entry", "result", "failed", "error", err)
 		return 0, err

@@ -234,6 +234,9 @@ func (h *SettingsHandler) RegisterRoutes(g *echo.Group) {
 	// 拉取（11-20）：定时频率 / 全局并发 / 同主机并发 / 单源超时
 	g.GET("/settings/fetch", h.GetFetchSettings)
 	g.PUT("/settings/fetch", h.UpdateFetchSettings)
+	// 缓存清理（1123）：已读文章保留期 / 墓碑保留期（天，0 有特殊语义）
+	g.GET("/settings/cache", h.GetCacheSettings)
+	g.PUT("/settings/cache", h.UpdateCacheSettings)
 	g.GET("/settings/network", h.GetNetworkSettings)
 	g.PUT("/settings/network", h.UpdateNetworkSettings)
 	g.POST("/settings/network/test", h.TestNetworkProxy)
@@ -558,6 +561,71 @@ func (h *SettingsHandler) UpdateFetchSettings(c echo.Context) error {
 	}
 	logger.Info("fetch settings updated", "module", "handler", "action", "update", "resource", "settings", "result", "ok")
 	return h.GetFetchSettings(c)
+}
+
+// cacheSettingsResponse 缓存清理设置（1123）。
+type cacheSettingsResponse struct {
+	EntryRetentionDays     int `json:"entryRetentionDays"`
+	TombstoneRetentionDays int `json:"tombstoneRetentionDays"`
+}
+
+// cacheSettingsRequest 写缓存清理设置的请求体：用指针区分「没传」与「显式传 0」。
+type cacheSettingsRequest struct {
+	EntryRetentionDays     *int `json:"entryRetentionDays"`
+	TombstoneRetentionDays *int `json:"tombstoneRetentionDays"`
+}
+
+// GetCacheSettings 读缓存清理设置（未配置的字段为默认值 30/180）。
+// @Summary Get cache cleanup settings
+// @Description Retention windows for clearing article cache. entryRetentionDays: only delete read+unstarred entries idle longer than this, 0 = clear all. tombstoneRetentionDays: keep purged-article tombstones this long, 0 = keep forever. Default 30 / 180.
+// @Tags settings
+// @Produce json
+// @Success 200 {object} cacheSettingsResponse
+// @Failure 500 {object} errorResponse
+// @Router /settings/cache [get]
+func (h *SettingsHandler) GetCacheSettings(c echo.Context) error {
+	settings, err := h.service.GetCacheSettings(c.Request().Context())
+	if err != nil {
+		logger.Error("cache settings get failed", "module", "handler", "action", "list", "resource", "settings", "result", "failed", "error", err)
+		return c.JSON(http.StatusInternalServerError, errorResponse{Error: "failed to get settings"})
+	}
+	return c.JSON(http.StatusOK, cacheSettingsResponse{
+		EntryRetentionDays:     settings.EntryRetentionDays,
+		TombstoneRetentionDays: settings.TombstoneRetentionDays,
+	})
+}
+
+// UpdateCacheSettings 改缓存清理设置：显式传 0 表示「全部清理 / 永久保留」，没传的字段保持原值。
+// @Summary Update cache cleanup settings
+// @Description Partial update. Explicit 0 is valid: entry 0 = clear all, tombstone 0 = keep forever. Out-of-range values are clamped (entry 0..3650, tombstone 0..36500).
+// @Tags settings
+// @Accept json
+// @Produce json
+// @Param settings body cacheSettingsRequest true "Cache settings"
+// @Success 200 {object} cacheSettingsResponse
+// @Failure 400 {object} errorResponse
+// @Router /settings/cache [put]
+func (h *SettingsHandler) UpdateCacheSettings(c echo.Context) error {
+	var req cacheSettingsRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request"})
+	}
+	current, err := h.service.GetCacheSettings(c.Request().Context())
+	if err != nil {
+		return writeSettingsSaveError(c, err, "update")
+	}
+	next := *current
+	if req.EntryRetentionDays != nil {
+		next.EntryRetentionDays = *req.EntryRetentionDays
+	}
+	if req.TombstoneRetentionDays != nil {
+		next.TombstoneRetentionDays = *req.TombstoneRetentionDays
+	}
+	if err := h.service.SetCacheSettings(c.Request().Context(), &next); err != nil {
+		return writeSettingsSaveError(c, err, "update")
+	}
+	logger.Info("cache settings updated", "module", "handler", "action", "update", "resource", "settings", "result", "ok")
+	return h.GetCacheSettings(c)
 }
 
 // ClearAnubisCookies deletes all Anubis cookies from settings.

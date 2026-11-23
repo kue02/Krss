@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useQueryClient } from "@tanstack/react-query";
-import { AlertDialog, Button } from "@heroui/react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertDialog, Button, Input } from "@heroui/react";
 import {
   startImportOPML,
   watchImportStatus,
@@ -14,6 +14,8 @@ import {
   clearIconCache,
   clearReadabilityCache,
   clearEntryCache,
+  getCacheSettings,
+  updateCacheSettings,
 } from "@/api";
 import type { ClearAICacheResponse, ClearCacheResponse } from "@/api";
 import { Archive, Download, Trash2, Upload } from "lucide-react";
@@ -24,7 +26,7 @@ import {
 import { MCPOutboundSection } from "@/components/settings/tabs/MCPOutboundSection";
 import { pullSettingsFromServer } from "@/lib/settings-sync";
 import type { ImportResult, ImportTask } from "@/types/api";
-import type { SettingsExportPayload } from "@/types/settings";
+import type { CacheSettings, SettingsExportPayload } from "@/types/settings";
 
 /**
  * 21 批：导入前先确认「这确实是本应用导出的设置文件」——
@@ -84,6 +86,26 @@ export function DataControl() {
   const [clearEntryResult, setClearEntryResult] =
     useState<ClearCacheResponse | null>(null);
   const [clearEntryError, setClearEntryError] = useState<string | null>(null);
+
+  // 缓存保留设置：清理文章保留天数 / 已清理文章保留期
+  const [cacheDraft, setCacheDraft] = useState<CacheSettings | null>(null);
+  const [cacheSaving, setCacheSaving] = useState(false);
+  const [cacheStatus, setCacheStatus] = useState<{
+    kind: "ok" | "error";
+    text: string;
+  } | null>(null);
+
+  const { data: cacheSettings } = useQuery({
+    queryKey: ["cacheSettings"],
+    queryFn: getCacheSettings,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  useEffect(() => {
+    if (cacheSettings) {
+      setCacheDraft(cacheSettings);
+    }
+  }, [cacheSettings]);
 
   const isImporting = task?.status === "running";
 
@@ -318,6 +340,34 @@ export function DataControl() {
       setClearEntryError(message);
     } finally {
       setIsClearingEntry(false);
+    }
+  };
+
+  const patchCacheDraft = (patch: Partial<CacheSettings>) => {
+    setCacheDraft((prev) => (prev ? { ...prev, ...patch } : prev));
+  };
+
+  const handleSaveCacheSettings = async () => {
+    if (!cacheDraft) return;
+    setCacheSaving(true);
+    setCacheStatus(null);
+
+    try {
+      const saved = await updateCacheSettings(cacheDraft);
+      setCacheDraft(saved);
+      setCacheStatus({
+        kind: "ok",
+        text: t("data_control.cache_retention_saved"),
+      });
+      queryClient.invalidateQueries({ queryKey: ["cacheSettings"] });
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : t("data_control.cache_retention_save_failed");
+      setCacheStatus({ kind: "error", text: message });
+    } finally {
+      setCacheSaving(false);
     }
   };
 
@@ -595,6 +645,82 @@ export function DataControl() {
         title={t("data_control.clear_cache")}
       >
         <div className="divide-y divide-border/50">
+          <SettingRow
+            label={t("data_control.cache_entry_retention_label")}
+            hint={t("data_control.cache_entry_retention_hint")}
+          >
+            <div className="flex items-center gap-1.5">
+              <Input
+                type="number"
+                min={0}
+                step={1}
+                value={String(cacheDraft?.entryRetentionDays ?? 0)}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  patchCacheDraft({
+                    entryRetentionDays: Number.isFinite(v)
+                      ? Math.max(0, Math.trunc(v))
+                      : 0,
+                  });
+                }}
+                aria-label={t("data_control.cache_entry_retention_label")}
+                className="w-24"
+              />
+              <span className="text-xs text-muted-foreground">
+                {t("data_control.cache_retention_unit")}
+              </span>
+            </div>
+          </SettingRow>
+          <SettingRow
+            label={t("data_control.cache_tombstone_retention_label")}
+            hint={t("data_control.cache_tombstone_retention_hint")}
+          >
+            <div className="flex items-center gap-1.5">
+              <Input
+                type="number"
+                min={0}
+                step={1}
+                value={String(cacheDraft?.tombstoneRetentionDays ?? 0)}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  patchCacheDraft({
+                    tombstoneRetentionDays: Number.isFinite(v)
+                      ? Math.max(0, Math.trunc(v))
+                      : 0,
+                  });
+                }}
+                aria-label={t("data_control.cache_tombstone_retention_label")}
+                className="w-24"
+              />
+              <span className="text-xs text-muted-foreground">
+                {t("data_control.cache_retention_unit")}
+              </span>
+            </div>
+          </SettingRow>
+          <div className="flex items-center gap-3 px-1 py-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="primary"
+              isDisabled={cacheSaving || !cacheDraft}
+              onPress={handleSaveCacheSettings}
+            >
+              {cacheSaving
+                ? t("data_control.cache_retention_saving")
+                : t("data_control.cache_retention_save")}
+            </Button>
+            {cacheStatus && (
+              <span
+                className={
+                  cacheStatus.kind === "ok"
+                    ? "text-xs text-green-600 dark:text-green-400"
+                    : "text-xs text-red-600 dark:text-red-400"
+                }
+              >
+                {cacheStatus.text}
+              </span>
+            )}
+          </div>
           <ClearCacheItem
             title={t("data_control.clear_entry_cache")}
             description={t("data_control.clear_entry_cache_description")}

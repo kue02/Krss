@@ -51,6 +51,9 @@ const (
 	KeyUITheme        = keyUITheme
 	KeyUILang         = keyUILang
 	KeyUISidebarState = keyUISidebarState
+	// 1123：缓存清理设置键（对外契约，测试里钉死）
+	KeyCacheEntryRetentionDays     = keyCacheEntryRetentionDays
+	KeyCacheTombstoneRetentionDays = keyCacheTombstoneRetentionDays
 )
 
 var (

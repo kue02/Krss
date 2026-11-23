@@ -219,6 +219,20 @@ func (mr *MockEntryServiceMockRecorder) Unmute(ctx, id any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Unmute", reflect.TypeOf((*MockEntryService)(nil).Unmute), ctx, id)
 }
 
+// WithCacheSettings mocks base method.
+func (m *MockEntryService) WithCacheSettings(settings service.SettingsService) service.EntryService {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "WithCacheSettings", settings)
+	ret0, _ := ret[0].(service.EntryService)
+	return ret0
+}
+
+// WithCacheSettings indicates an expected call of WithCacheSettings.
+func (mr *MockEntryServiceMockRecorder) WithCacheSettings(settings any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WithCacheSettings", reflect.TypeOf((*MockEntryService)(nil).WithCacheSettings), settings)
+}
+
 // WithEntryProcessorTimeout mocks base method.
 func (m *MockEntryService) WithEntryProcessorTimeout(timeout time.Duration) service.EntryService {
 	m.ctrl.T.Helper()
