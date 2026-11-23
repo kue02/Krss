@@ -850,6 +850,7 @@
     "folder_overrides_title": "批量设置「{{name}}」下的订阅",
     "folder_overrides_hint": "会覆盖这 {{count}} 个订阅各自的单独设置；选「跟随全局」= 清掉单独设置。",
     "bulk_update_failed": "批量设置失败",
+    "overrides_group": "订阅级覆盖",
     "reader_mode": "正文打开方式",
     "reader_mode_on": "阅读模式",
     "reader_mode_off": "原文",
