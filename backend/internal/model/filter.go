@@ -146,7 +146,7 @@ type Filter struct {
 	Kind          string
 	ScopeType string
 	ScopeID   *int64
-	// ScopeIDs 多选订阅时的订阅 id 集合（scope_type='feed'；空 = 用 ScopeID 的单个）。
+	// ScopeIDs 多选范围时的 id 集合（scope_type='feed' 时为订阅 id、='folder' 时为文件夹 id；空 = 用 ScopeID 的单个）。
 	ScopeIDs []int64
 	// ContentTypes 视图只在哪些内容类型下显示（空 = 都显示，老行为）。
 	ContentTypes []string
