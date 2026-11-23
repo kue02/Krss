@@ -48,6 +48,21 @@ export function deferEntryRemoval(
   emit();
 }
 
+/**
+ * 更新一条已记下「先别摘」的条目的字段（如已读/星标）。
+ *
+ * 场景：条目先被手动标已读 → 记进 deferred；随后又被加星，
+ * 若只 refetch 列表，`mergeDeferredRemovals` 会拿旧的快照插回，
+ * 星标态就丢了。这里原地 patch 快照再 emit，保证列表看到的是最新态。
+ * 该 id 没被记下时什么都不做。
+ */
+export function patchDeferredEntry(id: string, patch: Partial<Entry>): void {
+  const current = deferredEntries.get(id);
+  if (!current) return;
+  deferredEntries.set(id, { ...current, entry: { ...current.entry, ...patch } });
+  emit();
+}
+
 /** 离开这个列表时清空（配合把 id 从缓存里摘掉） */
 export function clearDeferredRemovals(): void {
   if (deferredEntries.size === 0) return;

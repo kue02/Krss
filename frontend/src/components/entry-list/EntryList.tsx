@@ -27,6 +27,7 @@ import { selectionToParams, type SelectionType } from "@/hooks/useSelection";
 import { flattenUniqueEntries } from "@/lib/entry-pagination";
 import { stripHtml } from "@/lib/html-utils";
 import { EntryListItem } from "./EntryListItem";
+import { MobileSwipeEntryRow } from "@/components/mobile/MobileSwipeEntryRow";
 import {
   EntryListFilterPill,
   type EntryFilter,
@@ -1540,7 +1541,42 @@ export function EntryList({
                 <VirtualizedArticleList
                   virtualList={virtualList}
                   entries={entries}
-                  renderItem={(entry, index) => (
+                  renderItem={(entry, index) => {
+                    const item = (
+                      <EntryListItem
+                        feedUnreadCount={unreadCounts?.counts?.[entry.feedId]}
+                        key={entry.id}
+                        data-index={index}
+                        data-entry-id={entry.id}
+                        entry={entry}
+                        feed={feedsMap.get(entry.feedId)}
+                        isSelected={entry.id === selectedEntryId}
+                        onClick={handleSelectEntry}
+                        onMarkAboveEntry={handleMarkAboveEntry}
+                        autoTranslate={autoTranslate}
+                        targetLanguage={targetLanguage}
+                        social={isSocialView}
+                        fetchReadable={fetchReadableEnabled}
+                        autoExpandLong={expandLongByView?.[contentType] ?? false}
+                        isMobile={isMobile}
+                        onLongPress={(entry, point) =>
+                          setMobileActions({ entry, point })
+                        }
+                        onSelectFeedFromEntry={onSelectFeedFromEntry}
+                      />
+                    );
+                    return isMobile ? (
+                      <MobileSwipeEntryRow entry={entry}>
+                        {item}
+                      </MobileSwipeEntryRow>
+                    ) : (
+                      item
+                    );
+                  }}
+                />
+              ) : (
+                entries.map((entry, index) => {
+                  const item = (
                     <EntryListItem
                       feedUnreadCount={unreadCounts?.counts?.[entry.feedId]}
                       key={entry.id}
@@ -1562,32 +1598,15 @@ export function EntryList({
                       }
                       onSelectFeedFromEntry={onSelectFeedFromEntry}
                     />
-                  )}
-                />
-              ) : (
-                entries.map((entry, index) => (
-                  <EntryListItem
-                    feedUnreadCount={unreadCounts?.counts?.[entry.feedId]}
-                    key={entry.id}
-                    data-index={index}
-                    data-entry-id={entry.id}
-                    entry={entry}
-                    feed={feedsMap.get(entry.feedId)}
-                    isSelected={entry.id === selectedEntryId}
-                    onClick={handleSelectEntry}
-                    onMarkAboveEntry={handleMarkAboveEntry}
-                    autoTranslate={autoTranslate}
-                    targetLanguage={targetLanguage}
-                    social={isSocialView}
-                    fetchReadable={fetchReadableEnabled}
-                    autoExpandLong={expandLongByView?.[contentType] ?? false}
-                    isMobile={isMobile}
-                    onLongPress={(entry, point) =>
-                      setMobileActions({ entry, point })
-                    }
-                    onSelectFeedFromEntry={onSelectFeedFromEntry}
-                  />
-                ))
+                  );
+                  return isMobile ? (
+                    <MobileSwipeEntryRow key={entry.id} entry={entry}>
+                      {item}
+                    </MobileSwipeEntryRow>
+                  ) : (
+                    item
+                  );
+                })
               )}
               {/* 24-5：列表尾整宽弱边框「全部标记为已读」（语义=清当前范围未读，
                   与列表头那颗同接口 onMarkAllRead；胶囊浮在下面，pb-16 已留白）。

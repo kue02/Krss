@@ -9,6 +9,7 @@ import {
   getDeferredRemovalsVersion,
   hasDeferredRemovals,
   mergeDeferredRemovals,
+  patchDeferredEntry,
   resetDeferredRemovals,
   subscribeDeferredRemovals,
 } from "./deferred-removal";
@@ -147,6 +148,26 @@ describe("deferred-removal", () => {
 
       deferUnreadRemovals(client, new Set(["a"]));
 
+      expect(hasDeferredRemovals()).toBe(false);
+    });
+  });
+
+  describe("patchDeferredEntry（47-1：先别摘的条目上继续改星标/已读）", () => {
+    it("patch 已记下的条目，插回时带上新字段", () => {
+      const b = makeEntry("b");
+      deferEntryRemoval("b", { ...b, read: true }, 1);
+      patchDeferredEntry("b", { starred: true });
+      const merged = mergeDeferredRemovals([makeEntry("a")]);
+      expect(merged.map((item) => item.id)).toEqual(["a", "b"]);
+      expect(merged[1]?.read).toBe(true);
+      expect(merged[1]?.starred).toBe(true);
+    });
+
+    it("没记下的 id 什么都不做（也不白 emit）", () => {
+      const listener = vi.fn();
+      subscribeDeferredRemovals(listener);
+      patchDeferredEntry("ghost", { starred: true });
+      expect(listener).not.toHaveBeenCalled();
       expect(hasDeferredRemovals()).toBe(false);
     });
   });

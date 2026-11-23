@@ -16,6 +16,10 @@ import {
   getStarredCount,
 } from "@/api";
 import { countLoadedEntries } from "@/lib/entry-pagination";
+import {
+  deferUnreadRemovals,
+  patchDeferredEntry,
+} from "@/components/entry-list/deferred-removal";
 import type {
   ContentType,
   Entry,
@@ -124,14 +128,22 @@ export function useMarkAsRead() {
       return { previousEntry, previousEntries };
     },
 
-    onSuccess: (_, { skipInvalidate }) => {
+    onSuccess: (_, { id, read, skipInvalidate }) => {
       // Always update unread counts immediately
       queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
       // viewCounts 靠 useViewCounts 自带 120s 自动刷，这里不手动 invalidate
-      // Only invalidate entries if not skipped (e.g., not in lightbox/detail view)
-      if (!skipInvalidate) {
-        queryClient.invalidateQueries({ queryKey: ["entries"] });
+      if (skipInvalidate) return;
+      // 47-1：手动标已读时**不要当场把条目从「只看未读」列表里摘掉**。
+      // 留到离开这个列表（resetKey 变）时由 useScrollMarkRead 统一清理；
+      // 期间任何一次重拉丢掉的条目由 mergeDeferredRemovals 按原位插回。
+      // 只标已读才需要「留」；标未读不影响列表归属，照旧刷新。
+      if (read) {
+        deferUnreadRemovals(queryClient, new Set([id]));
+        // 乐观更新在 onMutate 已把各缓存里的 read 置真，这里再确保 deferred 快照同步。
+        patchDeferredEntry(id, { read: true });
+        return;
       }
+      queryClient.invalidateQueries({ queryKey: ["entries"] });
     },
 
     onError: (_, { id }, context) => {
@@ -297,6 +309,9 @@ export function useMarkAsStarred() {
         if (!old) return old;
         return { ...old, starred };
       });
+      // 47-1：若这条正被「先别摘」记着，同步快照里的星标态，
+      // 免得列表重拉时 mergeDeferredRemovals 用旧快照把星标盖回去。
+      patchDeferredEntry(id, { starred });
       queryClient.invalidateQueries({ queryKey: ["starredCount"] });
       // viewCounts 靠 useViewCounts 自带 120s 自动刷，这里不手动 invalidate
       queryClient.invalidateQueries({ queryKey: ["entries"] });
