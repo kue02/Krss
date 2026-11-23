@@ -29,6 +29,7 @@ import {
   useUISettingActions,
   resolvePictureLayout,
   resolveGridStyle,
+  resolveExperimentalLayoutVisibility,
 } from "@/hooks/useUISettings";
 import { getEntryImages } from "@/lib/extract-images";
 import { EntryListHeader } from "@/components/entry-list/EntryListHeader";
@@ -141,7 +142,8 @@ export function PictureMasonry({
   // 图片视图排布：瀑布流（默认）或等高正方格（用户 2026-09-17 要求可切）
   const pictureLayout = useUISettingKey("pictureLayout");
   // 28-7：档位收敛为两档（grid / hover），「正方格 vs 原图比例」降为 grid 档下的样式
-  const resolvedLayout = resolvePictureLayout(pictureLayout);
+  const resolvedLayout: "grid" | "hover" | "wall" =
+    resolvePictureLayout(pictureLayout);
   const gridStyle = resolveGridStyle(pictureLayout, useUISettingKey("gridStyle"));
   const isGrid = resolvedLayout === "grid" && gridStyle === "square";
   /** 第三档：hover-img（复用 obsidianui 组件），走普通列表而不是瀑布流虚拟滚动 */
@@ -153,17 +155,36 @@ export function PictureMasonry({
   /** 28-7a：悬停大图档的尺寸预设（行高 / 浮块大小，用户要求可设置） */
   const hoverRowHeight = useUISettingKey("hoverRowHeight");
   const hoverImageSize = useUISettingKey("hoverImageSize");
+  /**
+   * 实验布局批：图片可切换档位（按实验可见性过滤）。
+   * 常规只有「网格」；hover/wall 是实验档，仅当实验入口可见（或当前正选中它）才出现在循环里。
+   * 若只剩网格一档 → 顶栏不渲染切换按钮（EntryListHeader 据 order.length>1 判断）。
+   * 注意：已选中的实验布局仍照常渲染（这里只影响「入口」与循环，不影响 resolvedLayout）。
+   */
+  const expVisibility = resolveExperimentalLayoutVisibility({
+    experimentalFeaturesEnabled: useUISettingKey("experimentalFeaturesEnabled"),
+    experimentalPictureHover: useUISettingKey("experimentalPictureHover"),
+    experimentalPictureWall: useUISettingKey("experimentalPictureWall"),
+    experimentalArticleHover: useUISettingKey("experimentalArticleHover"),
+  });
+  const pictureLayoutOrder: Array<"grid" | "hover" | "wall"> = ["grid"];
+  if (expVisibility.pictureHover || resolvedLayout === "hover") {
+    pictureLayoutOrder.push("hover");
+  }
+  if (expVisibility.pictureWall || resolvedLayout === "wall") {
+    pictureLayoutOrder.push("wall");
+  }
   const handleTogglePictureLayout = useCallback(() => {
-    // 28-7（用户：「合并网格应该只有两个选项」）时是两档循环；31-1 加「照片墙」后三档循环：
-    // 网格 → 悬停大图 → 照片墙 → 网格。
-    setPictureLayout(
-      resolvedLayout === "grid"
-        ? "hover"
-        : resolvedLayout === "hover"
-          ? "wall"
-          : "grid",
+    // 28-7 / 31-1：在「可见档位」里循环（网格 → 悬停大图 → 照片墙 → 网格）。
+    // 实验布局批：hover/wall 未启用时循环里只有更少档；只剩一档则不切。
+    const idx = Math.max(
+      0,
+      pictureLayoutOrder.findIndex((l) => l === resolvedLayout),
     );
-  }, [resolvedLayout, setPictureLayout]);
+    const next =
+      pictureLayoutOrder[(idx + 1) % pictureLayoutOrder.length] ?? "grid";
+    setPictureLayout(next);
+  }, [pictureLayoutOrder, resolvedLayout, setPictureLayout]);
   const { currentColumn, isReady } = useMasonryColumn(
     isMobile,
     scrollContainerRef,
@@ -421,6 +442,7 @@ export function PictureMasonry({
           sidebarVisible={sidebarVisible}
           pictureLayout={resolvedLayout}
           onTogglePictureLayout={handleTogglePictureLayout}
+          pictureLayoutOrder={pictureLayoutOrder}
           onSearchClick={onSearchClick}
         />
       </MobileDocumentHeader>
