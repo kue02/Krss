@@ -10,7 +10,17 @@ export interface AIProviderConfig {
   name: string;
   provider: AIProvider;
   baseUrl: string;
+  /**
+   * 该提供商的默认模型 —— 「当前使用」是它时用它出请求；
+   * 分场景只写到 provider:<id>（不带 #model）时也回落到它。
+   */
   model: string;
+  /**
+   * 该提供商可用的模型库（通常含默认模型）。同一个提供商可能同时提供
+   * 翻译、摘要等不同模型，分场景按 provider:<id>#<model> 从这里挑。
+   * 老数据没有这个字段时按 [model] 兜底。
+   */
+  models?: string[];
   apiKey: string;
   requestOptions?: RequestOptions | null;
   /**
@@ -39,7 +49,8 @@ export interface AISettings {
   /** 已保存的提供商列表；上面的 provider/apiKey/... 始终等于当前使用的那一份 */
   providers?: AIProviderConfig[];
   activeProviderId?: string;
-  /** 分场景模型覆盖（50 批 1.2）：空 = 跟随当前使用；provider:<id> = 用已保存的那份；free = 免费通道（仅翻译） */
+  /** 分场景模型覆盖：空 = 跟随当前使用；provider:<id>#<model> = 用该提供商下的指定模型；
+   *  provider:<id>（旧）= 用该提供商的默认模型；free = 免费通道（仅翻译） */
   sceneTranslate?: string;
   sceneSummary?: string;
   sceneAutomation?: string;

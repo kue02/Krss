@@ -451,7 +451,8 @@ func (s *aiService) getAIConfigForScene(ctx context.Context, scene AIScene) (ai.
 		return cfg, nil
 	}
 	if after, ok := strings.CutPrefix(override, "provider:"); ok {
-		id := strings.TrimSpace(after)
+		// provider:<id> 用默认模型；provider:<id>#<model> 在同一个提供商下挑指定模型。
+		id, modelOverride := splitSceneProvider(after)
 		if id == "" {
 			return cfg, nil
 		}
@@ -473,6 +474,9 @@ func (s *aiService) getAIConfigForScene(ctx context.Context, scene AIScene) (ai.
 			cfg.APIKey = item.APIKey
 			cfg.BaseURL = item.BaseURL
 			cfg.Model = item.Model
+			if modelOverride != "" {
+				cfg.Model = modelOverride
+			}
 			if item.RequestOptions != nil {
 				cfg.RequestOptions = item.RequestOptions
 			}
