@@ -217,7 +217,7 @@ type deletedCountResponse struct {
 func writeSettingsSaveError(c echo.Context, err error, action string) error {
 	if errors.Is(err, service.ErrInvalid) {
 		return c.JSON(http.StatusBadRequest, errorResponse{
-			Error: "invalid settings value: check the URL fields (must start with http:// or https://)",
+			Error: "invalid settings value: check the provided fields (URLs must start with http:// or https://)",
 		})
 	}
 	logger.Error("settings save failed", "module", "handler", "action", action, "resource", "settings", "result", "failed", "error", err)

@@ -1,6 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowUp, ArrowDown, X, Plus } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Check,
+  ChevronRight,
+  Layers,
+  Plus,
+  Radar,
+  SlidersHorizontal,
+  Sparkles,
+  Trash2,
+  X,
+} from "lucide-react";
+import { Button } from "@heroui/react";
 import { useSettingsDirty } from "@/stores/settings-dirty-store";
 import {
   getAISettings,
@@ -12,6 +25,11 @@ import {
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { Select } from "@/components/ui/select";
+import type { SelectOption } from "@/components/ui/select";
+import {
+  SectionCard,
+  SettingRow,
+} from "@/components/settings/settings-primitives";
 import { MCPServersSection } from "@/components/settings/tabs/MCPServersSection";
 import type {
   AIProvider,
@@ -23,6 +41,9 @@ import { showToast } from "@/stores/toast-store";
 
 /** 免 key 免费翻译通道（可轮询的顺序由用户配置） */
 const FREE_TRANSLATE_CHANNELS = ["google", "youdao"] as const;
+
+/** 自动保存的防抖间隔（行为区整块自动保存，拍板 ~800ms） */
+const AUTO_SAVE_DELAY_MS = 800;
 
 function formatRequestOptions(
   value: RequestOptions | null | undefined,
@@ -63,8 +84,97 @@ function isLoopbackBaseUrl(raw: string): boolean {
   );
 }
 
-/** 自动保存的防抖间隔（50 批 1：行为区整块自动保存，拍板 ~800ms） */
-const AUTO_SAVE_DELAY_MS = 800;
+/** 某份提供商可用的模型库：优先 models，老数据没有就退回默认模型。 */
+function providerModels(entry: AIProviderConfig): string[] {
+  if (entry.models && entry.models.length > 0) return entry.models;
+  return entry.model ? [entry.model] : [];
+}
+
+/** 去重、去空白；保证默认模型在库里（有的话）。 */
+function normalizeModels(defaultModel: string, models: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const push = (value: string) => {
+    const v = value.trim();
+    if (!v || seen.has(v)) return;
+    seen.add(v);
+    out.push(v);
+  };
+  const def = defaultModel.trim();
+  if (def) push(def);
+  models.forEach(push);
+  return out;
+}
+
+/** 提供商编辑草稿（新建时 id 为 null） */
+interface ProviderDraft {
+  id: string | null;
+  name: string;
+  provider: AIProvider;
+  baseUrl: string;
+  apiKey: string;
+  /** 默认模型：当前使用该提供商、或分场景只写到 provider:<id> 时用它 */
+  model: string;
+  /** 模型库（含默认模型） */
+  models: string[];
+  requestOptionsText: string;
+}
+
+function draftOf(entry: AIProviderConfig): ProviderDraft {
+  return {
+    id: entry.id,
+    name: entry.name,
+    provider: entry.provider,
+    baseUrl: entry.baseUrl,
+    apiKey: entry.apiKey,
+    model: entry.model,
+    models: providerModels(entry),
+    requestOptionsText: formatRequestOptions(entry.requestOptions),
+  };
+}
+
+function emptyDraft(defaultName: string): ProviderDraft {
+  return {
+    id: null,
+    name: defaultName,
+    provider: "compatible",
+    baseUrl: "",
+    apiKey: "",
+    model: "",
+    models: [],
+    requestOptionsText: "",
+  };
+}
+
+/** 提供商草稿快照（dirty 判定） */
+function draftSnapshot(draft: ProviderDraft): string {
+  return JSON.stringify([
+    draft.id,
+    draft.name,
+    draft.provider,
+    draft.baseUrl,
+    draft.apiKey,
+    draft.model,
+    draft.models,
+    draft.requestOptionsText,
+  ]);
+}
+
+/** 行为区快照（自动保存的比较对象；只含行为字段，提供商表单改动不触发它） */
+function behaviorSnapshotOf(settings: AISettingsType): string {
+  return JSON.stringify([
+    settings.summaryLanguage,
+    settings.translateChannel,
+    settings.translateChannels ?? [],
+    settings.fallbackToModel,
+    settings.autoTranslate,
+    settings.autoSummary,
+    settings.rateLimit,
+    settings.sceneTranslate ?? "",
+    settings.sceneSummary ?? "",
+    settings.sceneAutomation ?? "",
+  ]);
+}
 
 export function AISettings() {
   const { t } = useTranslation();
@@ -94,44 +204,40 @@ export function AISettings() {
 
   const [settings, setSettings] = useState<AISettingsType | null>(null);
   const [providers, setProviders] = useState<AIProviderConfig[]>([]);
-  const [activeProviderId, setActiveProviderId] = useState<string | null>("default");
-  const [selectedProviderId, setSelectedProviderId] = useState<string | null>("default");
-  /** 51 批 A2：「+ 添加」= 内联新建表单（不进列表、不落库），保存成功才生成卡片 */
-  const [creating, setCreating] = useState(false);
-  /** 新建态的名称（编辑态的名称绑在 providers[selected].name 上，新建态没有对应卡） */
-  const [createdName, setCreatedName] = useState("");
+  const [activeProviderId, setActiveProviderId] = useState<string>("");
+  /** 正在编辑的提供商草稿：null = 没有任何表单展开；id=null 表示新建 */
+  const [draft, setDraft] = useState<ProviderDraft | null>(null);
+  const [draftBaseline, setDraftBaseline] = useState<string | null>(null);
+  const [probeChoices, setProbeChoices] = useState<string[] | null>(null);
+  const [newModelInput, setNewModelInput] = useState("");
   const [isProbing, setIsProbing] = useState(false);
-  const [modelChoices, setModelChoices] = useState<string[] | null>(null);
-  const [requestOptionsText, setRequestOptionsText] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** 12-7：加载/保存成功时的快照，用来判断「有没有未保存的改动」 */
-  const [baseline, setBaseline] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{
     success: boolean;
     message?: string;
     error?: string;
   } | null>(null);
-  /** 50 批 1：行为区自动保存的状态（行内反馈） */
+  /** 行为区自动保存的状态（行内反馈） */
   const [autoSaveState, setAutoSaveState] = useState<
     "idle" | "saving" | "saved" | "error"
   >("idle");
-  /** 行为区自己的基线：与它的快照一致就不触发自动保存 */
   const behaviorBaselineRef = useRef<string | null>(null);
-  /** 提供商表单有没有未保存改动（自动保存读到的是 ref，避免闭包过期） */
   const providerDirtyRef = useRef(false);
-  const isBaseURLRequired = settings
-    ? settings.provider === "openai" || settings.provider === "compatible"
-    : false;
-  const hasBaseURL = settings ? settings.baseUrl.trim().length > 0 : false;
-  const requestOptionsResult = useMemo(
-    () => parseRequestOptions(requestOptionsText),
-    [requestOptionsText],
-  );
-  const requestOptionsError = requestOptionsResult.ok
+
+  const realProviders = providers.filter((item) => !item.placeholder);
+  const activeProvider =
+    realProviders.find((item) => item.id === activeProviderId) ?? null;
+  const noUsableActive = !activeProviderId || !activeProvider;
+  const hasUsableModel = !!settings?.model.trim();
+
+  const draftRequestOptions = draft
+    ? parseRequestOptions(draft.requestOptionsText)
+    : ({ ok: true, value: {} } as const);
+  const draftRequestOptionsError = draftRequestOptions.ok
     ? null
     : t("ai_settings.request_options_invalid");
 
@@ -146,7 +252,6 @@ export function AISettings() {
     try {
       const data = await getAISettings();
       setSettings(data);
-      setRequestOptionsText(formatRequestOptions(data.requestOptions));
 
       const list =
         data.providers && data.providers.length > 0
@@ -163,21 +268,10 @@ export function AISettings() {
                 placeholder: true,
               },
             ];
-      const placeholderOnly = list.length === 1 && list[0]?.placeholder === true;
-      // 51 批 A5：后端已把「不可用的当前使用」归成空串 —— 空串就是「无」，
-      // 不再用 list[0] 兜底填回（否则后端判的无又被前端选回一张空卡）。
-      // 仅剩合成占位（真·没配过）时同样不选中。
       const active = data.activeProviderId || "";
       setProviders(list);
-      setActiveProviderId(active || null);
-      setSelectedProviderId(placeholderOnly || !active ? null : active);
-      setBaseline(
-        providerFormSnapshotOf(
-          data,
-          formatRequestOptions(data.requestOptions),
-          list,
-        ),
-      );
+      setActiveProviderId(active);
+      setDraft(null);
       behaviorBaselineRef.current = behaviorSnapshotOf(data);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -216,7 +310,6 @@ export function AISettings() {
     setSettings({
       ...settings,
       translateChannels: next,
-      // 旧的单值键跟随第一个通道，保持兼容与行为快照稳定
       translateChannel: next[0] ?? "",
     } as AISettingsType);
     setSuccessMessage(null);
@@ -239,289 +332,222 @@ export function AISettings() {
     setTranslateChannels(next);
   };
 
-  /** 把某个提供商配置灌进表单 */
-  const applyProviderToForm = (
-    base: AISettingsType,
-    entry: AIProviderConfig,
-  ): AISettingsType => ({
-    ...base,
-    provider: entry.provider,
-    baseUrl: entry.baseUrl,
-    model: entry.model,
-    apiKey: entry.apiKey,
-    requestOptions: entry.requestOptions ?? {},
-  });
+  // ---------- 提供商编辑 ----------
+
+  const openDraft = (entry: AIProviderConfig) => {
+    const next = draftOf(entry);
+    setDraft(next);
+    setDraftBaseline(draftSnapshot(next));
+    setProbeChoices(null);
+    setNewModelInput("");
+    setTestResult(null);
+    setSuccessMessage(null);
+  };
 
   const handleSelectProvider = (id: string) => {
-    if (!settings) return;
-    // 51 批 A3：点已选中的卡 = 折叠（收起表单，选中保留）；再点重新展开
-    if (id === selectedProviderId) {
-      setSelectedProviderId(null);
+    if (draft?.id === id) {
+      setDraft(null);
+      setDraftBaseline(null);
       return;
     }
     const entry = providers.find((item) => item.id === id);
     if (!entry) return;
-
-    setSelectedProviderId(id);
-    setSettings(applyProviderToForm(settings, entry));
-    setRequestOptionsText(formatRequestOptions(entry.requestOptions));
-    setModelChoices(null);
-    setSuccessMessage(null);
-    setTestResult(null);
+    openDraft(entry);
   };
 
-  /** 51 批 A2：「+ 添加」只进入内联新建态，不往列表里塞卡片 */
   const handleStartCreate = () => {
-    if (!settings) return;
-    setCreating(true);
-    setSelectedProviderId(null);
-    // 表单灌 compatible 空白默认值（51 批 A2 前的「+ 添加」行为，但不在列表里物化）
-    setCreatedName(t("ai_settings.new_provider"));
-    setSettings(applyProviderToForm(settings, {
-      id: "",
-      name: "",
-      provider: "compatible",
-      baseUrl: "",
-      model: "",
-      apiKey: "",
-      requestOptions: {},
-    }));
-    setRequestOptionsText("");
-    setModelChoices(null);
+    const next = emptyDraft(t("ai_settings.new_provider"));
+    setDraft(next);
+    setDraftBaseline(draftSnapshot(next));
+    setProbeChoices(null);
+    setNewModelInput("");
+    setTestResult(null);
+    setSuccessMessage(null);
+  };
+
+  const handleCancelDraft = () => {
+    setDraft(null);
+    setDraftBaseline(null);
+    setProbeChoices(null);
+    setNewModelInput("");
+    setTestResult(null);
+  };
+
+  const patchDraft = (patch: Partial<ProviderDraft>) => {
+    setDraft((prev) => (prev ? { ...prev, ...patch } : prev));
     setSuccessMessage(null);
     setTestResult(null);
   };
 
-  /** 51 批 A2：取消新建 —— 回到展开某张已有卡（有则第一张）或零选中态 */
-  const handleCancelCreate = () => {
-    setCreating(false);
-    const first = visibleProviders[0];
-    if (first) {
-      setSelectedProviderId(first.id);
-      setSettings((prev) =>
-        prev ? applyProviderToForm(prev, first) : prev,
-      );
-      setRequestOptionsText(formatRequestOptions(first.requestOptions));
-    }
-    setModelChoices(null);
-    setSuccessMessage(null);
-    setTestResult(null);
+  const addModel = (model: string) => {
+    if (!draft) return;
+    const value = model.trim();
+    if (!value || draft.models.includes(value)) return;
+    patchDraft({
+      models: [...draft.models, value],
+      model: draft.model || value,
+    });
   };
 
-  /** 51 批 A2：新建保存 —— 表单值物化成新卡，设为当前使用，一次落库 */
-  const handleCreateSave = async () => {
-    if (!settings || !requestOptionsResult.ok) return;
-    const id = `provider-${Date.now()}`;
-    const entry: AIProviderConfig = {
-      id,
-      name: createdName.trim(),
-      provider: settings.provider,
-      baseUrl: settings.baseUrl,
-      model: settings.model,
-      apiKey: settings.apiKey,
-      requestOptions: requestOptionsResult.value,
-    };
-    const list = [...providers, entry];
-    const payload: AISettingsType = {
-      ...settings,
-      provider: entry.provider,
-      apiKey: entry.apiKey,
-      baseUrl: entry.baseUrl,
-      model: entry.model,
-      requestOptions: entry.requestOptions ?? {},
-      providers: list,
-      activeProviderId: id,
-    };
-    setIsSaving(true);
-    setError(null);
-    setSuccessMessage(null);
-    try {
-      const saved = await updateAISettings(payload);
-      setSettings(saved);
-      setRequestOptionsText(formatRequestOptions(saved.requestOptions));
-      if (saved.providers) {
-        setProviders(saved.providers);
-      }
-      setActiveProviderId(saved.activeProviderId || id);
-      setSelectedProviderId(id);
-      setBaseline(providerFormSnapshotOf(saved, formatRequestOptions(saved.requestOptions), saved.providers ?? list));
-      setCreating(false);
-      setSuccessMessage(t("ai_settings.settings_saved"));
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.message);
-      } else {
-        setError(t("ai_settings.failed_to_save"));
-      }
-    } finally {
-      setIsSaving(false);
+  const removeModel = (model: string) => {
+    if (!draft) return;
+    const models = draft.models.filter((m) => m !== model);
+    patchDraft({
+      models,
+      model: draft.model === model ? (models[0] ?? "") : draft.model,
+    });
+  };
+
+  const toggleProbeModel = (model: string) => {
+    if (!draft) return;
+    if (draft.models.includes(model)) {
+      removeModel(model);
+    } else {
+      addModel(model);
     }
   };
 
-
-  // 51 批 A6：允许删到 0（零提供商是合法态），删最后一张也立即落库，
-  // 否则「删完不保存」下次打开又回来。剩余的卡里有可用的就把表单切过去。
-  const handleDeleteProvider = async (id: string) => {
-    if (!settings) return;
-    const remaining = providers.filter((item) => item.id !== id);
-    const nextActive =
-      activeProviderId === id
-        ? (remaining.find((item) => item.model)?.id ?? null)
-        : activeProviderId;
-    const nextSelected = selectedProviderId === id ? (nextActive ?? null) : selectedProviderId;
-
-    setProviders(remaining);
-    setActiveProviderId(nextActive);
-    setSelectedProviderId(nextSelected);
-
-    const target = remaining.find((item) => item.id === nextSelected);
-    if (target) {
-      setSettings(applyProviderToForm(settings, target));
-      setRequestOptionsText(formatRequestOptions(target.requestOptions));
-    }
-    setSuccessMessage(null);
-
-    // 立即落库（平铺字段随 active 走；active 无 → 平铺清空，行为区依赖模型的控件随即禁用）
-    setIsSaving(true);
-    try {
-      const active = remaining.find((item) => item.id === nextActive) ?? null;
-      const saved = await updateAISettings({
-        ...settings,
-        provider: active ? active.provider : settings.provider,
-        apiKey: active ? active.apiKey : "",
-        baseUrl: active ? active.baseUrl : "",
-        model: active ? active.model : "",
-        requestOptions: active ? (active.requestOptions ?? {}) : requestOptionsResult.ok ? requestOptionsResult.value : {},
-        providers: remaining,
-        activeProviderId: nextActive ?? undefined,
-      });
-      // 平铺字段回写：hasUsableModel 等行为区禁用判定读的是它
-      setSettings(saved);
-      setRequestOptionsText(formatRequestOptions(saved.requestOptions));
-      setBaseline(providerFormSnapshotOf(saved, formatRequestOptions(saved.requestOptions), saved.providers ?? remaining));
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.message);
-      } else {
-        setError(t("ai_settings.failed_to_save"));
-      }
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  /**
-   * 设为「当前使用」。
-   *
-   * 原来是只改本地 state、等用户再点保存 —— 用户看到「已是当前使用」就直接关掉弹窗，
-   * 下次打开又被打回原样（实测就是这个现象）。所以这里直接落库：切换即保存，
-   * 同时把该提供商的 provider/baseUrl/model/key 同步到后端的平铺字段（AI 请求实际读的是那几个）。
-   */
-  const handleSetActiveProvider = async (id: string) => {
-    const payload = buildSettingsPayload(id);
-    if (!payload) return;
-
-    setActiveProviderId(id);
-    setSuccessMessage(null);
-    setIsSaving(true);
-    setError(null);
-    try {
-      const saved = await updateAISettings(payload);
-      setSettings(saved);
-      if (saved.providers && saved.providers.length > 0) {
-        setProviders(saved.providers);
-      }
-      setActiveProviderId(saved.activeProviderId || id);
-      setSuccessMessage(t("ai_settings.settings_saved"));
-      showToast(t("ai_settings.active_provider_changed"));
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.message);
-      } else {
-        setError(t("ai_settings.failed_to_save"));
-      }
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  /** 表单里的编辑合并回列表后再提交（当前编辑的那份用表单值，其余保持原样） */
-  const collectProviders = (): AIProviderConfig[] => {
-    if (!settings) return providers;
-    return providers.map((item) =>
-      item.id === selectedProviderId
-        ? {
-            ...item,
-            provider: settings.provider,
-            baseUrl: settings.baseUrl,
-            model: settings.model,
-            apiKey: settings.apiKey,
-            requestOptions: requestOptionsResult.ok
-              ? requestOptionsResult.value
-              : item.requestOptions,
-          }
-        : item,
-    );
+  const addModelFromInput = () => {
+    if (!newModelInput.trim()) return;
+    addModel(newModelInput);
+    setNewModelInput("");
   };
 
   const handleProbeModels = async () => {
-    if (!settings) return;
+    if (!draft) return;
     setIsProbing(true);
-    setModelChoices(null);
+    setProbeChoices(null);
     try {
       const result = await listAIModels({
-        provider: settings.provider,
-        apiKey: settings.apiKey,
-        baseUrl: settings.baseUrl,
+        provider: draft.provider,
+        apiKey: draft.apiKey,
+        baseUrl: draft.baseUrl,
       });
-      setModelChoices(result.models);
+      setProbeChoices(result.models);
     } catch (err) {
       setTestResult({
         success: false,
-        error: err instanceof Error ? err.message : t("ai_settings.probe_failed"),
+        error:
+          err instanceof Error ? err.message : t("ai_settings.probe_failed"),
       });
     } finally {
       setIsProbing(false);
     }
   };
 
-  const buildSettingsPayload = (
-    activeIdOverride?: string,
-  ): AISettingsType | null => {
-    if (!settings || !requestOptionsResult.ok) return null;
-
-    const list = collectProviders();
-    const activeId = activeIdOverride ?? activeProviderId;
-    const active =
-      list.find((item) => item.id === activeId) ?? list[0] ?? null;
-
-    return {
+  /**
+   * 把一份提供商列表落库：平铺字段始终同步成「当前使用」那份（后端 AI 请求读的就是它）。
+   * 成功返回 saved，失败抛错前已把 error 写好。
+   */
+  const persistProviders = async (
+    list: AIProviderConfig[],
+    activeId: string,
+  ): Promise<AISettingsType | null> => {
+    if (!settings) return null;
+    const clean = list.filter((item) => !item.placeholder);
+    const active = clean.find((item) => item.id === activeId) ?? null;
+    const payload: AISettingsType = {
       ...settings,
-      // 后端把平铺字段当作「当前使用」的那份配置
       provider: active ? active.provider : settings.provider,
-      apiKey: active ? active.apiKey : settings.apiKey,
-      baseUrl: active ? active.baseUrl : settings.baseUrl,
-      model: active ? active.model : settings.model,
-      requestOptions: active
-        ? (active.requestOptions ?? {})
-        : requestOptionsResult.value,
-      providers: list,
-      activeProviderId: activeId ?? undefined,
+      apiKey: active ? active.apiKey : "",
+      baseUrl: active ? active.baseUrl : "",
+      model: active ? active.model : "",
+      requestOptions: active ? (active.requestOptions ?? {}) : {},
+      providers: clean,
+      activeProviderId: active ? active.id : undefined,
     };
+    setIsSaving(true);
+    setError(null);
+    try {
+      const saved = await updateAISettings(payload);
+      setSettings(saved);
+      setProviders(
+        saved.providers && saved.providers.length > 0
+          ? saved.providers
+          : clean,
+      );
+      setActiveProviderId(saved.activeProviderId || "");
+      behaviorBaselineRef.current = behaviorSnapshotOf(saved);
+      return saved;
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message);
+      } else {
+        setError(t("ai_settings.failed_to_save"));
+      }
+      return null;
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleTest = async () => {
-    const payload = buildSettingsPayload();
-    if (!payload) return;
+  const handleSaveDraft = async () => {
+    if (!draft) return;
+    const ro = parseRequestOptions(draft.requestOptionsText);
+    if (!ro.ok) {
+      setError(t("ai_settings.request_options_invalid"));
+      return;
+    }
+    const isNew = draft.id === null;
+    const id = draft.id ?? `provider-${Date.now()}`;
+    const models = normalizeModels(draft.model, draft.models);
+    const entry: AIProviderConfig = {
+      id,
+      name: draft.name.trim() || draft.provider,
+      provider: draft.provider,
+      baseUrl: draft.baseUrl.trim(),
+      model: models[0] ?? "",
+      models,
+      apiKey: draft.apiKey,
+      requestOptions: ro.value,
+    };
+    const list = isNew
+      ? [...realProviders, entry]
+      : realProviders.map((item) => (item.id === id ? entry : item));
+    const nextActive = isNew ? id : activeProviderId;
+    const saved = await persistProviders(list, nextActive);
+    if (!saved) return;
+    setSuccessMessage(t("ai_settings.settings_saved"));
+    setDraft(null);
+    setDraftBaseline(null);
+    setProbeChoices(null);
+    setNewModelInput("");
+  };
+
+  const handleDeleteProvider = async (id: string) => {
+    const remaining = realProviders.filter((item) => item.id !== id);
+    const nextActive =
+      activeProviderId === id
+        ? (remaining.find((item) => item.model)?.id ?? "")
+        : activeProviderId;
+    if (draft?.id === id) {
+      setDraft(null);
+      setDraftBaseline(null);
+    }
+    await persistProviders(remaining, nextActive);
+    setSuccessMessage(null);
+  };
+
+  const handleSetActiveProvider = async (id: string) => {
+    const saved = await persistProviders(realProviders, id);
+    if (!saved) return;
+    setSuccessMessage(t("ai_settings.settings_saved"));
+    showToast(t("ai_settings.active_provider_changed"));
+  };
+
+  const handleTestDraft = async () => {
+    if (!draft) return;
+    const ro = parseRequestOptions(draft.requestOptionsText);
+    if (!ro.ok) return;
     setIsTesting(true);
     setTestResult(null);
     try {
       const result = await testAIConnection({
-        provider: payload.provider,
-        apiKey: payload.apiKey,
-        baseUrl: payload.baseUrl,
-        model: payload.model,
-        requestOptions: payload.requestOptions,
+        provider: draft.provider,
+        apiKey: draft.apiKey,
+        baseUrl: draft.baseUrl,
+        model: draft.model,
+        requestOptions: ro.value,
       });
       setTestResult(result);
     } catch (err) {
@@ -534,62 +560,64 @@ export function AISettings() {
     }
   };
 
-  const handleSave = async () => {
-    const payload = buildSettingsPayload();
-    if (!payload) return;
-    setIsSaving(true);
-    setError(null);
-    setSuccessMessage(null);
-    try {
-      const saved = await updateAISettings(payload);
-      setSettings(saved);
-      setRequestOptionsText(formatRequestOptions(saved.requestOptions));
-      setBaseline(
-        JSON.stringify([saved, formatRequestOptions(saved.requestOptions)]),
-      );
-      if (saved.providers && saved.providers.length > 0) {
-        setProviders(saved.providers);
-        const active =
-          saved.activeProviderId || saved.providers[0]?.id || "default";
-        setActiveProviderId(active);
-        if (!saved.providers.some((item) => item.id === selectedProviderId)) {
-          setSelectedProviderId(active);
-        }
-      }
-      setSuccessMessage(t("ai_settings.settings_saved"));
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setError(err.message);
-      } else {
-        setError(t("ai_settings.failed_to_save"));
-      }
-    } finally {
-      setIsSaving(false);
-    }
+  const buildSettingsPayload = (activeIdOverride?: string): AISettingsType | null => {
+    if (!settings) return null;
+    const activeId = activeIdOverride ?? activeProviderId;
+    const active =
+      realProviders.find((item) => item.id === activeId) ?? null;
+    return {
+      ...settings,
+      provider: active ? active.provider : settings.provider,
+      apiKey: active ? active.apiKey : "",
+      baseUrl: active ? active.baseUrl : "",
+      model: active ? active.model : "",
+      requestOptions: active ? (active.requestOptions ?? {}) : {},
+      providers: realProviders,
+      activeProviderId: active ? active.id : undefined,
+    };
   };
 
-  // 50 批 1：「未保存改动」只看提供商表单 —— 行为区自己自动保存，不再算进离开确认
-  const providerFormSnapshot = settings
-    ? providerFormSnapshotOf(settings, requestOptionsText, providers)
-    : null;
-  const providerDirty = baseline !== null && providerFormSnapshot !== baseline;
-  const aiDirty = providerDirty;
-  useSettingsDirty("ai", aiDirty, t("settings.dirty_label_ai"), handleSave);
+  // 未保存改动 = 提供商草稿差异 + 行为区尚未落库的改动（防抖窗口内或保存失败时都要拦一下）
+  const providerDirty =
+    draft !== null &&
+    draftBaseline !== null &&
+    draftSnapshot(draft) !== draftBaseline;
+  const behaviorSnapshot = settings ? behaviorSnapshotOf(settings) : null;
+  const behaviorDirty =
+    settings !== null &&
+    behaviorBaselineRef.current !== null &&
+    behaviorSnapshot !== null &&
+    behaviorSnapshot !== behaviorBaselineRef.current;
+  const flushPending = async () => {
+    if (draft) {
+      await handleSaveDraft();
+      return;
+    }
+    if (behaviorDirty) {
+      await persistProviders(realProviders, activeProviderId);
+    }
+  };
+  useSettingsDirty(
+    "ai",
+    providerDirty || behaviorDirty,
+    t("settings.dirty_label_ai"),
+    () => {
+      void flushPending();
+    },
+  );
 
   useEffect(() => {
     providerDirtyRef.current = providerDirty;
   }, [providerDirty]);
 
-  // ---------- 50 批 1：行为区自动保存（防抖 ~800ms，行内反馈；JSON 非法时不保存） ----------
-  const behaviorSnapshot = settings ? behaviorSnapshotOf(settings) : null;
+  // ---------- 行为区自动保存（防抖 ~800ms，行内反馈） ----------
   useEffect(() => {
     if (!settings || !behaviorSnapshot) return;
     const baselineSnapshot = behaviorBaselineRef.current;
     if (
       baselineSnapshot === null ||
       behaviorSnapshot === baselineSnapshot ||
-      !requestOptionsResult.ok ||
-      providerDirtyRef.current // 提供商表单有半成品：别把它一起带上去
+      providerDirtyRef.current
     ) {
       return;
     }
@@ -611,12 +639,17 @@ export function AISettings() {
     }, AUTO_SAVE_DELAY_MS);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [behaviorSnapshot, requestOptionsResult.ok]);
+  }, [behaviorSnapshot]);
 
   if (isLoading) {
     return (
-      <div className="flex h-40 items-center justify-center">
-        <div className="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      <div className="space-y-5">
+        {[0, 1, 2].map((i) => (
+          <div
+            key={i}
+            className="h-28 animate-pulse rounded-2xl border border-border/60 bg-card/30"
+          />
+        ))}
       </div>
     );
   }
@@ -630,429 +663,477 @@ export function AISettings() {
   }
 
   const inputClass =
-    "h-9 w-full sm:w-48 rounded-md border border-border bg-background px-3 text-sm focus:border-primary focus:outline-none";
-  // 顶部那句「当前使用：××（模型）」用
-  const activeProvider =
-    providers.find((item) => item.id === activeProviderId) ?? providers[0] ?? null;
-  /** 51 批 1：合成占位不是真实配置 —— 列表渲染与「当前使用」行都跳过它，只剩它时显示「无」 */
-  const visibleProviders = providers.filter((item) => !item.placeholder);
-  const placeholderOnly = visibleProviders.length === 0;
-  /** 51 批 A5：当前使用为空（后端归一化：activeId 指向缺模型的卡时归空）= 无可用提供商 */
-  const noUsableActive = !activeProviderId;
-  /** 51 批 A6：模型可用性（平铺 model 是「当前使用」的镜像）—— 行为区依赖模型的控件据此禁用 */
-  const hasUsableModel = !!settings.model.trim();
+    "h-9 w-full min-w-0 rounded-md border border-border bg-background px-3 text-sm focus:border-primary focus:outline-none";
 
-  const canSubmit = Boolean(
-    settings.apiKey &&
-    settings.model &&
-    (!isBaseURLRequired || hasBaseURL) &&
-    !requestOptionsError,
-  );
-  /**
-   * 47-3（用户 2026-10-12）：**保存**不能跟着「模型配齐没」一起禁掉。
-   *
-   * 这一页除了提供商，还有「翻译通道 / 摘要语言 / 自动翻译」这些不依赖模型的设置；
-   * 选了免 key 的免费翻译通道（google / youdao）时本来就不需要 key 与模型，
-   * 原来保存按钮与测试共用 `canSubmit`，表现就是「选了免费翻译也存不上」。
-   * 「测试」要真去打模型，仍然必须配齐（并给出提示，见按钮上的 title）。
-   */
-  const canSave = !isSaving && !requestOptionsError;
-  const canTest = !isTesting && canSubmit;
-
-  /** 分场景模型的下拉选项：跟随 + 已保存的提供商里配了模型的那些（免费通道走「翻译通道」行，不在这里重复） */
-  const sceneOptions = [
+  /** 分场景下拉：跟随当前使用 + 每家提供商库里的每个模型 */
+  const sceneOptions: SelectOption[] = [
     { value: "", label: t("ai_settings.scene_follow") },
-    ...providers
-      .filter((item) => item.model)
-      .map((item) => ({
-        value: `provider:${item.id}`,
-        label: `${item.name || item.provider} · ${item.model}`,
-      })),
+    ...realProviders.flatMap((item) => {
+      const models = providerModels(item);
+      return models.map((model) => ({
+        value: `provider:${item.id}#${model}`,
+        label: `${item.name || item.provider} · ${model}`,
+      }));
+    }),
   ];
+  const sceneValueOptions = (current?: string): SelectOption[] => {
+    if (!current) return sceneOptions;
+    if (sceneOptions.some((option) => option.value === current)) {
+      return sceneOptions;
+    }
+    // 旧值 provider:<id>（不带模型）/ 免费通道 / 提供商被删：保留原值，标出可读名，别悄悄清空
+    let label = current;
+    if (current === "free") {
+      label = t("ai_settings.scene_free");
+    } else if (current.startsWith("provider:")) {
+      const [id, model] = current.slice("provider:".length).split("#");
+      const found = realProviders.find((item) => item.id === id);
+      if (found) {
+        label = `${found.name || found.provider} · ${
+          model || found.model || t("ai_settings.scene_default_model")
+        }`;
+      } else {
+        label = t("ai_settings.scene_provider_gone");
+      }
+    }
+    return [{ value: current, label }, ...sceneOptions];
+  };
 
-  return (
-    <div className="space-y-1">
-      {/* 已保存的提供商（50 批 1.1：紧凑卡列表，点卡片展开编辑，保存/测试跟在编辑卡底部） */}
-      <div className="space-y-2 pb-2 pt-1">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-sm font-medium">
-            {t("ai_settings.providers")}
-          </span>
-          {/* 平铺字段（真正发给模型的那份）由「当前使用」决定，所以这里明确写出来；
-              51 批 1：没配过任何提供商（只剩合成占位）时显示「无」而不是「openai · -」 */}
-          {placeholderOnly || noUsableActive ? (
-            <span className="text-xs text-muted-foreground">
-              {t("ai_settings.current_provider_none")}
-            </span>
-          ) : (
-            activeProvider && (
-              <span className="text-xs text-muted-foreground">
-                {t("ai_settings.current_provider", {
-                  name: activeProvider.name || activeProvider.provider,
-                  model: activeProvider.model || "-",
-                })}
+  const isBaseURLRequiredDraft =
+    draft?.provider === "openai" || draft?.provider === "compatible";
+  const canSaveDraft =
+    draft !== null && draftRequestOptions.ok && !isSaving;
+  const canTestDraft =
+    draft !== null &&
+    !isTesting &&
+    !!draft.apiKey.trim() &&
+    !!draft.model.trim() &&
+    (!isBaseURLRequiredDraft || !!draft.baseUrl.trim()) &&
+    draftRequestOptions.ok;
+
+  const currentProviderText = noUsableActive
+    ? t("ai_settings.current_provider_none")
+    : t("ai_settings.current_provider", {
+        name: activeProvider?.name || activeProvider?.provider || "-",
+        model: activeProvider?.model || "-",
+      });
+
+  /** 提供商表单：新建与编辑共用同一套字段（所以新建时也能探测模型 —— 需求 2） */
+  const renderProviderForm = (isNew: boolean) => {
+    if (!draft) return null;
+    return (
+      <div className="space-y-2 border-t border-border/60 px-1 pb-3 pt-3">
+        <SettingRow label={t("ai_settings.provider")}>
+          <Select
+            ariaLabel={t("ai_settings.provider")}
+            value={draft.provider}
+            onChange={(value) =>
+              patchDraft({ provider: value as AIProvider })
+            }
+            options={PROVIDERS}
+            className="shrink-0 sm:w-56"
+          />
+        </SettingRow>
+
+        <SettingRow label={t("ai_settings.api_key")}>
+          <input
+            type="password"
+            value={draft.apiKey}
+            onChange={(e) => patchDraft({ apiKey: e.target.value })}
+            placeholder={
+              draft.provider === "openai"
+                ? "sk-..."
+                : draft.provider === "anthropic"
+                  ? "sk-ant-..."
+                  : t("ai_settings.enter_api_key")
+            }
+            className={cn(inputClass, "shrink-0 sm:w-56")}
+          />
+        </SettingRow>
+
+        <SettingRow label={t("ai_settings.provider_name")}>
+          <input
+            type="text"
+            value={draft.name}
+            onChange={(e) => patchDraft({ name: e.target.value })}
+            placeholder={t("ai_settings.provider_name_placeholder")}
+            className={cn(inputClass, "shrink-0 sm:w-56")}
+          />
+        </SettingRow>
+
+        <SettingRow
+          label={t("ai_settings.base_url")}
+          hint={
+            isBaseURLRequiredDraft
+              ? t("ai_settings.required")
+              : t("ai_settings.optional")
+          }
+        >
+          <input
+            type="text"
+            value={draft.baseUrl}
+            onChange={(e) => patchDraft({ baseUrl: e.target.value })}
+            placeholder={
+              draft.provider === "compatible"
+                ? "https://openrouter.ai/api/v1"
+                : draft.provider === "openai"
+                  ? "https://api.openai.com/v1"
+                  : t("ai_settings.leave_empty_for_default")
+            }
+            className={cn(inputClass, "shrink-0 sm:w-56")}
+          />
+        </SettingRow>
+        {isLoopbackBaseUrl(draft.baseUrl) && (
+          <p className="px-1 text-xs text-muted-foreground">
+            {t("ai_settings.loopback_hint")}
+          </p>
+        )}
+
+        {/* 模型库：同一提供商下可挂多个模型（翻译/摘要各选其一） */}
+        <div className="space-y-2 rounded-[var(--radius)] bg-secondary/30 px-3 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
+              <span className="text-sm font-medium">
+                {t("ai_settings.models_library")}
               </span>
-            )
+              <p className="text-xs text-muted-foreground">
+                {t("ai_settings.models_library_hint")}
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              isDisabled={
+                isProbing ||
+                (isBaseURLRequiredDraft && !draft.baseUrl.trim())
+              }
+              onPress={() => void handleProbeModels()}
+            >
+              {isProbing ? (
+                <span className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+              ) : (
+                <Radar className="size-3.5" />
+              )}
+              {isProbing
+                ? t("ai_settings.probing")
+                : t("ai_settings.probe_models")}
+            </Button>
+          </div>
+
+          {draft.models.length === 0 ? (
+            <p className="rounded-[var(--radius)] border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground">
+              {t("ai_settings.models_library_empty")}
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {draft.models.map((model) => (
+                <span
+                  key={model}
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs",
+                    model === draft.model
+                      ? "border-primary/40 bg-primary/10 text-primary"
+                      : "border-border bg-card text-foreground",
+                  )}
+                >
+                  {model}
+                  <Button
+                    isIconOnly
+                    size="sm"
+                    variant="ghost"
+                    aria-label={t("actions.delete")}
+                    onPress={() => removeModel(model)}
+                    className="size-4 min-w-4 text-muted-foreground hover:text-destructive"
+                  >
+                    <X className="size-3" />
+                  </Button>
+                </span>
+              ))}
+            </div>
           )}
-          <button
-            type="button"
-            onClick={handleStartCreate}
-            className="rounded-[var(--radius)] border border-border px-2.5 py-1 text-xs text-foreground transition-colors duration-200 hover:bg-item-hover"
-          >
-            + {t("ai_settings.add_provider")}
-          </button>
+
+          {/* 手动补充一个探测不到的模型名 */}
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={newModelInput}
+              onChange={(e) => setNewModelInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addModelFromInput();
+                }
+              }}
+              placeholder={t("ai_settings.model_example", {
+                example: "deepseek-chat",
+              })}
+              className={cn(inputClass, "flex-1")}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              isDisabled={!newModelInput.trim()}
+              onPress={addModelFromInput}
+            >
+              <Plus className="size-3.5" />
+              {t("ai_settings.add_model")}
+            </Button>
+          </div>
+
+          {probeChoices && probeChoices.length > 0 && (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-muted-foreground">
+                  {t("ai_settings.probe_result", {
+                    count: probeChoices.length,
+                  })}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const merged = normalizeModels(draft.model, [
+                      ...draft.models,
+                      ...probeChoices,
+                    ]);
+                    patchDraft({
+                      models: merged,
+                      model: draft.model || merged[0] || "",
+                    });
+                  }}
+                  className="text-xs text-primary transition-colors hover:underline"
+                >
+                  {t("ai_settings.probe_add_all")}
+                </button>
+              </div>
+              <div className="max-h-44 overflow-y-auto rounded-[var(--radius)] border border-border/60 bg-background p-1">
+                {probeChoices.map((model) => {
+                  const picked = draft.models.includes(model);
+                  return (
+                    <button
+                      key={model}
+                      type="button"
+                      onClick={() => toggleProbeModel(model)}
+                      className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-xs transition-colors hover:bg-item-hover"
+                    >
+                      <span
+                        className={cn(
+                          "flex size-4 shrink-0 items-center justify-center rounded border",
+                          picked
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border",
+                        )}
+                      >
+                        {picked && <Check className="size-3" />}
+                      </span>
+                      <span className="min-w-0 truncate">{model}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className="space-y-1.5">
-          {visibleProviders.map((item) => {
-            const isSelected = item.id === selectedProviderId;
+        {/* 默认模型：从模型库里挑一个，供「当前使用」与分场景默认值 */}
+        <SettingRow
+          label={t("ai_settings.default_model")}
+          hint={t("ai_settings.default_model_hint")}
+        >
+          <Select
+            ariaLabel={t("ai_settings.default_model")}
+            value={draft.model}
+            onChange={(value) => patchDraft({ model: value })}
+            options={draft.models.map((model) => ({
+              value: model,
+              label: model,
+            }))}
+            placeholder={t("ai_settings.models_library_empty")}
+            disabled={draft.models.length === 0}
+            className="shrink-0 sm:w-56"
+          />
+        </SettingRow>
+
+        {/* 请求参数 */}
+        <div className="space-y-2 px-1 pt-1">
+          <div className="min-w-0">
+            <span className="text-sm font-medium">
+              {t("ai_settings.request_options")}
+            </span>
+            <p className="text-xs text-muted-foreground">
+              {t("ai_settings.request_options_hint")}
+            </p>
+          </div>
+          <textarea
+            value={draft.requestOptionsText}
+            onChange={(e) => patchDraft({ requestOptionsText: e.target.value })}
+            placeholder={JSON.stringify({ key: "value" }, null, 2)}
+            className={cn(
+              "min-h-20 w-full rounded-field border bg-background px-3 py-2 font-mono text-xs focus:border-primary focus:outline-none",
+              draftRequestOptionsError ? "border-destructive" : "border-border",
+            )}
+            spellCheck={false}
+          />
+          {draftRequestOptionsError && (
+            <p className="text-xs text-destructive">{draftRequestOptionsError}</p>
+          )}
+        </div>
+
+        {/* 保存 / 测试 / 设为当前使用 */}
+        <div className="flex flex-wrap items-center gap-3 px-1 pt-1">
+          <Button
+            size="sm"
+            isDisabled={!canSaveDraft}
+            onPress={() => void handleSaveDraft()}
+          >
+            {isSaving ? (
+              <>
+                <span className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                {t("ai_settings.saving")}
+              </>
+            ) : (
+              t("ai_settings.save")
+            )}
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            isDisabled={!canTestDraft}
+            onPress={() => void handleTestDraft()}
+          >
+            {isTesting ? (
+              <>
+                <span className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                {t("ai_settings.testing")}
+              </>
+            ) : (
+              t("ai_settings.test")
+            )}
+          </Button>
+
+          {!isNew && draft.id !== activeProviderId && (
+            <Button
+              size="sm"
+              variant="ghost"
+              isDisabled={isSaving}
+              onPress={() => void handleSetActiveProvider(draft.id as string)}
+            >
+              {t("ai_settings.set_active")}
+            </Button>
+          )}
+
+          {isNew && (
+            <Button size="sm" variant="ghost" onPress={handleCancelDraft}>
+              {t("actions.cancel")}
+            </Button>
+          )}
+
+          {testResult && (
+            <span
+              className={cn(
+                "text-sm",
+                testResult.success
+                  ? "text-green-600 dark:text-green-400"
+                  : "text-destructive",
+              )}
+            >
+              {testResult.success
+                ? t("ai_settings.test_success") + "!"
+                : testResult.error}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* 提供商（连接）：一个提供商可挂多个模型 */}
+      <SectionCard
+        icon={<Sparkles className="size-4" />}
+        title={t("ai_settings.providers")}
+        description={currentProviderText}
+        action={
+          <Button size="sm" variant="outline" onPress={handleStartCreate}>
+            <Plus className="size-3.5" />
+            {t("ai_settings.add_provider")}
+          </Button>
+        }
+      >
+        <div className="divide-y divide-border/50">
+          {realProviders.length === 0 && !draft && (
+            <div className="px-1 py-6 text-center text-sm text-muted-foreground">
+              {t("ai_settings.providers_empty")}
+            </div>
+          )}
+
+          {realProviders.map((item) => {
+            const isOpen = draft?.id === item.id;
             const isActive = item.id === activeProviderId;
+            const models = providerModels(item);
+            // 名字就是协议名（后端合成 / 用户没改名）时用本地化协议名，别显示两遍
+            const providerLabel = t(`ai_settings.provider_${item.provider}`);
+            const displayName =
+              item.name && item.name !== item.provider
+                ? item.name
+                : providerLabel;
             return (
-              <div
-                key={item.id}
-                className={cn(
-                  "rounded-md border transition-colors duration-200",
-                  isSelected ? "border-primary" : "border-border",
-                )}
-              >
-                {/* 卡片行：点开编辑（再点已选中的那张不收起，避免误触折叠） */}
-                <div className="flex items-center gap-2 px-3 py-2">
+              <div key={item.id}>
+                <div className="flex items-center gap-2 px-1 py-2.5">
                   <button
                     type="button"
                     onClick={() => handleSelectProvider(item.id)}
                     className="flex min-w-0 flex-1 items-center gap-2 text-left"
                     title={item.baseUrl || item.name}
                   >
-                    <svg
+                    <ChevronRight
                       className={cn(
                         "size-3.5 shrink-0 text-muted-foreground transition-transform duration-200",
-                        isSelected && "rotate-90",
+                        isOpen && "rotate-90",
                       )}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 5l7 7-7 7"
-                      />
-                    </svg>
+                    />
                     <span className="max-w-44 truncate text-sm font-medium">
-                      {item.name || item.provider}
+                      {displayName}
                     </span>
-                    <span className="shrink-0 rounded-full border border-border px-1.5 py-px text-[10px] text-muted-foreground">
-                      {item.provider}
-                    </span>
+                    {displayName !== providerLabel && (
+                      <span className="shrink-0 rounded-full border border-border px-1.5 py-px text-[10px] text-muted-foreground">
+                        {providerLabel}
+                      </span>
+                    )}
                     <span className="min-w-0 truncate text-xs text-muted-foreground">
                       {item.model || "-"}
                     </span>
+                    {models.length > 1 && (
+                      <span className="shrink-0 rounded-full bg-secondary px-1.5 py-px text-[10px] text-muted-foreground">
+                        {t("ai_settings.model_count", { count: models.length })}
+                      </span>
+                    )}
                   </button>
                   {isActive && (
                     <span className="shrink-0 text-[10px] text-primary">
                       {t("ai_settings.active_badge")}
                     </span>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => void handleDeleteProvider(item.id)}
-                    title={t("actions.delete")}
-                    className="shrink-0 text-muted-foreground transition-colors duration-200 hover:text-destructive"
+                  <Button
+                    isIconOnly
+                    size="sm"
+                    variant="ghost"
+                    aria-label={t("actions.delete")}
+                    onPress={() => void handleDeleteProvider(item.id)}
                   >
-                    ×
-                  </button>
+                    <Trash2 className="size-3.5 text-muted-foreground" />
+                  </Button>
                 </div>
-
-                {/* 展开的编辑表单（同一时刻只有一张卡展开；这些字段只属于这份提供商配置） */}
-                {isSelected && (
-                  <div className="space-y-2 border-t border-border px-3 pb-3 pt-2">
-                    {/* Provider */}
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-sm font-medium">
-                        {t("ai_settings.provider")}
-                      </span>
-                      <Select
-                        ariaLabel={t("ai_settings.provider")}
-                        value={settings.provider}
-                        onChange={(value) =>
-                          handleChange("provider", value as AIProvider)
-                        }
-                        options={PROVIDERS}
-                        className="shrink-0 sm:w-48"
-                      />
-                    </div>
-
-                    {/* API Key */}
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-sm font-medium">
-                        {t("ai_settings.api_key")}
-                      </span>
-                      <input
-                        type="password"
-                        value={settings.apiKey}
-                        onChange={(e) => handleChange("apiKey", e.target.value)}
-                        placeholder={
-                          settings.provider === "openai"
-                            ? "sk-..."
-                            : settings.provider === "anthropic"
-                              ? "sk-ant-..."
-                              : t("ai_settings.enter_api_key")
-                        }
-                        className={cn(inputClass, "shrink-0")}
-                      />
-                    </div>
-
-                    {/* 名称 */}
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-sm font-medium">
-                        {t("ai_settings.provider_name")}
-                      </span>
-                      <input
-                        type="text"
-                        value={
-                          creating
-                            ? createdName
-                            : (providers.find((p) => p.id === selectedProviderId)?.name ?? "")
-                        }
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          if (creating) {
-                            setCreatedName(value);
-                          } else {
-                            setProviders((prev) =>
-                              prev.map((p) =>
-                                p.id === selectedProviderId
-                                  ? { ...p, name: value }
-                                  : p,
-                              ),
-                            );
-                          }
-                          setSuccessMessage(null);
-                        }}
-                        placeholder={t("ai_settings.provider_name_placeholder")}
-                        className={cn(inputClass, "shrink-0")}
-                      />
-                    </div>
-
-                    {/* Base URL */}
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-1 min-w-0">
-                        <span className="text-sm font-medium">
-                          {t("ai_settings.base_url")}
-                        </span>
-                        {isBaseURLRequired ? (
-                          <span className="text-xs text-destructive">
-                            {t("ai_settings.required")}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">
-                            {t("ai_settings.optional")}
-                          </span>
-                        )}
-                      </div>
-                      <input
-                        type="text"
-                        value={settings.baseUrl}
-                        onChange={(e) => handleChange("baseUrl", e.target.value)}
-                        placeholder={
-                          settings.provider === "compatible"
-                            ? "https://openrouter.ai/api/v1"
-                            : settings.provider === "openai"
-                              ? "https://api.openai.com/v1"
-                              : t("ai_settings.leave_empty_for_default")
-                        }
-                        className={cn(inputClass, "shrink-0")}
-                      />
-                    </div>
-                    {isLoopbackBaseUrl(settings.baseUrl) && (
-                      <p className="text-xs text-muted-foreground">
-                        {t("ai_settings.loopback_hint")}
-                      </p>
-                    )}
-
-                    {/* 模型：输入框 + 探测并排；探测结果贴在下面（47 批的重排原样保留） */}
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          value={settings.model}
-                          onChange={(e) => handleChange("model", e.target.value)}
-                          placeholder={
-                            settings.provider === "openai"
-                              ? "gpt-4o"
-                              : settings.provider === "anthropic"
-                                ? "claude-sonnet-4-20250514"
-                                : t("ai_settings.model_example", {
-                                    example: "anthropic/claude-3.5-sonnet",
-                                  })
-                          }
-                          className={cn(inputClass, "min-w-0 flex-1 sm:w-auto")}
-                        />
-                        <button
-                          type="button"
-                          onClick={handleProbeModels}
-                          disabled={isProbing || !settings.baseUrl.trim()}
-                          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[var(--radius)] border border-border px-3 text-xs text-foreground transition-colors duration-200 hover:bg-item-hover disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {isProbing && (
-                            <span className="size-3 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-transparent" />
-                          )}
-                          {isProbing
-                            ? t("ai_settings.probing")
-                            : t("ai_settings.probe_models")}
-                        </button>
-                      </div>
-                      {modelChoices && modelChoices.length > 0 && (
-                        <div className="max-h-40 overflow-y-auto rounded-md border border-border p-1">
-                          {modelChoices.map((model) => (
-                            <button
-                              key={model}
-                              type="button"
-                              onClick={() => {
-                                handleChange("model", model);
-                                setModelChoices(null);
-                              }}
-                              className={cn(
-                                "block w-full truncate rounded px-2 py-1 text-left text-xs transition-colors duration-200 hover:bg-item-hover",
-                                model === settings.model
-                                  ? "text-primary"
-                                  : "text-muted-foreground",
-                              )}
-                            >
-                              {model}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* 请求参数（属于这份提供商配置，随保存一起提交） */}
-                    <div className="space-y-2">
-                      <div className="min-w-0">
-                        <span className="text-sm font-medium">
-                          {t("ai_settings.request_options")}
-                        </span>
-                        <p className="text-xs text-muted-foreground">
-                          {t("ai_settings.request_options_hint")}
-                        </p>
-                      </div>
-                      <textarea
-                        value={requestOptionsText}
-                        onChange={(e) => {
-                          setRequestOptionsText(e.target.value);
-                          setSuccessMessage(null);
-                          setTestResult(null);
-                        }}
-                        placeholder={JSON.stringify({ key: "value" }, null, 2)}
-                        className={cn(
-                          "min-h-24 w-full rounded-field border bg-background px-3 py-2 font-mono text-xs focus:border-primary focus:outline-none",
-                          requestOptionsError
-                            ? "border-destructive"
-                            : "border-border",
-                        )}
-                        spellCheck={false}
-                      />
-                      {requestOptionsError && (
-                        <p className="text-xs text-destructive">
-                          {requestOptionsError}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* 保存 / 测试 / 设为当前使用 —— 只作用于提供商这一块（50 批 1：手动整体提交） */}
-                    <div className="flex flex-wrap items-center gap-3 pt-1">
-                      <button
-                        type="button"
-                        onClick={handleSave}
-                        disabled={!canSave}
-                        className={cn(
-                          "flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--radius)] px-4 text-sm font-medium transition-colors",
-                          "bg-primary text-primary-foreground hover:bg-primary/90",
-                          "disabled:cursor-not-allowed disabled:opacity-50",
-                        )}
-                      >
-                        {isSaving ? (
-                          <>
-                            <div className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                            <span>{t("ai_settings.saving")}</span>
-                          </>
-                        ) : (
-                          <span>{t("ai_settings.save")}</span>
-                        )}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={handleTest}
-                        disabled={!canTest}
-                        title={canTest ? undefined : t("ai_settings.test_needs_model")}
-                        className={cn(
-                          "flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--radius)] px-4 text-sm font-medium transition-colors",
-                          "bg-secondary hover:bg-secondary/80",
-                          "disabled:cursor-not-allowed disabled:opacity-50",
-                        )}
-                      >
-                        {isTesting ? (
-                          <>
-                            <div className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                            <span>{t("ai_settings.testing")}</span>
-                          </>
-                        ) : (
-                          <>
-                            <svg
-                              className="size-4"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M13 10V3L4 14h7v7l9-11h-7z"
-                              />
-                            </svg>
-                            <span>{t("ai_settings.test")}</span>
-                          </>
-                        )}
-                      </button>
-
-                      {selectedProviderId !== activeProviderId && (
-                        <button
-                          type="button"
-                          onClick={() => handleSetActiveProvider(selectedProviderId)}
-                          className="h-8 rounded-[var(--radius)] border border-border px-2.5 text-xs text-foreground transition-colors duration-200 hover:bg-item-hover"
-                        >
-                          {t("ai_settings.set_active")}
-                        </button>
-                      )}
-
-                      {testResult && (
-                        <span
-                          className={cn(
-                            "text-sm",
-                            testResult.success
-                              ? "text-green-600 dark:text-green-400"
-                              : "text-destructive",
-                          )}
-                        >
-                          {testResult.success
-                            ? t("ai_settings.test_success") + "!"
-                            : testResult.error}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )}
+                {isOpen && renderProviderForm(false)}
               </div>
             );
           })}
         </div>
 
-        {/* 51 批 A2：内联新建表单 —— 保存成功前不在列表里，未保存不落库 */}
-        {creating && (
-          <div className="rounded-md border border-primary border-dashed">
+        {/* 内联新建表单：保存成功前不落库 */}
+        {draft && draft.id === null && (
+          <div className="mt-1 rounded-[var(--radius)] border border-primary border-dashed">
             <div className="flex items-center gap-2 px-3 py-2">
               <span className="rounded-full border border-primary/40 bg-primary/5 px-1.5 py-px text-[10px] text-primary">
                 {t("ai_settings.creating_badge")}
@@ -1061,372 +1142,239 @@ export function AISettings() {
                 {t("ai_settings.creating_hint")}
               </span>
             </div>
-            <div className="space-y-2 border-t border-border px-3 pb-3 pt-2">
-              {/* 复用上面展开卡的字段渲染：这里手工列同款字段（绑定同一份 settings 表单） */}
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-sm font-medium">{t("ai_settings.provider")}</span>
-                <Select
-                  ariaLabel={t("ai_settings.provider")}
-                  value={settings.provider}
-                  onChange={(value) => handleChange("provider", value as AIProvider)}
-                  options={PROVIDERS}
-                  className="shrink-0 sm:w-48"
-                />
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-sm font-medium">{t("ai_settings.api_key")}</span>
-                <input
-                  type="password"
-                  value={settings.apiKey}
-                  onChange={(e) => handleChange("apiKey", e.target.value)}
-                  className={cn(inputClass, "shrink-0")}
-                />
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-sm font-medium">{t("ai_settings.provider_name")}</span>
-                <input
-                  type="text"
-                  value={createdName}
-                  onChange={(e) => setCreatedName(e.target.value)}
-                  placeholder={t("ai_settings.provider_name_placeholder")}
-                  className={cn(inputClass, "shrink-0")}
-                />
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-sm font-medium">
-                  {t("ai_settings.base_url")}
-                  {(settings.provider === "openai" || settings.provider === "compatible") && (
-                    <span className="text-xs text-destructive"> {t("ai_settings.required")}</span>
-                  )}
-                </span>
-                <input
-                  type="text"
-                  value={settings.baseUrl}
-                  onChange={(e) => handleChange("baseUrl", e.target.value)}
-                  className={cn(inputClass, "shrink-0")}
-                />
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-sm font-medium">{t("ai_settings.model")}</span>
-                <input
-                  type="text"
-                  value={settings.model}
-                  onChange={(e) => handleChange("model", e.target.value)}
-                  className={cn(inputClass, "min-w-0 flex-1 sm:w-auto")}
-                />
-              </div>
-              <div className="flex flex-wrap items-center gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={handleCreateSave}
-                  disabled={isSaving || !requestOptionsResult.ok}
-                  className="flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--radius)] bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {t("ai_settings.save")}
-                </button>
-                <button type="button" onClick={handleCancelCreate} className="btn-link text-xs">
-                  {t("actions.cancel")}
-                </button>
-                {error && <span className="text-xs text-destructive">{error}</span>}
-              </div>
-            </div>
+            {renderProviderForm(true)}
           </div>
         )}
-      </div>
+      </SectionCard>
 
-      {/* AI 行为（50 批 1：这一块自动保存，不用找保存按钮） */}
-      <div className="pb-1 pt-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-        <div className="flex items-center gap-2">
-          <span>AI</span>
+      {/* AI 行为（这一块自动保存） */}
+      <SectionCard
+        icon={<SlidersHorizontal className="size-4" />}
+        title={t("ai_settings.behavior_section")}
+        action={
           <span
             className={cn(
-              "font-normal normal-case tracking-normal",
+              "text-xs",
               autoSaveState === "error" && "text-destructive",
               autoSaveState === "saved" && "text-green-600 dark:text-green-400",
+              autoSaveState === "idle" && "text-muted-foreground",
             )}
           >
             {autoSaveState === "saving" && t("ai_settings.autosave_saving")}
             {autoSaveState === "saved" && t("ai_settings.autosave_saved")}
             {autoSaveState === "error" && t("ai_settings.autosave_failed")}
           </span>
-        </div>
-      </div>
+        }
+      >
+        <div className="divide-y divide-border/50">
+          <SettingRow
+            label={t("ai_settings.summary_language")}
+            hint={t("ai_settings.summary_language_hint")}
+          >
+            <Select
+              ariaLabel={t("ai_settings.summary_language")}
+              value={settings.summaryLanguage}
+              onChange={(value) => handleChange("summaryLanguage", value)}
+              options={SUMMARY_LANGUAGE_OPTIONS}
+              className="w-40 shrink-0"
+            />
+          </SettingRow>
 
-      {/* Summary Language */}
-      <div className="flex flex-wrap items-center justify-between gap-2 py-2">
-        <div className="min-w-0">
-          <span className="text-sm font-medium">
-            {t("ai_settings.summary_language")}
-          </span>
-          <p className="text-xs text-muted-foreground">
-            {t("ai_settings.summary_language_hint")}
-          </p>
-        </div>
-        <Select
-          ariaLabel={t("ai_settings.summary_language")}
-          value={settings.summaryLanguage}
-          onChange={(value) => handleChange("summaryLanguage", value)}
-          options={SUMMARY_LANGUAGE_OPTIONS}
-          className="w-40 shrink-0"
-        />
-      </div>
-
-      {/* 翻译通道：免 key 通道按顺序轮询，全部失败再回退模型（免 key，不用配模型） */}
-      <div className="py-2">
-        <div className="min-w-0">
-          <span className="text-sm font-medium">
-            {t("ai_settings.translate_channel")}
-          </span>
-          <p className="text-xs text-muted-foreground">
-            {t("ai_settings.translate_channel_hint")}
-          </p>
-        </div>
-
-        <div className="mt-2 space-y-1.5">
-          {translateChannels.length === 0 ? (
-            <p className="rounded-[var(--radius)] border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground">
-              {t("ai_settings.translate_channels_empty")}
-            </p>
-          ) : (
-            translateChannels.map((channel, index) => (
-              <div
-                key={channel}
-                className="flex items-center gap-2 rounded-[var(--radius)] border border-border/60 bg-card/40 px-2.5 py-1.5"
-              >
-                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-medium text-primary">
-                  {index + 1}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-sm">
-                  {channelLabel(channel)}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => moveTranslateChannel(index, -1)}
-                  disabled={index === 0}
-                  title={t("ai_settings.translate_channel_up")}
-                  className="shrink-0 text-muted-foreground transition-colors duration-200 hover:text-foreground disabled:opacity-30 disabled:hover:text-muted-foreground"
-                >
-                  <ArrowUp className="size-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => moveTranslateChannel(index, 1)}
-                  disabled={index === translateChannels.length - 1}
-                  title={t("ai_settings.translate_channel_down")}
-                  className="shrink-0 text-muted-foreground transition-colors duration-200 hover:text-foreground disabled:opacity-30 disabled:hover:text-muted-foreground"
-                >
-                  <ArrowDown className="size-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => removeTranslateChannel(channel)}
-                  title={t("ai_settings.translate_channel_remove")}
-                  className="shrink-0 text-muted-foreground transition-colors duration-200 hover:text-destructive"
-                >
-                  <X className="size-3.5" />
-                </button>
-              </div>
-            ))
-          )}
-
-          {availableTranslateChannels.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-              {availableTranslateChannels.map((channel) => (
-                <button
-                  key={channel}
-                  type="button"
-                  onClick={() => addTranslateChannel(channel)}
-                  className="flex items-center gap-1 rounded-[var(--radius)] border border-border px-2.5 py-1 text-xs text-foreground transition-colors duration-200 hover:bg-item-hover"
-                >
-                  <Plus className="size-3.5" /> {channelLabel(channel)}
-                </button>
-              ))}
+          {/* 翻译通道：免 key 通道按顺序轮询 */}
+          <div className="px-1 py-2.5">
+            <div className="min-w-0">
+              <span className="text-sm font-medium">
+                {t("ai_settings.translate_channel")}
+              </span>
+              <p className="text-xs text-muted-foreground">
+                {t("ai_settings.translate_channel_hint")}
+              </p>
             </div>
-          )}
+            <div className="mt-2 space-y-1.5">
+              {translateChannels.length === 0 ? (
+                <p className="rounded-[var(--radius)] border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground">
+                  {t("ai_settings.translate_channels_empty")}
+                </p>
+              ) : (
+                translateChannels.map((channel, index) => (
+                  <div
+                    key={channel}
+                    className="flex items-center gap-2 rounded-[var(--radius)] border border-border/60 bg-card/40 px-2.5 py-1.5"
+                  >
+                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-medium text-primary">
+                      {index + 1}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-sm">
+                      {channelLabel(channel)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => moveTranslateChannel(index, -1)}
+                      disabled={index === 0}
+                      title={t("ai_settings.translate_channel_up")}
+                      className="shrink-0 text-muted-foreground transition-colors duration-200 hover:text-foreground disabled:opacity-30 disabled:hover:text-muted-foreground"
+                    >
+                      <ArrowUp className="size-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveTranslateChannel(index, 1)}
+                      disabled={index === translateChannels.length - 1}
+                      title={t("ai_settings.translate_channel_down")}
+                      className="shrink-0 text-muted-foreground transition-colors duration-200 hover:text-foreground disabled:opacity-30 disabled:hover:text-muted-foreground"
+                    >
+                      <ArrowDown className="size-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeTranslateChannel(channel)}
+                      title={t("ai_settings.translate_channel_remove")}
+                      className="shrink-0 text-muted-foreground transition-colors duration-200 hover:text-destructive"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  </div>
+                ))
+              )}
+              {availableTranslateChannels.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                  {availableTranslateChannels.map((channel) => (
+                    <button
+                      key={channel}
+                      type="button"
+                      onClick={() => addTranslateChannel(channel)}
+                      className="flex items-center gap-1 rounded-[var(--radius)] border border-border px-2.5 py-1 text-xs text-foreground transition-colors duration-200 hover:bg-item-hover"
+                    >
+                      <Plus className="size-3.5" /> {channelLabel(channel)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <SettingRow
+            label={t("ai_settings.fallback_to_model")}
+            hint={t("ai_settings.fallback_to_model_hint")}
+          >
+            <Switch
+              className="shrink-0"
+              checked={settings.fallbackToModel !== false}
+              onCheckedChange={(checked) =>
+                handleChange("fallbackToModel", checked)
+              }
+            />
+          </SettingRow>
+
+          <SettingRow
+            label={t("ai_settings.auto_translate")}
+            hint={t("ai_settings.auto_translate_hint")}
+          >
+            <Switch
+              checked={settings.autoTranslate}
+              onCheckedChange={(checked) =>
+                handleChange("autoTranslate", checked)
+              }
+              className="shrink-0"
+            />
+          </SettingRow>
+
+          <SettingRow
+            label={t("ai_settings.auto_summary")}
+            hint={t("ai_settings.auto_summary_hint")}
+            disabled={!hasUsableModel}
+          >
+            <Switch
+              checked={settings.autoSummary}
+              onCheckedChange={(checked) =>
+                handleChange("autoSummary", checked)
+              }
+              disabled={!hasUsableModel}
+              title={hasUsableModel ? undefined : t("ai_settings.needs_model_hint")}
+              className="shrink-0"
+            />
+          </SettingRow>
+
+          <SettingRow
+            label={t("ai_settings.rate_limit_label")}
+            hint={t("ai_settings.rate_limit_hint")}
+          >
+            <input
+              type="number"
+              value={settings.rateLimit}
+              onChange={(e) =>
+                handleChange("rateLimit", parseInt(e.target.value) || 10)
+              }
+              min={1}
+              max={100}
+              className={cn(inputClass, "w-20 shrink-0")}
+            />
+          </SettingRow>
         </div>
-      </div>
+      </SectionCard>
 
-      {/* 免费通道失败是否自动切回模型（只在选了免费通道时有意义） */}
-      <div className="flex flex-wrap items-center justify-between gap-2 py-2">
-        <div className="min-w-0">
-          <span className="text-sm font-medium">
-            {t("ai_settings.fallback_to_model")}
-          </span>
-          <p className="text-xs text-muted-foreground">
-            {t("ai_settings.fallback_to_model_hint")}
-          </p>
+      {/* 分场景模型：翻译 / 摘要 / 自动化各可用不同提供商的某个模型 */}
+      <SectionCard
+        icon={<Layers className="size-4" />}
+        title={t("ai_settings.scene_section")}
+        description={t("ai_settings.scene_hint")}
+      >
+        <div className="divide-y divide-border/50">
+          <SettingRow label={t("ai_settings.scene_translate")}>
+            <Select
+              ariaLabel={t("ai_settings.scene_translate")}
+              value={settings.sceneTranslate ?? ""}
+              placeholder={t("ai_settings.scene_follow")}
+              onChange={(value) => handleChange("sceneTranslate", value)}
+              options={sceneValueOptions(settings.sceneTranslate)}
+              className="w-64 shrink-0"
+            />
+          </SettingRow>
+          <SettingRow
+            label={t("ai_settings.scene_summary")}
+            disabled={!hasUsableModel}
+          >
+            <Select
+              ariaLabel={t("ai_settings.scene_summary")}
+              value={settings.sceneSummary ?? ""}
+              placeholder={t("ai_settings.scene_follow")}
+              onChange={(value) => handleChange("sceneSummary", value)}
+              options={sceneValueOptions(settings.sceneSummary)}
+              disabled={!hasUsableModel}
+              className="w-64 shrink-0"
+            />
+          </SettingRow>
+          <SettingRow
+            label={t("ai_settings.scene_automation")}
+            disabled={!hasUsableModel}
+          >
+            <Select
+              ariaLabel={t("ai_settings.scene_automation")}
+              value={settings.sceneAutomation ?? ""}
+              placeholder={t("ai_settings.scene_follow")}
+              onChange={(value) => handleChange("sceneAutomation", value)}
+              options={sceneValueOptions(settings.sceneAutomation)}
+              disabled={!hasUsableModel}
+              className="w-64 shrink-0"
+            />
+          </SettingRow>
         </div>
-        <Switch
-          className="shrink-0"
-          checked={settings.fallbackToModel !== false}
-          onCheckedChange={(checked) => handleChange("fallbackToModel", checked)}
-        />
-      </div>
+      </SectionCard>
 
-      {/* Auto Translate */}
-      <div className="flex flex-wrap items-center justify-between gap-2 py-2">
-        <div className="min-w-0">
-          <span className="text-sm font-medium">
-            {t("ai_settings.auto_translate")}
-          </span>
-          <p className="text-xs text-muted-foreground">
-            {t("ai_settings.auto_translate_hint")}
-          </p>
-        </div>
-        <Switch
-          checked={settings.autoTranslate}
-          onCheckedChange={(checked) => handleChange("autoTranslate", checked)}
-          className="shrink-0"
-        />
-      </div>
-
-      {/* Auto Summary */}
-      <div className="flex flex-wrap items-center justify-between gap-2 py-2">
-        <div className="min-w-0">
-          <span className="text-sm font-medium">
-            {t("ai_settings.auto_summary")}
-          </span>
-          <p className="text-xs text-muted-foreground">
-            {t("ai_settings.auto_summary_hint")}
-          </p>
-        </div>
-        <Switch
-          checked={settings.autoSummary}
-          onCheckedChange={(checked) => handleChange("autoSummary", checked)}
-          disabled={!hasUsableModel}
-          title={hasUsableModel ? undefined : t("ai_settings.needs_model_hint")}
-          className="shrink-0"
-        />
-      </div>
-
-      {/* Rate Limit */}
-      <div className="flex flex-wrap items-center justify-between gap-2 py-2">
-        <div className="min-w-0">
-          <span className="text-sm font-medium">
-            {t("ai_settings.rate_limit_label")}
-          </span>
-          <p className="text-xs text-muted-foreground">
-            {t("ai_settings.rate_limit_hint")}
-          </p>
-        </div>
-        <input
-          type="number"
-          value={settings.rateLimit}
-          onChange={(e) =>
-            handleChange("rateLimit", parseInt(e.target.value) || 10)
-          }
-          min={1}
-          max={100}
-          className={cn(inputClass, "w-20 shrink-0")}
-        />
-      </div>
-
-
-
-      {/* 分场景模型（50 批 1.2）：翻译 / 摘要 / 自动化各自可用不同的提供商配置，默认跟随当前使用 */}
-      <div className="pb-1 pt-3">
-        <div className="flex flex-wrap items-baseline gap-2">
-          <span className="text-sm font-medium">
-            {t("ai_settings.scene_section")}
-          </span>
-          <span className="text-xs text-muted-foreground">
-            {t("ai_settings.scene_hint")}
-          </span>
-        </div>
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-2 py-2">
-        <span className="text-sm font-medium">
-          {t("ai_settings.scene_translate")}
-        </span>
-        <Select
-          ariaLabel={t("ai_settings.scene_translate")}
-          value={settings.sceneTranslate ?? ""}
-          onChange={(value) => handleChange("sceneTranslate", value)}
-          options={sceneOptions}
-          className="w-56 shrink-0"
-        />
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-2 py-2">
-        <span className="text-sm font-medium">
-          {t("ai_settings.scene_summary")}
-        </span>
-        <Select
-          ariaLabel={t("ai_settings.scene_summary")}
-          value={settings.sceneSummary ?? ""}
-          onChange={(value) => handleChange("sceneSummary", value)}
-          options={sceneOptions}
-          disabled={!hasUsableModel}
-          className="w-56 shrink-0"
-        />
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-2 py-2">
-        <span className="text-sm font-medium">
-          {t("ai_settings.scene_automation")}
-        </span>
-        <Select
-          ariaLabel={t("ai_settings.scene_automation")}
-          value={settings.sceneAutomation ?? ""}
-          onChange={(value) => handleChange("sceneAutomation", value)}
-          options={sceneOptions}
-          disabled={!hasUsableModel}
-          className="w-56 shrink-0"
-        />
-      </div>
-
-      {/* Messages */}
+      {/* 消息 */}
       {error && (
         <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
         </div>
       )}
       {successMessage && (
-        <div className="rounded-md bg-green-500/10 dark:bg-green-500/20 px-3 py-2 text-sm text-green-600 dark:text-green-400">
+        <div className="rounded-md bg-green-500/10 px-3 py-2 text-sm text-green-600 dark:bg-green-500/20 dark:text-green-400">
           {successMessage}
         </div>
       )}
 
-      {/* MCP 服务：连接管理 + 「新建 MCP 订阅」向导入口（同一份连接两种用途） */}
+      {/* MCP 服务：连接管理 + 「新建 MCP 订阅」向导入口 */}
       <MCPServersSection />
     </div>
   );
-}
-
-/** 提供商表单的快照（50 批 1：dirty 只管这块 —— 行为区自己自动保存） */
-function providerFormSnapshotOf(
-  settings: AISettingsType,
-  requestOptionsText: string,
-  providers: AIProviderConfig[],
-): string {
-  return JSON.stringify([
-    settings.provider,
-    settings.apiKey,
-    settings.baseUrl,
-    settings.model,
-    requestOptionsText,
-    providers.map((item) => [
-      item.id,
-      item.name,
-      item.provider,
-      item.baseUrl,
-      item.model,
-      item.apiKey,
-      formatRequestOptions(item.requestOptions),
-    ]),
-  ]);
-}
-
-/** 行为区的快照（自动保存的比较对象；只含行为字段，提供商表单改动不触发它） */
-function behaviorSnapshotOf(settings: AISettingsType): string {
-  return JSON.stringify([
-    settings.summaryLanguage,
-    settings.translateChannel,
-    settings.translateChannels ?? [],
-    settings.fallbackToModel,
-    settings.autoTranslate,
-    settings.autoSummary,
-    settings.rateLimit,
-    settings.sceneTranslate ?? "",
-    settings.sceneSummary ?? "",
-    settings.sceneAutomation ?? "",
-  ]);
 }

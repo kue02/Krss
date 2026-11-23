@@ -10,11 +10,12 @@ import {
   ToggleButton,
   ToggleButtonGroup,
 } from "@heroui/react";
-import { Copy, RefreshCw } from "lucide-react";
+import { Copy, History, RefreshCw } from "lucide-react";
 import { refreshFeeds, type RefreshFeedResult } from "@/api";
 import { FeedAvatar } from "@/components/ui/feed-avatar";
 import { MarqueeText } from "@/components/ui/marquee-text";
 import { cn } from "@/lib/utils";
+import { SectionCard } from "@/components/settings/settings-primitives";
 import { copyToClipboard, showToast } from "@/stores/toast-store";
 import {
   clearAutoRefreshHistory,
@@ -204,18 +205,12 @@ export function AutoRefreshHistorySection() {
   };
 
   return (
-    <section>
-      {/* 顶栏：标题 + 「全部 / 只看失败」筛选 + 清空 */}
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="text-sm font-medium">
-            {t("settings.auto_refresh_history")}
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {t("settings.auto_refresh_history_hint")}
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
+    <SectionCard
+      icon={<History className="size-4" />}
+      title={t("settings.auto_refresh_history")}
+      description={t("settings.auto_refresh_history_hint")}
+      action={
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
           {records.length > 0 && (
             <ToggleButtonGroup
               selectionMode="single"
@@ -241,7 +236,8 @@ export function AutoRefreshHistorySection() {
             </Button>
           )}
         </div>
-      </div>
+      }
+    >
 
       {records.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
@@ -549,6 +545,6 @@ export function AutoRefreshHistorySection() {
           </AlertDialog.Container>
         </AlertDialog.Backdrop>
       </AlertDialog>
-    </section>
+    </SectionCard>
   );
 }

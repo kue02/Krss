@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Folder, Trash2 } from "lucide-react";
+import { Button } from "@heroui/react";
 import { listFolders, deleteFolders } from "@/api";
 import { cn } from "@/lib/utils";
 import {
@@ -9,7 +11,8 @@ import {
   compareStrings,
   getSortIcon,
 } from "@/lib/table-utils";
-import type { Folder } from "@/types/api";
+import { SectionCard } from "@/components/settings/settings-primitives";
+import type { Folder as FolderType } from "@/types/api";
 
 type SortField = "name" | "createdAt" | "updatedAt";
 type SortDirection = "asc" | "desc";
@@ -111,154 +114,64 @@ export function FoldersSettings() {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-muted-foreground">
-          {t("folders.title", { count: folders.length })}
-        </h3>
-        <div className="flex items-center gap-2">
-          <button
+    <div className="space-y-5">
+      <SectionCard
+        icon={<Folder className="size-4" />}
+        title={t("folders.title", { count: folders.length })}
+        action={
+          <Button
             type="button"
-            onClick={handleDeleteSelected}
-            disabled={selectedIds.size === 0 || isDeleting}
-            className={cn(
-              "flex items-center gap-1.5 rounded-[var(--radius)] px-3 py-1.5 text-sm font-medium transition-colors",
-              "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-              "disabled:cursor-not-allowed disabled:opacity-50",
-            )}
+            size="sm"
+            variant="danger"
+            isDisabled={selectedIds.size === 0 || isDeleting}
+            onPress={() => void handleDeleteSelected()}
           >
-            <svg
-              className="size-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-              />
-            </svg>
-            <span>
-              {isDeleting
-                ? t("folders.deleting")
-                : t("folders.delete_count", { count: selectedIds.size })}
-            </span>
-          </button>
-        </div>
-      </div>
+            <Trash2 className="size-3.5" />
+            {isDeleting
+              ? t("folders.deleting")
+              : t("folders.delete_count", { count: selectedIds.size })}
+          </Button>
+        }
+      >
+        <div className="space-y-3 pb-2 pt-2">
+          {/* Warning */}
+          <div className="rounded-md bg-amber-500/10 px-3 py-2 text-sm text-amber-600 dark:text-amber-400">
+            {t("folders.delete_warning")}
+          </div>
 
-      {/* Warning */}
-      <div className="rounded-md bg-amber-500/10 px-3 py-2 text-sm text-amber-600 dark:text-amber-400">
-        {t("folders.delete_warning")}
-      </div>
+          {/* Error message */}
+          {error && (
+            <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {error}
+            </div>
+          )}
 
-      {/* Error message */}
-      {error && (
-        <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {error}
-        </div>
-      )}
-
-      {/* Table */}
-      {folders.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border bg-secondary/20 p-8 text-center">
-          <p className="text-sm text-muted-foreground">
-            {t("folders.no_folders")}
-          </p>
-        </div>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[600px] text-sm">
-            <thead className="bg-secondary/50">
-              <tr>
-                <th className="w-10 px-3 py-2 text-left">
-                  <button
-                    type="button"
-                    onClick={handleSelectAll}
-                    className={cn(
-                      "flex size-4 items-center justify-center rounded border transition-colors",
-                      isAllSelected
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : isPartialSelected
-                          ? "border-primary bg-primary/50 text-primary-foreground"
-                          : "border-border bg-background hover:border-primary/50",
-                    )}
-                  >
-                    {(isAllSelected || isPartialSelected) && (
-                      <svg
-                        className="size-3"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={3}
-                          d={isPartialSelected ? "M5 12h14" : "M5 13l4 4L19 7"}
-                        />
-                      </svg>
-                    )}
-                  </button>
-                </th>
-                <th className="px-3 py-2 text-left font-medium text-muted-foreground">
-                  <button
-                    type="button"
-                    onClick={() => handleSort("name")}
-                    className="flex items-center hover:text-foreground transition-colors"
-                  >
-                    {t("folders.name")}
-                    {renderSortIcon("name")}
-                  </button>
-                </th>
-                <th className="hidden sm:table-cell w-28 px-3 py-2 text-left font-medium text-muted-foreground">
-                  <button
-                    type="button"
-                    onClick={() => handleSort("createdAt")}
-                    className="flex items-center hover:text-foreground transition-colors"
-                  >
-                    {t("folders.create_date")}
-                    {renderSortIcon("createdAt")}
-                  </button>
-                </th>
-                <th className="hidden sm:table-cell w-36 px-3 py-2 text-left font-medium text-muted-foreground">
-                  <button
-                    type="button"
-                    onClick={() => handleSort("updatedAt")}
-                    className="flex items-center hover:text-foreground transition-colors"
-                  >
-                    {t("folders.last_update")}
-                    {renderSortIcon("updatedAt")}
-                  </button>
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {sortedFolders.map((folder: Folder) => {
-                const isSelected = selectedIds.has(folder.id);
-                return (
-                  <tr
-                    key={folder.id}
-                    className={cn(
-                      "transition-colors",
-                      isSelected ? "bg-primary/5" : "hover:bg-secondary/30",
-                    )}
-                  >
-                    <td className="px-3 py-2">
+          {/* Table */}
+          {folders.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border bg-secondary/20 p-8 text-center">
+              <p className="text-sm text-muted-foreground">
+                {t("folders.no_folders")}
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-lg">
+              <table className="w-full min-w-[600px] text-sm">
+                <thead className="bg-secondary/50">
+                  <tr>
+                    <th className="w-10 px-3 py-2 text-left">
                       <button
                         type="button"
-                        onClick={() => handleSelect(folder.id)}
+                        onClick={handleSelectAll}
                         className={cn(
                           "flex size-4 items-center justify-center rounded border transition-colors",
-                          isSelected
+                          isAllSelected
                             ? "border-primary bg-primary text-primary-foreground"
-                            : "border-border bg-background hover:border-primary/50",
+                            : isPartialSelected
+                              ? "border-primary bg-primary/50 text-primary-foreground"
+                              : "border-border bg-background hover:border-primary/50",
                         )}
                       >
-                        {isSelected && (
+                        {(isAllSelected || isPartialSelected) && (
                           <svg
                             className="size-3"
                             fill="none"
@@ -269,50 +182,125 @@ export function FoldersSettings() {
                               strokeLinecap="round"
                               strokeLinejoin="round"
                               strokeWidth={3}
-                              d="M5 13l4 4L19 7"
+                              d={
+                                isPartialSelected ? "M5 12h14" : "M5 13l4 4L19 7"
+                              }
                             />
                           </svg>
                         )}
                       </button>
-                    </td>
-                    <td className="max-w-[200px] px-3 py-2">
-                      <div className="flex items-center gap-2">
-                        <div className="flex size-4 shrink-0 items-center justify-center rounded bg-secondary text-muted-foreground">
-                          <svg
-                            className="size-3"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={1.5}
-                              d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-                            />
-                          </svg>
-                        </div>
-                        <span
-                          className="truncate font-medium"
-                          title={folder.name}
-                        >
-                          {folder.name}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="hidden sm:table-cell px-3 py-2 text-muted-foreground">
-                      {formatDate(folder.createdAt)}
-                    </td>
-                    <td className="hidden sm:table-cell px-3 py-2 text-muted-foreground">
-                      {formatDateTime(folder.updatedAt)}
-                    </td>
+                    </th>
+                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">
+                      <button
+                        type="button"
+                        onClick={() => handleSort("name")}
+                        className="flex items-center hover:text-foreground transition-colors"
+                      >
+                        {t("folders.name")}
+                        {renderSortIcon("name")}
+                      </button>
+                    </th>
+                    <th className="hidden sm:table-cell w-28 px-3 py-2 text-left font-medium text-muted-foreground">
+                      <button
+                        type="button"
+                        onClick={() => handleSort("createdAt")}
+                        className="flex items-center hover:text-foreground transition-colors"
+                      >
+                        {t("folders.create_date")}
+                        {renderSortIcon("createdAt")}
+                      </button>
+                    </th>
+                    <th className="hidden sm:table-cell w-36 px-3 py-2 text-left font-medium text-muted-foreground">
+                      <button
+                        type="button"
+                        onClick={() => handleSort("updatedAt")}
+                        className="flex items-center hover:text-foreground transition-colors"
+                      >
+                        {t("folders.last_update")}
+                        {renderSortIcon("updatedAt")}
+                      </button>
+                    </th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {sortedFolders.map((folder: FolderType) => {
+                    const isSelected = selectedIds.has(folder.id);
+                    return (
+                      <tr
+                        key={folder.id}
+                        className={cn(
+                          "transition-colors",
+                          isSelected ? "bg-primary/5" : "hover:bg-secondary/30",
+                        )}
+                      >
+                        <td className="px-3 py-2">
+                          <button
+                            type="button"
+                            onClick={() => handleSelect(folder.id)}
+                            className={cn(
+                              "flex size-4 items-center justify-center rounded border transition-colors",
+                              isSelected
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-border bg-background hover:border-primary/50",
+                            )}
+                          >
+                            {isSelected && (
+                              <svg
+                                className="size-3"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={3}
+                                  d="M5 13l4 4L19 7"
+                                />
+                              </svg>
+                            )}
+                          </button>
+                        </td>
+                        <td className="max-w-[200px] px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            <div className="flex size-4 shrink-0 items-center justify-center rounded bg-secondary text-muted-foreground">
+                              <svg
+                                className="size-3"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={1.5}
+                                  d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+                                />
+                              </svg>
+                            </div>
+                            <span
+                              className="truncate font-medium"
+                              title={folder.name}
+                            >
+                              {folder.name}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="hidden sm:table-cell px-3 py-2 text-muted-foreground">
+                          {formatDate(folder.createdAt)}
+                        </td>
+                        <td className="hidden sm:table-cell px-3 py-2 text-muted-foreground">
+                          {formatDateTime(folder.updatedAt)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
-      )}
+      </SectionCard>
     </div>
   );
 }

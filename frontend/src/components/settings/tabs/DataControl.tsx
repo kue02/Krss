@@ -16,7 +16,11 @@ import {
   clearEntryCache,
 } from "@/api";
 import type { ClearAICacheResponse, ClearCacheResponse } from "@/api";
-import { cn } from "@/lib/utils";
+import { Archive, Download, Trash2, Upload } from "lucide-react";
+import {
+  SectionCard,
+  SettingRow,
+} from "@/components/settings/settings-primitives";
 import { MCPOutboundSection } from "@/components/settings/tabs/MCPOutboundSection";
 import { pullSettingsFromServer } from "@/lib/settings-sync";
 import type { ImportResult, ImportTask } from "@/types/api";
@@ -318,24 +322,15 @@ export function DataControl() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Import Section */}
-      <section>
-        <h3 className="mb-4 text-sm font-semibold text-muted-foreground">
-          {t("data_control.import_data")}
-        </h3>
-
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="min-w-0">
-              <div className="text-sm font-medium">
-                {t("data_control.import_feeds")}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                {t("data_control.import_description")}
-              </div>
-            </div>
-
+    <div className="space-y-5">
+      {/* 导入数据 */}
+      <SectionCard
+        icon={<Upload className="size-4" />}
+        title={t("data_control.import_data")}
+        description={t("data_control.import_description")}
+      >
+        <div className="divide-y divide-border/50">
+          <SettingRow label={t("data_control.import_feeds")}>
             <input
               ref={fileInputRef}
               type="file"
@@ -343,205 +338,147 @@ export function DataControl() {
               className="hidden"
               onChange={handleFileChange}
             />
-
-            <button
-              type="button"
-              onClick={handleImportClick}
-              disabled={isImporting}
-              className={cn(
-                "inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-[var(--radius)] border border-border bg-background px-4 text-sm font-medium",
-                "transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50",
-              )}
+            <Button
+              size="sm"
+              variant="outline"
+              isDisabled={isImporting}
+              onPress={handleImportClick}
             >
               {isImporting ? (
                 <>
-                  <svg
-                    className="size-4 animate-spin"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    />
-                  </svg>
-                  <span>{t("data_control.importing")}</span>
+                  <span className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  {t("data_control.importing")}
                 </>
               ) : (
                 <>
-                  <svg
-                    className="size-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.5}
-                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
-                    />
-                  </svg>
-                  <span>{t("data_control.select_file")}</span>
+                  <Upload className="size-3.5" />
+                  {t("data_control.select_file")}
                 </>
               )}
-            </button>
-          </div>
+            </Button>
+          </SettingRow>
+        </div>
 
-          {/* Import Progress */}
-          {task && task.status === "running" && task.total > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <div className="h-2 flex-1 overflow-hidden rounded-full bg-secondary">
-                  <div
-                    className="h-full bg-primary transition-all duration-300"
-                    style={{ width: `${(task.current / task.total) * 100}%` }}
-                  />
+        {(isImporting ||
+          (task && task.status === "cancelled") ||
+          importResult ||
+          importError) && (
+          <div className="space-y-2 px-1 pb-2 pt-1">
+            {/* 导入进度 */}
+            {isImporting && task && task.total > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-secondary">
+                    <div
+                      className="h-full bg-primary transition-all duration-300"
+                      style={{ width: `${(task.current / task.total) * 100}%` }}
+                    />
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onPress={() => void handleCancel()}
+                    className="h-6 min-w-0 px-2 text-xs text-muted-foreground"
+                  >
+                    {t("data_control.stop")}
+                  </Button>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleCancel}
-                  className="text-xs text-muted-foreground hover:text-foreground"
-                >
-                  {t("data_control.stop")}
-                </button>
+                <div className="text-xs text-muted-foreground">
+                  {task.feed
+                    ? `${task.feed} (${task.current}/${task.total})`
+                    : `${task.current}/${task.total}`}
+                </div>
               </div>
-              <div className="text-xs text-muted-foreground">
-                {task.feed
-                  ? `${task.feed} (${task.current}/${task.total})`
-                  : `${task.current}/${task.total}`}
-              </div>
-            </div>
-          )}
+            )}
 
-          {/* Import Cancelled */}
-          {task && task.status === "cancelled" && (
-            <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm dark:border-yellow-900 dark:bg-yellow-950">
-              <div className="font-medium text-yellow-800 dark:text-yellow-200">
-                {t("data_control.import_stopped")}
+            {/* 导入被停止 */}
+            {task && task.status === "cancelled" && (
+              <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm dark:border-yellow-900 dark:bg-yellow-950">
+                <div className="font-medium text-yellow-800 dark:text-yellow-200">
+                  {t("data_control.import_stopped")}
+                </div>
+                <div className="mt-1 text-yellow-700 dark:text-yellow-300">
+                  {t("data_control.imported_progress", {
+                    current: task.current,
+                    total: task.total,
+                  })}
+                </div>
               </div>
-              <div className="mt-1 text-yellow-700 dark:text-yellow-300">
-                {t("data_control.imported_progress", {
-                  current: task.current,
-                  total: task.total,
-                })}
-              </div>
-            </div>
-          )}
+            )}
 
-          {/* Import Result */}
-          {importResult && (
-            <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm dark:border-green-900 dark:bg-green-950">
-              <div className="font-medium text-green-800 dark:text-green-200">
-                {t("data_control.import_success")}
-              </div>
-              <ul className="mt-1 space-y-0.5 text-green-700 dark:text-green-300">
-                <li>
-                  {t("data_control.folders_created", {
-                    count: importResult.foldersCreated,
-                  })}
-                </li>
-                <li>
-                  {t("data_control.feeds_created", {
-                    count: importResult.feedsCreated,
-                  })}
-                </li>
-                {(importResult.foldersSkipped > 0 ||
-                  importResult.feedsSkipped > 0) && (
-                  <li className="text-green-600 dark:text-green-400">
-                    {t("data_control.skipped_items", {
-                      foldersSkipped: importResult.foldersSkipped,
-                      feedsSkipped: importResult.feedsSkipped,
+            {/* 导入结果 */}
+            {importResult && (
+              <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm dark:border-green-900 dark:bg-green-950">
+                <div className="font-medium text-green-800 dark:text-green-200">
+                  {t("data_control.import_success")}
+                </div>
+                <ul className="mt-1 space-y-0.5 text-green-700 dark:text-green-300">
+                  <li>
+                    {t("data_control.folders_created", {
+                      count: importResult.foldersCreated,
                     })}
                   </li>
-                )}
-              </ul>
-            </div>
-          )}
-
-          {/* Import Error */}
-          {importError && (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950">
-              <div className="font-medium text-red-800 dark:text-red-200">
-                {t("data_control.import_failed")}
+                  <li>
+                    {t("data_control.feeds_created", {
+                      count: importResult.feedsCreated,
+                    })}
+                  </li>
+                  {(importResult.foldersSkipped > 0 ||
+                    importResult.feedsSkipped > 0) && (
+                    <li className="text-green-600 dark:text-green-400">
+                      {t("data_control.skipped_items", {
+                        foldersSkipped: importResult.foldersSkipped,
+                        feedsSkipped: importResult.feedsSkipped,
+                      })}
+                    </li>
+                  )}
+                </ul>
               </div>
-              <div className="mt-1 text-red-700 dark:text-red-300">
-                {importError}
-              </div>
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* Export Section */}
-      <section>
-        <h3 className="mb-4 text-sm font-semibold text-muted-foreground">
-          {t("data_control.export_data")}
-        </h3>
-
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="min-w-0">
-            <div className="text-sm font-medium">
-              {t("data_control.export_feeds")}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {t("data_control.export_description")}
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleExport}
-            className={cn(
-              "inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-[var(--radius)] border border-border bg-background px-4 text-sm font-medium",
-              "transition-colors hover:bg-secondary",
             )}
+
+            {/* 导入失败 */}
+            {importError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950">
+                <div className="font-medium text-red-800 dark:text-red-200">
+                  {t("data_control.import_failed")}
+                </div>
+                <div className="mt-1 text-red-700 dark:text-red-300">
+                  {importError}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </SectionCard>
+
+      {/* 导出数据 */}
+      <SectionCard
+        icon={<Download className="size-4" />}
+        title={t("data_control.export_data")}
+      >
+        <div className="divide-y divide-border/50">
+          <SettingRow
+            label={t("data_control.export_feeds")}
+            hint={t("data_control.export_description")}
           >
-            <svg
-              className="size-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-              />
-            </svg>
-            <span>{t("data_control.export")}</span>
-          </button>
+            <Button size="sm" variant="outline" onPress={() => void handleExport()}>
+              <Download className="size-3.5" />
+              {t("data_control.export")}
+            </Button>
+          </SettingRow>
         </div>
-      </section>
+      </SectionCard>
 
-      {/* 设置导出 / 导入（21 批，2026-09-18） */}
-      <section>
-        <h3 className="mb-4 text-sm font-semibold text-muted-foreground">
-          {t("data_control.settings_backup")}
-        </h3>
-
-        <div className="space-y-4">
-          {/* 导出设置 */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="min-w-0">
-              <div className="text-sm font-medium">
-                {t("data_control.export_settings")}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                {t("data_control.export_settings_description")}
-              </div>
-            </div>
-
+      {/* 设置备份：导出 / 导入整份设置（21 批） */}
+      <SectionCard
+        icon={<Archive className="size-4" />}
+        title={t("data_control.settings_backup")}
+      >
+        <div className="divide-y divide-border/50">
+          <SettingRow
+            label={t("data_control.export_settings")}
+            hint={t("data_control.export_settings_description")}
+          >
             <Button
               type="button"
               size="sm"
@@ -551,19 +488,12 @@ export function DataControl() {
             >
               {t("data_control.export")}
             </Button>
-          </div>
+          </SettingRow>
 
-          {/* 导入设置 */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="min-w-0">
-              <div className="text-sm font-medium">
-                {t("data_control.import_settings")}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                {t("data_control.import_settings_description")}
-              </div>
-            </div>
-
+          <SettingRow
+            label={t("data_control.import_settings")}
+            hint={t("data_control.import_settings_description")}
+          >
             <Button
               type="button"
               size="sm"
@@ -573,7 +503,6 @@ export function DataControl() {
             >
               {t("data_control.import_settings")}
             </Button>
-
             <input
               ref={settingsFileInputRef}
               type="file"
@@ -581,29 +510,32 @@ export function DataControl() {
               className="hidden"
               onChange={(event) => void handlePickSettingsFile(event)}
             />
-          </div>
-
-          {settingsImportCount !== null && (
-            <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-200">
-              {t("data_control.import_settings_success", {
-                count: settingsImportCount,
-              })}
-            </div>
-          )}
-
-          {settingsError && (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950">
-              <div className="font-medium text-red-800 dark:text-red-200">
-                {t("data_control.import_settings_failed")}
-              </div>
-              <div className="mt-1 break-all text-red-700 dark:text-red-300">
-                {settingsError}
-              </div>
-            </div>
-          )}
+          </SettingRow>
         </div>
 
-        {/* 导入确认：覆盖设置不可撤销，必须问一句（AlertDialog 照 RSSHub 那处用法） */}
+        {(settingsImportCount !== null || settingsError) && (
+          <div className="space-y-2 px-1 pb-2 pt-1">
+            {settingsImportCount !== null && (
+              <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-200">
+                {t("data_control.import_settings_success", {
+                  count: settingsImportCount,
+                })}
+              </div>
+            )}
+            {settingsError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950">
+                <div className="font-medium text-red-800 dark:text-red-200">
+                  {t("data_control.import_settings_failed")}
+                </div>
+                <div className="mt-1 break-all text-red-700 dark:text-red-300">
+                  {settingsError}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 导入确认：覆盖设置不可撤销，必须问一句 */}
         <AlertDialog>
           <Button className="hidden" aria-hidden />
           <AlertDialog.Backdrop
@@ -652,19 +584,17 @@ export function DataControl() {
             </AlertDialog.Container>
           </AlertDialog.Backdrop>
         </AlertDialog>
-      </section>
+      </SectionCard>
 
       {/* 出向：Krss 自己当 MCP 服务器（只读 tools + resources、长期 token） */}
       <MCPOutboundSection />
 
-      {/* Clear Cache Section */}
-      <section>
-        <h3 className="mb-4 text-sm font-semibold text-muted-foreground">
-          {t("data_control.clear_cache")}
-        </h3>
-
-        <div className="space-y-4">
-          {/* Entry Cache */}
+      {/* 清理缓存 */}
+      <SectionCard
+        icon={<Trash2 className="size-4" />}
+        title={t("data_control.clear_cache")}
+      >
+        <div className="divide-y divide-border/50">
           <ClearCacheItem
             title={t("data_control.clear_entry_cache")}
             description={t("data_control.clear_entry_cache_description")}
@@ -679,8 +609,6 @@ export function DataControl() {
             error={clearEntryError}
             t={t}
           />
-
-          {/* Readability Cache */}
           <ClearCacheItem
             title={t("data_control.clear_readability_cache")}
             description={t("data_control.clear_readability_cache_description")}
@@ -695,8 +623,6 @@ export function DataControl() {
             error={clearReadabilityError}
             t={t}
           />
-
-          {/* Icon Cache */}
           <ClearCacheItem
             title={t("data_control.clear_icon_cache")}
             description={t("data_control.clear_icon_cache_description")}
@@ -711,8 +637,6 @@ export function DataControl() {
             error={clearIconError}
             t={t}
           />
-
-          {/* AI Cache */}
           <ClearCacheItem
             title={t("data_control.clear_ai_cache")}
             description={t("data_control.clear_ai_cache_description")}
@@ -729,8 +653,6 @@ export function DataControl() {
             error={clearAIError}
             t={t}
           />
-
-          {/* Anubis Cookies */}
           <ClearCacheItem
             title={t("data_control.clear_anubis_cookies")}
             description={t("data_control.clear_anubis_cookies_description")}
@@ -746,7 +668,7 @@ export function DataControl() {
             t={t}
           />
         </div>
-      </section>
+      </SectionCard>
     </div>
   );
 }
@@ -771,78 +693,43 @@ function ClearCacheItem({
   t,
 }: ClearCacheItemProps) {
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="min-w-0">
-          <div className="text-sm font-medium">{title}</div>
-          <div className="text-xs text-muted-foreground">{description}</div>
-        </div>
-
-        <button
+    <div>
+      <SettingRow label={title} hint={description}>
+        <Button
           type="button"
-          onClick={onClear}
-          disabled={isClearing}
-          className={cn(
-            "inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-[var(--radius)] border px-4 text-sm font-medium",
-            "transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-            "border-red-300 bg-red-50 text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-950 dark:text-red-400 dark:hover:bg-red-900",
-          )}
+          size="sm"
+          variant="danger"
+          isDisabled={isClearing}
+          onPress={onClear}
         >
           {isClearing ? (
             <>
-              <svg
-                className="size-4 animate-spin"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                />
-              </svg>
-              <span>{t("data_control.clearing")}</span>
+              <span className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+              {t("data_control.clearing")}
             </>
           ) : (
             <>
-              <svg
-                className="size-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.5}
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                />
-              </svg>
-              <span>{t("data_control.clear")}</span>
+              <Trash2 className="size-3.5" />
+              {t("data_control.clear")}
             </>
           )}
-        </button>
-      </div>
+        </Button>
+      </SettingRow>
 
-      {/* Result */}
-      {result && (
-        <div className="rounded-lg border border-green-200 bg-green-50 p-2 text-xs dark:border-green-900 dark:bg-green-950">
-          <span className="text-green-700 dark:text-green-300">{result}</span>
-        </div>
-      )}
-
-      {/* Error */}
-      {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-2 text-xs dark:border-red-900 dark:bg-red-950">
-          <span className="text-red-700 dark:text-red-300">{error}</span>
+      {(result || error) && (
+        <div className="space-y-1 px-1 pb-2">
+          {result && (
+            <div className="rounded-lg border border-green-200 bg-green-50 p-2 text-xs dark:border-green-900 dark:bg-green-950">
+              <span className="text-green-700 dark:text-green-300">
+                {result}
+              </span>
+            </div>
+          )}
+          {error && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-2 text-xs dark:border-red-900 dark:bg-red-950">
+              <span className="text-red-700 dark:text-red-300">{error}</span>
+            </div>
+          )}
         </div>
       )}
     </div>

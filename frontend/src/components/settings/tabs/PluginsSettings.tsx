@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertDialog, Button, Chip } from "@heroui/react";
-import { Upload } from "lucide-react";
+import { Puzzle, Upload } from "lucide-react";
 import {
   fetchPlugins,
   rescanPlugins,
@@ -15,6 +15,7 @@ import { PLUGIN_CONTRIBUTIONS_QUERY_KEY } from "@/plugins/useContributions";
 import { PLUGIN_VIEWS_QUERY_KEY } from "@/plugins/usePluginViews";
 import { queryClient } from "@/lib/queryClient";
 import { HeroSwitch } from "@/components/ui/hero-switch";
+import { SectionCard } from "@/components/settings/settings-primitives";
 
 /**
  * 设置 → 插件（55-8）。
@@ -24,6 +25,10 @@ import { HeroSwitch } from "@/components/ui/hero-switch";
  * - 设置段是**代码**，随前端包发，按插件 id 在 `plugins/registry.tsx` 登记，
  *   没登记的插件只显示卡片（不报错，只是这段还没做）；
  * - 停用后设置段与自动化动作一并消失 —— 这里只管界面，动作失效由后端 dispatch 保证。
+ *
+ * 视觉上与「AI 设置 / 数据控制」同一套外壳：整页一张 SectionCard（图标 + 标题 +
+ * 说明 + 右上角操作），插件清单用分隔线排成一张卡片列表，不再给每个插件套第二层边框，
+ * 保持克制的操作态配色。
  */
 export function PluginsSettings() {
   const { t } = useTranslation();
@@ -139,146 +144,150 @@ export function PluginsSettings() {
   }, [pendingUninstall, t]);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-end gap-2">
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".zip,application/zip"
-          className="hidden"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            // 清空 value：同一个包重选一次也要能触发 onChange
-            event.target.value = "";
-            if (file) void installPackage(file);
-          }}
-        />
-        <Button
-          size="sm"
-          variant="primary"
-          className="shrink-0"
-          isDisabled={uploading || rescanning}
-          onPress={() => fileInputRef.current?.click()}
-        >
-          <Upload className="size-4" />
-          {uploading ? t("plugins.uploading") : t("plugins.add_plugin")}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="shrink-0"
-          isDisabled={rescanning || uploading}
-          onPress={() => void rescan()}
-        >
-          {rescanning ? t("plugins.rescanning") : t("plugins.rescan")}
-        </Button>
-      </div>
+    <div className="space-y-5">
+      <SectionCard
+        icon={<Puzzle className="size-4" />}
+        title={t("plugins.settings")}
+        description={t("plugins.install_hint")}
+        action={
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".zip,application/zip"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                // 清空 value：同一个包重选一次也要能触发 onChange
+                event.target.value = "";
+                if (file) void installPackage(file);
+              }}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              className="shrink-0"
+              isDisabled={rescanning || uploading}
+              onPress={() => void rescan()}
+            >
+              {rescanning ? t("plugins.rescanning") : t("plugins.rescan")}
+            </Button>
+            <Button
+              size="sm"
+              variant="primary"
+              className="shrink-0"
+              isDisabled={uploading || rescanning}
+              onPress={() => fileInputRef.current?.click()}
+            >
+              <Upload className="size-4" />
+              {uploading ? t("plugins.uploading") : t("plugins.add_plugin")}
+            </Button>
+          </div>
+        }
+      >
+        {error && pendingUninstall === null && (
+          <p role="alert" className="px-1 pb-1 text-xs text-destructive">
+            {error}
+          </p>
+        )}
 
-      <p className="text-xs text-muted-foreground">{t("plugins.install_hint")}</p>
+        {!plugins ? (
+          <p className="px-1 py-2 text-xs text-muted-foreground">
+            {t("common.loading")}
+          </p>
+        ) : (
+          <div className="divide-y divide-border/50">
+            {plugins.map((plugin) => {
+              const Section = PLUGIN_SETTINGS_SECTIONS[plugin.id];
+              return (
+                <div key={plugin.id} className="px-1 py-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <h3 className="text-sm font-medium text-foreground">
+                          {plugin.name}
+                        </h3>
+                        {plugin.builtin && (
+                          <Chip
+                            size="sm"
+                            variant="tertiary"
+                            className="border border-border text-muted-foreground"
+                          >
+                            {t("plugins.builtin")}
+                          </Chip>
+                        )}
+                        {plugin.transport === "http" && (
+                          <Chip
+                            size="sm"
+                            variant="tertiary"
+                            className="border border-border text-muted-foreground"
+                          >
+                            {t("plugins.external")}
+                          </Chip>
+                        )}
+                        {plugin.version && (
+                          <span className="text-[11px] text-muted-foreground/70">
+                            v{plugin.version}
+                          </span>
+                        )}
+                      </div>
 
-      {error && pendingUninstall === null && (
-        <p role="alert" className="px-1 text-xs text-destructive">
-          {error}
-        </p>
-      )}
-
-      {!plugins ? (
-        <p className="px-1 text-xs text-muted-foreground">
-          {t("common.loading")}
-        </p>
-      ) : (
-        <div className="space-y-3">
-          {plugins.map((plugin) => {
-            const Section = PLUGIN_SETTINGS_SECTIONS[plugin.id];
-            return (
-              <section
-                key={plugin.id}
-                className="rounded-lg border border-border p-3"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-                      <h3 className="text-sm font-medium text-foreground">
-                        {plugin.name}
-                      </h3>
-                      {plugin.builtin && (
-                        <Chip
-                          size="sm"
-                          variant="tertiary"
-                          className="border border-border text-muted-foreground"
-                        >
-                          {t("plugins.builtin")}
-                        </Chip>
+                      {plugin.description && (
+                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                          {plugin.description}
+                        </p>
                       )}
-                      {plugin.transport === "http" && (
-                        <Chip
-                          size="sm"
-                          variant="tertiary"
-                          className="border border-border text-muted-foreground"
-                        >
-                          {t("plugins.external")}
-                        </Chip>
-                      )}
-                      {plugin.version && (
-                        <span className="text-[11px] text-muted-foreground/70">
-                          v{plugin.version}
-                        </span>
+
+                      {/* 崩溃 / 起不来：宿主把原因写在 lastError 里，用户得一眼看见为什么点了没反应 */}
+                      {plugin.lastError && (
+                        <p className="mt-1 text-xs text-destructive">
+                          {plugin.lastError}
+                        </p>
                       )}
                     </div>
 
-                    {plugin.description && (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {plugin.description}
-                      </p>
-                    )}
-
-                    {/* 崩溃 / 起不来：宿主把原因写在 lastError 里，用户得一眼看见为什么点了没反应 */}
-                    {plugin.lastError && (
-                      <p className="mt-1 text-xs text-destructive">
-                        {plugin.lastError}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="flex shrink-0 flex-col items-end gap-1.5">
-                    <HeroSwitch
-                      aria-label={plugin.name}
-                      isSelected={plugin.enabled}
-                      isDisabled={busyId === plugin.id}
-                      onChange={(checked: boolean) => void toggle(plugin, checked)}
-                    >
-                      {plugin.enabled
-                        ? t("plugins.enabled")
-                        : t("plugins.disabled")}
-                    </HeroSwitch>
-
-                    {/* 只有外部插件能卸载：内置插件编译进二进制，不给入口 */}
-                    {plugin.transport === "http" && (
-                      <Button
-                        size="sm"
-                        variant="danger-soft"
+                    <div className="flex shrink-0 flex-col items-end gap-2">
+                      <HeroSwitch
+                        aria-label={plugin.name}
+                        isSelected={plugin.enabled}
                         isDisabled={busyId === plugin.id}
-                        onPress={() => {
-                          setError(null);
-                          setPendingUninstall(plugin);
-                        }}
+                        onChange={(checked: boolean) =>
+                          void toggle(plugin, checked)
+                        }
                       >
-                        {t("plugins.uninstall")}
-                      </Button>
-                    )}
-                  </div>
-                </div>
+                        {plugin.enabled
+                          ? t("plugins.enabled")
+                          : t("plugins.disabled")}
+                      </HeroSwitch>
 
-                {plugin.enabled && Section && (
-                  <div className="mt-3 border-t border-border pt-3">
-                    <Section />
+                      {/* 只有外部插件能卸载：内置插件编译进二进制，不给入口 */}
+                      {plugin.transport === "http" && (
+                        <Button
+                          size="sm"
+                          variant="danger-soft"
+                          isDisabled={busyId === plugin.id}
+                          onPress={() => {
+                            setError(null);
+                            setPendingUninstall(plugin);
+                          }}
+                        >
+                          {t("plugins.uninstall")}
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                )}
-              </section>
-            );
-          })}
-        </div>
-      )}
+
+                  {plugin.enabled && Section && (
+                    <div className="mt-3 border-t border-border/50 pt-3">
+                      <Section />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </SectionCard>
 
       {/* 卸载确认（照 MCPServersSection / DataControl 那处 AlertDialog 用法） */}
       <AlertDialog>

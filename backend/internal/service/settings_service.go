@@ -23,11 +23,17 @@ import (
 
 // AIProviderConfig 一个保存好的 AI 提供商配置（可存多个，随时切换当前使用）。
 type AIProviderConfig struct {
-	ID             string         `json:"id"`
-	Name           string         `json:"name"`
-	Provider       string         `json:"provider"`
-	BaseURL        string         `json:"baseUrl"`
-	Model          string         `json:"model"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Provider string `json:"provider"`
+	BaseURL  string `json:"baseUrl"`
+	// Model：该提供商的默认模型 —— 「当前使用」是它时就用这个出请求，
+	// 分场景只写到 provider:<id>（不带 #model）时也回落到它。
+	Model string `json:"model"`
+	// Models：该提供商可用的模型库（通常含默认模型）。同一个提供商可能同时提供
+	// 翻译、摘要等不同模型，分场景按 provider:<id>#<model> 从这里挑；老库没有这个
+	// 字段时读侧按 [Model] 兜底，不影响升级。
+	Models         []string       `json:"models,omitempty"`
 	APIKey         string         `json:"apiKey"`
 	RequestOptions map[string]any `json:"requestOptions,omitempty"`
 	// Placeholder：合成占位（51 批 1）。老实例没有保存过提供商列表时，getAIProviders
@@ -537,6 +543,16 @@ func (s *settingsService) SetAISettings(ctx context.Context, settings *AISetting
 	return nil
 }
 
+// splitSceneProvider 把 "provider:" 之后的部分拆成提供商 id 与可选模型（"id#model"）。
+// 模型名里可能有 "-" "/" "." 等，取第一个 # 之前为 id、之后为模型，够用且不歧义。
+func splitSceneProvider(after string) (id, model string) {
+	after = strings.TrimSpace(after)
+	if i := strings.Index(after, "#"); i >= 0 {
+		return strings.TrimSpace(after[:i]), strings.TrimSpace(after[i+1:])
+	}
+	return after, ""
+}
+
 // resolveSceneSetting 校验并归一化场景覆盖值：空/跟随 → ""；free → "free"（仅 freeAllowed）；
 // provider:<id> → id 在已保存清单里才原样返回，否则给空（按跟随处理）。
 func (s *settingsService) resolveSceneSetting(ctx context.Context, val string, freeAllowed bool) (string, error) {
@@ -551,13 +567,18 @@ func (s *settingsService) resolveSceneSetting(ctx context.Context, val string, f
 		return "free", nil
 	}
 	if after, ok := strings.CutPrefix(val, "provider:"); ok {
-		id := strings.TrimSpace(after)
+		// provider:<id> 用该提供商的默认模型；provider:<id>#<model> 用指定模型
+		// （同一提供商下挂多个模型时分场景各挑一个）。
+		id, model := splitSceneProvider(after)
 		if id == "" {
 			return "", nil
 		}
 		for _, item := range s.getAIProvidersRaw(ctx) {
 			if item.ID == id {
-				return "provider:" + id, nil
+				if model == "" {
+					return "provider:" + id, nil
+				}
+				return "provider:" + id + "#" + model, nil
 			}
 		}
 		return "", nil
@@ -581,9 +602,16 @@ func (s *settingsService) setAIProviders(ctx context.Context, settings *AISettin
 			}
 		}
 	}
-	// 当前使用的配置的密钥一定在 ai.api_key 里
-	if currentKey, err := s.getString(ctx, keyAIAPIKey); err == nil && currentKey != "" {
-		storedKeys[settings.ActiveProviderID] = currentKey
+	// 旧实例可能只有平铺 ai.api_key（还没把密钥写进 keyAIProviders）。
+	// 只有在「从没切过当前使用」（keyAIActiveProvider 为空）时才把平铺 key 补给当前那张卡；
+	// 否则会把旧 active 的 key 错误套到新 active 的 id 上，切换当前使用就会静默丢 key。
+	prevActiveID := ""
+	if v, err := s.getString(ctx, keyAIActiveProvider); err == nil {
+		prevActiveID = v
+	}
+	flatKey := ""
+	if v, err := s.getString(ctx, keyAIAPIKey); err == nil {
+		flatKey = v
 	}
 
 	activeID := settings.ActiveProviderID
@@ -602,7 +630,12 @@ func (s *settingsService) setAIProviders(ctx context.Context, settings *AISettin
 			continue
 		}
 		if entry.APIKey == "" || isMaskedKey(entry.APIKey) {
-			entry.APIKey = storedKeys[entry.ID]
+			if stored := storedKeys[entry.ID]; stored != "" {
+				entry.APIKey = stored
+			} else if entry.ID == activeID && flatKey != "" && prevActiveID == "" && (settings.APIKey == "" || isMaskedKey(settings.APIKey)) {
+				// 仅兼容「从未写过 providers 密钥」的老实例，避免切换当前使用时串 key。
+				entry.APIKey = flatKey
+			}
 		}
 		entry.Placeholder = false
 		list = append(list, entry)
@@ -617,6 +650,15 @@ func (s *settingsService) setAIProviders(ctx context.Context, settings *AISettin
 	}
 	if err := s.repo.Set(ctx, keyAIActiveProvider, activeID); err != nil {
 		return fmt.Errorf("set active provider: %w", err)
+	}
+	// 当前使用的提供商的真实密钥同步到平铺 ai.api_key，保证仍读平铺字段的路径拿到的是当前那家。
+	for _, item := range list {
+		if item.ID == activeID && item.APIKey != "" {
+			if err := s.repo.Set(ctx, keyAIAPIKey, item.APIKey); err != nil {
+				return fmt.Errorf("sync api key: %w", err)
+			}
+			break
+		}
 	}
 	return nil
 }

@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"krss/backend/internal/service"
 	"testing"
@@ -460,4 +461,68 @@ func TestSettingsService_TranslateChannelsLegacyDerived(t *testing.T) {
 	got, err := svc.GetAISettings(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, []string{"google", "youdao"}, got.TranslateChannels)
+}
+
+// 切换「当前使用」不能把旧 active 的真实 key 套到新 active 上，且平铺 ai.api_key 要跟到新 active。
+func TestSettingsService_SwitchActiveKeepsProviderKeys(t *testing.T) {
+	repo := newSettingsRepoStub()
+	svc := service.NewSettingsService(repo, ai.NewRateLimiter(0))
+
+	require.NoError(t, svc.SetAISettings(context.Background(), &service.AISettings{
+		Provider:         "compatible",
+		APIKey:           "key-A-real",
+		BaseURL:          "https://a.test/v1",
+		Model:            "model-a",
+		ActiveProviderID: "p1",
+		Providers: []service.AIProviderConfig{
+			{ID: "p1", Name: "A", Provider: "compatible", BaseURL: "https://a.test/v1", Model: "model-a", APIKey: "key-A-real"},
+			{ID: "p2", Name: "B", Provider: "openai", BaseURL: "https://b.test/v1", Model: "model-b", APIKey: "key-B-real"},
+		},
+	}))
+
+	// 模拟前端切换当前使用到 p2：列表里 key 是打码的，平铺 key 也是打码的。
+	require.NoError(t, svc.SetAISettings(context.Background(), &service.AISettings{
+		Provider:         "openai",
+		APIKey:           "sk-***-B",
+		BaseURL:          "https://b.test/v1",
+		Model:            "model-b",
+		ActiveProviderID: "p2",
+		Providers: []service.AIProviderConfig{
+			{ID: "p1", Name: "A", Provider: "compatible", BaseURL: "https://a.test/v1", Model: "model-a", APIKey: "sk-***-A"},
+			{ID: "p2", Name: "B", Provider: "openai", BaseURL: "https://b.test/v1", Model: "model-b", APIKey: "sk-***-B"},
+		},
+	}))
+
+	var saved []service.AIProviderConfig
+	require.NoError(t, json.Unmarshal([]byte(repo.data[service.KeyAIProviders]), &saved))
+	keys := map[string]string{}
+	for _, p := range saved {
+		keys[p.ID] = p.APIKey
+	}
+	require.Equal(t, "key-A-real", keys["p1"], "切走后旧 provider 的 key 不能被覆盖")
+	require.Equal(t, "key-B-real", keys["p2"], "新 active 的 key 必须还是自己的")
+	require.Equal(t, "key-B-real", repo.data[service.KeyAIAPIKey], "平铺 ai.api_key 要跟到新 active")
+}
+
+// 老实例只有平铺 ai.api_key、providers 里是打码/空 key：首次落库要把平铺 key 补给该卡，不能丢。
+func TestSettingsService_LegacyFlatKeySeedsProvider(t *testing.T) {
+	repo := newSettingsRepoStub()
+	svc := service.NewSettingsService(repo, ai.NewRateLimiter(0))
+	repo.data[service.KeyAIAPIKey] = "legacy-key-real"
+
+	require.NoError(t, svc.SetAISettings(context.Background(), &service.AISettings{
+		Provider: "compatible",
+		APIKey:   "sk-***-L",
+		BaseURL:  "https://legacy.test/v1",
+		Model:    "legacy-model",
+		Providers: []service.AIProviderConfig{
+			{ID: "default", Name: "compatible", Provider: "compatible", BaseURL: "https://legacy.test/v1", Model: "legacy-model", APIKey: "sk-***-L"},
+		},
+	}))
+
+	var saved []service.AIProviderConfig
+	require.NoError(t, json.Unmarshal([]byte(repo.data[service.KeyAIProviders]), &saved))
+	require.Len(t, saved, 1)
+	require.Equal(t, "legacy-key-real", saved[0].APIKey, "老实例平铺 key 要补给 default 卡")
+	require.Equal(t, "legacy-key-real", repo.data[service.KeyAIAPIKey])
 }
