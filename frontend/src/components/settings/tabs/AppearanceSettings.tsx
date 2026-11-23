@@ -24,6 +24,10 @@ import {
   useUISettingKey,
   resolveGridStyle,
   resolvePictureLayout,
+  ENTRY_FONT_SIZE_MIN,
+  ENTRY_FONT_SIZE_MAX,
+  ENTRY_LINE_HEIGHT_MIN,
+  ENTRY_LINE_HEIGHT_MAX,
   type CardImageSize,
   type HoverMultiImageConfig,
   type QuoteStyle,
@@ -646,8 +650,8 @@ export function AppearanceSettings() {
           >
             <NumberField
               value={entryFontSize}
-              minValue={12}
-              maxValue={24}
+              minValue={ENTRY_FONT_SIZE_MIN}
+              maxValue={ENTRY_FONT_SIZE_MAX}
               step={1}
               onChange={(value) => setEntryFontSize(Number(value))}
               className="w-32"
@@ -669,8 +673,8 @@ export function AppearanceSettings() {
           >
             <NumberField
               value={entryLineHeight}
-              minValue={1.2}
-              maxValue={2.4}
+              minValue={ENTRY_LINE_HEIGHT_MIN}
+              maxValue={ENTRY_LINE_HEIGHT_MAX}
               step={0.1}
               formatOptions={{
                 minimumFractionDigits: 1,
