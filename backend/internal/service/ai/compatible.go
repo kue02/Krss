@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"strings"
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
@@ -40,15 +41,49 @@ func (p *CompatibleProvider) Test(ctx context.Context) (string, error) {
 
 	applyRequestOptions(&params, p.requestOptions)
 
+	return p.completeChat(ctx, params)
+}
+
+// completeChat performs a chat completion, falling back to a streaming request
+// when the gateway answers a non-streaming request with an SSE response.
+//
+// Some OpenAI-compatible gateways ignore stream:false and reply with
+// Content-Type: text/event-stream. The SDK then fails to decode that body as
+// JSON, so we retry the same params as a stream and accumulate its chunks.
+func (p *CompatibleProvider) completeChat(ctx context.Context, params openai.ChatCompletionNewParams) (string, error) {
 	resp, err := p.client.Chat.Completions.New(ctx, params)
-	if err != nil {
+	if err == nil {
+		if len(resp.Choices) == 0 {
+			return "", nil
+		}
+		return resp.Choices[0].Message.Content, nil
+	}
+
+	if !isEventStreamError(err) {
 		return "", err
 	}
 
-	if len(resp.Choices) == 0 {
+	stream := p.client.Chat.Completions.NewStreaming(ctx, params)
+	defer stream.Close()
+
+	var acc openai.ChatCompletionAccumulator
+	for stream.Next() {
+		acc.AddChunk(stream.Current())
+	}
+	if err := stream.Err(); err != nil {
+		return "", err
+	}
+
+	if len(acc.Choices) == 0 {
 		return "", nil
 	}
-	return resp.Choices[0].Message.Content, nil
+	return acc.Choices[0].Message.Content, nil
+}
+
+// isEventStreamError reports whether err is the SDK's complaint that the server
+// returned a text/event-stream response where a JSON body was expected.
+func isEventStreamError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "text/event-stream")
 }
 
 // Name returns the provider name.
@@ -120,13 +155,5 @@ func (p *CompatibleProvider) Complete(ctx context.Context, systemPrompt, content
 
 	applyRequestOptions(&params, p.requestOptions)
 
-	resp, err := p.client.Chat.Completions.New(ctx, params)
-	if err != nil {
-		return "", err
-	}
-
-	if len(resp.Choices) == 0 {
-		return "", nil
-	}
-	return resp.Choices[0].Message.Content, nil
+	return p.completeChat(ctx, params)
 }
