@@ -354,7 +354,7 @@ describe("EntryList · 标准文章列表虚拟化", () => {
     expect(viewport.querySelector(".size-16")).toBeNull();
   });
 
-  it("「正文推入方向 = 向下」合列：正文接在列表末尾，选中后底部按钮让位", async () => {
+  it("「正文推入方向 = 向下」合列：正文接在被点那一行后面，选中后才出现", async () => {
     setUISetting("articleLayout", "inoreader");
     setUISetting("articlePushDirection", "down");
     const renderInlineContent = vi.fn(() => (
@@ -372,8 +372,8 @@ describe("EntryList · 标准文章列表虚拟化", () => {
       await Promise.resolve();
     });
 
-    // 未选中：pane 在树里但不可见，底部「全部标记为已读」还在
-    expect(screen.getByTestId("inline-article-pane")).toBeTruthy();
+    // 未选中：没有正文 pane，底部「全部标记为已读」照常在
+    expect(screen.queryByTestId("inline-article-pane")).toBeNull();
     expect(screen.getByTestId("mark-all-read-footer")).toBeTruthy();
 
     rerender(
@@ -389,10 +389,20 @@ describe("EntryList · 标准文章列表虚拟化", () => {
 
     expect(renderInlineContent).toHaveBeenCalled();
     const pane = screen.getByTestId("inline-article-pane");
-    expect(pane.className).not.toContain("hidden");
     expect(pane.contains(screen.getByTestId("inline-body"))).toBe(true);
-    // 选中正文后这颗按钮会夹在列表与正文之间，让位
-    expect(screen.queryByTestId("mark-all-read-footer")).toBeNull();
+    // 正文接在被点的那一行后面：e-1 行在前、pane 在后，随后的 e-2 行还在 pane 之后
+    const row1 = viewport.querySelector('[data-entry-id="e-1"]') as HTMLElement;
+    expect(
+      row1.compareDocumentPosition(pane) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    const row2 = viewport.querySelector('[data-entry-id="e-2"]') as HTMLElement;
+    if (row2) {
+      expect(
+        pane.compareDocumentPosition(row2) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+    // 正文已内联在行间，不再夹在列表末尾与正文之间，底部按钮不再让位
+    expect(screen.getByTestId("mark-all-read-footer")).toBeTruthy();
   });
 
   it("文章「Inoreader列表」在手机档包一层左滑动作（与其它列表一致）", async () => {

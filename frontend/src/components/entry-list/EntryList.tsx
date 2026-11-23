@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -224,10 +225,8 @@ export function EntryList({
   const effectiveUnreadOnly = mutedOnly ? false : unreadOnly;
 
   const containerRef = useRef<HTMLDivElement>(null);
-  /** 「向下」合列模式下接在列表末尾的正文块（点条目后要滚到它） */
+  /** 「向下」合列模式下接在「被点那一行」后面的正文块（点条目后要滚到它） */
   const inlineContentRef = useRef<HTMLDivElement>(null);
-  /** 合列正在读正文（供分页逻辑判断：别在这时追加下一页，否则正文会被顶下去） */
-  const inlineReadingRef = useRef(false);
   const headerRef = useRef<HTMLDivElement>(null);
   const listWrapperRef = useRef<HTMLDivElement>(null);
   const usesDocumentScroll = Boolean(isMobile);
@@ -568,10 +567,6 @@ export function EntryList({
 
   const maybeFetchNextPage = useCallback(() => {
     if (!isActive || !hasNextPage || isFetchingNextPage) return;
-    /* 「向下」合列正在读正文：正文在列表末尾，这时再追加下一页会把正文往下顶走。
-       等用户关掉正文（或离开合列档）后，滚动到底自然会续上。 */
-    if (inlineReadingRef.current) return;
-
     if (scrollSurface.getDistanceToBottom() <= 600) {
       fetchNextPage();
     }
@@ -677,7 +672,7 @@ export function EntryList({
 
   /**
    * 「正文推入方向 = 向下」合列（方案 2 · 整列一起滚）的两件事：
-   * 1) 点条目后把列表末尾的正文滚进视野 —— 用户的期待就是「点完继续往下滚」；
+   * 1) 点条目后把正文滚进视野并把正文顶部吸到视口顶 —— 用户的期待就是「点完继续往下滚」；
    * 2) 顺手标已读并记 deferred（同 NotificationTimeline 的写法）：内嵌正文
    *    不走 EntryContent 的自动标已读（embedded 时那段被跳过），不补这一步
    *    就会出现「读完了列表里还是未读」。
@@ -686,17 +681,27 @@ export function EntryList({
   const inlineMarkedRef = useRef<string | null>(null);
   /* 只有真接了内联正文（桌面合列）才滚/标已读；移动端仍是列表→详情页，不插手 */
   const inlineActive = isArticleInline && Boolean(renderInlineContent);
-  inlineReadingRef.current = inlineActive && Boolean(selectedEntryId);
+  /* 合列正文接在「被点那一行」的后面（不是列表末尾）：读正文时还能继续往下滚看到
+     后续条目；selectedEntryId 唯一 ⇒ 同时只有一条正文，点别的行就是换正文、上一条收起。 */
+  const inlinePaneFor = (entryId: string | null) =>
+    inlineActive && entryId !== null && entryId === selectedEntryId ? (
+      <div
+        ref={inlineContentRef}
+        data-testid="inline-article-pane"
+        className="w-full border-t border-border"
+      >
+        {renderInlineContent?.(containerRef)}
+      </div>
+    ) : null;
   useEffect(() => {
     if (!inlineActive || !selectedEntryId) return;
     const container = containerRef.current;
     if (!container) return;
 
-    /* 把正文顶部对齐到滚动视口顶部。
-       不能用 scrollIntoView：正文在列表末尾，距离几千像素，scrollIntoView 会连带把外层
-       容器一起滚（三栏布局里外层不该动）。
-       也不能「算一次目标位置滚过去」：虚拟列表首帧按估计行高 148px 排，measureElement
-       之后才收成真实 42px 一行，列表总高会从 4220 缩到 2100 —— 目标位置算早了就冲过头，
+    /* 把正文顶部对齐到滚动视口顶部（「点开自动吸顶」）。
+       不能用 scrollIntoView：会连带把外层容器一起滚（三栏布局里外层不该动）。
+       也不能「算一次目标位置滚过去」：虚拟列表首帧按估计行高排，measureElement
+       之后才收成真实行高，列表总高会骤然收缩 —— 目标位置算早了就冲过头，
        正文被推到视口上方几千像素。所以这里逐帧盯正文相对视口的位置，差多少补多少，
        一直盯 4 秒（正文懒加载、图片撑高、行高实测都在这段时间里发生），用户一动滚轮/
        触摸/键盘就立刻收手，不再抢滚动权。 */
@@ -1757,10 +1762,15 @@ export function EntryList({
                         />
                       );
                       /* 手机档跟其它列表一致：左滑露出已读/星标 */
-                      return isMobile ? (
-                        <MobileSwipeEntryRow entry={entry}>{row}</MobileSwipeEntryRow>
-                      ) : (
-                        row
+                      return (
+                        <>
+                          {isMobile ? (
+                            <MobileSwipeEntryRow entry={entry}>{row}</MobileSwipeEntryRow>
+                          ) : (
+                            row
+                          )}
+                          {inlinePaneFor(entry.id)}
+                        </>
                       );
                     }}
                   />
@@ -1773,12 +1783,15 @@ export function EntryList({
                     virtualList={virtualList}
                     entries={entries}
                     renderItem={(entry) => (
-                      <ArticleRowsListRow
-                        entry={entry}
-                        feed={feedsMap.get(entry.feedId)}
-                        onSelectEntry={handleSelectEntry}
-                        selectedEntryId={selectedEntryId}
-                      />
+                      <>
+                        <ArticleRowsListRow
+                          entry={entry}
+                          feed={feedsMap.get(entry.feedId)}
+                          onSelectEntry={handleSelectEntry}
+                          selectedEntryId={selectedEntryId}
+                        />
+                        {inlinePaneFor(entry.id)}
+                      </>
                     )}
                   />
                 </div>
@@ -1810,12 +1823,17 @@ export function EntryList({
                         onSelectFeedFromEntry={onSelectFeedFromEntry}
                       />
                     );
-                    return isMobile ? (
-                      <MobileSwipeEntryRow entry={entry}>
-                        {item}
-                      </MobileSwipeEntryRow>
-                    ) : (
-                      item
+                    return (
+                      <>
+                        {isMobile ? (
+                          <MobileSwipeEntryRow entry={entry}>
+                            {item}
+                          </MobileSwipeEntryRow>
+                        ) : (
+                          item
+                        )}
+                        {inlinePaneFor(entry.id)}
+                      </>
                     );
                   }}
                 />
@@ -1844,20 +1862,22 @@ export function EntryList({
                       onSelectFeedFromEntry={onSelectFeedFromEntry}
                     />
                   );
-                  return isMobile ? (
-                    <MobileSwipeEntryRow key={entry.id} entry={entry}>
-                      {item}
-                    </MobileSwipeEntryRow>
-                  ) : (
-                    item
+                  return (
+                    <Fragment key={entry.id}>
+                      {isMobile ? (
+                        <MobileSwipeEntryRow entry={entry}>{item}</MobileSwipeEntryRow>
+                      ) : (
+                        item
+                      )}
+                      {inlinePaneFor(entry.id)}
+                    </Fragment>
                   );
                 })
               )}
               {/* 24-5：列表尾整宽弱边框「全部标记为已读」（语义=清当前范围未读，
                   与列表头那颗同接口 onMarkAllRead）。
                   宽度跟时间线/社交卡片同款居中可读宽度，免得在宽栏下失控拉满。 */}
-              {/* 合列模式（向下）时这颗按钮会夹在列表与正文中间，反而挡路 —— 隐藏 */}
-              {entries.length > 0 && !(inlineActive && selectedEntryId) && (
+              {entries.length > 0 && (
                 <div className="mx-auto mt-1 w-full max-w-[clamp(45ch,60vw,65ch)] px-2">
                   <button
                     type="button"
@@ -1870,27 +1890,13 @@ export function EntryList({
                   </button>
                 </div>
               )}
-              {/* 合列（向下）时这段留白会夹在列表末尾与正文之间，白滚一屏才看到正文 */}
-              {!inlineActive && scrollReadEndPaddingHeight > 0 && (
+              {scrollReadEndPaddingHeight > 0 && (
                 <div
                   aria-hidden="true"
                   data-testid="scroll-read-end-padding"
                   style={{ height: scrollReadEndPaddingHeight }}
                 />
               )}
-              {/* 「正文推入方向 = 向下」（方案 2 · 整列一起滚）：正文接在列表最后一行后面，
-                  与列表共用同一条滚动条 —— 点条目后往下滚就是正文，往上滚回列表。 */}
-              {inlineActive ? (
-                /* 没选条目时留一个 0 高占位：ref 得一直在，选中后才好逐帧对齐；
-                   但边框要跟着藏起来，否则列表末尾会多出一条悬空分隔线。 */
-                <div
-                  ref={inlineContentRef}
-                  data-testid="inline-article-pane"
-                  className={cn("w-full", selectedEntryId ? "border-t border-border" : "hidden")}
-                >
-                  {renderInlineContent?.(containerRef)}
-                </div>
-              ) : null}
             </div>
           )}
 
