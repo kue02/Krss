@@ -219,7 +219,11 @@ export function AddIcon({ className }: IconProps) {
   );
 }
 
-/** 分类（文件夹）—— 与四视图图标同一套语汇：24 网格 / 描边 1.7 / 圆头圆角 */
+/**
+ * 文件夹（分类）—— 与四视图图标同一套语汇：24 网格 / 描边 1.7 / 圆头圆角。
+ * 单一平滑轮廓：左侧圆角折的标签 + 圆润主体，横向铺满 3~21 网格（与内容类型图标等宽），
+ * 16px（侧栏 size-4）下仍清晰、不与线性图标集打架。
+ */
 export function FolderIcon({ className }: IconProps) {
   return (
     <svg
@@ -231,7 +235,7 @@ export function FolderIcon({ className }: IconProps) {
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <path d="M3.5 7.4a2 2 0 0 1 2-2h3.1a1.6 1.6 0 0 1 1.24.59l1.02 1.22a1.6 1.6 0 0 0 1.24.59h6.4a2 2 0 0 1 2 2v7.6a2 2 0 0 1-2 2h-15a2 2 0 0 1-2-2z" />
+      <path d="M3.15 7.7a2.2 2.2 0 0 1 2.2-2.2h1.7a1.7 1.7 0 0 1 1.36.68l0.98 1.28a1.7 1.7 0 0 0 1.36.68h7.85a2.2 2.2 0 0 1 2.2 2.2v6.2a2.2 2.2 0 0 1-2.2 2.2h-13.25a2.2 2.2 0 0 1-2.2-2.2z" />
     </svg>
   );
 }
