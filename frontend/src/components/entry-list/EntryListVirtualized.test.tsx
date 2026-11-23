@@ -310,6 +310,28 @@ describe("EntryList · 标准文章列表虚拟化", () => {
     ).toBeNull();
   });
 
+  it("文章「列表」档（rows）走虚拟列表，渲染 ArticleRowsListRow 且只挂可视区", async () => {
+    setUISetting("articleLayout", "rows");
+    render(<EntryList {...defaultProps} />);
+    const viewport = screen.getByTestId("entry-list-viewport");
+    await act(async () => {
+      stubViewportScroll(viewport);
+      await Promise.resolve();
+    });
+
+    // rows 分支挂载了 ArticleRowsList 容器 + 虚拟列表
+    expect(screen.getByTestId("article-rows-list")).toBeTruthy();
+    expect(
+      viewport.querySelector('[data-virtual-list="true"]'),
+    ).not.toBeNull();
+
+    const ids = rowIds();
+    expect(ids[0]).toBe("e-1");
+    expect(ids.length).toBeLessThanOrEqual(15);
+    // 行内是紧凑行（缩略图 + 标题），不是卡片
+    expect(screen.getByText("Title e-1")).toBeTruthy();
+  });
+
   it("文章 hover 档不虚拟化（悬停浮层认行的委托不受影响）", () => {
     setUISetting("articleLayout", "hover");
     render(<EntryList {...defaultProps} />);
