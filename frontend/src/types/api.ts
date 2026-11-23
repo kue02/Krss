@@ -8,6 +8,8 @@ export interface Folder {
   name: string;
   parentId?: string;
   type: ContentType;
+  /** 同级排序位（越小越靠前）；缺省表示尚未手动排序，按名称/日期兜底 */
+  sortOrder?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -15,6 +17,8 @@ export interface Folder {
 export interface Feed {
   id: string;
   folderId?: string;
+  /** 同级排序位（越小越靠前）；缺省表示尚未手动排序，按名称/日期兜底 */
+  sortOrder?: number;
   title: string;
   url: string;
   siteUrl?: string;
