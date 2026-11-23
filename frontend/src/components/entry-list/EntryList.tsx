@@ -1500,13 +1500,13 @@ export function EntryList({
             <EntryListEmpty />
           ) : (
             <div
-              className={cn("w-full", usesDocumentScroll && "pb-16")}
+              className="w-full"
               /* 31-2：文章 hover 档的悬停认行靠事件委托（对行零改动）；别的档不挂监听 */
               onMouseOver={isArticleHover ? handleArticleHoverOver : undefined}
               onMouseOut={isArticleHover ? handleArticleHoverOut : undefined}
               data-article-body-hover={isArticleHover ? "true" : undefined}
             >
-              {/* 移动端底部 Tab 栏会盖住内容，留白让最后一条能滚上来；桌面/平板已无悬浮胶囊，不再留白 */}
+              {/* 底部留白由外层布局承担（移动端 Tab 栏 padding / 桌面无悬浮胶囊），此处不再叠加 */}
               {isNotificationTimeline ? (
                 <NotificationTimeline
                   entries={entries}
