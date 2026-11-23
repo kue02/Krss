@@ -738,7 +738,7 @@
     "clear_readability_cache": "清理 Readability 缓存",
     "clear_readability_cache_description": "删除所有提取的正文内容",
     "clear_entry_cache": "清理文章缓存",
-    "clear_entry_cache_description": "删除所有未收藏的文章 (保留已收藏文章)",
+    "clear_entry_cache_description": "删除已读且未收藏的文章 (保留已收藏和未读的文章)",
     "clearing": "清理中...",
     "clear": "清理",
     "clear_success": "清理完成",

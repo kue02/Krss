@@ -741,7 +741,7 @@
     "clear_readability_cache": "Clear Readability Cache",
     "clear_readability_cache_description": "Delete all extracted readable content",
     "clear_entry_cache": "Clear Entry Cache",
-    "clear_entry_cache_description": "Delete all unstarred articles (starred articles are preserved)",
+    "clear_entry_cache_description": "Delete read articles that are not starred (starred and unread articles are preserved)",
     "clearing": "Clearing...",
     "clear": "Clear",
     "clear_success": "Cache Cleared",

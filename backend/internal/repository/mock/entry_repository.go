@@ -85,19 +85,19 @@ func (mr *MockEntryRepositoryMockRecorder) CreateOrUpdate(ctx, entry any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateOrUpdate", reflect.TypeOf((*MockEntryRepository)(nil).CreateOrUpdate), ctx, entry)
 }
 
-// DeleteUnstarred mocks base method.
-func (m *MockEntryRepository) DeleteUnstarred(ctx context.Context) (int64, error) {
+// DeleteReadUnstarred mocks base method.
+func (m *MockEntryRepository) DeleteReadUnstarred(ctx context.Context) (int64, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteUnstarred", ctx)
+	ret := m.ctrl.Call(m, "DeleteReadUnstarred", ctx)
 	ret0, _ := ret[0].(int64)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// DeleteUnstarred indicates an expected call of DeleteUnstarred.
-func (mr *MockEntryRepositoryMockRecorder) DeleteUnstarred(ctx any) *gomock.Call {
+// DeleteReadUnstarred indicates an expected call of DeleteReadUnstarred.
+func (mr *MockEntryRepositoryMockRecorder) DeleteReadUnstarred(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteUnstarred", reflect.TypeOf((*MockEntryRepository)(nil).DeleteUnstarred), ctx)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteReadUnstarred", reflect.TypeOf((*MockEntryRepository)(nil).DeleteReadUnstarred), ctx)
 }
 
 // ExistsByHash mocks base method.

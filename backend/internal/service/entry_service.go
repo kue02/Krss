@@ -47,7 +47,7 @@ type EntryService interface {
 	GetStarredCount(ctx context.Context, contentType string) (int, error)
 	// ClearReadabilityCache clears all readable_content from entries
 	ClearReadabilityCache(ctx context.Context) (int64, error)
-	// ClearEntryCache deletes all unstarred entries
+	// ClearEntryCache deletes read and unstarred entries (preserves starred and unread entries)
 	ClearEntryCache(ctx context.Context) (int64, error)
 	// WithPlugins 装上插件注册表（55-21：条目详情读取时跑阅读期处理器）。
 	// builder 形状照 RefreshService.WithPlugins：main.go 构造处一行接上，不传 = 老行为。
@@ -481,7 +481,7 @@ func (s *entryService) ClearReadabilityCache(ctx context.Context) (int64, error)
 }
 
 func (s *entryService) ClearEntryCache(ctx context.Context) (int64, error) {
-	deleted, err := s.entries.DeleteUnstarred(ctx)
+	deleted, err := s.entries.DeleteReadUnstarred(ctx)
 	if err != nil {
 		logger.Error("entry cache clear failed", "module", "service", "action", "clear", "resource", "entry", "result", "failed", "error", err)
 		return 0, err

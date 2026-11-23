@@ -293,22 +293,41 @@ func TestEntryRepository_ClearCaches(t *testing.T) {
 	ctx := context.Background()
 
 	feedID := testutil.SeedFeed(t, db, model.Feed{Title: "F", URL: "u"})
-	testutil.SeedEntry(t, db, model.Entry{FeedID: feedID, ReadableContent: stringPtr("content"), Starred: false})
-	testutil.SeedEntry(t, db, model.Entry{FeedID: feedID, Starred: true})
+	// 四种条目：已读未收藏（应删）、已读已收藏、未读未收藏、未读已收藏（后三者都保留）。
+	testutil.SeedEntry(t, db, model.Entry{FeedID: feedID, Read: true, Starred: false, ReadableContent: stringPtr("content")})
+	testutil.SeedEntry(t, db, model.Entry{FeedID: feedID, Read: true, Starred: true})
+	testutil.SeedEntry(t, db, model.Entry{FeedID: feedID, Read: false, Starred: false})
+	testutil.SeedEntry(t, db, model.Entry{FeedID: feedID, Read: false, Starred: true})
 
-	// Clear readable
+	// Clear readable（只清正文，不删条目）
 	count, err := repo.ClearAllReadableContent(ctx)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), count)
 
-	// Delete unstarred
-	count, err = repo.DeleteUnstarred(ctx)
+	// Delete read & unstarred：只删「已读未收藏」一条
+	count, err = repo.DeleteReadUnstarred(ctx)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), count)
 
 	entries, _ := repo.List(ctx, repository.EntryListFilter{})
-	require.Len(t, entries, 1)
-	require.True(t, entries[0].Starred)
+	require.Len(t, entries, 3)
+
+	// 剩余三条都在：已读已收藏、未读未收藏、未读已收藏；「已读未收藏」已被删除。
+	var readStarred, unreadUnstarred, unreadStarred int
+	for _, e := range entries {
+		require.False(t, e.Read && !e.Starred, "read+unstarred entry should have been deleted")
+		switch {
+		case e.Read && e.Starred:
+			readStarred++
+		case !e.Read && !e.Starred:
+			unreadUnstarred++
+		case !e.Read && e.Starred:
+			unreadStarred++
+		}
+	}
+	require.Equal(t, 1, readStarred)
+	require.Equal(t, 1, unreadUnstarred) // 未读未收藏必须保留
+	require.Equal(t, 1, unreadStarred)
 }
 
 func TestEntryRepository_ExistsByHash(t *testing.T) {
