@@ -38,6 +38,7 @@ import type {
   NetworkTestRequest,
   NetworkTestResponse,
   FetchSettings,
+  CacheSettings,
   UISettingsResponse,
   UISettingsPayload,
   SettingsExportPayload,
@@ -1534,6 +1535,21 @@ export async function updateFetchSettings(
   payload: Partial<FetchSettings>,
 ): Promise<FetchSettings> {
   return request<FetchSettings>("/api/settings/fetch", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** 缓存设置：清理文章的保留天数 / 已清理文章的保留期（0 各自表示全部清理 / 永久保留） */
+export async function getCacheSettings(): Promise<CacheSettings> {
+  return request<CacheSettings>("/api/settings/cache");
+}
+
+/** 只传要改的字段；越界会被后端夹到合法区间。显式传 0 会原样保存。 */
+export async function updateCacheSettings(
+  payload: Partial<CacheSettings>,
+): Promise<CacheSettings> {
+  return request<CacheSettings>("/api/settings/cache", {
     method: "PUT",
     body: JSON.stringify(payload),
   });

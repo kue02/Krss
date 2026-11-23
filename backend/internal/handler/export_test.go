@@ -29,6 +29,7 @@ type SettingsImportResponse = settingsImportResponse
 type NetworkTestResponse = networkTestResponse
 type GeneralSettingsResponse = generalSettingsResponse
 type AppearanceSettingsResponse = appearanceSettingsResponse
+type CacheSettingsResponse = cacheSettingsResponse
 type AITestResponse = aiTestResponse
 type FilterResponse = filterResponse
 type FilterListResponse = filterListResponse

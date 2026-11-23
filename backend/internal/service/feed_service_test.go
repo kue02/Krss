@@ -674,6 +674,18 @@ func (s *settingsServiceStub) SetFetchSettings(ctx context.Context, settings *se
 	return nil
 }
 
+// 1123：缓存清理设置 —— feed/refresh 测试返回默认值即可。
+func (s *settingsServiceStub) GetCacheSettings(ctx context.Context) (*service.CacheSettings, error) {
+	return &service.CacheSettings{
+		EntryRetentionDays:     service.DefaultCacheEntryRetentionDays,
+		TombstoneRetentionDays: service.DefaultCacheTombstoneRetentionDays,
+	}, nil
+}
+
+func (s *settingsServiceStub) SetCacheSettings(ctx context.Context, settings *service.CacheSettings) error {
+	return nil
+}
+
 // 21 批：界面设置整包 / 导出导入 —— 这个 stub 只服务于 feed/refresh 的测试，返回空实现即可。
 func (s *settingsServiceStub) GetUISettings(ctx context.Context) (*service.UISettings, error) {
 	return &service.UISettings{Empty: true}, nil

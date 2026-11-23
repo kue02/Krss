@@ -204,6 +204,11 @@ const (
 	keyRefreshConcurrency        = "general.refresh_concurrency"
 	keyRefreshPerHostConcurrency = "general.refresh_per_host_concurrency"
 	keyRefreshTimeoutSeconds     = "general.refresh_timeout_seconds"
+
+	// 缓存清理（1123）：已读文章保留天数 / 墓碑保留天数。0 都有特殊语义（全部清理 / 永久保留），
+	// 所以读取时必须能把「显式 0」和「没配置」区分开（用 getString + strconv.Atoi，别用 getInt）。
+	keyCacheEntryRetentionDays     = "cache.entry_retention_days"
+	keyCacheTombstoneRetentionDays = "cache.tombstone_retention_days"
 )
 
 // 拉取默认值（改这里等于改「没显式配置时」的行为）。
@@ -212,6 +217,15 @@ const (
 	DefaultRefreshConcurrency        = 12
 	DefaultRefreshPerHostConcurrency = 10
 	DefaultRefreshTimeoutSeconds     = 15
+)
+
+// 缓存清理默认值与上限（1123）。0 是合法值：entry 0 = 全部清理，tombstone 0 = 永久保留。
+const (
+	DefaultCacheEntryRetentionDays     = 30
+	DefaultCacheTombstoneRetentionDays = 180
+	// 上限：已读保留最多 10 年，墓碑保留最多 100 年（防呆，避免离谱大数）。
+	maxCacheEntryRetentionDays     = 3650
+	maxCacheTombstoneRetentionDays = 36500
 )
 
 // FetchSettings 拉取相关设置（用户 11-20：定时频率、全局并发、同主机并发、单源超时）。
@@ -224,6 +238,16 @@ type FetchSettings struct {
 	PerHostConcurrency int `json:"perHostConcurrency"`
 	// TimeoutSeconds 单个源抓取超时（秒）
 	TimeoutSeconds int `json:"timeoutSeconds"`
+}
+
+// CacheSettings 文章缓存清理设置（1123）：两个保留期都以「天」为单位，0 有特殊语义。
+//
+//   - EntryRetentionDays：清理缓存时只删「最近阅读/更新时间早于 N 天」的已读未收藏文章；
+//     0 = 不设时间门槛，清理全部已读未收藏（老行为）。默认 30。
+//   - TombstoneRetentionDays：已清理文章的墓碑保留 N 天，期内刷新不再回流；0 = 永久保留。默认 180。
+type CacheSettings struct {
+	EntryRetentionDays     int `json:"entryRetentionDays"`
+	TombstoneRetentionDays int `json:"tombstoneRetentionDays"`
 }
 
 // SettingsService provides settings management.
@@ -260,6 +284,10 @@ type SettingsService interface {
 	GetFetchSettings(ctx context.Context) (*FetchSettings, error)
 	// SetFetchSettings 更新拉取设置：只写传进来的字段（>0 才覆盖），写入前夹紧到合法区间。
 	SetFetchSettings(ctx context.Context, settings *FetchSettings) error
+	// GetCacheSettings 读缓存清理设置（1123）：未配置/解析失败回默认值，显式 0 保留为 0。
+	GetCacheSettings(ctx context.Context) (*CacheSettings, error)
+	// SetCacheSettings 写缓存清理设置（1123）：写入前夹紧到合法区间（负数按 0）。
+	SetCacheSettings(ctx context.Context, settings *CacheSettings) error
 	// GetAppearanceSettings returns appearance settings.
 	GetAppearanceSettings(ctx context.Context) (*AppearanceSettings, error)
 	// SetAppearanceSettings updates appearance settings.
@@ -982,6 +1010,57 @@ func (s *settingsService) SetFetchSettings(ctx context.Context, settings *FetchS
 	return nil
 }
 
+// getCacheRetention 读一个「天」数：键不存在或值解析失败 → fallback；显式 0 保留为 0（合法值）；
+// 负数按 0，超过 max 夹到 max。不能用 getInt —— 它把「没配置」和「显式 0」都读成 0。
+func (s *settingsService) getCacheRetention(ctx context.Context, key string, fallback, max int) (int, error) {
+	val, err := s.getString(ctx, key)
+	if err != nil {
+		return 0, err
+	}
+	val = strings.TrimSpace(val)
+	if val == "" {
+		return fallback, nil
+	}
+	parsed, perr := strconv.Atoi(val)
+	if perr != nil {
+		return fallback, nil
+	}
+	if parsed < 0 {
+		parsed = 0
+	}
+	return clampInt(parsed, 0, max), nil
+}
+
+// GetCacheSettings 读缓存清理设置；没配置过的字段返回默认值（老库升级后行为与升级前一致）。
+func (s *settingsService) GetCacheSettings(ctx context.Context) (*CacheSettings, error) {
+	entryDays, err := s.getCacheRetention(ctx, keyCacheEntryRetentionDays, DefaultCacheEntryRetentionDays, maxCacheEntryRetentionDays)
+	if err != nil {
+		return nil, fmt.Errorf("get cache entry retention: %w", err)
+	}
+	tombDays, err := s.getCacheRetention(ctx, keyCacheTombstoneRetentionDays, DefaultCacheTombstoneRetentionDays, maxCacheTombstoneRetentionDays)
+	if err != nil {
+		return nil, fmt.Errorf("get cache tombstone retention: %w", err)
+	}
+	return &CacheSettings{EntryRetentionDays: entryDays, TombstoneRetentionDays: tombDays}, nil
+}
+
+// SetCacheSettings 写缓存清理设置：两个字段都写（0 是合法值，不能被「没传」的旧语义吞掉），
+// 写入前把越界值夹到合法区间，负数按 0。
+func (s *settingsService) SetCacheSettings(ctx context.Context, settings *CacheSettings) error {
+	if settings == nil {
+		return ErrInvalid
+	}
+	entryDays := clampInt(settings.EntryRetentionDays, 0, maxCacheEntryRetentionDays)
+	tombDays := clampInt(settings.TombstoneRetentionDays, 0, maxCacheTombstoneRetentionDays)
+	if err := s.repo.Set(ctx, keyCacheEntryRetentionDays, strconv.Itoa(entryDays)); err != nil {
+		return fmt.Errorf("set cache entry retention: %w", err)
+	}
+	if err := s.repo.Set(ctx, keyCacheTombstoneRetentionDays, strconv.Itoa(tombDays)); err != nil {
+		return fmt.Errorf("set cache tombstone retention: %w", err)
+	}
+	return nil
+}
+
 // SetGeneralSettings updates the general settings.
 func (s *settingsService) SetGeneralSettings(ctx context.Context, settings *GeneralSettings) error {
 	exportDir := strings.TrimSpace(settings.ExportDir)
@@ -1480,6 +1559,9 @@ func importableSettingKeys() []string {
 		keyRefreshConcurrency,
 		keyRefreshPerHostConcurrency,
 		keyRefreshTimeoutSeconds,
+		// 缓存清理（1123）
+		keyCacheEntryRetentionDays,
+		keyCacheTombstoneRetentionDays,
 		// 网络（代理密码不在此列）
 		keyNetworkEnabled,
 		keyNetworkMode,

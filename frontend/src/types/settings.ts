@@ -134,6 +134,16 @@ export interface FetchSettings {
   timeoutSeconds: number;
 }
 
+/**
+ * 缓存设置：清理文章缓存时只删「最近阅读/更新时间早于 entryRetentionDays 天」的已读未收藏文章
+ * （0 = 全部清理）；被清理的文章在 tombstoneRetentionDays 天内刷新也不会重新入库
+ * （0 = 永久保留）。
+ */
+export interface CacheSettings {
+  entryRetentionDays: number;
+  tombstoneRetentionDays: number;
+}
+
 // ---------- 21 批（2026-09-18）：界面设置整包 + 设置导出/导入 ----------
 
 /**
