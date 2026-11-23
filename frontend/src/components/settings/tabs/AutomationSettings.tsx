@@ -2,8 +2,12 @@ import { useCallback, useMemo, useState } from "react";
 import { Reorder, useDragControls } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { AlertDialog, Button, Checkbox, Dropdown, Label, Modal, Tooltip, TooltipContent, TooltipTrigger } from "@heroui/react";
-import { ChevronRight, MoreHorizontal } from "lucide-react";
+import { ChevronRight, Eye, ListFilter, MoreHorizontal } from "lucide-react";
 import { GripVerticalIcon } from "@/components/ui/icons";
+import {
+  SectionCard,
+  SettingRow,
+} from "@/components/settings/settings-primitives";
 import { cn } from "@/lib/utils";
 import { useFilterViewStore } from "@/stores/filter-view-store";
 import { useSettingsModalStore } from "@/stores/settings-modal-store";
@@ -168,7 +172,7 @@ function RuleRow({
       value={rule}
       dragListener={false}
       dragControls={dragControls}
-      className="flex items-start gap-2 px-2 py-2.5 transition-colors hover:bg-secondary/25"
+      className="flex items-start gap-2.5 px-1 py-2.5 transition-colors hover:bg-secondary/25"
     >
       {/* 拖动把手：拖动排序的主入口（只在把手上按下才拖，不会跟行内点击抢事件） */}
       <button
@@ -480,157 +484,153 @@ export function AutomationSettings() {
     });
   };
 
-  /** 段标题：紧凑但不能只是灰字（要能一眼数出有几条） */
-  const sectionHeader = (label: string, count: number, action?: React.ReactNode) => (
-    <div className="mb-1.5 flex items-center justify-between gap-3 px-1">
-      <div className="flex items-center gap-2">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          {label}
-        </span>
-        <span className="text-xs tabular-nums text-muted-foreground/70">{count}</span>
-      </div>
-      {action}
-    </div>
-  );
-
   return (
-    <div className="space-y-4">
-      {/* 顶栏工具条（C-③：移动端上下堆叠，说明文不再被按钮挤成 5 行） */}
-      <div className="flex flex-wrap items-start justify-between gap-3 max-sm:flex-col max-sm:items-stretch">
-        <div className="min-w-0 flex-1">
-          <div className="text-xs leading-relaxed text-muted-foreground">
-            {t("automation.subtitle")}
+    <div className="space-y-5">
+      {/* 规则：本页主体。副标题说明执行时机与「顺序即优先级」；右上两个入口
+          （AI 草稿 / 新建规则）—— 主操作才用强调色，计数用一枚中性小胶囊。 */}
+      <SectionCard
+        icon={<ListFilter className="size-4" />}
+        title={t("automation.rules_title")}
+        description={t("automation.subtitle")}
+        action={
+          <div className="flex items-center gap-2">
+            <span className="rounded-full border border-border/60 bg-secondary/40 px-2 py-px text-[11px] tabular-nums text-muted-foreground">
+              {sorted.length}
+            </span>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="rounded-[var(--radius)] border border-border"
+              onPress={() => {
+                setNlError(null);
+                setNlOpen(true);
+              }}
+            >
+              {t("automation.nl_open")}
+            </Button>
+            <Button size="sm" variant="primary" onPress={openNew}>
+              + {t("automation.new_rule")}
+            </Button>
           </div>
-          {sorted.length > 1 && (
-            <div className="mt-0.5 text-xs text-muted-foreground/70">
-              {t("automation.order_hint")}
-            </div>
-          )}
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Button
-            size="sm"
-            variant="ghost"
-            className="rounded-[var(--radius)] border border-border"
-            onPress={() => {
-              setNlError(null);
-              setNlOpen(true);
-            }}
-          >
-            {t("automation.nl_open")}
-          </Button>
-          <Button size="sm" variant="primary" onPress={openNew}>
-            + {t("automation.new_rule")}
-          </Button>
-        </div>
-      </div>
-
-      {/* 「已静音」回看入口 —— 被规则静音的东西是个回看角落，不该占中栏的高位入口；
-          放在自动化页也顺手回答了「它为什么被静音」（规则都在这一页） */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border/60 bg-secondary/20 px-3 py-2">
-        <div className="min-w-0">
-          <div className="text-sm font-medium">{t("automation.muted_entries")}</div>
-          <div className="mt-0.5 text-xs text-muted-foreground">
-            {t("automation.muted_entries_hint")}
+        }
+      >
+        {isLoading && (
+          <div className="px-1 py-6 text-center text-sm text-muted-foreground">
+            {t("entry.loading")}
           </div>
-        </div>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="shrink-0 rounded-[var(--radius)] border border-border"
-          onPress={() => {
-            clearView();
-            setMutedOnly(true);
-            closeSettings();
-          }}
-        >
-          {t("automation.muted_entries_open")}
-        </Button>
-      </div>
-
-      {isLoading && (
-        <div className="text-sm text-muted-foreground">{t("entry.loading")}</div>
-      )}
-      {isError && (
-        <div className="text-sm text-destructive">{t("automation.load_failed")}</div>
-      )}
-
-      {/* 规则 */}
-      <section>
-        {sectionHeader(t("automation.rules_title"), sorted.length)}
-        {!isLoading && !isError && sorted.length === 0 ? (
-          <div className="rounded-md border border-dashed border-border px-4 py-6 text-center">
+        )}
+        {isError && (
+          <div className="px-1 py-6 text-center text-sm text-destructive">
+            {t("automation.load_failed")}
+          </div>
+        )}
+        {!isLoading && !isError && sorted.length === 0 && (
+          <div className="px-1 py-6 text-center">
             <div className="text-sm font-medium">{t("automation.empty")}</div>
             <div className="mt-1 text-xs text-muted-foreground">
               {t("automation.empty_hint")}
             </div>
           </div>
-        ) : (
-          <Reorder.Group
-            as="div"
-            axis="y"
-            values={sorted}
-            onReorder={handleReorder}
-            className="divide-y divide-border/60 rounded-md border border-border/60"
-          >
-            {sorted.map((rule, index) => (
-              <RuleRow
-                key={rule.id}
-                rule={rule}
-                scope={scopeLabel(rule)}
-                index={index}
-                total={sorted.length}
-                onToggle={(checked) =>
-                  update.mutate({
-                    id: rule.id,
-                    payload: {
-                      ...toWritePayload(rule, rule.position),
-                      enabled: checked,
-                    },
-                  })
-                }
-                onEdit={() => openEdit(rule)}
-                onMove={(offset) => move(rule, offset)}
-                onShowMatches={() => setMatchesRule(rule)}
-                onApplyHistory={() => setApplyRule(rule)}
-                onRevert={() => handleRevert(rule)}
-                onDelete={() => {
-                  setDeleteWithRevert(true);
-                  setPendingDelete(rule);
-                }}
-              />
-            ))}
-          </Reorder.Group>
         )}
-      </section>
+        {sorted.length > 0 && (
+          <>
+            {sorted.length > 1 && (
+              <div className="px-1 pb-1 pt-2 text-xs text-muted-foreground/70">
+                {t("automation.order_hint")}
+              </div>
+            )}
+            <Reorder.Group
+              as="div"
+              axis="y"
+              values={sorted}
+              onReorder={handleReorder}
+              className="divide-y divide-border/50"
+            >
+              {sorted.map((rule, index) => (
+                <RuleRow
+                  key={rule.id}
+                  rule={rule}
+                  scope={scopeLabel(rule)}
+                  index={index}
+                  total={sorted.length}
+                  onToggle={(checked) =>
+                    update.mutate({
+                      id: rule.id,
+                      payload: {
+                        ...toWritePayload(rule, rule.position),
+                        enabled: checked,
+                      },
+                    })
+                  }
+                  onEdit={() => openEdit(rule)}
+                  onMove={(offset) => move(rule, offset)}
+                  onShowMatches={() => setMatchesRule(rule)}
+                  onApplyHistory={() => setApplyRule(rule)}
+                  onRevert={() => handleRevert(rule)}
+                  onDelete={() => {
+                    setDeleteWithRevert(true);
+                    setPendingDelete(rule);
+                  }}
+                />
+              ))}
+            </Reorder.Group>
+          </>
+        )}
+
+        {/* 「已静音」回看入口：被规则静音的东西是个回看角落，放在规则卡片脚下，
+            既顺手也回答了「它为什么被静音」（规则都在这一张卡里）。 */}
+        <div className="mt-1 border-t border-border/50">
+          <SettingRow
+            label={t("automation.muted_entries")}
+            hint={t("automation.muted_entries_hint")}
+          >
+            <Button
+              size="sm"
+              variant="ghost"
+              className="rounded-[var(--radius)] border border-border"
+              onPress={() => {
+                clearView();
+                setMutedOnly(true);
+                closeSettings();
+              }}
+            >
+              {t("automation.muted_entries_open")}
+            </Button>
+          </SettingRow>
+        </div>
+      </SectionCard>
 
       {/* 筛选视图：同一套范围 + 条件，但只筛条目、不写数据，作为侧栏快捷入口 */}
-      <section>
-        {sectionHeader(
-          t("automation.views_title"),
-          views.length,
-          <Button
-            size="sm"
-            variant="ghost"
-            className="rounded-[var(--radius)] border border-border"
-            onPress={openNewView}
-          >
-            + {t("automation.new_view")}
-          </Button>,
-        )}
-        <div className="mb-1.5 px-1 text-xs text-muted-foreground/70">
-          {t("automation.views_hint")}
-        </div>
+      <SectionCard
+        icon={<Eye className="size-4" />}
+        title={t("automation.views_title")}
+        description={t("automation.views_hint")}
+        action={
+          <div className="flex items-center gap-2">
+            <span className="rounded-full border border-border/60 bg-secondary/40 px-2 py-px text-[11px] tabular-nums text-muted-foreground">
+              {views.length}
+            </span>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="rounded-[var(--radius)] border border-border"
+              onPress={openNewView}
+            >
+              + {t("automation.new_view")}
+            </Button>
+          </div>
+        }
+      >
         {views.length === 0 ? (
-          <div className="rounded-md border border-dashed border-border px-4 py-4 text-center text-xs text-muted-foreground">
+          <div className="px-1 py-6 text-center text-xs text-muted-foreground">
             {t("automation.views_empty")}
           </div>
         ) : (
-          <div className="divide-y divide-border/60 rounded-md border border-border/60">
+          <div className="divide-y divide-border/50">
             {views.map((view) => (
               <div
                 key={view.id}
-                className="flex items-center gap-3 px-3 py-2 transition-colors hover:bg-secondary/25"
+                className="flex items-center gap-3 px-1 py-2.5 transition-colors hover:bg-secondary/25"
               >
                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
                   <button
@@ -668,7 +668,7 @@ export function AutomationSettings() {
             ))}
           </div>
         )}
-      </section>
+      </SectionCard>
 
       {/* 自然语言建规则：一句人话 → 规则草稿（填进编辑器，由人确认后才落库） */}
       <Modal>
