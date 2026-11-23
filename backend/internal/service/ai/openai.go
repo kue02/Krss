@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"net/http"
 	"strings"
 
 	"github.com/openai/openai-go/v3"
@@ -18,12 +19,15 @@ type OpenAIProvider struct {
 }
 
 // NewOpenAIProvider creates a new OpenAI provider.
-func NewOpenAIProvider(apiKey, baseURL, model string, requestOptions map[string]any) (*OpenAIProvider, error) {
+func NewOpenAIProvider(apiKey, baseURL, model string, requestOptions map[string]any, httpClient *http.Client) (*OpenAIProvider, error) {
 	opts := []option.RequestOption{
 		option.WithAPIKey(apiKey),
 	}
 	if baseURL != "" {
 		opts = append(opts, option.WithBaseURL(baseURL))
+	}
+	if httpClient != nil {
+		opts = append(opts, option.WithHTTPClient(httpClient))
 	}
 
 	client := openai.NewClient(opts...)

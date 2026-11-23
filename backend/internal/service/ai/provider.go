@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"errors"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
@@ -32,6 +33,8 @@ type Config struct {
 	BaseURL        string // required for openai/compatible, optional for anthropic
 	Model          string
 	RequestOptions map[string]any // extra request JSON parameters
+	// HTTPClient：模型调用用的 HTTP 客户端（走代理/智能代理时注入；nil = SDK 默认客户端）。
+	HTTPClient *http.Client
 }
 
 // ProviderType constants
@@ -107,14 +110,14 @@ func NewProvider(cfg Config) (Provider, error) {
 		if cfg.BaseURL == "" {
 			return nil, ErrMissingBaseURL
 		}
-		return NewOpenAIProvider(cfg.APIKey, cfg.BaseURL, cfg.Model, cfg.RequestOptions)
+		return NewOpenAIProvider(cfg.APIKey, cfg.BaseURL, cfg.Model, cfg.RequestOptions, cfg.HTTPClient)
 	case ProviderAnthropic:
-		return NewAnthropicProvider(cfg.APIKey, cfg.BaseURL, cfg.Model, cfg.RequestOptions)
+		return NewAnthropicProvider(cfg.APIKey, cfg.BaseURL, cfg.Model, cfg.RequestOptions, cfg.HTTPClient)
 	case ProviderCompatible:
 		if cfg.BaseURL == "" {
 			return nil, ErrMissingBaseURL
 		}
-		return NewCompatibleProvider(cfg.APIKey, cfg.BaseURL, cfg.Model, cfg.RequestOptions)
+		return NewCompatibleProvider(cfg.APIKey, cfg.BaseURL, cfg.Model, cfg.RequestOptions, cfg.HTTPClient)
 	default:
 		return nil, ErrInvalidProvider
 	}

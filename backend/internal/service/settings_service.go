@@ -19,6 +19,7 @@ import (
 	"krss/backend/internal/repository"
 	"krss/backend/internal/service/ai"
 	"krss/backend/pkg/logger"
+	"krss/backend/pkg/network"
 )
 
 // AIProviderConfig 一个保存好的 AI 提供商配置（可存多个，随时切换当前使用）。
@@ -59,6 +60,8 @@ type AISettings struct {
 	TranslateChannels []string `json:"translateChannels"`
 	// FallbackToModel：免费通道失败时是否自动切回模型（默认开）
 	FallbackToModel bool `json:"fallbackToModel"`
+	// UseProxy：AI 调用是否走代理（含智能代理），默认 false（默认直连）
+	UseProxy bool `json:"useProxy"`
 	// 保存的提供商列表 + 当前使用哪一个（上面的 Provider/APIKey/... 始终等于当前使用的那份）
 	Providers        []AIProviderConfig `json:"providers"`
 	ActiveProviderID string             `json:"activeProviderId"`
@@ -173,6 +176,7 @@ const (
 	keyAITranslateChannel  = "ai.translate_channel"
 	keyAITranslateChannels = "ai.translate_channels"
 	keyAIFallbackToModel   = "ai.fallback_to_model"
+	keyAIUseProxy          = "ai.use_proxy"
 	keyAIProviders         = "ai.providers"
 	keyAIActiveProvider    = "ai.active_provider_id"
 	// 分场景模型覆盖（50 批 1.2）：空 = 跟随当前提供商；provider:<id> = 用已保存的那份；free = 免费通道（仅翻译）
@@ -273,6 +277,8 @@ type SettingsService interface {
 	GetNetworkSettings(ctx context.Context) (*NetworkSettings, error)
 	// SetNetworkSettings updates the network proxy configuration.
 	SetNetworkSettings(ctx context.Context, settings *NetworkSettings) error
+	// SetClientFactory 注入 HTTP 客户端工厂（设置页测试连接/探测模型走代理用）；nil = 直连。
+	SetClientFactory(factory *network.ClientFactory)
 	// GetProxyURL returns the formatted proxy URL (e.g., socks5://user:pass@host:port).
 	// Returns empty string if proxy is disabled.
 	GetProxyURL(ctx context.Context) string
@@ -305,11 +311,28 @@ type SettingsService interface {
 type settingsService struct {
 	repo        repository.SettingsRepository
 	rateLimiter *ai.RateLimiter
+	// clientFactory：设置页「测试连接 / 探测模型」走代理用；nil = 直连（测试/降级）。
+	clientFactory *network.ClientFactory
 }
 
 // NewSettingsService creates a new settings service.
 func NewSettingsService(repo repository.SettingsRepository, rateLimiter *ai.RateLimiter) SettingsService {
 	return &settingsService{repo: repo, rateLimiter: rateLimiter}
+}
+
+// SetClientFactory 注入 HTTP 客户端工厂。因 ClientFactory 的代理解析器本身依赖本服务
+// （构造时循环依赖），只能在两者都建好后由装配处回填；nil = 直连。
+func (s *settingsService) SetClientFactory(factory *network.ClientFactory) {
+	s.clientFactory = factory
+}
+
+// probeHTTPClient 设置页探测（测试连接 / 模型列表）用的客户端：
+// ai.use_proxy 开着且有工厂时走代理（全局，feedID=0）；否则返回 nil 表示直连（用默认客户端）。
+func (s *settingsService) probeHTTPClient(ctx context.Context, timeout time.Duration) *http.Client {
+	if s.clientFactory != nil && s.getBoolDefault(ctx, keyAIUseProxy, false) {
+		return s.clientFactory.NewHTTPClientForFeed(ctx, 0, timeout)
+	}
+	return nil
 }
 
 // GetAISettings returns the AI configuration with masked API keys.
@@ -341,24 +364,35 @@ func (s *settingsService) GetAISettings(ctx context.Context) (*AISettings, error
 	}
 	settings.AutoTranslate = s.getBool(ctx, keyAIAutoTranslate)
 	settings.AutoSummary = s.getBool(ctx, keyAIAutoSummary)
-	if val, err := s.getString(ctx, keyAITranslateChannel); err == nil {
-		settings.TranslateChannel = val
+	hasLegacyKey := false
+	if setting, err := s.repo.Get(ctx, keyAITranslateChannel); err == nil && setting != nil {
+		hasLegacyKey = true
+		settings.TranslateChannel = setting.Value
 	}
-	if val, err := s.getString(ctx, keyAITranslateChannels); err == nil && strings.TrimSpace(val) != "" {
-		var channels []string
-		if jsonErr := json.Unmarshal([]byte(val), &channels); jsonErr == nil {
-			settings.TranslateChannels = ai.NormalizeFreeTranslateChannels(channels)
+	hasChannelsKey := false
+	if setting, err := s.repo.Get(ctx, keyAITranslateChannels); err == nil && setting != nil {
+		hasChannelsKey = true
+		if v := strings.TrimSpace(setting.Value); v != "" {
+			var channels []string
+			if jsonErr := json.Unmarshal([]byte(v), &channels); jsonErr == nil {
+				settings.TranslateChannels = ai.NormalizeFreeTranslateChannels(channels)
+			}
 		}
 	}
-	// 兼容旧库：没有新键（或解析为空）时，按旧单值推导出「轮询 + 回退」列表，
-	// 让老用户升级后无需重新保存也能享受轮询。
+	// B 方案：老用户只有旧单值时只保留它，不再自动补其它通道。
 	if len(settings.TranslateChannels) == 0 {
 		settings.TranslateChannels = ai.EffectiveFreeTranslateChannels(nil, settings.TranslateChannel)
 	}
 	if settings.TranslateChannels == nil {
-		settings.TranslateChannels = []string{} // 契约统一：空列表返回 []，不返回 null
+		if !hasChannelsKey && !hasLegacyKey {
+			// 全新安装：默认勾选全部免费通道
+			settings.TranslateChannels = ai.DefaultFreeTranslateChannels()
+		} else {
+			settings.TranslateChannels = []string{} // 显式为空 = 关闭免费通道，走模型
+		}
 	}
 	settings.FallbackToModel = s.getBoolDefault(ctx, keyAIFallbackToModel, true)
+	settings.UseProxy = s.getBoolDefault(ctx, keyAIUseProxy, false)
 	if val, err := s.getInt(ctx, keyAIRateLimit); err == nil && val > 0 {
 		settings.RateLimit = val
 	} else {
@@ -517,9 +551,17 @@ func (s *settingsService) SetAISettings(ctx context.Context, settings *AISetting
 		logger.Warn("ai settings update fallback flag failed", "module", "service", "action", "update", "resource", "settings", "result", "failed", "error", err)
 		return fmt.Errorf("set fallback flag: %w", err)
 	}
+	useProxyVal := "false"
+	if settings.UseProxy {
+		useProxyVal = "true"
+	}
+	if err := s.repo.Set(ctx, keyAIUseProxy, useProxyVal); err != nil {
+		logger.Warn("ai settings update use proxy flag failed", "module", "service", "action", "update", "resource", "settings", "result", "failed", "error", err)
+		return fmt.Errorf("set use proxy flag: %w", err)
+	}
 	channels := ai.NormalizeFreeTranslateChannels(settings.TranslateChannels)
 	if len(channels) == 0 && ai.IsFreeTranslateChannel(settings.TranslateChannel) {
-		// 老调用方只给了单值：按旧值推导出轮询列表（本身 + 其它可用通道）
+		// 老调用方只给了单值：按旧值推导（仅保留该单值）
 		channels = ai.EffectiveFreeTranslateChannels(nil, settings.TranslateChannel)
 	}
 	if channels == nil {
@@ -759,7 +801,11 @@ func (s *settingsService) ListAIModels(ctx context.Context, provider, apiKey, ba
 		req.Header.Set(name, value)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	client := s.probeHTTPClient(ctx, 20*time.Second)
+	if client == nil {
+		client = http.DefaultClient
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetch models: %w", err)
 	}
@@ -854,6 +900,10 @@ func (s *settingsService) TestAI(ctx context.Context, provider, apiKey, baseURL,
 		BaseURL:        baseURL,
 		Model:          model,
 		RequestOptions: requestOptions,
+	}
+	// 设置页「测试连接」也要受 ai.use_proxy 约束：开着走代理，关/无工厂直连。
+	if hc := s.probeHTTPClient(ctx, 60*time.Second); hc != nil {
+		cfg.HTTPClient = hc
 	}
 
 	p, err := ai.NewProvider(cfg)
@@ -1546,6 +1596,7 @@ func importableSettingKeys() []string {
 		keyAITranslateChannel,
 		keyAITranslateChannels,
 		keyAIFallbackToModel,
+		keyAIUseProxy,
 		keyAIActiveProvider,
 		keyAISceneTranslate,
 		keyAISceneSummary,

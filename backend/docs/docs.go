@@ -4960,6 +4960,10 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                },
+                "useProxy": {
+                    "description": "UseProxy：AI 调用是否走代理（含智能代理），默认 true",
+                    "type": "boolean"
                 }
             }
         },
@@ -5027,6 +5031,10 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                },
+                "useProxy": {
+                    "description": "UseProxy：AI 调用是否走代理（含智能代理），默认 true",
+                    "type": "boolean"
                 }
             }
         },
