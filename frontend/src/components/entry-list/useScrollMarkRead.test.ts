@@ -6,10 +6,12 @@ import { useScrollMarkRead } from "./useScrollMarkRead";
 
 const markManyAsRead = vi.fn();
 const removeFromUnreadList = vi.fn();
+const removeReadEntriesFromUnreadList = vi.fn();
 
 vi.mock("@/hooks/useEntries", () => ({
   useMarkManyAsRead: () => ({ mutate: markManyAsRead }),
   useRemoveFromUnreadList: () => removeFromUnreadList,
+  useRemoveReadEntriesFromUnreadList: () => removeReadEntriesFromUnreadList,
 }));
 
 function makeEntry(id: string): Entry {
@@ -121,6 +123,7 @@ describe("useScrollMarkRead 的已读判定时机", () => {
     FakeObserver.instances = [];
     markManyAsRead.mockClear();
     removeFromUnreadList.mockClear();
+    removeReadEntriesFromUnreadList.mockClear();
     vi.stubGlobal("IntersectionObserver", FakeObserver as unknown as typeof IntersectionObserver);
     vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
       cb(0);
@@ -299,6 +302,9 @@ describe("useScrollMarkRead 的已读判定时机", () => {
     expect(removeFromUnreadList).toHaveBeenCalledTimes(1);
     const [removed] = removeFromUnreadList.mock.calls;
     expect(Array.from(removed?.[0] as Set<string>)).toEqual(["e1"]);
+    // 兜底清理也要跑：离开列表时按 read 扫一遍所有 unreadOnly 缓存，摘掉残留已读条目
+    // （该 effect 在挂载时也会跑一次，故这里只断言「被调用」而非次数）
+    expect(removeReadEntriesFromUnreadList).toHaveBeenCalled();
   });
 });
 
@@ -313,6 +319,7 @@ describe("useScrollMarkRead · 通知时间线折叠簇（58-2）", () => {
     FakeObserver.instances = [];
     markManyAsRead.mockClear();
     removeFromUnreadList.mockClear();
+    removeReadEntriesFromUnreadList.mockClear();
     vi.stubGlobal("IntersectionObserver", FakeObserver as unknown as typeof IntersectionObserver);
     vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
       cb(0);

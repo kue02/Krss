@@ -23,6 +23,7 @@ vi.mock("@/hooks/useEntries", () => ({
   useUnreadCounts: vi.fn(() => ({ data: undefined })),
   useMarkManyAsRead: vi.fn(() => ({ mutate: vi.fn() })),
   useRemoveFromUnreadList: vi.fn(() => vi.fn()),
+  useRemoveReadEntriesFromUnreadList: vi.fn(() => vi.fn()),
   useMarkAsRead: vi.fn(() => ({ mutate: vi.fn() })),
   useMarkAsStarred: vi.fn(() => ({ mutate: vi.fn() })),
 }));
