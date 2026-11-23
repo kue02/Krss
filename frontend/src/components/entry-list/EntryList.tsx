@@ -129,7 +129,7 @@ interface EntryListProps {
   onSearchClick?: () => void;
   /**
    * 「正文推入方向 = 向下」的合列形态（方案 2 · 整列一起滚）：
-   * 正文接在列表末尾、与列表共用同一条滚动条。传的是渲染函数而不是节点，
+   * 正文接在被点那一行后面、与该行之后的条目共用同一条滚动条。传的是渲染函数而不是节点，
    * 因为内嵌正文要拿本列表的滚动容器（`embedded` 模式的 `containerRef`）
    * 才能让工具栏吸顶判断跟列表滚动走。不传则列表不带内联正文。
    */
@@ -395,7 +395,7 @@ export function EntryList({
   /** 常规「Inoreader列表」：来源图标 + 加粗标题 + 右侧来源·时间，无缩略图 */
   const isArticlePlain =
     contentType === "article" && articleLayout === "inoreader";
-  /** 「正文推入方向 = 向下」：条目栏与正文合为一列，正文接在列表末尾（方案 2） */
+  /** 「正文推入方向 = 向下」：条目栏与正文合为一列，正文接在被点那一行后面（方案 2） */
   const articlePushDirection = useUISettingKey("articlePushDirection");
   const reduceMotion = useUISettingKey("reduceMotion");
   const isArticleInline =
