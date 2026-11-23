@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -294,7 +295,7 @@ func TestEntryRepository_ClearCaches(t *testing.T) {
 
 	feedID := testutil.SeedFeed(t, db, model.Feed{Title: "F", URL: "u"})
 	// 四种条目：已读未收藏（应删）、已读已收藏、未读未收藏、未读已收藏（后三者都保留）。
-	testutil.SeedEntry(t, db, model.Entry{FeedID: feedID, Read: true, Starred: false, ReadableContent: stringPtr("content")})
+	deletedID := testutil.SeedEntry(t, db, model.Entry{FeedID: feedID, Read: true, Starred: false, ReadableContent: stringPtr("content")})
 	testutil.SeedEntry(t, db, model.Entry{FeedID: feedID, Read: true, Starred: true})
 	testutil.SeedEntry(t, db, model.Entry{FeedID: feedID, Read: false, Starred: false})
 	testutil.SeedEntry(t, db, model.Entry{FeedID: feedID, Read: false, Starred: true})
@@ -328,6 +329,60 @@ func TestEntryRepository_ClearCaches(t *testing.T) {
 	require.Equal(t, 1, readStarred)
 	require.Equal(t, 1, unreadUnstarred) // 未读未收藏必须保留
 	require.Equal(t, 1, unreadStarred)
+
+	// 墓碑表：只有被删的那一条留下指纹（feed_id + hash），其余三条没有墓碑。
+	var tombCount int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM entry_tombstones`).Scan(&tombCount))
+	require.Equal(t, 1, tombCount)
+	var tombFeedID int64
+	var tombHash string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT feed_id, hash FROM entry_tombstones`).Scan(&tombFeedID, &tombHash))
+	require.Equal(t, feedID, tombFeedID)
+	require.Equal(t, hashString(fmt.Sprintf("seed-entry-id:%d", deletedID)), tombHash)
+}
+
+// TestEntryRepository_TombstoneBlocksReinsertAfterPurge 清理已读缓存后，同一文章再入库必须被墓碑挡住、
+// 不重新插入（否则会以 read 默认 0 回流成未读）；同 feed 的新文章不受影响。
+func TestEntryRepository_TombstoneBlocksReinsertAfterPurge(t *testing.T) {
+	db := testutil.NewTestDB(t)
+	repo := repository.NewEntryRepository(db)
+	ctx := context.Background()
+
+	feedID := testutil.SeedFeed(t, db, model.Feed{Title: "F", URL: "u"})
+	title := "Read Article"
+	url := "https://example.com/a"
+	hash := hashString(url)
+	testutil.SeedEntry(t, db, model.Entry{FeedID: feedID, Title: &title, URL: &url, Hash: hash, Read: true, Starred: false})
+
+	count, err := repo.DeleteReadUnstarred(ctx)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), count)
+
+	// 1) 同 feed 同 hash 同 url：命中墓碑，跳过、不写库。
+	written, err := repo.CreateOrUpdateSkippingTombstones(ctx, model.Entry{FeedID: feedID, Title: &title, URL: &url, Hash: hash})
+	require.NoError(t, err)
+	require.False(t, written)
+	entries, err := repo.List(ctx, repository.EntryListFilter{FeedID: &feedID})
+	require.NoError(t, err)
+	require.Empty(t, entries)
+
+	// 2) 同 feed 同 url 但 hash 变了（如 GUID 变化）：仍应按规范化 url 命中墓碑。
+	otherHash := hashString("another-guid")
+	written, err = repo.CreateOrUpdateSkippingTombstones(ctx, model.Entry{FeedID: feedID, Title: &title, URL: &url, Hash: otherHash})
+	require.NoError(t, err)
+	require.False(t, written)
+
+	// 3) 同 feed 不同 url/hash 的新条目：正常写入。
+	newURL := "https://example.com/b"
+	newHash := hashString(newURL)
+	newTitle := "Fresh Article"
+	written, err = repo.CreateOrUpdateSkippingTombstones(ctx, model.Entry{FeedID: feedID, Title: &newTitle, URL: &newURL, Hash: newHash})
+	require.NoError(t, err)
+	require.True(t, written)
+	entries, err = repo.List(ctx, repository.EntryListFilter{FeedID: &feedID})
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Equal(t, newURL, *entries[0].URL)
 }
 
 func TestEntryRepository_ExistsByHash(t *testing.T) {

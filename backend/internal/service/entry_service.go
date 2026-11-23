@@ -489,8 +489,9 @@ func (s *entryService) ClearEntryCache(ctx context.Context) (int64, error) {
 	// 不重置 feeds 的 Conditional GET：本次只清理「已读且未收藏」的条目，
 	// 若清空 ETag，下一轮轮询会立刻全量回灌，被删的已读文章会以未读身份重新入库，
 	// 既违背「保留已收藏和未读」的预期，也会让列表头部涌入大量条目。
-	// 注：条目是硬删、无 tombstone，若某个源之后真正返回 200（有新内容）触发全量解析，
-	// 源里仍在的旧已读文章仍可能被重新插入 —— 这是既有架构限制，非本接口引入。
+	// 条目本身是硬删（不保留正文），但 DeleteReadUnstarred 会先写入极小的指纹墓碑
+	// （entry_tombstones：feed_id + hash + url），之后刷新即使拿到全量 items 也会被
+	// CreateOrUpdateSkippingTombstones 挡住，不会把清理过的文章重新插回来。
 	logger.Info("entry cache cleared", "module", "service", "action", "clear", "resource", "entry", "result", "ok", "count", deleted)
 	return deleted, nil
 }

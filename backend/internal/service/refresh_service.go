@@ -359,8 +359,11 @@ func (s *refreshService) saveEntries(ctx context.Context, feedID int64, items []
 			continue
 		}
 
-		if err := s.entries.CreateOrUpdate(ctx, entry); err != nil {
+		if written, err := s.entries.CreateOrUpdateSkippingTombstones(ctx, entry); err != nil {
 			logger.Warn("save entry failed", "module", "service", "action", "save", "resource", "entry", "result", "failed", "error", err)
+			continue
+		} else if !written {
+			// 命中墓碑：这篇文章清理时已被删掉，别再插回去（否则会以未读回流）。
 			continue
 		}
 

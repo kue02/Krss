@@ -127,7 +127,7 @@ func TestRefreshService_RefreshFeed_Success(t *testing.T) {
 	mockFeeds.EXPECT().UpdateIconPath(gomock.Any(), int64(10), "example.com.png").Return(nil)
 
 	mockEntries.EXPECT().GetExistingEntry(gomock.Any(), int64(10), hashString("https://example.com/1"), "https://example.com/1").Return(nil, nil)
-	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).Return(nil)
+	mockEntries.EXPECT().CreateOrUpdateSkippingTombstones(gomock.Any(), gomock.Any()).Return(true, nil)
 	mockFeeds.EXPECT().ResetRefreshFailure(gomock.Any(), int64(10)).Return(nil)
 
 	client := &http.Client{
@@ -183,7 +183,7 @@ func TestRefreshService_RefreshFeed_RechecksExistingIcon(t *testing.T) {
 	mockFeeds.EXPECT().UpdateIconPath(gomock.Any(), int64(11), "abc123.jpg").Return(nil)
 
 	mockEntries.EXPECT().GetExistingEntry(gomock.Any(), int64(11), hashString("https://example.com/1"), "https://example.com/1").Return(nil, nil)
-	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).Return(nil)
+	mockEntries.EXPECT().CreateOrUpdateSkippingTombstones(gomock.Any(), gomock.Any()).Return(true, nil)
 	mockFeeds.EXPECT().ResetRefreshFailure(gomock.Any(), int64(11)).Return(nil)
 
 	client := &http.Client{
@@ -246,7 +246,7 @@ func TestRefreshService_RefreshFeed_FallbackUserAgent(t *testing.T) {
 	}
 
 	mockEntries.EXPECT().GetExistingEntry(gomock.Any(), int64(2), hashString("https://example.com/1"), "https://example.com/1").Return(nil, nil)
-	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).Return(nil)
+	mockEntries.EXPECT().CreateOrUpdateSkippingTombstones(gomock.Any(), gomock.Any()).Return(true, nil)
 	mockFeeds.EXPECT().ResetRefreshFailure(gomock.Any(), int64(2)).Return(nil)
 
 	svc := service.NewRefreshService(
@@ -363,10 +363,10 @@ func TestRefreshService_RefreshFeed_SameGUIDDifferentURL_SecondRefreshCountsAsUp
 			return &model.Entry{Title: &title, URL: &oldURL, Content: &content}, nil
 		},
 	).Times(2)
-	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, entry model.Entry) error {
+	mockEntries.EXPECT().CreateOrUpdateSkippingTombstones(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, entry model.Entry) (bool, error) {
 			seen[entry.Hash] = true
-			return nil
+			return true, nil
 		},
 	).Times(2)
 
@@ -563,4 +563,54 @@ func TestRefreshService_ForceRefresh_SkipsConditionalHeaders(t *testing.T) {
 	sawConditional = false
 	require.NoError(t, svc.ForceRefreshAll(context.Background()))
 	require.False(t, sawConditional, "强制拉取不该带条件头（否则又拿到 304）")
+}
+
+// 命中墓碑的条目：saveEntries 里 CreateOrUpdateSkippingTombstones 返回 false 时不应计入 newCount /
+// 不回传 newEntries（否则刷新结果会显示「新增 1」、规则引擎还会对已删文章再跑一遍）。
+func TestRefreshService_TombstonedEntryNotCountedAsNew(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockFeeds := mock.NewMockFeedRepository(ctrl)
+	mockEntries := mock.NewMockEntryRepository(ctrl)
+
+	feed := model.Feed{ID: 41, URL: "https://example.com/rss", Title: "Feed"}
+	mockFeeds.EXPECT().GetByID(gomock.Any(), int64(41)).Return(feed, nil)
+	mockFeeds.EXPECT().UpdateErrorMessage(gomock.Any(), int64(41), nil).Return(nil)
+	mockFeeds.EXPECT().Update(gomock.Any(), gomock.Any()).Return(feed, nil)
+	mockFeeds.EXPECT().UpdateSiteURL(gomock.Any(), int64(41), "https://example.com").Return(nil)
+	mockFeeds.EXPECT().ResetRefreshFailure(gomock.Any(), int64(41)).Return(nil)
+
+	mockEntries.EXPECT().GetExistingEntry(gomock.Any(), int64(41), gomock.Any(), gomock.Any()).Return(nil, nil)
+	mockEntries.EXPECT().CreateOrUpdateSkippingTombstones(gomock.Any(), gomock.Any()).Return(false, nil)
+
+	client := &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			header := make(http.Header)
+			header.Set("ETag", "etag-value")
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(sampleRSS)),
+				Header:     header,
+				Request:    req,
+			}, nil
+		}),
+	}
+
+	svc := service.NewRefreshService(
+		mockFeeds,
+		mockEntries,
+		nil,
+		nil,
+		network.NewClientFactoryForTest(client),
+		nil,
+		nil,
+		nil,
+	)
+
+	require.NoError(t, svc.RefreshFeed(context.Background(), 41))
+	results := svc.LastRefreshResults()
+	require.Len(t, results, 1)
+	require.Equal(t, 0, results[0].New)
+	require.Equal(t, 0, results[0].Updated)
 }

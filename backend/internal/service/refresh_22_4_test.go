@@ -45,7 +45,7 @@ func TestRefreshService_SecondRefreshUnchangedCountsZeroUpdate(t *testing.T) {
 		},
 	).Times(1)
 	mockEntries.EXPECT().GetExistingEntry(gomock.Any(), int64(30), gomock.Any(), gomock.Any()).Return(stored, nil).Times(1)
-	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).Return(nil).Times(2)
+	mockEntries.EXPECT().CreateOrUpdateSkippingTombstones(gomock.Any(), gomock.Any()).Return(true, nil).Times(2)
 
 	client := &http.Client{
 		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
@@ -102,7 +102,7 @@ func TestRefreshService_ChangedTitleCountsAsUpdate(t *testing.T) {
 		Content: strptr("Content 1"),
 	}
 	mockEntries.EXPECT().GetExistingEntry(gomock.Any(), int64(31), gomock.Any(), gomock.Any()).Return(stored, nil)
-	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).Return(nil)
+	mockEntries.EXPECT().CreateOrUpdateSkippingTombstones(gomock.Any(), gomock.Any()).Return(true, nil)
 
 	client := &http.Client{
 		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
@@ -147,7 +147,7 @@ func TestRefreshService_FetchRetryThenSuccess(t *testing.T) {
 	mockFeeds.EXPECT().ResetRefreshFailure(gomock.Any(), int64(32)).Return(nil)
 	mockFeeds.EXPECT().UpdateSiteURL(gomock.Any(), int64(32), "https://example.com").Return(nil)
 	mockEntries.EXPECT().GetExistingEntry(gomock.Any(), int64(32), gomock.Any(), gomock.Any()).Return(nil, nil)
-	mockEntries.EXPECT().CreateOrUpdate(gomock.Any(), gomock.Any()).Return(nil)
+	mockEntries.EXPECT().CreateOrUpdateSkippingTombstones(gomock.Any(), gomock.Any()).Return(true, nil)
 
 	var calls int
 	client := &http.Client{
