@@ -301,7 +301,7 @@ export function FeedItem({
           data-active={isActive}
           className={cn(
             feedItemStyles,
-            "group relative justify-between py-0.5 pr-2",
+            "group relative justify-between py-0.5 pr-2 max-md:h-10",
             className,
           )}
           onClick={onClick}

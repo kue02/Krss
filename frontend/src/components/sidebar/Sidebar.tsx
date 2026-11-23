@@ -532,7 +532,7 @@ export function Sidebar({
   );
 
   // 「订阅」区头部的右侧操作（全部展开 / 排序）—— 精修版直接放在标题行，
-  // 重组版放进可折叠的分区头里，两处共用这一份，避免重复维护。
+  // 订阅区标题行使用这一份，避免重复维护。
   const feedsHeaderActions = (
     <div className="flex items-center gap-0.5">
       <button
@@ -555,7 +555,13 @@ export function Sidebar({
         <DropdownMenuTrigger asChild>
           <button
             className="flex size-6 items-center justify-center rounded-[var(--radius)] text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
-            aria-label={t("sidebar.sort_name")}
+            aria-label={
+              sortBy === "name"
+                ? t("sidebar.sort_name")
+                : sortBy === "date"
+                  ? t("sidebar.sort_date")
+                  : t("sidebar.sort_custom")
+            }
           >
             {sortBy === "name" ? (
               <ArrowDownAZIcon className="size-3.5" />

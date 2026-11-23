@@ -103,7 +103,7 @@ export function FeedCategory({
         <ContextMenuTrigger asChild ref={triggerRef}>
           <div
             data-active={isSelected}
-            className={cn(feedItemStyles, "group relative py-0.5 pl-2.5 pr-2")}
+            className={cn(feedItemStyles, "group relative py-0.5 pl-2.5 pr-2 max-md:h-10")}
             onClick={onSelect}
             {...contextMenuProps}
           >
