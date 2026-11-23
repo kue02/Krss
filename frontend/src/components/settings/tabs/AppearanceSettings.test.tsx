@@ -121,6 +121,18 @@ vi.mock("@/hooks/useUISettings", async () => {
     entryFontSize: 16,
     entryLineHeight: 1.7,
     reduceMotion: false,
+    articleLayout: "list",
+    articlePushDirection: "right",
+    articleCoverList: false,
+    pictureLayout: "grid",
+    gridStyle: "masonry",
+    hoverRowHeight: "compact",
+    hoverImageSize: "small",
+    notificationBodyOnHover: false,
+    experimentalFeaturesEnabled: false,
+    experimentalPictureHover: false,
+    experimentalPictureWall: false,
+    experimentalArticleHover: false,
     splitterVisibleByView: {
       article: true,
       picture: true,
@@ -138,6 +150,10 @@ vi.mock("@/hooks/useUISettings", async () => {
       setFetchReadableForView,
       setExpandLongForView,
       setReduceMotion,
+      setArticleLayout: vi.fn(),
+      setPictureLayout: vi.fn(),
+      setArticlePushDirection: vi.fn(),
+      setArticleCoverList: vi.fn(),
       setTimelineGranularityForView,
       setTimelineCollapseForView,
       setTimelineTimeBasisForView,
@@ -328,6 +344,21 @@ describe("AppearanceSettings 按视图设置", () => {
       "article",
       "scrollPast",
     );
+  });
+
+
+  it("实验布局批：实验关闭时，文章布局选择器不含 hover、图片选择器只余网格", () => {
+    render(<AppearanceSettings />);
+
+    const articleRow = rowOf("appearance_view.article_layout");
+    expect(within(articleRow).getByText("list")).toBeTruthy();
+    expect(within(articleRow).getByText("rows")).toBeTruthy();
+    expect(within(articleRow).queryByText("hover")).toBeNull();
+
+    const pictureRow = rowOf("appearance_view.picture_layout");
+    expect(within(pictureRow).getByText("grid")).toBeTruthy();
+    expect(within(pictureRow).queryByText("hover")).toBeNull();
+    expect(within(pictureRow).queryByText("wall")).toBeNull();
   });
 
   it("改法 A：总开关是「关」时按视图那一行照样在（不再被门控）", () => {
