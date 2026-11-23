@@ -586,6 +586,11 @@ function AuthenticatedApp() {
   const articleLayout = useUISettingKey("articleLayout");
   const isArticleHoverLayout =
     contentType === "article" && articleLayout === "hover";
+  /* 实验布局批：正文覆盖第二栏（articleCoverList）+ rows 列表布局。
+     覆盖模式下未选中时第三栏不占位（条目栏吃满，仿 Inoreader 列表模式），
+     选中后正文浮层从方向侧盖住条目栏。 */
+  const articleCoverList = useUISettingKey("articleCoverList");
+  const isArticleCoverLayout = contentType === "article" && articleCoverList;
 
   // 桌面三栏的第三栏：Nextflux 式转场（reader-transition 批）。
   // 未选 → 首次选中 = 整块从右侧推进；已选 → 换另一条 = 正文上下滑动。
@@ -1071,7 +1076,10 @@ function AuthenticatedApp() {
         list={desktopEntryList}
         content={entryContent}
         showSidebar={showSidebar}
-        hideContent={isArticleHoverLayout && !selectedEntryId}
+        hideContent={
+          (isArticleHoverLayout || isArticleCoverLayout) && !selectedEntryId
+        }
+        coverList={isArticleCoverLayout}
       />
       <ImagePreview />
         <VideoPreview />
