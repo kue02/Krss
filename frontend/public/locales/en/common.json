@@ -1255,6 +1255,7 @@
     "deleted": "Rule deleted",
     "name": "Name",
     "name_placeholder": "e.g. Block sponsored posts",
+    "section_basic": "Basics",
     "enabled": "Enabled",
     "enabled_hint": "Disabled rules are skipped, entries are untouched",
     "scope": "Scope",
