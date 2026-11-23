@@ -276,7 +276,7 @@ describe("EntryListHeader 移动端顶栏与 Web 图标统一", () => {
     expect(forceRefresh).toBeTruthy();
     expect(within(panel).getByText("sidebar.starred_view")).toBeTruthy();
     expect(
-      within(panel).getByText("appearance_view.article_layout_hover"),
+      within(panel).getByText("appearance_view.article_layout_rows"),
     ).toBeTruthy();
 
     /* 强制刷新与 Web 右键菜单同一颗 RefreshIcon；面板内图标统一 20px(size-5) */

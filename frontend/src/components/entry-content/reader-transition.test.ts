@@ -9,6 +9,9 @@ import {
   SLIDE_EXIT,
   SLIDE_INITIAL,
   SLIDE_TRANSITION,
+  pushAnimateFor,
+  pushExitFor,
+  pushInitialFor,
   pushPaneKey,
   resolveReaderTransition,
   slideContentKey,
@@ -54,5 +57,25 @@ describe("第三栏转场触发条件（对齐 Nextflux ArticleView.jsx）", () 
     expect(SLIDE_ANIMATE_OPACITY_DELAY).toBe(0.05);
     expect(SLIDE_EXIT).toEqual({ y: -50, opacity: 0 });
     expect(SLIDE_TRANSITION).toEqual({ bounce: 0, ease: "easeInOut" });
+  });
+
+  it("推进方向：right 从右推入（x:100vw → 0）", () => {
+    expect(pushInitialFor("right")).toEqual({ opacity: 1, x: "100vw" });
+    expect(pushAnimateFor("right")).toEqual({ opacity: 1, x: 0, scale: 1 });
+    expect(pushExitFor("right")).toEqual({
+      opacity: 1,
+      x: "100vw",
+      scale: 1,
+    });
+  });
+
+  it("推进方向：bottom 从下推入（y:100% → 0）", () => {
+    expect(pushInitialFor("bottom")).toEqual({ opacity: 1, y: "100%" });
+    expect(pushAnimateFor("bottom")).toEqual({ opacity: 1, y: 0, scale: 1 });
+    expect(pushExitFor("bottom")).toEqual({
+      opacity: 1,
+      y: "100%",
+      scale: 1,
+    });
   });
 });

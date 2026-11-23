@@ -65,6 +65,28 @@ export const PUSH_INITIAL = { opacity: 1, x: "100vw" } as const;
 export const PUSH_ANIMATE = { opacity: 1, x: 0, scale: 1 } as const;
 export const PUSH_EXIT_WITH_ENTRY = { opacity: 1, x: "100vw", scale: 1 } as const;
 
+/* ------------------------------------------------------------------ *
+ * 实验布局批：正文推入方向（right 从右 / bottom 从下）。
+ * bottom 档整块从下方 100% 高度推上来（translateY 100% → 0），退出滑回下方。
+ * 这里保持与 useUISettings 的 ArticlePushDirection 同构，但故意不反向依赖 hook。
+ * ------------------------------------------------------------------ */
+export type ReaderPushDirection = "right" | "bottom";
+
+/** 推进（外层）bottom 方向 —— initial 在下方 100% */
+export const PUSH_INITIAL_BOTTOM = { opacity: 1, y: "100%" } as const;
+export const PUSH_ANIMATE_BOTTOM = { opacity: 1, y: 0, scale: 1 } as const;
+export const PUSH_EXIT_BOTTOM = { opacity: 1, y: "100%", scale: 1 } as const;
+
+export function pushInitialFor(direction: ReaderPushDirection) {
+  return direction === "bottom" ? PUSH_INITIAL_BOTTOM : PUSH_INITIAL;
+}
+export function pushAnimateFor(direction: ReaderPushDirection) {
+  return direction === "bottom" ? PUSH_ANIMATE_BOTTOM : PUSH_ANIMATE;
+}
+export function pushExitFor(direction: ReaderPushDirection) {
+  return direction === "bottom" ? PUSH_EXIT_BOTTOM : PUSH_EXIT_WITH_ENTRY;
+}
+
 /** 滑动（内层）的 initial/animate/exit —— 抄自 ArticleView.jsx L193（initial）L194-200（animate）L201（exit） */
 export const SLIDE_INITIAL = { y: 50, opacity: 0 } as const;
 /** 内层 animate 里 opacity 单独 delay 0.05 —— 抄自 ArticleView.jsx L197-199 */

@@ -24,6 +24,8 @@ import {
   useUISettingKey,
   resolveGridStyle,
   resolvePictureLayout,
+  resolveExperimentalLayoutVisibility,
+  type ArticleLayout,
   type CardImageSize,
   type HoverMultiImageConfig,
   type QuoteStyle,
@@ -339,6 +341,8 @@ export function AppearanceSettings() {
     setEntryLineHeight,
     setPictureLayout,
     setArticleLayout,
+    setArticlePushDirection,
+    setArticleCoverList,
     setHoverRowHeight,
     setHoverImageSize,
     setGridStyle,
@@ -346,6 +350,16 @@ export function AppearanceSettings() {
   const { data: appearanceSettings } = useAppearanceSettings();
   const pictureLayout = useUISettingKey("pictureLayout");
   const articleLayout = useUISettingKey("articleLayout");
+  /* 实验布局批：正文推入方向 + 覆盖第二栏 */
+  const articlePushDirection = useUISettingKey("articlePushDirection");
+  const articleCoverList = useUISettingKey("articleCoverList");
+  /* 实验布局批：实验布局入口可见性（关闭仅隐藏入口，已选中的仍照常渲染） */
+  const expVisibility = resolveExperimentalLayoutVisibility({
+    experimentalFeaturesEnabled: useUISettingKey("experimentalFeaturesEnabled"),
+    experimentalPictureHover: useUISettingKey("experimentalPictureHover"),
+    experimentalPictureWall: useUISettingKey("experimentalPictureWall"),
+    experimentalArticleHover: useUISettingKey("experimentalArticleHover"),
+  });
   const hoverRowHeight = useUISettingKey("hoverRowHeight");
   const hoverImageSize = useUISettingKey("hoverImageSize");
   const hoverMultiImageSetting = useUISettingKey(
@@ -1191,13 +1205,17 @@ export function AppearanceSettings() {
                 {view === "article" && (
                   <SettingRow
                     label={t("appearance_view.article_layout")}
-                    hint={t("appearance_view.article_layout_hover_hint")}
+                    hint={
+                      expVisibility.articleHover || articleLayout === "hover"
+                        ? t("appearance_view.article_layout_hover_hint")
+                        : undefined
+                    }
                   >
                     <SegmentedControl
                       className="shrink-0"
                       value={articleLayout}
                       onValueChange={(value) =>
-                        setArticleLayout(value as "list" | "hover")
+                        setArticleLayout(value as ArticleLayout)
                       }
                       options={[
                         {
@@ -1205,8 +1223,67 @@ export function AppearanceSettings() {
                           label: t("appearance_view.article_layout_list"),
                         },
                         {
-                          value: "hover",
-                          label: t("appearance_view.article_layout_hover"),
+                          value: "rows",
+                          label: t("appearance_view.article_layout_rows"),
+                        },
+                        // 实验布局批：悬停正文入口仅在实验开关可见（或当前正选中）时出现
+                        ...(expVisibility.articleHover || articleLayout === "hover"
+                          ? [
+                              {
+                                value: "hover",
+                                label: t("appearance_view.article_layout_hover"),
+                              },
+                            ]
+                          : []),
+                      ]}
+                    />
+                  </SettingRow>
+                )}
+                {/* 实验布局批：文章正文推入方向（对所有文章布局生效） */}
+                {view === "article" && (
+                  <SettingRow
+                    label={t("appearance_view.article_push_direction")}
+                    hint={t("appearance_view.article_push_direction_hint")}
+                  >
+                    <SegmentedControl
+                      className="shrink-0"
+                      value={articlePushDirection}
+                      onValueChange={(value) =>
+                        setArticlePushDirection(value as "right" | "bottom")
+                      }
+                      options={[
+                        {
+                          value: "right",
+                          label: t("appearance_view.article_push_direction_right"),
+                        },
+                        {
+                          value: "bottom",
+                          label: t("appearance_view.article_push_direction_bottom"),
+                        },
+                      ]}
+                    />
+                  </SettingRow>
+                )}
+                {/* 实验布局批：正文是否覆盖第二栏条目栏 */}
+                {view === "article" && (
+                  <SettingRow
+                    label={t("appearance_view.article_cover_list")}
+                    hint={t("appearance_view.article_cover_list_hint")}
+                  >
+                    <SegmentedControl
+                      className="shrink-0"
+                      value={articleCoverList ? "on" : "off"}
+                      onValueChange={(value) =>
+                        setArticleCoverList(value === "on")
+                      }
+                      options={[
+                        {
+                          value: "off",
+                          label: t("appearance_view.article_cover_off"),
+                        },
+                        {
+                          value: "on",
+                          label: t("appearance_view.article_cover_on"),
                         },
                       ]}
                     />
@@ -1227,14 +1304,25 @@ export function AppearanceSettings() {
                           value: "grid",
                           label: t("appearance_view.picture_layout_grid"),
                         },
-                        {
-                          value: "hover",
-                          label: t("appearance_view.picture_layout_hover"),
-                        },
-                        {
-                          value: "wall",
-                          label: t("appearance_view.picture_layout_wall"),
-                        },
+                        // 实验布局批：hover/wall 入口仅在实验开关可见（或当前正选中）时出现
+                        ...(expVisibility.pictureHover ||
+                        resolvedPictureLayout === "hover"
+                          ? [
+                              {
+                                value: "hover",
+                                label: t("appearance_view.picture_layout_hover"),
+                              },
+                            ]
+                          : []),
+                        ...(expVisibility.pictureWall ||
+                        resolvedPictureLayout === "wall"
+                          ? [
+                              {
+                                value: "wall",
+                                label: t("appearance_view.picture_layout_wall"),
+                              },
+                            ]
+                          : []),
                       ]}
                     />
                   </SettingRow>

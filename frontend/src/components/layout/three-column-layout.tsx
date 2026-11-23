@@ -149,6 +149,12 @@ interface ThreeColumnLayoutProps {
    * 其它视图 / 其它档位不传，行为与原来完全一致。
    */
   hideContent?: boolean;
+  /**
+   * 实验布局批：文章「覆盖」模式（articleCoverList）。
+   * 开时正文浮层盖在第二栏条目栏之上、条目栏留底下照常吃满宽度（仿 Inoreader 列表模式）；
+   * 未选中（hideContent）时正文浮层透明不可点，条目栏独占。关时维持经典三栏。
+   */
+  coverList?: boolean;
 }
 
 export function ThreeColumnLayout({
@@ -159,6 +165,7 @@ export function ThreeColumnLayout({
   hideList = false,
   showSidebar = true,
   hideContent = false,
+  coverList = false,
 }: ThreeColumnLayoutProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [windowWidth, setWindowWidth] = useState(
@@ -289,67 +296,87 @@ export function ThreeColumnLayout({
         )}
       </div>
 
-      {/* List - middle column (Entry list) - hidden when hideList is true。
-          28-3：hideContent（文章视图悬停大图档的收起态）时，第三栏被收走，
-          列表补上剩余宽度 —— 否则右边会留一大片空白。 */}
-      {!hideList && (
+      {/* List + Content —— coverList（文章覆盖模式）时，正文浮层盖在条目栏之上，
+          条目栏吃满剩余宽度（仿 Inoreader 列表模式）；否则维持经典三栏
+          （条目栏固定宽 + 正文为第三栏）。 */}
+      {coverList ? (
+        !hideList && (
+          <div className="relative flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-background safe-area-top">
+            <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-background">
+              {list}
+            </div>
+            {/* 实验布局批：正文浮层覆盖第二栏。未选中(hideContent)时只收成透明且不可点，
+                仍保留在树上 —— 保证 AnimatePresence 的推进动画照常触发（同 28-3 的初衷）。 */}
+            <main
+              className={cn(
+                "absolute inset-0 flex h-full flex-col overflow-hidden bg-background p-0",
+                hideContent ? "opacity-0 pointer-events-none" : "",
+                "sm:pt-2 sm:pr-2 sm:pb-2 sm:pl-2",
+              )}
+            >
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 bg-card sm:rounded-[12.8px] sm:shadow-nf">
+                {content}
+              </div>
+            </main>
+          </div>
+        )
+      ) : (
         <>
-          <div
+          {!hideList && (
+            <>
+              <div
+                className={cn(
+                  "flex h-full flex-col overflow-hidden bg-background safe-area-top",
+                  hideContent
+                    ? "min-w-0 flex-1"
+                    : "shrink-0 w-[var(--entry-col-width)]",
+                  !entryColResizable.isDragging &&
+                    !hideContent &&
+                    "transition-[width] duration-200",
+                )}
+              >
+                {list}
+              </div>
+
+              {/* Second splitter */}
+              {/* 12-15：第二栏这条保持原逻辑（悬浮才显示），不跟「显示分界限」设置走 */}
+              {!hideContent && (
+                <PanelSplitter
+                  visibility="hover"
+                  isDragging={entryColResizable.isDragging}
+                  onPointerDown={entryColResizable.separatorProps.onPointerDown}
+                  onTouchStart={entryColResizable.separatorProps.onTouchStart}
+                  onDoubleClick={handleEntryColDoubleClick}
+                />
+              )}
+            </>
+          )}
+
+          {/* Content - right column (Entry content) —— Nextflux 风格：浮层圆角面板。
+              28-3：hideContent 时**不卸载**，只把整列收成 0 宽 ——
+              卸载会让里面的转场包裹层一起重建，AnimatePresence 的 initial={false}
+              于是跳过入场动画，点击条目就没有「推进」了。收 0 宽则 pane 一直在，
+              点击时 key 由 empty 变 content，推进动画照常触发。 */}
+          <main
             className={cn(
-              "flex h-full flex-col overflow-hidden bg-background safe-area-top",
+              "flex h-full flex-col overflow-hidden bg-background safe-area-top p-0",
               hideContent
-                ? "min-w-0 flex-1"
-                : "shrink-0 w-[var(--entry-col-width)]",
-              !entryColResizable.isDragging &&
-                !hideContent &&
-                "transition-[width] duration-200",
+                ? "w-0 shrink-0 grow-0 overflow-hidden p-0 opacity-0 pointer-events-none"
+                : "min-w-0 flex-1 sm:pt-2 sm:pr-2 sm:pb-2",
+              hideContent ? "" : hideList ? "sm:pl-2" : "sm:pl-0",
             )}
           >
-            {list}
-          </div>
-
-          {/* Second splitter */}
-          {/* 12-15：第二栏这条保持原逻辑（悬浮才显示），不跟「显示分界限」设置走 */}
-          {!hideContent && (
-          <PanelSplitter
-            visibility="hover"
-            isDragging={entryColResizable.isDragging}
-            onPointerDown={entryColResizable.separatorProps.onPointerDown}
-            onTouchStart={entryColResizable.separatorProps.onTouchStart}
-            onDoubleClick={handleEntryColDoubleClick}
-          />
-          )}
+            <div
+              className={cn(
+                "flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 bg-card sm:rounded-[12.8px]",
+                "sm:shadow-nf",
+              )}
+            >
+              {content}
+            </div>
+          </main>
         </>
       )}
-
-      {/* Content - right column (Entry content) —— Nextflux 风格：浮层圆角面板。
-          28-3：hideContent 时**不卸载**，只把整列收成 0 宽 ——
-          卸载会让里面的转场包裹层一起重建，AnimatePresence 的 initial={false}
-          于是跳过入场动画，点击条目就没有「推进」了。收 0 宽则 pane 一直在，
-          点击时 key 由 empty 变 content，推进动画照常触发。 */}
-      <main
-        className={cn(
-          "flex h-full flex-col overflow-hidden bg-background safe-area-top p-0",
-          hideContent
-            ? "w-0 shrink-0 grow-0 overflow-hidden p-0 opacity-0 pointer-events-none"
-            : "min-w-0 flex-1 sm:pt-2 sm:pr-2 sm:pb-2",
-          // 三栏时左边紧邻列表列（与页面同色，贴边看不出来）；
-          // 两栏（社交媒体 / 图片 / 添加订阅）时左边直接是深色侧栏，不留间距的话
-          // 圆角 + 边框会硬贴在侧栏上，所以这里补上和其余三边一致的 8px
-          hideContent ? "" : hideList ? "sm:pl-2" : "sm:pl-0",
-        )}
-      >
-        <div
-          className={cn(
-            "flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 bg-card sm:rounded-[12.8px]",
-            // NextFlux 真机的面板：rounded-2xl = 12.8px + shadow-custom，没有真边框 ——（本项目 --radius-2xl 是 16px，所以写死 12.8px）
-            // 那条「边」是阴影里 0 0 1px rgba(0,0,0,.3) 那一层画出来的
-            "sm:shadow-nf",
-          )}
-        >
-          {content}
-        </div>
-      </main>
     </div>
   );
 }
