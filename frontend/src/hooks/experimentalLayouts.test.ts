@@ -72,14 +72,16 @@ describe("实验布局批：门控可见性 resolveExperimentalLayoutVisibility"
     experimentalPictureHover: true,
     experimentalPictureWall: true,
     experimentalArticleHover: true,
+    experimentalArticleRows: true,
   };
 
-  it("总开关关闭时三项全隐藏（即便单项为 true）", async () => {
+  it("总开关关闭时四项全隐藏（即便单项为 true）", async () => {
     const mod = await freshModule();
     expect(mod.resolveExperimentalLayoutVisibility(base)).toEqual({
       pictureHover: false,
       pictureWall: false,
       articleHover: false,
+      articleRows: false,
     });
   });
 
@@ -95,6 +97,7 @@ describe("实验布局批：门控可见性 resolveExperimentalLayoutVisibility"
       pictureHover: true,
       pictureWall: false,
       articleHover: true,
+      articleRows: true,
     });
   });
 
@@ -104,6 +107,7 @@ describe("实验布局批：门控可见性 resolveExperimentalLayoutVisibility"
     expect(mod.defaultUISettings.experimentalPictureHover).toBe(false);
     expect(mod.defaultUISettings.experimentalPictureWall).toBe(false);
     expect(mod.defaultUISettings.experimentalArticleHover).toBe(false);
+    expect(mod.defaultUISettings.experimentalArticleRows).toBe(false);
     expect(mod.defaultUISettings.articlePushDirection).toBe("right");
     expect(mod.defaultUISettings.articleCoverList).toBe(false);
   });

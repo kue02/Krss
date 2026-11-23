@@ -63,7 +63,7 @@ describe("AdvancedSettings（高级页外壳）", () => {
     );
   });
 
-  it("实验性设置分区默认关闭：四个开关，总开关关闭时三个子开关禁用", async () => {
+  it("实验性设置分区默认关闭：五个开关，总开关关闭时四个子开关禁用", async () => {
     render(
       <QueryClientProvider client={new QueryClient()}>
         <AdvancedSettings />
@@ -79,11 +79,12 @@ describe("AdvancedSettings（高级页外壳）", () => {
     const switches = Array.from(
       document.querySelectorAll('[role="switch"]'),
     ) as HTMLButtonElement[];
-    expect(switches).toHaveLength(4);
-    // 总开关默认关（不禁用自己）→ 三个子开关全部禁用
+    expect(switches).toHaveLength(5);
+    // 总开关默认关（不禁用自己）→ 四个子开关全部禁用
     expect(switches[0]?.disabled).toBe(false);
     expect(switches[1]?.disabled).toBe(true);
     expect(switches[2]?.disabled).toBe(true);
     expect(switches[3]?.disabled).toBe(true);
+    expect(switches[4]?.disabled).toBe(true);
   });
 });

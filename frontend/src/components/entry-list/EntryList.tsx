@@ -7,8 +7,14 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import type { ReactNode, RefObject } from "react";
 import { useTranslation } from "react-i18next";
-import { useEntriesInfinite, useUnreadCounts, useMarkManyAsRead } from "@/hooks/useEntries";
+import {
+  useEntriesInfinite,
+  useUnreadCounts,
+  useMarkManyAsRead,
+  useMarkAsRead,
+} from "@/hooks/useEntries";
 import { AlertDialog, Button } from "@heroui/react";
 import { useFeeds } from "@/hooks/useFeeds";
 import { useGeneralSettings } from "@/hooks/useGeneralSettings";
@@ -28,6 +34,7 @@ import { flattenUniqueEntries } from "@/lib/entry-pagination";
 import { stripHtml } from "@/lib/html-utils";
 import { EntryListItem } from "./EntryListItem";
 import { ArticleRowsListRow } from "./ArticleRowsList";
+import { ArticlePlainListRow } from "./ArticlePlainList";
 import { MobileSwipeEntryRow } from "@/components/mobile/MobileSwipeEntryRow";
 import { EntryListHeader } from "./EntryListHeader";
 import { needsListTranslation as needsListTranslationAsync } from "@/lib/language-detect-async";
@@ -45,6 +52,7 @@ import { VirtualizedArticleList } from "./VirtualizedArticleList";
 import { useScrollMarkRead } from "./useScrollMarkRead";
 import { usePrependScrollAnchor } from "./usePrependScrollAnchor";
 import {
+  deferEntryRemoval,
   getDeferredRemovalsVersion,
   mergeDeferredRemovals,
   subscribeDeferredRemovals,
@@ -115,6 +123,13 @@ interface EntryListProps {
   onBackFromFeedJump?: () => void;
   /** 移动端顶栏搜索入口（App 打开 SearchModal）；不传不渲染 */
   onSearchClick?: () => void;
+  /**
+   * 「正文推入方向 = 向下」的合列形态（方案 2 · 整列一起滚）：
+   * 正文接在列表末尾、与列表共用同一条滚动条。传的是渲染函数而不是节点，
+   * 因为内嵌正文要拿本列表的滚动容器（`embedded` 模式的 `containerRef`）
+   * 才能让工具栏吸顶判断跟列表滚动走。不传则列表不带内联正文。
+   */
+  renderInlineContent?: (scrollRef: RefObject<HTMLDivElement | null>) => ReactNode;
 }
 
 export function EntryList({
@@ -137,6 +152,7 @@ export function EntryList({
   feedJumpBackHref,
   onBackFromFeedJump,
   onSearchClick,
+  renderInlineContent,
 }: EntryListProps) {
   "use no memo";
 
@@ -204,6 +220,8 @@ export function EntryList({
   const effectiveUnreadOnly = mutedOnly ? false : unreadOnly;
 
   const containerRef = useRef<HTMLDivElement>(null);
+  /** 「向下」合列模式下接在列表末尾的正文块（点条目后要滚到它） */
+  const inlineContentRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const listWrapperRef = useRef<HTMLDivElement>(null);
   const usesDocumentScroll = Boolean(isMobile);
@@ -364,30 +382,58 @@ export function EntryList({
    */
   const articleLayout = useUISettingKey("articleLayout");
   const isArticleHover = contentType === "article" && articleLayout === "hover";
-  /** 实验布局批：文章「列表」布局（紧凑行，无悬停浮层） */
+  /**
+   * 实验布局批：文章「缩略图列表」档（带 64×64 缩略图的紧凑行，无悬停浮层）。
+   * 常规「Inoreader列表」是另一档（`isArticlePlain`），别混。
+   */
   const isArticleRows = contentType === "article" && articleLayout === "rows";
+  /** 常规「Inoreader列表」：来源图标 + 加粗标题 + 右侧来源·时间，无缩略图 */
+  const isArticlePlain =
+    contentType === "article" && articleLayout === "inoreader";
+  /** 「正文推入方向 = 向下」：条目栏与正文合为一列，正文接在列表末尾（方案 2） */
+  const articlePushDirection = useUISettingKey("articlePushDirection");
+  const reduceMotion = useUISettingKey("reduceMotion");
+  const isArticleInline =
+    contentType === "article" && articlePushDirection === "down";
   /** 实验布局批：文章相关实验入口的可见性（关闭即隐藏，已选中仍照常渲染） */
   const articleExpVisibility = resolveExperimentalLayoutVisibility({
     experimentalFeaturesEnabled: useUISettingKey("experimentalFeaturesEnabled"),
     experimentalPictureHover: useUISettingKey("experimentalPictureHover"),
     experimentalPictureWall: useUISettingKey("experimentalPictureWall"),
     experimentalArticleHover: useUISettingKey("experimentalArticleHover"),
+    experimentalArticleRows: useUISettingKey("experimentalArticleRows"),
   });
   /**
    * 实验布局批：文章顶栏可切换档位（按实验可见性过滤）。
    * 常规 = 传统三栏 + 列表；「悬停正文」仅在对应实验开关打开时进入循环。
    * 只剩一档 → 不渲染切换按钮（由 EntryListHeader 据 order.length>1 判断）。
    */
-  const articleLayoutOrder = useMemo<Array<"list" | "rows" | "hover">>(() => {
-    const order: Array<"list" | "rows" | "hover"> = ["list", "rows"];
-    if (articleExpVisibility.articleHover) order.push("hover");
+  const articleLayoutOrder = useMemo<
+    Array<"list" | "inoreader" | "rows" | "hover">
+  >(() => {
+    /* 常规两档永远在：传统三栏 → Inoreader列表（默认顺序按用户点名的那样） */
+    const order: Array<"list" | "inoreader" | "rows" | "hover"> = [
+      "list",
+      "inoreader",
+    ];
+    /* 实验两档：开关开着才进循环；正用着（即使开关已关）也留着，免得按钮变成「回不去」 */
+    if (articleExpVisibility.articleRows || articleLayout === "rows") {
+      order.push("rows");
+    }
+    if (articleExpVisibility.articleHover || articleLayout === "hover") {
+      order.push("hover");
+    }
     return order;
-  }, [articleExpVisibility.articleHover]);
-  /** 实验布局批：正用着已停用的「悬停正文」——保留渲染，但给一条「切回常规」逃生条 */
+  }, [
+    articleExpVisibility.articleHover,
+    articleExpVisibility.articleRows,
+    articleLayout,
+  ]);
+  /** 实验布局批：正用着已停用的实验档（悬停正文 / 缩略图列表）——保留渲染，给一条「切回常规」逃生条 */
   const showDisabledArticleHoverNotice =
     contentType === "article" &&
-    articleLayout === "hover" &&
-    !articleExpVisibility.articleHover;
+    ((articleLayout === "hover" && !articleExpVisibility.articleHover) ||
+      (articleLayout === "rows" && !articleExpVisibility.articleRows));
   const [articleHoverAnchor, setArticleHoverAnchor] = useState<{
     id: string;
     x: number;
@@ -617,6 +663,42 @@ export function EntryList({
       mergeDeferredRemovals(flattenUniqueEntries(data?.pages)),
     [data, deferredRemovalVersion],
   );
+
+  /**
+   * 「正文推入方向 = 向下」合列（方案 2 · 整列一起滚）的两件事：
+   * 1) 点条目后把列表末尾的正文滚进视野 —— 用户的期待就是「点完继续往下滚」；
+   * 2) 顺手标已读并记 deferred（同 NotificationTimeline 的写法）：内嵌正文
+   *    不走 EntryContent 的自动标已读（embedded 时那段被跳过），不补这一步
+   *    就会出现「读完了列表里还是未读」。
+   */
+  const { mutate: markAsRead } = useMarkAsRead();
+  const inlineMarkedRef = useRef<string | null>(null);
+  /* 只有真接了内联正文（桌面合列）才滚/标已读；移动端仍是列表→详情页，不插手 */
+  const inlineActive = isArticleInline && Boolean(renderInlineContent);
+  useEffect(() => {
+    if (!inlineActive || !selectedEntryId) return;
+    const node = inlineContentRef.current;
+    if (!node) return;
+    const frame = window.requestAnimationFrame(() => {
+      node.scrollIntoView({
+        behavior: reduceMotion ? "auto" : "smooth",
+        block: "start",
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [inlineActive, selectedEntryId, reduceMotion]);
+
+  useEffect(() => {
+    if (!inlineActive || !selectedEntryId) return;
+    if (inlineMarkedRef.current === selectedEntryId) return;
+    inlineMarkedRef.current = selectedEntryId;
+    const index = entries.findIndex((item) => item.id === selectedEntryId);
+    const target = index >= 0 ? entries[index] : undefined;
+    if (target && !target.read) {
+      markAsRead({ id: selectedEntryId, read: true, skipInvalidate: true });
+      deferEntryRemoval(selectedEntryId, { ...target, read: true }, index);
+    }
+  }, [inlineActive, selectedEntryId, entries, markAsRead]);
 
   /**
    * 进视口预载：观察器挂在本列表的滚动容器上（root 与 `scroll-surface` 同一口径，
@@ -1578,6 +1660,23 @@ export function EntryList({
                   onSelectableEntriesChange={setTimelineSelectableEntries}
                   onSelectFeedFromEntry={onSelectFeedFromEntry}
                 />
+              ) : isArticlePlain ? (
+                /* 常规「Inoreader列表」—— 来源图标 + 加粗标题 + 右侧来源·时间，
+                   没有缩略图、没有摘要、没有悬停浮层（就是图片视图「悬停大图」去掉悬停）。 */
+                <div className="w-full" data-testid="article-plain-list">
+                  <VirtualizedArticleList
+                    virtualList={virtualList}
+                    entries={entries}
+                    renderItem={(entry) => (
+                      <ArticlePlainListRow
+                        entry={entry}
+                        feed={feedsMap.get(entry.feedId)}
+                        onSelectEntry={handleSelectEntry}
+                        selectedEntryId={selectedEntryId}
+                      />
+                    )}
+                  />
+                </div>
               ) : isArticleRows ? (
                 /* 实验布局批：文章「列表」布局 —— 紧凑行（缩略图+标题+元信息），无悬停浮层。
                    走通用虚拟容器（大列表性能），jsdom 测不到尺寸时内部全量渲染。 */
@@ -1669,7 +1768,8 @@ export function EntryList({
               {/* 24-5：列表尾整宽弱边框「全部标记为已读」（语义=清当前范围未读，
                   与列表头那颗同接口 onMarkAllRead）。
                   宽度跟时间线/社交卡片同款居中可读宽度，免得在宽栏下失控拉满。 */}
-              {entries.length > 0 && (
+              {/* 合列模式（向下）时这颗按钮会夹在列表与正文中间，反而挡路 —— 隐藏 */}
+              {entries.length > 0 && !inlineActive && (
                 <div className="mx-auto mt-1 w-full max-w-[clamp(45ch,60vw,65ch)] px-2">
                   <button
                     type="button"
@@ -1689,6 +1789,17 @@ export function EntryList({
                   style={{ height: scrollReadEndPaddingHeight }}
                 />
               )}
+              {/* 「正文推入方向 = 向下」（方案 2 · 整列一起滚）：正文接在列表最后一行后面，
+                  与列表共用同一条滚动条 —— 点条目后往下滚就是正文，往上滚回列表。 */}
+              {inlineActive ? (
+                <div
+                  ref={inlineContentRef}
+                  data-testid="inline-article-pane"
+                  className="w-full border-t border-border"
+                >
+                  {renderInlineContent?.(containerRef)}
+                </div>
+              ) : null}
             </div>
           )}
 

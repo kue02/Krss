@@ -359,6 +359,7 @@ export function AppearanceSettings() {
     experimentalPictureHover: useUISettingKey("experimentalPictureHover"),
     experimentalPictureWall: useUISettingKey("experimentalPictureWall"),
     experimentalArticleHover: useUISettingKey("experimentalArticleHover"),
+    experimentalArticleRows: useUISettingKey("experimentalArticleRows"),
   });
   const hoverRowHeight = useUISettingKey("hoverRowHeight");
   const hoverImageSize = useUISettingKey("hoverImageSize");
@@ -1201,17 +1202,21 @@ export function AppearanceSettings() {
                     />
                   </SettingRow>
                 )}
-                {/* 文章视图：传统三栏（默认）/ 列表（紧凑行）/ 悬停正文（实验，仅开关打开时出现）；
-                    点击用 Nextflux 式推进转场把正文推进第三栏。reader-transition 批新增，实验布局批增 rows */ }
+                {/* 文章视图：传统三栏（默认）/ 列表（Inoreader 静态行）/ 缩略图列表（实验）/ 悬停正文（实验）；
+                    点击用 Nextflux 式推进转场把正文推进第三栏。reader-transition 批新增，实验布局批增 rows，
+                    m00883 批把 rows 移入实验、新增常规 inoreader（图片悬停大图去掉悬停）。 */ }
                 {view === "article" && (
                   <SettingRow
                     label={t("appearance_view.article_layout")}
                     hint={
-                      expVisibility.articleHover
-                        ? t("appearance_view.article_layout_hover_hint")
-                        : articleLayout === "hover"
+                      articleLayout === "hover" && !expVisibility.articleHover
+                        ? t("appearance_view.experimental_disabled_hint")
+                        : articleLayout === "rows" && !expVisibility.articleRows
                           ? t("appearance_view.experimental_disabled_hint")
-                          : undefined
+                          : expVisibility.articleHover &&
+                              articleLayout === "hover"
+                            ? t("appearance_view.article_layout_hover_hint")
+                            : undefined
                     }
                   >
                     <SegmentedControl
@@ -1226,10 +1231,18 @@ export function AppearanceSettings() {
                           label: t("appearance_view.article_layout_list"),
                         },
                         {
-                          value: "rows",
-                          label: t("appearance_view.article_layout_rows"),
+                          value: "inoreader",
+                          label: t("appearance_view.article_layout_inoreader"),
                         },
-                        // 实验布局批：悬停正文入口仅在实验开关打开时出现；关闭即隐藏，不因当前正选中而泄漏
+                        // 实验布局批：缩略图列表 / 悬停正文入口仅在实验开关打开时出现；关闭即隐藏，不因当前正选中而泄漏
+                        ...(expVisibility.articleRows
+                          ? [
+                              {
+                                value: "rows",
+                                label: t("appearance_view.article_layout_rows"),
+                              },
+                            ]
+                          : []),
                         ...(expVisibility.articleHover
                           ? [
                               {
@@ -1252,7 +1265,9 @@ export function AppearanceSettings() {
                       className="shrink-0"
                       value={articlePushDirection}
                       onValueChange={(value) =>
-                        setArticlePushDirection(value as "right" | "bottom")
+                        setArticlePushDirection(
+                          value as "right" | "bottom" | "down",
+                        )
                       }
                       options={[
                         {
@@ -1263,12 +1278,16 @@ export function AppearanceSettings() {
                           value: "bottom",
                           label: t("appearance_view.article_push_direction_bottom"),
                         },
+                        {
+                          value: "down",
+                          label: t("appearance_view.article_push_direction_down"),
+                        },
                       ]}
                     />
                   </SettingRow>
                 )}
-                {/* 实验布局批：正文是否覆盖第二栏条目栏 */}
-                {view === "article" && (
+                {/* 实验布局批：正文是否覆盖第二栏条目栏（「向下」是合列滚动，这个开关无意义，隐藏） */}
+                {view === "article" && articlePushDirection !== "down" && (
                   <SettingRow
                     label={t("appearance_view.article_cover_list")}
                     hint={t("appearance_view.article_cover_list_hint")}
