@@ -4,6 +4,7 @@
   },
   "about": {
     "title": "关于",
+    "info": "应用信息",
     "tagline": "自托管 RSS 阅读器，单二进制 + SQLite，开箱即用。",
     "version": "版本",
     "license": "开源许可",

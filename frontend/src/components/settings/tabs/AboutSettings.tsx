@@ -1,6 +1,9 @@
 import { useTranslation } from "react-i18next";
-import { Bug, ExternalLink, Sparkles } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Bug, ExternalLink, Info, Link2, Sparkles } from "lucide-react";
+import {
+  SectionCard,
+  SettingRow,
+} from "@/components/settings/settings-primitives";
 
 const version =
   typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
@@ -38,42 +41,14 @@ const LINKS = [
   },
 ] as const;
 
-function InfoRow({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}) {
-  return (
-    <div className="flex min-h-12 flex-wrap items-center justify-between gap-x-4 gap-y-1 px-1 py-2.5">
-      <div className="text-sm text-foreground">{label}</div>
-      <div
-        className={cn(
-          "text-sm text-muted-foreground",
-          mono && "font-mono text-[13px]",
-        )}
-      >
-        {value}
-      </div>
-    </div>
-  );
-}
-
 export function AboutSettings() {
   const { t } = useTranslation();
 
   return (
     <div className="space-y-5">
-      {/* 品牌区 */}
-      <section className="relative overflow-hidden rounded-2xl border border-border/60 bg-gradient-to-br from-primary/10 via-card/50 to-card/20 p-5 shadow-nf sm:p-6">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -right-10 -top-10 size-40 rounded-full bg-primary/10 blur-2xl"
-        />
-        <div className="relative flex flex-col items-start gap-4 sm:flex-row sm:items-center">
+      {/* 品牌区：保留应用身份，换成与设置页一致的卡片质感 */}
+      <section className="overflow-hidden rounded-2xl border border-border/60 bg-card/30 p-5 shadow-nf-sm sm:p-6">
+        <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
           <img
             src="/logo.svg"
             alt="Krss"
@@ -95,33 +70,40 @@ export function AboutSettings() {
         </div>
       </section>
 
-      {/* 信息行 */}
-      <section className="overflow-hidden rounded-2xl border border-border/60 bg-card/30 shadow-nf-sm">
-        <div className="divide-y divide-border/50 px-4 py-1">
-          <InfoRow label={t("about.version")} value={version} mono />
-          <InfoRow label={t("about.license")} value="GPL v2" />
-          <InfoRow label={t("about.tech_stack")} value={TECH_STACK} />
+      {/* 应用信息 */}
+      <SectionCard
+        icon={<Info className="size-4" strokeWidth={1.75} />}
+        title={t("about.info")}
+      >
+        <div className="divide-y divide-border/50">
+          <SettingRow label={t("about.version")}>
+            <span className="font-mono text-[13px] text-muted-foreground">
+              {version}
+            </span>
+          </SettingRow>
+          <SettingRow label={t("about.license")}>
+            <span className="text-sm text-muted-foreground">GPL v2</span>
+          </SettingRow>
+          <SettingRow label={t("about.tech_stack")}>
+            <span className="text-sm text-muted-foreground">{TECH_STACK}</span>
+          </SettingRow>
         </div>
-      </section>
+      </SectionCard>
 
       {/* 链接区 */}
-      <section className="overflow-hidden rounded-2xl border border-border/60 bg-card/30 shadow-nf-sm">
-        <div className="border-b border-border/50 px-4 py-3">
-          <h3 className="text-sm font-semibold text-foreground">
-            {t("about.links")}
-          </h3>
-          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-            {t("about.description")}
-          </p>
-        </div>
-        <div className="p-1.5">
+      <SectionCard
+        icon={<Link2 className="size-4" strokeWidth={1.75} />}
+        title={t("about.links")}
+        description={t("about.description")}
+      >
+        <div className="divide-y divide-border/50">
           {LINKS.map(({ key, href, icon: Icon }) => (
             <a
               key={key}
               href={href}
               target="_blank"
               rel="noreferrer"
-              className="group flex items-center gap-3 rounded-[var(--radius)] px-2.5 py-2.5 text-sm text-foreground transition-colors hover:bg-item-hover"
+              className="group flex items-center gap-3 px-1 py-2.5 text-sm text-foreground transition-colors hover:bg-item-hover"
             >
               <span className="flex size-8 shrink-0 items-center justify-center rounded-[var(--radius)] bg-secondary/40 text-muted-foreground transition-colors group-hover:text-primary">
                 <Icon className="size-4" />
@@ -134,7 +116,7 @@ export function AboutSettings() {
             </a>
           ))}
         </div>
-      </section>
+      </SectionCard>
 
       {/* 页脚 */}
       <p className="pb-1 text-center text-xs text-muted-foreground">
