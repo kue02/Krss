@@ -43,7 +43,7 @@ import type {
 } from "@/lib/timeline-model";
 import { updateAppearanceSettings } from "@/api";
 import { cn } from "@/lib/utils";
-import { Button, Input } from "@heroui/react";
+import { Button, Input, Label, NumberField } from "@heroui/react";
 import { FeedAvatar } from "@/components/ui/feed-avatar";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Select } from "@/components/ui/select";
@@ -640,31 +640,54 @@ export function AppearanceSettings() {
             />
           </SettingRow>
 
-          <SettingRow label={t("appearance_reading.font_size")}>
-            <SegmentedControl
-              className="shrink-0"
-              value={String(entryFontSize)}
-              onValueChange={(value) => setEntryFontSize(Number(value))}
-              options={[
-                { value: "15", label: "15" },
-                { value: "17", label: "17" },
-                { value: "19", label: "19" },
-                { value: "21", label: "21" },
-              ]}
-            />
+          <SettingRow
+            label={t("appearance_reading.font_size")}
+            hint={t("appearance_reading.font_size_hint")}
+          >
+            <NumberField
+              value={entryFontSize}
+              minValue={12}
+              maxValue={24}
+              step={1}
+              onChange={(value) => setEntryFontSize(Number(value))}
+              className="w-32"
+            >
+              <Label className="sr-only">
+                {t("appearance_reading.font_size")}
+              </Label>
+              <NumberField.Group>
+                <NumberField.DecrementButton>-</NumberField.DecrementButton>
+                <NumberField.Input />
+                <NumberField.IncrementButton>+</NumberField.IncrementButton>
+              </NumberField.Group>
+            </NumberField>
           </SettingRow>
 
-          <SettingRow label={t("appearance_reading.line_height")}>
-            <SegmentedControl
-              className="shrink-0"
-              value={String(entryLineHeight)}
-              onValueChange={(value) => setEntryLineHeight(Number(value))}
-              options={[
-                { value: "1.6", label: "1.6" },
-                { value: "1.8", label: "1.8" },
-                { value: "2", label: "2.0" },
-              ]}
-            />
+          <SettingRow
+            label={t("appearance_reading.line_height")}
+            hint={t("appearance_reading.line_height_hint")}
+          >
+            <NumberField
+              value={entryLineHeight}
+              minValue={1.2}
+              maxValue={2.4}
+              step={0.1}
+              formatOptions={{
+                minimumFractionDigits: 1,
+                maximumFractionDigits: 1,
+              }}
+              onChange={(value) => setEntryLineHeight(Number(value))}
+              className="w-32"
+            >
+              <Label className="sr-only">
+                {t("appearance_reading.line_height")}
+              </Label>
+              <NumberField.Group>
+                <NumberField.DecrementButton>-</NumberField.DecrementButton>
+                <NumberField.Input />
+                <NumberField.IncrementButton>+</NumberField.IncrementButton>
+              </NumberField.Group>
+            </NumberField>
           </SettingRow>
           <SettingRow label={t("appearance_reading.ui_scale")}>
             <SegmentedControl
@@ -683,42 +706,6 @@ export function AppearanceSettings() {
 
         <GroupLabel>{t("appearance_reading.group_cards")}</GroupLabel>
         <div className="divide-y divide-border/50">
-          <SettingRow label={t("appearance_reading.card_image")}>
-            <SegmentedControl
-              className="shrink-0"
-              value={cardImageSize}
-              onValueChange={(value) => setCardImageSize(value as CardImageSize)}
-              options={[
-                {
-                  value: "none",
-                  label: t("appearance_reading.card_image_none"),
-                },
-                {
-                  value: "small",
-                  label: t("appearance_reading.card_image_small"),
-                },
-                {
-                  value: "large",
-                  label: t("appearance_reading.card_image_large"),
-                },
-              ]}
-            />
-          </SettingRow>
-
-          <SettingRow label={t("appearance_reading.preview_lines")}>
-            <SegmentedControl
-              className="shrink-0"
-              value={String(cardPreviewLines)}
-              onValueChange={(value) => setCardPreviewLines(Number(value))}
-              options={[
-                { value: "0", label: t("appearance_reading.none") },
-                { value: "1", label: "1" },
-                { value: "2", label: "2" },
-                { value: "3", label: "3" },
-              ]}
-            />
-          </SettingRow>
-
           <SettingRow label={t("appearance_reading.sidebar_feed_appearance")}>
             <SegmentedControl
               className="shrink-0"
@@ -1189,28 +1176,69 @@ export function AppearanceSettings() {
                 )}
                 {/* 文章视图：卡片列表（默认）/ 悬停大图（同图片视图第三档形态；\n                    点击用 Nextflux 式推进转场把正文推进第三栏）。reader-transition 批新增 */ }
                 {view === "article" && (
-                  <SettingRow
-                    label={t("appearance_view.article_layout")}
-                    hint={t("appearance_view.article_layout_hover_hint")}
-                  >
-                    <SegmentedControl
-                      className="shrink-0"
-                      value={articleLayout}
-                      onValueChange={(value) =>
-                        setArticleLayout(value as "list" | "hover")
-                      }
-                      options={[
-                        {
-                          value: "list",
-                          label: t("appearance_view.article_layout_list"),
-                        },
-                        {
-                          value: "hover",
-                          label: t("appearance_view.article_layout_hover"),
-                        },
-                      ]}
-                    />
-                  </SettingRow>
+                  <>
+                    <SettingRow
+                      label={t("appearance_view.article_layout")}
+                      hint={t("appearance_view.article_layout_hover_hint")}
+                    >
+                      <SegmentedControl
+                        className="shrink-0"
+                        value={articleLayout}
+                        onValueChange={(value) =>
+                          setArticleLayout(value as "list" | "hover")
+                        }
+                        options={[
+                          {
+                            value: "list",
+                            label: t("appearance_view.article_layout_list"),
+                          },
+                          {
+                            value: "hover",
+                            label: t("appearance_view.article_layout_hover"),
+                          },
+                        ]}
+                      />
+                    </SettingRow>
+                    {/* 「列表图片」与「摘要行数」只作用于文章列表视图，挪进这里的文章专属块 */}
+                    <SettingRow label={t("appearance_reading.card_image")}>
+                      <SegmentedControl
+                        className="shrink-0"
+                        value={cardImageSize}
+                        onValueChange={(value) =>
+                          setCardImageSize(value as CardImageSize)
+                        }
+                        options={[
+                          {
+                            value: "none",
+                            label: t("appearance_reading.card_image_none"),
+                          },
+                          {
+                            value: "small",
+                            label: t("appearance_reading.card_image_small"),
+                          },
+                          {
+                            value: "large",
+                            label: t("appearance_reading.card_image_large"),
+                          },
+                        ]}
+                      />
+                    </SettingRow>
+                    <SettingRow label={t("appearance_reading.preview_lines")}>
+                      <SegmentedControl
+                        className="shrink-0"
+                        value={String(cardPreviewLines)}
+                        onValueChange={(value) =>
+                          setCardPreviewLines(Number(value))
+                        }
+                        options={[
+                          { value: "0", label: t("appearance_reading.none") },
+                          { value: "1", label: "1" },
+                          { value: "2", label: "2" },
+                          { value: "3", label: "3" },
+                        ]}
+                      />
+                    </SettingRow>
+                  </>
                 )}
                 {/* 图片视图档位（28-7 收敛为两档：网格 / 悬停大图；31-1 增第三档「照片墙」）。
                     原先的「瀑布流」与「网格」合并成一档「网格」，两者的差别降为下面那条「样式」。 */}
