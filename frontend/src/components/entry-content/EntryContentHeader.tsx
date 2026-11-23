@@ -606,7 +606,7 @@ export function EntryContentHeader({
               <button
                 type="button"
                 onClick={onToggleSummary}
-                title={summaryTooltip}
+                aria-label={summaryTooltip}
                 className={cn(
                   "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95",
                   summaryFailed
@@ -650,7 +650,7 @@ export function EntryContentHeader({
                 disabled={
                   translationDisabled && !hasTranslation && !isTranslating
                 }
-                title={translationTooltip}
+                aria-label={translationTooltip}
                 className={cn(
                   "no-drag-region flex size-9 items-center justify-center rounded-full transition-colors duration-200 active:scale-95",
                   translationFailed
