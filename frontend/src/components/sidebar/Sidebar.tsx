@@ -26,7 +26,7 @@ import { SidebarAccountBar } from "./SidebarAccountBar";
 import { StarredItem } from "./StarredItem";
 import { FeedCategory } from "./FeedCategory";
 import { ListBox } from "@heroui/react";
-import { Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { ListOrdered, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -60,6 +60,7 @@ import {
 import { useFeeds } from "@/hooks/useFeeds";
 import { useFeedMenuActions } from "@/hooks/useFeedMenuActions";
 import { useUnreadCounts, useStarredCount } from "@/hooks/useEntries";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import {
   useAllCategoriesOpen,
   useCategoryActions,
@@ -72,11 +73,18 @@ import {
   useSidebarHotkeys,
   type SidebarTarget,
 } from "@/hooks/useSidebarHotkeys";
-import { refreshFeeds } from "@/api";
+import { refreshFeeds, updateFeed as updateFeedApi, updateFolder as updateFolderApi } from "@/api";
 import { showToast } from "@/stores/toast-store";
 import { queryClient } from "@/lib/queryClient";
 import { requestEntriesHeadSync } from "@/lib/entries-head-sync";
 import type { AppearanceSettings } from "@/types/settings";
+import {
+  SidebarDndProvider,
+  type DragEntity,
+  type DropPosition,
+  type DropTarget,
+  type SidebarDndValue,
+} from "./sidebar-dnd";
 
 const defaultContentTypes: ContentType[] = [
   "article",
@@ -88,7 +96,7 @@ const defaultContentTypes: ContentType[] = [
 // Per-contentType scroll position cache (module-level to survive unmount/remount)
 const sidebarScrollPositions = new Map<string, number>();
 
-type SortBy = "name" | "date";
+type SortBy = "name" | "date" | "custom";
 
 // ASCII first (English/numbers before Chinese)
 function compareNames(a: string, b: string): number {
@@ -308,8 +316,45 @@ export function Sidebar({
           (a, b) =>
             new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
         );
+      } else if (sortBy === "custom") {
+        // 手动排序：按 sortOrder 升序；没有 sortOrder 的排到后面，用名称兜底
+        sorted.sort((a, b) => {
+          const ao = a.sortOrder;
+          const bo = b.sortOrder;
+          if (ao === undefined && bo === undefined) return compareNames(a.title, b.title);
+          if (ao === undefined) return 1;
+          if (bo === undefined) return -1;
+          return ao - bo;
+        });
       } else {
         sorted.sort((a, b) => compareNames(a.title, b.title));
+      }
+      return sorted;
+    },
+    [sortBy],
+  );
+
+  // Sort folders helper（与 sortFeeds 同口径，供拖拽重排时按「当前显示顺序」计算落点）
+  const sortFolders = useCallback(
+    (folderList: Folder[]) => {
+      const sorted = [...folderList];
+      if (sortBy === "date") {
+        sorted.sort(
+          (a, b) =>
+            new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+        );
+      } else if (sortBy === "custom") {
+        sorted.sort((a, b) => {
+          const ao = a.sortOrder;
+          const bo = b.sortOrder;
+          if (ao === undefined && bo === undefined)
+            return compareNames(a.name, b.name);
+          if (ao === undefined) return 1;
+          if (bo === undefined) return -1;
+          return ao - bo;
+        });
+      } else {
+        sorted.sort((a, b) => compareNames(a.name, b.name));
       }
       return sorted;
     },
@@ -325,6 +370,16 @@ export function Sidebar({
           new Date(a.folder.createdAt).getTime() -
           new Date(b.folder.createdAt).getTime(),
       );
+    } else if (sortBy === "custom") {
+      sorted.sort((a, b) => {
+        const ao = a.folder.sortOrder;
+        const bo = b.folder.sortOrder;
+        if (ao === undefined && bo === undefined)
+          return compareNames(a.folder.name, b.folder.name);
+        if (ao === undefined) return 1;
+        if (bo === undefined) return -1;
+        return ao - bo;
+      });
     } else {
       sorted.sort((a, b) => compareNames(a.folder.name, b.folder.name));
     }
@@ -357,6 +412,16 @@ export function Sidebar({
             new Date(a.folder.createdAt).getTime() -
             new Date(b.folder.createdAt).getTime(),
         );
+      } else if (sortBy === "custom") {
+        nodes.sort((a, b) => {
+          const ao = a.folder.sortOrder;
+          const bo = b.folder.sortOrder;
+          if (ao === undefined && bo === undefined)
+            return compareNames(a.folder.name, b.folder.name);
+          if (ao === undefined) return 1;
+          if (bo === undefined) return -1;
+          return ao - bo;
+        });
       } else {
         nodes.sort((a, b) => compareNames(a.folder.name, b.folder.name));
       }
@@ -365,6 +430,361 @@ export function Sidebar({
     sortNodes(roots);
     return roots;
   }, [sortedFoldersWithFeeds, sortBy]);
+
+  // ---------- Web 桌面拖拽（HTML5 原生 drag events）----------
+  // 移动端禁用拖拽：长按仍走既有右键菜单；桌面才挂 draggable。
+  const isMobile = useIsMobile();
+  const canDrag = !isMobile;
+  const [dragging, setDragging] = useState<DragEntity | null>(null);
+  const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
+  const draggingRef = useRef<DragEntity | null>(null);
+
+  /** 每个文件夹的后代集合（用于拖拽防成环：folder 不能拖进自己的子树） */
+  const folderDescendants = useMemo(() => {
+    const childrenByParent = new Map<string, Folder[]>();
+    for (const folder of allFolders) {
+      if (!folder.parentId) continue;
+      const siblings = childrenByParent.get(folder.parentId) ?? [];
+      siblings.push(folder);
+      childrenByParent.set(folder.parentId, siblings);
+    }
+    const collect = (rootId: string): Set<string> => {
+      const result = new Set<string>();
+      const stack = [...(childrenByParent.get(rootId) ?? [])];
+      while (stack.length > 0) {
+        const node = stack.pop()!;
+        if (result.has(node.id)) continue;
+        result.add(node.id);
+        stack.push(...(childrenByParent.get(node.id) ?? []));
+      }
+      return result;
+    };
+    const map = new Map<string, Set<string>>();
+    for (const folder of allFolders) map.set(folder.id, collect(folder.id));
+    return map;
+  }, [allFolders]);
+
+  /** 根据指针在行内的纵向位置 + 行类型，算出落点（before/after/inside）；不合法返回 null */
+  const computeDropPosition = useCallback(
+    (
+      event: React.DragEvent,
+      target: DragEntity,
+      rowKind: "feed" | "folder",
+    ): DropPosition | null => {
+      const dragged = draggingRef.current;
+      if (!dragged || dragged.id === target.id) return null;
+      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+      const y = event.clientY - rect.top;
+      const h = rect.height || 1;
+      if (rowKind === "folder") {
+        if (dragged.kind === "feed") return "inside";
+        // folder 拖到 folder：不能落进自己的后代（成环）；上/下 1/3 = 同级重排，中间 = 移入
+        if (folderDescendants.get(dragged.id)?.has(target.id)) return null;
+        if (y < h * 0.3) return "before";
+        if (y > h * 0.7) return "after";
+        return "inside";
+      }
+      // feed 行只接 feed（同级重排）；folder 落在 feed 行无意义
+      if (dragged.kind !== "feed") return null;
+      return y < h * 0.5 ? "before" : "after";
+    },
+    [folderDescendants],
+  );
+
+  /** 订阅重排/移入后持久化：先乐观改缓存，再逐项 PUT；失败回滚 + toast */
+  const persistFeedLayout = useCallback(
+    async (containerId: string | undefined, ordered: Feed[]) => {
+      const snapshot = queryClient.getQueryData<Feed[]>(["feeds"]);
+      queryClient.setQueryData<Feed[]>(["feeds"], (old) =>
+        old?.map((feed) => {
+          const index = ordered.findIndex((item) => item.id === feed.id);
+          if (index === -1) return feed;
+          return { ...feed, folderId: containerId, sortOrder: index };
+        }),
+      );
+      try {
+        await Promise.all(
+          ordered.map((feed, index) =>
+            updateFeedApi(feed.id, {
+              title: feed.title,
+              folderId: containerId,
+              sortOrder: index,
+            }),
+          ),
+        );
+        setSortBy("custom");
+      } catch {
+        if (snapshot) queryClient.setQueryData(["feeds"], snapshot);
+        showToast(t("sidebar.reorder_failed"));
+      } finally {
+        queryClient.invalidateQueries({ queryKey: ["feeds"] });
+        queryClient.invalidateQueries({ queryKey: ["folders"] });
+      }
+    },
+    [t],
+  );
+
+  /** 文件夹重排/移入后持久化（parentId 同时承载「移入/移出」语义） */
+  const persistFolderLayout = useCallback(
+    async (parentId: string | undefined, ordered: Folder[]) => {
+      const snapshot = queryClient.getQueryData<Folder[]>(["folders"]);
+      queryClient.setQueryData<Folder[]>(["folders"], (old) =>
+        old?.map((folder) => {
+          const index = ordered.findIndex((item) => item.id === folder.id);
+          if (index === -1) return folder;
+          return { ...folder, parentId, sortOrder: index };
+        }),
+      );
+      try {
+        await Promise.all(
+          ordered.map((folder, index) =>
+            updateFolderApi(folder.id, {
+              name: folder.name,
+              parentId,
+              sortOrder: index,
+            }),
+          ),
+        );
+        setSortBy("custom");
+      } catch {
+        if (snapshot) queryClient.setQueryData(["folders"], snapshot);
+        showToast(t("sidebar.reorder_failed"));
+      } finally {
+        queryClient.invalidateQueries({ queryKey: ["folders"] });
+        queryClient.invalidateQueries({ queryKey: ["feeds"] });
+      }
+    },
+    [t],
+  );
+
+  /** 计算 container 内的新顺序（排除被拖项后按落点插入），交给持久化 */
+  const applyFeedDrop = useCallback(
+    (
+      dragged: DragEntity,
+      containerId: string | undefined,
+      targetId: string | null,
+      position: DropPosition,
+    ) => {
+      const draggedFeed = allFeeds.find((feed) => feed.id === dragged.id);
+      if (!draggedFeed) return;
+      const siblings = sortFeeds(
+        feeds.filter(
+          (feed) =>
+            feed.id !== dragged.id &&
+            (feed.folderId ?? undefined) === containerId,
+        ),
+      );
+      let insertAt = siblings.length;
+      if (position !== "inside" && targetId) {
+        const targetIndex = siblings.findIndex((feed) => feed.id === targetId);
+        insertAt =
+          targetIndex === -1
+            ? siblings.length
+            : position === "after"
+              ? targetIndex + 1
+              : targetIndex;
+      }
+      const ordered = [
+        ...siblings.slice(0, insertAt),
+        draggedFeed,
+        ...siblings.slice(insertAt),
+      ];
+      void persistFeedLayout(containerId, ordered);
+    },
+    [allFeeds, feeds, persistFeedLayout, sortFeeds],
+  );
+
+  const applyFolderDrop = useCallback(
+    (
+      dragged: DragEntity,
+      parentId: string | undefined,
+      targetId: string | null,
+      position: DropPosition,
+    ) => {
+      const draggedFolder = allFolders.find((folder) => folder.id === dragged.id);
+      if (!draggedFolder) return;
+      const siblings = sortFolders(
+        folders.filter(
+          (folder) =>
+            folder.id !== dragged.id &&
+            (folder.parentId ?? undefined) === parentId,
+        ),
+      );
+      let insertAt = siblings.length;
+      if (position !== "inside" && targetId) {
+        const targetIndex = siblings.findIndex(
+          (folder) => folder.id === targetId,
+        );
+        insertAt =
+          targetIndex === -1
+            ? siblings.length
+            : position === "after"
+              ? targetIndex + 1
+              : targetIndex;
+      }
+      const ordered = [
+        ...siblings.slice(0, insertAt),
+        draggedFolder,
+        ...siblings.slice(insertAt),
+      ];
+      void persistFolderLayout(parentId, ordered);
+    },
+    [allFolders, folders, persistFolderLayout, sortFolders],
+  );
+
+  const handleRowDrop = useCallback(
+    (event: React.DragEvent, target: DragEntity, rowKind: "feed" | "folder") => {
+      event.preventDefault();
+      event.stopPropagation();
+      const dragged = draggingRef.current;
+      const position = computeDropPosition(event, target, rowKind);
+      draggingRef.current = null;
+      setDragging(null);
+      setDropTarget(null);
+      if (!dragged || !position) return;
+      if (dragged.kind === "feed") {
+        if (rowKind === "folder" && position === "inside") {
+          applyFeedDrop(dragged, target.id, null, "inside");
+        } else if (rowKind === "feed") {
+          const targetFeed = allFeeds.find((feed) => feed.id === target.id);
+          if (targetFeed)
+            applyFeedDrop(dragged, targetFeed.folderId, target.id, position);
+        }
+        return;
+      }
+      // folder
+      if (rowKind === "folder") {
+        if (position === "inside") {
+          applyFolderDrop(dragged, target.id, null, "inside");
+        } else {
+          const targetFolder = allFolders.find(
+            (folder) => folder.id === target.id,
+          );
+          if (targetFolder)
+            applyFolderDrop(
+              dragged,
+              targetFolder.parentId,
+              target.id,
+              position,
+            );
+        }
+      }
+    },
+    [allFolders, allFeeds, applyFeedDrop, applyFolderDrop, computeDropPosition],
+  );
+
+  /** 空白/根区：移到根目录并排到末尾 */
+  const handleRootDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+      const dragged = draggingRef.current;
+      draggingRef.current = null;
+      setDragging(null);
+      setDropTarget(null);
+      if (!dragged) return;
+      if (dragged.kind === "feed") {
+        applyFeedDrop(dragged, undefined, null, "inside");
+      } else {
+        applyFolderDrop(dragged, undefined, null, "inside");
+      }
+    },
+    [applyFeedDrop, applyFolderDrop],
+  );
+
+  /** 文件夹右键「移动到文件夹 / 移到顶层」：parentId=null 表示移到顶层 */
+  const handleMoveFolderToParent = useCallback(
+    (folderId: string, parentId: string | null) => {
+      const folder = allFolders.find((item) => item.id === folderId);
+      if (!folder) return;
+      if ((folder.parentId ?? null) === parentId) return;
+      updateFolderApi(folderId, {
+        name: folder.name,
+        parentId: parentId ?? undefined,
+      })
+        .then(() => {
+          queryClient.invalidateQueries({ queryKey: ["folders"] });
+          queryClient.invalidateQueries({ queryKey: ["feeds"] });
+        })
+        .catch(() => showToast(t("sidebar.move_failed")));
+    },
+    [allFolders, t],
+  );
+
+  const dndRowProps = (
+    entity: DragEntity,
+    rowKind: "feed" | "folder",
+  ): ReturnType<SidebarDndValue["rowProps"]> => {
+    if (!canDrag) return {};
+    return {
+      draggable: true,
+      onDragStart: (event: React.DragEvent) => {
+        draggingRef.current = entity;
+        setDragging(entity);
+        event.dataTransfer.effectAllowed = "move";
+        try {
+          event.dataTransfer.setData("text/plain", entity.id);
+        } catch {
+          // 某些浏览器在只读 dataTransfer 上 setData 会抛，忽略即可
+        }
+      },
+      onDragEnd: () => {
+        draggingRef.current = null;
+        setDragging(null);
+        setDropTarget(null);
+      },
+      onDragOver: (event: React.DragEvent) => {
+        if (!draggingRef.current || draggingRef.current.id === entity.id) return;
+        const position = computeDropPosition(event, entity, rowKind);
+        if (!position) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.dataTransfer.dropEffect = "move";
+        setDropTarget((prev) =>
+          prev &&
+          prev.kind === rowKind &&
+          prev.id === entity.id &&
+          prev.position === position
+            ? prev
+            : { kind: rowKind, id: entity.id, position },
+        );
+      },
+      onDragLeave: (event: React.DragEvent) => {
+        const related = event.relatedTarget as Node | null;
+        if (related && (event.currentTarget as HTMLElement).contains(related))
+          return;
+        setDropTarget((prev) =>
+          prev && prev.kind === rowKind && prev.id === entity.id ? null : prev,
+        );
+      },
+      onDrop: (event: React.DragEvent) => handleRowDrop(event, entity, rowKind),
+    };
+  };
+
+  const dndContainerProps = (): ReturnType<
+    SidebarDndValue["containerProps"]
+  > => {
+    if (!canDrag) return {};
+    return {
+      onDragOver: (event: React.DragEvent) => {
+        if (!draggingRef.current) return;
+        // 只接管真正落在容器空白处的事件（行内的 dragover 已 stopPropagation）
+        if (event.target !== event.currentTarget) return;
+        event.preventDefault();
+      },
+      onDrop: (event: React.DragEvent) => {
+        if (event.target !== event.currentTarget) return;
+        handleRootDrop(event);
+      },
+    };
+  };
+
+  const dndValue: SidebarDndValue = {
+    canDrag,
+    dragging,
+    dropTarget,
+    rowProps: dndRowProps,
+    containerProps: dndContainerProps,
+  };
 
   // 订阅区头部那个「全部展开 / 全部收起」按钮：分类的展开态以文件夹 id 为键存在 localStorage
   //（21-2：原来用 name，多层同名文件夹会串）
@@ -565,7 +985,7 @@ export function Sidebar({
             }}
             className="absolute inset-0 will-change-[transform,opacity]"
           >
-            <SidebarScrollArea scrollKey={animatedContentType}>
+            <SidebarScrollArea scrollKey={animatedContentType} {...dndContainerProps()}>
               {/* 星标入口：原先只在账户菜单里（那颗已按用户要求去掉），改放侧栏导航顶部 —— Nextflux 也是这个位置。
                   2026-09-18 收敛：只剩这一行（行尾的「当前视图」开关已删，那一档挪到第二栏列表头的图标按钮），
                   点进来默认就是「只当前视图」那一档 */}
@@ -668,8 +1088,10 @@ export function Sidebar({
                     <button className="flex size-6 items-center justify-center rounded-[var(--radius)] text-muted-foreground hover:bg-secondary/50 hover:text-foreground">
                       {sortBy === "name" ? (
                         <ArrowDownAZIcon className="size-3.5" />
-                      ) : (
+                      ) : sortBy === "date" ? (
                         <CalendarIcon className="size-3.5" />
+                      ) : (
+                        <ListOrdered className="size-3.5" />
                       )}
                     </button>
                   </DropdownMenuTrigger>
@@ -688,6 +1110,13 @@ export function Sidebar({
                       <CalendarIcon className="mr-2 size-4" />
                       {t("sidebar.sort_date")}
                     </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setSortBy("custom")}
+                      className={cn(sortBy === "custom" && "bg-secondary")}
+                    >
+                      <ListOrdered className="mr-2 size-4" />
+                      {t("sidebar.sort_custom")}
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
                 </div>
@@ -695,7 +1124,8 @@ export function Sidebar({
 
               {/* Feed categories —— 分组之间留一点间距，让「一组订阅」读起来是一块；
                   21-2：按 parentId 建树，子文件夹缩进渲染在父级下面（OPML 多层导入的数据） */}
-              <div className="space-y-px">
+              <SidebarDndProvider value={dndValue}>
+                <div className="space-y-px">
                 {folderTree.map((node, nodeIndex) => (
                   <div
                     key={node.folder.id}
@@ -721,6 +1151,7 @@ export function Sidebar({
                       handleMoveToFolder={handleMoveToFolder}
                       handleChangeFeedType={handleChangeFeedType}
                       folders={folders}
+                      onMoveFolderToParent={handleMoveFolderToParent}
                       unreadCounts={unreadCounts}
                       sortFeeds={sortFeeds}
                       isFeedSelected={isFeedSelected}
@@ -752,6 +1183,8 @@ export function Sidebar({
                       onClick={() => onSelectFeed(feed.id)}
                       className="pl-2.5"
                       folders={folders}
+                      folderId={feed.folderId}
+                      contentType={feed.type}
                       onEdit={handleEditFeed}
                       onDelete={handleDeleteFeed}
                       onMoveToFolder={handleMoveToFolder}
@@ -775,6 +1208,8 @@ export function Sidebar({
                     onClick={() => onSelectFeed(feed.id)}
                     className="pl-2.5"
                     folders={folders}
+                    folderId={feed.folderId}
+                    contentType={feed.type}
                     onEdit={handleEditFeed}
                     onDelete={handleDeleteFeed}
                     onMoveToFolder={handleMoveToFolder}
@@ -782,7 +1217,8 @@ export function Sidebar({
                   />
                   ))
                 )}
-              </div>
+                </div>
+              </SidebarDndProvider>
             </SidebarScrollArea>
           </motion.div>
         </AnimatePresence>
@@ -848,9 +1284,14 @@ export function Sidebar({
 function SidebarScrollArea({
   scrollKey,
   children,
+  onDragOver,
+  onDrop,
 }: {
   scrollKey: string;
   children: React.ReactNode;
+  /** 桌面拖拽：拖到空白/根区时移出到根目录（见 Sidebar 的 dndContainerProps） */
+  onDragOver?: (e: React.DragEvent) => void;
+  onDrop?: (e: React.DragEvent) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -879,6 +1320,8 @@ function SidebarScrollArea({
     <div
       ref={ref}
       className="h-full overflow-y-auto overscroll-y-contain px-1 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] space-y-1"
+      onDragOver={onDragOver}
+      onDrop={onDrop}
     >
       {children}
     </div>
@@ -905,6 +1348,7 @@ function FolderNode({
   handleDeleteFeed,
   handleMoveToFolder,
   handleChangeFeedType,
+  onMoveFolderToParent,
   folders,
   unreadCounts,
   sortFeeds,
@@ -928,6 +1372,7 @@ function FolderNode({
   handleDeleteFeed: (feedId: string) => void;
   handleMoveToFolder: (feedId: string, folderId: string | null) => void;
   handleChangeFeedType: (feedId: string, type: ContentType) => void;
+  onMoveFolderToParent: (folderId: string, parentId: string | null) => void;
   folders: Folder[];
   unreadCounts: Map<string, number>;
   sortFeeds: (feeds: Feed[]) => Feed[];
@@ -952,6 +1397,7 @@ function FolderNode({
     handleDeleteFeed,
     handleMoveToFolder,
     handleChangeFeedType,
+    onMoveFolderToParent,
     folders,
     unreadCounts,
     sortFeeds,
@@ -963,6 +1409,9 @@ function FolderNode({
       name={folder.name}
       stateKey={folder.id}
       depth={depth}
+      parentId={folder.parentId}
+      contentType={folder.type}
+      folderOptions={folders}
       unreadCount={folderUnreadCounts.get(folder.id) || 0}
       isSelected={isFolderSelected(folder.id)}
       onSelect={() => onSelectFolder(folder.id)}
@@ -971,6 +1420,7 @@ function FolderNode({
       onChangeType={handleChangeFolderType}
       onBulkOverrides={handleBulkOverrides}
       onRefresh={handleRefreshFolder}
+      onMoveToFolder={onMoveFolderToParent}
     >
       {node.children.map((child) => (
         <FolderNode
@@ -1004,6 +1454,8 @@ function FolderNode({
               onClick={() => onSelectFeed(feed.id)}
               className="pl-6"
               folders={folders}
+              folderId={feed.folderId}
+              contentType={feed.type}
               onEdit={handleEditFeed}
               onDelete={handleDeleteFeed}
               onMoveToFolder={handleMoveToFolder}
@@ -1027,6 +1479,8 @@ function FolderNode({
             onClick={() => onSelectFeed(feed.id)}
             className="pl-6"
             folders={folders}
+            folderId={feed.folderId}
+            contentType={feed.type}
             onEdit={handleEditFeed}
             onDelete={handleDeleteFeed}
             onMoveToFolder={handleMoveToFolder}

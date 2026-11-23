@@ -22,6 +22,7 @@ import { describeRefreshError } from "@/lib/refresh-error";
 import { useUISettingKey } from "@/hooks/useUISettings";
 import { feedItemStyles, sidebarItemIconStyles, feedIconImageStyles } from "./styles";
 import type { ContentType, Folder } from "@/types/api";
+import { useSidebarDndOptional } from "./sidebar-dnd";
 
 interface FeedItemProps {
   name: string;
@@ -44,6 +45,9 @@ interface FeedItemProps {
   onClick?: () => void;
   className?: string;
   folders?: Folder[];
+  /** 拖拽用：所属文件夹 id（顶层为 undefined）与内容类型 */
+  folderId?: string;
+  contentType?: ContentType;
   onRefresh?: (feedId: string) => void;
   onEdit?: (feedId: string) => void;
   onDelete?: (feedId: string) => void;
@@ -99,6 +103,8 @@ export function FeedItem({
   onClick,
   className,
   folders = [],
+  folderId,
+  contentType,
   onRefresh,
   onEdit,
   onDelete,
@@ -149,6 +155,24 @@ export function FeedItem({
   const contextMenuProps = useContextMenu({
     onContextMenu: handleContextMenu,
   });
+
+  const dnd = useSidebarDndOptional();
+  const rowDndProps =
+    dnd && dnd.canDrag
+      ? dnd.rowProps(
+          {
+            kind: "feed",
+            id: feedId,
+            type: contentType ?? "article",
+            containerId: folderId,
+          },
+          "feed",
+        )
+      : {};
+  const dropPosition =
+    dnd?.dropTarget?.kind === "feed" && dnd.dropTarget.id === feedId
+      ? dnd.dropTarget.position
+      : null;
 
   /** 行内容（图标 + 名称/源站 + 错误提示 + 未读数）：两套根共用 */
   const rowContent = (
@@ -269,7 +293,18 @@ export function FeedItem({
         id={feedId}
         textValue={name}
         data-active={isActive}
-        className={cn("group", hasError && "text-red-500 dark:text-red-400", className)}
+        data-dnd-drop={dropPosition ?? undefined}
+        className={cn(
+          "group",
+          hasError && "text-red-500 dark:text-red-400",
+          dropPosition === "inside" &&
+            "bg-primary/10 ring-1 ring-inset ring-primary/40",
+          dropPosition === "before" &&
+            "before:content-[''] before:absolute before:inset-x-1 before:-top-px before:h-0.5 before:rounded-full before:bg-primary",
+          dropPosition === "after" &&
+            "after:content-[''] after:absolute after:inset-x-1 after:-bottom-px after:h-0.5 after:rounded-full after:bg-primary",
+          className,
+        )}
         {...contextMenuProps}
       >
         <ContextMenu>
@@ -284,6 +319,7 @@ export function FeedItem({
                * 这里让行内容自己也能触发选中（幂等：即使 onAction 也发了，切到同一个订阅没有副作用）。
                */
               onClick={onClick}
+              {...rowDndProps}
             >
               {rowContent}
             </span>
@@ -299,13 +335,21 @@ export function FeedItem({
       <ContextMenuTrigger asChild ref={triggerRef}>
         <div
           data-active={isActive}
+          data-dnd-drop={dropPosition ?? undefined}
           className={cn(
             feedItemStyles,
             "group relative justify-between py-0.5 pr-2",
+            dropPosition === "inside" &&
+              "bg-primary/10 ring-1 ring-inset ring-primary/40",
+            dropPosition === "before" &&
+              "before:content-[''] before:absolute before:inset-x-1 before:-top-px before:h-0.5 before:rounded-full before:bg-primary",
+            dropPosition === "after" &&
+              "after:content-[''] after:absolute after:inset-x-1 after:-bottom-px after:h-0.5 after:rounded-full after:bg-primary",
             className,
           )}
           onClick={onClick}
           {...contextMenuProps}
+          {...rowDndProps}
         >
           <Ripple hoverOpacity={0} pressedOpacity={0.05} duration={100} />
           <div
