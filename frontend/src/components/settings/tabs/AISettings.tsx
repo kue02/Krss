@@ -1282,7 +1282,7 @@ export function AISettings() {
           >
             <Switch
               className="shrink-0"
-              checked={settings.useProxy !== false}
+              checked={settings.useProxy === true}
               onCheckedChange={(checked) =>
                 handleChange("useProxy", checked)
               }
