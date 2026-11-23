@@ -167,13 +167,17 @@ export function PictureMasonry({
     experimentalPictureWall: useUISettingKey("experimentalPictureWall"),
     experimentalArticleHover: useUISettingKey("experimentalArticleHover"),
   });
-  const pictureLayoutOrder: Array<"grid" | "hover" | "wall"> = ["grid"];
-  if (expVisibility.pictureHover || resolvedLayout === "hover") {
-    pictureLayoutOrder.push("hover");
-  }
-  if (expVisibility.pictureWall || resolvedLayout === "wall") {
-    pictureLayoutOrder.push("wall");
-  }
+  // 实验布局批：图片可切换档位严格按实验可见性生成（关闭即隐藏，不因当前正选中而泄漏）。
+  // 常规只有「网格」；hover/wall 仅在对应实验开关打开时进入循环。
+  // 已选中的实验布局仍照常渲染——入口隐藏不影响 resolvedLayout。
+  const showPictureHover = expVisibility.pictureHover;
+  const showPictureWall = expVisibility.pictureWall;
+  const pictureLayoutOrder = useMemo<Array<"grid" | "hover" | "wall">>(() => {
+    const order: Array<"grid" | "hover" | "wall"> = ["grid"];
+    if (showPictureHover) order.push("hover");
+    if (showPictureWall) order.push("wall");
+    return order;
+  }, [showPictureHover, showPictureWall]);
   const handleTogglePictureLayout = useCallback(() => {
     // 28-7 / 31-1：在「可见档位」里循环（网格 → 悬停大图 → 照片墙 → 网格）。
     // 实验布局批：hover/wall 未启用时循环里只有更少档；只剩一档则不切。
@@ -415,6 +419,11 @@ export function PictureMasonry({
     }
   }, [unreadCounts, selection, feeds, contentType]);
 
+  // 实验布局批：当前正用着已停用的实验布局 —— 保留渲染，但给一条「切回常规」逃生条
+  const disabledExperimentNotice =
+    (resolvedLayout === "hover" && !expVisibility.pictureHover) ||
+    (resolvedLayout === "wall" && !expVisibility.pictureWall);
+
   return (
     <div
       ref={wrapperRef}
@@ -446,6 +455,19 @@ export function PictureMasonry({
           onSearchClick={onSearchClick}
         />
       </MobileDocumentHeader>
+
+      {disabledExperimentNotice && (
+        <div className="mx-4 mt-3 flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+          <span>{t("appearance_view.experimental_disabled_hint")}</span>
+          <button
+            type="button"
+            onClick={() => setPictureLayout("grid")}
+            className="shrink-0 rounded-md px-2 py-1 font-medium underline underline-offset-2 hover:bg-amber-500/15"
+          >
+            {t("appearance_view.switch_to_regular")}
+          </button>
+        </div>
+      )}
 
       <div
         ref={scrollContainerRef}

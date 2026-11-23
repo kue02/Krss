@@ -51,6 +51,12 @@ const scrollReadState = vi.hoisted(() => ({
   setPerViewChoice: vi.fn(),
 }));
 
+/** 单测可临时改写某个 UI 设置键（用于模拟「当前正用着某实验布局」） */
+const uiOverride = vi.hoisted(() => ({
+  articleLayout: undefined as unknown,
+  pictureLayout: undefined as unknown,
+}));
+
 vi.mock("@/hooks/useScrollReadSetting", () => ({
   useScrollReadSetting: () => ({
     mode: scrollReadState.mode,
@@ -142,7 +148,8 @@ vi.mock("@/hooks/useUISettings", async () => {
   };
   return {
     ...actual,
-    useUISettingKey: (key: string) => values[key],
+    useUISettingKey: (key: string) =>
+      uiOverride[key as keyof typeof uiOverride] ?? values[key],
     useUISettingActions: () => ({
       setCardImageSize: vi.fn(),
       setCardPreviewLines: vi.fn(),
@@ -359,6 +366,24 @@ describe("AppearanceSettings 按视图设置", () => {
     expect(within(pictureRow).getByText("grid")).toBeTruthy();
     expect(within(pictureRow).queryByText("hover")).toBeNull();
     expect(within(pictureRow).queryByText("wall")).toBeNull();
+  });
+
+  it("M1 回归：实验关闭时，即使当前正用着 hover/wall，选择器也不泄漏这两个实验入口", () => {
+    uiOverride.articleLayout = "hover";
+    uiOverride.pictureLayout = "wall";
+    try {
+      render(<AppearanceSettings />);
+
+      const articleRow = rowOf("appearance_view.article_layout");
+      expect(within(articleRow).queryByText("hover")).toBeNull();
+
+      const pictureRow = rowOf("appearance_view.picture_layout");
+      expect(within(pictureRow).queryByText("hover")).toBeNull();
+      expect(within(pictureRow).queryByText("wall")).toBeNull();
+    } finally {
+      uiOverride.articleLayout = undefined;
+      uiOverride.pictureLayout = undefined;
+    }
   });
 
   it("改法 A：总开关是「关」时按视图那一行照样在（不再被门控）", () => {

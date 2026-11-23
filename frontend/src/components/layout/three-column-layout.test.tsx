@@ -48,6 +48,10 @@ describe("ThreeColumnLayout", () => {
     expect(main).toBeTruthy();
     expect(main?.className).toContain("absolute");
     expect(main?.className).toContain("pointer-events-none");
+    // 覆盖层之外：条目栏与侧栏都不在 <main> 内（浮层只盖第二栏，不动侧栏）
+    expect(main?.contains(screen.getByText("list"))).toBe(false);
+    expect(main?.contains(screen.getByText("sidebar"))).toBe(false);
+    expect(screen.getByText("sidebar")).toBeTruthy();
   });
 
   it("非覆盖模式（默认）：正文为第三栏，不绝对定位覆盖条目栏", () => {

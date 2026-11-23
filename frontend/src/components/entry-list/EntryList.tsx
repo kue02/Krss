@@ -27,7 +27,7 @@ import { selectionToParams, type SelectionType } from "@/hooks/useSelection";
 import { flattenUniqueEntries } from "@/lib/entry-pagination";
 import { stripHtml } from "@/lib/html-utils";
 import { EntryListItem } from "./EntryListItem";
-import { ArticleRowsList } from "./ArticleRowsList";
+import { ArticleRowsListRow } from "./ArticleRowsList";
 import { MobileSwipeEntryRow } from "@/components/mobile/MobileSwipeEntryRow";
 import { EntryListHeader } from "./EntryListHeader";
 import { needsListTranslation as needsListTranslationAsync } from "@/lib/language-detect-async";
@@ -51,7 +51,11 @@ import {
 } from "./deferred-removal";
 import { useEntryListScrollSurface } from "./scroll-surface";
 import { useEntryHotkeys } from "@/hooks/useEntryHotkeys";
-import { useUISettingKey, useUISettingActions } from "@/hooks/useUISettings";
+import {
+  useUISettingKey,
+  useUISettingActions,
+  resolveExperimentalLayoutVisibility,
+} from "@/hooks/useUISettings";
 import {
   resolveTimelineCollapse,
   resolveTimelineGranularity,
@@ -362,6 +366,28 @@ export function EntryList({
   const isArticleHover = contentType === "article" && articleLayout === "hover";
   /** 实验布局批：文章「列表」布局（紧凑行，无悬停浮层） */
   const isArticleRows = contentType === "article" && articleLayout === "rows";
+  /** 实验布局批：文章相关实验入口的可见性（关闭即隐藏，已选中仍照常渲染） */
+  const articleExpVisibility = resolveExperimentalLayoutVisibility({
+    experimentalFeaturesEnabled: useUISettingKey("experimentalFeaturesEnabled"),
+    experimentalPictureHover: useUISettingKey("experimentalPictureHover"),
+    experimentalPictureWall: useUISettingKey("experimentalPictureWall"),
+    experimentalArticleHover: useUISettingKey("experimentalArticleHover"),
+  });
+  /**
+   * 实验布局批：文章顶栏可切换档位（按实验可见性过滤）。
+   * 常规 = 传统三栏 + 列表；「悬停正文」仅在对应实验开关打开时进入循环。
+   * 只剩一档 → 不渲染切换按钮（由 EntryListHeader 据 order.length>1 判断）。
+   */
+  const articleLayoutOrder = useMemo<Array<"list" | "rows" | "hover">>(() => {
+    const order: Array<"list" | "rows" | "hover"> = ["list", "rows"];
+    if (articleExpVisibility.articleHover) order.push("hover");
+    return order;
+  }, [articleExpVisibility.articleHover]);
+  /** 实验布局批：正用着已停用的「悬停正文」——保留渲染，但给一条「切回常规」逃生条 */
+  const showDisabledArticleHoverNotice =
+    contentType === "article" &&
+    articleLayout === "hover" &&
+    !articleExpVisibility.articleHover;
   const [articleHoverAnchor, setArticleHoverAnchor] = useState<{
     id: string;
     x: number;
@@ -420,11 +446,17 @@ export function EntryList({
   );
 
   /** 28-1：顶栏左上角那颗文章档位切换（只有文章视图会拿到它）。
-   *  实验布局批：只在「传统三栏(list) ↔ 列表(rows)」间切，绝不含悬停正文（悬停正文只能去外观设置里选）。 */
+   *  实验布局批：在「可见档位」里循环（传统三栏 → 列表 → [悬停正文]）；悬停正文仅在实验开关打开时进入循环。 */
   const { setArticleLayout } = useUISettingActions();
   const handleToggleArticleLayout = useCallback(() => {
-    setArticleLayout(articleLayout === "rows" ? "list" : "rows");
-  }, [articleLayout, setArticleLayout]);
+    const idx = Math.max(
+      0,
+      articleLayoutOrder.findIndex((l) => l === articleLayout),
+    );
+    const next =
+      articleLayoutOrder[(idx + 1) % articleLayoutOrder.length] ?? "list";
+    setArticleLayout(next);
+  }, [articleLayout, articleLayoutOrder, setArticleLayout]);
   const timelineGranularity = resolveTimelineGranularity(
     useUISettingKey("timelineGranularityByView")?.[contentType],
   );
@@ -674,11 +706,10 @@ export function EntryList({
   // 列表滚上去以后，右上角浮出「当前序号 + 回到顶部」（对齐 Nextflux 的 Indicator）
   const [firstVisibleIndex, setFirstVisibleIndex] = useState(0);
   /**
-   * 虚拟化只覆盖「标准文章列表扁平流」：article 内容类型 + list 档（非 hover 档）。
-   * 社交 / 通知时间线 / hover 浮层档 / rows 紧凑行档都走原路径，一字不动。
+   * 虚拟化只覆盖「标准文章扁平流」：article 内容类型 + 非 hover 档（含 list 与 rows）。
+   * 社交 / 通知时间线 / hover 浮层档走原路径，一字不动。
    */
-  const useVirtualList =
-    contentType === "article" && !isArticleHover && !isArticleRows;
+  const useVirtualList = contentType === "article" && !isArticleHover;
   const virtualList = useVirtualizedArticleList({
     enabled: useVirtualList,
     scrollSurface,
@@ -1381,6 +1412,9 @@ export function EntryList({
           isTablet={isTablet}
           selectedEntryIds={selectedEntryId ? [selectedEntryId] : []}
           articleLayout={contentType === "article" ? articleLayout : undefined}
+          articleLayoutOrder={
+            contentType === "article" ? articleLayoutOrder : undefined
+          }
           onToggleArticleLayout={
             contentType === "article" ? handleToggleArticleLayout : undefined
           }
@@ -1499,6 +1533,18 @@ export function EntryList({
                 ),
           )}
         >
+          {showDisabledArticleHoverNotice && (
+            <div className="mx-4 mt-3 flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+              <span>{t("appearance_view.experimental_disabled_hint")}</span>
+              <button
+                type="button"
+                onClick={() => setArticleLayout("list")}
+                className="shrink-0 rounded-md px-2 py-1 font-medium underline underline-offset-2 hover:bg-amber-500/15"
+              >
+                {t("appearance_view.switch_to_regular")}
+              </button>
+            </div>
+          )}
           {isLoading ? (
             <EntryListSkeleton />
           ) : entries.length === 0 ? (
@@ -1533,15 +1579,22 @@ export function EntryList({
                   onSelectFeedFromEntry={onSelectFeedFromEntry}
                 />
               ) : isArticleRows ? (
-                /* 实验布局批：文章「列表」布局 —— 紧凑行（缩略图+标题+元信息），无悬停浮层 */
-                <ArticleRowsList
-                  items={entries.map((entry) => ({
-                    entry,
-                    feed: feedsMap.get(entry.feedId),
-                  }))}
-                  onSelectEntry={handleSelectEntry}
-                  selectedEntryId={selectedEntryId}
-                />
+                /* 实验布局批：文章「列表」布局 —— 紧凑行（缩略图+标题+元信息），无悬停浮层。
+                   走通用虚拟容器（大列表性能），jsdom 测不到尺寸时内部全量渲染。 */
+                <div className="w-full" data-testid="article-rows-list">
+                  <VirtualizedArticleList
+                    virtualList={virtualList}
+                    entries={entries}
+                    renderItem={(entry) => (
+                      <ArticleRowsListRow
+                        entry={entry}
+                        feed={feedsMap.get(entry.feedId)}
+                        onSelectEntry={handleSelectEntry}
+                        selectedEntryId={selectedEntryId}
+                      />
+                    )}
+                  />
+                </div>
               ) : useVirtualList ? (
                 <VirtualizedArticleList
                   virtualList={virtualList}

@@ -459,6 +459,11 @@ const SILENT_SAVE_UI_KEYS = new Set<string>([
   "articleLayout",
   "articlePushDirection",
   "articleCoverList",
+  // 实验布局批：实验开关与三个入口开关，勾选后子项禁用态/入口立即变化，不必再弹「已保存」
+  "experimentalFeaturesEnabled",
+  "experimentalPictureHover",
+  "experimentalPictureWall",
+  "experimentalArticleHover",
   "gridStyle",
   "hoverRowHeight",
   "hoverImageSize",

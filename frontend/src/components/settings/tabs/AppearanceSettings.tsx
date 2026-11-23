@@ -1206,7 +1206,7 @@ export function AppearanceSettings() {
                   <SettingRow
                     label={t("appearance_view.article_layout")}
                     hint={
-                      expVisibility.articleHover || articleLayout === "hover"
+                      expVisibility.articleHover
                         ? t("appearance_view.article_layout_hover_hint")
                         : undefined
                     }
@@ -1226,8 +1226,8 @@ export function AppearanceSettings() {
                           value: "rows",
                           label: t("appearance_view.article_layout_rows"),
                         },
-                        // 实验布局批：悬停正文入口仅在实验开关可见（或当前正选中）时出现
-                        ...(expVisibility.articleHover || articleLayout === "hover"
+                        // 实验布局批：悬停正文入口仅在实验开关打开时出现；关闭即隐藏，不因当前正选中而泄漏
+                        ...(expVisibility.articleHover
                           ? [
                               {
                                 value: "hover",
@@ -1304,9 +1304,8 @@ export function AppearanceSettings() {
                           value: "grid",
                           label: t("appearance_view.picture_layout_grid"),
                         },
-                        // 实验布局批：hover/wall 入口仅在实验开关可见（或当前正选中）时出现
-                        ...(expVisibility.pictureHover ||
-                        resolvedPictureLayout === "hover"
+                        // 实验布局批：hover/wall 入口仅在实验开关打开时出现；关闭即隐藏，不因当前正选中而泄漏
+                        ...(expVisibility.pictureHover
                           ? [
                               {
                                 value: "hover",
@@ -1314,8 +1313,7 @@ export function AppearanceSettings() {
                               },
                             ]
                           : []),
-                        ...(expVisibility.pictureWall ||
-                        resolvedPictureLayout === "wall"
+                        ...(expVisibility.pictureWall
                           ? [
                               {
                                 value: "wall",

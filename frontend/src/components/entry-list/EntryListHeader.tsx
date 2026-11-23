@@ -90,12 +90,19 @@ interface EntryListHeaderProps {
   onToggleSidebar?: () => void;
   sidebarVisible?: boolean;
   /**
-   * 28-1：文章视图的「展示方式」切换（卡片列表 ↔ 悬停大图）。
+   * 28-1：文章视图的「展示方式」切换。
    * 不传这两项就不渲染那颗按钮 —— 其它视图行为不变。
    * 28-6：按钮位置按用户要求放在**标题文字的右边**（不是标题左边）。
+   * 实验布局批：档位由 `articleLayoutOrder`（已按实验可见性过滤）驱动循环。
    */
   articleLayout?: "list" | "rows" | "hover";
   onToggleArticleLayout?: () => void;
+  /**
+   * 实验布局批：文章视图可切换的档位顺序（已按实验可见性过滤好的）。
+   * 顶栏按钮据此算「下一档」；长度 ≤1 时调用方不传 onToggleArticleLayout，按钮自然不渲染。
+   * 缺省为常规两档（传统三栏 → 列表），兼容旧调用。
+   */
+  articleLayoutOrder?: Array<"list" | "rows" | "hover">;
   /**
    * 28-7：图片视图的「展示方式」切换（网格 ⇄ 悬停大图，两档循环）。
    * 同上，不传则不渲染。
@@ -149,6 +156,7 @@ export function EntryListHeader({
   sidebarVisible,
   articleLayout,
   onToggleArticleLayout,
+  articleLayoutOrder,
   pictureLayout,
   onTogglePictureLayout,
   pictureLayoutOrder,
@@ -168,9 +176,17 @@ export function EntryListHeader({
   const currentPictureIdx = Math.max(0, pictureOrder.indexOf(pictureLayout ?? "grid"));
   const nextPictureLayoutKey =
     pictureOrder[(currentPictureIdx + 1) % pictureOrder.length];
-  /* 实验布局批：文章只在「传统三栏(list) ↔ 列表(rows)」两档间切，绝不含悬停正文 */
-  const nextArticleLayoutKey: "list" | "rows" =
-    articleLayout === "rows" ? "list" : "rows";
+  /* 实验布局批：文章可切换档位顺序（已过滤：常规 传统三栏→列表，悬停正文仅在实验开关打开时加入） */
+  const articleOrder: Array<"list" | "rows" | "hover"> =
+    articleLayoutOrder && articleLayoutOrder.length > 0
+      ? articleLayoutOrder
+      : ["list", "rows"];
+  const showArticleToggle =
+    Boolean(onToggleArticleLayout) && articleOrder.length > 1;
+  /* 顶栏那颗档位按钮：提示文案表达「点下去会变成什么」，所以取下一档的名字 */
+  const currentArticleIdx = Math.max(0, articleOrder.indexOf(articleLayout ?? "list"));
+  const nextArticleLayoutKey: "list" | "rows" | "hover" =
+    articleOrder[(currentArticleIdx + 1) % articleOrder.length] ?? "rows";
 
   if (isMobile) {
     return (
@@ -316,11 +332,13 @@ export function EntryListHeader({
               }}
             />
           ) : null}
-          {onToggleArticleLayout ? (
+          {showArticleToggle ? (
             <MobileActionSheetItem
               icon={
                 articleLayout === "rows" ? (
                   <FileTextIcon className="size-5" />
+                ) : articleLayout === "hover" ? (
+                  <Images className="size-5" />
                 ) : (
                   <LayoutList className="size-5" />
                 )
@@ -328,7 +346,7 @@ export function EntryListHeader({
               label={t(`appearance_view.article_layout_${nextArticleLayoutKey}`)}
               onClick={() => {
                 setMoreOpen(false);
-                onToggleArticleLayout();
+                onToggleArticleLayout?.();
               }}
             />
           ) : null}
@@ -427,7 +445,7 @@ export function EntryListHeader({
         {/* 28-1 / 28-6（用户：「把它放在右侧，右侧就是文字的右侧…不是右侧三个按钮的位置」）：
             展示方式切换按钮，紧跟在标题文字右边；图标表达「点下去会变成什么」。
             文章视图两档循环；图片视图三档循环（瀑布流 → 网格 → 悬停大图）。 */}
-        {onToggleArticleLayout && (
+        {showArticleToggle && (
           <button
             type="button"
             onClick={onToggleArticleLayout}
@@ -438,10 +456,13 @@ export function EntryListHeader({
             className="flex size-8 shrink-0 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95"
           >
             {articleLayout === "rows" ? (
-              /* 列表档：点下去回到传统三栏 */
+              /* 列表档 */
               <FileTextIcon className="size-4" />
+            ) : articleLayout === "hover" ? (
+              /* 悬停正文档 */
+              <Images className="size-4" />
             ) : (
-              /* 传统三栏 / 悬停正文：点下去是「列表」 */
+              /* 传统三栏 */
               <LayoutList className="size-4" />
             )}
           </button>
