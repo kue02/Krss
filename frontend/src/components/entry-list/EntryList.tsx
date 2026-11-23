@@ -28,10 +28,6 @@ import { flattenUniqueEntries } from "@/lib/entry-pagination";
 import { stripHtml } from "@/lib/html-utils";
 import { EntryListItem } from "./EntryListItem";
 import { MobileSwipeEntryRow } from "@/components/mobile/MobileSwipeEntryRow";
-import {
-  EntryListFilterPill,
-  type EntryFilter,
-} from "./EntryListFilterPill";
 import { EntryListHeader } from "./EntryListHeader";
 import { needsListTranslation as needsListTranslationAsync } from "@/lib/language-detect-async";
 import {
@@ -83,6 +79,8 @@ const REFRESH_MAX_WAIT_MS = 180_000;
  */
 const FORCE_REFRESH_CONFIRM_THRESHOLD = 20;
 
+/** 底部筛选胶囊已移除；此类型仍用于列表请求参数 filterValue。 */
+type EntryFilter = "all" | "unread" | "starred";
 
 interface EntryListProps {
   selection: SelectionType;
@@ -93,12 +91,6 @@ interface EntryListProps {
   onMarkAllRead: () => void;
   unreadOnly: boolean;
   onToggleUnreadOnly: () => void;
-  /**
-   * 底部筛选胶囊：星标 / 未读 / 全部 的切换（一次导航，见 useSelection.selectFilter）。
-   * 第四个状态「已静音」不走导航（路由里没有这个维度），由 EntryList 本地承载，
-   * 所以这里的回调类型不含 "muted"。
-   */
-  onFilterChange?: (filter: Exclude<EntryFilter, "muted">) => void;
   /** 12-6：星标视图下的「只查看当前视图」开关（与侧栏那个是同一个语义） */
   onToggleStarredViewOnly?: () => void;
   contentType: ContentType;
@@ -128,7 +120,6 @@ export function EntryList({
   onMarkAllRead,
   unreadOnly,
   onToggleUnreadOnly,
-  onFilterChange,
   contentType,
   isMobile,
   onMenuClick,
@@ -1692,15 +1683,6 @@ export function EntryList({
           />
         )}
 
-        {!usesDocumentScroll && (
-          <EntryListFilterPill
-            value={filterValue}
-            onChange={(next) => {
-              // 三态都走一次导航；「已静音」已从这里移除（入口在 设置 → 自动化）
-              onFilterChange?.(next);
-            }}
-          />
-        )}
       </div>
     </div>
   );
