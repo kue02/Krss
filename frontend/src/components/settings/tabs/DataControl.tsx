@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
-import { AlertDialog, Button, Description, Dropdown, Label } from "@heroui/react";
+import { AlertDialog, Button, Chip, Description, Dropdown, Label } from "@heroui/react";
 import {
   startImportOPML,
   watchImportStatus,
@@ -17,7 +17,7 @@ import {
   clearEntryCache,
 } from "@/api";
 import type { ClearAICacheResponse, ClearCacheResponse, BackupImportResult, BackupSection } from "@/api";
-import { Archive, ChevronDown, Download, Trash2, Upload } from "lucide-react";
+import { Archive, ChevronDown, Download, ListChecks, Trash2, Upload } from "lucide-react";
 import {
   SectionCard,
   SettingRow,
@@ -555,23 +555,39 @@ export function DataControl() {
       >
         <div className="space-y-3">
           <div className="flex flex-col gap-1.5">
-            <div className="text-sm font-medium">
-              {t("data_control.backup_sections")}
-            </div>
             <Dropdown>
-              <Dropdown.Trigger>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full justify-between sm:w-64"
-                >
-                  <span className="truncate">
-                    {t("data_control.backup_selected", {
-                      count: selectedSections.size,
-                    })}
+              <Dropdown.Trigger className="group flex h-auto w-full items-center justify-between gap-3 rounded-xl border border-border bg-background px-3.5 py-2.5 text-left outline-none transition-colors hover:bg-secondary/50 data-[focus-visible]:ring-2 data-[focus-visible]:ring-primary">
+                <span className="flex min-w-0 items-center gap-3">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
+                    <ListChecks className="size-4" />
                   </span>
-                  <ChevronDown className="size-4 shrink-0 text-muted" />
-                </Button>
+                  <span className="flex min-w-0 flex-col">
+                    <span className="text-sm font-medium">
+                      {t("data_control.backup_sections")}
+                    </span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {selectedSections.size === 0
+                        ? t("data_control.backup_select_at_least_one")
+                        : BACKUP_SECTION_ORDER.filter((section) =>
+                            selectedSections.has(section),
+                          )
+                            .map((section) =>
+                              t(`data_control.backup_section_${section}`),
+                            )
+                            .join(" · ")}
+                    </span>
+                  </span>
+                </span>
+                <span className="flex shrink-0 items-center gap-2">
+                  <Chip
+                    size="sm"
+                    variant="tertiary"
+                    className="border border-border tabular-nums text-muted-foreground"
+                  >
+                    {selectedSections.size}
+                  </Chip>
+                  <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-aria-expanded:rotate-180" />
+                </span>
               </Dropdown.Trigger>
               <Dropdown.Popover>
                 <Dropdown.Menu
