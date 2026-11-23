@@ -79,20 +79,26 @@ vi.mock("framer-motion", () => ({
       children,
       className,
       onClick,
+      onPointerDown,
     }: {
       children: React.ReactNode;
       className?: string;
       onClick?: () => void;
+      onPointerDown?: React.PointerEventHandler<HTMLDivElement>;
     }) => (
-      <div className={className} onClick={onClick}>
+      <div className={className} onClick={onClick} onPointerDown={onPointerDown}>
         {children}
       </div>
     ),
   },
 }));
 
-const mockImages = [
-  "https://example.com/img1.jpg",
+// 固定 t() 回显 key，便于断言 aria-label
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
+
+const mockImages = [  "https://example.com/img1.jpg",
   "https://example.com/img2.jpg",
   "https://example.com/img3.jpg",
 ];
@@ -529,6 +535,44 @@ describe("ImagePreview", () => {
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 320));
       });
+
+      expect(useImagePreviewStore.getState().isOpen).toBe(true);
+    });
+  });
+
+  describe("可访问性与单图拖动", () => {
+    beforeEach(() => {
+      mockZoomState.scale = 1;
+      mockZoomState.isZoomed = false;
+      capturedZoomResetKeys.length = 0;
+    });
+
+    it("关闭与左右翻页按钮都有 aria-label", () => {
+      useImagePreviewStore.getState().open(mockImages, 0);
+      render(<ImagePreview />);
+
+      expect(
+        screen.getByRole("button", { name: "entry.image_close" }),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole("button", { name: "entry.image_prev" }),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole("button", { name: "entry.image_next" }),
+      ).toBeTruthy();
+    });
+
+    it("单图未放大时拖动超过阈值不关闭预览", () => {
+      useImagePreviewStore.getState().open([mockImages[0]!]);
+      const { container } = render(<ImagePreview />);
+
+      const img = container.querySelector("img");
+      expect(img).not.toBeNull();
+      const stage = img!.parentElement!;
+
+      // 按下后横向拖动 60px 再抬起 —— 应识别为拖动，不当作点击
+      fireEvent.pointerDown(stage, { clientX: 100, clientY: 100 });
+      fireEvent.click(stage, { clientX: 160, clientY: 100 });
 
       expect(useImagePreviewStore.getState().isOpen).toBe(true);
     });

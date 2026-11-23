@@ -31,6 +31,16 @@ describe("VideoPreview", () => {
     // jsdom 未实现媒体播放/暂停，避免 "Not implemented" 错误
     window.HTMLMediaElement.prototype.play = vi.fn(() => Promise.resolve());
     window.HTMLMediaElement.prototype.pause = vi.fn();
+    // 默认支持全屏：fullscreenEnabled + Element.prototype.requestFullscreen
+    Object.defineProperty(document, "fullscreenEnabled", {
+      configurable: true,
+      get: () => true,
+    });
+    Object.defineProperty(Element.prototype, "requestFullscreen", {
+      configurable: true,
+      writable: true,
+      value: vi.fn(() => Promise.resolve()),
+    });
   });
 
   it("渲染带 controls / playsInline 的视频播放器", () => {
@@ -45,13 +55,14 @@ describe("VideoPreview", () => {
     expect(video?.getAttribute("src")).toBe("https://example.com/v.mp4");
   });
 
-  it("点击全屏按钮对 video 调用 requestFullscreen", () => {
+  it("点击全屏按钮对包裹容器调用 requestFullscreen", () => {
     useVideoPreviewStore.getState().open("https://example.com/v.mp4", null);
     const { container } = render(<VideoPreview />);
 
     const video = container.querySelector("video")!;
+    const wrapper = video.parentElement!;
     const requestFullscreen = vi.fn(() => Promise.resolve());
-    Object.defineProperty(video, "requestFullscreen", {
+    Object.defineProperty(wrapper, "requestFullscreen", {
       configurable: true,
       value: requestFullscreen,
     });
@@ -62,6 +73,19 @@ describe("VideoPreview", () => {
     fireEvent.click(button);
 
     expect(requestFullscreen).toHaveBeenCalledTimes(1);
+  });
+
+  it("不支持全屏时不渲染全屏按钮", () => {
+    Object.defineProperty(document, "fullscreenEnabled", {
+      configurable: true,
+      get: () => false,
+    });
+    useVideoPreviewStore.getState().open("https://example.com/v.mp4", null);
+    render(<VideoPreview />);
+
+    expect(
+      screen.queryByRole("button", { name: "entry.video_fullscreen" }),
+    ).toBeNull();
   });
 
   it("点击关闭按钮关闭播放器", () => {

@@ -20,7 +20,19 @@ export function VideoPreview() {
   const authedSrc = useAuthedImageUrl(src ?? undefined);
   const authedPoster = useAuthedImageUrl(poster ?? undefined);
   const videoRef = useRef<HTMLVideoElement>(null);
+  // 全屏请求打在包裹 video 与自定义按钮的容器上，这样全屏后自建按钮仍在全屏子树内、可点。
+  const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // 是否支持对容器请求全屏（iOS 等不支持时隐藏按钮，避免「点了没反应」）
+  const [canFullscreen, setCanFullscreen] = useState(false);
+
+  useEffect(() => {
+    setCanFullscreen(
+      typeof document !== "undefined" &&
+        Boolean(document.fullscreenEnabled) &&
+        typeof document.createElement("div").requestFullscreen === "function",
+    );
+  }, []);
 
   useEffect(() => {
     if (isOpen) return;
@@ -39,16 +51,16 @@ export function VideoPreview() {
   }, []);
 
   const toggleFullscreen = async () => {
-    const video = videoRef.current;
-    if (!video) return;
+    const container = containerRef.current;
     try {
       if (document.fullscreenElement) {
         await document.exitFullscreen?.();
-      } else {
-        await video.requestFullscreen?.();
+      } else if (container?.requestFullscreen) {
+        // 对包裹容器（含关闭/全屏按钮）全屏，按钮在全屏内仍可见可点
+        await container.requestFullscreen();
       }
     } catch {
-      // 某些环境不支持对视频元素全屏：静默忽略，用户仍可用原生 controls
+      // 某些环境不支持容器全屏：静默忽略，用户仍可用原生 controls
     }
   };
 
@@ -65,7 +77,10 @@ export function VideoPreview() {
       >
         <DialogTitle className="sr-only">{t("entry.video_preview")}</DialogTitle>
         {authedSrc && (
-          <div className="relative">
+          <div
+            ref={containerRef}
+            className="relative flex items-center justify-center bg-black"
+          >
             <video
               key={authedSrc}
               ref={videoRef}
@@ -95,30 +110,32 @@ export function VideoPreview() {
             >
               <X className="size-5" />
             </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                void toggleFullscreen();
-              }}
-              aria-label={
-                isFullscreen
-                  ? t("entry.video_exit_fullscreen")
-                  : t("entry.video_fullscreen")
-              }
-              title={
-                isFullscreen
-                  ? t("entry.video_exit_fullscreen")
-                  : t("entry.video_fullscreen")
-              }
-              className="absolute right-3 top-3 z-10 flex size-10 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors hover:bg-black/70 active:scale-95"
-            >
-              {isFullscreen ? (
-                <Minimize className="size-5" />
-              ) : (
-                <Maximize className="size-5" />
-              )}
-            </button>
+            {canFullscreen && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void toggleFullscreen();
+                }}
+                aria-label={
+                  isFullscreen
+                    ? t("entry.video_exit_fullscreen")
+                    : t("entry.video_fullscreen")
+                }
+                title={
+                  isFullscreen
+                    ? t("entry.video_exit_fullscreen")
+                    : t("entry.video_fullscreen")
+                }
+                className="absolute right-3 top-3 z-10 flex size-10 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors hover:bg-black/70 active:scale-95"
+              >
+                {isFullscreen ? (
+                  <Minimize className="size-5" />
+                ) : (
+                  <Maximize className="size-5" />
+                )}
+              </button>
+            )}
           </div>
         )}
       </DialogContent>
