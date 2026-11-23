@@ -1063,6 +1063,24 @@ export interface SummarizeResponse {
   cached: boolean;
 }
 
+/**
+ * 问题④：只读地取某条目已缓存的 AI 摘要（后端 GET /api/ai/summaries/:entryId）。
+ *
+ * **绝不触发生成**：正文页退出再进入时用它恢复「已摘要」状态。没有缓存时后端返回 204，
+ * 这里统一成 `null`，调用方按「无摘要」处理。
+ */
+export async function getCachedSummary(
+  entryId: string,
+  isReadability = false,
+): Promise<string | null> {
+  const res = await request<SummarizeResponse | undefined>(
+    `/api/ai/summaries/${encodeURIComponent(entryId)}?isReadability=${isReadability}`,
+    { method: "GET" },
+  );
+  const summary = res?.summary?.trim();
+  return summary ? summary : null;
+}
+
 export async function* streamSummary(
   req: SummarizeRequest,
   signal?: AbortSignal,

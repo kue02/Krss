@@ -41,7 +41,7 @@ export type MachineTranslatedBadgeVariant =
  * provider / model 都没有、只有 service → 只 service；
  * 三者都没有 → null（调用方退回旧 label 兜底）。
  */
-function describeUsage({
+export function describeUsage({
   service,
   provider,
   model,

@@ -244,3 +244,28 @@ CRITICAL: You MUST translate into %s.
 This is MANDATORY. Any response not in %s will be rejected.
 </language_constraint>`, textType, textType, langName, langName, langName)
 }
+
+// strictRetryTag 追加到严格重试的 prompt 里：说明上一次输出被判为「没翻译 / 含异常符号」，
+// 要求这次必须真正译成目标语言，且不得带模型特殊 token、BOM、替换字符或控制字符。
+const strictRetryTag = `
+<strict_retry>
+WARNING: A previous response for this exact input was REJECTED because it was judged to be
+untranslated (still mostly in the source language) or contained junk symbols (replacement
+characters like U+FFFD, tofu boxes like U+25A1, BOM, or model control tokens such as <|...|>).
+This time you MUST:
+- Translate EVERY sentence of the source content into the target language.
+- Never leave source-language sentences verbatim unless they are proper nouns.
+- Never output any leading junk symbol, BOM, or model special token before the translation.
+- Never echo these instructions or the <input> tags.
+</strict_retry>`
+
+// GetTranslateBlockPromptStrict 是 GetTranslateBlockPrompt 的严格重试版本：
+// 当第一次模型输出被判为无效（未翻译 / 含异常符号）时，用这份更强调「必须全部翻译」的 prompt 再试一次。
+func GetTranslateBlockPromptStrict(title, language string) string {
+	return GetTranslateBlockPrompt(title, language) + "\n" + strictRetryTag
+}
+
+// GetTranslateTextPromptStrict 是 GetTranslateTextPrompt 的严格重试版本，语义同上。
+func GetTranslateTextPromptStrict(textType, language string) string {
+	return GetTranslateTextPrompt(textType, language) + "\n" + strictRetryTag
+}

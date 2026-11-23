@@ -949,6 +949,33 @@ func (s *aiService) TranslateBlocks(ctx context.Context, entryID int64, content,
 					return
 				}
 
+				// 清洗模型特殊 token / 行首替换字符，并做「是否真的翻译成目标语言」的质量校验。
+				// 无效时换更严格的 prompt 重试一次；仍无效按翻译失败处理，绝不把「□ + 原文」写进缓存。
+				translatedHTML = ai.SanitizeModelOutput(translatedHTML)
+				if ai.IsUntranslatedHTML(b.HTML, translatedHTML, language) {
+					logger.Warn("model translation looked untranslated, retrying with strict prompt", "module", "service", "action", "translate", "resource", "ai", "result", "retry", "entry_id", entryID, "block", b.Index)
+					strictPrompt := ai.GetTranslateBlockPromptStrict(title, language)
+					retryHTML, retryErr := provider.Complete(ctx, strictPrompt, wrappedInput)
+					if retryErr != nil {
+						select {
+						case errCh <- fmt.Errorf("translate block %d: %w", b.Index, retryErr):
+							hasError.Store(true)
+						default:
+						}
+						return
+					}
+					retryHTML = ai.SanitizeModelOutput(retryHTML)
+					if ai.IsUntranslatedHTML(b.HTML, retryHTML, language) {
+						select {
+						case errCh <- fmt.Errorf("translate block %d: %w", b.Index, ai.ErrUntranslatedTargetLanguage):
+							hasError.Store(true)
+						default:
+						}
+						return
+					}
+					translatedHTML = retryHTML
+				}
+
 				// Restore media elements from placeholders
 				translatedHTML = ai.RestoreMediaFromPlaceholders(translatedHTML, mediaElements)
 
@@ -1197,6 +1224,21 @@ func (s *aiService) TranslateBatch(ctx context.Context, articles []BatchArticleI
 					translated, err := p.Complete(ctx, ai.GetTranslateTextPrompt(textType, language), ai.WrapInput(text))
 					if err != nil {
 						return "", err
+					}
+					// 清洗模型特殊 token / 行首替换字符，并校验是否真的译成目标语言。
+					// 无效时用更严格的 prompt 重试一次；仍无效按翻译失败处理（不落缓存）。
+					translated = ai.SanitizeModelOutput(translated)
+					if ai.IsUntranslatedText(text, translated, language) {
+						logger.Warn("model batch translation looked untranslated, retrying with strict prompt", "module", "service", "action", "translate", "resource", "ai", "result", "retry", "entry_id", eID, "text_type", textType)
+						retryText, retryErr := p.Complete(ctx, ai.GetTranslateTextPromptStrict(textType, language), ai.WrapInput(text))
+						if retryErr != nil {
+							return "", retryErr
+						}
+						retryText = ai.SanitizeModelOutput(retryText)
+						if ai.IsUntranslatedText(text, retryText, language) {
+							return "", fmt.Errorf("translate %s: %w", textType, ai.ErrUntranslatedTargetLanguage)
+						}
+						translated = retryText
 					}
 					usedProvider, usedModel = providerDisplayName(cfg), cfg.Model
 					return strings.TrimSpace(translated), nil
