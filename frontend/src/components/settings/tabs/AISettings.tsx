@@ -1072,6 +1072,12 @@ export function AISettings() {
             const isOpen = draft?.id === item.id;
             const isActive = item.id === activeProviderId;
             const models = providerModels(item);
+            // 名字就是协议名（后端合成 / 用户没改名）时用本地化协议名，别显示两遍
+            const providerLabel = t(`ai_settings.provider_${item.provider}`);
+            const displayName =
+              item.name && item.name !== item.provider
+                ? item.name
+                : providerLabel;
             return (
               <div key={item.id}>
                 <div className="flex items-center gap-2 px-1 py-2.5">
@@ -1088,11 +1094,13 @@ export function AISettings() {
                       )}
                     />
                     <span className="max-w-44 truncate text-sm font-medium">
-                      {item.name || item.provider}
+                      {displayName}
                     </span>
-                    <span className="shrink-0 rounded-full border border-border px-1.5 py-px text-[10px] text-muted-foreground">
-                      {item.provider}
-                    </span>
+                    {displayName !== providerLabel && (
+                      <span className="shrink-0 rounded-full border border-border px-1.5 py-px text-[10px] text-muted-foreground">
+                        {providerLabel}
+                      </span>
+                    )}
                     <span className="min-w-0 truncate text-xs text-muted-foreground">
                       {item.model || "-"}
                     </span>
@@ -1316,6 +1324,7 @@ export function AISettings() {
             <Select
               ariaLabel={t("ai_settings.scene_translate")}
               value={settings.sceneTranslate ?? ""}
+              placeholder={t("ai_settings.scene_follow")}
               onChange={(value) => handleChange("sceneTranslate", value)}
               options={sceneValueOptions(settings.sceneTranslate)}
               className="w-64 shrink-0"
@@ -1328,6 +1337,7 @@ export function AISettings() {
             <Select
               ariaLabel={t("ai_settings.scene_summary")}
               value={settings.sceneSummary ?? ""}
+              placeholder={t("ai_settings.scene_follow")}
               onChange={(value) => handleChange("sceneSummary", value)}
               options={sceneValueOptions(settings.sceneSummary)}
               disabled={!hasUsableModel}
@@ -1341,6 +1351,7 @@ export function AISettings() {
             <Select
               ariaLabel={t("ai_settings.scene_automation")}
               value={settings.sceneAutomation ?? ""}
+              placeholder={t("ai_settings.scene_follow")}
               onChange={(value) => handleChange("sceneAutomation", value)}
               options={sceneValueOptions(settings.sceneAutomation)}
               disabled={!hasUsableModel}
