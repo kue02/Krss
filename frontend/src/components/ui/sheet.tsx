@@ -105,8 +105,12 @@ export function Sheet({ open, onOpenChange, children }: SheetProps) {
             }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
             className={cn(
-              "fixed inset-y-0 left-0 z-50 bg-sidebar shadow-xl",
-              "w-[280px] safe-area-top",
+              // 移动端抽屉：比旧版 280px 更宽一点（小屏封顶 86vw，避免贴边），
+              // 右侧 24px 圆角 + 更深的带偏移投影，让抽屉像"浮起的一层"，而不是硬切一条边。
+              "fixed inset-y-0 left-0 z-50 bg-sidebar overflow-hidden",
+              "w-[min(320px,86vw)] rounded-r-[24px]",
+              "shadow-[0_24px_64px_-16px_rgba(0,0,0,0.38)]",
+              "safe-area-top",
               "touch-pan-y overscroll-y-contain",
             )}
           >

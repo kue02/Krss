@@ -31,6 +31,11 @@ interface SidebarHeaderProps {
   onAddClick?: () => void;
   /** 「新增分类」——不传就不显示这一项 */
   onCreateFolder?: () => void;
+  /**
+   * 移动端抽屉头部 —— 只在移动端（Sidebar 传 isMobile 时）为 true。
+   * 仅用于加一条细发丝线与更舒展的留白；不渲染任何关闭键（用户要求去掉右上角 X）。
+   */
+  mobile?: boolean;
 }
 
 function KrssLogo({ className }: { className?: string }) {
@@ -43,13 +48,20 @@ export function SidebarHeader({
   title = "Krss",
   onAddClick,
   onCreateFolder,
+  mobile,
 }: SidebarHeaderProps) {
   const { t } = useTranslation();
   // 「新建自动化」= 直接开规则编辑器抽屉（空规则），不用先跑去设置页
   const openNewAutomation = () => useFilterEditorStore.getState().openNew();
 
   return (
-    <div className="flex items-center justify-between gap-2 p-2">
+    <div
+      className={cn(
+        "flex items-center justify-between gap-2 p-2",
+        // 移动端：更舒展的留白，并与下方内容用一条细发丝线分隔
+        mobile && "border-b border-border/60 px-3 py-2.5",
+      )}
+    >
       {/* Logo and title（对齐 Nextflux 的 sidebar-header：p-2 / gap-2 / 32px logo / 14px 名称） */}
       <div className="flex items-center gap-2 text-sm font-semibold leading-tight">
         <KrssLogo className="size-8 rounded-lg" />

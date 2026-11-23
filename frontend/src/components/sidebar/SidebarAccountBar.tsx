@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { cn } from "@/lib/utils";
 import { ProfileButton } from "./ProfileButton";
 
 interface SidebarAccountBarProps {
@@ -8,6 +9,8 @@ interface SidebarAccountBarProps {
   onSettingsClick?: () => void;
   onShortcutsClick?: () => void;
   onLogoutClick?: () => void;
+  /** 移动端：与上方滚动区用发丝线分隔，并让出底部安全区（Home 指示条） */
+  mobile?: boolean;
 }
 
 /**
@@ -23,12 +26,19 @@ export function SidebarAccountBar({
   onSettingsClick,
   onShortcutsClick,
   onLogoutClick,
+  mobile = false,
 }: SidebarAccountBarProps) {
   const { t } = useTranslation();
   const displayName = userName || t("user.guest");
 
   return (
-    <div className="mx-2 mt-1 shrink-0">
+    <div
+      className={cn(
+        "mx-2 mt-1 shrink-0",
+        mobile &&
+          "mt-0 border-t border-border/60 px-1 pb-[calc(0.25rem+env(safe-area-inset-bottom))] pt-1.5",
+      )}
+    >
       <ProfileButton
         avatarUrl={avatarUrl}
         userName={displayName}
