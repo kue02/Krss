@@ -222,7 +222,6 @@ function AuthenticatedApp() {
     selectFeed,
     selectFolder,
     selectStarred,
-    selectFilter,
     selectedEntryId,
     selectEntry,
     unreadOnly,
@@ -465,14 +464,6 @@ function AuthenticatedApp() {
     [contentType, pluginViewRoute, selection.type, handleSelectAll],
   );
 
-  const handleFilterChange = useCallback(
-    (filter: "all" | "unread" | "starred") => {
-      closeSidebar();
-      selectFilter(filter, { replace: true });
-    },
-    [selectFilter, closeSidebar],
-  );
-
   // 「减少动态效果」落到 <html data-reduce-motion>，由 CSS 统一压掉动画
   // 刷新结果弹框：盯住「刷新中 → 刷新完」的跳变（用户 11-8）
   useRefreshReportWatcher();
@@ -645,7 +636,6 @@ function AuthenticatedApp() {
       onMarkAllRead={handleMarkAllRead}
       unreadOnly={unreadOnly}
       onToggleUnreadOnly={toggleUnreadOnly}
-      onFilterChange={handleFilterChange}
       onCloseEntry={() => selectEntry(null)}
       onToggleStarredViewOnly={handleToggleStarredViewOnly}
       contentType={contentType}
@@ -853,7 +843,6 @@ function AuthenticatedApp() {
               onMarkAllRead={handleMarkAllRead}
               unreadOnly={unreadOnly}
               onToggleUnreadOnly={toggleUnreadOnly}
-              onFilterChange={handleFilterChange}
               onToggleStarredViewOnly={handleToggleStarredViewOnly}
               onCloseEntry={() => selectEntry(null)}
               contentType={contentType}
@@ -963,7 +952,6 @@ function AuthenticatedApp() {
                   onMarkAllRead={handleMarkAllRead}
                   unreadOnly={unreadOnly}
                   onToggleUnreadOnly={toggleUnreadOnly}
-                  onFilterChange={handleFilterChange}
                   onToggleStarredViewOnly={handleToggleStarredViewOnly}
                   onCloseEntry={() => selectEntry(null)}
                   contentType={contentType}
@@ -1051,7 +1039,6 @@ function AuthenticatedApp() {
               onMarkAllRead={handleMarkAllRead}
               unreadOnly={unreadOnly}
               onToggleUnreadOnly={toggleUnreadOnly}
-              onFilterChange={handleFilterChange}
               onCloseEntry={() => selectEntry(null)}
               onToggleStarredViewOnly={handleToggleStarredViewOnly}
               contentType={contentType}
