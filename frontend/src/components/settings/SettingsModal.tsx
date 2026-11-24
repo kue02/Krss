@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { Select } from "@/components/ui/select";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { useDraggableDialog } from "@/hooks/useDraggableDialog";
+import { useTabEscapeFromDialog } from "@/hooks/useTabEscapeFromDialog";
 import { GripVertical } from "lucide-react";
 import { useFilterEditorStore } from "@/stores/filter-editor-store";
 
@@ -136,7 +137,13 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
    * 只有桌面这版是窗口（移动端是全屏 Sheet，没有可拖的余地）。
    * 1124：夹紧范围从「整窗留在视口内」放宽到「拖动把手留一块在视口内」，可以整窗拖出屏幕。
    */
-  const drag = useDraggableDialog();
+  const drag = useDraggableDialog(open);
+  /**
+   * 1124：非模态后焦点不再被关在窗里是对的，但 Radix 的 `FocusScope` 写死了 `loop: true`，
+   * Tab 到最后一个元素仍会绕回第一个（审查实测 120 次 Tab 出不去）。
+   * 到边界时把焦点交给窗外 —— 见 `@/hooks/useTabEscapeFromDialog`。
+   */
+  useTabEscapeFromDialog(drag.dialogNodeRef, !isMobile);
 
   const tryLeave = React.useCallback((action: () => void) => {
     if (getDirtySettings().length > 0) {

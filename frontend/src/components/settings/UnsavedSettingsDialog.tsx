@@ -30,7 +30,14 @@ export function UnsavedSettingsDialog({
   if (!open) return null;
   return (
     <AlertDialog isOpen={open} onOpenChange={(next) => !next && onStay()}>
-      <AlertDialog.Backdrop>
+      {/*
+       * 1124：HeroUI 的 `AlertDialog.Backdrop` 默认 `isDismissable=false` +
+       * `isKeyboardDismissDisabled=true`（见 `@heroui/react` 的 `alert-dialog.js`），
+       * 于是 Esc 与点外都被它吞掉、`onOpenChange` 不触发 —— 实测有未保存改动时
+       * 第一次 Esc 只是弹出这个确认框，**第二次 Esc 毫无反应**，而用户认定的关窗方式
+       * 是「X 或 Esc」。这里显式打开这两档：Esc / 点外 = 「继续编辑」，三选一的按钮照旧。
+       */}
+      <AlertDialog.Backdrop isDismissable isKeyboardDismissDisabled={false}>
         <AlertDialog.Container>
           <AlertDialog.Dialog className="max-w-md">
             <AlertDialog.Header>

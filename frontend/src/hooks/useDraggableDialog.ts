@@ -50,6 +50,14 @@ const INTERACTIVE_SELECTOR =
 let rememberedOffset: DragOffset = { x: 0, y: 0 };
 
 /**
+ * 把记住的位置清回正中。给单测用（模块级状态会跨用例残留），
+ * 以后若要加「重置窗口位置」的入口也可以直接用。
+ */
+export function resetRememberedOffset() {
+  rememberedOffset = { x: 0, y: 0 };
+}
+
+/**
  * 把位移夹到「把手还够得着」的范围（纯函数，单测用）。
  *
  * `handle` 是**拖动把手没有位移时**的视口矩形，`viewport` 是视口尺寸。
@@ -92,9 +100,36 @@ export function dragTransform(offset: DragOffset): string {
   return `translate(${offset.x}px, ${offset.y}px)`;
 }
 
-export function useDraggableDialog() {
+export function useDraggableDialog(active = true) {
   const nodeRef = useRef<HTMLDivElement | null>(null);
   const handleRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * 夹紧的入口，由下面的 effect 每次挂载时填好。
+   *
+   * 单独留一个 ref 是因为**把手自己的 ref 回调是最早能确定「可以量了」的时刻**：
+   * 弹窗与把手在同一提交里挂上，但 effect 的执行顺序不保证量得到把手
+   * （实测重开时 effect 里 `handleRef.current` 还是 null，`measureHandle()` 返回 null，
+   * 夹紧就整个跳过、之后也不会再跑一次）。把手一挂上就主动叫一次，稳妥。
+   */
+  const scheduleReclampRef = useRef<() => void>(() => {});
+  /**
+   * 弹窗是**后挂载**的（`open` 才渲染 `DialogContent`），对象 ref 变化本身不会触发 effect，
+   * 所以两个 ref 都用回调式：节点一挂上就叫一次夹紧（`scheduleReclampRef` 由下面的
+   * effect 填好；首次挂载时 effect 在同一提交里随后就会跑，那次也会夹）。
+   *
+   * 注意**不要在回调 ref 里 setState**：那是在提交阶段插一次更新，而 Radix 组件的
+   * `useComposedRefs` 每帧都产出新函数、提交时本就要 detach/attach，两边叠加成无限循环
+   * （实测 `Maximum depth exceeded`，整页白屏）。
+   */
+  const dialogRef = useCallback((node: HTMLDivElement | null) => {
+    nodeRef.current = node;
+    if (node) scheduleReclampRef.current();
+  }, []);
+  const handleCallbackRef = useCallback((node: HTMLDivElement | null) => {
+    handleRef.current = node;
+    if (node) scheduleReclampRef.current();
+  }, []);
+
   const [offset, setOffset] = useState<DragOffset>(() => ({ ...rememberedOffset }));
   /** 手势里读的是 ref（pointermove 里不能等 React 渲染） */
   const offsetRef = useRef<DragOffset>(offset);
@@ -109,6 +144,49 @@ export function useDraggableDialog() {
     last: { x: 0, y: 0 } as DragOffset,
   });
 
+  /**
+   * 量「把手没有位移时」的视口矩形。
+   *
+   * 不能直接 `handleRect - offsetRef.current`：`DialogContent` 带 `duration-200` 的
+   * `transform` 过渡，刚写完 transform 的那一帧 rect 还在动画中间，减出来的基准框是错的，
+   * 夹一次只挪一点、要多夹几次才收敛（实测缩小视口后 2s 还停在视口外）。
+   * 也不能「临时把 transform 归零再量」—— 归零后把 `transition` 还原的那次样式重算，
+   * 会按新值起一段 200ms 过渡，窗口反而开始慢慢滑（实测 computed transform 停在中间值）。
+   *
+   * 开窗动画（`zoom-in-95`）更麻烦：它写的也是 `transform`，会盖掉拖动写的内联值，
+   * 此时 `getComputedStyle(node).transform` 是 `matrix3d(0.95, …, -475, -384, …)`，
+   * 拿它当位移会算出荒唐基准（实测重开时 handle.left 量成 -1202，夹出 1107px 的位移）。
+   *
+   * 所以完全不看 transform：弹窗是 `left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2`
+   * 居中定位的，**无位移时的位置可以直接由布局盒算出**：
+   * `left = (vw - offsetWidth) / 2`，`top = (vh - offsetHeight) / 2`；
+   * 再把把手相对弹窗的偏移按当前缩放比（`rect.width / offsetWidth`）折回布局坐标，
+   * 动画中的中间帧也能算准，且完全不碰元素样式。
+   */
+  const measureHandle = useCallback((): DialogBox | null => {
+    const node = nodeRef.current;
+    const target = handleRef.current;
+    if (!node || !target) return null;
+    const nodeRect = node.getBoundingClientRect();
+    const handleRect = target.getBoundingClientRect();
+    const layoutWidth = node.offsetWidth;
+    const layoutHeight = node.offsetHeight;
+    if (!layoutWidth || !layoutHeight || !handleRect.width || !handleRect.height) return null;
+    const scaleX = nodeRect.width ? nodeRect.width / layoutWidth : 1;
+    const scaleY = nodeRect.height ? nodeRect.height / layoutHeight : 1;
+    if (!scaleX || !scaleY) return null;
+    return {
+      left:
+        (window.innerWidth - layoutWidth) / 2 +
+        (handleRect.left - nodeRect.left) / scaleX,
+      top:
+        (window.innerHeight - layoutHeight) / 2 +
+        (handleRect.top - nodeRect.top) / scaleY,
+      width: handleRect.width / scaleX,
+      height: handleRect.height / scaleY,
+    };
+  }, []);
+
   const apply = useCallback((next: DragOffset) => {
     offsetRef.current = next;
     const node = nodeRef.current;
@@ -116,35 +194,99 @@ export function useDraggableDialog() {
   }, []);
 
   /**
-   * 视口变小（窗口从最大化还原、开 DevTools）后，原来合法的位移可能把把手推到视口外，
-   * 于是窗口再也抓不回来 —— 尺寸变化时按当前视口再夹一次。
+   * 尺寸变化（窗口从最大化还原、开 DevTools、换设备模拟）后，原来合法的位移可能把把手
+   * 推到视口外，窗口就再也抓不回来 —— 按当前视口重新夹一次。三件事都走同一个 `reclamp`：
+   *
+   * 1. **挂载时先夹一次**：记下的位置可能来自更大的视口。不夹的话表现是「重开后窗口
+   *    完全在屏幕外，抓不到把手也点不到 X，只能刷新页面」（审查 M1 实测：1600×986 拖到
+   *    右下 → 关 → 视口缩到 1100×760 → 重开，把手与 X 都不可见）。
+   * 2. **`resize` 事件不够**：事件里 `innerWidth/innerHeight` 已经是新值，但 `max-h-[90vh]`
+   *    要等 CSS 重算，实测滞后约 1.5s（887px → 630px），事件里读到的还是旧 rect，
+   *    夹完等于没夹，而之后不会再有一次 resize（审查 M2）。所以改用 `ResizeObserver`
+   *    盯弹窗自身的盒子 —— 它变了就说明 `max-h` 重算完了。
+   * 3. 夹紧**不写回** `rememberedOffset`：那是用户自己摆的位置，视口暂时变小不该把它改掉
+   *    （审查 m4 实测被累积改写成 `translate(-478px, 163px)`）；下次视口变大还会自动回到原处。
    */
   useEffect(() => {
-    const onResize = () => {
-      const handle = handleRef.current;
-      if (!handle || state.current.dragging) return;
-      const rect = handle.getBoundingClientRect();
-      if (!rect.width || !rect.height) return;
+    let frame = 0;
+
+    const reclamp = () => {
+      if (!active || state.current.dragging) return;
+      // 节点可能还没挂上（Radix `Presence` 会把挂载推迟到下一次提交），
+      // 这里不提前 return 出 effect，只让这一帧空转 —— 见下面 `scheduleReclampRef`。
+      if (!nodeRef.current) return;
+      const handle = measureHandle();
+      if (!handle) return;
       const current = offsetRef.current;
+      /*
+       * 夹的是**用户摆的那个位置**（`rememberedOffset`），不是当前生效的位移 ——
+       * 这样视口缩小时窗口被拉回可视范围，视口再变大时又自动回到用户原来的摆放处；
+       * 若夹的是当前位移，被拉回一次就永久丢掉了原位置（只能重新拖）。
+       */
       const next = clampDragOffset(
-        current,
-        {
-          left: rect.left - current.x,
-          top: rect.top - current.y,
-          width: rect.width,
-          height: rect.height,
-        },
+        rememberedOffset,
+        handle,
         { width: window.innerWidth, height: window.innerHeight },
       );
       if (next.x === current.x && next.y === current.y) return;
-      rememberedOffset = next;
       setOffset(next);
       apply(next);
     };
 
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [apply]);
+    // jsdom（单测）没有 ResizeObserver，退化成只靠 resize 事件
+    const observer =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => scheduleReclamp());
+    /*
+     * 观察对象要等节点挂上才有：这个 effect 跑的时候 `Presence` 还没把弹窗挂进 DOM，
+     * 那时 `nodeRef.current` 是 null。若在这里就 observe(null)，之后也不会再 observe，
+     * `max-h-[90vh]` 的重算就没人通知（实测缩小视口后 y 方向一直不夹）。
+     * 所以每次夹紧前顺手确认一遍观察对象。
+     */
+    let observed: Element | null = null;
+    const ensureObserved = () => {
+      const node = nodeRef.current;
+      if (!observer || !node || node === observed) return;
+      if (observed) observer.unobserve(observed);
+      observer.observe(node);
+      observed = node;
+    };
+
+    const scheduleReclamp = () => {
+      ensureObserved();
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        reclamp();
+        // 留一帧余量：`max-h` 的重算偶尔比事件晚一帧
+        frame = requestAnimationFrame(reclamp);
+      });
+    };
+
+    /*
+     * 这个 effect 只随 `active` 变化重跑，而弹窗节点出现得更晚：Radix `Presence` 是在
+     * 自己的 layout effect 里 setState 才把内容挂上的，所以「`active` 变 true 的那次提交」
+     * 里 `nodeRef.current` 还是 null，之后再没有 effect 会跑 —— 实测重开时夹紧整个跳过。
+     * 因此把 `scheduleReclamp` 交给 ref，由 `dialogRef`/`handleRef` 两个回调 ref 在节点
+     * 挂上的那一刻直接叫一次；这里即便没节点也照常注册监听。
+     */
+    scheduleReclampRef.current = scheduleReclamp;
+
+    scheduleReclamp();
+    window.addEventListener("resize", scheduleReclamp);
+    /*
+     * 开窗动画（`zoom-in-95`）是 transform，不触发 ResizeObserver，
+     * 动画期间量到的 rect 是缩放中的（95%），夹出来的边界差几像素。
+     * 动画 200ms，结束后再夹一次就准了。
+     */
+    const settle = window.setTimeout(scheduleReclamp, 260);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(settle);
+      window.removeEventListener("resize", scheduleReclamp);
+      observer?.disconnect();
+      scheduleReclampRef.current = () => {};
+    };
+  }, [active, apply, measureHandle]);
 
   const onPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
@@ -154,15 +296,12 @@ export function useDraggableDialog() {
       const node = nodeRef.current;
       if (!node) return;
 
-      // 记录把手「无位移」时的位置：当前 rect 减去已生效的位移
+      // 记录把手「无位移」时的位置（量法见 measureHandle：开窗动画期间 rect 不可靠；
+      // 用户能按下标题栏说明动画早已结束，这里放行未 settled 的情况用位移反算兜底）
       const current = offsetRef.current;
-      const rect = event.currentTarget.getBoundingClientRect();
-      state.current.handle = {
-        left: rect.left - current.x,
-        top: rect.top - current.y,
-        width: rect.width,
-        height: rect.height,
-      };
+      const handle = measureHandle();
+      if (!handle) return;
+      state.current.handle = handle;
       state.current.dragging = true;
       state.current.activated = false;
       state.current.pointerId = event.pointerId;
@@ -184,7 +323,7 @@ export function useDraggableDialog() {
         // 老浏览器 / 指针已释放：退化成普通的元素内拖动
       }
     },
-    [],
+    [measureHandle],
   );
 
   const onPointerMove = useCallback(
@@ -238,10 +377,15 @@ export function useDraggableDialog() {
   );
 
   return {
-    /** 挂到要移动的那个元素（Radix `DialogContent`）上 */
-    dialogRef: nodeRef,
-    /** 挂到拖动把手（窗口标题栏）上 —— 视口变化时按它重新夹紧 */
-    handleRef,
+    /** 挂到要移动的那个元素（Radix `DialogContent`）上 —— 节点出现时触发一次挂载夹紧 */
+    dialogRef,
+    /** 同一个节点的对象 ref（给需要读节点的其他 hook 用，例如 Tab 出窗） */
+    dialogNodeRef: nodeRef,
+    /**
+     * 挂到拖动把手（窗口标题栏）上 —— 视口变化时按它重新夹紧。
+     * 用回调 ref 而不是对象 ref：把手挂上那一刻是最早能确定「量得到了」的时刻。
+     */
+    handleRef: handleCallbackRef,
     /** 挂到拖动把手（窗口标题栏）上 */
     handleProps: {
       onPointerDown,

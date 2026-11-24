@@ -244,6 +244,8 @@ function AuthenticatedApp() {
 
   // ── 全局快捷键：? 快捷键帮助，r 刷新订阅 ──────────────────────────────
   const isShortcutsOpen = useShortcutsHelpOpen();
+  // 1124：设置窗是非模态浮窗，开着时不接管全局快捷键（见下方 useGlobalHotkeys 的注释）
+  const settingsOpen = useSettingsModalStore((state) => state.open);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const queryClient = useQueryClient();
   const refreshFeeds = useMutation({
@@ -263,7 +265,12 @@ function AuthenticatedApp() {
     onToggleHelp: handleToggleShortcuts,
     onRefresh: handleRefreshShortcut,
     onSearch: () => setIsSearchOpen(true),
-    enabled: !isShortcutsOpen,
+    /*
+     * 1124：设置窗成了非模态浮窗，焦点落在窗内按钮/标题栏时 `activeElement` 不在输入框，
+     * `isTypingTarget` 拦不住 —— 实测设置窗开着按 `f` 会同时弹出搜索浮层、按 `?` 弹出快捷键表。
+     * 设置窗开着就不接管全局快捷键（关掉设置后自动恢复）。
+     */
+    enabled: !isShortcutsOpen && !settingsOpen,
   });
 
   // Sidebar visibility for tablet/desktop
