@@ -31,6 +31,10 @@ var (
 	// freeChannelNetworkBaseCooldown：网络级失败（连接超时/DNS/连接重置，非 HTTP 状态）的退避基数，
 	// 3s→6s→12s… 封顶同 freeChannelMaxCooldown。避免「被墙的通道每次都被优先重试、等满客户端超时」。
 	freeChannelNetworkBaseCooldown = 3 * time.Second
+	// freeChannelAttemptTimeout：单个通道单次尝试的时间上限，给被墙/不可达的端点兜底：
+	// 否则一次尝试会等满整个客户端超时（20s），可能吃掉 30s 总预算才轮到下一个通道。
+	// <=0 表示关闭该单次尝试上限（退回仅受总预算/客户端超时约束）。
+	freeChannelAttemptTimeout = 8 * time.Second
 	// freeChannelTotalBudget：单次翻译（跨所有通道两轮）的总时间预算，<=0 表示不限。
 	// 防止 4 通道 × 单通道超时把一次翻译拖到几十秒。
 	freeChannelTotalBudget = 30 * time.Second
@@ -252,14 +256,26 @@ func (s *freeChannelScheduler) translate(ctx context.Context, client *http.Clien
 			skipReason[channel] = "skipped (rate limited/cooldown)"
 			return "", false
 		}
+		// 每次尝试的时间上限：取「单通道尝试上限」与「剩余总预算」的较小者，
+		// 这样被墙/不可达的通道会快速失败并冷却，而不是等满客户端超时。
+		// useBudget 标记本次上限是否就是总预算本身（只有预算耗尽才算 budgetHit）。
+		attemptTimeout := freeChannelAttemptTimeout
+		useBudget := false
+		if !deadline.IsZero() {
+			if attemptTimeout <= 0 || rem <= attemptTimeout {
+				attemptTimeout = rem
+				useBudget = true
+			}
+		}
 		attemptCtx := ctx
 		cancel := context.CancelFunc(func() {})
-		if !deadline.IsZero() {
-			attemptCtx, cancel = context.WithTimeout(ctx, rem)
+		if attemptTimeout > 0 {
+			attemptCtx, cancel = context.WithTimeout(ctx, attemptTimeout)
 		}
 		translated, err := translateViaChannel(attemptCtx, client, channel, text, targetLang)
-		// 预算超时（而非上游/网络自身超时）不算通道坏健康：不 recordFailure，也不记该通道错误。
-		budgetHit := err != nil && !deadline.IsZero() && attemptCtx.Err() == context.DeadlineExceeded && ctx.Err() == nil
+		// 只有「总预算耗尽」才算 budgetHit（不算通道坏健康）：不 recordFailure，也不记该通道错误。
+		// 单通道尝试超时（非预算绑定）不算 budgetHit，会走 recordFailure 让该通道进网络失败冷却。
+		budgetHit := err != nil && useBudget && attemptCtx.Err() == context.DeadlineExceeded && ctx.Err() == nil
 		cancel()
 		s.release(channel)
 		if err != nil {

@@ -651,6 +651,93 @@ func TestSchedulerRespectsTotalBudget(t *testing.T) {
 	}
 }
 
+// 单通道尝试上限：一个慢（被墙）的 google 会在 freeChannelAttemptTimeout 处被切断，
+// 从而快速回退到可用的 youdao，而不是等满 2s；同时 google 记为网络失败并进入冷却，
+// 下一次翻译直接跳过它、仍然快速命中 youdao。
+func TestSchedulerPerAttemptTimeoutFailsFast(t *testing.T) {
+	const attemptCap = 200 * time.Millisecond
+
+	oldTimeout := freeChannelAttemptTimeout
+	oldNet, oldMax := freeChannelNetworkBaseCooldown, freeChannelMaxCooldown
+	freeChannelAttemptTimeout = attemptCap
+	// TestMain 把网络退避基数归零了；这里显式给非零冷却，才能验证「失败后进入冷却」。
+	freeChannelNetworkBaseCooldown = 3 * time.Second
+	freeChannelMaxCooldown = 5 * time.Minute
+	t.Cleanup(func() {
+		freeChannelAttemptTimeout = oldTimeout
+		freeChannelNetworkBaseCooldown, freeChannelMaxCooldown = oldNet, oldMax
+	})
+	defaultFreeScheduler.reset()
+
+	var googleHits int32
+	googleServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&googleHits, 1)
+		select { // 模拟被墙/不可达：远慢于单通道尝试上限；ctx 被切断后立即返回，避免拖慢收尾
+		case <-r.Context().Done():
+			return
+		case <-time.After(2 * time.Second):
+		}
+		_, _ = w.Write([]byte(`[[["慢翻译","Hello world",null,null,10]],null,"en"]`))
+	}))
+	defer googleServer.Close()
+
+	youdaoServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"errorCode":0,"translation":["你好世界"]}`))
+	}))
+	defer youdaoServer.Close()
+
+	originalGoogle, originalYoudao := googleTranslateEndpoint, youdaoTranslateEndpoint
+	googleTranslateEndpoint = googleServer.URL
+	youdaoTranslateEndpoint = youdaoServer.URL
+	defer func() {
+		googleTranslateEndpoint = originalGoogle
+		youdaoTranslateEndpoint = originalYoudao
+	}()
+
+	// 第一次：慢 google 应在 ~200ms 就被切断并回退有道，总耗时远小于 2s。
+	start := time.Now()
+	got, used, err := TranslateFreeTextChannelsWithChannel(context.Background(), googleServer.Client(), []string{FreeChannelGoogle, FreeChannelYoudao}, "Hello world", "zh-CN")
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("单通道超时后应回退有道成功，得到错误 %v", err)
+	}
+	if used != FreeChannelYoudao || got != "你好世界" {
+		t.Fatalf("used=%q got=%q, want youdao/你好世界", used, got)
+	}
+	if elapsed >= time.Second {
+		t.Fatalf("慢 google 应在 ~%v 被切断并快速回退，实测耗时 %v（接近 2s 说明没生效）", attemptCap, elapsed)
+	}
+
+	// google 应被记为网络失败并处于冷却中。
+	defaultFreeScheduler.mu.Lock()
+	gState := defaultFreeScheduler.states[FreeChannelGoogle]
+	var gFails int
+	var gCooling bool
+	if gState != nil {
+		gFails = gState.consecutiveFails
+		gCooling = time.Now().Before(gState.cooldownUntil)
+	}
+	defaultFreeScheduler.mu.Unlock()
+	if gState == nil || gFails == 0 || !gCooling {
+		t.Fatalf("google 应记为网络失败并冷却，得到 fails=%d cooling=%v", gFails, gCooling)
+	}
+
+	// 第二次：冷却中的 google 不应再次被请求，仍应快速命中有道。
+	hitsBefore := atomic.LoadInt32(&googleHits)
+	start2 := time.Now()
+	got2, used2, err2 := TranslateFreeTextChannelsWithChannel(context.Background(), googleServer.Client(), []string{FreeChannelGoogle, FreeChannelYoudao}, "Hello world", "zh-CN")
+	elapsed2 := time.Since(start2)
+	if err2 != nil || used2 != FreeChannelYoudao || got2 != "你好世界" {
+		t.Fatalf("第二次应仍用有道，得到 used=%q got=%q err=%v", used2, got2, err2)
+	}
+	if elapsed2 >= time.Second {
+		t.Fatalf("冷却中的 google 不应拖慢第二次翻译，实测 %v", elapsed2)
+	}
+	if after := atomic.LoadInt32(&googleHits); after != hitsBefore {
+		t.Fatalf("冷却中的 google 不应再被请求，hits %d -> %d", hitsBefore, after)
+	}
+}
+
 // 并发上限：同一通道同时最多 freeChannelMaxConcurrency 个在飞请求。
 func TestSchedulerRespectsConcurrencyCap(t *testing.T) {
 	oldConc, oldPS, oldPM, oldGap := freeChannelMaxConcurrency, freeChannelPerSecond, freeChannelPerMinute, freeChannelMinGap
