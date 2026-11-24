@@ -116,7 +116,10 @@ vi.mock("./EntryListItem", async () => {
 });
 
 vi.mock("./EntryListHeader", () => ({
-  EntryListHeader: () => null,
+  // 把头部未读数摊到 DOM 上，便于断言「文件夹子树」的计数口径。
+  EntryListHeader: ({ unreadCount }: { unreadCount: number }) => (
+    <div data-testid="header-unread">{unreadCount}</div>
+  ),
 }));
 
 // 通知视图的时间线：单测只关心「哪个视图走哪条分支 + 设置有没有透传」，
@@ -149,7 +152,9 @@ vi.mock("./NotificationTimeline", () => ({
 import { EntryList } from "./EntryList";
 import { setUISetting } from "@/hooks/useUISettings";
 import { entryListScrollPositions } from "./scroll-key";
-import { useEntriesInfinite } from "@/hooks/useEntries";
+import { useEntriesInfinite, useUnreadCounts } from "@/hooks/useEntries";
+import { useFeeds } from "@/hooks/useFeeds";
+import { useFolders } from "@/hooks/useFolders";
 import { selectionToParams } from "@/hooks/useSelection";
 import { useAISettings } from "@/hooks/useAISettings";
 import { useGeneralSettings } from "@/hooks/useGeneralSettings";
@@ -1456,5 +1461,38 @@ describe("EntryList · 通知视图的时间线分支", () => {
       before,
     );
     view.unmount();
+  });
+});
+
+describe("文件夹子树未读数（用户 2026-11-24 bug1）", () => {
+  it("选中文件夹时头部未读数含孙级订阅，并按当前内容类型过滤", () => {
+    vi.mocked(useFolders).mockReturnValue({
+      data: [
+        { id: "root", name: "Root", type: "article" },
+        { id: "child", name: "Child", parentId: "root", type: "article" },
+        { id: "grand", name: "Grand", parentId: "child", type: "article" },
+      ],
+    } as unknown as ReturnType<typeof useFolders>);
+    vi.mocked(useFeeds).mockReturnValue({
+      data: [
+        { id: "f1", title: "F1", folderId: "root", type: "article" },
+        { id: "f2", title: "F2", folderId: "grand", type: "article" },
+        { id: "f3", title: "F3", folderId: "grand", type: "social" },
+      ],
+    } as unknown as ReturnType<typeof useFeeds>);
+    vi.mocked(useUnreadCounts).mockReturnValue({
+      data: { counts: { f1: 1, f2: 2, f3: 5 } },
+    } as unknown as ReturnType<typeof useUnreadCounts>);
+
+    render(
+      <EntryList
+        {...defaultProps}
+        selection={{ type: "folder", folderId: "root" }}
+        contentType="article"
+      />,
+    );
+
+    // 根 1 + 孙级 2 = 3；social 的 5 不算，且不能因为只查直接子级漏掉孙级。
+    expect(screen.getByTestId("header-unread").textContent).toBe("3");
   });
 });

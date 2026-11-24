@@ -91,6 +91,13 @@ interface EntryContentHeaderProps {
   stickyTopClassName?: string;
   /** 手机内联合列：正文标题栏吸顶（列表 TOP 栏滚走时贴在视口顶），未滚走时自然排在它下面 */
   mobileInlineSticky?: boolean;
+  /**
+   * 顶栏背景层是否叠加 `backdrop-blur`。默认跟随 `sticky`：第三栏那套（非内嵌）保留模糊；
+   * 卡片档内联合列里必须关掉：Chromium 下祖先 `overflow: clip` 的圆角裁剪遇到带
+   * backdrop-filter 的层时，圆角边框/阴影的合成会出错，表现为「滑动后点开正文，卡片左上角
+   * 缺一块」（不滚动时背景层 opacity-0 所以看不到；实测不是整块白底盖住圆角）。
+   */
+  backgroundBlur?: boolean;
 }
 
 interface TranslationButtonState {
@@ -154,6 +161,7 @@ export function EntryContentHeader({
   sticky = false,
   stickyTopClassName,
   mobileInlineSticky = false,
+  backgroundBlur = !sticky,
 }: EntryContentHeaderProps) {
   const { t } = useTranslation();
   const safeUrl = entry.url && isSafeUrl(entry.url) ? entry.url : null;
@@ -183,7 +191,9 @@ export function EntryContentHeader({
         >
           <div
             className={cn(
-              "pointer-events-none absolute inset-0 border-b border-foreground/10 bg-overlay/80 backdrop-blur-xl transition-opacity duration-300 ease-in-out",
+              "pointer-events-none absolute inset-0 border-b border-foreground/10 bg-overlay/80 transition-opacity duration-300 ease-in-out",
+              /* 卡片档内联合列走 overflow:clip，带 backdrop-filter 会让圆角边框合成出错，同桌面分支 */
+              backgroundBlur && "backdrop-blur-xl",
               mobileInlineSticky ? "opacity-100" : isAtTop ? "opacity-0" : "opacity-100",
             )}
           />
@@ -818,7 +828,8 @@ export function EntryContentHeader({
       {/* 对齐 Nextflux ActionButtons：70% 底 + 小 blur + 细边框，无 mask 渐隐（48px 高的条加渐隐会把按钮下半截切淡） */}
       <div
         className={cn(
-          "absolute inset-0 transition-opacity duration-300 ease-in-out pointer-events-none border-b border-foreground/10 bg-overlay/70 backdrop-blur-sm",
+          "absolute inset-0 transition-opacity duration-300 ease-in-out pointer-events-none border-b border-foreground/10 bg-overlay/70",
+          backgroundBlur && "backdrop-blur-sm",
           isAtTop ? "opacity-0" : "opacity-100",
         )}
       />

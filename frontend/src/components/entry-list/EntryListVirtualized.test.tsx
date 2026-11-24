@@ -255,6 +255,7 @@ describe("EntryList · 标准文章列表虚拟化", () => {
     entryListScrollPositions.clear();
     useFilterViewStore.getState().setMutedOnly(false);
     setUISetting("articleLayout", "list");
+    setUISetting("articlePaneStyle", "card");
     installLayoutStubs();
     vi.mocked(useEntriesInfinite).mockReturnValue({
       data: { pages: [{ entries: manyEntries, hasMore: false }] },
@@ -563,10 +564,11 @@ describe("EntryList · 标准文章列表虚拟化", () => {
     };
 
     const pane = screen.getByTestId("inline-article-pane");
-    /* 卡片档：12px 圆角边框 + 12px 圆角裁剪，两者必须一致，否则角上会被切掉一块 */
+    /* 卡片档用 overflow:clip 让裁剪边缘跟随 border-radius，不再用 clip-path
+       （clip-path 圆角与 border-radius 过渡不同步会在角上裁掉一块，见用户 2026-11-24 报缺角） */
     expect(pane.className).toContain("rounded-[12px]");
-    expect(pane.className).toContain("[clip-path:inset(0_round_12px)]");
-    expect(pane.className).not.toContain("[clip-path:inset(0)]");
+    expect(pane.className).toContain("[overflow:clip]");
+    expect(pane.className).not.toContain("clip-path");
 
     try {
       /* 滚到正文贴顶（jsdom 里 getBoundingClientRect 全 0 ⇒ paneTop=0） */
@@ -574,11 +576,10 @@ describe("EntryList · 标准文章列表虚拟化", () => {
         setScrollY(400);
         fireEvent.scroll(window);
       });
-      /* 贴顶档是直角边框，裁剪也必须是直角：rounded-none 配 inset(0_round_12px)
-         就是用户报的那个缺口。 */
+      /* 贴顶档是直角边框，overflow:clip 跟随 border-radius=0 也就是直角，不会露出圆角缺口 */
       expect(pane.className).toContain("rounded-none");
-      expect(pane.className).toContain("[clip-path:inset(0)]");
-      expect(pane.className).not.toContain("[clip-path:inset(0_round_12px)]");
+      expect(pane.className).toContain("[overflow:clip]");
+      expect(pane.className).not.toContain("clip-path");
 
       /* 滚回列表最顶：正文已不在视口顶，必须复位成卡片档，不能保持铺满直角 */
       await act(async () => {
@@ -586,7 +587,7 @@ describe("EntryList · 标准文章列表虚拟化", () => {
         fireEvent.scroll(window);
       });
       expect(pane.className).toContain("rounded-[12px]");
-      expect(pane.className).toContain("[clip-path:inset(0_round_12px)]");
+      expect(pane.className).toContain("[overflow:clip]");
     } finally {
       if (scrollYDescriptor) {
         Object.defineProperty(window, "scrollY", scrollYDescriptor);

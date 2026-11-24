@@ -220,11 +220,14 @@ export function selectionToParams(
     contentType?: ContentType;
   } = {};
 
-  // 只有 all 用内容类型来筛（feed/folder 自带类型）；
+  // all 用内容类型来筛；folder 也要带上：文件夹子树里可能有不同内容类型的订阅
+  // （OPML 导入可造出跨类型嵌套），不带则列表显示全部类型、头部未读数/全部标读只算当前类型，
+  // 出现「列表条数与数量对不上」。带上后列表/计数/全部标读三处口径一致。
   // 例外：星标视图里那一档「只显示当前视图」也要按内容类型筛（用户 2026-09-17 要求）
   if (
     contentType &&
     (selection.type === "all" ||
+      selection.type === "folder" ||
       (selection.type === "starred" && selection.viewOnly))
   ) {
     base.contentType = contentType;

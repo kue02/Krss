@@ -38,6 +38,26 @@ type EntryListFilter struct {
 // ListContentTruncate 列表/搜索默认的 content 截断字符数：卡片只需要开头一点正文，全文细读走 GetByID。
 const ListContentTruncate = 2000
 
+// folderSubtreeSQLFor 给定 n 个文件夹 id（n 个占位符 ?），返回这些文件夹自身 + 所有后代文件夹的 id。
+// 用于「选中父文件夹时，条目/未读/全部标读应覆盖整棵子树」——OPML 多层导入会产生多层文件夹，
+// 只按 f.folder_id = ? 匹配会漏掉子/孙级文件夹里的订阅。递归 CTE（SQLite 支持）。
+// 单文件夹与多选文件夹（规则/视图的 scopeIds）共用同一语义：范围 = 整棵子树。
+// UNION（去重）而非 UNION ALL：即使历史数据里 parent_id 成环也能终止，不会无限递归。
+func folderSubtreeSQLFor(n int) string {
+	// 调用点保证 n >= 1；这里只做防御：n <= 0 时返回永不命中的子查询，
+	// 避免下面的占位符切片出现 [: -1] 而 panic。
+	if n <= 0 {
+		return "SELECT id FROM folders WHERE 1 = 0"
+	}
+	placeholders := strings.Repeat("?,", n)
+	placeholders = placeholders[:len(placeholders)-1]
+	return `WITH RECURSIVE folder_subtree(id) AS (
+	SELECT id FROM folders WHERE id IN (` + placeholders + `)
+	UNION
+	SELECT child.id FROM folders child JOIN folder_subtree sub ON child.parent_id = sub.id
+) SELECT id FROM folder_subtree`
+}
+
 // listContentExpr 返回 List/Search SELECT 里的 content 表达式：0 = 全文，否则 substr 截断。
 // readable_content 在 List/Search 里永远不选（列表/计数/预览都不消费它），调用方直接拼 NULL 占位，scanEntry 列数不变。
 func listContentExpr(truncate int) string {
@@ -203,14 +223,16 @@ func (r *entryRepository) List(ctx context.Context, filter EntryListFilter) ([]m
 	}
 
 	if len(filter.FolderIDs) > 0 {
-		placeholders := strings.Repeat("?,", len(filter.FolderIDs))
-		placeholders = placeholders[:len(placeholders)-1]
-		conditions = append(conditions, "f.folder_id IN ("+placeholders+")")
+		// 多选文件夹同样按整棵子树展开：过滤器/视图编辑器保存的范围走 FolderIDs，
+		// 若这里只做直接匹配，会与单选文件夹（子树）语义分叉。
+		conditions = append(conditions, "f.folder_id IN ("+folderSubtreeSQLFor(len(filter.FolderIDs))+")")
 		for _, id := range filter.FolderIDs {
 			args = append(args, id)
 		}
 	} else if filter.FolderID != nil {
-		conditions = append(conditions, "f.folder_id = ?")
+		// 选中一个文件夹时，条目应包含其所有后代（多级子文件夹）里的订阅，
+		// 而非只有直接挂在当前文件夹下的订阅。用递归 CTE 展开整棵子树。
+		conditions = append(conditions, "f.folder_id IN ("+folderSubtreeSQLFor(1)+")")
 		args = append(args, *filter.FolderID)
 	}
 
@@ -465,13 +487,17 @@ func (r *entryRepository) MarkAllAsRead(ctx context.Context, feedID *int64, fold
 	now := formatTime(time.Now())
 
 	if folderID != nil {
-		_, err := r.db.ExecContext(
-			ctx,
-			`UPDATE entries SET read = 1, updated_at = ?
-			 WHERE feed_id IN (SELECT id FROM feeds WHERE folder_id = ?) AND read = 0`,
-			now,
-			*folderID,
-		)
+		// 与列表口径一致：选中文件夹「全部标为已读」要覆盖整棵子树，而不只是直接子文件夹；
+		// contentType 有值时只清该类型的订阅（列表此时也只展示该类型，数量才对得上）。
+		query := `UPDATE entries SET read = 1, updated_at = ?
+			 WHERE feed_id IN (SELECT id FROM feeds WHERE folder_id IN (` + folderSubtreeSQLFor(1) + `)`
+		args := []interface{}{now, *folderID}
+		if contentType != nil {
+			query += " AND type = ?"
+			args = append(args, *contentType)
+		}
+		query += ") AND read = 0"
+		_, err := r.db.ExecContext(ctx, query, args...)
 		return err
 	}
 

@@ -49,6 +49,12 @@ interface EntryContentProps {
   headerStickyTopClassName?: string;
   /** 内嵌在列表里时也要显示目录与阅读进度（「向下」合列） */
   showAuxiliary?: boolean;
+  /**
+   * 内嵌时工具栏背景层是否保留 backdrop-blur。卡片档 pane 用 `overflow:clip` 裁圆角，
+   * 而 Chromium 下带 backdrop-filter 的层会让祖先圆角边框/阴影的合成出错（角部缺一块）；
+   * 「原样」档用 `clip-path` 裁剪，模糊可以保留。缺省按 `!embedded` 处理。
+   */
+  headerBackgroundBlur?: boolean;
 }
 
 export function EntryContent({
@@ -61,6 +67,7 @@ export function EntryContent({
   onClose,
   headerStickyTopClassName,
   showAuxiliary = false,
+  headerBackgroundBlur,
 }: EntryContentProps) {
   const { t } = useTranslation();
   const { data: entry, isLoading } = useEntry(entryId);
@@ -289,6 +296,8 @@ export function EntryContent({
         sticky={embedded}
         stickyTopClassName={headerStickyTopClassName}
         mobileInlineSticky={embedded && Boolean(isMobile)}
+        /** 卡片档内联合列走 overflow:clip 圆角裁剪，backdrop-filter 会让圆角边框合成出错，故关闭模糊 */
+        backgroundBlur={headerBackgroundBlur ?? !embedded}
       />
       {/* 23-4：阅读进度条锁在工具栏（h-12 = 48px）正下方。
           跟着真实滚动容器（正文那个元素滚动）走；看原站时滚的是 iframe，进度条没有意义。

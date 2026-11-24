@@ -32,6 +32,10 @@ import { useAISettings } from "@/hooks/useAISettings";
 import { useSwipeGesture } from "@/hooks/useSwipeGesture";
 import { selectionToParams, type SelectionType } from "@/hooks/useSelection";
 import { flattenUniqueEntries } from "@/lib/entry-pagination";
+import {
+  collectDescendantFolderIds,
+  computeFolderSubtreeUnread,
+} from "@/lib/folder-tree";
 import { stripHtml } from "@/lib/html-utils";
 import { EntryListItem } from "./EntryListItem";
 import { ArticleRowsListRow } from "./ArticleRowsList";
@@ -692,6 +696,10 @@ export function EntryList({
     return map;
   }, [folders]);
 
+  /* selectFolder 时「自身 + 所有后代文件夹」的 id 集合见 @/lib/folder-tree：
+     OPML 多层导入会产生多层文件夹，只按「直接子级」过滤会漏掉孙级文件夹里的订阅，
+     表现为「条目栏只显示当前子级下的订阅和数量，不显示孙级的」（用户 2026-11-24 报）。 */
+
   const { data: generalSettings } = useGeneralSettings();
 
   /**
@@ -910,15 +918,21 @@ export function EntryList({
         ref={inlineContentRef}
         data-testid="inline-article-pane"
         className={cn(
-          /* 裁剪圆角必须跟着 border-radius 走：贴顶那档是 rounded-none（直角边框），
-             若裁剪还按 12px 圆角切，角上就会少一块（用户 2026-11-24 报的缺口）。
-             clip-path 一并进过渡表，否则切换途中两者不同步，反向（贴顶→卡片）时
-             裁剪圆角会先跳回 12px，照样露缺口。 */
-          "bg-card transition-[margin,width,border-radius,clip-path] duration-200 ease-out",
+          /* 卡片档用 overflow:clip 裁剪内容，不再用 clip-path（用户 2026-11-24 报「卡片档
+             角部偶现缺一块」）：
+             1) clip-path:inset(0 round 12px) 与 border-radius 是两套独立的圆角，切换贴顶/
+                卡片时两者要靠过渡插值保持同步，某些浏览器对 clip-path 的圆角过渡是离散的，
+                过渡途中 clip 半径(12) 会大于当时的 border-radius(<12) ⇒ 圆角处的边框被裁掉
+                一截，表现为「角缺一块、时有时无」。overflow:clip 的裁剪边缘直接跟随
+                border-radius，不存在两套圆角不同步。
+             2) overflow:clip 不裁自身 box-shadow，卡片档的 shadow-nf 得以正常显示
+                （顺带解决 todo 里记的「card 档 shadow-nf 被 clip-path 裁掉」待观察项）。
+             3) overflow:clip 不建立滚动容器，正文里的 position:sticky 标题栏照常吸顶。 */
+          "bg-card transition-[margin,width,border-radius] duration-200 ease-out",
           articlePaneStyle === "card"
             ? paneAtTop
-              ? "my-0 w-full rounded-none border-t border-border [clip-path:inset(0)]"
-              : "mx-2 my-2 w-[calc(100%-1rem)] rounded-[12px] border border-border/60 shadow-nf [clip-path:inset(0_round_12px)]"
+              ? "my-0 w-full rounded-none border-t border-border [overflow:clip]"
+              : "mx-2 my-2 w-[calc(100%-1rem)] rounded-[12px] border border-border/60 shadow-nf [overflow:clip]"
             : "w-full rounded-[12px] border-t border-border [clip-path:inset(0_round_12px)]",
         )}
       >
@@ -1130,8 +1144,10 @@ export function EntryList({
     if (selection.type === "feed") {
       ids = [selection.feedId];
     } else if (selection.type === "folder") {
+      // 刷新文件夹时连同所有后代文件夹里的订阅一起刷，别只刷直接子级。
+      const folderIds = collectDescendantFolderIds(folders, selection.folderId);
       ids = feeds
-        .filter((feed) => feed.folderId === selection.folderId)
+        .filter((feed) => feed.folderId && folderIds.has(feed.folderId))
         .map((feed) => feed.id);
     } else if (selection.type === "all") {
       ids = feeds
@@ -1236,6 +1252,7 @@ export function EntryList({
   }, [
     contentType,
     feeds,
+    folders,
     isRefreshing,
     selection,
     stopRefreshPolling,
@@ -1681,16 +1698,18 @@ export function EntryList({
       case "feed":
         return counts[selection.feedId] ?? 0;
       case "folder":
-        // Sum unread counts for feeds in this folder with matching contentType
-        return feeds
-          .filter(
-            (f) => f.folderId === selection.folderId && f.type === contentType,
-          )
-          .reduce((sum, f) => sum + (counts[f.id] ?? 0), 0);
+        // 该文件夹自身 + 所有后代文件夹里的订阅未读之和（含孙级，用户 2026-11-24 报）。
+        return computeFolderSubtreeUnread(
+          folders,
+          feeds,
+          counts,
+          selection.folderId,
+          contentType,
+        );
       case "starred":
         return 0; // Starred view doesn't show unread count
     }
-  }, [unreadCounts, selection, feeds, contentType]);
+  }, [unreadCounts, selection, feeds, folders, contentType]);
 
   // filterValue 见文件上方，用于请求参数与标题判断
   // 「已静音」是回看视图：标题跟着变，并给一行说明（这条视图里看到的不是新内容，而是被规则收起来的）

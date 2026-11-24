@@ -336,7 +336,7 @@ export function EntryToc({
     </div>
   );
 
-  // 内联合列时正文栏用了圆角裁剪（clip-path），会把内部 fixed 目录一起裁掉；
-  // 目录改为挂到 body，独立于正文卡片的裁剪区域。
+  // 内联合列时正文栏用了圆角裁剪（卡片档 overflow:clip，原样档 clip-path），
+  // 会把内部 fixed 目录一起裁掉；目录改为挂到 body，独立于正文卡片的裁剪区域。
   return fixedInline ? createPortal(tocPanel, document.body) : tocPanel;
 }

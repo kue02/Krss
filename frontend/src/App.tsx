@@ -93,6 +93,7 @@ import {
 import { useRefreshStatus } from "@/hooks/useRefreshStatus";
 import { isAddFeedPath } from "@/lib/router";
 import { initProxyImageRecovery } from "@/lib/proxy-image-recovery";
+import { headerBackgroundBlurFor } from "@/lib/article-pane-style";
 import { cn } from "@/lib/utils";
 import type { ContentType, Feed, Folder } from "@/types/api";
 
@@ -481,6 +482,7 @@ function AuthenticatedApp() {
     initProxyImageRecovery();
   }, []);
 
+  const articlePaneStyle = useUISettingKey("articlePaneStyle");
   const reduceMotion = useUISettingKey("reduceMotion");
   useEffect(() => {
     applyReduceMotionToDocument(Boolean(reduceMotion));
@@ -698,6 +700,7 @@ function AuthenticatedApp() {
                       embedded
                       showAuxiliary
                       containerRef={scrollRef}
+                      headerBackgroundBlur={headerBackgroundBlurFor(articlePaneStyle)}
                       onClose={() => selectEntry(null)}
                     />
                   </Suspense>
@@ -937,6 +940,7 @@ function AuthenticatedApp() {
                               isMobile
                               containerRef={scrollRef}
                               headerStickyTopClassName={options.headerStickyTop}
+                              headerBackgroundBlur={headerBackgroundBlurFor(articlePaneStyle)}
                               onClose={() => setMobileInlineEntryId(null)}
                             />
                           </Suspense>
