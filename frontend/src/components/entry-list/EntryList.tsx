@@ -96,6 +96,9 @@ const REFRESH_MAX_WAIT_MS = 180_000;
  */
 const FORCE_REFRESH_CONFIRM_THRESHOLD = 20;
 
+/** 列表标题/摘要翻译失败后，这条在冷却期内不再重排队，避免每次 entries 变化就重试（毫秒）。 */
+const TRANSLATION_FAIL_COOLDOWN_MS = 5 * 60 * 1000;
+
 /** 列表筛选态（星标 / 未读 / 全部）；底部胶囊已移除，仅作请求参数与视图判断。 */
 type EntryFilter = "all" | "unread" | "starred";
 
@@ -332,6 +335,7 @@ export function EntryList({
   const pendingDetection = useRef(new Set<string>());
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const translationSession = useRef(0);
+  const translationFailedUntil = useRef<Map<string, number>>(new Map());
 
   const autoTranslate = aiSettings?.autoTranslate ?? false;
 
@@ -1472,11 +1476,16 @@ export function EntryList({
             targetLanguage,
           )?.summary;
           if (!cached?.title && !cached?.summary) {
+            translationFailedUntil.current.set(
+              article.id,
+              Date.now() + TRANSLATION_FAIL_COOLDOWN_MS,
+            );
             translatedEntries.current.delete(article.id);
             translationActions.setStatus(article.id, targetLanguage, {
               summary: { state: "failed", error: errorMsg },
             });
           } else {
+            translationFailedUntil.current.delete(article.id);
             // 保留流式结果写入的 provider/model，只把状态收尾成 done
             translationActions.setStatus(article.id, targetLanguage, {
               summary: { ...prevSummary, state: "done" },
@@ -1522,6 +1531,9 @@ export function EntryList({
         // Verify against store: if marked but no actual translation, allow retry
         const cached = translationActions.get(entry.id, targetLanguage);
         if (cached?.title || cached?.summary) return;
+        const until = translationFailedUntil.current.get(entry.id);
+        if (until && Date.now() < until) return;
+        if (until) translationFailedUntil.current.delete(entry.id);
         translatedEntries.current.delete(entry.id);
       }
       // Skip if user manually disabled translation for this article

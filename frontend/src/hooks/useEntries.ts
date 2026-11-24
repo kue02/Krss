@@ -40,8 +40,8 @@ export function useEntriesInfinite(params: Omit<EntryListParams, "offset">) {
 
   return useInfiniteQuery({
     queryKey: entriesQueryKey({ ...params, limit: pageSize }),
-    queryFn: ({ pageParam = 0 }) =>
-      listEntries({ ...params, limit: pageSize, offset: pageParam }),
+    queryFn: ({ pageParam = 0, signal }) =>
+      listEntries({ ...params, limit: pageSize, offset: pageParam }, signal),
     getNextPageParam: (lastPage, allPages) => {
       if (!lastPage.hasMore) return undefined;
       return countLoadedEntries(allPages);
@@ -53,7 +53,7 @@ export function useEntriesInfinite(params: Omit<EntryListParams, "offset">) {
 export function useEntry(id: string | null) {
   return useQuery({
     queryKey: ["entry", id],
-    queryFn: () => getEntry(id!),
+    queryFn: ({ signal }) => getEntry(id!, signal),
     enabled: id !== null,
     staleTime: 60_000,
   });
