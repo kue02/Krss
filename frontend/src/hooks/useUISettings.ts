@@ -194,6 +194,8 @@ interface UISettings {
   articleQuickActionMode: "expand" | "hover" | "always";
   /** Inoreader 列表：移动端优先完整标题（true=标题可换行、来源时间在第二行；false=旧样式单行截断） */
   articleMobileFullTitle: boolean;
+  /** 「Inoreader列表」首次打开时是否已问过「文章视图是否也隐藏分界限」 */
+  inoreaderSplitterPromptShown: boolean;
   hoverImageSize: "small" | "large";
   /** 29-4：悬停大图档「多图切换」的三个触发开关（默认只开行上滚轮） */
   hoverMultiImage: HoverMultiImageConfig;
@@ -481,6 +483,7 @@ const SILENT_SAVE_UI_KEYS = new Set<string>([
   "articleListRowHeight",
   "articleQuickActionMode",
   "articleMobileFullTitle",
+  "inoreaderSplitterPromptShown",
   "hoverImageSize",
   // 47-1：切「只显示未读 / 显示全部」，列表当场就换了，不必再弹一句
   "unreadOnly",
@@ -649,6 +652,7 @@ export const defaultUISettings: UISettings = {
   articleListRowHeight: "compact",
   articleQuickActionMode: "expand",
   articleMobileFullTitle: true,
+  inoreaderSplitterPromptShown: false,
   hoverImageSize: "small",
   hoverMultiImage: { rowWheel: true, floatWheel: false, hSwipe: false },
   notificationBodyOnHover: false,
@@ -964,6 +968,13 @@ export function useUISettingActions() {
     [setUISetting],
   );
 
+  const setInoreaderSplitterPromptShown = useCallback(
+    (value: boolean) => {
+      setUISetting("inoreaderSplitterPromptShown", value);
+    },
+    [setUISetting],
+  );
+
   /** 28-7a：悬停浮块尺寸（small = 上游 400×250 / large = 5175 的 560px） */
   const setHoverImageSize = useCallback((value: "small" | "large") => {
     setUISetting("hoverImageSize", value);
@@ -1228,6 +1239,7 @@ export function useUISettingActions() {
     setArticleListRowHeight,
     setArticleQuickActionMode,
     setArticleMobileFullTitle,
+    setInoreaderSplitterPromptShown,
     setHoverImageSize,
     setArticleLayout,
     setArticlePushDirection,

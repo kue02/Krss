@@ -1344,7 +1344,6 @@ export function AppearanceSettings() {
                     {articleLayout === "inoreader" && (
                       <SettingRow
                         label={t("appearance_view.article_mobile_full_title")}
-                        hint={t("appearance_view.article_mobile_full_title_hint")}
                       >
                         <SegmentedControl
                           className="shrink-0"

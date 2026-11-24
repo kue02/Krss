@@ -101,7 +101,7 @@ export function MobileSwipeEntryRow({ entry, children }: MobileSwipeEntryRowProp
       <div
         aria-hidden={!open}
         className={cn(
-          "absolute bottom-0.5 right-2 top-0.5 z-0 flex overflow-hidden rounded-[10px] border border-border/60 bg-item-hover",
+          "absolute bottom-0.5 right-1.5 top-0.5 z-0 flex items-center justify-end gap-2 pr-1",
           !open && "pointer-events-none",
         )}
         style={{ width: ACTION_WIDTH }}
@@ -116,8 +116,8 @@ export function MobileSwipeEntryRow({ entry, children }: MobileSwipeEntryRowProp
           }}
           className="group/act flex w-1/2 items-center justify-center"
         >
-          <span className="flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 group-hover/act:bg-item-hover group-hover/act:text-foreground">
-            <ReadIcon className="size-[15px]" />
+          <span className="flex size-9 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-nf transition-colors duration-150 group-hover/act:bg-item-hover group-hover/act:text-foreground">
+            <ReadIcon className="size-4" />
           </span>
         </button>
         <button
@@ -134,7 +134,7 @@ export function MobileSwipeEntryRow({ entry, children }: MobileSwipeEntryRowProp
         >
           <span
             className={cn(
-              "flex size-7 items-center justify-center rounded-full transition-colors duration-150 group-hover/act:bg-item-hover",
+              "flex size-9 items-center justify-center rounded-full border border-border bg-card shadow-nf transition-colors duration-150 group-hover/act:bg-item-hover",
               isStarred
                 ? "text-amber-500"
                 : "text-muted-foreground group-hover/act:text-foreground",
@@ -142,7 +142,7 @@ export function MobileSwipeEntryRow({ entry, children }: MobileSwipeEntryRowProp
           >
             <Star
               className={cn(
-                "size-[15px]",
+                "size-4",
                 isStarred && "fill-amber-500 text-amber-500",
               )}
             />
@@ -155,9 +155,8 @@ export function MobileSwipeEntryRow({ entry, children }: MobileSwipeEntryRowProp
         onClickCapture={handleContentClickCapture}
         className={cn(
           "relative z-10 transition-transform duration-200 ease-out",
-          open
-            ? "bg-item-hover shadow-[-10px_0_18px_-8px_rgba(0,0,0,0.28)]"
-            : "bg-background",
+          "bg-background",
+          open && "shadow-[-8px_0_16px_-10px_rgba(0,0,0,0.18)]",
         )}
         style={open ? { transform: `translateX(-${ACTION_WIDTH}px)` } : undefined}
       >

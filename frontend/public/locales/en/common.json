@@ -1211,7 +1211,12 @@
     "article_mobile_full_title": "Prioritize full title on mobile?",
     "article_mobile_full_title_hint": "On: long titles wrap to show fully, with source · time on a second line. Off: the previous single-line truncated style with source · time on the right.",
     "article_mobile_full_title_off": "Off",
-    "article_mobile_full_title_on": "On"
+    "article_mobile_full_title_on": "On",
+    "inoreader_splitter_prompt_title": "Also hide the divider in the article view?",
+    "inoreader_splitter_prompt_description": "You turned off “Show divider (the line normally drawn)” for {{views}}. Should the article view hide it too?",
+    "inoreader_splitter_prompt_separator": " / ",
+    "inoreader_splitter_prompt_keep": "Keep showing",
+    "inoreader_splitter_prompt_also_off": "Hide in article too"
   },
   "folder": {
     "create": "New folder",

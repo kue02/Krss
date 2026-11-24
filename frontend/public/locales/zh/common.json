@@ -1208,7 +1208,12 @@
     "article_mobile_full_title": "移动端下完整标题优先？",
     "article_mobile_full_title_hint": "开启：标题一行放不下会换行完整显示，来源·时间显示在第二行小字；关闭：恢复原来的单行截断、来源·时间在右侧。",
     "article_mobile_full_title_off": "关闭",
-    "article_mobile_full_title_on": "开启"
+    "article_mobile_full_title_on": "开启",
+    "inoreader_splitter_prompt_title": "文章视图也隐藏分界限吗？",
+    "inoreader_splitter_prompt_description": "检测到你已关闭「{{views}}」视图的「显示分界限（平时也画这条线）」。文章视图要不要也一起关闭？",
+    "inoreader_splitter_prompt_separator": " / ",
+    "inoreader_splitter_prompt_keep": "保持显示",
+    "inoreader_splitter_prompt_also_off": "文章也关闭"
   },
   "folder": {
     "create": "新增文件夹",
