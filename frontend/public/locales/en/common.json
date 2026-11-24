@@ -1216,7 +1216,11 @@
     "inoreader_splitter_prompt_description": "You turned off “Show divider (the line normally drawn)” for {{views}}. Should the article view hide it too?",
     "inoreader_splitter_prompt_separator": " / ",
     "inoreader_splitter_prompt_keep": "Keep showing",
-    "inoreader_splitter_prompt_also_off": "Hide in article too"
+    "inoreader_splitter_prompt_also_off": "Hide in article too",
+    "article_pane_style": "Reading pane style",
+    "article_pane_style_hint": "“Card” is a floating card with padding and shadow; “Plain” is the original full-width rounded pane. Both are kept for now — tell me which one to keep.",
+    "article_pane_style_card": "Card",
+    "article_pane_style_plain": "Plain"
   },
   "folder": {
     "create": "New folder",

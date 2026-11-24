@@ -523,6 +523,7 @@ export function EntryList({
     "inoreaderSplitterPromptShown",
   );
   const [splitterPromptOpen, setSplitterPromptOpen] = useState(false);
+  const articlePaneStyle = useUISettingKey("articlePaneStyle");
   const suppressedSplitterViews = useMemo(
     () =>
       (["picture", "social", "notification"] as ContentType[])
@@ -750,8 +751,7 @@ export function EntryList({
         const node = inlineContentRef.current;
         if (node) {
           const paneTop =
-            node.getBoundingClientRect().top -
-            (isMobile ? 0 : container?.getBoundingClientRect().top ?? 0);
+            node.getBoundingClientRect().top - scrollSurface.getViewportRect().top;
           setMobileHeaderHidden((current) => (current === (paneTop <= 0) ? current : paneTop <= 0));
           return;
         }
@@ -772,7 +772,7 @@ export function EntryList({
       window.removeEventListener("scroll", update);
       container?.removeEventListener("scroll", update);
     };
-  }, [isMobile, inlineActive, selectedEntryId]);
+  }, [isMobile, inlineActive, selectedEntryId, scrollSurface]);
   /* 合列正文接在「被点那一行」的后面（不是列表末尾）：读正文时还能继续往下滚看到
      后续条目；selectedEntryId 唯一 ⇒ 同时只有一条正文，点别的行就是换正文、上一条收起。 */
   const inlinePaneFor = (entryId: string | null) =>
@@ -780,7 +780,12 @@ export function EntryList({
       <div
         ref={inlineContentRef}
         data-testid="inline-article-pane"
-        className="w-full overflow-hidden rounded-[12px] border-t border-border bg-card"
+        className={cn(
+          "rounded-[12px] bg-card [clip-path:inset(0_round_12px)]",
+          articlePaneStyle === "card"
+            ? "mx-2 my-2 w-[calc(100%-1rem)] border border-border/60 shadow-nf"
+            : "w-full border-t border-border",
+        )}
       >
         {renderInlineContent?.(containerRef, {
           headerStickyTop: mobileHeaderHidden
