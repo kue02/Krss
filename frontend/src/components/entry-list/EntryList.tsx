@@ -693,11 +693,11 @@ export function EntryList({
   const [mobileHeaderHidden, setMobileHeaderHidden] = useState(false);
   /* 只有用户自己往下滚过（不是点开时自动吸顶那一下）才收起顶栏：
      否则点开任意一条都会因为自动吸顶把顶栏瞬间藏掉，看起来像「一打开就没有 TOP 栏」。 */
-  const mobileHeaderUserScrolledRef = useRef(false);
-  /* 换一条正文 / 离开合列时重置「用户滚动过」标记（单独一个 effect，避免主 effect
-     因依赖变化反复重建时把用户在滚动中刚设的标记清掉）。 */
+  /* 顶栏收起：点开后先「武装」1.2 秒（让自动吸顶那几帧滚完），之后只要正文顶部
+     滚到视口顶以上（paneTop < 0）就收起列表 TOP 栏，只留正文顶栏吸顶；滚回去又出现。 */
+  const [mobileHeaderArmed, setMobileHeaderArmed] = useState(false);
   useEffect(() => {
-    mobileHeaderUserScrolledRef.current = false;
+    setMobileHeaderArmed(false);
     setMobileHeaderHidden(false);
   }, [selectedEntryId, isMobile, articlePushDirection]);
   useEffect(() => {
@@ -706,14 +706,7 @@ export function EntryList({
       return;
     }
     const surface = scrollSurface;
-    const scrollHost: HTMLElement | Window =
-      surface.kind === "document" ? window : containerRef.current ?? window;
-    const markInteracted = () => {
-      mobileHeaderUserScrolledRef.current = true;
-    };
-    scrollHost.addEventListener("wheel", markInteracted, { passive: true });
-    scrollHost.addEventListener("touchstart", markInteracted, { passive: true });
-    scrollHost.addEventListener("pointerdown", markInteracted);
+    const armTimer = window.setTimeout(() => setMobileHeaderArmed(true), 1200);
     const update = () => {
       const node = inlineContentRef.current;
       if (!node) {
@@ -722,17 +715,15 @@ export function EntryList({
       }
       const paneTop =
         node.getBoundingClientRect().top - surface.getViewportRect().top;
-      setMobileHeaderHidden(mobileHeaderUserScrolledRef.current && paneTop < 0);
+      setMobileHeaderHidden(mobileHeaderArmed && paneTop < 0);
     };
     update();
     const unsubscribe = surface.subscribe(update);
     return () => {
+      window.clearTimeout(armTimer);
       unsubscribe();
-      scrollHost.removeEventListener("wheel", markInteracted);
-      scrollHost.removeEventListener("touchstart", markInteracted);
-      scrollHost.removeEventListener("pointerdown", markInteracted);
     };
-  }, [isMobile, inlineActive, selectedEntryId, scrollSurface]);
+  }, [isMobile, inlineActive, selectedEntryId, scrollSurface, mobileHeaderArmed]);
   /* 合列正文接在「被点那一行」的后面（不是列表末尾）：读正文时还能继续往下滚看到
      后续条目；selectedEntryId 唯一 ⇒ 同时只有一条正文，点别的行就是换正文、上一条收起。 */
   const inlinePaneFor = (entryId: string | null) =>
