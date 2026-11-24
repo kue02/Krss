@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -156,7 +157,16 @@ function viewCountOf(
   return counts?.[viewId] ?? 0;
 }
 
-export function Sidebar({
+/**
+ * memo（2026-11-25）：侧栏现在常驻挂载（`ui/sheet.tsx` 不再卸载），App 每次重渲染
+ * （选中条目、搜索、刷新、插件视图解析…）都会重建 `<Sidebar>` 元素。传给它的 props
+ * 全是稳定引用 —— 回调都走 useCallback（App.tsx:361-460）、`appearanceSettings` 是
+ * react-query 的 data、`pluginViews` 加载后数组稳定（`plugins/usePluginViewRoute.ts`
+ * 的 EMPTY_VIEWS）—— 所以用 memo 挡掉无关重渲染，别让这棵 1600 行的树跟着 commit。
+ * 真正会变的 props（selection / contentType / appearanceSettings 内容 / 插件视图）
+ * 一旦变化仍然照旧重渲染。
+ */
+function SidebarImpl({
   onAddClick,
   selection,
   onSelectFeed,
@@ -1614,3 +1624,10 @@ function groupFeedsByFolder(
 
   return { foldersWithFeeds, uncategorizedFeeds };
 }
+
+/**
+ * 对外仍是具名导出 `Sidebar`（`@/components/sidebar` 的 barrel 原样转发），
+ * 只是外面多包了一层 memo：调用方写法不变，props 类型不变。
+ */
+export const Sidebar = memo(SidebarImpl);
+Sidebar.displayName = "Sidebar";

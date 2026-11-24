@@ -34,7 +34,8 @@
     "views": "Smart folders",
     "view_no_matches": "No matching feeds",
     "starred_view": "Only starred in this view",
-    "plugin_views": "Plugins"
+    "plugin_views": "Plugins",
+    "dialog_label": "Sidebar"
   },
   "content_type": {
     "article": "Articles",

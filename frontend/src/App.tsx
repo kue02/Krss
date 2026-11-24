@@ -1251,8 +1251,9 @@ function App() {
   const isProfileOpen = useProfileModalStore((state) => state.open);
   const setProfileOpen = useProfileModalStore((state) => state.setOpen);
   // 订阅「编辑」弹窗：挂在这里（与设置弹窗平级），不挂 Sidebar 里 ——
-  // 移动端 Sidebar 装在 Sheet 里，Sheet 一关 Sidebar 就卸载，挂里面的弹窗会跟着消失
-  //（2026-09-20 移动端设置滑不动同根因）。开关走 store，第一栏与第二栏都能唤起。
+  // 弹窗要能从第一栏、第二栏、插件视图任一处唤起，挂在 Sidebar 里就到不了别处
+  //（侧栏 2026-11-25 起改为常驻挂载、不再随开关卸载，但桌面端 Sidebar 只存在于第一栏，
+  // 这条约束不变；2026-09-20 移动端设置滑不动也是同一处布局问题）。开关走 store。
   const editingFeed = useEditingFeedStore((state) => state.feed);
   const closeEditingFeed = useEditingFeedStore((state) => state.close);
 
@@ -1270,9 +1271,9 @@ function App() {
             <PluginActionDialog />
             {/*
              * 设置 / 资料弹窗挂在这里（与侧栏 Sheet 平级），不挂在 Sidebar 里 ——
-             * 移动端 Sidebar 装在 Sheet 里，Sheet 一关 Sidebar 就卸载，
-             * 挂在里面的弹窗会跟着消失；且 Sheet 的滚动锁会吃掉弹窗内容区的滚动
-             * （2026-09-20 移动端设置滑不动：sheet.tsx:26 + Combination 两处 preventDefault）。
+             * 弹窗要能从任意一栏唤起（桌面端 Sidebar 只存在于第一栏），挂在里面就到不了第二栏；
+             * 且侧栏打开时的滚动锁（sheet.tsx 的非被动 touchmove/wheel）会吃掉弹窗内容区的滚动
+             * （2026-09-20 移动端设置滑不动：sheet.tsx + Combination 两处 preventDefault）。
              */}
             <SettingsModal open={isSettingsOpen} onOpenChange={setSettingsOpen} />
             <ProfileModal open={isProfileOpen} onOpenChange={setProfileOpen} />

@@ -1,8 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import {
   setMobileSidebarOpen,
   useMobileSidebarOpen,
 } from "@/hooks/useMobileLayout";
+import { getTabbable } from "@/lib/tabbable";
 import { cn } from "@/lib/utils";
 
 const BLOCK_BACKGROUND_SCROLL_OPTIONS = {
@@ -76,15 +78,54 @@ export function Sheet({
   const storeOpen = useMobileSidebarOpen();
   const open = controlledOpen ?? storeOpen;
   const onOpenChange = controlledOnOpenChange ?? setMobileSidebarOpen;
+  const { t } = useTranslation();
   const panelRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<PointerDrag | null>(null);
 
   useEffect(() => {
     if (!open) return;
 
+    /**
+     * Tab 焦点循环。侧栏是移动端抽屉，但仍要有模态语义：面板内 Tab 到最后一个
+     * 回到第一个、Shift+Tab 到第一个回到最后一个，背景不可达。
+     * HeroUI Drawer 靠 react-aria 的 FocusScope 做这件事；这里没用 RAC 的 Modal
+     * （见文件头注释的两条源码约束），所以按 `lib/tabbable.ts` 的既有口径自己做，
+     * 判定可见性/可 Tab 的规则与全站其它浮层保持一致。
+     */
+    const trapTab = (event: KeyboardEvent) => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      const tabbable = getTabbable(panel);
+      const first = tabbable[0];
+      const last = tabbable[tabbable.length - 1];
+      if (!first || !last) {
+        // 面板里没有可聚焦元素：别让 Tab 跑到背景去
+        event.preventDefault();
+        panel.focus({ preventScroll: true });
+        return;
+      }
+      const active = document.activeElement;
+      if (!(active instanceof Node) || !panel.contains(active)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+        return;
+      }
+      if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      } else if (event.shiftKey && (active === first || active === panel)) {
+        event.preventDefault();
+        last.focus();
+      }
+    };
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         onOpenChange(false);
+        return;
+      }
+      if (event.key === "Tab") {
+        trapTab(event);
       }
     };
     const preventBackgroundScroll = (event: TouchEvent | WheelEvent) => {
@@ -151,8 +192,14 @@ export function Sheet({
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!open) return;
     const drag = dragRef.current;
     if (!drag || event.pointerId !== drag.pointerId) return;
+    // 只认「主键仍按着」的移动：手指已抬起（或鼠标键已松）后迟到的 move 一律丢弃
+    if ((event.buttons & 1) === 0) {
+      dragRef.current = null;
+      return;
+    }
 
     const dx = event.clientX - drag.startX;
     const dy = event.clientY - drag.startY;
@@ -197,44 +244,67 @@ export function Sheet({
     }
   };
 
-  const finishDrag = (
-    event: React.PointerEvent<HTMLDivElement>,
-    canceled: boolean,
-  ) => {
-    const drag = dragRef.current;
-    if (!drag || event.pointerId !== drag.pointerId) return;
-    dragRef.current = null;
-    if (!drag.dragging) return;
+  /**
+   * 手势收尾。既由面板上的 React 事件调用，也由 document 上的兜底监听调用 ——
+   * 指针在面板外松手（或移出窗口）时，面板自己收不到 pointerup，dragRef 会残留，
+   * 下一次 pointermove 就会把面板莫名其妙拖走。
+   *
+   * 注意这里**没有**在 pointerdown 就 setPointerCapture：指针捕获会把 pointerup
+   * 的 target 改成面板本身，按 Pointer Events 规范 click 会落到「pointerdown 与
+   * pointerup 目标的最近公共祖先」= 面板上，侧栏里所有按钮/链接的点击都会被吞掉
+   * （触摸本来有隐式捕获到按下元素，显式捕获反而破坏了它）。所以改成阈值过后才捕获
+   * （此时已是拖拽、不再有点击语义），未过阈值的情况由 document 兜底监听收拾。
+   */
+  const finishDrag = useCallback(
+    (pointerId: number, clientX: number, canceled: boolean) => {
+      const drag = dragRef.current;
+      if (!drag || pointerId !== drag.pointerId) return;
+      dragRef.current = null;
+      if (!drag.dragging) return;
 
-    const panel = panelRef.current;
-    const width = panel?.offsetWidth ?? 0;
-    const distance = Math.max(0, drag.startX - event.clientX);
-    const elapsed = performance.now() - drag.lastAt;
-    const velocity =
-      elapsed > 0
-        ? (event.clientX - drag.lastX) / elapsed
-        : drag.velocity;
-    const dismiss =
-      !canceled &&
-      (distance >= Math.max(DISMISS_MIN_DISTANCE_PX, width * DISMISS_FRACTION) ||
-        velocity <= -DISMISS_VELOCITY_PX_PER_MS);
+      const panel = panelRef.current;
+      const width = panel?.offsetWidth ?? 0;
+      const distance = Math.max(0, drag.startX - clientX);
+      const elapsed = performance.now() - drag.lastAt;
+      const velocity =
+        elapsed > 0 ? (clientX - drag.lastX) / elapsed : drag.velocity;
+      const dismiss =
+        !canceled &&
+        (distance >= Math.max(DISMISS_MIN_DISTANCE_PX, width * DISMISS_FRACTION) ||
+          velocity <= -DISMISS_VELOCITY_PX_PER_MS);
 
-    if (panel) {
-      if (dismiss) {
-        // 先落到关闭位，再通知父级：CSS 过渡从手指停下的位置继续滑出，
-        // 父级重渲染写入的是同一组值，不会二次跳动。
-        panel.style.transition = `transform ${EXIT_DURATION_MS}ms ${SLIDE_EASE}`;
-        panel.style.transform = "translateX(-100%)";
-      } else {
-        panel.style.transition = `transform ${SNAP_BACK_DURATION_MS}ms ${SLIDE_EASE}`;
-        panel.style.transform = "translateX(0px)";
+      if (panel) {
+        if (dismiss) {
+          // 先落到关闭位，再通知父级：CSS 过渡从手指停下的位置继续滑出，
+          // 父级重渲染写入的是同一组值，不会二次跳动。
+          panel.style.transition = `transform ${EXIT_DURATION_MS}ms ${SLIDE_EASE}`;
+          panel.style.transform = "translateX(-100%)";
+        } else {
+          panel.style.transition = `transform ${SNAP_BACK_DURATION_MS}ms ${SLIDE_EASE}`;
+          panel.style.transform = "translateX(0px)";
+        }
       }
-    }
 
-    if (dismiss) {
-      onOpenChange(false);
-    }
-  };
+      if (dismiss) {
+        onOpenChange(false);
+      }
+    },
+    [onOpenChange],
+  );
+
+  // 兜底：指针在面板外松手/被系统打断时也要收掉 dragRef（面板收不到那些事件）。
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerEnd = (event: PointerEvent) => {
+      finishDrag(event.pointerId, event.clientX, event.type === "pointercancel");
+    };
+    document.addEventListener("pointerup", handlePointerEnd);
+    document.addEventListener("pointercancel", handlePointerEnd);
+    return () => {
+      document.removeEventListener("pointerup", handlePointerEnd);
+      document.removeEventListener("pointercancel", handlePointerEnd);
+    };
+  }, [open, finishDrag]);
 
   return (
     <div data-slot="sheet" data-state={open ? "open" : "closed"} className="contents">
@@ -274,13 +344,23 @@ export function Sheet({
         ref={panelRef}
         data-slot="sheet-content"
         data-state={open ? "open" : "closed"}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("sidebar.dialog_label")}
         aria-hidden={open ? undefined : true}
         inert={!open}
         tabIndex={-1}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
-        onPointerUp={(event) => finishDrag(event, false)}
-        onPointerCancel={(event) => finishDrag(event, true)}
+        onPointerUp={(event) =>
+          finishDrag(event.pointerId, event.clientX, false)
+        }
+        onPointerCancel={(event) =>
+          finishDrag(event.pointerId, event.clientX, true)
+        }
+        onLostPointerCapture={() => {
+          dragRef.current = null;
+        }}
         className={cn(
           // 移动端抽屉：比旧版 280px 更宽一点（小屏封顶 86vw，避免贴边），
           // 右侧 24px 圆角 + 更深的带偏移投影，让抽屉像"浮起的一层"，而不是硬切一条边。
