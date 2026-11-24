@@ -43,7 +43,7 @@ const ListContentTruncate = 2000
 // 只按 f.folder_id = ? 匹配会漏掉子/孙级文件夹里的订阅。递归 CTE（SQLite 支持）。
 const folderSubtreeSQL = `WITH RECURSIVE folder_subtree(id) AS (
 	SELECT id FROM folders WHERE id = ?
-	UNION ALL
+	UNION
 	SELECT child.id FROM folders child JOIN folder_subtree sub ON child.parent_id = sub.id
 ) SELECT id FROM folder_subtree`
 
