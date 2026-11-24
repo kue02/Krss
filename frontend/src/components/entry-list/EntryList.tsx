@@ -1768,7 +1768,7 @@ export function EntryList({
           }}
           className={cn(
             "w-full rounded-[inherit]",
-            usesDocumentScroll ? "overflow-x-clip" : "overflow-x-hidden",
+            usesDocumentScroll ? "overflow-x-visible" : "overflow-x-hidden",
             // 非虚拟列表时交给浏览器自己的 scroll anchoring：它和布局在同一帧里补偿，
             // 不会出现「先被推走一秒、再被 JS 拉回」的跳（旧 JS 兜底还会用过期锚点乱拉）。
             // 虚拟化文章列表仍然是 none + usePrependScrollAnchor 的 JS 补偿。

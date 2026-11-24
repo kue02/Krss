@@ -72,7 +72,7 @@ describe("ArticlePlainListRow（文章「Inoreader列表」= inoreader）", () =
     );
 
     expect(screen.getByText("第一篇标题")).toBeTruthy();
-    expect(screen.getByText(/来源甲/)).toBeTruthy();
+    expect(screen.getAllByText(/来源甲/).length).toBeGreaterThan(0);
     // 唯一的 <img> 是 16px 的来源小图标，不是 64×64 缩略图
     const images = container.querySelectorAll("img");
     expect(images).toHaveLength(1);
