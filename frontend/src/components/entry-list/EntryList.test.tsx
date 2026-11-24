@@ -1472,20 +1472,17 @@ describe("文件夹子树未读数（用户 2026-11-24 bug1）", () => {
         { id: "child", name: "Child", parentId: "root", type: "article" },
         { id: "grand", name: "Grand", parentId: "child", type: "article" },
       ],
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any);
+    } as unknown as ReturnType<typeof useFolders>);
     vi.mocked(useFeeds).mockReturnValue({
       data: [
         { id: "f1", title: "F1", folderId: "root", type: "article" },
         { id: "f2", title: "F2", folderId: "grand", type: "article" },
         { id: "f3", title: "F3", folderId: "grand", type: "social" },
       ],
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any);
+    } as unknown as ReturnType<typeof useFeeds>);
     vi.mocked(useUnreadCounts).mockReturnValue({
       data: { counts: { f1: 1, f2: 2, f3: 5 } },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any);
+    } as unknown as ReturnType<typeof useUnreadCounts>);
 
     render(
       <EntryList
