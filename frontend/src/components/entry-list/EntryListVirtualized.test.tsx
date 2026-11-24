@@ -445,6 +445,55 @@ describe("EntryList · 标准文章列表虚拟化", () => {
     expect(screen.getByTestId("mark-all-read-footer")).toBeTruthy();
   });
 
+  it("合列插正文把被点行推下去几千像素：自动对回原位（视口不会落到正文底部）", async () => {
+    setUISetting("articleLayout", "inoreader");
+    setUISetting("articlePushDirection", "down");
+    const renderInlineContent = vi.fn(() => (
+      <div data-testid="inline-body">正文</div>
+    ));
+    const { rerender } = render(
+      <EntryList {...defaultProps} renderInlineContent={renderInlineContent} />,
+    );
+    const viewport = screen.getByTestId("entry-list-viewport");
+    await act(async () => {
+      stubViewportScroll(viewport);
+      await Promise.resolve();
+    });
+
+    const row = viewport.querySelector('[data-entry-id="e-3"]') as HTMLElement;
+    // 点击前：这一行在视口里的位置
+    row.getBoundingClientRect = () =>
+      ({ top: 120, bottom: 268, height: 148, left: 0, right: 400, width: 400 }) as DOMRect;
+    fireEvent.click(row);
+
+    // 正文 pane 插到它下面，把它整体推下去 3000px（实测 3462~11149px 那个量级）。
+    // top 跟着 scrollTop 走，模拟真实滚动：补偿完第二次量到的是原位、不会再补。
+    row.getBoundingClientRect = () => {
+      const top = 3120 - viewport.scrollTop;
+      return {
+        top,
+        bottom: top + 148,
+        height: 148,
+        left: 0,
+        right: 400,
+        width: 400,
+      } as DOMRect;
+    };
+    rerender(
+      <EntryList
+        {...defaultProps}
+        selectedEntryId="e-3"
+        renderInlineContent={renderInlineContent}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // 补回 3000px：视口仍停在被点行上，而不是落到正文底部
+    expect(viewport.scrollTop).toBe(3000);
+  });
+
   it("手机档「向下」合列：正文同样接在被点行后面、与列表共用文档滚动", async () => {
     setUISetting("articleLayout", "inoreader");
     setUISetting("articlePushDirection", "down");
@@ -478,6 +527,73 @@ describe("EntryList · 标准文章列表虚拟化", () => {
     ).toBeTruthy();
     // 手机档同样把正文接在行间、不再让底部按钮让位
     expect(screen.getByTestId("mark-all-read-footer")).toBeTruthy();
+  });
+
+  it("合列正文贴顶铺满时裁剪圆角跟着边框走，滚回顶部会复位（2026-11-24 缺口）", async () => {
+    setUISetting("articleLayout", "inoreader");
+    setUISetting("articlePushDirection", "down");
+    const renderInlineContent = vi.fn(() => (
+      <div data-testid="inline-body">正文</div>
+    ));
+    render(
+      <EntryList
+        {...defaultProps}
+        isMobile
+        selectedEntryId="e-1"
+        renderInlineContent={renderInlineContent}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    /* 手机档读 window.scrollY 判方向；选中后 300ms 内是程序化滚动抑制期，先等过去 */
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 350));
+    });
+    const scrollYDescriptor = Object.getOwnPropertyDescriptor(
+      window,
+      "scrollY",
+    );
+    const setScrollY = (value: number) => {
+      Object.defineProperty(window, "scrollY", {
+        configurable: true,
+        writable: true,
+        value,
+      });
+    };
+
+    const pane = screen.getByTestId("inline-article-pane");
+    /* 卡片档：12px 圆角边框 + 12px 圆角裁剪，两者必须一致，否则角上会被切掉一块 */
+    expect(pane.className).toContain("rounded-[12px]");
+    expect(pane.className).toContain("[clip-path:inset(0_round_12px)]");
+    expect(pane.className).not.toContain("[clip-path:inset(0)]");
+
+    try {
+      /* 滚到正文贴顶（jsdom 里 getBoundingClientRect 全 0 ⇒ paneTop=0） */
+      await act(async () => {
+        setScrollY(400);
+        fireEvent.scroll(window);
+      });
+      /* 贴顶档是直角边框，裁剪也必须是直角：rounded-none 配 inset(0_round_12px)
+         就是用户报的那个缺口。 */
+      expect(pane.className).toContain("rounded-none");
+      expect(pane.className).toContain("[clip-path:inset(0)]");
+      expect(pane.className).not.toContain("[clip-path:inset(0_round_12px)]");
+
+      /* 滚回列表最顶：正文已不在视口顶，必须复位成卡片档，不能保持铺满直角 */
+      await act(async () => {
+        setScrollY(0);
+        fireEvent.scroll(window);
+      });
+      expect(pane.className).toContain("rounded-[12px]");
+      expect(pane.className).toContain("[clip-path:inset(0_round_12px)]");
+    } finally {
+      if (scrollYDescriptor) {
+        Object.defineProperty(window, "scrollY", scrollYDescriptor);
+      } else {
+        Reflect.deleteProperty(window, "scrollY");
+      }
+    }
   });
 
   it("文章「Inoreader列表」在手机档包一层左滑动作（与其它列表一致）", async () => {

@@ -230,23 +230,15 @@ export function EntryList({
   const containerRef = useRef<HTMLDivElement>(null);
   /** 「向下」合列模式下接在「被点那一行」后面的正文块（点条目后要滚到它） */
   const inlineContentRef = useRef<HTMLDivElement>(null);
+  /** 点条目那一刻，被点那一行在视口里的位置（合列插正文后要对回原位） */
+  const pinnedRowRef = useRef<{ entryId: string; top: number } | null>(null);
+  /** 列表 TOP 栏是否收起（对齐补偿要能读到最新值，不能只用挂载时的闭包） */
+  const headerHiddenRef = useRef(false);
+  /** 正文栏是否贴顶铺满（同上，对齐补偿要读最新值） */
+  const paneAtTopRef = useRef(false);
   const headerRef = useRef<HTMLDivElement>(null);
   const listWrapperRef = useRef<HTMLDivElement>(null);
   const usesDocumentScroll = Boolean(isMobile);
-  /**
-   * 非虚拟列表（社媒 / 通知时间线）：直接交给浏览器原生 scroll anchoring。
-   *
-   * 2026-11-01 用户「还是不行」的根因就在这里：`overflow-anchor:none` 把浏览器
-   * 自带的补偿关掉之后，只能靠 `usePrependScrollAnchor` 的 JS 兜底 —— 它拿的是
-   * 上一帧量到的锚点坐标，图片/翻译异步撑高、或者锚点条目被换掉之后，那串旧坐标
-   * 会被当成「应该在哪」反复拉，于是整块往下走一段就停住（用户看到的形态）。
-   * 原生 anchoring 和布局在同一帧里补偿，不存在这个时间差。
-   *
-   * 虚拟化文章列表仍走 JS 补偿 —— 行是按 `estimateSize` 绝对定位的，插入新条目会让
-   * 所有行整体平移、总高度却可能不变，Chrome 的 anchoring 认不出这种「垫片内位移」
-   * （实测 3 条 148px 估计行 = 下移 444px 且没人补）。
-   */
-  const nativeScrollAnchor = contentType !== "article";
   const scrollSurface = useEntryListScrollSurface({
     documentScroll: usesDocumentScroll,
     containerRef,
@@ -504,8 +496,8 @@ export function EntryList({
    *  后两档仅在对应实验开关打开时进入循环。 */
   const {
     setArticleLayout,
-    setSplitterVisibleForView,
     setInoreaderSplitterPromptShown,
+    hideArticleSplitterFromPrompt,
   } = useUISettingActions();
   const handleToggleArticleLayout = useCallback(() => {
     const idx = Math.max(
@@ -533,6 +525,9 @@ export function EntryList({
   useEffect(() => {
     if (contentType !== "article" || articleLayout !== "inoreader") return;
     if (inoreaderSplitterPromptShown) return;
+    /* 文章视图这条线本来就关着时不必再问「要不要也一起关」——
+       问题前提不成立（用户早就自己关了）。 */
+    if (splitterVisibleByView?.article === false) return;
     if (suppressedSplitterViews.length === 0) return;
     setSplitterPromptOpen(true);
     setInoreaderSplitterPromptShown(true);
@@ -540,6 +535,7 @@ export function EntryList({
     contentType,
     articleLayout,
     inoreaderSplitterPromptShown,
+    splitterVisibleByView?.article,
     suppressedSplitterViews.length,
     setInoreaderSplitterPromptShown,
   ]);
@@ -622,6 +618,14 @@ export function EntryList({
         scrollKeyRef.current,
         scrollSurface.getScrollTop(),
       );
+      /* 合列时正文 pane 插在被点行**下面**：它下面的行会整体下移 paneH。
+         记下被点行此刻在视口里的位置，pane 挂载后据此对齐回来 —— 浏览器原生
+         anchoring、焦点 scroll-into-view、我们自己的补偿，只要把视口挪走了，
+         被点行的位置就会变，这里一并拉回（2026-11-24 用户报「点条目后跑到正文底部」）。 */
+      const row = findEntryRowNode(containerRef.current, entryId);
+      pinnedRowRef.current = row
+        ? { entryId, top: row.getBoundingClientRect().top }
+        : null;
       onSelectEntryRef.current(entryId);
     },
     [scrollSurface],
@@ -719,14 +723,110 @@ export function EntryList({
      正文 pane 插在这种祖先里会让 EntryContentHeader 的 sticky 失效（工具栏会浮在正文
      中部）。关掉虚拟化后 pane 落在普通文档流里，sticky 正常，正文也能滚动吸顶。 */
   const inlineNoVirtual = inlineActive;
+  /**
+   * 非虚拟列表（社媒 / 通知时间线）：直接交给浏览器原生 scroll anchoring。
+   *
+   * 2026-11-01 用户「还是不行」的根因就在这里：`overflow-anchor:none` 把浏览器
+   * 自带的补偿关掉之后，只能靠 `usePrependScrollAnchor` 的 JS 兜底 —— 它拿的是
+   * 上一帧量到的锚点坐标，图片/翻译异步撑高、或者锚点条目被换掉之后，那串旧坐标
+   * 会被当成「应该在哪」反复拉，于是整块往下走一段就停住（用户看到的形态）。
+   * 原生 anchoring 和布局在同一帧里补偿，不存在这个时间差。
+   *
+   * 虚拟化文章列表仍走 JS 补偿 —— 行是按 `estimateSize` 绝对定位的，插入新条目会让
+   * 所有行整体平移、总高度却可能不变，Chrome 的 anchoring 认不出这种「垫片内位移」
+   * （实测 3 条 148px 估计行 = 下移 444px 且没人补）。
+   *
+   * 合列（`inlineNoVirtual`）也算非虚拟：点条目时正文 pane 插在被点行下面，下方所有行
+   * 整体下移 `paneH`，而 `usePrependScrollAnchor` 的锚点坐标是**点击前**量的、且候选里
+   * 常常就是 pane 下面那几行 ⇒ `delta ≈ paneH`，一次 `scrollBy` 把视口甩到正文底部
+   * （2026-11-24 用户报「点条目后跑到正文底部」，实测 5/5 复现，栈就在 stabilize）。
+   * 这种「正文插入」本来就不该补偿：被点行不动、正文在它下面展开正是想要的。
+   */
+  const nativeScrollAnchor = contentType !== "article" || inlineNoVirtual;
+  /* 合列插正文后把被点行对回点击前的位置。
+     只盯「打开正文后的一小段时间」（`PIN_ALIGN_MS`），且用户一动手（滚轮/触摸/按键）
+     立刻收手 —— 之后 pane 里的图片再撑高也不追，否则用户正往下读会被反复拉回。
+     为什么不是「补一帧就完」：pane 顶部那条 sticky 标题栏、正文首屏的字体/图片
+     落位都要一两帧才稳，实测晚到 ~150ms 才把被点行又推开 56px（用户说的「抖动」）。 */
+  useLayoutEffect(() => {
+    const pinned = pinnedRowRef.current;
+    if (!pinned) return;
+    if (!inlineActive || selectedEntryId !== pinned.entryId) return;
+
+    /* 顶栏收起/展开本身会让列表整体上移/下移一截（实测 ~56px），那是预期行为、
+       不是抖动。若把它当位移去补，会和顶栏状态互相推拉，变成用户看到的 56px 抖动
+       （审查 review-scroll-fix 实测：先补 -56、再补 +56、再补 -56）。
+       所以一旦顶栏状态变了，就把基准重设到当前位置、这一帧不补。 */
+    let lastHeaderHidden = headerHiddenRef.current;
+    const align = () => {
+      const row = findEntryRowNode(containerRef.current, pinned.entryId);
+      if (!row) return;
+      if (headerHiddenRef.current !== lastHeaderHidden) {
+        lastHeaderHidden = headerHiddenRef.current;
+        /* 只有「正文贴顶」时，顶栏收起/展开是由滚动位置反馈触发的：补它会和顶栏状态
+           互相推拉（-56/+56/-56），这时重设基准、不补。点条目时顶栏因重置而展开属于
+           正常布局变化，必须补 —— 否则被点行会停在 56px 之外。 */
+        if (paneAtTopRef.current) {
+          pinned.top = row.getBoundingClientRect().top;
+          return;
+        }
+      }
+      const delta = row.getBoundingClientRect().top - pinned.top;
+      if (Math.abs(delta) < 0.5) return;
+      /* 不设上限：这里要救的正是「视口被甩到正文底部」那种几千像素的位移
+         （实测 3462 / 4025 / 5730 / 8265 / 11149px）。范围由「只盯一小段时间 +
+         用户动手就停」限定。 */
+      scrollSurface.scrollBy(delta);
+    };
+
+    let stopped = false;
+    let frame = 0;
+    const deadline = performance.now() + PIN_ALIGN_MS;
+    const stop = () => {
+      stopped = true;
+      cancelAnimationFrame(frame);
+      pinnedRowRef.current = null;
+    };
+    const step = () => {
+      if (stopped) return;
+      align();
+      if (performance.now() >= deadline) {
+        stop();
+        return;
+      }
+      frame = requestAnimationFrame(step);
+    };
+
+    align();
+    frame = requestAnimationFrame(step);
+    /* 用户一动就不再对齐：此刻视口是他自己滚的，再补就是抢方向盘。 */
+    const events: (keyof WindowEventMap)[] = [
+      "wheel",
+      "touchstart",
+      "pointerdown",
+      "keydown",
+    ];
+    for (const name of events) {
+      window.addEventListener(name, stop, { once: true, passive: true });
+    }
+    return () => {
+      stopped = true;
+      cancelAnimationFrame(frame);
+      for (const name of events) {
+        window.removeEventListener(name, stop);
+      }
+    };
+  }, [inlineActive, scrollSurface, selectedEntryId]);
   /* 移动端列表 TOP 栏的滚动交互（用户 2026-11-24 第 2 条）：
      - 向下滚 → 收起；向上滚 → 出现；回到顶部 → 出现；
      - 打开内联正文后，正文标题栏优先级高于 TOP 栏：正文标题一到顶就把 TOP 收起，
        滚回正文上方（paneTop > 0）时 TOP 再出现。
      自动吸顶那几帧是程序化滚动，用户没动手前不据此判定方向。 */
   const [mobileHeaderHidden, setMobileHeaderHidden] = useState(false);
+  headerHiddenRef.current = mobileHeaderHidden;
   /* 卡片正文栏滚到视口顶部后自动铺满宽度，不再留左右各 8px 的空白（用户 2026-11-24）。 */
   const [paneAtTop, setPaneAtTop] = useState(false);
+  paneAtTopRef.current = paneAtTop;
   const lastScrollYRef = useRef<number | null>(null);
   /* 点开正文后的自动吸顶会连续写 scrollTop；这段时间不要用「位置」去反推顶栏，
      否则收起/展开又反过来改变可视高度，paneTop 在阈值附近来回抖 → 点击时快速闪烁。 */
@@ -748,12 +848,20 @@ export function EntryList({
       const y = readY();
       const prev = last;
       last = y;
-      if (performance.now() < lockUntil) return;
-      if (performance.now() < suppressHeaderToggleUntilRef.current) return;
+      /* 「回到列表最顶」的复位必须放在 lockUntil / suppress 早退之前：
+         快速向上连滚时每个 dy<-2 都会把 lockUntil 刷新成 now+450，那条「到顶」的
+         scroll 事件就会被早退吞掉，paneAtTop 卡在 true —— 正文栏以直角全宽形态挂在
+         列表中间（审查 review-scroll-fix 实测可偶现）。到顶与否和方向锁定无关，先判它。 */
       if (y <= 6) {
         setMobileHeaderHidden(false);
+        /* 回到列表最顶时正文一定不在视口顶（它排在列表里），必须把「铺满」复位，
+           否则从正文下方滚回顶部后 paneAtTop 还停在 true，正文栏会以直角铺满的
+           形态挂在列表中间、左右 8px 留白消失（用户 2026-11-24 报的缺口同批发现）。 */
+        if (inlineActive) setPaneAtTop(false);
         return;
       }
+      if (performance.now() < lockUntil) return;
+      if (performance.now() < suppressHeaderToggleUntilRef.current) return;
       if (inlineActive && selectedEntryId) {
         const node = inlineContentRef.current;
         if (node) {
@@ -796,12 +904,16 @@ export function EntryList({
         ref={inlineContentRef}
         data-testid="inline-article-pane"
         className={cn(
-          "bg-card [clip-path:inset(0_round_12px)] transition-[margin,width,border-radius] duration-200 ease-out",
+          /* 裁剪圆角必须跟着 border-radius 走：贴顶那档是 rounded-none（直角边框），
+             若裁剪还按 12px 圆角切，角上就会少一块（用户 2026-11-24 报的缺口）。
+             clip-path 一并进过渡表，否则切换途中两者不同步，反向（贴顶→卡片）时
+             裁剪圆角会先跳回 12px，照样露缺口。 */
+          "bg-card transition-[margin,width,border-radius,clip-path] duration-200 ease-out",
           articlePaneStyle === "card"
             ? paneAtTop
-              ? "my-0 w-full rounded-none border-t border-border"
-              : "mx-2 my-2 w-[calc(100%-1rem)] rounded-[12px] border border-border/60 shadow-nf"
-            : "w-full rounded-[12px] border-t border-border",
+              ? "my-0 w-full rounded-none border-t border-border [clip-path:inset(0)]"
+              : "mx-2 my-2 w-[calc(100%-1rem)] rounded-[12px] border border-border/60 shadow-nf [clip-path:inset(0_round_12px)]"
+            : "w-full rounded-[12px] border-t border-border [clip-path:inset(0_round_12px)]",
         )}
       >
         {renderInlineContent?.(containerRef, {
@@ -1660,12 +1772,25 @@ export function EntryList({
                   </AlertDialog.Heading>
                 </AlertDialog.Header>
                 <AlertDialog.Body>
-                  <div className="text-sm text-muted-foreground">
-                    {t("appearance_view.inoreader_splitter_prompt_description", {
-                      views: suppressedSplitterViews.join(
-                        t("appearance_view.inoreader_splitter_prompt_separator"),
-                      ),
-                    })}
+                  <div className="space-y-2 text-sm text-muted-foreground">
+                    <p>
+                      {t(
+                        "appearance_view.inoreader_splitter_prompt_description",
+                        {
+                          views: suppressedSplitterViews.join(
+                            t(
+                              "appearance_view.inoreader_splitter_prompt_separator",
+                            ),
+                          ),
+                        },
+                      )}
+                    </p>
+                    {/* 11-24（用户第 3 条）：说明这不是一次性选择，随时能回设置里改回来 */}
+                    <p>
+                      {t(
+                        "appearance_view.inoreader_splitter_prompt_settings_hint",
+                      )}
+                    </p>
                   </div>
                 </AlertDialog.Body>
                 <AlertDialog.Footer>
@@ -1680,7 +1805,8 @@ export function EntryList({
                     size="sm"
                     variant="primary"
                     onPress={() => {
-                      setSplitterVisibleForView("article", false);
+                      // 记下「这条是提示替用户关的」，切走 Inoreader 布局时自动恢复
+                      hideArticleSplitterFromPrompt();
                       setSplitterPromptOpen(false);
                     }}
                   >
@@ -2112,6 +2238,24 @@ export function EntryList({
       </div>
     </div>
   );
+}
+
+/* 打开正文后盯住被点行多久（毫秒）。实测两处晚到的位移都在这个窗口里：
+   - 挂载后 ~150ms：pane 顶部 sticky 标题栏落位，把被点行推开 56px；
+   - 挂载后 ~1600ms：上方那条正文里的图片/字体撑开，又把被点行推下 56px。
+   两处都是「上面的内容长高了」，被点行该待在原地，所以要盯够。 */
+const PIN_ALIGN_MS = 2000;
+
+/** 按 entryId 找列表里的行节点（行上带 data-entry-id；虚拟列表外层不带，见其组件注释） */
+function findEntryRowNode(
+  root: ParentNode | null,
+  entryId: string,
+): HTMLElement | null {
+  if (!root) return null;
+  for (const node of root.querySelectorAll<HTMLElement>("[data-entry-id]")) {
+    if (node.dataset.entryId === entryId) return node;
+  }
+  return null;
 }
 
 function EntryListSkeleton() {

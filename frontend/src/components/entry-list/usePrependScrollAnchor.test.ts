@@ -2,7 +2,11 @@ import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Entry } from "@/types/api";
 import type { ScrollSurface } from "./scroll-surface";
-import { findHeadAdditionIds, usePrependScrollAnchor } from "./usePrependScrollAnchor";
+import {
+  findHeadAdditionIds,
+  isStabilizeDeltaTooLarge,
+  usePrependScrollAnchor,
+} from "./usePrependScrollAnchor";
 
 function makeEntry(id: string): Entry {
   return {
@@ -66,6 +70,23 @@ function makeHarness(tops: Record<string, number>): Harness {
     nodes,
   };
 }
+
+describe("isStabilizeDeltaTooLarge（合列插正文后别把视口甩走）", () => {
+  it("一屏半以内算正常抖动，照补", () => {
+    expect(isStabilizeDeltaTooLarge(120, 800)).toBe(false);
+    expect(isStabilizeDeltaTooLarge(-1199, 800)).toBe(false);
+  });
+
+  it("超过一屏半就丢弃（正文 pane 插进来是几千像素）", () => {
+    expect(isStabilizeDeltaTooLarge(1201, 800)).toBe(true);
+    expect(isStabilizeDeltaTooLarge(-3462, 800)).toBe(true);
+  });
+
+  it("视口很矮时仍有 240px 的下限，避免正常补位移被误杀", () => {
+    expect(isStabilizeDeltaTooLarge(200, 100)).toBe(false);
+    expect(isStabilizeDeltaTooLarge(241, 100)).toBe(true);
+  });
+});
 
 describe("findHeadAdditionIds（58-3）", () => {
   it("只取「插在第一个旧条目之前」的新 id，翻页追加不算", () => {
@@ -201,5 +222,41 @@ describe("usePrependScrollAnchor（58-3 无感叠加）", () => {
 
     expect(harness.scrollBy).not.toHaveBeenCalled();
     expect(onHeadAdditions).toHaveBeenCalledWith([], ["interleaved"], false);
+  });
+
+  it("头部新条目把锚点推走几千像素：照实补（这个分支只可能是真插入了条目）", () => {
+    const harness = makeHarness({ a: 100, b: 200 });
+    const onHeadAdditions = vi.fn();
+
+    const { rerender } = renderHook(
+      ({ entries }) =>
+        usePrependScrollAnchor({
+          surface: harness.surface,
+          contentRootRef: { current: harness.contentRoot },
+          entries,
+          resetKey: "k",
+          enabled: true,
+          onHeadAdditions,
+        }),
+      { initialProps: { entries: [makeEntry("a"), makeEntry("b")] } },
+    );
+
+    // a 被新条目推下 2900：这是「真的插入了条目」，必须照实补回（正文 pane 插入不改
+    // entries、不会走这个分支，所以这里没有上限问题）
+    harness.nodes.get("a")!.getBoundingClientRect = () =>
+      ({ top: 3000, bottom: 3100, height: 100, left: 0, right: 600, width: 600 }) as DOMRect;
+    const newNode = document.createElement("div");
+    newNode.dataset.entryId = "n";
+    newNode.getBoundingClientRect = () =>
+      ({ top: 100, bottom: 200, height: 100, left: 0, right: 600, width: 600 }) as DOMRect;
+    harness.contentRoot.insertBefore(newNode, harness.contentRoot.firstChild);
+
+    act(() => {
+      rerender({ entries: [makeEntry("n"), makeEntry("a"), makeEntry("b")] });
+    });
+
+    expect(harness.scrollBy).toHaveBeenCalledWith(2900);
+    // 仍然要回报新增（Toast 的数字不能因为不补偿就丢）
+    expect(onHeadAdditions).toHaveBeenCalledWith(["n"], ["n"], false);
   });
 });

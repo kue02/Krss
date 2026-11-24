@@ -196,6 +196,12 @@ interface UISettings {
   articleMobileFullTitle: boolean;
   /** 「Inoreader列表」首次打开时是否已问过「文章视图是否也隐藏分界限」 */
   inoreaderSplitterPromptShown: boolean;
+  /**
+   * 11-24（用户第 3 条）：首次提示里点了「文章也关闭」→ true。
+   * 作用是让「切走 Inoreader 布局时自动恢复文章分界限」只恢复**这条提示替用户关的**，
+   * 不碰用户在设置里自己手动关掉的情况（防止误伤）。恢复后立即置回 false。
+   */
+  inoreaderSplitterAutoOff: boolean;
   /** 「Inoreader列表」内联正文的容器样式：card = 卡片（圆角+留白+阴影），plain = 原样（全宽圆角） */
   articlePaneStyle: "card" | "plain";
   hoverImageSize: "small" | "large";
@@ -282,6 +288,14 @@ interface UISettings {
    * 默认全开 = 与改之前完全一致。
    */
   splitterVisibleByView: ViewFlags;
+  /**
+   * 双栏（订阅侧栏 + 内容）分界限的「自动隐藏」（用户 11-24 第 3 条）。
+   *   开  = 第一栏那条线平时不画，鼠标悬浮到分界处（或拖拽）时才出现 → PanelSplitter 用 "hover" 档；
+   *   关（默认）= 平时也画这条线 = 改之前的样子 → "always"。
+   * 与 `splitterVisibleByView` **正交**：那条管「这个视图画不画」（=false 时完全不画，优先级更高），
+   * 这条管「画的时候平时画不画」。第二栏（条目 ↔ 正文）那条不受这条影响，仍保持 hover 原逻辑。
+   */
+  splitterAutoHide: boolean;
   /** 减少动态效果：涟漪、过渡、折叠动画一律压到最短（系统 prefers-reduced-motion 也会自动生效） */
   reduceMotion: boolean;
   /**
@@ -488,6 +502,10 @@ const SILENT_SAVE_UI_KEYS = new Set<string>([
   "inoreaderSplitterPromptShown",
   "articlePaneStyle",
   "hoverImageSize",
+  // 11-24：分界限的显示方式在侧栏边上当场就变（且切走 Inoreader 布局时的自动恢复不该弹框）
+  "splitterVisibleByView",
+  "splitterAutoHide",
+  "inoreaderSplitterAutoOff",
   // 47-1：切「只显示未读 / 显示全部」，列表当场就换了，不必再弹一句
   "unreadOnly",
   // 文章工具栏：拖拽排序/显隐在设置面板里当场可见，不必每动一下弹「已保存」
@@ -656,6 +674,7 @@ export const defaultUISettings: UISettings = {
   articleQuickActionMode: "expand",
   articleMobileFullTitle: true,
   inoreaderSplitterPromptShown: false,
+  inoreaderSplitterAutoOff: false,
   articlePaneStyle: "card",
   hoverImageSize: "small",
   hoverMultiImage: { rowWheel: true, floatWheel: false, hSwipe: false },
@@ -698,6 +717,8 @@ export const defaultUISettings: UISettings = {
     notification: false,
     social: false,
   },
+  // 11-24：默认关 = 平时也画这条线（= 改之前的样子，行为零变化）
+  splitterAutoHide: false,
   reduceMotion: false,
   quoteStyle: "card",
   unreadStyle: "badge",
@@ -979,6 +1000,26 @@ export function useUISettingActions() {
     [setUISetting],
   );
 
+  /**
+   * 11-24：首次提示里点「文章也关闭」。
+   * 关掉文章视图的分界限，同时记下「这条是提示替用户关的」—— 用户之后切走
+   * 「Inoreader列表」布局时由 setArticleLayout 自动恢复（只恢复这一条）。
+   */
+  const hideArticleSplitterFromPrompt = useCallback(() => {
+    setUISetting("splitterVisibleByView", {
+      ...getUISettings().splitterVisibleByView,
+      article: false,
+    });
+    setUISetting("inoreaderSplitterAutoOff", true);
+  }, []);
+
+  /**
+   * 双栏（订阅侧栏 + 内容）分界限自动隐藏。开 = 平时不画、悬浮/拖拽才出现；关 = 平时也画。
+   */
+  const setSplitterAutoHide = useCallback((value: boolean) => {
+    setUISetting("splitterAutoHide", value);
+  }, []);
+
   const setArticlePaneStyle = useCallback(
     (value: "card" | "plain") => {
       setUISetting("articlePaneStyle", value);
@@ -997,10 +1038,26 @@ export function useUISettingActions() {
    * 套完用户仍可手改这两项（它们各自是独立设置）。
    */
   const setArticleLayout = useCallback((layout: ArticleLayout) => {
+    // 先取切换前的快照：自动恢复要看「原来是不是 Inoreader 布局」和「提示有没有替用户关分界限」
+    const before = getUISettings();
     setUISetting("articleLayout", layout);
     const preset = articleLayoutPreset(layout);
     setUISetting("articlePushDirection", preset.articlePushDirection);
     setUISetting("articleCoverList", preset.articleCoverList);
+    // 11-24（用户第 3 条）：从「Inoreader列表」切回别的布局时，把首次提示替用户关掉的
+    // **文章视图**分界限自动打开；其它视图与用户手动关掉的情况一概不动
+    //（inoreaderSplitterAutoOff 只在提示里点「文章也关闭」时置 true，手动改过就会清掉）。
+    if (
+      before.articleLayout === "inoreader" &&
+      layout !== "inoreader" &&
+      before.inoreaderSplitterAutoOff
+    ) {
+      setUISetting("splitterVisibleByView", {
+        ...getUISettings().splitterVisibleByView,
+        article: true,
+      });
+      setUISetting("inoreaderSplitterAutoOff", false);
+    }
   }, []);
 
   /** 文章视图正文推入方向（right 从右 / bottom 从下） */
@@ -1134,10 +1191,19 @@ export function useUISettingActions() {
 
   const setSplitterVisibleForView = useCallback(
     (view: ContentType, visible: boolean) => {
-      setUISetting("splitterVisibleByView", {
-        ...getUISettings().splitterVisibleByView,
-        [view]: visible,
-      });
+      const before = getUISettings().splitterVisibleByView;
+      setUISetting("splitterVisibleByView", { ...before, [view]: visible });
+      // 11-24：用户自己在设置里动过文章视图这条 → 不再算「提示替关」，
+      // 免得以后切走 Inoreader 布局时把用户明确关掉的又打开（防误伤）。
+      // 只有真的改动了才算「动过」：点回当前已选中的那一档不算（用户没改任何设置，
+      // 之后切走布局仍应把提示替关的那条自动恢复）。
+      if (
+        view === "article" &&
+        before?.[view] !== visible &&
+        getUISettings().inoreaderSplitterAutoOff
+      ) {
+        setUISetting("inoreaderSplitterAutoOff", false);
+      }
     },
     [],
   );
@@ -1251,6 +1317,8 @@ export function useUISettingActions() {
     setArticleQuickActionMode,
     setArticleMobileFullTitle,
     setInoreaderSplitterPromptShown,
+    hideArticleSplitterFromPrompt,
+    setSplitterAutoHide,
     setArticlePaneStyle,
     setHoverImageSize,
     setArticleLayout,
