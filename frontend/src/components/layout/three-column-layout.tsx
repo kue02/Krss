@@ -310,8 +310,10 @@ export function ThreeColumnLayout({
           3) 经典三栏：条目栏固定宽 + 正文为第三栏。 */}
       {inlineContent ? (
         !hideList && (
-          <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-background safe-area-top">
-            {list}
+          <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-background safe-area-top p-0 sm:pt-2 sm:pr-2 sm:pb-2 sm:pl-2">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-none border-0 bg-card sm:rounded-[12.8px] sm:shadow-nf">
+              {list}
+            </div>
           </div>
         )
       ) : coverList ? (
