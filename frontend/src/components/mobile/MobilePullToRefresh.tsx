@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ProgressBar } from "@heroui/react";
 import { cn } from "@/lib/utils";
@@ -27,7 +27,8 @@ type PullDirection = "undetermined" | "vertical" | "ignored";
  *
  * 列表在移动端走文档滚动（`html.mobile-document-scroll`），所以监听 window 的 touch；
  * 只在 scrollY <= 0 时接管，并给橡皮筋阻尼，松手超过 64px 才真正刷新。
- * 顶栏按钮、输入框、弹层、条目横滑行（`[data-swipe-row]`）上的手势不拦，避免误触。
+ * 顶栏按钮、输入框、浮层（`[data-overlay]` / `[data-slot^="sheet"]`）上的手势不拦，避免误触；
+ * 列表行本身不排除（行根可能是 button，也可能只是普通容器），靠方向锁区分横滑与下拉。
  *
  * 带方向锁：手指移动 8px 后判定一次，只有「向下且纵向占优（|dy| > |dx| * 1.2）」
  * 才进入下拉；判定为横向后本次手势彻底忽略（不 setPull、不 preventDefault），
@@ -48,19 +49,29 @@ export function MobilePullToRefresh({
   const directionRef = useRef<PullDirection | null>(null);
   const pullRef = useRef(0);
 
+  const reset = useCallback(() => {
+    startXRef.current = null;
+    startYRef.current = null;
+    directionRef.current = null;
+    pullRef.current = 0;
+    setPull(0);
+  }, []);
+
   useEffect(() => {
+    // 重启监听前清掉半截手势的 refs；可见的 pull 由上一次 cleanup 复位。
+    startXRef.current = null;
+    startYRef.current = null;
+    directionRef.current = null;
+    pullRef.current = 0;
     if (!enabled) return;
 
-    const reset = () => {
-      startXRef.current = null;
-      startYRef.current = null;
-      directionRef.current = null;
-      pullRef.current = 0;
-      setPull(0);
-    };
-
     const onTouchStart = (event: TouchEvent) => {
-      if (busy || window.scrollY > 0 || event.touches.length !== 1) {
+      if (
+        busy ||
+        isRefreshing ||
+        window.scrollY > 0 ||
+        event.touches.length !== 1
+      ) {
         reset();
         return;
       }
@@ -68,7 +79,7 @@ export function MobilePullToRefresh({
       if (
         !(target instanceof Element) ||
         target.closest(
-          "button, a, input, textarea, select, [role='dialog'], [data-no-pull], [data-swipe-row]",
+          "button, a, input, textarea, select, [role='dialog'], [data-no-pull], [data-overlay], [data-slot='sheet'], [data-slot='sheet-overlay'], [data-slot='sheet-content']",
         )
       ) {
         reset();
@@ -109,6 +120,16 @@ export function MobilePullToRefresh({
 
       // 已判定横向（或其它非下拉方向）：保持静默，交给条目横滑。
       if (directionRef.current !== "vertical") return;
+
+      // 先纵后横：还没拉过阈值就改判横向，本次手势放弃且不阻断横滑。
+      if (pullRef.current < PULL_THRESHOLD) {
+        if (Math.abs(dx) > Math.abs(dy) * DIRECTION_LOCK_RATIO) {
+          directionRef.current = "ignored";
+          reset();
+          return;
+        }
+      }
+
       if (dy <= 0 || window.scrollY > 0) {
         if (pullRef.current !== 0) reset();
         return;
@@ -137,17 +158,23 @@ export function MobilePullToRefresh({
       });
     };
 
+    // 系统取消手势只复位，不触发刷新。
+    const onTouchCancel = () => {
+      reset();
+    };
+
     window.addEventListener("touchstart", onTouchStart, { passive: true });
     window.addEventListener("touchmove", onTouchMove, { passive: false });
     window.addEventListener("touchend", onTouchEnd, { passive: true });
-    window.addEventListener("touchcancel", onTouchEnd, { passive: true });
+    window.addEventListener("touchcancel", onTouchCancel, { passive: true });
     return () => {
       window.removeEventListener("touchstart", onTouchStart);
       window.removeEventListener("touchmove", onTouchMove);
       window.removeEventListener("touchend", onTouchEnd);
-      window.removeEventListener("touchcancel", onTouchEnd);
+      window.removeEventListener("touchcancel", onTouchCancel);
+      reset();
     };
-  }, [busy, enabled, onRefresh]);
+  }, [busy, enabled, isRefreshing, onRefresh, reset]);
 
   if (!enabled) return null;
   const active = busy || isRefreshing;
