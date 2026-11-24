@@ -413,6 +413,91 @@ describe("Sheet", () => {
     expect(content.style.transform).toBe("translateX(0px)");
   });
 
+  it("finishes the gesture when the system steals pointer capture mid-drag", () => {
+    const { container } = render(<ControlledSheet initialOpen />);
+    const { root, content } = getSlots(container);
+
+    // 拖到 -120px（已过 56px 关闭阈值）时被系统收走捕获：应当走完整收尾，滑出关闭，
+    // 而不是把面板晾在 translateX(-120px) 的半开位置。
+    pointer("pointerDown", content, {
+      pointerId: 11,
+      clientX: 300,
+      clientY: 400,
+    });
+    pointer("pointerMove", content, {
+      pointerId: 11,
+      clientX: 180,
+      clientY: 402,
+    });
+    expect(content.style.transform).toBe("translateX(-120px)");
+
+    fireEvent.lostPointerCapture(content, { pointerId: 11, clientX: 180 });
+    expect(stateOf(root)).toBe("closed");
+    expect(content.style.transform).toBe("translateX(-100%)");
+    expect(content.style.transition).toContain("200ms");
+  });
+
+  it("snaps back when capture is lost before the dismiss threshold", () => {
+    const { container } = render(<ControlledSheet initialOpen />);
+    const { root, content } = getSlots(container);
+
+    pointer("pointerDown", content, {
+      pointerId: 12,
+      clientX: 300,
+      clientY: 400,
+    });
+    pointer("pointerMove", content, {
+      pointerId: 12,
+      clientX: 280,
+      clientY: 402,
+    });
+    expect(content.style.transform).toBe("translateX(-20px)");
+
+    fireEvent.lostPointerCapture(content, { pointerId: 12, clientX: 280 });
+    expect(stateOf(root)).toBe("open");
+    expect(content.style.transform).toBe("translateX(0px)");
+    expect(content.style.transition).toContain("300ms");
+  });
+
+  it("does not start a drag from an interactive control", () => {
+    const { container } = render(
+      <Sheet open onOpenChange={() => {}}>
+        <button type="button">订阅 A</button>
+      </Sheet>,
+    );
+    const { root, content } = getSlots(container);
+    const item = screen.getByText("订阅 A");
+
+    // 在按钮上按下再横移（触摸抖动）：按钮自己处理，不该把侧栏拖走或关掉
+    pointer("pointerDown", item, { pointerId: 13, clientX: 300, clientY: 400 });
+    pointer("pointerMove", content, { pointerId: 13, clientX: 180, clientY: 402 });
+    pointer("pointerUp", content, { pointerId: 13, clientX: 180, clientY: 402 });
+
+    expect(stateOf(root)).toBe("open");
+    expect(content.style.transform).toBe("translateX(0px)");
+  });
+
+  it("leaves Tab handling alone when an inner layer already consumed the key", () => {
+    const { container } = render(
+      <Sheet open onOpenChange={() => {}}>
+        <button type="button">first item</button>
+        <button type="button">last item</button>
+      </Sheet>,
+    );
+    const { content } = getSlots(container);
+    const last = screen.getByText("last item");
+    last.focus();
+
+    // 更内层浮层（例如侧栏里打开的弹窗）先一步 preventDefault → 我们不再抢焦点
+    const swallow = (event: KeyboardEvent) => event.preventDefault();
+    window.addEventListener("keydown", swallow, true);
+    fireEvent.keyDown(document, { key: "Tab" });
+    window.removeEventListener("keydown", swallow, true);
+
+    expect(document.activeElement).toBe(last);
+    expect(content.getAttribute("role")).toBe("dialog");
+  });
+
   it("clears pending drag state on pointercancel", () => {
     const { container } = render(<ControlledSheet initialOpen />);
     const { root, content } = getSlots(container);
