@@ -53,6 +53,16 @@ const scrollReadState = vi.hoisted(() => ({
   setPerViewChoice: vi.fn(),
 }));
 
+/** 单测可临时改写某个 UI 设置键（用于模拟「当前正用着某实验布局」） */
+const uiOverride = vi.hoisted(() => ({
+  articleLayout: undefined as unknown,
+  pictureLayout: undefined as unknown,
+  experimentalFeaturesEnabled: undefined as unknown,
+  experimentalArticleHover: undefined as unknown,
+  experimentalPictureHover: undefined as unknown,
+  experimentalPictureWall: undefined as unknown,
+}));
+
 vi.mock("@/hooks/useScrollReadSetting", () => ({
   useScrollReadSetting: () => ({
     mode: scrollReadState.mode,
@@ -123,6 +133,18 @@ vi.mock("@/hooks/useUISettings", async () => {
     entryFontSize: 16,
     entryLineHeight: 1.7,
     reduceMotion: false,
+    articleLayout: "list",
+    articlePushDirection: "right",
+    articleCoverList: false,
+    pictureLayout: "grid",
+    gridStyle: "masonry",
+    hoverRowHeight: "compact",
+    hoverImageSize: "small",
+    notificationBodyOnHover: false,
+    experimentalFeaturesEnabled: false,
+    experimentalPictureHover: false,
+    experimentalPictureWall: false,
+    experimentalArticleHover: false,
     splitterVisibleByView: {
       article: true,
       picture: true,
@@ -132,7 +154,8 @@ vi.mock("@/hooks/useUISettings", async () => {
   };
   return {
     ...actual,
-    useUISettingKey: (key: string) => values[key],
+    useUISettingKey: (key: string) =>
+      uiOverride[key as keyof typeof uiOverride] ?? values[key],
     useUISettingActions: () => ({
       setCardImageSize: vi.fn(),
       setCardPreviewLines: vi.fn(),
@@ -142,6 +165,10 @@ vi.mock("@/hooks/useUISettings", async () => {
       setFetchReadableForView,
       setExpandLongForView,
       setReduceMotion,
+      setArticleLayout: vi.fn(),
+      setPictureLayout: vi.fn(),
+      setArticlePushDirection: vi.fn(),
+      setArticleCoverList: vi.fn(),
       setTimelineGranularityForView,
       setTimelineCollapseForView,
       setTimelineTimeBasisForView,
@@ -383,6 +410,69 @@ describe("AppearanceSettings 按视图设置", () => {
       "article",
       "scrollPast",
     );
+  });
+
+
+  it("实验布局批：实验关闭时，文章布局只余常规两档（传统三栏 / Inoreader列表）、图片选择器只余网格", () => {
+    render(<AppearanceSettings />);
+
+    const articleRow = rowOf("appearance_view.article_layout");
+    expect(within(articleRow).getByText("list")).toBeTruthy();
+    expect(within(articleRow).getByText("inoreader")).toBeTruthy();
+    expect(within(articleRow).queryByText("rows")).toBeNull();
+    expect(within(articleRow).queryByText("hover")).toBeNull();
+
+    const pictureRow = rowOf("appearance_view.picture_layout");
+    expect(within(pictureRow).getByText("grid")).toBeTruthy();
+    expect(within(pictureRow).queryByText("hover")).toBeNull();
+    expect(within(pictureRow).queryByText("wall")).toBeNull();
+  });
+
+  it("M1 回归：实验关闭时，即使当前正用着 hover/wall，选择器也不泄漏这两个实验入口", () => {
+    uiOverride.articleLayout = "hover";
+    uiOverride.pictureLayout = "wall";
+    try {
+      render(<AppearanceSettings />);
+
+      const articleRow = rowOf("appearance_view.article_layout");
+      expect(within(articleRow).queryByText("hover")).toBeNull();
+      // 当前正用着已停用的实验布局时，给出解释性提示（不再让分段控件「无高亮」且无说明）
+      expect(
+        within(articleRow).getByText("appearance_view.experimental_disabled_hint"),
+      ).toBeTruthy();
+
+      const pictureRow = rowOf("appearance_view.picture_layout");
+      expect(within(pictureRow).queryByText("hover")).toBeNull();
+      expect(within(pictureRow).queryByText("wall")).toBeNull();
+      expect(
+        within(pictureRow).getByText("appearance_view.experimental_disabled_hint"),
+      ).toBeTruthy();
+    } finally {
+      uiOverride.articleLayout = undefined;
+      uiOverride.pictureLayout = undefined;
+    }
+  });
+
+  it("实验布局批（正向）：总开关与对应子项都打开时，选择器出现 hover/wall 入口", () => {
+    uiOverride.experimentalFeaturesEnabled = true;
+    uiOverride.experimentalArticleHover = true;
+    uiOverride.experimentalPictureHover = true;
+    uiOverride.experimentalPictureWall = true;
+    try {
+      render(<AppearanceSettings />);
+
+      const articleRow = rowOf("appearance_view.article_layout");
+      expect(within(articleRow).getByText("hover")).toBeTruthy();
+
+      const pictureRow = rowOf("appearance_view.picture_layout");
+      expect(within(pictureRow).getByText("hover")).toBeTruthy();
+      expect(within(pictureRow).getByText("wall")).toBeTruthy();
+    } finally {
+      uiOverride.experimentalFeaturesEnabled = undefined;
+      uiOverride.experimentalArticleHover = undefined;
+      uiOverride.experimentalPictureHover = undefined;
+      uiOverride.experimentalPictureWall = undefined;
+    }
   });
 
   it("改法 A：总开关是「关」时按视图那一行照样在（不再被门控）", () => {

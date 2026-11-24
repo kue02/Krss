@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { createPortal } from "react-dom";
+import { ProgressBar } from "@heroui/react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 
@@ -106,44 +107,39 @@ export function MobilePullToRefresh({
   if (!enabled) return null;
   const active = busy || isRefreshing;
   const visible = active || pull > 0;
+  const percent = active
+    ? progressTotal > 0
+      ? Math.min(100, (progressCompleted / progressTotal) * 100)
+      : 100
+    : Math.min(100, (pull / PULL_THRESHOLD) * 100);
 
-  return (
+  return createPortal(
     <div
+      data-testid="pull-refresh-progress"
       aria-hidden={!visible}
       className={cn(
-        "pointer-events-none fixed left-1/2 top-[calc(2.75rem+env(safe-area-inset-top))] z-30",
-        "transition-opacity duration-150",
+        "pointer-events-none fixed inset-x-0 z-30 transition-opacity duration-150",
         visible ? "opacity-100" : "opacity-0",
       )}
-      style={{
-        transform: `translate(-50%, ${Math.max(0, pull - 12)}px)`,
-      }}
+      style={{ top: "calc(2.75rem + env(safe-area-inset-top))" }}
     >
-      <div
-        className={cn(
-          "flex items-center justify-center rounded-full border border-border/60 bg-overlay shadow-nf-md",
-          active ? "h-9 gap-2 px-3 text-accent" : "size-8",
-        )}
+      <ProgressBar
+        value={percent}
+        minValue={0}
+        maxValue={100}
+        aria-label={t("entry.refreshing")}
+        className="block w-full"
       >
-        <RefreshCw
-          className={cn("size-4", active && "animate-spin")}
-          style={
-            !active
-              ? { transform: `rotate(${Math.min(270, pull * 4)}deg)` }
-              : undefined
-          }
-        />
-        {active && (
-          <span className="whitespace-nowrap text-[11px] font-medium tabular-nums">
-            {progressTotal > 0
-              ? t("entry.refreshing_progress", {
-                  completed: progressCompleted,
-                  total: progressTotal,
-                })
-              : t("entry.refreshing")}
-          </span>
-        )}
-      </div>
-    </div>
+        <ProgressBar.Track className="h-[3px] rounded-none bg-transparent">
+          <ProgressBar.Fill
+            className={cn(
+              "rounded-none transition-[width] duration-150",
+              active && progressTotal === 0 && "animate-pulse",
+            )}
+          />
+        </ProgressBar.Track>
+      </ProgressBar>
+    </div>,
+    document.body,
   );
 }

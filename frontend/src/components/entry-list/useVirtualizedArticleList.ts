@@ -8,7 +8,7 @@ import type { Entry } from "@/types/api";
 import type { ScrollSurface } from "./scroll-surface";
 
 /**
- * 标准文章列表扁平流的虚拟化（`type=article` + list 档专用）。
+ * 标准文章列表扁平流的虚拟化（`type=article` 的常规档与「缩略图列表」档共用）。
  *
  * 只解决「50 张卡全挂 DOM」：首屏只挂载可视区 + overscan 行，其余用总高度垫片占位。
  * 行高动态测量（`measureElement`）：每张卡文本/缩略图长短不一，估计值只做首屏占位，
@@ -19,7 +19,7 @@ import type { ScrollSurface } from "./scroll-surface";
  *   虚拟化只消费还原后的 scrollTop，不接管。
  * - 滚动标已读 / 预载 / 翻译调度：它们按 `[data-entry-id]` 认行，行还是同一份
  *   `EntryListItem`（props 接口不变，只包虚拟容器），querySelector 全能命中。
- * - 多选 / 悬停浮层：虚拟容器只包 list 档，hover 档（`isArticleHover`）走原路径。
+ * - 多选 / 悬停浮层：虚拟容器不包 hover 档（`isArticleHover` 走原路径）。
  */
 export interface UseVirtualizedArticleListOptions {
   enabled: boolean;
@@ -27,10 +27,18 @@ export interface UseVirtualizedArticleListOptions {
   scrollKey: string;
   containerRef: RefObject<HTMLDivElement | null>;
   entries: Entry[];
+  /** 估计行高（首屏占位用）。默认是卡片档的 148px；单行固定高度的档位传自己的值。 */
+  estimateSize?: number;
 }
 
 /** 首屏占位用的估计行高（下一张卡实测后即被替换，只影响首屏瞬间） */
 export const VIRTUAL_ARTICLE_ESTIMATE_PX = 148;
+/**
+ * 单行档（Inoreader列表）的估计行高：`px-4 py-2.5` + 一行 15px 文本 = 42px，固定不随内容变。
+ * 用 148 估这个档会让总高度先多算 3 倍，实测后骤然收缩 —— 首屏「滚到正文」这类
+ * 依赖列表高度的定位会跟着漂，所以按真实值给。
+ */
+export const VIRTUAL_PLAIN_ROW_ESTIMATE_PX = 42;
 /** 可视区上下各多渲染的行数（滚动时不白屏，又不至于挂太多 DOM） */
 export const VIRTUAL_ARTICLE_OVERSCAN = 8;
 
@@ -46,6 +54,7 @@ export function useVirtualizedArticleList({
   scrollKey,
   containerRef,
   entries,
+  estimateSize = VIRTUAL_ARTICLE_ESTIMATE_PX,
 }: UseVirtualizedArticleListOptions): VirtualizedArticleListState {
   const documentScroll = scrollSurface.kind === "document";
   const active = enabled && !documentScroll;
@@ -81,7 +90,7 @@ export function useVirtualizedArticleList({
     enabled: active,
     count: entries.length,
     getScrollElement: () => containerRef.current,
-    estimateSize: () => VIRTUAL_ARTICLE_ESTIMATE_PX,
+    estimateSize: () => estimateSize,
     overscan: VIRTUAL_ARTICLE_OVERSCAN,
     getItemKey: itemKeyOf,
   });
@@ -89,7 +98,7 @@ export function useVirtualizedArticleList({
   const winVirtualizer = useWindowVirtualizer<HTMLElement>({
     enabled: windowActive,
     count: entries.length,
-    estimateSize: () => VIRTUAL_ARTICLE_ESTIMATE_PX,
+    estimateSize: () => estimateSize,
     overscan: VIRTUAL_ARTICLE_OVERSCAN,
     getItemKey: itemKeyOf,
   });

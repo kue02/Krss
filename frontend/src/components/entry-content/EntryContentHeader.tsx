@@ -87,6 +87,10 @@ interface EntryContentHeaderProps {
    * 否则展开容器一滚，工具栏就跟着正文滚走了、按钮点不到。
    */
   sticky?: boolean;
+  /** sticky 时距视口顶部的偏移（手机内联合列要避让列表的固定顶栏）。默认 top-0 */
+  stickyTopClassName?: string;
+  /** 手机内联合列：正文标题栏吸顶（列表 TOP 栏滚走时贴在视口顶），未滚走时自然排在它下面 */
+  mobileInlineSticky?: boolean;
 }
 
 interface TranslationButtonState {
@@ -148,6 +152,8 @@ export function EntryContentHeader({
   isOriginalSiteActive = false,
   onToggleOriginalSite,
   sticky = false,
+  stickyTopClassName,
+  mobileInlineSticky = false,
 }: EntryContentHeaderProps) {
   const { t } = useTranslation();
   const safeUrl = entry.url && isSafeUrl(entry.url) ? entry.url : null;
@@ -164,11 +170,21 @@ export function EntryContentHeader({
   if (isMobile) {
     return (
       <>
-        <div className="absolute inset-x-0 top-0 z-20">
+        <div
+          className={cn(
+            /* 手机内联合列：标题栏放回正常文档流（relative），跟着正文一起滚。
+               absolute 会浮在正文顶上、吸顶又会压住列表的固定顶栏 —— 两者都不合适。 */
+            sticky
+              ? mobileInlineSticky
+                ? "sticky top-0 z-30"
+                : "relative z-20"
+              : "absolute inset-x-0 top-0 z-20",
+          )}
+        >
           <div
             className={cn(
               "pointer-events-none absolute inset-0 border-b border-foreground/10 bg-overlay/80 backdrop-blur-xl transition-opacity duration-300 ease-in-out",
-              isAtTop ? "opacity-0" : "opacity-100",
+              mobileInlineSticky ? "opacity-100" : isAtTop ? "opacity-0" : "opacity-100",
             )}
           />
           <div className="relative pt-[env(safe-area-inset-top)]">
@@ -189,9 +205,10 @@ export function EntryContentHeader({
               <div
                 className={cn(
                   "min-w-0 flex-1 px-1 transition-all duration-300 ease-out",
-                  isAtTop
-                    ? "pointer-events-none translate-y-1 opacity-0"
-                    : "translate-y-0 opacity-100",
+                  /* 内联合列时正文标题栏就是这一屏的标题，滚到顶部也一直显示（用户 2026-11-24） */
+                  mobileInlineSticky || !isAtTop
+                    ? "translate-y-0 opacity-100"
+                    : "pointer-events-none translate-y-1 opacity-0",
                 )}
                 onClick={() => dispatchScrollToTop("entrycontent")}
               >
@@ -792,7 +809,9 @@ export function EntryContentHeader({
   return (
     <div
       className={cn(
-        sticky ? "sticky top-0 z-20" : "absolute inset-x-0 top-0 z-20",
+        sticky
+          ? cn("sticky z-20", stickyTopClassName ?? "top-0")
+          : "absolute inset-x-0 top-0 z-20",
       )}
     >
       {/* Background and Border Layer */}

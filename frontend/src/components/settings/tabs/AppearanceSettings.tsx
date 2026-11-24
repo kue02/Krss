@@ -28,6 +28,8 @@ import {
   ENTRY_FONT_SIZE_MAX,
   ENTRY_LINE_HEIGHT_MIN,
   ENTRY_LINE_HEIGHT_MAX,
+  resolveExperimentalLayoutVisibility,
+  type ArticleLayout,
   type CardImageSize,
   type HoverMultiImageConfig,
   type QuoteStyle,
@@ -343,14 +345,35 @@ export function AppearanceSettings() {
     setEntryLineHeight,
     setPictureLayout,
     setArticleLayout,
+    setArticlePushDirection,
+    setArticleCoverList,
     setHoverRowHeight,
+    setArticleListRowHeight,
+    setArticleQuickActionMode,
+    setArticleMobileFullTitle,
     setHoverImageSize,
     setGridStyle,
   } = useUISettingActions();
   const { data: appearanceSettings } = useAppearanceSettings();
   const pictureLayout = useUISettingKey("pictureLayout");
   const articleLayout = useUISettingKey("articleLayout");
+  /* 实验布局批：正文推入方向 + 覆盖第二栏 */
+  const articlePushDirection = useUISettingKey("articlePushDirection");
+  const articleCoverList = useUISettingKey("articleCoverList");
+  /* 实验布局批：实验布局入口可见性（关闭仅隐藏入口，已选中的仍照常渲染） */
+  const expVisibility = resolveExperimentalLayoutVisibility({
+    experimentalFeaturesEnabled: useUISettingKey("experimentalFeaturesEnabled"),
+    experimentalPictureHover: useUISettingKey("experimentalPictureHover"),
+    experimentalPictureWall: useUISettingKey("experimentalPictureWall"),
+    experimentalArticleHover: useUISettingKey("experimentalArticleHover"),
+    experimentalArticleRows: useUISettingKey("experimentalArticleRows"),
+  });
   const hoverRowHeight = useUISettingKey("hoverRowHeight");
+  const articleListRowHeight = useUISettingKey("articleListRowHeight");
+  const articleQuickActionMode = useUISettingKey("articleQuickActionMode");
+  const articleMobileFullTitle = useUISettingKey("articleMobileFullTitle");
+  const articlePaneStyle = useUISettingKey("articlePaneStyle");
+  const { setArticlePaneStyle } = useUISettingActions();
   const hoverImageSize = useUISettingKey("hoverImageSize");
   const hoverMultiImageSetting = useUISettingKey(
     "hoverMultiImage",
@@ -1178,18 +1201,29 @@ export function AppearanceSettings() {
                     />
                   </SettingRow>
                 )}
-                {/* 文章视图：卡片列表（默认）/ 悬停大图（同图片视图第三档形态；\n                    点击用 Nextflux 式推进转场把正文推进第三栏）。reader-transition 批新增 */ }
+                {/* 文章视图：传统三栏（默认）/ 列表（Inoreader 静态行）/ 缩略图列表（实验）/ 悬停正文（实验）；
+                    点击用 Nextflux 式推进转场把正文推进第三栏。reader-transition 批新增，实验布局批增 rows，
+                    m00883 批把 rows 移入实验、新增常规 inoreader（图片悬停大图去掉悬停）。 */ }
                 {view === "article" && (
                   <>
                     <SettingRow
                       label={t("appearance_view.article_layout")}
-                      hint={t("appearance_view.article_layout_hover_hint")}
+                      hint={
+                        articleLayout === "hover" && !expVisibility.articleHover
+                          ? t("appearance_view.experimental_disabled_hint")
+                          : articleLayout === "rows" && !expVisibility.articleRows
+                            ? t("appearance_view.experimental_disabled_hint")
+                            : expVisibility.articleHover &&
+                                articleLayout === "hover"
+                              ? t("appearance_view.article_layout_hover_hint")
+                              : undefined
+                      }
                     >
                       <SegmentedControl
                         className="shrink-0"
                         value={articleLayout}
                         onValueChange={(value) =>
-                          setArticleLayout(value as "list" | "hover")
+                          setArticleLayout(value as ArticleLayout)
                         }
                         options={[
                           {
@@ -1197,13 +1231,200 @@ export function AppearanceSettings() {
                             label: t("appearance_view.article_layout_list"),
                           },
                           {
-                            value: "hover",
-                            label: t("appearance_view.article_layout_hover"),
+                            value: "inoreader",
+                            label: t("appearance_view.article_layout_inoreader"),
+                          },
+                          // 实验布局批：缩略图列表 / 悬停正文入口仅在实验开关打开时出现；关闭即隐藏，不因当前正选中而泄漏
+                          ...(expVisibility.articleRows
+                            ? [
+                                {
+                                  value: "rows",
+                                  label: t("appearance_view.article_layout_rows"),
+                                },
+                              ]
+                            : []),
+                          ...(expVisibility.articleHover
+                            ? [
+                                {
+                                  value: "hover",
+                                  label: t("appearance_view.article_layout_hover"),
+                                },
+                              ]
+                            : []),
+                        ]}
+                      />
+                    </SettingRow>
+                    {/* 实验布局批：正文推入方向（对所有文章布局生效） */}
+                    <SettingRow
+                      label={t("appearance_view.article_push_direction")}
+                      hint={t("appearance_view.article_push_direction_hint")}
+                    >
+                      <SegmentedControl
+                        className="shrink-0"
+                        value={articlePushDirection}
+                        onValueChange={(value) =>
+                          setArticlePushDirection(
+                            value as "right" | "bottom" | "down",
+                          )
+                        }
+                        options={[
+                          {
+                            value: "right",
+                            label: t(
+                              "appearance_view.article_push_direction_right",
+                            ),
+                          },
+                          {
+                            value: "bottom",
+                            label: t(
+                              "appearance_view.article_push_direction_bottom",
+                            ),
+                          },
+                          {
+                            value: "down",
+                            label: t(
+                              "appearance_view.article_push_direction_down",
+                            ),
                           },
                         ]}
                       />
                     </SettingRow>
-                    {/* 「列表图片」与「摘要行数」只作用于文章列表视图，挪进这里的文章专属块 */}
+                    {/* 实验布局批：正文是否覆盖第二栏条目栏（「向下」是合列滚动，这个开关无意义，隐藏） */}
+                    {articlePushDirection !== "down" && (
+                      <SettingRow
+                        label={t("appearance_view.article_cover_list")}
+                        hint={t("appearance_view.article_cover_list_hint")}
+                      >
+                        <SegmentedControl
+                          className="shrink-0"
+                          value={articleCoverList ? "on" : "off"}
+                          onValueChange={(value) =>
+                            setArticleCoverList(value === "on")
+                          }
+                          options={[
+                            {
+                              value: "off",
+                              label: t("appearance_view.article_cover_off"),
+                            },
+                            {
+                              value: "on",
+                              label: t("appearance_view.article_cover_on"),
+                            },
+                          ]}
+                        />
+                      </SettingRow>
+                    )}
+                    {/* 「Inoreader列表」的行高：把图片悬停大图那套行高设置搬来作为这个列表布局自己的设置 */}
+                    {articleLayout === "inoreader" && (
+                      <SettingRow label={t("appearance_view.article_list_row_height")}>
+                        <SegmentedControl
+                          className="shrink-0"
+                          value={articleListRowHeight}
+                          onValueChange={(value) =>
+                            setArticleListRowHeight(
+                              value as "compact" | "comfortable",
+                            )
+                          }
+                          options={[
+                            {
+                              value: "compact",
+                              label: t(
+                                "appearance_view.article_list_row_height_compact",
+                              ),
+                            },
+                            {
+                              value: "comfortable",
+                              label: t(
+                                "appearance_view.article_list_row_height_comfortable",
+                              ),
+                            },
+                          ]}
+                        />
+                      </SettingRow>
+                    )}
+                    {/* 「Inoreader列表」正文栏容器样式（用户对比后决定） */}
+                    {articleLayout === "inoreader" && (
+                      <SettingRow
+                        label={t("appearance_view.article_pane_style")}
+                        hint={t("appearance_view.article_pane_style_hint")}
+                      >
+                        <SegmentedControl
+                          className="shrink-0"
+                          value={articlePaneStyle === "card" ? "card" : "plain"}
+                          onValueChange={(value) =>
+                            setArticlePaneStyle(value === "card" ? "card" : "plain")
+                          }
+                          options={[
+                            {
+                              value: "plain",
+                              label: t("appearance_view.article_pane_style_plain"),
+                            },
+                            {
+                              value: "card",
+                              label: t("appearance_view.article_pane_style_card"),
+                            },
+                          ]}
+                        />
+                      </SettingRow>
+                    )}
+                    {/* 「Inoreader列表」移动端标题策略 */}
+                    {articleLayout === "inoreader" && (
+                      <SettingRow
+                        label={t("appearance_view.article_mobile_full_title")}
+                      >
+                        <SegmentedControl
+                          className="shrink-0"
+                          value={articleMobileFullTitle ? "on" : "off"}
+                          onValueChange={(value) =>
+                            setArticleMobileFullTitle(value === "on")
+                          }
+                          options={[
+                            {
+                              value: "off",
+                              label: t("appearance_view.article_mobile_full_title_off"),
+                            },
+                            {
+                              value: "on",
+                              label: t("appearance_view.article_mobile_full_title_on"),
+                            },
+                          ]}
+                        />
+                      </SettingRow>
+                    )}
+                    {/* 「Inoreader列表」左侧快捷按钮的显示方式 */}
+                    {articleLayout === "inoreader" && (
+                      <SettingRow
+                        label={t("appearance_view.article_quick_actions")}
+                        hint={t("appearance_view.article_quick_actions_hint")}
+                      >
+                        <SegmentedControl
+                          className="shrink-0"
+                          value={articleQuickActionMode}
+                          onValueChange={(value) =>
+                            setArticleQuickActionMode(
+                              value as "expand" | "hover" | "always",
+                            )
+                          }
+                          options={[
+                            {
+                              value: "expand",
+                              label: t("appearance_view.article_quick_actions_expand"),
+                            },
+                            {
+                              value: "hover",
+                              label: t("appearance_view.article_quick_actions_hover"),
+                            },
+                            {
+                              value: "always",
+                              label: t("appearance_view.article_quick_actions_always"),
+                            },
+                          ]}
+                        />
+                      </SettingRow>
+                    )}
+                    {/* 「列表图片」与「摘要行数」只作用于「传统三栏」卡片档 */}
+                    {articleLayout === "list" && (
+                      <>
                     <SettingRow label={t("appearance_reading.card_image")}>
                       <SegmentedControl
                         className="shrink-0"
@@ -1242,12 +1463,24 @@ export function AppearanceSettings() {
                         ]}
                       />
                     </SettingRow>
+                      </>
+                    )}
                   </>
                 )}
                 {/* 图片视图档位（28-7 收敛为两档：网格 / 悬停大图；31-1 增第三档「照片墙」）。
                     原先的「瀑布流」与「网格」合并成一档「网格」，两者的差别降为下面那条「样式」。 */}
                 {view === "picture" && (
-                  <SettingRow label={t("appearance_view.picture_layout")}>
+                  <SettingRow
+                    label={t("appearance_view.picture_layout")}
+                    hint={
+                      (resolvedPictureLayout === "hover" &&
+                        !expVisibility.pictureHover) ||
+                      (resolvedPictureLayout === "wall" &&
+                        !expVisibility.pictureWall)
+                        ? t("appearance_view.experimental_disabled_hint")
+                        : undefined
+                    }
+                  >
                     <SegmentedControl
                       className="shrink-0"
                       value={resolvedPictureLayout}
@@ -1259,14 +1492,23 @@ export function AppearanceSettings() {
                           value: "grid",
                           label: t("appearance_view.picture_layout_grid"),
                         },
-                        {
-                          value: "hover",
-                          label: t("appearance_view.picture_layout_hover"),
-                        },
-                        {
-                          value: "wall",
-                          label: t("appearance_view.picture_layout_wall"),
-                        },
+                        // 实验布局批：hover/wall 入口仅在实验开关打开时出现；关闭即隐藏，不因当前正选中而泄漏
+                        ...(expVisibility.pictureHover
+                          ? [
+                              {
+                                value: "hover",
+                                label: t("appearance_view.picture_layout_hover"),
+                              },
+                            ]
+                          : []),
+                        ...(expVisibility.pictureWall
+                          ? [
+                              {
+                                value: "wall",
+                                label: t("appearance_view.picture_layout_wall"),
+                              },
+                            ]
+                          : []),
                       ]}
                     />
                   </SettingRow>

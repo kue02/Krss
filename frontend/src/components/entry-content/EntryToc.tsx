@@ -18,6 +18,8 @@ interface EntryTocProps {
   entryId?: string | null;
   /** 移动端：右缘 44px 热区入口 + 全高目录抽屉（桌面保持 hover 面板） */
   isMobile?: boolean;
+  /** 内联合列：目录锚定屏幕右侧而不是文章中心 */
+  fixedInline?: boolean;
 }
 
 /** 标题离顶部留出的距离（正文顶部有留白，跳过去别贴边） */
@@ -27,7 +29,12 @@ const SCROLL_MARGIN_TOP = 72;
  * 正文右侧的悬浮目录（标题 + 小标题）。
  * 平时完全隐藏，鼠标移到面板右缘的一条窄带上才出现；点标题跳到该段。
  */
-export function EntryToc({ scrollNode, entryId, isMobile = false }: EntryTocProps) {
+export function EntryToc({
+  scrollNode,
+  entryId,
+  isMobile = false,
+  fixedInline = false,
+}: EntryTocProps) {
   const { t } = useTranslation();
   const [items, setItems] = useState<TocItem[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -187,7 +194,10 @@ export function EntryToc({ scrollNode, entryId, isMobile = false }: EntryTocProp
           type="button"
           onClick={() => setMobileOpen(true)}
           aria-label={t("entry.toc")}
-          className="absolute right-0 top-1/2 z-20 flex h-24 w-11 -translate-y-1/2 items-center justify-end pr-0.5 active:opacity-60"
+          className={cn(
+            "right-0 top-1/2 z-20 flex h-24 w-11 -translate-y-1/2 items-center justify-end pr-0.5 active:opacity-60",
+            fixedInline ? "fixed" : "absolute",
+          )}
         >
           <span className="flex h-16 w-1.5 flex-col items-center justify-center gap-1 rounded-full bg-foreground/15">
             <span className="size-0.5 rounded-full bg-foreground/40" />
@@ -273,8 +283,15 @@ export function EntryToc({ scrollNode, entryId, isMobile = false }: EntryTocProp
     );
   }
 
-  return (
-    <div className="group/toc absolute inset-y-0 right-0 z-20 w-6">
+  const tocPanel = (
+    <div
+      className={cn(
+        "group/toc z-20 w-6",
+        fixedInline
+          ? "fixed bottom-0 right-0 top-12"
+          : "absolute inset-y-0 right-0",
+      )}
+    >
       {/* 常驻提示：右缘一小段竖条 + 三个刻度点，让人知道这里藏着东西；悬浮时变亮变长 */}
       <div className="pointer-events-none absolute inset-y-0 right-0 flex w-6 items-center justify-center">
         <div className="flex h-28 w-1.5 flex-col items-center justify-center gap-1 rounded-full bg-foreground/[0.06] opacity-90 transition-all duration-200 group-hover/toc:h-36 group-hover/toc:bg-foreground/10">
@@ -318,4 +335,8 @@ export function EntryToc({ scrollNode, entryId, isMobile = false }: EntryTocProp
       </nav>
     </div>
   );
+
+  // 内联合列时正文栏用了圆角裁剪（clip-path），会把内部 fixed 目录一起裁掉；
+  // 目录改为挂到 body，独立于正文卡片的裁剪区域。
+  return fixedInline ? createPortal(tocPanel, document.body) : tocPanel;
 }

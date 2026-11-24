@@ -33,13 +33,22 @@ export type ViewTimelineCollapse = Record<ContentType, TimelineCollapse>;
 export type ViewTimelineTimeBasis = Record<ContentType, TimelineTimeBasis>;
 export type QuoteStyle = "block" | "divider" | "card";
 /**
- * 文章视图第二栏的排布（reader-transition 批新增）：
- *   list  = 今天的卡片列表（默认，行为零变化）
+ * 文章视图第二栏的排布（reader-transition 批新增；实验布局批增 rows）：
+ *   list  = 传统三栏（原「卡片列表」，默认，行为零变化）
+ *   rows  = 列表：第二栏渲染为紧凑行列表（缩略图 + 标题 + 元信息，无悬停浮层大图），
+ *           默认从底部推入正文并覆盖第二栏（仿 Inoreader 列表模式）
  *   hover = 与图片视图第三档同形态：列表行 + 鼠标跟随大图预览
  *           （复用 picture-hover/PictureHoverList + obsidianui hover-img 原件），
  *           差别只在点击：用 Nextflux 式推进转场把正文推进第三栏。
  */
-export type ArticleLayout = "list" | "hover";
+export type ArticleLayout = "list" | "inoreader" | "rows" | "hover";
+
+/**
+ * 文章视图正文面板的推入方向（对所有文章布局生效，含 hover）：
+ *   right  = 从右往左推入（默认，= 原 Nextflux 式 x:'100vw'→0）
+ *   bottom = 从下往上推入（translateY 100%→0，列表行模式默认）
+ */
+export type ArticlePushDirection = "right" | "bottom" | "down";
 /**
  * 29-4（用户 2026-09-25）：「悬停大图」档下一篇文章多图时的切换触发方式。
  * 三个独立开关，可任意组合（用户原话：「3 个都做成可配置项」）：
@@ -179,6 +188,16 @@ interface UISettings {
    * 默认 compact + small（= 用户说的「5179 的设置，这是默认设置」）。
    */
   hoverRowHeight: "compact" | "comfortable";
+  /** 文章「Inoreader列表」的行高尺度；与图片悬停大图分开，默认紧凑 */
+  articleListRowHeight: "compact" | "comfortable";
+  /** Inoreader 列表：行左侧快捷按钮的显示方式（滑出/悬浮显示/常显） */
+  articleQuickActionMode: "expand" | "hover" | "always";
+  /** Inoreader 列表：移动端优先完整标题（true=标题可换行、来源时间在第二行；false=旧样式单行截断） */
+  articleMobileFullTitle: boolean;
+  /** 「Inoreader列表」首次打开时是否已问过「文章视图是否也隐藏分界限」 */
+  inoreaderSplitterPromptShown: boolean;
+  /** 「Inoreader列表」内联正文的容器样式：card = 卡片（圆角+留白+阴影），plain = 原样（全宽圆角） */
+  articlePaneStyle: "card" | "plain";
   hoverImageSize: "small" | "large";
   /** 29-4：悬停大图档「多图切换」的三个触发开关（默认只开行上滚轮） */
   hoverMultiImage: HoverMultiImageConfig;
@@ -190,10 +209,36 @@ interface UISettings {
    */
   notificationBodyOnHover: boolean;
   /**
-   * 文章视图第二栏的排布：list = 卡片列表（默认）；hover = 悬停大图（同图片视图第三档形态）。
-   * reader-transition 批新增（用户 2026-09-25）。
+   * 文章视图第二栏的排布：
+   *  list = 传统三栏（默认）；inoreader = 列表（图片悬停大图去掉悬停，静态行）；
+   *  rows = 缩略图列表（实验）；hover = 悬停正文（实验）。
+   * reader-transition 批新增（用户 2026-09-25）；实验布局批增 rows/hover；m00883 批增 inoreader。
    */
   articleLayout: ArticleLayout;
+  /**
+   * 文章视图正文面板的推入方向（对所有文章布局生效，含 hover）。
+   * 预设随 articleLayout 切换自动套（setArticleLayout 内统一处理，之后可手改）。
+   */
+  articlePushDirection: ArticlePushDirection;
+  /**
+   * 文章视图正文栏是否覆盖第二栏条目栏（默认 false）。
+   * true：已选中时正文浮在第二栏之上覆盖它；未选中时第三栏不占位（仿 Inoreader 列表）。
+   */
+  articleCoverList: boolean;
+  /**
+   * 实验性/不稳定设置（默认全关）：
+   *  - experimentalFeaturesEnabled 总开关：关闭 = 下列四项实验布局入口全部隐藏
+   *  - experimentalPictureHover  图片视图 · 悬停大图布局入口
+   *  - experimentalPictureWall   图片视图 · 照片墙布局入口
+   *  - experimentalArticleHover  文章视图 · 悬停正文布局入口
+   *  - experimentalArticleRows   文章视图 · 缩略图列表入口
+   * 语义：只控制这些实验布局在「选择器 / 顶栏」里的可见性，不影响已选中布局的渲染。
+   */
+  experimentalFeaturesEnabled: boolean;
+  experimentalPictureHover: boolean;
+  experimentalPictureWall: boolean;
+  experimentalArticleHover: boolean;
+  experimentalArticleRows: boolean;
   /** 列表卡片的缩略图档位（对齐 Nextflux 的卡片图尺寸） */
   cardImageSize: CardImageSize;
   /** 卡片摘要显示行数，0 = 不显示摘要 */
@@ -352,6 +397,57 @@ export function resolveGridStyle(
   return layout === "grid" ? "square" : "masonry";
 }
 
+/**
+ * 实验布局批：某一档文章布局的「自动预设」——切换布局时由 setArticleLayout 统一套用。
+ *   list      → right + cover=false
+ *   inoreader → down  + cover=false（整列一条滚动流，正文接在列表末尾）
+ *   rows      → bottom + cover=true
+ *   hover     → right + cover=false
+ */
+export function articleLayoutPreset(layout: ArticleLayout): {
+  articlePushDirection: ArticlePushDirection;
+  articleCoverList: boolean;
+} {
+  if (layout === "rows") {
+    return { articlePushDirection: "bottom", articleCoverList: true };
+  }
+  if (layout === "inoreader") {
+    return { articlePushDirection: "down", articleCoverList: false };
+  }
+  return { articlePushDirection: "right", articleCoverList: false };
+}
+
+/**
+ * 实验布局批：当前哪些实验布局入口应当可见。
+ * 只看「入口可见性」——关闭不等于让已选中的实验布局失效（那个照常渲染）。
+ * 总开关关 = 三项全不可见。
+ */
+export interface ExperimentalLayoutVisibility {
+  pictureHover: boolean;
+  pictureWall: boolean;
+  articleHover: boolean;
+  articleRows: boolean;
+}
+
+export function resolveExperimentalLayoutVisibility(
+  settings: Pick<
+    UISettings,
+    | "experimentalFeaturesEnabled"
+    | "experimentalPictureHover"
+    | "experimentalPictureWall"
+    | "experimentalArticleHover"
+    | "experimentalArticleRows"
+  >,
+): ExperimentalLayoutVisibility {
+  const master = settings.experimentalFeaturesEnabled === true;
+  return {
+    pictureHover: master && settings.experimentalPictureHover === true,
+    pictureWall: master && settings.experimentalPictureWall === true,
+    articleHover: master && settings.experimentalArticleHover === true,
+    articleRows: master && settings.experimentalArticleRows === true,
+  };
+}
+
 export const DEVICE_SCOPED_UI_KEYS = [
   "feedColWidth",
   "entryColWidth",
@@ -376,8 +472,21 @@ const SILENT_SAVE_UI_KEYS = new Set<string>([
   // 切档位 / 切样式类
   "pictureLayout",
   "articleLayout",
+  "articlePushDirection",
+  "articleCoverList",
+  // 实验布局批：实验开关与三个入口开关，勾选后子项禁用态/入口立即变化，不必再弹「已保存」
+  "experimentalFeaturesEnabled",
+  "experimentalPictureHover",
+  "experimentalPictureWall",
+  "experimentalArticleHover",
+  "experimentalArticleRows",
   "gridStyle",
   "hoverRowHeight",
+  "articleListRowHeight",
+  "articleQuickActionMode",
+  "articleMobileFullTitle",
+  "inoreaderSplitterPromptShown",
+  "articlePaneStyle",
   "hoverImageSize",
   // 47-1：切「只显示未读 / 显示全部」，列表当场就换了，不必再弹一句
   "unreadOnly",
@@ -543,10 +652,22 @@ export const defaultUISettings: UISettings = {
   pictureLayout: "grid",
   gridStyle: "masonry",
   hoverRowHeight: "compact",
+  articleListRowHeight: "compact",
+  articleQuickActionMode: "expand",
+  articleMobileFullTitle: true,
+  inoreaderSplitterPromptShown: false,
+  articlePaneStyle: "card",
   hoverImageSize: "small",
   hoverMultiImage: { rowWheel: true, floatWheel: false, hSwipe: false },
   notificationBodyOnHover: false,
   articleLayout: "list",
+  articlePushDirection: "right",
+  articleCoverList: false,
+  experimentalFeaturesEnabled: false,
+  experimentalPictureHover: false,
+  experimentalPictureWall: false,
+  experimentalArticleHover: false,
+  experimentalArticleRows: false,
   cardImageSize: "small",
   cardPreviewLines: 2,
   // 47-1（用户 2026-10-12）：打开就是「只显示未读」；切到「显示全部」会被记住
@@ -829,14 +950,95 @@ export function useUISettingActions() {
     setUISetting("hoverRowHeight", value);
   }, []);
 
+  /** 文章「Inoreader列表」的行高尺度（compact = 10px 上下的紧凑行 / comfortable = 13px） */
+  const setArticleListRowHeight = useCallback(
+    (value: "compact" | "comfortable") => {
+      setUISetting("articleListRowHeight", value);
+    },
+    [],
+  );
+
+  const setArticleQuickActionMode = useCallback(
+    (value: "expand" | "hover" | "always") => {
+      setUISetting("articleQuickActionMode", value);
+    },
+    [setUISetting],
+  );
+
+  const setArticleMobileFullTitle = useCallback(
+    (value: boolean) => {
+      setUISetting("articleMobileFullTitle", value);
+    },
+    [setUISetting],
+  );
+
+  const setInoreaderSplitterPromptShown = useCallback(
+    (value: boolean) => {
+      setUISetting("inoreaderSplitterPromptShown", value);
+    },
+    [setUISetting],
+  );
+
+  const setArticlePaneStyle = useCallback(
+    (value: "card" | "plain") => {
+      setUISetting("articlePaneStyle", value);
+    },
+    [setUISetting],
+  );
+
   /** 28-7a：悬停浮块尺寸（small = 上游 400×250 / large = 5175 的 560px） */
   const setHoverImageSize = useCallback((value: "small" | "large") => {
     setUISetting("hoverImageSize", value);
   }, []);
 
-  /** 文章视图第二栏的排布（reader-transition 批新增） */
+  /**
+   * 文章视图第二栏的排布（reader-transition 批新增；实验布局批加自动预设）。
+   * 切布局时统一套「推入方向 + 是否覆盖第二栏」预设，保证外观页与顶栏两个入口一致；
+   * 套完用户仍可手改这两项（它们各自是独立设置）。
+   */
   const setArticleLayout = useCallback((layout: ArticleLayout) => {
     setUISetting("articleLayout", layout);
+    const preset = articleLayoutPreset(layout);
+    setUISetting("articlePushDirection", preset.articlePushDirection);
+    setUISetting("articleCoverList", preset.articleCoverList);
+  }, []);
+
+  /** 文章视图正文推入方向（right 从右 / bottom 从下） */
+  const setArticlePushDirection = useCallback(
+    (direction: ArticlePushDirection) => {
+      setUISetting("articlePushDirection", direction);
+    },
+    [],
+  );
+
+  /** 文章视图正文栏是否覆盖第二栏条目栏 */
+  const setArticleCoverList = useCallback((cover: boolean) => {
+    setUISetting("articleCoverList", cover);
+  }, []);
+
+  /** 实验性设置总开关（关 = 四项实验布局入口全隐藏） */
+  const setExperimentalFeaturesEnabled = useCallback((enabled: boolean) => {
+    setUISetting("experimentalFeaturesEnabled", enabled);
+  }, []);
+
+  /** 实验布局入口：图片 · 悬停大图 */
+  const setExperimentalPictureHover = useCallback((enabled: boolean) => {
+    setUISetting("experimentalPictureHover", enabled);
+  }, []);
+
+  /** 实验布局入口：图片 · 照片墙 */
+  const setExperimentalPictureWall = useCallback((enabled: boolean) => {
+    setUISetting("experimentalPictureWall", enabled);
+  }, []);
+
+  /** 实验布局入口：文章 · 悬停正文 */
+  const setExperimentalArticleHover = useCallback((enabled: boolean) => {
+    setUISetting("experimentalArticleHover", enabled);
+  }, []);
+
+  /** 实验布局入口：文章 · 缩略图列表 */
+  const setExperimentalArticleRows = useCallback((enabled: boolean) => {
+    setUISetting("experimentalArticleRows", enabled);
   }, []);
 
   const setCardPreviewLines = useCallback((lines: number) => {
@@ -1045,8 +1247,20 @@ export function useUISettingActions() {
     setPictureLayout,
     setGridStyle,
     setHoverRowHeight,
+    setArticleListRowHeight,
+    setArticleQuickActionMode,
+    setArticleMobileFullTitle,
+    setInoreaderSplitterPromptShown,
+    setArticlePaneStyle,
     setHoverImageSize,
     setArticleLayout,
+    setArticlePushDirection,
+    setArticleCoverList,
+    setExperimentalFeaturesEnabled,
+    setExperimentalPictureHover,
+    setExperimentalPictureWall,
+    setExperimentalArticleHover,
+    setExperimentalArticleRows,
     setCardPreviewLines,
     setEntryFontFamily,
     setEntryFontSize,

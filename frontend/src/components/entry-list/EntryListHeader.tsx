@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ToggleButton } from "@heroui/react";
 import {
+  AlignJustify,
   Filter,
   GalleryHorizontalEnd,
   Images,
@@ -90,18 +91,31 @@ interface EntryListHeaderProps {
   onToggleSidebar?: () => void;
   sidebarVisible?: boolean;
   /**
-   * 28-1：文章视图的「展示方式」切换（卡片列表 ↔ 悬停大图）。
+   * 28-1：文章视图的「展示方式」切换。
    * 不传这两项就不渲染那颗按钮 —— 其它视图行为不变。
    * 28-6：按钮位置按用户要求放在**标题文字的右边**（不是标题左边）。
+   * 实验布局批：档位由 `articleLayoutOrder`（已按实验可见性过滤）驱动循环。
    */
-  articleLayout?: "list" | "hover";
+  articleLayout?: "list" | "inoreader" | "rows" | "hover";
   onToggleArticleLayout?: () => void;
+  /**
+   * 实验布局批：文章视图可切换的档位顺序（已按实验可见性过滤好的）。
+   * 顶栏按钮据此算「下一档」；长度 ≤1 时调用方不传 onToggleArticleLayout，按钮自然不渲染。
+   * 缺省为常规两档（传统三栏 → 列表），兼容旧调用。
+   */
+  articleLayoutOrder?: Array<"list" | "inoreader" | "rows" | "hover">;
   /**
    * 28-7：图片视图的「展示方式」切换（网格 ⇄ 悬停大图，两档循环）。
    * 同上，不传则不渲染。
    */
   pictureLayout?: "grid" | "hover" | "wall";
   onTogglePictureLayout?: () => void;
+  /**
+   * 实验布局批：图片视图可切换的档位顺序（已按实验可见性过滤好的）。
+   * 顶栏按钮据此算「下一档」；长度 ≤1 时调用方不传 onTogglePictureLayout，按钮自然不渲染。
+   * 缺省为全部三档（兼容旧调用）。
+   */
+  pictureLayoutOrder?: Array<"grid" | "hover" | "wall">;
   /**
    * 52-4：从条目点源名跳进来的订阅 → 标题左边多一颗「返回」，
    * 点了回到跳转前的样子（上一个选中是文件夹就回文件夹，正看着某条详情也一并还原）。
@@ -114,6 +128,8 @@ interface EntryListHeaderProps {
    * 「没有选中条目」时自然不出现（那类项是「对选中的若干条做事」）。
    */
   selectedEntryIds?: string[];
+  /** 向下滚动时收起这条列表 TOP 栏（桌面与手机共用同一套方向判定） */
+  hidden?: boolean;
   /** 移动端顶栏的搜索入口；不传则不渲染搜索按钮 */
   onSearchClick?: () => void;
 }
@@ -143,16 +159,38 @@ export function EntryListHeader({
   sidebarVisible,
   articleLayout,
   onToggleArticleLayout,
+  articleLayoutOrder,
   pictureLayout,
   onTogglePictureLayout,
+  pictureLayoutOrder,
   selectedEntryIds,
   onSearchClick,
+  hidden = false,
 }: EntryListHeaderProps) {
   const { t } = useTranslation();
   const [moreOpen, setMoreOpen] = useState(false);
+  /* 实验布局批：图片可切换档位顺序（已过滤）；只有 ≥2 档才在顶栏给按钮 */
+  const pictureOrder: Array<"grid" | "hover" | "wall"> =
+    pictureLayoutOrder && pictureLayoutOrder.length > 0
+      ? pictureLayoutOrder
+      : ["grid", "hover", "wall"];
+  const showPictureToggle =
+    Boolean(onTogglePictureLayout) && pictureOrder.length > 1;
   /* 顶栏那颗档位按钮：提示文案表达「点下去会变成什么」，所以取下一档的名字 */
+  const currentPictureIdx = Math.max(0, pictureOrder.indexOf(pictureLayout ?? "grid"));
   const nextPictureLayoutKey =
-    pictureLayout === "grid" ? "hover" : pictureLayout === "hover" ? "wall" : "grid";
+    pictureOrder[(currentPictureIdx + 1) % pictureOrder.length];
+  /* 实验布局批：文章可切换档位顺序（已过滤：常规 传统三栏→列表，悬停正文仅在实验开关打开时加入） */
+  const articleOrder: Array<"list" | "inoreader" | "rows" | "hover"> =
+    articleLayoutOrder && articleLayoutOrder.length > 0
+      ? articleLayoutOrder
+      : ["list", "inoreader"];
+  const showArticleToggle =
+    Boolean(onToggleArticleLayout) && articleOrder.length > 1;
+  /* 顶栏那颗档位按钮：提示文案表达「点下去会变成什么」，所以取下一档的名字 */
+  const currentArticleIdx = Math.max(0, articleOrder.indexOf(articleLayout ?? "list"));
+  const nextArticleLayoutKey: "list" | "inoreader" | "rows" | "hover" =
+    articleOrder[(currentArticleIdx + 1) % articleOrder.length] ?? "inoreader";
 
   if (isMobile) {
     return (
@@ -298,27 +336,27 @@ export function EntryListHeader({
               }}
             />
           ) : null}
-          {onToggleArticleLayout ? (
+          {showArticleToggle ? (
             <MobileActionSheetItem
               icon={
-                articleLayout === "hover" ? (
-                  <LayoutList className="size-5" />
-                ) : (
+                articleLayout === "rows" ? (
                   <FileTextIcon className="size-5" />
+                ) : articleLayout === "inoreader" ? (
+                  <AlignJustify className="size-5" />
+                ) : articleLayout === "hover" ? (
+                  <Images className="size-5" />
+                ) : (
+                  <LayoutList className="size-5" />
                 )
               }
-              label={
-                articleLayout === "hover"
-                  ? t("appearance_view.article_layout_list")
-                  : t("appearance_view.article_layout_hover")
-              }
+              label={t(`appearance_view.article_layout_${nextArticleLayoutKey}`)}
               onClick={() => {
                 setMoreOpen(false);
-                onToggleArticleLayout();
+                onToggleArticleLayout?.();
               }}
             />
           ) : null}
-          {onTogglePictureLayout ? (
+          {showPictureToggle ? (
             <MobileActionSheetItem
               icon={
                 pictureLayout === "wall" ? (
@@ -332,7 +370,7 @@ export function EntryListHeader({
               label={t(`appearance_view.picture_layout_${nextPictureLayoutKey}`)}
               onClick={() => {
                 setMoreOpen(false);
-                onTogglePictureLayout();
+                onTogglePictureLayout?.();
               }}
             />
           ) : null}
@@ -351,7 +389,15 @@ export function EntryListHeader({
   }
 
   return (
-    <div className="flex h-14 items-center justify-between gap-4 px-4 shrink-0">
+    <div
+      data-testid="entry-list-topbar"
+      className={cn(
+        "flex items-center justify-between gap-4 overflow-hidden px-4 shrink-0 transition-[max-height,opacity] duration-300 ease-out",
+        hidden
+          ? "h-0 max-h-0 opacity-0 pointer-events-none"
+          : "h-14 max-h-14 opacity-100",
+      )}
+    >
       <div className="flex min-w-0 flex-1 items-center gap-2">
         {isMobile && onMenuClick && (
           <button
@@ -413,33 +459,32 @@ export function EntryListHeader({
         {/* 28-1 / 28-6（用户：「把它放在右侧，右侧就是文字的右侧…不是右侧三个按钮的位置」）：
             展示方式切换按钮，紧跟在标题文字右边；图标表达「点下去会变成什么」。
             文章视图两档循环；图片视图三档循环（瀑布流 → 网格 → 悬停大图）。 */}
-        {onToggleArticleLayout && (
+        {showArticleToggle && (
           <button
             type="button"
             onClick={onToggleArticleLayout}
-            aria-label={
-              articleLayout === "hover"
-                ? t("appearance_view.article_layout_list")
-                : t("appearance_view.article_layout_hover")
-            }
+            aria-label={t(`appearance_view.article_layout_${nextArticleLayoutKey}`)}
             {...{
-              title:
-                articleLayout === "hover"
-                  ? t("appearance_view.article_layout_list")
-                  : t("appearance_view.article_layout_hover"),
+              title: t(`appearance_view.article_layout_${nextArticleLayoutKey}`),
             }}
             className="flex size-8 shrink-0 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95"
           >
-            {articleLayout === "hover" ? (
-              /* 31-2：hover 档 = 悬停正文，点下去回到卡片列表 */
-              <LayoutList className="size-4" />
-            ) : (
-              /* 列表档：点下去是「悬停正文」 */
+            {articleLayout === "rows" ? (
+              /* 缩略图列表档 */
               <FileTextIcon className="size-4" />
+            ) : articleLayout === "inoreader" ? (
+              /* Inoreader 列表档（静态行） */
+              <AlignJustify className="size-4" />
+            ) : articleLayout === "hover" ? (
+              /* 悬停正文档 */
+              <Images className="size-4" />
+            ) : (
+              /* 传统三栏 */
+              <LayoutList className="size-4" />
             )}
           </button>
         )}
-        {onTogglePictureLayout && (
+        {showPictureToggle && (
           /* 28-7：图片视图档位循环 —— 网格 → 悬停大图 → 照片墙（31-1 加第三档）。
              图标画当前档，提示文案说「点下去会变成什么」。 */
           <button

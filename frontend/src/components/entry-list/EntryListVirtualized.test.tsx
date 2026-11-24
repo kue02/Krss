@@ -18,6 +18,31 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
+vi.mock("@/hooks/useFeedMenuActions", () => ({
+  useFeedMenuActions: () => ({
+    folders: [],
+    onRefresh: vi.fn(),
+    onEdit: vi.fn(),
+    onDelete: vi.fn(),
+    onMoveToFolder: vi.fn(),
+    onChangeType: vi.fn(),
+  }),
+}));
+
+vi.mock("@/hooks/useFilters", () => ({
+  useUnmuteEntry: () => ({ mutate: vi.fn() }),
+  useCreateFilterException: () => ({ mutate: vi.fn(), isPending: false }),
+  useFilters: () => ({ data: [], isLoading: false, isError: false }),
+}));
+
+vi.mock("@/plugins/useContributions", () => ({
+  useContributions: () => [],
+}));
+
+vi.mock("@/plugins/useInvokePluginAction", () => ({
+  useInvokePluginAction: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
 vi.mock("@/hooks/useEntries", () => ({
   useEntriesInfinite: vi.fn(),
   useUnreadCounts: vi.fn(() => ({ data: undefined })),
@@ -92,6 +117,8 @@ vi.mock("./EntryListItem", async () => {
         />
       );
     }),
+    // 行内右键菜单内容（本文件不测菜单，只要存在即可；避免拉入真实 hook 依赖）
+    EntryContextMenuContent: () => null,
   };
 });
 
@@ -247,6 +274,7 @@ describe("EntryList · 标准文章列表虚拟化", () => {
     cleanup();
     restoreLayoutStubs();
     setUISetting("articleLayout", "list");
+    setUISetting("articlePushDirection", "right");
   });
 
   it("50 条时首屏只挂载可视区 + overscan（<=15 张），不再 50 卡全挂 DOM", async () => {
@@ -308,6 +336,160 @@ describe("EntryList · 标准文章列表虚拟化", () => {
         .getByTestId("entry-list-viewport")
         .querySelector('[data-virtual-list="true"]'),
     ).toBeNull();
+  });
+
+  it("文章「列表」档（rows）走虚拟列表，渲染 ArticleRowsListRow 且只挂可视区", async () => {
+    setUISetting("articleLayout", "rows");
+    render(<EntryList {...defaultProps} />);
+    const viewport = screen.getByTestId("entry-list-viewport");
+    await act(async () => {
+      stubViewportScroll(viewport);
+      await Promise.resolve();
+    });
+
+    // rows 分支挂载了 ArticleRowsList 容器 + 虚拟列表
+    expect(screen.getByTestId("article-rows-list")).toBeTruthy();
+    expect(
+      viewport.querySelector('[data-virtual-list="true"]'),
+    ).not.toBeNull();
+
+    const ids = rowIds();
+    expect(ids[0]).toBe("e-1");
+    expect(ids.length).toBeLessThanOrEqual(15);
+    // 行内是紧凑行（缩略图 + 标题），不是卡片
+    expect(screen.getByText("Title e-1")).toBeTruthy();
+  });
+
+  it("文章「Inoreader列表」档（inoreader）走虚拟列表，行是来源图标+标题+右侧元信息", async () => {
+    setUISetting("articleLayout", "inoreader");
+    render(<EntryList {...defaultProps} />);
+    const viewport = screen.getByTestId("entry-list-viewport");
+    await act(async () => {
+      stubViewportScroll(viewport);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByTestId("article-plain-list")).toBeTruthy();
+    expect(
+      viewport.querySelector('[data-virtual-list="true"]'),
+    ).not.toBeNull();
+
+    const ids = rowIds();
+    expect(ids[0]).toBe("e-1");
+    expect(ids.length).toBeLessThanOrEqual(15);
+    // 没有缩略图（64×64 那档是实验「缩略图列表」）
+    expect(viewport.querySelector(".size-16")).toBeNull();
+  });
+
+  it("「正文推入方向 = 向下」合列：正文接在被点那一行后面，选中后才出现", async () => {
+    setUISetting("articleLayout", "inoreader");
+    setUISetting("articlePushDirection", "down");
+    const renderInlineContent = vi.fn(() => (
+      <div data-testid="inline-body">正文</div>
+    ));
+    const { rerender } = render(
+      <EntryList
+        {...defaultProps}
+        renderInlineContent={renderInlineContent}
+      />,
+    );
+    const viewport = screen.getByTestId("entry-list-viewport");
+    await act(async () => {
+      stubViewportScroll(viewport);
+      await Promise.resolve();
+    });
+
+    // 未选中：没有正文 pane，底部「全部标记为已读」照常在
+    expect(screen.queryByTestId("inline-article-pane")).toBeNull();
+    expect(screen.getByTestId("mark-all-read-footer")).toBeTruthy();
+    // 「向下」合列整体不走虚拟列表：pane 必须在被点行后面、且要能继续下滑看后续条目，
+    // 因此从进入该模式起就全量渲染（避免点开的瞬间把整列从虚拟切全量导致闪烁）。
+    expect(
+      viewport.querySelector('[data-virtual-list="true"]'),
+    ).toBeNull();
+    expect(rowIds().length).toBeGreaterThan(15);
+
+    rerender(
+      <EntryList
+        {...defaultProps}
+        selectedEntryId="e-1"
+        renderInlineContent={renderInlineContent}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // 选中后关掉虚拟化：pane 落进普通文档流（否则 sticky 工具栏会失效），
+    // 整表全量渲染，后续条目都在 DOM 里可继续下滑查看。
+    expect(
+      viewport.querySelector('[data-virtual-list="true"]'),
+    ).toBeNull();
+    expect(rowIds()).toHaveLength(manyEntries.length);
+
+    expect(renderInlineContent).toHaveBeenCalled();
+    const pane = screen.getByTestId("inline-article-pane");
+    expect(pane.contains(screen.getByTestId("inline-body"))).toBe(true);
+    // 正文接在被点的那一行后面：e-1 行在前、pane 在后，随后的 e-2 行还在 pane 之后
+    const row1 = viewport.querySelector('[data-entry-id="e-1"]') as HTMLElement;
+    expect(
+      row1.compareDocumentPosition(pane) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    const row2 = viewport.querySelector('[data-entry-id="e-2"]') as HTMLElement;
+    if (row2) {
+      expect(
+        pane.compareDocumentPosition(row2) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+    // 正文已内联在行间，不再夹在列表末尾与正文之间，底部按钮不再让位
+    expect(screen.getByTestId("mark-all-read-footer")).toBeTruthy();
+  });
+
+  it("手机档「向下」合列：正文同样接在被点行后面、与列表共用文档滚动", async () => {
+    setUISetting("articleLayout", "inoreader");
+    setUISetting("articlePushDirection", "down");
+    const renderInlineContent = vi.fn(() => (
+      <div data-testid="inline-body">正文</div>
+    ));
+    render(
+      <EntryList
+        {...defaultProps}
+        isMobile
+        selectedEntryId="e-1"
+        renderInlineContent={renderInlineContent}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const viewport = screen.getByTestId("entry-list-viewport");
+    // 手机档本来就是文档滚动、不虚拟化；合列时正文照样插在被点行后面
+    expect(
+      viewport.querySelector('[data-virtual-list="true"]'),
+    ).toBeNull();
+    expect(rowIds()).toHaveLength(50);
+    expect(renderInlineContent).toHaveBeenCalled();
+    const pane = screen.getByTestId("inline-article-pane");
+    expect(pane.contains(screen.getByTestId("inline-body"))).toBe(true);
+    const row1 = viewport.querySelector('[data-entry-id="e-1"]') as HTMLElement;
+    expect(
+      row1.compareDocumentPosition(pane) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // 手机档同样把正文接在行间、不再让底部按钮让位
+    expect(screen.getByTestId("mark-all-read-footer")).toBeTruthy();
+  });
+
+  it("文章「Inoreader列表」在手机档包一层左滑动作（与其它列表一致）", async () => {
+    setUISetting("articleLayout", "inoreader");
+    render(<EntryList {...defaultProps} isMobile />);
+
+    const viewport = screen.getByTestId("entry-list-viewport");
+    // 手机档不虚拟化（走 document 滚动），但每行都要包一层左滑动作
+    expect(screen.getByTestId("article-plain-list")).toBeTruthy();
+    const rows = viewport.querySelectorAll("[data-swipe-row]");
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows[0]?.querySelector("[data-entry-id]")).not.toBeNull();
   });
 
   it("文章 hover 档不虚拟化（悬停浮层认行的委托不受影响）", () => {

@@ -45,6 +45,10 @@ interface EntryContentProps {
   onBack?: () => void;
   /** 28-5：桌面正文区左上角的关闭按钮（与移动端 onBack 同位置，图标用 X） */
   onClose?: () => void;
+  /** 内嵌 sticky 时距视口顶的偏移类（手机内联合列要避开列表固定顶栏） */
+  headerStickyTopClassName?: string;
+  /** 内嵌在列表里时也要显示目录与阅读进度（「向下」合列） */
+  showAuxiliary?: boolean;
 }
 
 export function EntryContent({
@@ -55,6 +59,8 @@ export function EntryContent({
   containerRef,
   onBack,
   onClose,
+  headerStickyTopClassName,
+  showAuxiliary = false,
 }: EntryContentProps) {
   const { t } = useTranslation();
   const { data: entry, isLoading } = useEntry(entryId);
@@ -85,11 +91,23 @@ export function EntryContent({
     return () => node.removeEventListener("scroll", update);
   }, [embedded, containerRef, entryId]);
   const headerAtTop = embedded ? embeddedAtTop : isAtTop;
+  // 内联合列：正文滚动容器是宿主列表容器，目录/进度条都要对着它
+  const [hostScrollNode, setHostScrollNode] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!embedded) return undefined;
+    const update = () => setHostScrollNode(containerRef?.current ?? null);
+    update();
+    const raf = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(raf);
+  }, [embedded, containerRef, entryId]);
+  const auxScrollNode = embedded ? hostScrollNode : scrollNode;
 
   // Track entries marked as read to trigger list removal on switch
   const markedAsReadRef = useRef<Set<string>>(new Set());
   // 自动「打开即已读」每篇文章只做一次：否则手动切回未读（快捷键 m）会被立刻改回已读
   const autoMarkedEntryRef = useRef<string | null>(null);
+  /** 手机内联合列：整段正文根节点，用来按视口算阅读进度（文档滚动，宿主容器不滚） */
+  const contentRootRef = useRef<HTMLDivElement>(null);
 
   const { data: feeds = [] } = useFeeds();
   // #5/#8 订阅级覆盖 + 条目级规则标记，口径与 autoSummary 对齐（唯一解析器）
@@ -235,6 +253,7 @@ export function EntryContent({
 
   return (
     <div
+      ref={contentRootRef}
       className={cn(
         "relative flex w-full flex-col",
         embedded ? "min-h-0" : "h-full overflow-hidden",
@@ -268,12 +287,19 @@ export function EntryContent({
         onToggleOriginalSite={() => setShowOriginalSite((value) => !value)}
         /** 39-1：内嵌时工具栏跟宿主容器一起滚（sticky），第三栏那套是 absolute 盖在面板上 */
         sticky={embedded}
+        stickyTopClassName={headerStickyTopClassName}
+        mobileInlineSticky={embedded && Boolean(isMobile)}
       />
       {/* 23-4：阅读进度条锁在工具栏（h-12 = 48px）正下方。
           跟着真实滚动容器（正文那个元素滚动）走；看原站时滚的是 iframe，进度条没有意义。
           39-1：内嵌模式下没有「工具栏正下方」这个位置，跳过 */}
-      {!showOriginalSite && !embedded && (
-        <ReadingProgressBar scrollNode={scrollNode} resetKey={entryId} />
+      {!showOriginalSite && (!embedded || showAuxiliary) && (
+        <ReadingProgressBar
+          scrollNode={auxScrollNode}
+          resetKey={entryId}
+          sticky={embedded && showAuxiliary}
+          rangeRef={embedded && showAuxiliary && isMobile ? contentRootRef : undefined}
+        />
       )}
       {showOriginalSite && entry.url ? (
         <OriginalSiteView url={entry.url} />
@@ -296,11 +322,12 @@ export function EntryContent({
       )}
       {/* 39-1：大纲是 `absolute inset-y-0`，内嵌时要对着宿主容器的可见区域，
           由宿主挂在自己的 `relative` 包装上并传 `containerRef` 过来 */}
-      {!embedded && (
+      {(!embedded || showAuxiliary) && (
         <EntryToc
-          scrollNode={scrollNode}
+          scrollNode={auxScrollNode}
           entryId={entryId}
           isMobile={Boolean(isMobile)}
+          fixedInline={embedded && showAuxiliary}
         />
       )}
       {isMobile && !embedded && !showOriginalSite && (

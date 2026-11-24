@@ -194,6 +194,7 @@ export function EntryContextMenuContent({
   const unmute = useUnmuteEntry();
   const exception = useCreateFilterException();
   const { mutate: markAsRead } = useMarkAsRead();
+  const { mutate: markAsStarred } = useMarkAsStarred();
   const readAction = readToggleAction(!entry.read);
   /**
    * 56-16：这个菜单上的可改控件。宿主登记了 `entry.mark_read` 允许**隐藏**
@@ -211,6 +212,21 @@ export function EntryContextMenuContent({
           {t(readAction.labelKey)}
         </ContextMenuItem>
       )}
+      <ContextMenuItem
+        onClick={() =>
+          markAsStarred({ id: entry.id, starred: !entry.starred })
+        }
+      >
+        <Star
+          className={cn(
+            "size-4 shrink-0",
+            entry.starred
+              ? "fill-amber-500 text-amber-500"
+              : "text-muted-foreground",
+          )}
+        />
+        {t(entry.starred ? "entry.unstar" : "entry.star")}
+      </ContextMenuItem>
       {onMarkAbove && (
         <ContextMenuItem onClick={onMarkAbove}>
           <ChevronsUp className="size-4 shrink-0 text-muted-foreground" />

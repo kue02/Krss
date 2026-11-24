@@ -101,7 +101,7 @@ export function MobileSwipeEntryRow({ entry, children }: MobileSwipeEntryRowProp
       <div
         aria-hidden={!open}
         className={cn(
-          "absolute inset-y-0 right-0 z-0 flex",
+          "absolute bottom-0.5 right-1.5 top-0.5 z-0 flex items-center justify-end gap-2 pr-1",
           !open && "pointer-events-none",
         )}
         style={{ width: ACTION_WIDTH }}
@@ -114,10 +114,11 @@ export function MobileSwipeEntryRow({ entry, children }: MobileSwipeEntryRowProp
             close();
             markAsRead({ id: entry.id, read: readAction.nextRead });
           }}
-          className="flex w-1/2 flex-col items-center justify-center gap-1 border-r border-border/60 bg-secondary text-foreground transition-[filter] duration-150 active:brightness-95"
+          className="group/act flex w-1/2 items-center justify-center"
         >
-          <ReadIcon className="size-5" />
-          <span className="text-[11px] leading-none">{t(readAction.labelKey)}</span>
+          <span className="flex size-9 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-nf transition-colors duration-150 group-hover/act:bg-item-hover group-hover/act:text-foreground">
+            <ReadIcon className="size-4" />
+          </span>
         </button>
         <button
           type="button"
@@ -129,16 +130,22 @@ export function MobileSwipeEntryRow({ entry, children }: MobileSwipeEntryRowProp
             close();
             markAsStarred({ id: entry.id, starred: !isStarred });
           }}
-          className={cn(
-            "flex w-1/2 flex-col items-center justify-center gap-1 bg-secondary transition-[filter] duration-150 active:brightness-95",
-            isStarred ? "text-amber-600" : "text-foreground",
-          )}
+          className="group/act flex w-1/2 items-center justify-center"
         >
-          <Star
-            className={cn("size-5", isStarred && "fill-amber-500 text-amber-500")}
-          />
-          <span className="text-[11px] leading-none">
-            {t(isStarred ? "entry.remove_from_starred" : "entry.add_to_starred")}
+          <span
+            className={cn(
+              "flex size-9 items-center justify-center rounded-full border border-border bg-card shadow-nf transition-colors duration-150 group-hover/act:bg-item-hover",
+              isStarred
+                ? "text-amber-500"
+                : "text-muted-foreground group-hover/act:text-foreground",
+            )}
+          >
+            <Star
+              className={cn(
+                "size-4",
+                isStarred && "fill-amber-500 text-amber-500",
+              )}
+            />
           </span>
         </button>
       </div>
@@ -147,8 +154,9 @@ export function MobileSwipeEntryRow({ entry, children }: MobileSwipeEntryRowProp
       <div
         onClickCapture={handleContentClickCapture}
         className={cn(
-          "relative z-10 bg-background transition-transform duration-200 ease-out",
-          open && "shadow-[-10px_0_18px_-8px_rgba(0,0,0,0.28)]",
+          "relative z-10 transition-transform duration-200 ease-out",
+          "bg-background",
+          open && "shadow-[-8px_0_16px_-10px_rgba(0,0,0,0.18)]",
         )}
         style={open ? { transform: `translateX(-${ACTION_WIDTH}px)` } : undefined}
       >

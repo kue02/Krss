@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -7,8 +8,14 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import type { ReactNode, RefObject } from "react";
 import { useTranslation } from "react-i18next";
-import { useEntriesInfinite, useUnreadCounts, useMarkManyAsRead } from "@/hooks/useEntries";
+import {
+  useEntriesInfinite,
+  useUnreadCounts,
+  useMarkManyAsRead,
+  useMarkAsRead,
+} from "@/hooks/useEntries";
 import { AlertDialog, Button } from "@heroui/react";
 import { useFeeds } from "@/hooks/useFeeds";
 import { useGeneralSettings } from "@/hooks/useGeneralSettings";
@@ -27,6 +34,8 @@ import { selectionToParams, type SelectionType } from "@/hooks/useSelection";
 import { flattenUniqueEntries } from "@/lib/entry-pagination";
 import { stripHtml } from "@/lib/html-utils";
 import { EntryListItem } from "./EntryListItem";
+import { ArticleRowsListRow } from "./ArticleRowsList";
+import { ArticlePlainListRow } from "./ArticlePlainList";
 import { MobileSwipeEntryRow } from "@/components/mobile/MobileSwipeEntryRow";
 import { EntryListHeader } from "./EntryListHeader";
 import { needsListTranslation as needsListTranslationAsync } from "@/lib/language-detect-async";
@@ -39,18 +48,26 @@ import { selectionScrollKey, entryListScrollPositions } from "./scroll-key";
 import { useScrollToTop } from "@/hooks/useScrollToTop";
 import { MobileDocumentHeader } from "@/components/layout/MobileDocumentHeader";
 import { cn } from "@/lib/utils";
-import { useVirtualizedArticleList } from "./useVirtualizedArticleList";
+import {
+  useVirtualizedArticleList,
+  VIRTUAL_PLAIN_ROW_ESTIMATE_PX,
+} from "./useVirtualizedArticleList";
 import { VirtualizedArticleList } from "./VirtualizedArticleList";
 import { useScrollMarkRead } from "./useScrollMarkRead";
 import { usePrependScrollAnchor } from "./usePrependScrollAnchor";
 import {
+  deferEntryRemoval,
   getDeferredRemovalsVersion,
   mergeDeferredRemovals,
   subscribeDeferredRemovals,
 } from "./deferred-removal";
 import { useEntryListScrollSurface } from "./scroll-surface";
 import { useEntryHotkeys } from "@/hooks/useEntryHotkeys";
-import { useUISettingKey, useUISettingActions } from "@/hooks/useUISettings";
+import {
+  useUISettingKey,
+  useUISettingActions,
+  resolveExperimentalLayoutVisibility,
+} from "@/hooks/useUISettings";
 import {
   resolveTimelineCollapse,
   resolveTimelineGranularity,
@@ -110,6 +127,16 @@ interface EntryListProps {
   onBackFromFeedJump?: () => void;
   /** 移动端顶栏搜索入口（App 打开 SearchModal）；不传不渲染 */
   onSearchClick?: () => void;
+  /**
+   * 「正文推入方向 = 向下」的合列形态（方案 2 · 整列一起滚）：
+   * 正文接在被点那一行后面、与该行之后的条目共用同一条滚动条。传的是渲染函数而不是节点，
+   * 因为内嵌正文要拿本列表的滚动容器（`embedded` 模式的 `containerRef`）
+   * 才能让工具栏吸顶判断跟列表滚动走。不传则列表不带内联正文。
+   */
+  renderInlineContent?: (
+    scrollRef: RefObject<HTMLDivElement | null>,
+    options: { headerStickyTop: string },
+  ) => ReactNode;
 }
 
 export function EntryList({
@@ -132,6 +159,7 @@ export function EntryList({
   feedJumpBackHref,
   onBackFromFeedJump,
   onSearchClick,
+  renderInlineContent,
 }: EntryListProps) {
   "use no memo";
 
@@ -200,6 +228,8 @@ export function EntryList({
   const effectiveUnreadOnly = mutedOnly ? false : unreadOnly;
 
   const containerRef = useRef<HTMLDivElement>(null);
+  /** 「向下」合列模式下接在「被点那一行」后面的正文块（点条目后要滚到它） */
+  const inlineContentRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const listWrapperRef = useRef<HTMLDivElement>(null);
   const usesDocumentScroll = Boolean(isMobile);
@@ -360,6 +390,58 @@ export function EntryList({
    */
   const articleLayout = useUISettingKey("articleLayout");
   const isArticleHover = contentType === "article" && articleLayout === "hover";
+  /**
+   * 实验布局批：文章「缩略图列表」档（带 64×64 缩略图的紧凑行，无悬停浮层）。
+   * 常规「Inoreader列表」是另一档（`isArticlePlain`），别混。
+   */
+  const isArticleRows = contentType === "article" && articleLayout === "rows";
+  /** 常规「Inoreader列表」：来源图标 + 加粗标题 + 右侧来源·时间，无缩略图 */
+  const isArticlePlain =
+    contentType === "article" && articleLayout === "inoreader";
+  /** 「正文推入方向 = 向下」：条目栏与正文合为一列，正文接在被点那一行后面（方案 2） */
+  const articlePushDirection = useUISettingKey("articlePushDirection");
+  const isArticleInline =
+    contentType === "article" && articlePushDirection === "down";
+  /** 实验布局批：文章相关实验入口的可见性（关闭即隐藏，已选中仍照常渲染） */
+  const articleExpVisibility = resolveExperimentalLayoutVisibility({
+    experimentalFeaturesEnabled: useUISettingKey("experimentalFeaturesEnabled"),
+    experimentalPictureHover: useUISettingKey("experimentalPictureHover"),
+    experimentalPictureWall: useUISettingKey("experimentalPictureWall"),
+    experimentalArticleHover: useUISettingKey("experimentalArticleHover"),
+    experimentalArticleRows: useUISettingKey("experimentalArticleRows"),
+  });
+  /**
+   * 实验布局批：文章顶栏可切换档位（按实验可见性过滤）。
+   * 常规 = 传统三栏 + 列表；「悬停正文」仅在对应实验开关打开时进入循环。
+   * 只剩一档 → 不渲染切换按钮（由 EntryListHeader 据 order.length>1 判断）。
+   */
+  const articleLayoutOrder = useMemo<
+    Array<"list" | "inoreader" | "rows" | "hover">
+  >(() => {
+    /* 常规两档永远在：传统三栏 → Inoreader列表（默认顺序按用户点名的那样） */
+    const order: Array<"list" | "inoreader" | "rows" | "hover"> = [
+      "list",
+      "inoreader",
+    ];
+    /* 实验两档：只按开关进循环 —— 关掉就从选择器与顶栏一起消失。
+       正用着已停用的档时不再把它塞回来（那是「入口泄漏」），
+       保留渲染 + 列表顶部逃生条负责把人带回常规档。 */
+    if (articleExpVisibility.articleRows) {
+      order.push("rows");
+    }
+    if (articleExpVisibility.articleHover) {
+      order.push("hover");
+    }
+    return order;
+  }, [
+    articleExpVisibility.articleHover,
+    articleExpVisibility.articleRows,
+  ]);
+  /** 实验布局批：正用着已停用的实验档（悬停正文 / 缩略图列表）——保留渲染，给一条「切回常规」逃生条 */
+  const showDisabledArticleHoverNotice =
+    contentType === "article" &&
+    ((articleLayout === "hover" && !articleExpVisibility.articleHover) ||
+      (articleLayout === "rows" && !articleExpVisibility.articleRows));
   const [articleHoverAnchor, setArticleHoverAnchor] = useState<{
     id: string;
     x: number;
@@ -417,11 +499,51 @@ export function EntryList({
     [closeArticleHoverSoon],
   );
 
-  /** 28-1：顶栏左上角那颗「卡片列表 ↔ 悬停大图」切换（只有文章视图会拿到它） */
-  const { setArticleLayout } = useUISettingActions();
+  /** 28-1：顶栏左上角那颗文章档位切换（只有文章视图会拿到它）。
+   *  实验布局批：在「可见档位」里循环（传统三栏 → Inoreader列表 → [缩略图列表] → [悬停正文]）；
+   *  后两档仅在对应实验开关打开时进入循环。 */
+  const {
+    setArticleLayout,
+    setSplitterVisibleForView,
+    setInoreaderSplitterPromptShown,
+  } = useUISettingActions();
   const handleToggleArticleLayout = useCallback(() => {
-    setArticleLayout(articleLayout === "hover" ? "list" : "hover");
-  }, [articleLayout, setArticleLayout]);
+    const idx = Math.max(
+      0,
+      articleLayoutOrder.findIndex((l) => l === articleLayout),
+    );
+    const next =
+      articleLayoutOrder[(idx + 1) % articleLayoutOrder.length] ?? "list";
+    setArticleLayout(next);
+  }, [articleLayout, articleLayoutOrder, setArticleLayout]);
+  // 「Inoreader列表」首次打开：若图片 / 社交媒体 / 通知视图的分界限是关闭的，问一次文章视图是否也关闭
+  const splitterVisibleByView = useUISettingKey("splitterVisibleByView");
+  const inoreaderSplitterPromptShown = useUISettingKey(
+    "inoreaderSplitterPromptShown",
+  );
+  const [splitterPromptOpen, setSplitterPromptOpen] = useState(false);
+  const articlePaneStyle = useUISettingKey("articlePaneStyle");
+  const suppressedSplitterViews = useMemo(
+    () =>
+      (["picture", "social", "notification"] as ContentType[])
+        .filter((view) => splitterVisibleByView?.[view] === false)
+        .map((view) => t(`content_type.${view}`)),
+    [splitterVisibleByView, t],
+  );
+  useEffect(() => {
+    if (contentType !== "article" || articleLayout !== "inoreader") return;
+    if (inoreaderSplitterPromptShown) return;
+    if (suppressedSplitterViews.length === 0) return;
+    setSplitterPromptOpen(true);
+    setInoreaderSplitterPromptShown(true);
+  }, [
+    contentType,
+    articleLayout,
+    inoreaderSplitterPromptShown,
+    suppressedSplitterViews.length,
+    setInoreaderSplitterPromptShown,
+  ]);
+
   const timelineGranularity = resolveTimelineGranularity(
     useUISettingKey("timelineGranularityByView")?.[contentType],
   );
@@ -479,7 +601,6 @@ export function EntryList({
 
   const maybeFetchNextPage = useCallback(() => {
     if (!isActive || !hasNextPage || isFetchingNextPage) return;
-
     if (scrollSurface.getDistanceToBottom() <= 600) {
       fetchNextPage();
     }
@@ -584,6 +705,130 @@ export function EntryList({
   );
 
   /**
+   * 「正文推入方向 = 向下」合列（方案 2 · 整列一起滚）的两件事：
+   * 1) 点条目后把正文滚进视野并把正文顶部吸到视口顶 —— 用户的期待就是「点完继续往下滚」；
+   * 2) 顺手标已读并记 deferred（同 NotificationTimeline 的写法）：内嵌正文
+   *    不走 EntryContent 的自动标已读（embedded 时那段被跳过），不补这一步
+   *    就会出现「读完了列表里还是未读」。
+   */
+  const { mutate: markAsRead } = useMarkAsRead();
+  const inlineMarkedRef = useRef<string | null>(null);
+  /* 只有真接了内联正文（桌面合列）才滚/标已读；移动端仍是列表→详情页，不插手 */
+  const inlineActive = isArticleInline && Boolean(renderInlineContent);
+  /* 合列且已选中正文时关掉虚拟化：虚拟列表的行是 position:absolute + transform 包裹，
+     正文 pane 插在这种祖先里会让 EntryContentHeader 的 sticky 失效（工具栏会浮在正文
+     中部）。关掉虚拟化后 pane 落在普通文档流里，sticky 正常，正文也能滚动吸顶。 */
+  const inlineNoVirtual = inlineActive;
+  /* 移动端列表 TOP 栏的滚动交互（用户 2026-11-24 第 2 条）：
+     - 向下滚 → 收起；向上滚 → 出现；回到顶部 → 出现；
+     - 打开内联正文后，正文标题栏优先级高于 TOP 栏：正文标题一到顶就把 TOP 收起，
+       滚回正文上方（paneTop > 0）时 TOP 再出现。
+     自动吸顶那几帧是程序化滚动，用户没动手前不据此判定方向。 */
+  const [mobileHeaderHidden, setMobileHeaderHidden] = useState(false);
+  /* 卡片正文栏滚到视口顶部后自动铺满宽度，不再留左右各 8px 的空白（用户 2026-11-24）。 */
+  const [paneAtTop, setPaneAtTop] = useState(false);
+  const lastScrollYRef = useRef<number | null>(null);
+  /* 点开正文后的自动吸顶会连续写 scrollTop；这段时间不要用「位置」去反推顶栏，
+     否则收起/展开又反过来改变可视高度，paneTop 在阈值附近来回抖 → 点击时快速闪烁。 */
+  const suppressHeaderToggleUntilRef = useRef(0);
+  useEffect(() => {
+    suppressHeaderToggleUntilRef.current = performance.now() + 300;
+    setMobileHeaderHidden(false);
+    setPaneAtTop(false);
+    lastScrollYRef.current = null;
+  }, [selectedEntryId, isMobile, articlePushDirection, contentType, inlineActive]);
+  useEffect(() => {
+    const container = containerRef.current;
+    const readY = () => (isMobile ? window.scrollY : container?.scrollTop ?? 0);
+    let last = readY();
+    /* 顶栏收起/展开会改变列表可视高度，浏览器的滚动锚定会回写 scrollTop，
+       产生一次方向相反的小滚动，导致顶栏来回抖。切换后 450ms 内只更新基准、不再判定。 */
+    let lockUntil = 0;
+    const update = () => {
+      const y = readY();
+      const prev = last;
+      last = y;
+      if (performance.now() < lockUntil) return;
+      if (performance.now() < suppressHeaderToggleUntilRef.current) return;
+      if (y <= 6) {
+        setMobileHeaderHidden(false);
+        return;
+      }
+      if (inlineActive && selectedEntryId) {
+        const node = inlineContentRef.current;
+        if (node) {
+          const paneTop =
+            node.getBoundingClientRect().top - scrollSurface.getViewportRect().top;
+          /* 滞回：正文略微越过顶（<=2）才收，回落到 14 以上才展开。
+             顶栏收起/展开会改变列表可视高度，若用单一阈值，paneTop 会在 0 附近来回抖，
+             表现为点击后顶栏快速闪烁。 */
+          setPaneAtTop(paneTop <= 2);
+          /* 正文还没滚到顶部时，仍按普通列表的方向规则：下滑收起 TOP、上滑恢复。
+             正文一旦顶到视口顶（paneTop<=2），TOP 就让位给正文标题栏并保持收起。 */
+          if (paneTop <= 2) {
+            setMobileHeaderHidden(true);
+            return;
+          }
+        }
+      }
+      const dy = y - prev;
+      if (dy > 2) {
+        setMobileHeaderHidden(true);
+        lockUntil = performance.now() + 450;
+      } else if (dy < -2) {
+        setMobileHeaderHidden(false);
+        lockUntil = performance.now() + 450;
+      }
+    };
+    update();
+    window.addEventListener("scroll", update, { passive: true });
+    container?.addEventListener("scroll", update, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", update);
+      container?.removeEventListener("scroll", update);
+    };
+  }, [isMobile, inlineActive, selectedEntryId, scrollSurface]);
+  /* 合列正文接在「被点那一行」的后面（不是列表末尾）：读正文时还能继续往下滚看到
+     后续条目；selectedEntryId 唯一 ⇒ 同时只有一条正文，点别的行就是换正文、上一条收起。 */
+  const inlinePaneFor = (entryId: string | null) =>
+    inlineActive && entryId !== null && entryId === selectedEntryId ? (
+      <div
+        ref={inlineContentRef}
+        data-testid="inline-article-pane"
+        className={cn(
+          "bg-card [clip-path:inset(0_round_12px)] transition-[margin,width,border-radius] duration-200 ease-out",
+          articlePaneStyle === "card"
+            ? paneAtTop
+              ? "my-0 w-full rounded-none border-t border-border"
+              : "mx-2 my-2 w-[calc(100%-1rem)] rounded-[12px] border border-border/60 shadow-nf"
+            : "w-full rounded-[12px] border-t border-border",
+        )}
+      >
+        {renderInlineContent?.(containerRef, {
+          headerStickyTop: mobileHeaderHidden
+            ? "top-0"
+            : "top-[calc(2.75rem+env(safe-area-inset-top))]",
+        })}
+      </div>
+    ) : null;
+  /* 打开正文不再自动把正文吸到顶部（用户 2026-11-24：整块吸过去太抽搐）。
+     交给自然滚动：TOP 栏随列表滚走，正文标题滚到视口顶部时由自身的 sticky 自然钉住。 */
+
+  useEffect(() => {
+    if (!inlineActive || !selectedEntryId) return;
+    if (inlineMarkedRef.current === selectedEntryId) return;
+    const index = entries.findIndex((item) => item.id === selectedEntryId);
+    const target = index >= 0 ? entries[index] : undefined;
+    /* 深链进来时 entries 可能还没到；找不到就先不记账，等列表到位再补标 */
+    if (!target) return;
+    inlineMarkedRef.current = selectedEntryId;
+    if (!target.read) {
+      markAsRead({ id: selectedEntryId, read: true, skipInvalidate: true });
+      deferEntryRemoval(selectedEntryId, { ...target, read: true }, index);
+    }
+  }, [inlineActive, selectedEntryId, entries, markAsRead]);
+
+  /**
    * 进视口预载：观察器挂在本列表的滚动容器上（root 与 `scroll-surface` 同一口径，
    * 手机端是文档滚动 ⇒ root=null），条目行带 `data-entry-id`，命中就入队。
    * 判定用的三态口径由 `entry-prefetch-plan` 照抄正文页，读写的位置也全是
@@ -671,16 +916,19 @@ export function EntryList({
   // 列表滚上去以后，右上角浮出「当前序号 + 回到顶部」（对齐 Nextflux 的 Indicator）
   const [firstVisibleIndex, setFirstVisibleIndex] = useState(0);
   /**
-   * 虚拟化只覆盖「标准文章列表扁平流」：article 内容类型 + list 档（非 hover 档）。
-   * 社交 / 通知时间线 / hover 浮层档都走原路径，一字不动。
+   * 虚拟化只覆盖「标准文章扁平流」：article 内容类型 + 非 hover 档（含 list 与 rows）。
+   * 社交 / 通知时间线 / hover 浮层档走原路径，一字不动。
    */
-  const useVirtualList = contentType === "article" && !isArticleHover;
+  const useVirtualList =
+    contentType === "article" && !isArticleHover && !inlineNoVirtual;
   const virtualList = useVirtualizedArticleList({
     enabled: useVirtualList,
     scrollSurface,
     scrollKey,
     containerRef,
     entries,
+    /* Inoreader列表 是固定 42px 单行档：按真实行高估，别用卡片档的 148px */
+    estimateSize: isArticlePlain ? VIRTUAL_PLAIN_ROW_ESTIMATE_PX : undefined,
   });
   useEffect(() => {
     const node = containerRef.current;
@@ -1347,8 +1595,16 @@ export function EntryList({
         enabled={usesDocumentScroll}
         headerRef={headerRef}
         testId="entry-list-header"
+        hidden={mobileHeaderHidden}
       >
         <EntryListHeader
+          hidden={
+            !isMobile &&
+            mobileHeaderHidden &&
+            articleLayout === "inoreader" &&
+            inlineActive &&
+            Boolean(selectedEntryId)
+          }
           title={headerTitle}
           subtitle={headerSubtitle}
           onBackFromFeedJump={feedJumpBackHref ? onBackFromFeedJump : undefined}
@@ -1378,6 +1634,9 @@ export function EntryList({
           isTablet={isTablet}
           selectedEntryIds={selectedEntryId ? [selectedEntryId] : []}
           articleLayout={contentType === "article" ? articleLayout : undefined}
+          articleLayoutOrder={
+            contentType === "article" ? articleLayoutOrder : undefined
+          }
           onToggleArticleLayout={
             contentType === "article" ? handleToggleArticleLayout : undefined
           }
@@ -1387,6 +1646,52 @@ export function EntryList({
         />
 
         {/* 强制拉取确认（范围太大时先问一句，避免误选整轮重抓） */}
+        <AlertDialog>
+          <Button className="hidden" aria-hidden />
+          <AlertDialog.Backdrop
+            isOpen={splitterPromptOpen}
+            onOpenChange={(open) => !open && setSplitterPromptOpen(false)}
+          >
+            <AlertDialog.Container>
+              <AlertDialog.Dialog className="max-w-md">
+                <AlertDialog.Header>
+                  <AlertDialog.Heading>
+                    {t("appearance_view.inoreader_splitter_prompt_title")}
+                  </AlertDialog.Heading>
+                </AlertDialog.Header>
+                <AlertDialog.Body>
+                  <div className="text-sm text-muted-foreground">
+                    {t("appearance_view.inoreader_splitter_prompt_description", {
+                      views: suppressedSplitterViews.join(
+                        t("appearance_view.inoreader_splitter_prompt_separator"),
+                      ),
+                    })}
+                  </div>
+                </AlertDialog.Body>
+                <AlertDialog.Footer>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onPress={() => setSplitterPromptOpen(false)}
+                  >
+                    {t("appearance_view.inoreader_splitter_prompt_keep")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onPress={() => {
+                      setSplitterVisibleForView("article", false);
+                      setSplitterPromptOpen(false);
+                    }}
+                  >
+                    {t("appearance_view.inoreader_splitter_prompt_also_off")}
+                  </Button>
+                </AlertDialog.Footer>
+              </AlertDialog.Dialog>
+            </AlertDialog.Container>
+          </AlertDialog.Backdrop>
+        </AlertDialog>
+
         <AlertDialog>
           <Button className="hidden" aria-hidden />
           <AlertDialog.Backdrop
@@ -1484,7 +1789,8 @@ export function EntryList({
             );
           }}
           className={cn(
-            "w-full overflow-x-hidden rounded-[inherit]",
+            "w-full rounded-[inherit]",
+            usesDocumentScroll ? "overflow-x-visible" : "overflow-x-hidden",
             // 非虚拟列表时交给浏览器自己的 scroll anchoring：它和布局在同一帧里补偿，
             // 不会出现「先被推走一秒、再被 JS 拉回」的跳（旧 JS 兜底还会用过期锚点乱拉）。
             // 虚拟化文章列表仍然是 none + usePrependScrollAnchor 的 JS 补偿。
@@ -1496,6 +1802,18 @@ export function EntryList({
                 ),
           )}
         >
+          {showDisabledArticleHoverNotice && (
+            <div className="mx-4 mt-3 flex items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+              <span>{t("appearance_view.experimental_disabled_hint")}</span>
+              <button
+                type="button"
+                onClick={() => setArticleLayout("list")}
+                className="shrink-0 rounded-md px-2 py-1 font-medium underline underline-offset-2 hover:bg-amber-500/15"
+              >
+                {t("appearance_view.switch_to_regular")}
+              </button>
+            </div>
+          )}
           {isLoading ? (
             <EntryListSkeleton />
           ) : entries.length === 0 ? (
@@ -1529,6 +1847,105 @@ export function EntryList({
                   onSelectableEntriesChange={setTimelineSelectableEntries}
                   onSelectFeedFromEntry={onSelectFeedFromEntry}
                 />
+              ) : isArticlePlain ? (
+                /* 常规「Inoreader列表」—— 来源图标 + 加粗标题 + 右侧来源·时间，
+                   没有缩略图、没有摘要、没有悬停浮层（就是图片视图「悬停大图」去掉悬停）。 */
+                <div className="w-full" data-testid="article-plain-list">
+                  {inlineNoVirtual ? (
+                    entries.map((entry) => {
+                      const row = (
+                        <ArticlePlainListRow
+                          entry={entry}
+                          feed={feedsMap.get(entry.feedId)}
+                          onSelectEntry={handleSelectEntry}
+                          selectedEntryId={selectedEntryId}
+                          onMarkAboveEntry={handleMarkAboveEntry}
+                          isMobile={isMobile}
+                          feedUnreadCount={unreadCounts?.counts?.[entry.feedId]}
+                        />
+                      );
+                      return (
+                        <Fragment key={entry.id}>
+                          {isMobile ? (
+                            <MobileSwipeEntryRow entry={entry}>{row}</MobileSwipeEntryRow>
+                          ) : (
+                            row
+                          )}
+                          {inlinePaneFor(entry.id)}
+                        </Fragment>
+                      );
+                    })
+                  ) : (
+                    <VirtualizedArticleList
+                      virtualList={virtualList}
+                      entries={entries}
+                      renderItem={(entry) => {
+                        const row = (
+                          <ArticlePlainListRow
+                            entry={entry}
+                            feed={feedsMap.get(entry.feedId)}
+                            onSelectEntry={handleSelectEntry}
+                            selectedEntryId={selectedEntryId}
+                            onMarkAboveEntry={handleMarkAboveEntry}
+                            isMobile={isMobile}
+                            feedUnreadCount={unreadCounts?.counts?.[entry.feedId]}
+                          />
+                        );
+                        /* 手机档跟其它列表一致：左滑露出已读/星标 */
+                        return (
+                          <>
+                            {isMobile ? (
+                              <MobileSwipeEntryRow entry={entry}>{row}</MobileSwipeEntryRow>
+                            ) : (
+                              row
+                            )}
+                            {inlinePaneFor(entry.id)}
+                          </>
+                        );
+                      }}
+                    />
+                  )}
+                </div>
+              ) : isArticleRows ? (
+                /* 实验布局批：文章「列表」布局 —— 紧凑行（缩略图+标题+元信息），无悬停浮层。
+                   走通用虚拟容器（大列表性能），jsdom 测不到尺寸时内部全量渲染。 */
+                <div className="w-full" data-testid="article-rows-list">
+                  {inlineNoVirtual ? (
+                    entries.map((entry) => (
+                      <Fragment key={entry.id}>
+                        <ArticleRowsListRow
+                          entry={entry}
+                          feed={feedsMap.get(entry.feedId)}
+                          onSelectEntry={handleSelectEntry}
+                          selectedEntryId={selectedEntryId}
+                          onMarkAboveEntry={handleMarkAboveEntry}
+                          isMobile={isMobile}
+                          feedUnreadCount={unreadCounts?.counts?.[entry.feedId]}
+                        />
+                        {inlinePaneFor(entry.id)}
+                      </Fragment>
+                    ))
+                  ) : (
+                    <VirtualizedArticleList
+                      virtualList={virtualList}
+                      entries={entries}
+                      renderItem={(entry) => (
+                        <>
+                          <ArticleRowsListRow
+                            entry={entry}
+                            feed={feedsMap.get(entry.feedId)}
+                            onSelectEntry={handleSelectEntry}
+                            selectedEntryId={selectedEntryId}
+                            onMarkAboveEntry={handleMarkAboveEntry}
+                            isMobile={isMobile}
+                            feedUnreadCount={unreadCounts?.counts?.[entry.feedId]}
+                          />
+                          {inlinePaneFor(entry.id)}
+                        </>
+                      )}
+                    />
+                  )}
+                </div>
               ) : useVirtualList ? (
                 <VirtualizedArticleList
                   virtualList={virtualList}
@@ -1557,12 +1974,17 @@ export function EntryList({
                         onSelectFeedFromEntry={onSelectFeedFromEntry}
                       />
                     );
-                    return isMobile ? (
-                      <MobileSwipeEntryRow entry={entry}>
-                        {item}
-                      </MobileSwipeEntryRow>
-                    ) : (
-                      item
+                    return (
+                      <>
+                        {isMobile ? (
+                          <MobileSwipeEntryRow entry={entry}>
+                            {item}
+                          </MobileSwipeEntryRow>
+                        ) : (
+                          item
+                        )}
+                        {inlinePaneFor(entry.id)}
+                      </>
                     );
                   }}
                 />
@@ -1591,12 +2013,15 @@ export function EntryList({
                       onSelectFeedFromEntry={onSelectFeedFromEntry}
                     />
                   );
-                  return isMobile ? (
-                    <MobileSwipeEntryRow key={entry.id} entry={entry}>
-                      {item}
-                    </MobileSwipeEntryRow>
-                  ) : (
-                    item
+                  return (
+                    <Fragment key={entry.id}>
+                      {isMobile ? (
+                        <MobileSwipeEntryRow entry={entry}>{item}</MobileSwipeEntryRow>
+                      ) : (
+                        item
+                      )}
+                      {inlinePaneFor(entry.id)}
+                    </Fragment>
                   );
                 })
               )}

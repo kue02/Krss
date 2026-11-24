@@ -2,15 +2,15 @@ import type { ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useUISettingKey } from "@/hooks/useUISettings";
 import {
-  PUSH_ANIMATE,
-  PUSH_EXIT_WITH_ENTRY,
-  PUSH_INITIAL,
   PUSH_TRANSITION,
   SLIDE_ANIMATE,
   SLIDE_ANIMATE_OPACITY_DELAY,
   SLIDE_EXIT,
   SLIDE_INITIAL,
   SLIDE_TRANSITION,
+  pushAnimateFor,
+  pushExitFor,
+  pushInitialFor,
   pushPaneKey,
 } from "./reader-transition";
 
@@ -38,6 +38,8 @@ export function EntryContentTransition({
   children,
 }: EntryContentTransitionProps) {
   const reduceMotion = useUISettingKey("reduceMotion");
+  /* 实验布局批：正文推入方向（right 从右推入 / bottom 从下推入） */
+  const pushDirection = useUISettingKey("articlePushDirection");
 
   return (
     /**
@@ -54,11 +56,11 @@ export function EntryContentTransition({
         key={pushPaneKey(entryId)}
         className="h-full min-h-0 w-full"
         data-transition-pane={pushPaneKey(entryId)}
-        initial={PUSH_INITIAL}
-        animate={PUSH_ANIMATE}
+        initial={pushInitialFor(pushDirection)}
+        animate={pushAnimateFor(pushDirection)}
         exit={
           entryId
-            ? { ...PUSH_EXIT_WITH_ENTRY, transition: { ...PUSH_TRANSITION } }
+            ? { ...pushExitFor(pushDirection), transition: { ...PUSH_TRANSITION } }
             : /* 空态（占位）退场不占观感：它在收起态本来就被收成 0 宽、看不见，
                  瞬时退掉即可，免得 wait 下推进前先干等半秒。
                  必须显式 type:"tween" —— spring 会忽略 duration，实测会拖到 945ms。 */

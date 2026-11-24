@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, Trash2, Edit2, Check, X, Gauge, Shield } from "lucide-react";
+import { Plus, Trash2, Edit2, Check, X, Gauge, Shield, FlaskConical } from "lucide-react";
 import { Button, Input, Label, NumberField } from "@heroui/react";
+import { Switch } from "@/components/ui/switch";
 import {
   getDomainRateLimits,
   createDomainRateLimit,
@@ -17,10 +18,27 @@ import {
   SectionCard,
   SettingRow,
 } from "@/components/settings/settings-primitives";
+import {
+  useUISettingKey,
+  useUISettingActions,
+} from "@/hooks/useUISettings";
 import { cn } from "@/lib/utils";
 
 export function AdvancedSettings() {
   const { t } = useTranslation();
+  /* 实验布局批：实验性设置集（默认全关；只控制实验布局「入口」可见性） */
+  const experimentalMaster = useUISettingKey("experimentalFeaturesEnabled");
+  const experimentalPictureHover = useUISettingKey("experimentalPictureHover");
+  const experimentalPictureWall = useUISettingKey("experimentalPictureWall");
+  const experimentalArticleHover = useUISettingKey("experimentalArticleHover");
+  const experimentalArticleRows = useUISettingKey("experimentalArticleRows");
+  const {
+    setExperimentalFeaturesEnabled,
+    setExperimentalPictureHover,
+    setExperimentalPictureWall,
+    setExperimentalArticleHover,
+    setExperimentalArticleRows,
+  } = useUISettingActions();
   const [items, setItems] = useState<DomainRateLimit[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -411,6 +429,76 @@ export function AdvancedSettings() {
               })}
             </div>
           )}
+        </div>
+      </SectionCard>
+
+      {/* 实验性设置（实验布局批）：这些尚未定型、可能被移除或破坏性更新。
+          开关只控制「实验布局入口」在选择器/顶栏的可见性 —— 关闭仅隐藏入口，
+          已选中的实验布局仍照常渲染。总开关关 = 下面四项全隐藏。 */}
+      <SectionCard
+        icon={<FlaskConical className="size-5" />}
+        title={t("settings.experimental_title")}
+        description={t("settings.experimental_description")}
+      >
+        <div className="space-y-0">
+          <SettingRow
+            label={t("settings.experimental_master")}
+            hint={t("settings.experimental_master_hint")}
+          >
+            <Switch
+              checked={experimentalMaster}
+              onCheckedChange={setExperimentalFeaturesEnabled}
+              aria-label={t("settings.experimental_master")}
+            />
+          </SettingRow>
+          <SettingRow
+            label={t("settings.experimental_picture_hover")}
+            hint={t("settings.experimental_picture_hover_hint")}
+            disabled={!experimentalMaster}
+          >
+            <Switch
+              checked={experimentalPictureHover}
+              onCheckedChange={setExperimentalPictureHover}
+              disabled={!experimentalMaster}
+              aria-label={t("settings.experimental_picture_hover")}
+            />
+          </SettingRow>
+          <SettingRow
+            label={t("settings.experimental_picture_wall")}
+            hint={t("settings.experimental_picture_wall_hint")}
+            disabled={!experimentalMaster}
+          >
+            <Switch
+              checked={experimentalPictureWall}
+              onCheckedChange={setExperimentalPictureWall}
+              disabled={!experimentalMaster}
+              aria-label={t("settings.experimental_picture_wall")}
+            />
+          </SettingRow>
+          <SettingRow
+            label={t("settings.experimental_article_hover")}
+            hint={t("settings.experimental_article_hover_hint")}
+            disabled={!experimentalMaster}
+          >
+            <Switch
+              checked={experimentalArticleHover}
+              onCheckedChange={setExperimentalArticleHover}
+              disabled={!experimentalMaster}
+              aria-label={t("settings.experimental_article_hover")}
+            />
+          </SettingRow>
+          <SettingRow
+            label={t("settings.experimental_article_rows")}
+            hint={t("settings.experimental_article_rows_hint")}
+            disabled={!experimentalMaster}
+          >
+            <Switch
+              checked={experimentalArticleRows}
+              onCheckedChange={setExperimentalArticleRows}
+              disabled={!experimentalMaster}
+              aria-label={t("settings.experimental_article_rows")}
+            />
+          </SettingRow>
         </div>
       </SectionCard>
     </div>

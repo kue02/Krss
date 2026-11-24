@@ -6,6 +6,8 @@ interface MobileDocumentHeaderProps {
   headerRef: RefObject<HTMLDivElement | null>;
   testId: string;
   children: ReactNode;
+  /** 阅读内联正文向下滚动时把列表顶栏收起（只留正文自己的顶栏吸顶） */
+  hidden?: boolean;
 }
 
 export function MobileDocumentHeader({
@@ -13,6 +15,7 @@ export function MobileDocumentHeader({
   headerRef,
   testId,
   children,
+  hidden = false,
 }: MobileDocumentHeaderProps) {
   return (
     <>
@@ -21,7 +24,8 @@ export function MobileDocumentHeader({
         data-testid={testId}
         className={cn(
           enabled &&
-            "fixed inset-x-0 top-0 z-20 border-b border-border/45 bg-background/88 backdrop-blur-xl",
+            "fixed inset-x-0 top-0 z-20 border-b border-border/45 bg-background/88 backdrop-blur-xl transition-[transform,opacity] duration-300 ease-out",
+          enabled && (hidden ? "-translate-y-full opacity-0 pointer-events-none" : "translate-y-0 opacity-100"),
         )}
       >
         {/* Hide short WebKit compositor gaps during momentum scrolling. */}
