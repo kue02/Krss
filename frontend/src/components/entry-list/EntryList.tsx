@@ -719,7 +719,7 @@ export function EntryList({
   /* 合列且已选中正文时关掉虚拟化：虚拟列表的行是 position:absolute + transform 包裹，
      正文 pane 插在这种祖先里会让 EntryContentHeader 的 sticky 失效（工具栏会浮在正文
      中部）。关掉虚拟化后 pane 落在普通文档流里，sticky 正常，正文也能滚动吸顶。 */
-  const inlineNoVirtual = inlineActive && Boolean(selectedEntryId);
+  const inlineNoVirtual = inlineActive;
   /* 移动端列表 TOP 栏的滚动交互（用户 2026-11-24 第 2 条）：
      - 向下滚 → 收起；向上滚 → 出现；回到顶部 → 出现；
      - 打开内联正文后，正文标题栏优先级高于 TOP 栏：正文标题一到顶就把 TOP 收起，
@@ -727,10 +727,14 @@ export function EntryList({
      自动吸顶那几帧是程序化滚动，用户没动手前不据此判定方向。 */
   const [mobileHeaderHidden, setMobileHeaderHidden] = useState(false);
   const lastScrollYRef = useRef<number | null>(null);
+  /* 点开正文后的自动吸顶会连续写 scrollTop；这段时间不要用「位置」去反推顶栏，
+     否则收起/展开又反过来改变可视高度，paneTop 在阈值附近来回抖 → 点击时快速闪烁。 */
+  const suppressHeaderToggleUntilRef = useRef(0);
   useEffect(() => {
-    setMobileHeaderHidden(false);
+    suppressHeaderToggleUntilRef.current = performance.now() + 1800;
+    setMobileHeaderHidden(inlineActive && Boolean(selectedEntryId));
     lastScrollYRef.current = null;
-  }, [selectedEntryId, isMobile, articlePushDirection, contentType]);
+  }, [selectedEntryId, isMobile, articlePushDirection, contentType, inlineActive]);
   useEffect(() => {
     const container = containerRef.current;
     const readY = () => (isMobile ? window.scrollY : container?.scrollTop ?? 0);
@@ -743,6 +747,7 @@ export function EntryList({
       const prev = last;
       last = y;
       if (performance.now() < lockUntil) return;
+      if (performance.now() < suppressHeaderToggleUntilRef.current) return;
       if (y <= 6) {
         setMobileHeaderHidden(false);
         return;
@@ -752,7 +757,14 @@ export function EntryList({
         if (node) {
           const paneTop =
             node.getBoundingClientRect().top - scrollSurface.getViewportRect().top;
-          setMobileHeaderHidden((current) => (current === (paneTop <= 0) ? current : paneTop <= 0));
+          /* 滞回：正文略微越过顶（<=2）才收，回落到 14 以上才展开。
+             顶栏收起/展开会改变列表可视高度，若用单一阈值，paneTop 会在 0 附近来回抖，
+             表现为点击后顶栏快速闪烁。 */
+          setMobileHeaderHidden((current) => {
+            if (paneTop <= 2) return true;
+            if (paneTop >= 14) return false;
+            return current;
+          });
           return;
         }
       }
