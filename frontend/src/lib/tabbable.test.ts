@@ -49,6 +49,19 @@ describe("getTabbable", () => {
     expect(getTabbable(dialog).map((element) => element.id)).toEqual(["a"]);
     host.remove();
   });
+
+  it("hidden 属性与 aria-hidden=\"true\" 的不算（审查 m1）", () => {
+    const host = build(`
+      <div role="dialog">
+        <button id="a">a</button>
+        <button id="b" hidden>b</button>
+        <div aria-hidden="true"><button id="c">c</button></div>
+      </div>
+    `);
+    const dialog = host.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(getTabbable(dialog).map((element) => element.id)).toEqual(["a"]);
+    host.remove();
+  });
 });
 
 describe("getTabbableOutside", () => {
