@@ -727,6 +727,17 @@ describe("ImagePreview", () => {
       expect(useImagePreviewStore.getState().isOpen).toBe(true);
     });
 
+    it("点击页码计数区域不会关闭预览", () => {
+      mockZoomState.scale = 2;
+      mockZoomState.isZoomed = true;
+      useImagePreviewStore.getState().open(mockImages);
+      render(<ImagePreview />);
+
+      fireEvent.click(screen.getByText("1 / 3"));
+
+      expect(useImagePreviewStore.getState().isOpen).toBe(true);
+    });
+
     it("干净点击空白时，pointerup 清理不会抢在 click 之前", () => {
       mockZoomState.scale = 2;
       mockZoomState.isZoomed = true;

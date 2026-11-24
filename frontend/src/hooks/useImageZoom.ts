@@ -19,6 +19,8 @@ interface Size {
 interface PointerSample {
   x: number;
   y: number;
+  /** 按下时的真实 target，用于把 pointer capture 放在 click 会到达的元素上 */
+  target: Element | null;
 }
 
 type Gesture =
@@ -86,6 +88,8 @@ export function useImageZoom(resetKey?: unknown) {
   const offsetRef = useRef<Offset>({ x: 0, y: 0 });
   const pointersRef = useRef(new Map<number, PointerSample>());
   const gestureRef = useRef<Gesture | null>(null);
+  /** 手势开始前已提交的 scale/offset，系统意外取消时恢复到这里 */
+  const gestureStartRef = useRef<{ scale: number; offset: Offset } | null>(null);
 
   const measureContainer = useCallback((): Size => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -144,6 +148,7 @@ export function useImageZoom(resetKey?: unknown) {
   const commit = useCallback(() => {
     setScale(scaleRef.current);
     setOffset(offsetRef.current);
+    gestureStartRef.current = null;
     setDomTransition(ZOOM_TRANSITION);
   }, [setDomTransition]);
 
@@ -152,8 +157,25 @@ export function useImageZoom(resetKey?: unknown) {
     setDomTransition(ZOOM_TRANSITION);
   }, [setDomTransition]);
 
+  const capturePointer = useCallback(
+    (pointerId: number, target: Element | null) => {
+      const element = target ?? containerRef.current;
+      if (!element || typeof element.setPointerCapture !== "function") return;
+      try {
+        element.setPointerCapture(pointerId);
+      } catch {
+        // 某些浏览器在默认行为取消后拒绝捕获，走 pointerleave 兜底
+      }
+    },
+    [],
+  );
+
   const beginDrag = useCallback(
     (pointerId: number, sample: PointerSample) => {
+      gestureStartRef.current = {
+        scale: scaleRef.current,
+        offset: { ...offsetRef.current },
+      };
       gestureRef.current = {
         mode: "drag",
         pointerId,
@@ -161,9 +183,10 @@ export function useImageZoom(resetKey?: unknown) {
         startY: sample.y,
         origin: offsetRef.current,
       };
+      capturePointer(pointerId, sample.target);
       beginInteraction();
     },
-    [beginInteraction],
+    [beginInteraction, capturePointer],
   );
 
   const beginPinch = useCallback(() => {
@@ -173,6 +196,12 @@ export function useImageZoom(resetKey?: unknown) {
     if (!first || !second) return;
     const [firstId, firstSample] = first;
     const [secondId, secondSample] = second;
+    gestureStartRef.current = {
+      scale: scaleRef.current,
+      offset: { ...offsetRef.current },
+    };
+    capturePointer(firstId, firstSample.target);
+    capturePointer(secondId, secondSample.target);
     const midX = (firstSample.x + secondSample.x) / 2;
     const midY = (firstSample.y + secondSample.y) / 2;
     const rect = containerRef.current?.getBoundingClientRect();
@@ -190,7 +219,7 @@ export function useImageZoom(resetKey?: unknown) {
         : { x: 0, y: 0 },
     };
     beginInteraction();
-  }, [beginInteraction]);
+  }, [beginInteraction, capturePointer]);
 
   /** 双击 / 滚轮：提交到 state，并让 React 用 style 里的短缓动做动画 */
   const applyScale = useCallback(
@@ -220,6 +249,7 @@ export function useImageZoom(resetKey?: unknown) {
   const reset = useCallback(() => {
     pointersRef.current.clear();
     gestureRef.current = null;
+    gestureStartRef.current = null;
     scaleRef.current = 1;
     offsetRef.current = { x: 0, y: 0 };
     setScale(1);
@@ -276,17 +306,8 @@ export function useImageZoom(resetKey?: unknown) {
       pointersRef.current.set(event.pointerId, {
         x: event.clientX,
         y: event.clientY,
+        target: event.target instanceof Element ? event.target : null,
       });
-
-      // 鼠标拖出容器后仍要收到 pointermove/pointerup；capture 失败不影响触摸的隐式捕获
-      const container = containerRef.current;
-      if (container && typeof container.setPointerCapture === "function") {
-        try {
-          container.setPointerCapture(event.pointerId);
-        } catch {
-          // 某些浏览器在 pointerdown 默认行为取消后拒绝捕获，走 pointerleave 兜底
-        }
-      }
 
       const count = pointersRef.current.size;
       if (count === 1) {
@@ -402,7 +423,7 @@ export function useImageZoom(resetKey?: unknown) {
     [beginDrag, beginPinch, commit, endInteraction],
   );
 
-  /** 指针被系统打断 / 捕获丢失：清空全部手势状态并提交当前 transform */
+  /** 系统取消手势：清空状态并把当前进度提交为最终值 */
   const finishInterruptedGesture = useCallback(() => {
     if (pointersRef.current.size === 0 && !gestureRef.current) return;
     pointersRef.current.clear();
@@ -410,6 +431,28 @@ export function useImageZoom(resetKey?: unknown) {
     commit();
     endInteraction();
   }, [commit, endInteraction]);
+
+  /** capture 意外丢失：多半是浏览器接管手势，恢复到手势开始前的已提交状态 */
+  const abortInterruptedGesture = useCallback(() => {
+    if (pointersRef.current.size === 0 && !gestureRef.current) return;
+    const snapshot = gestureStartRef.current;
+    pointersRef.current.clear();
+    gestureRef.current = null;
+    gestureStartRef.current = null;
+    if (snapshot) {
+      scaleRef.current = snapshot.scale;
+      offsetRef.current = snapshot.offset;
+      setScale(snapshot.scale);
+      setOffset(snapshot.offset);
+      const image = imageRef.current;
+      if (image) {
+        image.style.transition = ZOOM_TRANSITION;
+        image.style.transform = transformCss(snapshot.scale, snapshot.offset);
+      }
+    }
+    setIsInteracting(false);
+    setDomTransition(ZOOM_TRANSITION);
+  }, [setDomTransition]);
 
   const onPointerCancel = useCallback(
     (event: React.PointerEvent) => {
@@ -423,19 +466,20 @@ export function useImageZoom(resetKey?: unknown) {
     (event: React.PointerEvent) => {
       // pointerup 自动释放 capture 时指针已经从 map 中移除，这里只处理意外丢失
       if (!pointersRef.current.has(event.pointerId)) return;
-      finishInterruptedGesture();
+      abortInterruptedGesture();
     },
-    [finishInterruptedGesture],
+    [abortInterruptedGesture],
   );
 
   const onPointerLeave = useCallback(
     (event: React.PointerEvent) => {
-      // 已成功 capture 时 pointerup 会回到容器，不能因为移出边界就提前结束拖动
-      const container = containerRef.current;
+      // 已成功 capture 时 pointerup 会回到被捕获元素，不能因为移出边界就提前结束拖动
+      const sample = pointersRef.current.get(event.pointerId);
+      const captureElement = sample?.target ?? containerRef.current;
       if (
-        container &&
-        typeof container.hasPointerCapture === "function" &&
-        container.hasPointerCapture(event.pointerId)
+        captureElement &&
+        typeof captureElement.hasPointerCapture === "function" &&
+        captureElement.hasPointerCapture(event.pointerId)
       ) {
         return;
       }
