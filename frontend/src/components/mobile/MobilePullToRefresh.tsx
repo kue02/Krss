@@ -48,6 +48,12 @@ export function MobilePullToRefresh({
   const startYRef = useRef<number | null>(null);
   const directionRef = useRef<PullDirection | null>(null);
   const pullRef = useRef(0);
+  // 用 ref 稳定父级回调身份：onRefresh 变化不应重启监听、打断进行中的下拉。
+  const onRefreshRef = useRef(onRefresh);
+
+  useEffect(() => {
+    onRefreshRef.current = onRefresh;
+  }, [onRefresh]);
 
   const reset = useCallback(() => {
     startXRef.current = null;
@@ -58,11 +64,6 @@ export function MobilePullToRefresh({
   }, []);
 
   useEffect(() => {
-    // 重启监听前清掉半截手势的 refs；可见的 pull 由上一次 cleanup 复位。
-    startXRef.current = null;
-    startYRef.current = null;
-    directionRef.current = null;
-    pullRef.current = 0;
     if (!enabled) return;
 
     const onTouchStart = (event: TouchEvent) => {
@@ -121,13 +122,12 @@ export function MobilePullToRefresh({
       // 已判定横向（或其它非下拉方向）：保持静默，交给条目横滑。
       if (directionRef.current !== "vertical") return;
 
-      // 先纵后横：还没拉过阈值就改判横向，本次手势放弃且不阻断横滑。
-      if (pullRef.current < PULL_THRESHOLD) {
-        if (Math.abs(dx) > Math.abs(dy) * DIRECTION_LOCK_RATIO) {
-          directionRef.current = "ignored";
-          reset();
-          return;
-        }
+      // 任何阶段识别为横滑都放弃本次手势：不 setPull、不 preventDefault，
+      // 让横向原生滚动通过（即使此前已经拉过阈值）。
+      if (Math.abs(dx) > Math.abs(dy) * DIRECTION_LOCK_RATIO) {
+        directionRef.current = "ignored";
+        reset();
+        return;
       }
 
       if (dy <= 0 || window.scrollY > 0) {
@@ -152,7 +152,7 @@ export function MobilePullToRefresh({
       }
       setBusy(true);
       setPull(PULL_THRESHOLD);
-      void Promise.resolve(onRefresh()).finally(() => {
+      void Promise.resolve(onRefreshRef.current()).finally(() => {
         setBusy(false);
         reset();
       });
@@ -172,9 +172,16 @@ export function MobilePullToRefresh({
       window.removeEventListener("touchmove", onTouchMove);
       window.removeEventListener("touchend", onTouchEnd);
       window.removeEventListener("touchcancel", onTouchCancel);
+    };
+  }, [busy, enabled, isRefreshing, reset]);
+
+  // 只在 enabled 变化（含卸载）时复位；父级重渲染不重置进行中的下拉。
+  useEffect(() => {
+    if (!enabled) return;
+    return () => {
       reset();
     };
-  }, [busy, enabled, isRefreshing, onRefresh, reset]);
+  }, [enabled, reset]);
 
   if (!enabled) return null;
   const active = busy || isRefreshing;
