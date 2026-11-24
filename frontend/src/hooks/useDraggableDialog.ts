@@ -121,18 +121,18 @@ export function useDraggableDialog(active = true) {
    * 组合 ref 在每次提交时本就会 detach/attach 一遍（实测父组件重渲染两次，回调 ref 被
    * 调用 9 次），两边叠加成无限循环（实测 `Maximum depth exceeded`，整页白屏）。
    *
-   * 只在**真的换节点**时排队夹紧：上面那条 detach/attach 意味着设置窗里每次重渲染都会
-   * 叫到这里，无条件排队的话每敲一个字都要强制同步布局一次（`measureHandle` 读 4 次布局）。
+   * 这里不再做「节点是否变化」的判断：detach 时拿到的是 `null`、attach 时是元素，中间
+   * 必经 `null`，所以任何「变了才排队」的写法都恒为真，是自欺欺人的优化（复审实测：
+   * 在真实 Radix 时序下加不加这层判断，每次提交排出的 rAF 次数都是 1）。真正的止损在
+   * `reclamp` 里 —— 位移不变就直接 return，不 setState。
    */
   const dialogRef = useCallback((node: HTMLDivElement | null) => {
-    const changed = nodeRef.current !== node;
     nodeRef.current = node;
-    if (node && changed) scheduleReclampRef.current();
+    if (node) scheduleReclampRef.current();
   }, []);
   const handleCallbackRef = useCallback((node: HTMLDivElement | null) => {
-    const changed = handleRef.current !== node;
     handleRef.current = node;
-    if (node && changed) scheduleReclampRef.current();
+    if (node) scheduleReclampRef.current();
   }, []);
 
   const [offset, setOffset] = useState<DragOffset>(() => ({ ...rememberedOffset }));
