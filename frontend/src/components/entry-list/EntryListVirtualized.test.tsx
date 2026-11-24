@@ -564,10 +564,11 @@ describe("EntryList · 标准文章列表虚拟化", () => {
     };
 
     const pane = screen.getByTestId("inline-article-pane");
-    /* 卡片档：12px 圆角边框 + 12px 圆角裁剪，两者必须一致，否则角上会被切掉一块 */
+    /* 卡片档用 overflow:clip 让裁剪边缘跟随 border-radius，不再用 clip-path
+       （clip-path 圆角与 border-radius 过渡不同步会在角上裁掉一块，见用户 2026-11-24 报缺角） */
     expect(pane.className).toContain("rounded-[12px]");
-    expect(pane.className).toContain("[clip-path:inset(0_round_12px)]");
-    expect(pane.className).not.toContain("[clip-path:inset(0)]");
+    expect(pane.className).toContain("[overflow:clip]");
+    expect(pane.className).not.toContain("clip-path");
 
     try {
       /* 滚到正文贴顶（jsdom 里 getBoundingClientRect 全 0 ⇒ paneTop=0） */
@@ -575,11 +576,10 @@ describe("EntryList · 标准文章列表虚拟化", () => {
         setScrollY(400);
         fireEvent.scroll(window);
       });
-      /* 贴顶档是直角边框，裁剪也必须是直角：rounded-none 配 inset(0_round_12px)
-         就是用户报的那个缺口。 */
+      /* 贴顶档是直角边框，overflow:clip 跟随 border-radius=0 也就是直角，不会露出圆角缺口 */
       expect(pane.className).toContain("rounded-none");
-      expect(pane.className).toContain("[clip-path:inset(0)]");
-      expect(pane.className).not.toContain("[clip-path:inset(0_round_12px)]");
+      expect(pane.className).toContain("[overflow:clip]");
+      expect(pane.className).not.toContain("clip-path");
 
       /* 滚回列表最顶：正文已不在视口顶，必须复位成卡片档，不能保持铺满直角 */
       await act(async () => {
@@ -587,73 +587,7 @@ describe("EntryList · 标准文章列表虚拟化", () => {
         fireEvent.scroll(window);
       });
       expect(pane.className).toContain("rounded-[12px]");
-      expect(pane.className).toContain("[clip-path:inset(0_round_12px)]");
-    } finally {
-      if (scrollYDescriptor) {
-        Object.defineProperty(window, "scrollY", scrollYDescriptor);
-      } else {
-        Reflect.deleteProperty(window, "scrollY");
-      }
-    }
-  });
-
-  it("「原样」档正文贴顶铺满时也必须走直角裁剪，否则圆角削掉边框（2026-11-24 缺口只修一半）", async () => {
-    setUISetting("articleLayout", "inoreader");
-    setUISetting("articlePushDirection", "down");
-    setUISetting("articlePaneStyle", "plain");
-    const renderInlineContent = vi.fn(() => (
-      <div data-testid="inline-body">正文</div>
-    ));
-    render(
-      <EntryList
-        {...defaultProps}
-        isMobile
-        selectedEntryId="e-1"
-        renderInlineContent={renderInlineContent}
-      />,
-    );
-    await act(async () => {
-      await Promise.resolve();
-    });
-    /* 手机档读 window.scrollY 判方向；选中后 300ms 内是程序化滚动抑制期，先等过去 */
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 350));
-    });
-    const scrollYDescriptor = Object.getOwnPropertyDescriptor(
-      window,
-      "scrollY",
-    );
-    const setScrollY = (value: number) => {
-      Object.defineProperty(window, "scrollY", {
-        configurable: true,
-        writable: true,
-        value,
-      });
-    };
-
-    const pane = screen.getByTestId("inline-article-pane");
-    /* 原样档夹在列表中间时仍是 12px 圆角 + 12px 圆角裁剪 */
-    expect(pane.className).toContain("rounded-[12px]");
-    expect(pane.className).toContain("[clip-path:inset(0_round_12px)]");
-
-    try {
-      /* 滚到正文贴顶（jsdom 里 getBoundingClientRect 全 0 ⇒ paneTop=0）：
-         原样档也必须换成直角，配 inset(0)，不能残留 12px 圆角把边框削掉一块。 */
-      await act(async () => {
-        setScrollY(400);
-        fireEvent.scroll(window);
-      });
-      expect(pane.className).toContain("rounded-none");
-      expect(pane.className).toContain("[clip-path:inset(0)]");
-      expect(pane.className).not.toContain("[clip-path:inset(0_round_12px)]");
-
-      /* 滚回列表最顶：复位成 12px 圆角卡片形态 */
-      await act(async () => {
-        setScrollY(0);
-        fireEvent.scroll(window);
-      });
-      expect(pane.className).toContain("rounded-[12px]");
-      expect(pane.className).toContain("[clip-path:inset(0_round_12px)]");
+      expect(pane.className).toContain("[overflow:clip]");
     } finally {
       if (scrollYDescriptor) {
         Object.defineProperty(window, "scrollY", scrollYDescriptor);

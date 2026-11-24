@@ -918,21 +918,22 @@ export function EntryList({
         ref={inlineContentRef}
         data-testid="inline-article-pane"
         className={cn(
-          /* 裁剪圆角必须跟着 border-radius 走：贴顶那档是 rounded-none（直角边框），
-             若裁剪还按 12px 圆角切，角上就会少一块（用户 2026-11-24 报的缺口）。
-             clip-path 一并进过渡表，否则切换途中两者不同步，反向（贴顶→卡片）时
-             裁剪圆角会先跳回 12px，照样露缺口。 */
-          "bg-card transition-[margin,width,border-radius,clip-path] duration-200 ease-out",
+          /* 卡片档用 overflow:clip 裁剪内容，不再用 clip-path（用户 2026-11-24 报「卡片档
+             角部偶现缺一块」）：
+             1) clip-path:inset(0 round 12px) 与 border-radius 是两套独立的圆角，切换贴顶/
+                卡片时两者要靠过渡插值保持同步，某些浏览器对 clip-path 的圆角过渡是离散的，
+                过渡途中 clip 半径(12) 会大于当时的 border-radius(<12) ⇒ 圆角处的边框被裁掉
+                一截，表现为「角缺一块、时有时无」。overflow:clip 的裁剪边缘直接跟随
+                border-radius，不存在两套圆角不同步。
+             2) overflow:clip 不裁自身 box-shadow，卡片档的 shadow-nf 得以正常显示
+                （顺带解决 todo 里记的「card 档 shadow-nf 被 clip-path 裁掉」待观察项）。
+             3) overflow:clip 不建立滚动容器，正文里的 position:sticky 标题栏照常吸顶。 */
+          "bg-card transition-[margin,width,border-radius] duration-200 ease-out",
           articlePaneStyle === "card"
             ? paneAtTop
-              ? "my-0 w-full rounded-none border-t border-border [clip-path:inset(0)]"
-              : "mx-2 my-2 w-[calc(100%-1rem)] rounded-[12px] border border-border/60 shadow-nf [clip-path:inset(0_round_12px)]"
-            : /* 「原样」档也是全宽贴顶：之前只修了「卡片」档，这一档贴顶时仍保留
-                 12px 圆角 + 12px 圆角裁剪，圆角会把贴顶的直角边框切掉一块（用户
-                 2026-11-24 报「只解决了一半、偶现缺角」）。贴顶同样要换成直角。 */
-              paneAtTop
-              ? "w-full rounded-none border-t border-border [clip-path:inset(0)]"
-              : "w-full rounded-[12px] border-t border-border [clip-path:inset(0_round_12px)]",
+              ? "my-0 w-full rounded-none border-t border-border [overflow:clip]"
+              : "mx-2 my-2 w-[calc(100%-1rem)] rounded-[12px] border border-border/60 shadow-nf [overflow:clip]"
+            : "w-full rounded-[12px] border-t border-border [clip-path:inset(0_round_12px)]",
         )}
       >
         {renderInlineContent?.(containerRef, {
