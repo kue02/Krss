@@ -255,6 +255,7 @@ describe("EntryList · 标准文章列表虚拟化", () => {
     entryListScrollPositions.clear();
     useFilterViewStore.getState().setMutedOnly(false);
     setUISetting("articleLayout", "list");
+    setUISetting("articlePaneStyle", "card");
     installLayoutStubs();
     vi.mocked(useEntriesInfinite).mockReturnValue({
       data: { pages: [{ entries: manyEntries, hasMore: false }] },
@@ -581,6 +582,72 @@ describe("EntryList · 标准文章列表虚拟化", () => {
       expect(pane.className).not.toContain("[clip-path:inset(0_round_12px)]");
 
       /* 滚回列表最顶：正文已不在视口顶，必须复位成卡片档，不能保持铺满直角 */
+      await act(async () => {
+        setScrollY(0);
+        fireEvent.scroll(window);
+      });
+      expect(pane.className).toContain("rounded-[12px]");
+      expect(pane.className).toContain("[clip-path:inset(0_round_12px)]");
+    } finally {
+      if (scrollYDescriptor) {
+        Object.defineProperty(window, "scrollY", scrollYDescriptor);
+      } else {
+        Reflect.deleteProperty(window, "scrollY");
+      }
+    }
+  });
+
+  it("「原样」档正文贴顶铺满时也必须走直角裁剪，否则圆角削掉边框（2026-11-24 缺口只修一半）", async () => {
+    setUISetting("articleLayout", "inoreader");
+    setUISetting("articlePushDirection", "down");
+    setUISetting("articlePaneStyle", "plain");
+    const renderInlineContent = vi.fn(() => (
+      <div data-testid="inline-body">正文</div>
+    ));
+    render(
+      <EntryList
+        {...defaultProps}
+        isMobile
+        selectedEntryId="e-1"
+        renderInlineContent={renderInlineContent}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    /* 手机档读 window.scrollY 判方向；选中后 300ms 内是程序化滚动抑制期，先等过去 */
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 350));
+    });
+    const scrollYDescriptor = Object.getOwnPropertyDescriptor(
+      window,
+      "scrollY",
+    );
+    const setScrollY = (value: number) => {
+      Object.defineProperty(window, "scrollY", {
+        configurable: true,
+        writable: true,
+        value,
+      });
+    };
+
+    const pane = screen.getByTestId("inline-article-pane");
+    /* 原样档夹在列表中间时仍是 12px 圆角 + 12px 圆角裁剪 */
+    expect(pane.className).toContain("rounded-[12px]");
+    expect(pane.className).toContain("[clip-path:inset(0_round_12px)]");
+
+    try {
+      /* 滚到正文贴顶（jsdom 里 getBoundingClientRect 全 0 ⇒ paneTop=0）：
+         原样档也必须换成直角，配 inset(0)，不能残留 12px 圆角把边框削掉一块。 */
+      await act(async () => {
+        setScrollY(400);
+        fireEvent.scroll(window);
+      });
+      expect(pane.className).toContain("rounded-none");
+      expect(pane.className).toContain("[clip-path:inset(0)]");
+      expect(pane.className).not.toContain("[clip-path:inset(0_round_12px)]");
+
+      /* 滚回列表最顶：复位成 12px 圆角卡片形态 */
       await act(async () => {
         setScrollY(0);
         fireEvent.scroll(window);
