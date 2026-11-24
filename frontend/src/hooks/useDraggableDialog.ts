@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 
 /**
@@ -13,7 +13,13 @@ import type { PointerEvent as ReactPointerEvent } from "react";
  *
  * 所以这里照**它同族的那套手势做法**搬：pointerdown/move/up + `setPointerCapture` +
  * 直接写 `transform`（拖动期间不走 React state，避免整个设置面板每帧重渲染）。
- * 差别只有一处 —— 抽屉只允许朝关闭方向拖、拖过头就关；窗口是**双向自由拖动 + 夹在视口内**。
+ * 差别只有一处 —— 抽屉只允许朝关闭方向拖、拖过头就关；窗口是**双向自由拖动**。
+ *
+ * 1124（用户：「设置页面可以被拖动到窗口外，这样一些设置可以直接看到效果」）：
+ * 23-3 那版把整窗夹在视口内，最多挪出几十像素，背后基本露不出来。现在改成
+ * **允许整窗移出视口**，只要求「拖动把手」还留一块在视口内（不然窗口就再也抓不回来）。
+ * 夹紧按把手算、不按窗口算，是因为把手只在标题栏那一侧：往右拖时露出来的是左栏，
+ * 按窗口算的话左栏虽然可见、却抓不到把手。
  */
 
 export interface DragOffset {
@@ -28,8 +34,9 @@ export interface DialogBox {
   height: number;
 }
 
-/** 拖到离视口边缘这么近就不许再拖（保证标题栏始终够得着） */
-const EDGE_MARGIN = 8;
+/** 拖出视口后，拖动把手至少留这么宽 / 高在视口内（够抓住，不挡内容） */
+const HANDLE_KEEP_X = 96;
+const HANDLE_KEEP_Y = 32;
 /** 超过这个位移才算「在拖」，避免手抖把点击变成拖动 */
 const DRAG_THRESHOLD = 3;
 /** 拖动中不要被这些元素抢走指针（与 HeroUI drawer 的守卫同一份清单） */
@@ -43,28 +50,35 @@ const INTERACTIVE_SELECTOR =
 let rememberedOffset: DragOffset = { x: 0, y: 0 };
 
 /**
- * 把位移夹在视口内（纯函数，单测用）。
- * `box` 是元素**没有位移时**的视口矩形；允许的区间取「左/上不小于 margin」与
- * 「右/下不大于 视口 - margin」的交集；两个端点反了（元素比视口还大）时取较小值，不至于左右乱跳。
+ * 把位移夹到「把手还够得着」的范围（纯函数，单测用）。
+ *
+ * `handle` 是**拖动把手没有位移时**的视口矩形，`viewport` 是视口尺寸。
+ * 允许窗口整块移出视口（用户要的就是露背后），但要求：
+ *   把手右端 ≥ keepX、把手左端 ≤ 视口宽 - keepX、把手下端 ≥ keepY、把手上端 ≤ 视口高 - keepY。
+ * 两个端点反了（把手比视口还大）时交换，不至于左右乱跳。
  */
 export function clampDragOffset(
   offset: DragOffset,
-  box: DialogBox,
+  handle: DialogBox,
   viewport: { width: number; height: number },
-  margin = EDGE_MARGIN,
+  keep: { x: number; y: number } = { x: HANDLE_KEEP_X, y: HANDLE_KEEP_Y },
 ): DragOffset {
-  const bounds = (start: number, size: number, total: number) => {
-    const min = margin - start;
-    const max = total - margin - size - start;
-    return min <= max ? { min, max } : { min: max, max: min };
+  const clamp = (value: number, min: number, max: number) => {
+    if (min > max) [min, max] = [max, min];
+    return Math.min(max, Math.max(min, value));
   };
 
-  const x = bounds(box.left, box.width, viewport.width);
-  const y = bounds(box.top, box.height, viewport.height);
-
   return {
-    x: Math.min(x.max, Math.max(x.min, offset.x)),
-    y: Math.min(y.max, Math.max(y.min, offset.y)),
+    x: clamp(
+      offset.x,
+      keep.x - (handle.left + handle.width),
+      viewport.width - keep.x - handle.left,
+    ),
+    y: clamp(
+      offset.y,
+      keep.y - (handle.top + handle.height),
+      viewport.height - keep.y - handle.top,
+    ),
   };
 }
 
@@ -80,7 +94,10 @@ export function dragTransform(offset: DragOffset): string {
 
 export function useDraggableDialog() {
   const nodeRef = useRef<HTMLDivElement | null>(null);
+  const handleRef = useRef<HTMLDivElement | null>(null);
   const [offset, setOffset] = useState<DragOffset>(() => ({ ...rememberedOffset }));
+  /** 手势里读的是 ref（pointermove 里不能等 React 渲染） */
+  const offsetRef = useRef<DragOffset>(offset);
   const state = useRef({
     dragging: false,
     activated: false,
@@ -88,13 +105,46 @@ export function useDraggableDialog() {
     startX: 0,
     startY: 0,
     startOffset: { x: 0, y: 0 } as DragOffset,
-    box: { left: 0, top: 0, width: 0, height: 0 } as DialogBox,
+    handle: { left: 0, top: 0, width: 0, height: 0 } as DialogBox,
+    last: { x: 0, y: 0 } as DragOffset,
   });
 
   const apply = useCallback((next: DragOffset) => {
+    offsetRef.current = next;
     const node = nodeRef.current;
     if (node) node.style.transform = dragTransform(next);
   }, []);
+
+  /**
+   * 视口变小（窗口从最大化还原、开 DevTools）后，原来合法的位移可能把把手推到视口外，
+   * 于是窗口再也抓不回来 —— 尺寸变化时按当前视口再夹一次。
+   */
+  useEffect(() => {
+    const onResize = () => {
+      const handle = handleRef.current;
+      if (!handle || state.current.dragging) return;
+      const rect = handle.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const current = offsetRef.current;
+      const next = clampDragOffset(
+        current,
+        {
+          left: rect.left - current.x,
+          top: rect.top - current.y,
+          width: rect.width,
+          height: rect.height,
+        },
+        { width: window.innerWidth, height: window.innerHeight },
+      );
+      if (next.x === current.x && next.y === current.y) return;
+      rememberedOffset = next;
+      setOffset(next);
+      apply(next);
+    };
+
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [apply]);
 
   const onPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
@@ -104,11 +154,12 @@ export function useDraggableDialog() {
       const node = nodeRef.current;
       if (!node) return;
 
-      // 记录「无位移」时的位置：当前 rect 减去已生效的位移
-      const rect = node.getBoundingClientRect();
-      state.current.box = {
-        left: rect.left - offset.x,
-        top: rect.top - offset.y,
+      // 记录把手「无位移」时的位置：当前 rect 减去已生效的位移
+      const current = offsetRef.current;
+      const rect = event.currentTarget.getBoundingClientRect();
+      state.current.handle = {
+        left: rect.left - current.x,
+        top: rect.top - current.y,
         width: rect.width,
         height: rect.height,
       };
@@ -117,9 +168,23 @@ export function useDraggableDialog() {
       state.current.pointerId = event.pointerId;
       state.current.startX = event.clientX;
       state.current.startY = event.clientY;
-      state.current.startOffset = { ...offset };
+      state.current.startOffset = { ...current };
+      state.current.last = { ...current };
+
+      /*
+       * 1124：**按下就捕获**，不要等超过阈值再捕获。
+       * 阈值那版（23-3）只在 pointermove 里 `setPointerCapture`，可快速拖动时指针
+       * 第一帧就已经离开标题栏 —— 那一下 pointermove 派发给的是别的元素，
+       * 根本到不了这里，于是永远不激活、永远不捕获，窗口一动不动。
+       * 实测：从标题栏往下 40px 拖，只收到 pointerdown，一条 pointermove 都没有。
+       */
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        // 老浏览器 / 指针已释放：退化成普通的元素内拖动
+      }
     },
-    [offset],
+    [],
   );
 
   const onPointerMove = useCallback(
@@ -137,13 +202,13 @@ export function useDraggableDialog() {
         event.currentTarget.setPointerCapture(event.pointerId);
       }
 
-      apply(
-        clampDragOffset(
-          { x: current.startOffset.x + dx, y: current.startOffset.y + dy },
-          current.box,
-          { width: window.innerWidth, height: window.innerHeight },
-        ),
+      const next = clampDragOffset(
+        { x: current.startOffset.x + dx, y: current.startOffset.y + dy },
+        current.handle,
+        { width: window.innerWidth, height: window.innerHeight },
       );
+      current.last = next;
+      apply(next);
     },
     [apply],
   );
@@ -161,16 +226,11 @@ export function useDraggableDialog() {
       if (!current.activated) return;
       current.activated = false;
 
-      const node = nodeRef.current;
-      if (!node) return;
-      const rect = node.getBoundingClientRect();
-      // rect 是拖动后的真实位置；减掉基准位置即最终位移（已经夹过视口，这里不重复夹）
-      const final: DragOffset = {
-        x: rect.left - current.box.left,
-        y: rect.top - current.box.top,
-      };
+      // 最后一帧已经夹过视口，直接用，不再按 rect 反算（窗口可能大半在视口外，rect 也不可靠）
+      const final = current.last;
       rememberedOffset = final;
-      node.style.transition = "";
+      const node = nodeRef.current;
+      if (node) node.style.transition = "";
       setOffset(final);
       apply(final);
     },
@@ -180,6 +240,8 @@ export function useDraggableDialog() {
   return {
     /** 挂到要移动的那个元素（Radix `DialogContent`）上 */
     dialogRef: nodeRef,
+    /** 挂到拖动把手（窗口标题栏）上 —— 视口变化时按它重新夹紧 */
+    handleRef,
     /** 挂到拖动把手（窗口标题栏）上 */
     handleProps: {
       onPointerDown,

@@ -107,6 +107,19 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
     },
     [childOverlayOpen],
   );
+  /**
+   * 1124（用户：「设置页面可以被拖动到窗口外，这样一些设置可以直接看到效果」）：
+   * 桌面这版改成**非模态浮窗** —— 背后界面可以照常点、照常滚动，改主题/字号时眼睛不用来回切。
+   * 代价是「点外面就关」这条不能留：非模态下 Radix 仍会在 pointerdown/focusin 落到层外时
+   * 调 `onDismiss`（`DismissableLayer` 源码里 `if (!event.defaultPrevented) onDismiss?.()`），
+   * 所以这里无条件拦掉，关窗只认标题栏的 X 和 Esc。
+   */
+  const blockOutsideDismiss = React.useCallback(
+    (event: { preventDefault: () => void }) => {
+      event.preventDefault();
+    },
+    [],
+  );
 
   /**
    * 12-7：表单型设置页（AI / 网络 / 通知 / RSSHub / 通用里的 UA / 资料）改完是「点保存才写库」，
@@ -121,6 +134,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
    * HeroUI v3 的 `Modal` 没有原生拖动（官方 API 表里只有 backdrop 变体 / 关闭行为 / 尺寸 / 位置），
    * 所以照组件库 `Drawer` 那套 pointer 手势自己搬一份，见 `useDraggableDialog`。
    * 只有桌面这版是窗口（移动端是全屏 Sheet，没有可拖的余地）。
+   * 1124：夹紧范围从「整窗留在视口内」放宽到「拖动把手留一块在视口内」，可以整窗拖出屏幕。
    */
   const drag = useDraggableDialog();
 
@@ -302,16 +316,37 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
   return (
     <Dialog
       open={open}
-      // C-①：同移动端分支（子浮层开着时切非 modal，把滚动锁让给 HeroUI Drawer）
-      modal={!childOverlayOpen}
+      /*
+       * 1124：桌面版恒为**非模态**。
+       * - Radix 的 `DialogOverlay` 源码是 `context.modal ? <Overlay/> : null` —— 非模态连遮罩都不渲染，
+       *   用户要的「背景不再被模糊、直接看到效果」由此达成（不需要另造一个透明遮罩变体）。
+       * - 模态那套还会 `disableOutsidePointerEvents`（给 body 打 `pointer-events:none`）+
+       *   `hideOthers`（给其余节点打 aria-hidden）+ 焦点陷阱，背后既点不动也读屏读不到；
+       *   非模态三者都没有，背后列表照常可点可滚。
+       * - 顺带把 C-① 那个「子浮层开着时切非 modal」的分支收掉了：本来就恒非模态，
+       *   规则编辑器 Drawer 的滚动锁不会再被 Radix 抢走。
+       */
+      modal={false}
       onOpenChange={(next) => (next ? onOpenChange(true) : tryLeave(() => onOpenChange(false)))}
     >
       <DialogContent
         ref={drag.dialogRef}
         // 拖动位移叠在 Radix 的居中位移上（`-translate-x-1/2 -translate-y-1/2`）
         style={{ transform: drag.transform }}
-        className="w-[950px] h-[800px] max-w-[95vw] max-h-[90vh] p-0 overflow-hidden gap-0"
-        onInteractOutside={guardOutsideDismiss}
+        className={cn(
+          "w-[950px] h-[800px] max-w-[95vw] max-h-[90vh] p-0 overflow-hidden gap-0",
+          /*
+           * 遮罩没了之后窗口和背后的内容直接贴在一起，得自己撑出层次：
+           * - 底色换成组件库的浮层 token `--overlay`（`bg-overlay`，亮暗各一档），
+           *   比页面底色 `--background` 亮一档 —— 用 `bg-background` 的话窗口和背后同色，
+           *   边框以内根本看不出这是一扇窗。
+           * - `shadow-2xl` 是 Nextflux 设置窗的原值（`Settings.jsx` 的 DesktopSettings：
+           *   `w-[700px] ... border shadow-2xl`），本项目 SearchModal / 视频预览这些
+           *   「浮在内容上的窗」也都是它，所以照抄，不另编阴影。
+           */
+          "bg-overlay shadow-2xl",
+        )}
+        onInteractOutside={blockOutsideDismiss}
         onEscapeKeyDown={guardEscape}
       >
         <div className="flex h-full">
@@ -320,11 +355,12 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
             onTabChange={(tab) => tryLeave(() => setActiveTab(tab))}
           />
 
-          <div className="relative flex h-full min-w-0 flex-1 flex-col bg-background">
+          <div className="relative flex h-full min-w-0 flex-1 flex-col bg-overlay">
             {/* Header —— 23-3：整条标题栏就是拖动把手（`touch-none` 挡住触控板滚动/选择，
                 交互元素在 hook 里被排除，所以点得到里面的任何控件） */}
             <div
               {...drag.handleProps}
+              ref={drag.handleRef}
               className="flex cursor-move touch-none select-none items-center gap-2 border-b border-border px-6 py-4"
             >
               <GripVertical className="size-4 shrink-0 text-muted-foreground/60" />
