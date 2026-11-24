@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/refs -- 测试夹具：ref 必须原样交给 hook 才能跑真实手势路径，渲染期不解引用 */
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
-import { useDraggableDialog, resetRememberedOffset } from "./useDraggableDialog";
+import { useDraggableDialog } from "./useDraggableDialog";
 
 /**
  * 1124：拖动手势本身的行为（纯函数部分见 `useDraggableDialog.test.ts`）。
@@ -71,28 +71,6 @@ const ORIGINAL_OFFSET_DESCRIPTORS = {
   height: Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight"),
 };
 
-/**
- * 模拟 Radix `Presence` 的真实时序：hook 先挂载（此时 effect 已经跑完、rAF 也空转过），
- * 弹窗节点要到之后的某次提交才出现。这时主 effect 的依赖没有变化、不会再跑一次，
- * 唯一的补救路径就是 `dialogRef` / `handleRef` 两个回调 ref。
- */
-function LateMountHarness({ show }: { show: boolean }) {
-  const drag = useDraggableDialog();
-  return (
-    <div>
-      {show ? (
-        <div
-          data-testid="dialog"
-          ref={drag.dialogRef}
-          style={{ transform: drag.transform }}
-        >
-          <div data-testid="handle" {...drag.handleProps} ref={drag.handleRef} />
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 /** jsdom 里所有元素 rect 都是 0，这里按「基准把手框 + 当前位移」造一个可信的 rect */
 function mockRects() {
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
@@ -139,7 +117,6 @@ describe("useDraggableDialog", () => {
   const release = vi.fn();
 
   beforeEach(() => {
-    resetRememberedOffset();
     layout = { width: DIALOG.width, height: DIALOG.height };
     Object.defineProperty(window, "innerWidth", { value: 1568, configurable: true });
     Object.defineProperty(window, "innerHeight", { value: 951, configurable: true });
@@ -223,35 +200,35 @@ describe("useDraggableDialog", () => {
     });
   });
 
-  it("pointercancel 结束拖动并记住位置", () => {
+  it("pointercancel 结束拖动；位置只在本次打开内有效，重新打开回到正中", () => {
     const { getByTestId, unmount } = render(<Harness />);
     const handle = getByTestId("handle");
     fireEvent.pointerDown(handle, { button: 0, pointerId: 1, clientX: 100, clientY: 100 });
     fireEvent.pointerMove(handle, { pointerId: 1, clientX: 200, clientY: 140 });
     fireEvent.pointerCancel(handle, { pointerId: 1, clientX: 200, clientY: 140 });
-    const saved = readOffset(getByTestId("dialog"));
-    expect(saved).toEqual({ x: 100, y: 40 });
+    expect(readOffset(getByTestId("dialog"))).toEqual({ x: 100, y: 40 });
 
     unmount();
-    // 重新打开（同一视口）：位置沿用上次
+    // 用户 11-24 拍板：不需要记住位置 —— 重新打开一律回到正中
     const reopened = render(<Harness />);
-    expect(readOffset(reopened.getByTestId("dialog"))).toEqual(saved);
+    expect(readOffset(reopened.getByTestId("dialog"))).toEqual({ x: 0, y: 0 });
   });
 
-  it("重新挂载时按当前视口夹紧（视口缩小后不会整块跑到屏幕外）", async () => {
-    const first = render(<Harness />);
-    dragBy(900, 600, first.getByTestId("handle"));
-    expect(readOffset(first.getByTestId("dialog"))).toEqual({ x: 900, y: 600 });
-    first.unmount();
+  it("视口缩小后按当前视口重新夹紧（窗口不会被留在屏幕外）", async () => {
+    const { getByTestId } = render(<Harness />);
+    dragBy(900, 600, getByTestId("handle"));
+    expect(readOffset(getByTestId("dialog"))).toEqual({ x: 900, y: 600 });
 
     // 视口缩小：`max-h-[90vh]` 同时把弹窗压到 630 高
     Object.defineProperty(window, "innerWidth", { value: 1000, configurable: true });
     Object.defineProperty(window, "innerHeight", { value: 700, configurable: true });
     layout = { width: 950, height: 630 };
 
-    const second = render(<Harness />);
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
     await waitFor(() => {
-      const offset = readOffset(second.getByTestId("dialog"));
+      const offset = readOffset(getByTestId("dialog"));
       // x 被夹到「把手右端距视口右缘 96px」：1000 - 96 - (25 + 200)
       expect(offset.x).toBe(679);
       // y 本来就在视口内（600 + 35.5 + 57 < 700），不该被乱动
@@ -259,38 +236,4 @@ describe("useDraggableDialog", () => {
     });
   });
 
-  /**
-   * 审查 M1：弹窗节点比 hook 晚挂载（Radix `Presence` 的真实时序）。
-   * 主 effect 在 `active` 变 true 的那次提交里跑，那时 `nodeRef.current` 是 null；
-   * 没有回调 ref 这条路径，就只能等 effect 里那个 260ms 的兜底定时器，
-   * 用户看到的是「重开后窗口先在屏幕外停一下再跳回来」。
-   */
-  it("节点晚于 hook 挂载时，靠回调 ref 立刻夹紧（不等 260ms 兜底）", () => {
-    const first = render(<Harness />);
-    dragBy(900, 600, first.getByTestId("handle"));
-    expect(readOffset(first.getByTestId("dialog"))).toEqual({ x: 900, y: 600 });
-    first.unmount();
-
-    Object.defineProperty(window, "innerWidth", { value: 1000, configurable: true });
-    Object.defineProperty(window, "innerHeight", { value: 700, configurable: true });
-    layout = { width: 950, height: 630 };
-
-    // 从这里开始接管定时器：`setTimeout(…, 260)` 的兜底不会有机会跑
-    vi.useFakeTimers();
-    try {
-      const { rerender, getByTestId } = render(<LateMountHarness show={false} />);
-      // 先让 effect 自己排的两帧 rAF 空转完（那时还没有节点，夹不了）
-      act(() => {
-        vi.advanceTimersByTime(100);
-      });
-      rerender(<LateMountHarness show />);
-      act(() => {
-        // 只推进 40ms：effect 里那个 260ms 的兜底定时器还没到点，只剩回调 ref 这条路
-        vi.advanceTimersByTime(40);
-      });
-      expect(readOffset(getByTestId("dialog"))).toEqual({ x: 679, y: 600 });
-    } finally {
-      vi.useRealTimers();
-    }
-  });
 });

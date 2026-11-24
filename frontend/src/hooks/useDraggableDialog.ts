@@ -44,20 +44,6 @@ const INTERACTIVE_SELECTOR =
   "input, textarea, button, [role='button'], select, a, [data-dialog-drag-ignore]";
 
 /**
- * 位置记在模块级：设置关掉再打开仍在原处（用户诉求是「边看边改」，每次回到正中很烦）。
- * 只在本次会话内有效，刷新页面回到正中。
- */
-let rememberedOffset: DragOffset = { x: 0, y: 0 };
-
-/**
- * 把记住的位置清回正中。给单测用（模块级状态会跨用例残留），
- * 以后若要加「重置窗口位置」的入口也可以直接用。
- */
-export function resetRememberedOffset() {
-  rememberedOffset = { x: 0, y: 0 };
-}
-
-/**
  * 把位移夹到「把手还够得着」的范围（纯函数，单测用）。
  *
  * `handle` 是**拖动把手没有位移时**的视口矩形，`viewport` 是视口尺寸。
@@ -135,7 +121,13 @@ export function useDraggableDialog(active = true) {
     if (node) scheduleReclampRef.current();
   }, []);
 
-  const [offset, setOffset] = useState<DragOffset>(() => ({ ...rememberedOffset }));
+  /**
+   * 用户 11-24 拍板：**不需要记住位置** —— 每次打开都从正中开始（会话内也不再沿用上次）。
+   * 所以位置只活在「这一次打开」里：`desiredRef` 是用户这次摆到的位置（视口变化时按它重新夹紧），
+   * 关掉就丢，下次 `active` 变 true 时清回 (0, 0)。
+   */
+  const desiredRef = useRef<DragOffset>({ x: 0, y: 0 });
+  const [offset, setOffset] = useState<DragOffset>({ x: 0, y: 0 });
   /** 手势里读的是 ref（pointermove 里不能等 React 渲染） */
   const offsetRef = useRef<DragOffset>(offset);
   const state = useRef({
@@ -199,6 +191,20 @@ export function useDraggableDialog(active = true) {
   }, []);
 
   /**
+   * 每次打开（`active` 由 false 变 true）把位置清回正中 —— 用户不需要记住位置。
+   * 与 `active` 之外的其它 state 无关，所以只在 `active` 变化时跑一次。
+   */
+  useEffect(() => {
+    if (!active) return;
+    desiredRef.current = { x: 0, y: 0 };
+    offsetRef.current = { x: 0, y: 0 };
+    const node = nodeRef.current;
+    if (node) node.style.transform = dragTransform({ x: 0, y: 0 });
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 开窗重置位置，与 setActiveTab 同一类
+    setOffset({ x: 0, y: 0 });
+  }, [active]);
+
+  /**
    * 尺寸变化（窗口从最大化还原、开 DevTools、换设备模拟）后，原来合法的位移可能把把手
    * 推到视口外，窗口就再也抓不回来 —— 按当前视口重新夹一次。三件事都走同一个 `reclamp`：
    *
@@ -209,7 +215,7 @@ export function useDraggableDialog(active = true) {
    *    要等 CSS 重算，实测滞后约 1.5s（887px → 630px），事件里读到的还是旧 rect，
    *    夹完等于没夹，而之后不会再有一次 resize（审查 M2）。所以改用 `ResizeObserver`
    *    盯弹窗自身的盒子 —— 它变了就说明 `max-h` 重算完了。
-   * 3. 夹紧**不写回** `rememberedOffset`：那是用户自己摆的位置，视口暂时变小不该把它改掉
+   * 3. 夹紧**不写回** `desiredRef`：那是用户自己摆的位置，视口暂时变小不该把它改掉
    *    （审查 m4 实测被累积改写成 `translate(-478px, 163px)`）；下次视口变大还会自动回到原处。
    */
   useEffect(() => {
@@ -224,12 +230,12 @@ export function useDraggableDialog(active = true) {
       if (!handle) return;
       const current = offsetRef.current;
       /*
-       * 夹的是**用户摆的那个位置**（`rememberedOffset`），不是当前生效的位移 ——
-       * 这样视口缩小时窗口被拉回可视范围，视口再变大时又自动回到用户原来的摆放处；
+       * 夹的是**用户这次摆到的位置**（`desiredRef`），不是当前生效的位移 ——
+       * 这样视口缩小时窗口被拉回可视范围，视口再变大时又自动回到用户摆的地方；
        * 若夹的是当前位移，被拉回一次就永久丢掉了原位置（只能重新拖）。
        */
       const next = clampDragOffset(
-        rememberedOffset,
+        desiredRef.current,
         handle,
         { width: window.innerWidth, height: window.innerHeight },
       );
@@ -372,7 +378,7 @@ export function useDraggableDialog(active = true) {
 
       // 最后一帧已经夹过视口，直接用，不再按 rect 反算（窗口可能大半在视口外，rect 也不可靠）
       const final = current.last;
-      rememberedOffset = final;
+      desiredRef.current = final;
       const node = nodeRef.current;
       if (node) node.style.transition = "";
       setOffset(final);
