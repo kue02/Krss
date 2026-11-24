@@ -400,7 +400,6 @@ export function EntryList({
     contentType === "article" && articleLayout === "inoreader";
   /** 「正文推入方向 = 向下」：条目栏与正文合为一列，正文接在被点那一行后面（方案 2） */
   const articlePushDirection = useUISettingKey("articlePushDirection");
-  const reduceMotion = useUISettingKey("reduceMotion");
   const isArticleInline =
     contentType === "article" && articlePushDirection === "down";
   /** 实验布局批：文章相关实验入口的可见性（关闭即隐藏，已选中仍照常渲染） */
@@ -726,13 +725,16 @@ export function EntryList({
        滚回正文上方（paneTop > 0）时 TOP 再出现。
      自动吸顶那几帧是程序化滚动，用户没动手前不据此判定方向。 */
   const [mobileHeaderHidden, setMobileHeaderHidden] = useState(false);
+  /* 卡片正文栏滚到视口顶部后自动铺满宽度，不再留左右各 8px 的空白（用户 2026-11-24）。 */
+  const [paneAtTop, setPaneAtTop] = useState(false);
   const lastScrollYRef = useRef<number | null>(null);
   /* 点开正文后的自动吸顶会连续写 scrollTop；这段时间不要用「位置」去反推顶栏，
      否则收起/展开又反过来改变可视高度，paneTop 在阈值附近来回抖 → 点击时快速闪烁。 */
   const suppressHeaderToggleUntilRef = useRef(0);
   useEffect(() => {
-    suppressHeaderToggleUntilRef.current = performance.now() + 1800;
-    setMobileHeaderHidden(inlineActive && Boolean(selectedEntryId));
+    suppressHeaderToggleUntilRef.current = performance.now() + 300;
+    setMobileHeaderHidden(false);
+    setPaneAtTop(false);
     lastScrollYRef.current = null;
   }, [selectedEntryId, isMobile, articlePushDirection, contentType, inlineActive]);
   useEffect(() => {
@@ -760,6 +762,7 @@ export function EntryList({
           /* 滞回：正文略微越过顶（<=2）才收，回落到 14 以上才展开。
              顶栏收起/展开会改变列表可视高度，若用单一阈值，paneTop 会在 0 附近来回抖，
              表现为点击后顶栏快速闪烁。 */
+          setPaneAtTop(paneTop <= 2);
           setMobileHeaderHidden((current) => {
             if (paneTop <= 2) return true;
             if (paneTop >= 14) return false;
@@ -793,10 +796,12 @@ export function EntryList({
         ref={inlineContentRef}
         data-testid="inline-article-pane"
         className={cn(
-          "rounded-[12px] bg-card [clip-path:inset(0_round_12px)]",
+          "bg-card [clip-path:inset(0_round_12px)] transition-[margin,width,border-radius] duration-200 ease-out",
           articlePaneStyle === "card"
-            ? "mx-2 my-2 w-[calc(100%-1rem)] border border-border/60 shadow-nf"
-            : "w-full border-t border-border",
+            ? paneAtTop
+              ? "my-0 w-full rounded-none border-t border-border"
+              : "mx-2 my-2 w-[calc(100%-1rem)] rounded-[12px] border border-border/60 shadow-nf"
+            : "w-full rounded-[12px] border-t border-border",
         )}
       >
         {renderInlineContent?.(containerRef, {
@@ -806,85 +811,8 @@ export function EntryList({
         })}
       </div>
     ) : null;
-  useEffect(() => {
-    if (!inlineActive || !selectedEntryId) return;
-    const container = containerRef.current;
-    if (!container) return;
-    /* 手机端列表走文档滚动（container 只是个普通 div），所以用统一的 scroll surface
-       读写滚动位置；桌面仍是容器内滚动，同一套接口无差别。 */
-    const surface = scrollSurface;
-    const scrollHost: HTMLElement | Window =
-      surface.kind === "document" ? window : container;
-
-    /* 把正文顶部对齐到滚动视口顶部（「点开自动吸顶」）。
-       不能用 scrollIntoView：会连带把外层容器一起滚（三栏布局里外层不该动）。
-       也不能「算一次目标位置滚过去」：虚拟列表首帧按估计行高排，measureElement
-       之后才收成真实行高，列表总高会骤然收缩 —— 目标位置算早了就冲过头，
-       正文被推到视口上方几千像素。所以这里逐帧盯正文相对视口的位置，差多少补多少，
-       一直盯 4 秒（正文懒加载、图片撑高、行高实测都在这段时间里发生），用户一动滚轮/
-       触摸/键盘就立刻收手，不再抢滚动权。 */
-    let cancelled = false;
-    const stop = () => {
-      cancelled = true;
-    };
-    /* 用户一动手就交还滚动权：滚轮、触摸、键盘、拖滚动条、点滚动条轨道都算。
-       注意不能监听 scroll —— 下面每帧都在写滚动位置，会被自己触发。 */
-    scrollHost.addEventListener("wheel", stop, { passive: true });
-    scrollHost.addEventListener("touchstart", stop, { passive: true });
-    scrollHost.addEventListener("pointerdown", stop);
-    scrollHost.addEventListener("keydown", stop);
-
-    const offset = () => {
-      const node = inlineContentRef.current;
-      if (!node) return null;
-      return node.getBoundingClientRect().top - surface.getViewportRect().top;
-    };
-
-    const alignOnce = () => {
-      const delta = offset();
-      if (delta === null || Math.abs(delta) <= 2) return false;
-      const before = surface.getScrollTop();
-      surface.scrollBy(delta);
-      /* 已经到底/到顶还差得远 = 这一屏放不下，再盯也不会推进，直接收手，
-         免得 4 秒里一直和用户抢滚动（正文比视口高时就会这样）。 */
-      return Math.abs(surface.getScrollTop() - before) > 1;
-    };
-
-    let raf = 0;
-    if (reduceMotion) {
-      /* 减少动效：一次性对齐，不留逐帧修正 */
-      alignOnce();
-      return () => {
-        scrollHost.removeEventListener("wheel", stop);
-        scrollHost.removeEventListener("touchstart", stop);
-        scrollHost.removeEventListener("pointerdown", stop);
-        scrollHost.removeEventListener("keydown", stop);
-      };
-    }
-
-    let startedAt = 0;
-    const tick = (now: number) => {
-      if (cancelled) return;
-      if (startedAt === 0) startedAt = now;
-      const elapsed = now - startedAt;
-      const progressed = alignOnce();
-      /* 已经对齐（progressed=false 且差值够小）或推不动了，就没必要继续盯 */
-      const delta = offset();
-      const settled = delta === null || Math.abs(delta) <= 2;
-      if (!settled && !progressed) return;
-      if (elapsed < 4000) raf = window.requestAnimationFrame(tick);
-    };
-    raf = window.requestAnimationFrame(tick);
-
-    return () => {
-      cancelled = true;
-      window.cancelAnimationFrame(raf);
-      scrollHost.removeEventListener("wheel", stop);
-      scrollHost.removeEventListener("touchstart", stop);
-      scrollHost.removeEventListener("pointerdown", stop);
-      scrollHost.removeEventListener("keydown", stop);
-    };
-  }, [inlineActive, selectedEntryId, reduceMotion, scrollSurface]);
+  /* 打开正文不再自动把正文吸到顶部（用户 2026-11-24：整块吸过去太抽搐）。
+     交给自然滚动：TOP 栏随列表滚走，正文标题滚到视口顶部时由自身的 sticky 自然钉住。 */
 
   useEffect(() => {
     if (!inlineActive || !selectedEntryId) return;
