@@ -44,6 +44,11 @@ const ListContentTruncate = 2000
 // 单文件夹与多选文件夹（规则/视图的 scopeIds）共用同一语义：范围 = 整棵子树。
 // UNION（去重）而非 UNION ALL：即使历史数据里 parent_id 成环也能终止，不会无限递归。
 func folderSubtreeSQLFor(n int) string {
+	// 调用点保证 n >= 1；这里只做防御：n <= 0 时返回永不命中的子查询，
+	// 避免下面的占位符切片出现 [: -1] 而 panic。
+	if n <= 0 {
+		return "SELECT id FROM folders WHERE 1 = 0"
+	}
 	placeholders := strings.Repeat("?,", n)
 	placeholders = placeholders[:len(placeholders)-1]
 	return `WITH RECURSIVE folder_subtree(id) AS (
