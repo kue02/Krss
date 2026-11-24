@@ -32,6 +32,10 @@ import { useAISettings } from "@/hooks/useAISettings";
 import { useSwipeGesture } from "@/hooks/useSwipeGesture";
 import { selectionToParams, type SelectionType } from "@/hooks/useSelection";
 import { flattenUniqueEntries } from "@/lib/entry-pagination";
+import {
+  collectDescendantFolderIds,
+  computeFolderSubtreeUnread,
+} from "@/lib/folder-tree";
 import { stripHtml } from "@/lib/html-utils";
 import { EntryListItem } from "./EntryListItem";
 import { ArticleRowsListRow } from "./ArticleRowsList";
@@ -692,30 +696,9 @@ export function EntryList({
     return map;
   }, [folders]);
 
-  /* 选中某个文件夹时，它自身 + 所有后代文件夹的 id 集合。
+  /* selectFolder 时「自身 + 所有后代文件夹」的 id 集合见 @/lib/folder-tree：
      OPML 多层导入会产生多层文件夹，只按「直接子级」过滤会漏掉孙级文件夹里的订阅，
      表现为「条目栏只显示当前子级下的订阅和数量，不显示孙级的」（用户 2026-11-24 报）。 */
-  const collectDescendantFolderIds = useCallback(
-    (rootId: string): Set<string> => {
-      const ids = new Set<string>([rootId]);
-      let grew = true;
-      while (grew) {
-        grew = false;
-        for (const folder of folders) {
-          if (
-            folder.parentId &&
-            ids.has(folder.parentId) &&
-            !ids.has(folder.id)
-          ) {
-            ids.add(folder.id);
-            grew = true;
-          }
-        }
-      }
-      return ids;
-    },
-    [folders],
-  );
 
   const { data: generalSettings } = useGeneralSettings();
 
@@ -1161,7 +1144,7 @@ export function EntryList({
       ids = [selection.feedId];
     } else if (selection.type === "folder") {
       // 刷新文件夹时连同所有后代文件夹里的订阅一起刷，别只刷直接子级。
-      const folderIds = collectDescendantFolderIds(selection.folderId);
+      const folderIds = collectDescendantFolderIds(folders, selection.folderId);
       ids = feeds
         .filter((feed) => feed.folderId && folderIds.has(feed.folderId))
         .map((feed) => feed.id);
@@ -1266,9 +1249,9 @@ export function EntryList({
       showToast(t("entry.refresh_failed"));
     }
   }, [
-    collectDescendantFolderIds,
     contentType,
     feeds,
+    folders,
     isRefreshing,
     selection,
     stopRefreshPolling,
@@ -1713,22 +1696,19 @@ export function EntryList({
           .reduce((sum, f) => sum + (counts[f.id] ?? 0), 0);
       case "feed":
         return counts[selection.feedId] ?? 0;
-      case "folder": {
+      case "folder":
         // 该文件夹自身 + 所有后代文件夹里的订阅未读之和（含孙级，用户 2026-11-24 报）。
-        const folderIds = collectDescendantFolderIds(selection.folderId);
-        return feeds
-          .filter(
-            (f) =>
-              f.folderId &&
-              folderIds.has(f.folderId) &&
-              f.type === contentType,
-          )
-          .reduce((sum, f) => sum + (counts[f.id] ?? 0), 0);
-      }
+        return computeFolderSubtreeUnread(
+          folders,
+          feeds,
+          counts,
+          selection.folderId,
+          contentType,
+        );
       case "starred":
         return 0; // Starred view doesn't show unread count
     }
-  }, [unreadCounts, selection, feeds, contentType, collectDescendantFolderIds]);
+  }, [unreadCounts, selection, feeds, folders, contentType]);
 
   // filterValue 见文件上方，用于请求参数与标题判断
   // 「已静音」是回看视图：标题跟着变，并给一行说明（这条视图里看到的不是新内容，而是被规则收起来的）

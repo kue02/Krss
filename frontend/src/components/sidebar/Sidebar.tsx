@@ -26,6 +26,7 @@ import { SidebarAccountBar } from "./SidebarAccountBar";
 import { StarredItem } from "./StarredItem";
 import { FeedCategory } from "./FeedCategory";
 import { computeFolderUnreadCounts } from "./folder-unread";
+import { collectDescendantFolderIds } from "@/lib/folder-tree";
 import { ListBox } from "@heroui/react";
 import { ListOrdered } from "lucide-react";
 import { useFilterEditorStore } from "@/stores/filter-editor-store";
@@ -923,12 +924,15 @@ export function Sidebar({
 
   const handleRefreshFolder = useCallback(
     (folderId: string) => {
+      // 与中栏刷新口径一致：父文件夹的刷新要覆盖整棵子树（含孙级订阅），
+      // 不能只刷直接子级（用户 2026-11-24 报「多层文件夹只显示当前子级」同批）。
+      const folderIds = collectDescendantFolderIds(folders, folderId);
       const ids = (feeds ?? [])
-        .filter((feed) => feed.folderId === folderId)
+        .filter((feed) => feed.folderId && folderIds.has(feed.folderId))
         .map((feed) => feed.id);
       void handleRefreshScope(ids, "folder");
     },
-    [feeds, handleRefreshScope],
+    [feeds, folders, handleRefreshScope],
   );
 
   /** 视图的范围（scopeType=all 时返回空数组 = 整轮刷新） */
@@ -938,17 +942,26 @@ export function Sidebar({
       if (view.scopeType === "feed") {
         ids = view.scopeIds?.length ? view.scopeIds : view.scopeId ? [view.scopeId] : [];
       } else if (view.scopeType === "folder") {
-        // 与 feed 分支对齐：多选文件夹时按 scopeIds 集合取订阅，否则回退单 scopeId。
-        const want = new Set(
-          view.scopeIds?.length ? view.scopeIds : view.scopeId ? [view.scopeId] : [],
-        );
+        // 与 feed 分支对齐：多选文件夹时按 scopeIds 集合取订阅，否则回退单 scopeId；
+        // 每个文件夹都展开成「自身 + 所有后代」，与单文件夹刷新的子树口径一致。
+        const roots = view.scopeIds?.length
+          ? view.scopeIds
+          : view.scopeId
+            ? [view.scopeId]
+            : [];
+        const want = new Set<string>();
+        for (const rootId of roots) {
+          for (const id of collectDescendantFolderIds(folders, rootId)) {
+            want.add(id);
+          }
+        }
         ids = (feeds ?? [])
           .filter((feed) => feed.folderId && want.has(feed.folderId))
           .map((feed) => feed.id);
       }
       void handleRefreshScope(ids, "view");
     },
-    [feeds, handleRefreshScope],
+    [feeds, folders, handleRefreshScope],
   );
 
   // 文件夹重命名（右键菜单）
