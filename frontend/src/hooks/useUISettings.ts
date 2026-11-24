@@ -1191,13 +1191,17 @@ export function useUISettingActions() {
 
   const setSplitterVisibleForView = useCallback(
     (view: ContentType, visible: boolean) => {
-      setUISetting("splitterVisibleByView", {
-        ...getUISettings().splitterVisibleByView,
-        [view]: visible,
-      });
+      const before = getUISettings().splitterVisibleByView;
+      setUISetting("splitterVisibleByView", { ...before, [view]: visible });
       // 11-24：用户自己在设置里动过文章视图这条 → 不再算「提示替关」，
       // 免得以后切走 Inoreader 布局时把用户明确关掉的又打开（防误伤）。
-      if (view === "article" && getUISettings().inoreaderSplitterAutoOff) {
+      // 只有真的改动了才算「动过」：点回当前已选中的那一档不算（用户没改任何设置，
+      // 之后切走布局仍应把提示替关的那条自动恢复）。
+      if (
+        view === "article" &&
+        before?.[view] !== visible &&
+        getUISettings().inoreaderSplitterAutoOff
+      ) {
         setUISetting("inoreaderSplitterAutoOff", false);
       }
     },

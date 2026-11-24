@@ -112,13 +112,34 @@ describe("提示里点「文章也关闭」后的自动恢复（11-24）", () =>
     });
     expect(mod.getUISettings().inoreaderSplitterAutoOff).toBe(true);
     act(() => {
-      result.current.setSplitterVisibleForView("article", false);
+      // 真的改了（把文章这条线打开）才算「用户自己动过」
+      result.current.setSplitterVisibleForView("article", true);
     });
     expect(mod.getUISettings().inoreaderSplitterAutoOff).toBe(false);
     act(() => {
       result.current.setArticleLayout("list");
     });
-    expect(mod.getUISettings().splitterVisibleByView.article).toBe(false);
+    // 用户自己开的，切走也不会被改回关
+    expect(mod.getUISettings().splitterVisibleByView.article).toBe(true);
+  });
+
+  it("防误伤③：点回当前已选中的那一档不算改过 → 标记保留，切走仍自动恢复", async () => {
+    const { mod, result } = await actions();
+    const { act } = await import("@testing-library/react");
+    act(() => {
+      result.current.setArticleLayout("inoreader");
+      result.current.hideArticleSplitterFromPrompt();
+    });
+    expect(mod.getUISettings().inoreaderSplitterAutoOff).toBe(true);
+    act(() => {
+      // 当前已经是「关」，再点一次「关」——用户没改动任何设置
+      result.current.setSplitterVisibleForView("article", false);
+    });
+    expect(mod.getUISettings().inoreaderSplitterAutoOff).toBe(true);
+    act(() => {
+      result.current.setArticleLayout("list");
+    });
+    expect(mod.getUISettings().splitterVisibleByView.article).toBe(true);
   });
 
   it("只恢复 article：图片/社交媒体/通知视图的关闭状态保持不动", async () => {
