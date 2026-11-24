@@ -695,11 +695,9 @@ export function EntryList({
      自动吸顶那几帧是程序化滚动，用户没动手前不据此判定方向。 */
   const [mobileHeaderHidden, setMobileHeaderHidden] = useState(false);
   const lastScrollYRef = useRef<number | null>(null);
-  const userScrolledRef = useRef(false);
   useEffect(() => {
     setMobileHeaderHidden(false);
     lastScrollYRef.current = null;
-    userScrolledRef.current = false;
   }, [selectedEntryId, isMobile, articlePushDirection, contentType]);
   useEffect(() => {
     if (!isMobile) {
@@ -707,26 +705,18 @@ export function EntryList({
       return;
     }
     const surface = scrollSurface;
-    const containerEl = containerRef.current;
-    const markUser = () => {
-      userScrolledRef.current = true;
-    };
-    const host: HTMLElement | Window =
-      surface.kind === "document" ? window : containerEl ?? window;
-    host.addEventListener("wheel", markUser, { passive: true });
-    host.addEventListener("touchstart", markUser, { passive: true });
-    host.addEventListener("pointerdown", markUser);
-    host.addEventListener("keydown", markUser);
-
     const update = () => {
-      const y = surface.getScrollTop();
+      /* 文档滚动取 window.scrollY（部分移动布局下 surface 报的是内层容器，恒为 0） */
+      const y =
+        surface.kind === "document"
+          ? window.scrollY
+          : Math.max(surface.getScrollTop(), window.scrollY);
       const prev = lastScrollYRef.current;
       lastScrollYRef.current = y;
       if (y <= 6) {
         setMobileHeaderHidden(false);
         return;
       }
-      if (!userScrolledRef.current) return;
       if (inlineActive && selectedEntryId) {
         const node = inlineContentRef.current;
         const paneTop = node
@@ -753,10 +743,6 @@ export function EntryList({
       unsubscribe();
       window.removeEventListener("scroll", onScroll);
       el?.removeEventListener("scroll", onScroll);
-      host.removeEventListener("wheel", markUser);
-      host.removeEventListener("touchstart", markUser);
-      host.removeEventListener("pointerdown", markUser);
-      host.removeEventListener("keydown", markUser);
     };
   }, [isMobile, inlineActive, selectedEntryId, scrollSurface]);
   /* 合列正文接在「被点那一行」的后面（不是列表末尾）：读正文时还能继续往下滚看到
