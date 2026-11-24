@@ -32,20 +32,14 @@
 | ![图片视图：照片墙 / 瀑布流](docs/images/desktop-02-picture.png) | ![社交媒体视图：Folo 式时间线](docs/images/desktop-03-social.png) |
 | 图片视图：照片墙，悬停 / 灯箱看大图 | 社交媒体视图：时间线里直接展开完整阅读器 |
 
-| 通知视图 | 自动化规则 + 智能文件夹 |
+| 通知视图 | 外观设置 |
 | :---: | :---: |
-| ![通知视图：按日期分组的时间线](docs/images/desktop-04-notification.png) | ![自动化规则与智能文件夹](docs/images/desktop-05-automation.png) |
-| 通知视图：按日期分组，展开即完整正文 | 自动化规则与筛选视图：命中、预览、撤销一目了然 |
+| ![通知视图：按日期分组的时间线](docs/images/desktop-04-notification.png) | ![外观设置：主题、配色、字体字号](docs/images/desktop-05-appearance.png) |
+| 通知视图：按日期分组，展开即完整正文 | 外观设置：5 套主题、配色、正文字体字号与列表密度 |
 
-| 插件系统 | AI 与免费翻译通道 |
-| :---: | :---: |
-| ![插件设置：Bark、RSSHub、GitHub 头像](docs/images/desktop-06-plugins.png) | ![AI 与免费翻译通道轮换](docs/images/desktop-07-ai.png) |
-| 插件系统：Bark 推送、RSSHub 适配、GitHub 头像 | 4 条免费翻译通道可排序轮换，失败再切模型 |
+![自动化 · 新建规则](docs/images/desktop-06-automation-rule.png)
 
-| 智能代理 | 双向 MCP |
-| :---: | :---: |
-| ![网络与智能代理](docs/images/desktop-08-proxy.png) | ![MCP 服务器与客户端配置](docs/images/desktop-09-mcp.png) |
-| 智能代理：按订阅 / 文件夹单独覆盖 | 双向 MCP：Krss 当服务器，也能把外部 MCP 当源 |
+**自动化 · 新建规则**：范围 + 条件 + 动作三段式，可预览影响、保存并推送到手机，也能用一句话生成规则。
 
 移动端（底部四轨导航 · 正文阅读 · 侧边栏）：
 
