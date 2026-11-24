@@ -481,6 +481,7 @@ function AuthenticatedApp() {
     initProxyImageRecovery();
   }, []);
 
+  const articlePaneStyle = useUISettingKey("articlePaneStyle");
   const reduceMotion = useUISettingKey("reduceMotion");
   useEffect(() => {
     applyReduceMotionToDocument(Boolean(reduceMotion));
@@ -698,6 +699,7 @@ function AuthenticatedApp() {
                       embedded
                       showAuxiliary
                       containerRef={scrollRef}
+                      headerBackgroundBlur={articlePaneStyle !== "card"}
                       onClose={() => selectEntry(null)}
                     />
                   </Suspense>
@@ -937,6 +939,7 @@ function AuthenticatedApp() {
                               isMobile
                               containerRef={scrollRef}
                               headerStickyTopClassName={options.headerStickyTop}
+                              headerBackgroundBlur={articlePaneStyle !== "card"}
                               onClose={() => setMobileInlineEntryId(null)}
                             />
                           </Suspense>
