@@ -101,7 +101,7 @@ export function MobileSwipeEntryRow({ entry, children }: MobileSwipeEntryRowProp
       <div
         aria-hidden={!open}
         className={cn(
-          "absolute inset-y-0 right-0 z-0 flex",
+          "absolute inset-y-0 right-0 z-0 flex border-b border-border bg-item-hover",
           !open && "pointer-events-none",
         )}
         style={{ width: ACTION_WIDTH }}
@@ -154,8 +154,10 @@ export function MobileSwipeEntryRow({ entry, children }: MobileSwipeEntryRowProp
       <div
         onClickCapture={handleContentClickCapture}
         className={cn(
-          "relative z-10 bg-background transition-transform duration-200 ease-out",
-          open && "shadow-[-10px_0_18px_-8px_rgba(0,0,0,0.28)]",
+          "relative z-10 transition-transform duration-200 ease-out",
+          open
+            ? "bg-item-hover shadow-[-10px_0_18px_-8px_rgba(0,0,0,0.28)]"
+            : "bg-background",
         )}
         style={open ? { transform: `translateX(-${ACTION_WIDTH}px)` } : undefined}
       >
