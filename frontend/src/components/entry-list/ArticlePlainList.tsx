@@ -48,6 +48,8 @@ export function ArticlePlainListRow({
 }: ArticlePlainListRowProps) {
   const { t } = useTranslation();
   const unreadStyle = useUISettingKey("unreadStyle");
+  const articleListRowHeight = useUISettingKey("articleListRowHeight");
+  const comfortable = articleListRowHeight === "comfortable";
   const feedMenu = useFeedMenuActions();
   const feedMenuFolders = useMemo(
     () =>
@@ -76,7 +78,8 @@ export function ArticlePlainListRow({
           /* 尺度照图片「悬停大图」的行实测值：padding 10px 16px、标题 14.5px/500、
              行高 1.45、图标 16px、右侧元信息 12px 且距标题 12px（gap 8 + ml 4） */
           className={cn(
-            "group flex w-full items-center gap-2 border-b border-border px-4 py-[10px] text-left transition-colors hover:bg-item-hover",
+            "group flex w-full items-center gap-2 border-b border-border px-4 text-left transition-colors hover:bg-item-hover",
+            comfortable ? "py-[13px]" : "py-[10px]",
             selected && "bg-item-hover",
             unreadRowClass(isUnread, !!entry.starred, selected, unreadStyle),
           )}
@@ -100,7 +103,14 @@ export function ArticlePlainListRow({
               <span className="inline-block size-4 shrink-0" />
             )}
           </UnreadIndicator>
-          <span className="min-w-0 flex-1 truncate text-[14.5px] font-medium leading-[1.45] text-foreground">
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate text-foreground",
+              comfortable
+                ? "text-[15px] font-normal leading-[1.5]"
+                : "text-[14.5px] font-medium leading-[1.45]",
+            )}
+          >
             {entry.title || entry.url || ""}
           </span>
           {meta && (

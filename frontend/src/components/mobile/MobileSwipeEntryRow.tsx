@@ -114,9 +114,11 @@ export function MobileSwipeEntryRow({ entry, children }: MobileSwipeEntryRowProp
             close();
             markAsRead({ id: entry.id, read: readAction.nextRead });
           }}
-          className="flex w-1/2 items-center justify-center border-r border-border/60 bg-background text-muted-foreground transition-colors duration-150 hover:text-foreground active:brightness-95"
+          className="group/act flex w-1/2 items-center justify-center"
         >
-          <ReadIcon className="size-5" />
+          <span className="flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 group-hover/act:bg-item-hover group-hover/act:text-foreground">
+            <ReadIcon className="size-[15px]" />
+          </span>
         </button>
         <button
           type="button"
@@ -128,12 +130,23 @@ export function MobileSwipeEntryRow({ entry, children }: MobileSwipeEntryRowProp
             close();
             markAsStarred({ id: entry.id, starred: !isStarred });
           }}
-          className={cn(
-            "flex w-1/2 items-center justify-center bg-background transition-colors duration-150 hover:brightness-95",
-            isStarred ? "text-amber-500" : "text-muted-foreground hover:text-foreground",
-          )}
+          className="group/act flex w-1/2 items-center justify-center"
         >
-          <Star className={cn("size-5", isStarred && "fill-amber-500 text-amber-500")} />
+          <span
+            className={cn(
+              "flex size-7 items-center justify-center rounded-full transition-colors duration-150 group-hover/act:bg-item-hover",
+              isStarred
+                ? "text-amber-500"
+                : "text-muted-foreground group-hover/act:text-foreground",
+            )}
+          >
+            <Star
+              className={cn(
+                "size-[15px]",
+                isStarred && "fill-amber-500 text-amber-500",
+              )}
+            />
+          </span>
         </button>
       </div>
 
