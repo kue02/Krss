@@ -451,20 +451,16 @@ export function usePrependScrollAnchor({
       if (node) {
         const nextTop = node.getBoundingClientRect().top;
         delta = nextTop - chosen.top;
-        const tooLarge = isStabilizeDeltaTooLarge(delta, surface.getViewportRect().height);
-        if (!tooLarge && Math.abs(delta) >= 0.5) {
+        /* 这里不设上限：能进这个分支就说明 entries 头部真的新增了条目
+           （正文 pane 插入不改 entries，不会走到这里），delta 就是新条目撑起的真实高度，
+           按它补是对的。上限只用于 stabilize / startLock —— 那两处看不到 entries 变化，
+           才可能是「正文 pane 插进来」造成的假位移。 */
+        if (Math.abs(delta) >= 0.5) {
           compensatingRef.current = true;
           surface.scrollBy(delta);
           requestAnimationFrame(() => {
             compensatingRef.current = false;
           });
-        }
-        if (tooLarge) {
-          /* 位移大到不是「晚一帧撑高」：多半是插进来一整块内容（正文 pane）。
-             按旧锚点补会甩出几千像素，改为重测锚点、不锁、不补。 */
-          delta = 0;
-          measureAnchors();
-        } else {
           const locked: Anchor = { id: chosen.id, top: chosen.top };
           anchorsRef.current = [locked, ...anchorsRef.current.filter((a) => a.id !== locked.id)];
           // 提交后异步落下来的高度变化（图片/翻译）也拉回锚点
