@@ -298,6 +298,8 @@ export function AppearanceSettings() {
   const entryPrefetchConcurrency =
     useUISettingKey("entryPrefetchConcurrency") ?? 3;
   const splitterVisibleByView = useUISettingKey("splitterVisibleByView");
+  // 11-24：双栏（订阅侧栏 + 内容）分界限自动隐藏 —— 与上面那条按视图开关正交
+  const splitterAutoHide = useUISettingKey("splitterAutoHide") === true;
   const expandLongByView = useUISettingKey("expandLongByView");
   const reduceMotion = useUISettingKey("reduceMotion");
   const mobileSidebarShowViews = useUISettingKey("mobileSidebarShowViews");
@@ -325,6 +327,7 @@ export function AppearanceSettings() {
     setEntryPrefetchConcurrency,
     setExpandLongForView,
     setSplitterVisibleForView,
+    setSplitterAutoHide,
     setReduceMotion,
     setShowLineNumbers,
     setUiScale,
@@ -1009,6 +1012,31 @@ export function AppearanceSettings() {
         description={t("appearance_view.description")}
       >
         <div className="space-y-2.5">
+          {/* 11-24（用户第 3 条）：双栏（订阅侧栏 + 内容）分界限自动隐藏 —— 全局一项，
+              与下面每个视图的「显示分界限」正交：那条管「这个视图画不画」，
+              这条管「画的时候平时画不画」。第二栏（条目 ↔ 正文）那条不受影响。 */}
+          <div className="overflow-hidden rounded-xl border border-border/60 bg-background/40 p-2">
+            <SettingRow
+              label={t("appearance_view.splitter_auto_hide")}
+              hint={t("appearance_view.splitter_auto_hide_hint")}
+            >
+              <SegmentedControl
+                className="shrink-0"
+                value={splitterAutoHide ? "on" : "off"}
+                onValueChange={(value) => setSplitterAutoHide(value === "on")}
+                options={[
+                  {
+                    value: "off",
+                    label: t("appearance_view.splitter_auto_hide_off"),
+                  },
+                  {
+                    value: "on",
+                    label: t("appearance_view.splitter_auto_hide_on"),
+                  },
+                ]}
+              />
+            </SettingRow>
+          </div>
           {(
             ["article", "picture", "notification", "social"] as ContentType[]
           ).map(

@@ -185,6 +185,14 @@ export function ThreeColumnLayout({
   const splitterVisibleByView = useUISettingKey("splitterVisibleByView");
   const { contentType } = useSelection();
   const showFeedSplitter = splitterVisibleByView?.[contentType] !== false;
+  // 11-24：双栏分界限自动隐藏 —— 平时不画、悬浮到分界处（或拖拽）才出现
+  const splitterAutoHide = useUISettingKey("splitterAutoHide");
+  // 优先级：「这个视图不画」最优先（never），其次才是「平时画不画」（hover / always）
+  const feedSplitterVisibility: "always" | "hover" | "never" = !showFeedSplitter
+    ? "never"
+    : splitterAutoHide
+      ? "hover"
+      : "always";
 
   // Calculate dynamic max for entry column
   const entryColMax = useMemo(() => {
@@ -291,10 +299,11 @@ export function ThreeColumnLayout({
       >
         {/* 第一栏的分界限（订阅栏 ↔ 中栏）：可以按视图关掉 —— 用户 2026-09-18 要求
             「切到图片/社交媒体视图时就不显示」；关掉只是不画这条线/不给拖拽把手，
-            该栏宽度仍按你上次拖好的值保留。 */}
+            该栏宽度仍按你上次拖好的值保留。
+            11-24：另有「双栏自动隐藏」设置 —— 开时这条平时不画，悬浮/拖拽时才出现。 */}
         {showSidebar && (
           <PanelSplitter
-            visibility={showFeedSplitter ? "always" : "never"}
+            visibility={feedSplitterVisibility}
             isDragging={feedColResizable.isDragging}
             onPointerDown={feedColResizable.separatorProps.onPointerDown}
             onTouchStart={feedColResizable.separatorProps.onTouchStart}

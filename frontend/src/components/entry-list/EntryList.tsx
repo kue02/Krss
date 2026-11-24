@@ -504,8 +504,8 @@ export function EntryList({
    *  后两档仅在对应实验开关打开时进入循环。 */
   const {
     setArticleLayout,
-    setSplitterVisibleForView,
     setInoreaderSplitterPromptShown,
+    hideArticleSplitterFromPrompt,
   } = useUISettingActions();
   const handleToggleArticleLayout = useCallback(() => {
     const idx = Math.max(
@@ -1660,12 +1660,25 @@ export function EntryList({
                   </AlertDialog.Heading>
                 </AlertDialog.Header>
                 <AlertDialog.Body>
-                  <div className="text-sm text-muted-foreground">
-                    {t("appearance_view.inoreader_splitter_prompt_description", {
-                      views: suppressedSplitterViews.join(
-                        t("appearance_view.inoreader_splitter_prompt_separator"),
-                      ),
-                    })}
+                  <div className="space-y-2 text-sm text-muted-foreground">
+                    <p>
+                      {t(
+                        "appearance_view.inoreader_splitter_prompt_description",
+                        {
+                          views: suppressedSplitterViews.join(
+                            t(
+                              "appearance_view.inoreader_splitter_prompt_separator",
+                            ),
+                          ),
+                        },
+                      )}
+                    </p>
+                    {/* 11-24（用户第 3 条）：说明这不是一次性选择，随时能回设置里改回来 */}
+                    <p>
+                      {t(
+                        "appearance_view.inoreader_splitter_prompt_settings_hint",
+                      )}
+                    </p>
                   </div>
                 </AlertDialog.Body>
                 <AlertDialog.Footer>
@@ -1680,7 +1693,8 @@ export function EntryList({
                     size="sm"
                     variant="primary"
                     onPress={() => {
-                      setSplitterVisibleForView("article", false);
+                      // 记下「这条是提示替用户关的」，切走 Inoreader 布局时自动恢复
+                      hideArticleSplitterFromPrompt();
                       setSplitterPromptOpen(false);
                     }}
                   >

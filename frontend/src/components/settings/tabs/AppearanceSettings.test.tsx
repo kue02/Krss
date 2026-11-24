@@ -9,6 +9,7 @@ const setTimelineCollapseForView = vi.fn();
 const setTimelineTimeBasisForView = vi.fn();
 const setEntryFontSize = vi.fn();
 const setEntryLineHeight = vi.fn();
+const setSplitterAutoHide = vi.fn();
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: "zh" } }),
@@ -151,6 +152,7 @@ vi.mock("@/hooks/useUISettings", async () => {
       notification: true,
       social: true,
     },
+    splitterAutoHide: false,
   };
   return {
     ...actual,
@@ -166,6 +168,7 @@ vi.mock("@/hooks/useUISettings", async () => {
       setExpandLongForView,
       setReduceMotion,
       setArticleLayout: vi.fn(),
+      setSplitterAutoHide,
       setPictureLayout: vi.fn(),
       setArticlePushDirection: vi.fn(),
       setArticleCoverList: vi.fn(),
@@ -219,6 +222,7 @@ describe("AppearanceSettings 按视图设置", () => {
     setTimelineGranularityForView.mockClear();
     setTimelineCollapseForView.mockClear();
     setTimelineTimeBasisForView.mockClear();
+    setSplitterAutoHide.mockClear();
     scrollReadState.mode = "perView";
   });
 
@@ -481,5 +485,22 @@ describe("AppearanceSettings 按视图设置", () => {
 
     // 旧版要先去通用选「按视图单独设」才出现，现在四个视图的行常显
     expect(screen.getAllByText("appearance_view.scroll_read")).toHaveLength(4);
+  });
+
+  it("「双栏自动隐藏分界限」独立一行，默认关（平时也画），可切到自动隐藏（11-24）", () => {
+    render(<AppearanceSettings />);
+
+    // 只有一处（全局一项，不在四个视图里各来一遍）
+    expect(
+      screen.getAllByText("appearance_view.splitter_auto_hide"),
+    ).toHaveLength(1);
+
+    const row = rowOf("appearance_view.splitter_auto_hide");
+    expect(within(row).getByText("appearance_view.splitter_auto_hide_hint")).toBeTruthy();
+    // 默认关 = 平时也画
+    expect(row.querySelector("[data-value]")?.getAttribute("data-value")).toBe("off");
+
+    fireEvent.click(within(row).getByText("on"));
+    expect(setSplitterAutoHide).toHaveBeenCalledWith(true);
   });
 });
