@@ -56,7 +56,64 @@ function render(ui: React.ReactElement) {
   );
 }
 
+/** 取 article 的 class token（精确到单个类，避免 `md:pb-20` 命中 `pb-20` 子串） */
+function articleTokens(container: HTMLElement): string[] {
+  const article = container.querySelector("article");
+  expect(article).not.toBeNull();
+  return article?.className.split(/\s+/) ?? [];
+}
+
 describe("EntryContentBody", () => {
+  // 移动端正文末尾留白：10rem + 安全区，md（768px）起回到 80px
+  it("keeps a 10rem + safe-area tail on the mobile article", () => {
+    const { container } = render(
+      <EntryContentBody
+        entry={entry}
+        scrollRef={vi.fn()}
+        displayContent={entry.content}
+      />,
+    );
+
+    const tokens = articleTokens(container);
+    expect(tokens).toContain("pb-[calc(10rem+env(safe-area-inset-bottom))]");
+    expect(tokens).toContain("md:pb-20");
+    expect(tokens).not.toContain("pb-20");
+  });
+
+  // 留白必须落在滚动容器内部才会被算进 scrollHeight：article 直接挂在 viewport 下，
+  // 且非 embedded 档 viewport 自己就是 overflow-y-auto 的滚动节点。
+  it("keeps the article inside the scrolling viewport", () => {
+    const { container } = render(
+      <EntryContentBody
+        entry={entry}
+        scrollRef={vi.fn()}
+        displayContent={entry.content}
+      />,
+    );
+
+    const article = container.querySelector("article");
+    const viewport = article?.parentElement;
+    expect(viewport?.className).toContain("entry-content-viewport");
+    expect(viewport?.className).toContain("overflow-y-auto");
+  });
+
+  // embedded（时间线展开等）沿用原来的紧凑留白，不受移动端档影响
+  it("leaves the embedded variant's compact padding untouched", () => {
+    const { container } = render(
+      <EntryContentBody
+        entry={entry}
+        embedded
+        scrollRef={vi.fn()}
+        displayContent={entry.content}
+      />,
+    );
+
+    const tokens = articleTokens(container);
+    expect(tokens).toContain("pb-6");
+    expect(tokens).not.toContain("pb-[calc(10rem+env(safe-area-inset-bottom))]");
+    expect(tokens).not.toContain("md:pb-20");
+  });
+
   it("allows long URL titles to wrap instead of clipping horizontally", () => {
     render(
       <EntryContentBody
