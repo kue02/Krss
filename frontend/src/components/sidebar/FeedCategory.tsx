@@ -190,10 +190,10 @@ export function FeedCategory({
             {...rowDndProps}
           >
           <Ripple hoverOpacity={0} pressedOpacity={0.05} duration={100} />
-            {/* Arrow button - only this toggles expand/collapse */}
+            {/* 三角 + 文件夹名：点这两处都展开/收起（下拉），不切换 */}
             <button
               type="button"
-              className="flex h-full items-center"
+              className="flex h-full min-w-0 items-center gap-2 text-left"
               tabIndex={-1}
               onClick={(e) => {
                 e.stopPropagation();
@@ -208,13 +208,13 @@ export function FeedCategory({
                   )}
                 />
               </span>
+              <span className="min-w-0 truncate text-[0.8125rem] font-semibold">
+                {name}
+              </span>
             </button>
-            {/* Folder name - clicking selects the folder */}
-            <span className="grow truncate text-[0.8125rem] font-semibold">
-              {name}
-            </span>
+            {/* 行内其余空白：点空白切换到该文件夹（选中），由外层 div 的 onClick 处理 */}
             {unreadCount !== undefined && unreadCount > 0 && (
-              <span className="ml-2 shrink-0 text-[0.7rem] font-medium tabular-nums text-muted-foreground">
+              <span className="ml-auto shrink-0 text-[0.7rem] font-medium tabular-nums text-muted-foreground">
                 {unreadCount}
               </span>
             )}
