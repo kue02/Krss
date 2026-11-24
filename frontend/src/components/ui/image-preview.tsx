@@ -204,6 +204,30 @@ export function ImagePreview() {
     pointerTypeRef.current = e.pointerType || "mouse";
   }, []);
 
+  // 等当次 click 处理完再清空按下坐标：pointercancel / 被原生拖拽打断时不会
+  // 产生 click，若立刻清空或完全不清空，下一次干净点击会误判成拖动。
+  const schedulePointerDownReset = useCallback(() => {
+    window.setTimeout(() => {
+      pointerDownPos.current = null;
+    }, 0);
+  }, []);
+
+  const handleStagePointerUp = useCallback(
+    (e: React.PointerEvent) => {
+      zoom.handlers.onPointerUp?.(e);
+      schedulePointerDownReset();
+    },
+    [schedulePointerDownReset, zoom.handlers.onPointerUp],
+  );
+
+  const handleStagePointerCancel = useCallback(
+    (e: React.PointerEvent) => {
+      zoom.handlers.onPointerCancel?.(e);
+      schedulePointerDownReset();
+    },
+    [schedulePointerDownReset, zoom.handlers.onPointerCancel],
+  );
+
   // 点击图片：仅在未放大且未发生拖动时关闭。
   // 用短延时关闭，以便和「双击放大」相区分（第二次点击会取消关闭）。
   // 双击判定自己按 tap 间隔做，不依赖原生 dblclick —— iOS Safari 对非表单元素
@@ -379,12 +403,15 @@ export function ImagePreview() {
                   handleCarouselPointerDown(e);
                   zoom.handlers.onPointerDown?.(e);
                 }}
+                onPointerUp={handleStagePointerUp}
+                onPointerCancel={handleStagePointerCancel}
                 onClick={handleStageClick}
               >
                 <AuthedImage
                   ref={zoom.imageRef}
                   src={images[0]}
                   alt=""
+                  draggable={false}
                   className="max-h-full max-w-full object-contain"
                   style={zoom.style}
                 />
@@ -397,6 +424,8 @@ export function ImagePreview() {
                 className="size-full min-h-0 touch-none"
                 {...zoom.handlers}
                 onDoubleClick={handleDoubleClick}
+                onPointerUp={handleStagePointerUp}
+                onPointerCancel={handleStagePointerCancel}
               >
                 <div
                   ref={emblaRef}
@@ -415,6 +444,7 @@ export function ImagePreview() {
                           ref={index === currentIndex ? zoom.imageRef : undefined}
                           src={src}
                           alt=""
+                          draggable={false}
                           className="max-h-full max-w-full object-contain"
                           style={
                             index === currentIndex ? zoom.style : undefined
