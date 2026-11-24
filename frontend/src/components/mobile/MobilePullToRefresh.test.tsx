@@ -8,11 +8,11 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-type TouchType = "touchstart" | "touchmove" | "touchend";
+type TouchType = "touchstart" | "touchmove" | "touchend" | "touchcancel";
 
 function touch(type: TouchType, x: number, y: number): TouchEvent {
   const touches =
-    type === "touchend"
+    type === "touchend" || type === "touchcancel"
       ? []
       : ([{ clientX: x, clientY: y, identifier: 1 }] as unknown as Touch[]);
   return new TouchEvent(type, {
@@ -22,7 +22,7 @@ function touch(type: TouchType, x: number, y: number): TouchEvent {
   });
 }
 
-/** 把事件发到 body：window 是捕获/冒泡终点，target 是真实元素（与真机一致） */
+/** 把事件发到 body：window 是冒泡终点，target 是真实元素（与真机一致） */
 function fire(type: TouchType, x: number, y: number): boolean {
   return fireEvent(document.body, touch(type, x, y));
 }
@@ -42,6 +42,16 @@ function progressVisible() {
   return progress().classList.contains("opacity-100");
 }
 
+function makeWrapper(attribute: string, value: string): HTMLDivElement {
+  const wrapper = document.createElement("div");
+  wrapper.setAttribute(attribute, value);
+  const inner = document.createElement("span");
+  inner.textContent = "浮层内容";
+  wrapper.append(inner);
+  document.body.append(wrapper);
+  return wrapper;
+}
+
 describe("MobilePullToRefresh", () => {
   let onRefresh: () => Promise<void>;
 
@@ -54,11 +64,11 @@ describe("MobilePullToRefresh", () => {
     vi.restoreAllMocks();
   });
 
-  function renderComponent() {
+  function renderComponent(isRefreshing = false) {
     render(
       <MobilePullToRefresh
         enabled
-        isRefreshing={false}
+        isRefreshing={isRefreshing}
         onRefresh={onRefresh}
       />,
     );
@@ -86,15 +96,52 @@ describe("MobilePullToRefresh", () => {
     expect(progressVisible()).toBe(false);
   });
 
-  it("从 [data-swipe-row] 起手不触发下拉", async () => {
+  it("从 [data-swipe-row] 起手纵向下拉仍然触发（不再整层排除）", async () => {
     renderComponent();
+    const row = makeWrapper("data-swipe-row", "");
+    const inner = row.firstElementChild as HTMLElement;
 
-    const row = document.createElement("div");
-    row.setAttribute("data-swipe-row", "");
-    const inner = document.createElement("span");
-    inner.textContent = "条目";
-    row.append(inner);
-    document.body.append(row);
+    try {
+      fireEvent(inner, touch("touchstart", 100, 100));
+      const move = touch("touchmove", 100, 240);
+      expect(fireEvent(inner, move)).toBe(false);
+      expect(move.defaultPrevented).toBe(true);
+      expect(progressVisible()).toBe(true);
+
+      fireEvent(inner, touch("touchend", 100, 240));
+      await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(1));
+    } finally {
+      row.remove();
+    }
+  });
+
+  it("从 [data-swipe-row] 起手横滑不 preventDefault、不显示进度", async () => {
+    renderComponent();
+    const row = makeWrapper("data-swipe-row", "");
+    const inner = row.firstElementChild as HTMLElement;
+
+    try {
+      fireEvent(inner, touch("touchstart", 100, 100));
+      const move = touch("touchmove", 160, 105);
+      expect(fireEvent(inner, move)).toBe(true);
+      expect(move.defaultPrevented).toBe(false);
+      expect(progressVisible()).toBe(false);
+
+      fireEvent(inner, touch("touchend", 160, 105));
+      expect(onRefresh).not.toHaveBeenCalled();
+    } finally {
+      row.remove();
+    }
+  });
+
+  it.each([
+    ["data-overlay", ""],
+    ["data-slot", "sheet-content"],
+    ["data-slot", "sheet"],
+  ])("浮层 [%s=%s] 内起手不接管、不 preventDefault、不刷新", async (attr, value) => {
+    renderComponent();
+    const overlay = makeWrapper(attr, value);
+    const inner = overlay.firstElementChild as HTMLElement;
 
     try {
       fireEvent(inner, touch("touchstart", 100, 100));
@@ -106,8 +153,28 @@ describe("MobilePullToRefresh", () => {
       fireEvent(inner, touch("touchend", 100, 240));
       expect(onRefresh).not.toHaveBeenCalled();
     } finally {
-      row.remove();
+      overlay.remove();
     }
+  });
+
+  it("先纵后横：未过阈值时改判横向，停止 preventDefault 并复位", async () => {
+    renderComponent();
+
+    fire("touchstart", 100, 100);
+    // 先纵移 30px：进入下拉并 preventDefault
+    const vertical = touch("touchmove", 100, 130);
+    expect(fireEvent(document.body, vertical)).toBe(false);
+    expect(vertical.defaultPrevented).toBe(true);
+    expect(progressVisible()).toBe(true);
+
+    // 再大幅横移（dx=120），纵向仍只有 30px：应改判横向、复位且不阻断
+    const horizontal = touch("touchmove", 220, 130);
+    expect(fireEvent(document.body, horizontal)).toBe(true);
+    expect(horizontal.defaultPrevented).toBe(false);
+    expect(progressVisible()).toBe(false);
+
+    fire("touchend", 220, 130);
+    expect(onRefresh).not.toHaveBeenCalled();
   });
 
   it("纵向下拉超过阈值后松手触发 onRefresh", async () => {
@@ -140,6 +207,18 @@ describe("MobilePullToRefresh", () => {
     await waitFor(() => expect(progressVisible()).toBe(false));
   });
 
+  it("touchcancel 只复位，即使已拉过阈值也不刷新", async () => {
+    renderComponent();
+
+    fire("touchstart", 100, 100);
+    fire("touchmove", 100, 240);
+    expect(progressVisible()).toBe(true);
+
+    fire("touchcancel", 100, 240);
+    expect(onRefresh).not.toHaveBeenCalled();
+    expect(progressVisible()).toBe(false);
+  });
+
   it("scrollY > 0 时不触发下拉", async () => {
     setScrollY(120);
     renderComponent();
@@ -148,7 +227,18 @@ describe("MobilePullToRefresh", () => {
     const move = touch("touchmove", 100, 240);
     expect(fireEvent(document.body, move)).toBe(true);
     expect(move.defaultPrevented).toBe(false);
-    expect(progressVisible()).toBe(false);
+
+    fire("touchend", 100, 240);
+    expect(onRefresh).not.toHaveBeenCalled();
+  });
+
+  it("isRefreshing 为 true 时不再接管新手势", async () => {
+    renderComponent(true);
+
+    fire("touchstart", 100, 100);
+    const move = touch("touchmove", 100, 240);
+    expect(fireEvent(document.body, move)).toBe(true);
+    expect(move.defaultPrevented).toBe(false);
 
     fire("touchend", 100, 240);
     expect(onRefresh).not.toHaveBeenCalled();
