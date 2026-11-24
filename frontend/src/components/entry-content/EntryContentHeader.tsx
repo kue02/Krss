@@ -91,6 +91,13 @@ interface EntryContentHeaderProps {
   stickyTopClassName?: string;
   /** 手机内联合列：正文标题栏吸顶（列表 TOP 栏滚走时贴在视口顶），未滚走时自然排在它下面 */
   mobileInlineSticky?: boolean;
+  /**
+   * 顶栏背景层是否叠加 `backdrop-blur`。默认跟随 `sticky`：第三栏那套（非内嵌）保留模糊；
+   * 内联合列（卡片式正文 pane）里必须关掉：Chromium 下带 backdrop-filter 的元素
+   * 不受祖先 `overflow: clip` 圆角裁剪的约束，会把卡片的圆角盖成直角（用户 2026-11-24 报的
+   * 「滑动后点开正文，卡片左上角缺一块」，不滚动时背景层 opacity-0 所以看不到）。
+   */
+  backgroundBlur?: boolean;
 }
 
 interface TranslationButtonState {
@@ -154,6 +161,7 @@ export function EntryContentHeader({
   sticky = false,
   stickyTopClassName,
   mobileInlineSticky = false,
+  backgroundBlur = !sticky,
 }: EntryContentHeaderProps) {
   const { t } = useTranslation();
   const safeUrl = entry.url && isSafeUrl(entry.url) ? entry.url : null;
@@ -818,7 +826,8 @@ export function EntryContentHeader({
       {/* 对齐 Nextflux ActionButtons：70% 底 + 小 blur + 细边框，无 mask 渐隐（48px 高的条加渐隐会把按钮下半截切淡） */}
       <div
         className={cn(
-          "absolute inset-0 transition-opacity duration-300 ease-in-out pointer-events-none border-b border-foreground/10 bg-overlay/70 backdrop-blur-sm",
+          "absolute inset-0 transition-opacity duration-300 ease-in-out pointer-events-none border-b border-foreground/10 bg-overlay/70",
+          backgroundBlur && "backdrop-blur-sm",
           isAtTop ? "opacity-0" : "opacity-100",
         )}
       />

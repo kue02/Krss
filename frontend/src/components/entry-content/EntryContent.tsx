@@ -289,6 +289,8 @@ export function EntryContent({
         sticky={embedded}
         stickyTopClassName={headerStickyTopClassName}
         mobileInlineSticky={embedded && Boolean(isMobile)}
+        /** 内联合列走 overflow:clip 圆角裁剪，backdrop-filter 会逃逸裁剪盖住卡片圆角，故关闭模糊 */
+        backgroundBlur={!embedded}
       />
       {/* 23-4：阅读进度条锁在工具栏（h-12 = 48px）正下方。
           跟着真实滚动容器（正文那个元素滚动）走；看原站时滚的是 iframe，进度条没有意义。
