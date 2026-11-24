@@ -691,12 +691,24 @@ export function EntryList({
   /* 手机内联合列：向下滚动到正文顶栏该吸顶时，把列表顶部「全部文章」那条 TOP 栏收起来，
      只留正文自己的顶栏吸顶（用户 2026-11-24 图一）。 */
   const [mobileHeaderHidden, setMobileHeaderHidden] = useState(false);
+  /* 只有用户自己往下滚过（不是点开时自动吸顶那一下）才收起顶栏：
+     否则点开任意一条都会因为自动吸顶把顶栏瞬间藏掉，看起来像「一打开就没有 TOP 栏」。 */
+  const mobileHeaderUserScrolledRef = useRef(false);
   useEffect(() => {
+    mobileHeaderUserScrolledRef.current = false;
     if (!isMobile || !inlineActive || !selectedEntryId) {
       setMobileHeaderHidden(false);
       return;
     }
     const surface = scrollSurface;
+    const scrollHost: HTMLElement | Window =
+      surface.kind === "document" ? window : containerRef.current ?? window;
+    const markInteracted = () => {
+      mobileHeaderUserScrolledRef.current = true;
+    };
+    scrollHost.addEventListener("wheel", markInteracted, { passive: true });
+    scrollHost.addEventListener("touchstart", markInteracted, { passive: true });
+    scrollHost.addEventListener("pointerdown", markInteracted);
     const update = () => {
       const node = inlineContentRef.current;
       if (!node) {
@@ -705,10 +717,16 @@ export function EntryList({
       }
       const paneTop =
         node.getBoundingClientRect().top - surface.getViewportRect().top;
-      setMobileHeaderHidden(paneTop < 8);
+      setMobileHeaderHidden(mobileHeaderUserScrolledRef.current && paneTop < 0);
     };
     update();
-    return surface.subscribe(update);
+    const unsubscribe = surface.subscribe(update);
+    return () => {
+      unsubscribe();
+      scrollHost.removeEventListener("wheel", markInteracted);
+      scrollHost.removeEventListener("touchstart", markInteracted);
+      scrollHost.removeEventListener("pointerdown", markInteracted);
+    };
   }, [isMobile, inlineActive, selectedEntryId, scrollSurface]);
   /* 合列正文接在「被点那一行」的后面（不是列表末尾）：读正文时还能继续往下滚看到
      后续条目；selectedEntryId 唯一 ⇒ 同时只有一条正文，点别的行就是换正文、上一条收起。 */
