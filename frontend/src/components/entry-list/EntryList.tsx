@@ -521,6 +521,9 @@ export function EntryList({
   useEffect(() => {
     if (contentType !== "article" || articleLayout !== "inoreader") return;
     if (inoreaderSplitterPromptShown) return;
+    /* 文章视图这条线本来就关着时不必再问「要不要也一起关」——
+       问题前提不成立（用户早就自己关了）。 */
+    if (splitterVisibleByView?.article === false) return;
     if (suppressedSplitterViews.length === 0) return;
     setSplitterPromptOpen(true);
     setInoreaderSplitterPromptShown(true);
@@ -528,6 +531,7 @@ export function EntryList({
     contentType,
     articleLayout,
     inoreaderSplitterPromptShown,
+    splitterVisibleByView?.article,
     suppressedSplitterViews.length,
     setInoreaderSplitterPromptShown,
   ]);
