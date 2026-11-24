@@ -34,7 +34,8 @@
     "views": "智能文件夹",
     "view_no_matches": "暂无匹配的订阅",
     "starred_view": "只看当前视图的星标",
-    "plugin_views": "插件"
+    "plugin_views": "插件",
+    "dialog_label": "侧栏"
   },
   "content_type": {
     "article": "文章",

@@ -51,6 +51,7 @@ function pointer(
     clientX: number;
     clientY: number;
     button?: number;
+    buttons?: number;
   },
 ) {
   fireEvent[type](element, {
@@ -58,6 +59,9 @@ function pointer(
     pointerType: "touch",
     isPrimary: true,
     button: init.button ?? 0,
+    // 手势代码会检查 `buttons & 1`：按下/移动时左键是 1，抬起后是 0。
+    // jsdom 不会自己按事件类型填这个字段，缺了它 move 会被当成「手指已经抬起」。
+    buttons: init.buttons ?? (type === "pointerUp" ? 0 : 1),
     clientX: init.clientX,
     clientY: init.clientY,
   });
@@ -311,6 +315,122 @@ describe("Sheet", () => {
     pointer("pointerMove", content, { pointerId: 4, clientX: 270, clientY: 422 });
     pointer("pointerUp", content, { pointerId: 4, clientX: 270, clientY: 422 });
 
+    expect(stateOf(root)).toBe("open");
+    expect(content.style.transform).toBe("translateX(0px)");
+    expect(content.style.transition).toContain("300ms");
+  });
+
+  it("exposes dialog semantics with a translated label", () => {
+    const { container } = render(<ControlledSheet initialOpen />);
+    const { content } = getSlots(container);
+
+    expect(content.getAttribute("role")).toBe("dialog");
+    expect(content.getAttribute("aria-modal")).toBe("true");
+    // 文案走 i18n（sidebar.dialog_label），测试环境没有 i18n 实例时也至少不能为空
+    expect((content.getAttribute("aria-label") ?? "").length).toBeGreaterThan(0);
+  });
+
+  it("keeps Tab focus cycling inside the panel", () => {
+    const { container } = render(
+      <Sheet open onOpenChange={() => {}}>
+        <button type="button">first item</button>
+        <button type="button">last item</button>
+      </Sheet>,
+    );
+    const { content } = getSlots(container);
+    const first = screen.getByText("first item");
+    const last = screen.getByText("last item");
+
+    // 焦点在最后一个元素上按 Tab → 回到第一个
+    last.focus();
+    expect(fireEvent.keyDown(document, { key: "Tab" })).toBe(false);
+    expect(document.activeElement).toBe(first);
+
+    // 焦点在第一个元素上按 Shift+Tab → 跳回最后一个
+    expect(fireEvent.keyDown(document, { key: "Tab", shiftKey: true })).toBe(
+      false,
+    );
+    expect(document.activeElement).toBe(last);
+
+    // 焦点落在面板外（比如程序化 focus 到背景按钮）→ 下一个 Tab 拉回面板内
+    const outside = document.createElement("button");
+    document.body.appendChild(outside);
+    outside.focus();
+    expect(fireEvent.keyDown(document, { key: "Tab" })).toBe(false);
+    expect(document.activeElement).toBe(first);
+    outside.remove();
+    expect(content.getAttribute("role")).toBe("dialog");
+  });
+
+  it("drops a drag that never crossed the threshold when the pointer is released outside", () => {
+    const { container } = render(<ControlledSheet initialOpen />);
+    const { root, content } = getSlots(container);
+
+    pointer("pointerDown", content, {
+      pointerId: 7,
+      clientX: 300,
+      clientY: 400,
+    });
+    // 只动了 4px，没到 8px 起手阈值
+    pointer("pointerMove", content, {
+      pointerId: 7,
+      clientX: 296,
+      clientY: 401,
+    });
+    // 手指移出面板后在 document 上松手：面板自己收不到 pointerup
+    fireEvent.pointerUp(document, {
+      pointerId: 7,
+      pointerType: "touch",
+      clientX: 100,
+      clientY: 401,
+    });
+
+    // 如果 dragRef 残留，下一次 move 会直接把面板拖到 -100px
+    pointer("pointerMove", content, {
+      pointerId: 7,
+      clientX: 200,
+      clientY: 401,
+    });
+    expect(content.style.transform).toBe("translateX(0px)");
+    expect(stateOf(root)).toBe("open");
+  });
+
+  it("ignores moves whose primary button is already released", () => {
+    const { container } = render(<ControlledSheet initialOpen />);
+    const { content } = getSlots(container);
+
+    pointer("pointerDown", content, {
+      pointerId: 8,
+      clientX: 300,
+      clientY: 400,
+    });
+    pointer("pointerMove", content, {
+      pointerId: 8,
+      clientX: 180,
+      clientY: 402,
+      buttons: 0,
+    });
+    expect(content.style.transform).toBe("translateX(0px)");
+  });
+
+  it("clears pending drag state on pointercancel", () => {
+    const { container } = render(<ControlledSheet initialOpen />);
+    const { root, content } = getSlots(container);
+
+    pointer("pointerDown", content, {
+      pointerId: 9,
+      clientX: 300,
+      clientY: 400,
+    });
+    pointer("pointerMove", content, {
+      pointerId: 9,
+      clientX: 240,
+      clientY: 402,
+    });
+    expect(content.style.transform).toBe("translateX(-60px)");
+
+    fireEvent.pointerCancel(content, { pointerId: 9, pointerType: "touch" });
+    // 取消 = 回弹，不关闭
     expect(stateOf(root)).toBe("open");
     expect(content.style.transform).toBe("translateX(0px)");
     expect(content.style.transition).toContain("300ms");
