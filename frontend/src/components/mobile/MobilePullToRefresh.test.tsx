@@ -177,6 +177,48 @@ describe("MobilePullToRefresh", () => {
     expect(onRefresh).not.toHaveBeenCalled();
   });
 
+  it("先纵后横（已过阈值）仍改判横向，停止 preventDefault 并允许横向滚动", async () => {
+    renderComponent();
+
+    fire("touchstart", 100, 100);
+    // 先纵移 140px：已超过 64 阈值
+    const vertical = touch("touchmove", 100, 240);
+    expect(fireEvent(document.body, vertical)).toBe(false);
+    expect(vertical.defaultPrevented).toBe(true);
+    expect(progressVisible()).toBe(true);
+
+    // 再大幅横移（dx=220 > dy=140 * 1.2）：任何阶段都改判横向
+    const horizontal = touch("touchmove", 320, 240);
+    expect(fireEvent(document.body, horizontal)).toBe(true);
+    expect(horizontal.defaultPrevented).toBe(false);
+    expect(progressVisible()).toBe(false);
+
+    fire("touchend", 320, 240);
+    expect(onRefresh).not.toHaveBeenCalled();
+  });
+
+  it("父级更换 onRefresh 身份不打断进行中的下拉", async () => {
+    const first = vi.fn(async () => {});
+    const second = vi.fn(async () => {});
+    const { rerender } = render(
+      <MobilePullToRefresh enabled isRefreshing={false} onRefresh={first} />,
+    );
+
+    fire("touchstart", 100, 100);
+    fire("touchmove", 100, 240);
+    expect(progressVisible()).toBe(true);
+
+    // 父级重渲染换了回调：cleanup 不应清掉进行中的 pull
+    rerender(
+      <MobilePullToRefresh enabled isRefreshing={false} onRefresh={second} />,
+    );
+    expect(progressVisible()).toBe(true);
+
+    fire("touchend", 100, 240);
+    await waitFor(() => expect(second).toHaveBeenCalledTimes(1));
+    expect(first).not.toHaveBeenCalled();
+  });
+
   it("纵向下拉超过阈值后松手触发 onRefresh", async () => {
     renderComponent();
 
