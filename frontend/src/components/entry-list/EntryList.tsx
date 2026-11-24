@@ -752,6 +752,10 @@ export function EntryList({
       if (performance.now() < suppressHeaderToggleUntilRef.current) return;
       if (y <= 6) {
         setMobileHeaderHidden(false);
+        /* 回到列表最顶时正文一定不在视口顶（它排在列表里），必须把「铺满」复位，
+           否则从正文下方滚回顶部后 paneAtTop 还停在 true，正文栏会以直角铺满的
+           形态挂在列表中间、左右 8px 留白消失（用户 2026-11-24 报的缺口同批发现）。 */
+        if (inlineActive) setPaneAtTop(false);
         return;
       }
       if (inlineActive && selectedEntryId) {
@@ -796,12 +800,16 @@ export function EntryList({
         ref={inlineContentRef}
         data-testid="inline-article-pane"
         className={cn(
-          "bg-card [clip-path:inset(0_round_12px)] transition-[margin,width,border-radius] duration-200 ease-out",
+          /* 裁剪圆角必须跟着 border-radius 走：贴顶那档是 rounded-none（直角边框），
+             若裁剪还按 12px 圆角切，角上就会少一块（用户 2026-11-24 报的缺口）。
+             clip-path 一并进过渡表，否则切换途中两者不同步，反向（贴顶→卡片）时
+             裁剪圆角会先跳回 12px，照样露缺口。 */
+          "bg-card transition-[margin,width,border-radius,clip-path] duration-200 ease-out",
           articlePaneStyle === "card"
             ? paneAtTop
-              ? "my-0 w-full rounded-none border-t border-border"
-              : "mx-2 my-2 w-[calc(100%-1rem)] rounded-[12px] border border-border/60 shadow-nf"
-            : "w-full rounded-[12px] border-t border-border",
+              ? "my-0 w-full rounded-none border-t border-border [clip-path:inset(0)]"
+              : "mx-2 my-2 w-[calc(100%-1rem)] rounded-[12px] border border-border/60 shadow-nf [clip-path:inset(0_round_12px)]"
+            : "w-full rounded-[12px] border-t border-border [clip-path:inset(0_round_12px)]",
         )}
       >
         {renderInlineContent?.(containerRef, {
