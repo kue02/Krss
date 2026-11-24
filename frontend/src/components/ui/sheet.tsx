@@ -93,6 +93,9 @@ export function Sheet({
      * 判定可见性/可 Tab 的规则与全站其它浮层保持一致。
      */
     const trapTab = (event: KeyboardEvent) => {
+      // 已被更内层浮层（如侧栏里打开的弹窗、Portal 出来的 dialog）处理过就不再抢：
+      // 捕获阶段的监听会先于内层冒泡阶段的处理器跑，光看这里的状态分不清谁该管。
+      if (event.defaultPrevented) return;
       const panel = panelRef.current;
       if (!panel) return;
       const tabbable = getTabbable(panel);
@@ -163,9 +166,16 @@ export function Sheet({
     };
   }, [open, onOpenChange]);
 
-  // 打开后把焦点交给面板（不做背景焦点陷阱，保持与旧版一致），
-  // 也不在关闭时回焦：移动端侧栏里点「设置」会先关侧栏再开弹窗，
+  // 打开后把焦点交给面板（Tab 循环在下面的 keydown 里做，见 trapTab）。
+  // 不在关闭时回焦：移动端侧栏里点「设置」会先关侧栏再开弹窗，
   // 回焦会从刚打开的弹窗手里抢走焦点（2026-09-20 同类问题）。
+  //
+  // 背景没有加 inert/aria-hidden：移动端的内容根和本面板同处 App 的同一个 React
+  // 根节点（#root），在 document.body 子节点上做 inert 会把面板自己一起 inert 掉；
+  // 正确做法需要 App 在每个移动端分支给内容根挂 ref 再传下来（两处调用点 + 嵌套
+  // 弹窗/Portal 都得排查），浏览器实测前风险大于收益。当前靠「遮罩挡住指针 +
+  // 面板内 Tab 循环 + 面板外焦点拉回 + 关闭态 inert」覆盖键盘与指针两条路径，
+  // 读屏虚拟光标仍可游走背景 —— 记为待观察项。
   useEffect(() => {
     if (!open) return;
     const panel = panelRef.current;
@@ -176,8 +186,14 @@ export function Sheet({
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!open || !event.isPrimary || event.button !== 0) return;
     const target = event.target;
-    // 允许内部横向滚动区（如标签行）声明「别把横滑当成关侧栏」
-    if (target instanceof Element && target.closest("[data-sheet-no-drag]")) {
+    // 交互控件上的手势属于控件自己：在按钮/链接上按下再轻微横移（触摸抖动）
+    // 不该被当成「关侧栏」，否则点订阅、点分类会被吞掉。
+    // 口径与 HeroUI Drawer 的 useDrawerDrag 一致（那边是
+    // `target.closest("input, textarea, button, [role='button'], select, a, ...")`）。
+    if (
+      target instanceof Element &&
+      target.closest("input, textarea, select, button, a, [role='button']")
+    ) {
       return;
     }
     dragRef.current = {
@@ -358,9 +374,12 @@ export function Sheet({
         onPointerCancel={(event) =>
           finishDrag(event.pointerId, event.clientX, true)
         }
-        onLostPointerCapture={() => {
-          dragRef.current = null;
-        }}
+        onLostPointerCapture={(event) =>
+          // 系统中途收走指针（元素被移除、设备切换、浏览器接管手势等）时，面板可能
+          // 停在半开位置：按当前位移/速度走一次完整收尾（关闭或回弹到 0），
+          // 与 pointerup / pointercancel 复用同一段 finishDrag 逻辑，最后清掉 dragRef。
+          finishDrag(event.pointerId, event.clientX, false)
+        }
         className={cn(
           // 移动端抽屉：比旧版 280px 更宽一点（小屏封顶 86vw，避免贴边），
           // 右侧 24px 圆角 + 更深的带偏移投影，让抽屉像"浮起的一层"，而不是硬切一条边。
