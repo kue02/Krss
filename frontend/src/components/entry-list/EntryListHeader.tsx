@@ -128,6 +128,8 @@ interface EntryListHeaderProps {
    * 「没有选中条目」时自然不出现（那类项是「对选中的若干条做事」）。
    */
   selectedEntryIds?: string[];
+  /** 向下滚动时收起这条列表 TOP 栏（桌面与手机共用同一套方向判定） */
+  hidden?: boolean;
   /** 移动端顶栏的搜索入口；不传则不渲染搜索按钮 */
   onSearchClick?: () => void;
 }
@@ -163,6 +165,7 @@ export function EntryListHeader({
   pictureLayoutOrder,
   selectedEntryIds,
   onSearchClick,
+  hidden = false,
 }: EntryListHeaderProps) {
   const { t } = useTranslation();
   const [moreOpen, setMoreOpen] = useState(false);
@@ -386,7 +389,15 @@ export function EntryListHeader({
   }
 
   return (
-    <div className="flex h-14 items-center justify-between gap-4 px-4 shrink-0">
+    <div
+      data-testid="entry-list-topbar"
+      className={cn(
+        "flex items-center justify-between gap-4 overflow-hidden px-4 shrink-0 transition-[max-height,opacity] duration-300 ease-out",
+        hidden
+          ? "h-0 max-h-0 opacity-0 pointer-events-none"
+          : "h-14 max-h-14 opacity-100",
+      )}
+    >
       <div className="flex min-w-0 flex-1 items-center gap-2">
         {isMobile && onMenuClick && (
           <button

@@ -700,51 +700,48 @@ export function EntryList({
     lastScrollYRef.current = null;
   }, [selectedEntryId, isMobile, articlePushDirection, contentType]);
   useEffect(() => {
-    if (!isMobile) {
-      setMobileHeaderHidden(false);
-      return;
-    }
-    const surface = scrollSurface;
+    const container = containerRef.current;
+    const readY = () => (isMobile ? window.scrollY : container?.scrollTop ?? 0);
+    let last = readY();
+    /* 顶栏收起/展开会改变列表可视高度，浏览器的滚动锚定会回写 scrollTop，
+       产生一次方向相反的小滚动，导致顶栏来回抖。切换后 450ms 内只更新基准、不再判定。 */
+    let lockUntil = 0;
     const update = () => {
-      /* 文档滚动取 window.scrollY（部分移动布局下 surface 报的是内层容器，恒为 0） */
-      const y =
-        surface.kind === "document"
-          ? window.scrollY
-          : Math.max(surface.getScrollTop(), window.scrollY);
-      const prev = lastScrollYRef.current;
-      lastScrollYRef.current = y;
+      const y = readY();
+      const prev = last;
+      last = y;
+      if (performance.now() < lockUntil) return;
       if (y <= 6) {
         setMobileHeaderHidden(false);
         return;
       }
       if (inlineActive && selectedEntryId) {
         const node = inlineContentRef.current;
-        const paneTop = node
-          ? node.getBoundingClientRect().top - surface.getViewportRect().top
-          : Number.POSITIVE_INFINITY;
-        if (paneTop <= 0) {
-          /* 正文标题已到顶：TOP 让位，正文标题吸顶 */
-          setMobileHeaderHidden(true);
+        if (node) {
+          const paneTop =
+            node.getBoundingClientRect().top -
+            (isMobile ? 0 : container?.getBoundingClientRect().top ?? 0);
+          setMobileHeaderHidden((current) => (current === (paneTop <= 0) ? current : paneTop <= 0));
           return;
         }
       }
-      if (prev === null) return;
       const dy = y - prev;
-      if (dy > 2) setMobileHeaderHidden(true);
-      else if (dy < -2) setMobileHeaderHidden(false);
+      if (dy > 2) {
+        setMobileHeaderHidden(true);
+        lockUntil = performance.now() + 450;
+      } else if (dy < -2) {
+        setMobileHeaderHidden(false);
+        lockUntil = performance.now() + 450;
+      }
     };
     update();
-    const unsubscribe = surface.subscribe(update);
-    const onScroll = () => update();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    const el = containerRef.current;
-    el?.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("scroll", update, { passive: true });
+    container?.addEventListener("scroll", update, { passive: true });
     return () => {
-      unsubscribe();
-      window.removeEventListener("scroll", onScroll);
-      el?.removeEventListener("scroll", onScroll);
+      window.removeEventListener("scroll", update);
+      container?.removeEventListener("scroll", update);
     };
-  }, [isMobile, inlineActive, selectedEntryId, scrollSurface]);
+  }, [isMobile, inlineActive, selectedEntryId]);
   /* 合列正文接在「被点那一行」的后面（不是列表末尾）：读正文时还能继续往下滚看到
      后续条目；selectedEntryId 唯一 ⇒ 同时只有一条正文，点别的行就是换正文、上一条收起。 */
   const inlinePaneFor = (entryId: string | null) =>
@@ -1625,6 +1622,7 @@ export function EntryList({
         hidden={mobileHeaderHidden}
       >
         <EntryListHeader
+          hidden={!isMobile && mobileHeaderHidden}
           title={headerTitle}
           subtitle={headerSubtitle}
           onBackFromFeedJump={feedJumpBackHref ? onBackFromFeedJump : undefined}

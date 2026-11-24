@@ -1310,7 +1310,7 @@ export function AppearanceSettings() {
                     )}
                     {/* 「Inoreader列表」的行高：把图片悬停大图那套行高设置搬来作为这个列表布局自己的设置 */}
                     {articleLayout === "inoreader" && (
-                      <SettingRow label={t("appearance_view.hover_row_height")}>
+                      <SettingRow label={t("appearance_view.article_list_row_height")}>
                         <SegmentedControl
                           className="shrink-0"
                           value={articleListRowHeight}
@@ -1323,13 +1323,13 @@ export function AppearanceSettings() {
                             {
                               value: "compact",
                               label: t(
-                                "appearance_view.hover_row_height_compact",
+                                "appearance_view.article_list_row_height_compact",
                               ),
                             },
                             {
                               value: "comfortable",
                               label: t(
-                                "appearance_view.hover_row_height_comfortable",
+                                "appearance_view.article_list_row_height_comfortable",
                               ),
                             },
                           ]}
