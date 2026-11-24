@@ -348,6 +348,7 @@ export function AppearanceSettings() {
     setArticlePushDirection,
     setArticleCoverList,
     setHoverRowHeight,
+    setArticleListRowHeight,
     setHoverImageSize,
     setGridStyle,
   } = useUISettingActions();
@@ -366,6 +367,7 @@ export function AppearanceSettings() {
     experimentalArticleRows: useUISettingKey("experimentalArticleRows"),
   });
   const hoverRowHeight = useUISettingKey("hoverRowHeight");
+  const articleListRowHeight = useUISettingKey("articleListRowHeight");
   const hoverImageSize = useUISettingKey("hoverImageSize");
   const hoverMultiImageSetting = useUISettingKey(
     "hoverMultiImage",
@@ -1306,7 +1308,37 @@ export function AppearanceSettings() {
                         />
                       </SettingRow>
                     )}
-                    {/* 「列表图片」与「摘要行数」只作用于文章列表视图，挪进这里的文章专属块 */}
+                    {/* 「Inoreader列表」的行高：把图片悬停大图那套行高设置搬来作为这个列表布局自己的设置 */}
+                    {articleLayout === "inoreader" && (
+                      <SettingRow label={t("appearance_view.hover_row_height")}>
+                        <SegmentedControl
+                          className="shrink-0"
+                          value={articleListRowHeight}
+                          onValueChange={(value) =>
+                            setArticleListRowHeight(
+                              value as "compact" | "comfortable",
+                            )
+                          }
+                          options={[
+                            {
+                              value: "compact",
+                              label: t(
+                                "appearance_view.hover_row_height_compact",
+                              ),
+                            },
+                            {
+                              value: "comfortable",
+                              label: t(
+                                "appearance_view.hover_row_height_comfortable",
+                              ),
+                            },
+                          ]}
+                        />
+                      </SettingRow>
+                    )}
+                    {/* 「列表图片」与「摘要行数」只作用于「传统三栏」卡片档 */}
+                    {articleLayout === "list" && (
+                      <>
                     <SettingRow label={t("appearance_reading.card_image")}>
                       <SegmentedControl
                         className="shrink-0"
@@ -1345,6 +1377,8 @@ export function AppearanceSettings() {
                         ]}
                       />
                     </SettingRow>
+                      </>
+                    )}
                   </>
                 )}
                 {/* 图片视图档位（28-7 收敛为两档：网格 / 悬停大图；31-1 增第三档「照片墙」）。

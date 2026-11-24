@@ -688,50 +688,77 @@ export function EntryList({
      正文 pane 插在这种祖先里会让 EntryContentHeader 的 sticky 失效（工具栏会浮在正文
      中部）。关掉虚拟化后 pane 落在普通文档流里，sticky 正常，正文也能滚动吸顶。 */
   const inlineNoVirtual = inlineActive && Boolean(selectedEntryId);
-  /* 手机内联合列：向下滚动到正文顶栏该吸顶时，把列表顶部「全部文章」那条 TOP 栏收起来，
-     只留正文自己的顶栏吸顶（用户 2026-11-24 图一）。 */
+  /* 移动端列表 TOP 栏的滚动交互（用户 2026-11-24 第 2 条）：
+     - 向下滚 → 收起；向上滚 → 出现；回到顶部 → 出现；
+     - 打开内联正文后，正文标题栏优先级高于 TOP 栏：正文标题一到顶就把 TOP 收起，
+       滚回正文上方（paneTop > 0）时 TOP 再出现。
+     自动吸顶那几帧是程序化滚动，用户没动手前不据此判定方向。 */
   const [mobileHeaderHidden, setMobileHeaderHidden] = useState(false);
-  /* 只有用户自己往下滚过（不是点开时自动吸顶那一下）才收起顶栏：
-     否则点开任意一条都会因为自动吸顶把顶栏瞬间藏掉，看起来像「一打开就没有 TOP 栏」。 */
-  /* 顶栏收起：点开后先「武装」1.2 秒（让自动吸顶那几帧滚完），之后只要正文顶部
-     滚到视口顶以上（paneTop < 0）就收起列表 TOP 栏，只留正文顶栏吸顶；滚回去又出现。 */
-  const [mobileHeaderArmed, setMobileHeaderArmed] = useState(false);
+  const lastScrollYRef = useRef<number | null>(null);
+  const userScrolledRef = useRef(false);
   useEffect(() => {
-    setMobileHeaderArmed(false);
     setMobileHeaderHidden(false);
-  }, [selectedEntryId, isMobile, articlePushDirection]);
+    lastScrollYRef.current = null;
+    userScrolledRef.current = false;
+  }, [selectedEntryId, isMobile, articlePushDirection, contentType]);
   useEffect(() => {
-    if (!isMobile || !inlineActive || !selectedEntryId) {
+    if (!isMobile) {
       setMobileHeaderHidden(false);
       return;
     }
     const surface = scrollSurface;
-    const armTimer = window.setTimeout(() => setMobileHeaderArmed(true), 1200);
+    const containerEl = containerRef.current;
+    const markUser = () => {
+      userScrolledRef.current = true;
+    };
+    const host: HTMLElement | Window =
+      surface.kind === "document" ? window : containerEl ?? window;
+    host.addEventListener("wheel", markUser, { passive: true });
+    host.addEventListener("touchstart", markUser, { passive: true });
+    host.addEventListener("pointerdown", markUser);
+    host.addEventListener("keydown", markUser);
+
     const update = () => {
-      const node = inlineContentRef.current;
-      if (!node) {
+      const y = surface.getScrollTop();
+      const prev = lastScrollYRef.current;
+      lastScrollYRef.current = y;
+      if (y <= 6) {
         setMobileHeaderHidden(false);
         return;
       }
-      const paneTop =
-        node.getBoundingClientRect().top - surface.getViewportRect().top;
-      setMobileHeaderHidden(mobileHeaderArmed && paneTop < 0);
+      if (!userScrolledRef.current) return;
+      if (inlineActive && selectedEntryId) {
+        const node = inlineContentRef.current;
+        const paneTop = node
+          ? node.getBoundingClientRect().top - surface.getViewportRect().top
+          : Number.POSITIVE_INFINITY;
+        if (paneTop <= 0) {
+          /* 正文标题已到顶：TOP 让位，正文标题吸顶 */
+          setMobileHeaderHidden(true);
+          return;
+        }
+      }
+      if (prev === null) return;
+      const dy = y - prev;
+      if (dy > 2) setMobileHeaderHidden(true);
+      else if (dy < -2) setMobileHeaderHidden(false);
     };
     update();
     const unsubscribe = surface.subscribe(update);
-    /* 双保险：文档滚动监听 window，容器滚动监听容器本身（部分浏览器/布局下
-       surface.subscribe 的落点与实际滚动元素不一致）。 */
     const onScroll = () => update();
     window.addEventListener("scroll", onScroll, { passive: true });
-    const containerEl = containerRef.current;
-    containerEl?.addEventListener("scroll", onScroll, { passive: true });
+    const el = containerRef.current;
+    el?.addEventListener("scroll", onScroll, { passive: true });
     return () => {
-      window.clearTimeout(armTimer);
       unsubscribe();
       window.removeEventListener("scroll", onScroll);
-      containerEl?.removeEventListener("scroll", onScroll);
+      el?.removeEventListener("scroll", onScroll);
+      host.removeEventListener("wheel", markUser);
+      host.removeEventListener("touchstart", markUser);
+      host.removeEventListener("pointerdown", markUser);
+      host.removeEventListener("keydown", markUser);
     };
-  }, [isMobile, inlineActive, selectedEntryId, scrollSurface, mobileHeaderArmed]);
+  }, [isMobile, inlineActive, selectedEntryId, scrollSurface]);
   /* 合列正文接在「被点那一行」的后面（不是列表末尾）：读正文时还能继续往下滚看到
      后续条目；selectedEntryId 唯一 ⇒ 同时只有一条正文，点别的行就是换正文、上一条收起。 */
   const inlinePaneFor = (entryId: string | null) =>
