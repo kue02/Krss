@@ -26,7 +26,7 @@ vi.mock("@/hooks/useUISettings", () => ({
   getUISettings: () => ({}),
 }));
 
-import { useSelection } from "./useSelection";
+import { selectionToParams, useSelection } from "./useSelection";
 
 function wrapper({ children }: { children: ReactNode }) {
   const client = new QueryClient({
@@ -70,4 +70,33 @@ describe("useSelection selectStarred（问题2）", () => {
     expect(url).toContain("scope=all");
   });
 
+});
+
+describe("selectionToParams 内容类型口径", () => {
+  it("文件夹也带 contentType：列表/未读数/全部标读三处口径一致（混类型子树不会条数对不上）", () => {
+    expect(
+      selectionToParams({ type: "folder", folderId: "f1" }, "article"),
+    ).toEqual({ folderId: "f1", contentType: "article" });
+  });
+
+  it("订阅自带类型，不额外带 contentType", () => {
+    expect(
+      selectionToParams({ type: "feed", feedId: "e1" }, "article"),
+    ).toEqual({ feedId: "e1" });
+  });
+
+  it("全部视图仍按当前内容类型筛", () => {
+    expect(selectionToParams({ type: "all" }, "picture")).toEqual({
+      contentType: "picture",
+    });
+  });
+
+  it("星标「全部」不带内容类型，只有「只显示当前视图」才带", () => {
+    expect(selectionToParams({ type: "starred" }, "article")).toEqual({
+      starredOnly: true,
+    });
+    expect(
+      selectionToParams({ type: "starred", viewOnly: true }, "social"),
+    ).toEqual({ starredOnly: true, contentType: "social" });
+  });
 });

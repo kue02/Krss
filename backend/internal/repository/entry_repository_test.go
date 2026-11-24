@@ -290,6 +290,110 @@ func TestEntryRepository_List_FolderIncludesDescendants(t *testing.T) {
 	require.Equal(t, "E-grand", *entries[0].Title)
 }
 
+// 文件夹多选同样要覆盖整棵子树：过滤器/视图编辑器保存的范围走 FolderIDs，
+// 若只做直接匹配，会与单选文件夹（子树）语义分叉。
+func TestEntryRepository_List_MultiFolderIDsIncludeDescendants(t *testing.T) {
+	db := testutil.NewTestDB(t)
+	repo := repository.NewEntryRepository(db)
+	ctx := context.Background()
+
+	root := testutil.SeedFolder(t, db, "Root", nil, "article")
+	child := testutil.SeedFolder(t, db, "Child", &root, "article")
+	grand := testutil.SeedFolder(t, db, "Grand", &child, "article")
+	sibling := testutil.SeedFolder(t, db, "Sibling", nil, "article")
+
+	feedRoot := testutil.SeedFeed(t, db, model.Feed{Title: "FR", URL: "fr", FolderID: &root})
+	feedGrand := testutil.SeedFeed(t, db, model.Feed{Title: "FG", URL: "fg", FolderID: &grand})
+	feedSibling := testutil.SeedFeed(t, db, model.Feed{Title: "FS", URL: "fs", FolderID: &sibling})
+
+	testutil.SeedEntry(t, db, model.Entry{FeedID: feedRoot, Title: stringPtr("E-root")})
+	testutil.SeedEntry(t, db, model.Entry{FeedID: feedGrand, Title: stringPtr("E-grand")})
+	testutil.SeedEntry(t, db, model.Entry{FeedID: feedSibling, Title: stringPtr("E-sibling")})
+
+	// FolderIDs = [root]：根自身 + 孙级都命中，同级不命中。
+	entries, err := repo.List(ctx, repository.EntryListFilter{FolderIDs: []int64{root}})
+	require.NoError(t, err)
+	require.Len(t, entries, 2)
+	titles := map[string]bool{}
+	for _, e := range entries {
+		titles[*e.Title] = true
+	}
+	require.True(t, titles["E-root"])
+	require.True(t, titles["E-grand"])
+	require.False(t, titles["E-sibling"])
+
+	// FolderIDs = [child, sibling]：child 继续向下覆盖孙级，root 的条目不再命中。
+	entries, err = repo.List(ctx, repository.EntryListFilter{FolderIDs: []int64{child, sibling}})
+	require.NoError(t, err)
+	titles = map[string]bool{}
+	for _, e := range entries {
+		titles[*e.Title] = true
+	}
+	require.Len(t, entries, 2)
+	require.True(t, titles["E-grand"])
+	require.True(t, titles["E-sibling"])
+	require.False(t, titles["E-root"])
+}
+
+// parent_id 历史数据成环时，递归 CTE 必须能终止（UNION 去重），不能死循环。
+func TestEntryRepository_List_FolderCycleTerminates(t *testing.T) {
+	db := testutil.NewTestDB(t)
+	repo := repository.NewEntryRepository(db)
+	ctx := context.Background()
+
+	a := testutil.SeedFolder(t, db, "A", nil, "article")
+	b := testutil.SeedFolder(t, db, "B", &a, "article")
+	// 制造 a.parent_id = b 的环。
+	_, err := db.ExecContext(ctx, `UPDATE folders SET parent_id = ? WHERE id = ?`, b, a)
+	require.NoError(t, err)
+
+	feedA := testutil.SeedFeed(t, db, model.Feed{Title: "FA", URL: "fa", FolderID: &a})
+	feedB := testutil.SeedFeed(t, db, model.Feed{Title: "FB", URL: "fb", FolderID: &b})
+	testutil.SeedEntry(t, db, model.Entry{FeedID: feedA, Title: stringPtr("E-a")})
+	testutil.SeedEntry(t, db, model.Entry{FeedID: feedB, Title: stringPtr("E-b")})
+
+	entries, err := repo.List(ctx, repository.EntryListFilter{FolderID: &a})
+	require.NoError(t, err)
+	require.Len(t, entries, 2)
+}
+
+// 文件夹子树混有不同内容类型时，列表与「全部标为已读」都要按 contentType 收窄，
+// 否则中栏列表是全部类型、头部未读数只算当前类型，出现「条数与数量对不上」。
+func TestEntryRepository_FolderContentTypeScopesListAndMarkAll(t *testing.T) {
+	db := testutil.NewTestDB(t)
+	repo := repository.NewEntryRepository(db)
+	ctx := context.Background()
+
+	root := testutil.SeedFolder(t, db, "Root", nil, "article")
+	child := testutil.SeedFolder(t, db, "Child", &root, "social")
+	feedArticle := testutil.SeedFeed(t, db, model.Feed{Title: "FA", URL: "fa", FolderID: &root, Type: "article"})
+	feedSocial := testutil.SeedFeed(t, db, model.Feed{Title: "FS", URL: "fs", FolderID: &child, Type: "social"})
+	testutil.SeedEntry(t, db, model.Entry{FeedID: feedArticle, Title: stringPtr("E-art"), Read: false})
+	testutil.SeedEntry(t, db, model.Entry{FeedID: feedSocial, Title: stringPtr("E-soc"), Read: false})
+
+	articleType := "article"
+	socialType := "social"
+
+	entries, err := repo.List(ctx, repository.EntryListFilter{FolderID: &root, ContentType: &articleType})
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Equal(t, "E-art", *entries[0].Title)
+
+	entries, err = repo.List(ctx, repository.EntryListFilter{FolderID: &root, ContentType: &socialType})
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Equal(t, "E-soc", *entries[0].Title)
+
+	// 只清 article：social 仍有未读，不能被顺带清掉。
+	err = repo.MarkAllAsRead(ctx, nil, &root, &articleType)
+	require.NoError(t, err)
+	counts, err := repo.GetAllUnreadCounts(ctx)
+	require.NoError(t, err)
+	require.Len(t, counts, 1)
+	require.Equal(t, feedSocial, counts[0].FeedID)
+	require.Equal(t, 1, counts[0].Count)
+}
+
 func TestEntryRepository_UpdateStatus(t *testing.T) {
 	db := testutil.NewTestDB(t)
 	repo := repository.NewEntryRepository(db)
@@ -371,20 +475,24 @@ func TestEntryRepository_MarkAllAsRead_FolderIncludesDescendants(t *testing.T) {
 
 	root := testutil.SeedFolder(t, db, "Root", nil, "article")
 	child := testutil.SeedFolder(t, db, "Child", &root, "article")
+	grand := testutil.SeedFolder(t, db, "Grand", &child, "article")
 	other := testutil.SeedFolder(t, db, "Other", nil, "article")
 
 	feedRoot := testutil.SeedFeed(t, db, model.Feed{Title: "FR", URL: "fr", FolderID: &root})
 	feedChild := testutil.SeedFeed(t, db, model.Feed{Title: "FC", URL: "fc", FolderID: &child})
+	feedGrand := testutil.SeedFeed(t, db, model.Feed{Title: "FG", URL: "fg", FolderID: &grand})
 	feedOther := testutil.SeedFeed(t, db, model.Feed{Title: "FO", URL: "fo", FolderID: &other})
 
 	testutil.SeedEntry(t, db, model.Entry{FeedID: feedRoot, Read: false})
 	testutil.SeedEntry(t, db, model.Entry{FeedID: feedChild, Read: false})
+	testutil.SeedEntry(t, db, model.Entry{FeedID: feedGrand, Read: false})
 	testutil.SeedEntry(t, db, model.Entry{FeedID: feedOther, Read: false})
 
 	err := repo.MarkAllAsRead(ctx, nil, &root, nil)
 	require.NoError(t, err)
 
-	// 根与孙级（child 下）的未读都被清掉，只剩 other 文件夹 1 条未读。
+	// 根、子、孙三级的未读都被清掉，只剩 other 文件夹 1 条未读。
+	// （只覆盖「根 + 直接子级」的实现会漏掉 grand，这条断言会变红。）
 	counts, _ := repo.GetAllUnreadCounts(ctx)
 	require.Len(t, counts, 1)
 	require.Equal(t, feedOther, counts[0].FeedID)
