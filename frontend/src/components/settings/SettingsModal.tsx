@@ -143,7 +143,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
    * Tab 到最后一个元素仍会绕回第一个（审查实测 120 次 Tab 出不去）。
    * 到边界时把焦点交给窗外 —— 见 `@/hooks/useTabEscapeFromDialog`。
    */
-  useTabEscapeFromDialog(drag.dialogNodeRef, !isMobile);
+  useTabEscapeFromDialog(drag.dialogNodeRef, open && !isMobile);
 
   const tryLeave = React.useCallback((action: () => void) => {
     if (getDirtySettings().length > 0) {

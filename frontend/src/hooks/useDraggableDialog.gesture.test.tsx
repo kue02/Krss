@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/refs -- 测试夹具：ref 必须原样交给 hook 才能跑真实手势路径，渲染期不解引用 */
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { fireEvent, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { useDraggableDialog, resetRememberedOffset } from "./useDraggableDialog";
 
 /**
@@ -57,6 +57,38 @@ function Harness() {
           按钮
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * jsdom 的 `offsetWidth/offsetHeight` 定义在 `HTMLElement.prototype` 上，
+ * `vi.restoreAllMocks()` 不会还原 `Object.defineProperty` 改过的属性描述符 ——
+ * 不显式还原的话会泄漏到同进程的其它测试文件。
+ */
+const ORIGINAL_OFFSET_DESCRIPTORS = {
+  width: Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth"),
+  height: Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight"),
+};
+
+/**
+ * 模拟 Radix `Presence` 的真实时序：hook 先挂载（此时 effect 已经跑完、rAF 也空转过），
+ * 弹窗节点要到之后的某次提交才出现。这时主 effect 的依赖没有变化、不会再跑一次，
+ * 唯一的补救路径就是 `dialogRef` / `handleRef` 两个回调 ref。
+ */
+function LateMountHarness({ show }: { show: boolean }) {
+  const drag = useDraggableDialog();
+  return (
+    <div>
+      {show ? (
+        <div
+          data-testid="dialog"
+          ref={drag.dialogRef}
+          style={{ transform: drag.transform }}
+        >
+          <div data-testid="handle" {...drag.handleProps} ref={drag.handleRef} />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -129,6 +161,12 @@ describe("useDraggableDialog", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    for (const [key, descriptor] of [
+      ["offsetWidth", ORIGINAL_OFFSET_DESCRIPTORS.width],
+      ["offsetHeight", ORIGINAL_OFFSET_DESCRIPTORS.height],
+    ] as const) {
+      if (descriptor) Object.defineProperty(HTMLElement.prototype, key, descriptor);
+    }
   });
 
   it("按下即捕获指针（不等超过阈值）", () => {
@@ -219,5 +257,40 @@ describe("useDraggableDialog", () => {
       // y 本来就在视口内（600 + 35.5 + 57 < 700），不该被乱动
       expect(offset.y).toBe(600);
     });
+  });
+
+  /**
+   * 审查 M1：弹窗节点比 hook 晚挂载（Radix `Presence` 的真实时序）。
+   * 主 effect 在 `active` 变 true 的那次提交里跑，那时 `nodeRef.current` 是 null；
+   * 没有回调 ref 这条路径，就只能等 effect 里那个 260ms 的兜底定时器，
+   * 用户看到的是「重开后窗口先在屏幕外停一下再跳回来」。
+   */
+  it("节点晚于 hook 挂载时，靠回调 ref 立刻夹紧（不等 260ms 兜底）", () => {
+    const first = render(<Harness />);
+    dragBy(900, 600, first.getByTestId("handle"));
+    expect(readOffset(first.getByTestId("dialog"))).toEqual({ x: 900, y: 600 });
+    first.unmount();
+
+    Object.defineProperty(window, "innerWidth", { value: 1000, configurable: true });
+    Object.defineProperty(window, "innerHeight", { value: 700, configurable: true });
+    layout = { width: 950, height: 630 };
+
+    // 从这里开始接管定时器：`setTimeout(…, 260)` 的兜底不会有机会跑
+    vi.useFakeTimers();
+    try {
+      const { rerender, getByTestId } = render(<LateMountHarness show={false} />);
+      // 先让 effect 自己排的两帧 rAF 空转完（那时还没有节点，夹不了）
+      act(() => {
+        vi.advanceTimersByTime(100);
+      });
+      rerender(<LateMountHarness show />);
+      act(() => {
+        // 只推进 40ms：effect 里那个 260ms 的兜底定时器还没到点，只剩回调 ref 这条路
+        vi.advanceTimersByTime(40);
+      });
+      expect(readOffset(getByTestId("dialog"))).toEqual({ x: 679, y: 600 });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

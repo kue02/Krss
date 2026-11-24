@@ -117,17 +117,22 @@ export function useDraggableDialog(active = true) {
    * 所以两个 ref 都用回调式：节点一挂上就叫一次夹紧（`scheduleReclampRef` 由下面的
    * effect 填好；首次挂载时 effect 在同一提交里随后就会跑，那次也会夹）。
    *
-   * 注意**不要在回调 ref 里 setState**：那是在提交阶段插一次更新，而 Radix 组件的
-   * `useComposedRefs` 每帧都产出新函数、提交时本就要 detach/attach，两边叠加成无限循环
-   * （实测 `Maximum depth exceeded`，整页白屏）。
+   * 注意**不要在回调 ref 里 setState**：那是在提交阶段插一次更新，而 Radix 组件向下传递的
+   * 组合 ref 在每次提交时本就会 detach/attach 一遍（实测父组件重渲染两次，回调 ref 被
+   * 调用 9 次），两边叠加成无限循环（实测 `Maximum depth exceeded`，整页白屏）。
+   *
+   * 只在**真的换节点**时排队夹紧：上面那条 detach/attach 意味着设置窗里每次重渲染都会
+   * 叫到这里，无条件排队的话每敲一个字都要强制同步布局一次（`measureHandle` 读 4 次布局）。
    */
   const dialogRef = useCallback((node: HTMLDivElement | null) => {
+    const changed = nodeRef.current !== node;
     nodeRef.current = node;
-    if (node) scheduleReclampRef.current();
+    if (node && changed) scheduleReclampRef.current();
   }, []);
   const handleCallbackRef = useCallback((node: HTMLDivElement | null) => {
+    const changed = handleRef.current !== node;
     handleRef.current = node;
-    if (node) scheduleReclampRef.current();
+    if (node && changed) scheduleReclampRef.current();
   }, []);
 
   const [offset, setOffset] = useState<DragOffset>(() => ({ ...rememberedOffset }));

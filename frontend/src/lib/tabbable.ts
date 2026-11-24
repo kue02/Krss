@@ -25,12 +25,30 @@ const TABBABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(", ");
 
+/**
+ * 沿祖先链判断是否真的可见 —— 只查元素自身不够：`<div style="display:none"><button>` 里
+ * 按钮自身的 computed `display` 仍是 `inline-block`（审查 m1 实测），会被当成候选。
+ * 真浏览器里对隐藏元素 `focus()` 是 no-op，于是 `moveTabOutOfContainer` 返回 false、
+ * Tab 静默失效又退回窗内循环 —— 与 jsdom 里「跳到隐藏元素」是同一个 bug 的两副面孔。
+ * 判定口径照 Radix `FocusScope` 的 `isHidden`（`node_modules/@radix-ui/react-focus-scope`）。
+ */
 function isVisible(element: HTMLElement): boolean {
-  if (element.hidden || element.getAttribute("aria-hidden") === "true") {
-    return false;
+  let node: HTMLElement | null = element;
+  while (node) {
+    if (
+      node.hidden ||
+      node.getAttribute("aria-hidden") === "true" ||
+      node.inert === true
+    ) {
+      return false;
+    }
+    const style = window.getComputedStyle(node);
+    if (style.display === "none" || style.visibility === "hidden") {
+      return false;
+    }
+    node = node.parentElement;
   }
-  const style = window.getComputedStyle(element);
-  return style.display !== "none" && style.visibility !== "hidden";
+  return true;
 }
 
 /** 容器内按 DOM 顺序可 Tab 到的元素 */
@@ -62,6 +80,18 @@ export function moveTabOutOfContainer(
 ): boolean {
   const inside = getTabbable(container);
   if (inside.length === 0) return false;
+
+  /*
+   * **只处理边界那一次**：焦点不在窗内首/尾元素上时交还给浏览器与 Radix 的默认行为。
+   * 少了这一步，窗内任何一次 Tab 都会被判定成「已处理」而把焦点扔出窗 —— 打开设置后
+   * 按第一次 Tab 就跳到背后页面，窗内的左栏导航与右栏控件全部够不到（审查 B1 实测：
+   * 焦点在窗内第一个元素上按 Tab，`activeElement` 直接变成窗外第一个可聚焦元素）。
+   * 边界语义与 Radix `FocusScope.handleKeyDown` 一致。
+   */
+  const active = document.activeElement;
+  if (!active || active === container) return false;
+  const edge = backwards ? inside[0] : inside[inside.length - 1];
+  if (active !== edge) return false;
 
   const outside = getTabbableOutside(container);
   if (outside.length === 0) return false;

@@ -67,34 +67,70 @@ describe("getTabbableOutside", () => {
 });
 
 describe("moveTabOutOfContainer", () => {
-  it("往后 Tab：焦点交给窗外第一个可 Tab 元素", () => {
+  /** 窗内三个可聚焦元素，窗外前后各一个 —— 用来区分「边界」与「中间」 */
+  function buildThree() {
     const host = build(`
       <button id="before">before</button>
-      <div role="dialog"><button id="inside">inside</button></div>
+      <div role="dialog">
+        <button id="in1">in1</button>
+        <button id="in2">in2</button>
+        <button id="in3">in3</button>
+      </div>
       <button id="after">after</button>
     `);
     const dialog = host.querySelector<HTMLElement>('[role="dialog"]')!;
+    return { host, dialog };
+  }
+
+  it("最后一个元素往后 Tab：焦点交给窗外第一个可 Tab 元素", () => {
+    const { host, dialog } = buildThree();
+    document.getElementById("in3")!.focus();
     expect(moveTabOutOfContainer(dialog, false)).toBe(true);
     expect(document.activeElement?.id).toBe("before");
     host.remove();
   });
 
-  it("Shift+Tab：焦点交给窗外最后一个可 Tab 元素", () => {
-    const host = build(`
-      <button id="before">before</button>
-      <div role="dialog"><button id="inside">inside</button></div>
-      <button id="after">after</button>
-    `);
-    const dialog = host.querySelector<HTMLElement>('[role="dialog"]')!;
+  it("第一个元素 Shift+Tab：焦点交给窗外最后一个可 Tab 元素", () => {
+    const { host, dialog } = buildThree();
+    document.getElementById("in1")!.focus();
     expect(moveTabOutOfContainer(dialog, true)).toBe(true);
     expect(document.activeElement?.id).toBe("after");
+    host.remove();
+  });
+
+  /**
+   * 审查 B1：少了边界判断时，窗内任何一次 Tab 都会把焦点扔出窗 ——
+   * 打开设置后按第一次 Tab 就跳到背后页面，窗内控件全部够不到。
+   */
+  it("窗内中间元素 Tab / Shift+Tab：不接管，返回 false", () => {
+    const { host, dialog } = buildThree();
+    document.getElementById("in2")!.focus();
+    expect(moveTabOutOfContainer(dialog, false)).toBe(false);
+    expect(document.activeElement?.id).toBe("in2");
+    expect(moveTabOutOfContainer(dialog, true)).toBe(false);
+    expect(document.activeElement?.id).toBe("in2");
     host.remove();
   });
 
   it("窗外没有可聚焦元素时返回 false，不硬抢焦点", () => {
     const host = build(`<div role="dialog"><button id="inside">inside</button></div>`);
     const dialog = host.querySelector<HTMLElement>('[role="dialog"]')!;
+    document.getElementById("inside")!.focus();
     expect(moveTabOutOfContainer(dialog, false)).toBe(false);
+    host.remove();
+  });
+
+  it("祖先 display:none 里的按钮不算可 Tab 目标（审查 m1）", () => {
+    const host = build(`
+      <div style="display:none"><button id="ghost">ghost</button></div>
+      <button id="real">real</button>
+      <div role="dialog"><button id="in1">in1</button><button id="in2">in2</button></div>
+    `);
+    const dialog = host.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(getTabbableOutside(dialog).map((element) => element.id)).toEqual(["real"]);
+    document.getElementById("in2")!.focus();
+    expect(moveTabOutOfContainer(dialog, false)).toBe(true);
+    expect(document.activeElement?.id).toBe("real");
     host.remove();
   });
 });
