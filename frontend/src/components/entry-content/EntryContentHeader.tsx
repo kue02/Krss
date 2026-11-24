@@ -94,10 +94,8 @@ interface EntryContentHeaderProps {
   /**
    * 顶栏背景层是否叠加 `backdrop-blur`。默认跟随 `sticky`：第三栏那套（非内嵌）保留模糊；
    * 卡片档内联合列里必须关掉：Chromium 下祖先 `overflow: clip` 的圆角裁剪遇到带
-   * backdrop-filter 的层时，圆角边框/阴影的合成会出错（角部看上去缺一块，实测不是
-   * 整块白底盖住圆角）
-   * 不受祖先 `overflow: clip` 圆角裁剪的约束，会把卡片的圆角盖成直角（用户 2026-11-24 报的
-   * 表现为「滑动后点开正文，卡片左上角缺一块」，不滚动时背景层 opacity-0 所以看不到）。
+   * backdrop-filter 的层时，圆角边框/阴影的合成会出错，表现为「滑动后点开正文，卡片左上角
+   * 缺一块」（不滚动时背景层 opacity-0 所以看不到；实测不是整块白底盖住圆角）。
    */
   backgroundBlur?: boolean;
 }

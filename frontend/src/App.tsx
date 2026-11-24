@@ -93,6 +93,7 @@ import {
 import { useRefreshStatus } from "@/hooks/useRefreshStatus";
 import { isAddFeedPath } from "@/lib/router";
 import { initProxyImageRecovery } from "@/lib/proxy-image-recovery";
+import { headerBackgroundBlurFor } from "@/lib/article-pane-style";
 import { cn } from "@/lib/utils";
 import type { ContentType, Feed, Folder } from "@/types/api";
 
@@ -699,7 +700,7 @@ function AuthenticatedApp() {
                       embedded
                       showAuxiliary
                       containerRef={scrollRef}
-                      headerBackgroundBlur={articlePaneStyle !== "card"}
+                      headerBackgroundBlur={headerBackgroundBlurFor(articlePaneStyle)}
                       onClose={() => selectEntry(null)}
                     />
                   </Suspense>
@@ -939,7 +940,7 @@ function AuthenticatedApp() {
                               isMobile
                               containerRef={scrollRef}
                               headerStickyTopClassName={options.headerStickyTop}
-                              headerBackgroundBlur={articlePaneStyle !== "card"}
+                              headerBackgroundBlur={headerBackgroundBlurFor(articlePaneStyle)}
                               onClose={() => setMobileInlineEntryId(null)}
                             />
                           </Suspense>
