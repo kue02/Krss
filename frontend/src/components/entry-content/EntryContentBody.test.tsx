@@ -78,6 +78,7 @@ describe("EntryContentBody", () => {
     expect(tokens).toContain("pb-[calc(10rem+env(safe-area-inset-bottom))]");
     expect(tokens).toContain("md:pb-20");
     expect(tokens).not.toContain("pb-20");
+    expect(tokens).not.toContain("md:pb-6");
   });
 
   // 留白必须落在滚动容器内部才会被算进 scrollHeight：article 直接挂在 viewport 下，
@@ -97,8 +98,9 @@ describe("EntryContentBody", () => {
     expect(viewport?.className).toContain("overflow-y-auto");
   });
 
-  // embedded（时间线展开等）沿用原来的紧凑留白，不受移动端档影响
-  it("leaves the embedded variant's compact padding untouched", () => {
+  // embedded（时间线展开 / 「向下合列」）移动端同样要 10rem 尾部留白，
+  // md 起回到原来的紧凑 24px（桌面合列与时间线档）
+  it("gives the embedded variant the same mobile tail and md:pb-6", () => {
     const { container } = render(
       <EntryContentBody
         entry={entry}
@@ -109,8 +111,9 @@ describe("EntryContentBody", () => {
     );
 
     const tokens = articleTokens(container);
-    expect(tokens).toContain("pb-6");
-    expect(tokens).not.toContain("pb-[calc(10rem+env(safe-area-inset-bottom))]");
+    expect(tokens).toContain("pb-[calc(10rem+env(safe-area-inset-bottom))]");
+    expect(tokens).toContain("md:pb-6");
+    expect(tokens).not.toContain("pb-6");
     expect(tokens).not.toContain("md:pb-20");
   });
 

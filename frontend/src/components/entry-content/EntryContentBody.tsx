@@ -99,15 +99,17 @@ export function EntryContentBody({
       )}
       {/**
        * 移动端正文末尾留白：`pb-20`（80px）滚到底只剩一小截空档，最后几行贴得太紧。
-       * 非 embedded 档给 10rem（160px）+ 安全区，滚到底还能把末尾段落继续往上抬；
-       * 若底栏可见（56px + 安全区）扣掉后仍有约 104px ≈ 3.7 行正文的视觉留白。
-       * 恢复 80px 的断点用 `md`（=768px）而不是 `sm`：`useMobileLayout` 的移动端界就是
-       * 768px，640–767px 仍走详情页布局，`sm:pb-20` 会让这段又只剩 24px。
+       * 两档在移动端都给 10rem（160px）+ 安全区（「向下合列」的 embedded 外层另有
+       * pb-10），滚到底还能把末尾段落继续往上抬；底栏若可见（56px + 安全区）扣掉后
+       * 仍有约 104px ≈ 3.7 行正文的视觉留白。
+       * 断点用 `md`（=768px）而不是 `sm`：`useMobileLayout` 的移动端界就是 768px，
+       * 640–767px 仍走移动端布局，`sm:` 会让这段又只剩 24px。
+       * `md` 起：非 embedded 恢复 80px，embedded 回到原来的 24px（桌面合列/时间线紧凑档）。
        */}
       <article
         className={
           embedded
-            ? "entry-content nf-enter mx-auto w-full max-w-[clamp(45ch,60vw,65ch)] min-w-0 overflow-x-hidden px-4 pb-6 pt-3 sm:px-5"
+            ? "entry-content nf-enter mx-auto w-full max-w-[clamp(45ch,60vw,65ch)] min-w-0 overflow-x-hidden px-4 pb-[calc(10rem+env(safe-area-inset-bottom))] pt-3 sm:px-5 md:pb-6"
             : "entry-content nf-enter mx-auto w-full max-w-[clamp(45ch,60vw,65ch)] min-w-0 overflow-x-hidden px-4 pb-[calc(10rem+env(safe-area-inset-bottom))] pt-[calc(3.25rem+env(safe-area-inset-top))] sm:px-5 sm:pt-20 md:pb-20"
         }
       >
