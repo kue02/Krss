@@ -259,6 +259,30 @@ export function Lightbox() {
     pointerDownPos.current = { x: e.clientX, y: e.clientY };
   }, []);
 
+  // 等当次 click 处理完再清空按下坐标：pointercancel / 被原生拖拽打断时不会
+  // 产生 click，若完全不清空，下一次干净点击会误判成拖动。
+  const schedulePointerDownReset = useCallback(() => {
+    window.setTimeout(() => {
+      pointerDownPos.current = null;
+    }, 0);
+  }, []);
+
+  const handleStagePointerUp = useCallback(
+    (e: React.PointerEvent) => {
+      zoom.handlers.onPointerUp?.(e);
+      schedulePointerDownReset();
+    },
+    [schedulePointerDownReset, zoom.handlers.onPointerUp],
+  );
+
+  const handleStagePointerCancel = useCallback(
+    (e: React.PointerEvent) => {
+      zoom.handlers.onPointerCancel?.(e);
+      schedulePointerDownReset();
+    },
+    [schedulePointerDownReset, zoom.handlers.onPointerCancel],
+  );
+
   // 统一 click：图片外空白立即关闭（放大态也一样）；图片内保留点击关闭。
   // 拖动超过 5px 不当作点击。
   const handleStageClick = useCallback(
@@ -427,12 +451,15 @@ export function Lightbox() {
                   className="relative flex size-full touch-none items-center justify-center"
                   ref={zoom.containerRef}
                   {...zoom.handlers}
+                  onPointerUp={handleStagePointerUp}
+                  onPointerCancel={handleStagePointerCancel}
                   onClick={handleStageClick}
                 >
                   <AuthedImage
                     ref={zoom.imageRef}
                     src={images[0]}
                     alt=""
+                    draggable={false}
                     className="max-h-full max-w-full object-contain"
                     style={zoom.style}
                   />
@@ -454,6 +481,8 @@ export function Lightbox() {
                   ref={zoom.containerRef}
                   className="size-full min-h-0 touch-none"
                   {...zoom.handlers}
+                  onPointerUp={handleStagePointerUp}
+                  onPointerCancel={handleStagePointerCancel}
                 >
                 <div
                   ref={emblaRef}
@@ -472,6 +501,7 @@ export function Lightbox() {
                           ref={index === currentIndex ? zoom.imageRef : undefined}
                           src={src}
                           alt=""
+                          draggable={false}
                           className="max-h-full max-w-full object-contain"
                           style={index === currentIndex ? zoom.style : undefined}
                           loading={

@@ -84,13 +84,23 @@ vi.mock("framer-motion", () => ({
       className,
       onClick,
       onPointerDown,
+      onPointerUp,
+      onPointerCancel,
     }: {
       children: React.ReactNode;
       className?: string;
       onClick?: () => void;
       onPointerDown?: React.PointerEventHandler<HTMLDivElement>;
+      onPointerUp?: React.PointerEventHandler<HTMLDivElement>;
+      onPointerCancel?: React.PointerEventHandler<HTMLDivElement>;
     }) => (
-      <div className={className} onClick={onClick} onPointerDown={onPointerDown}>
+      <div
+        className={className}
+        onClick={onClick}
+        onPointerDown={onPointerDown}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
+      >
         {children}
       </div>
     ),
@@ -672,6 +682,59 @@ describe("ImagePreview", () => {
       fireEvent.click(stage, { clientX: 160, clientY: 100 });
 
       expect(useImagePreviewStore.getState().isOpen).toBe(true);
+    });
+
+    it("干净点击空白时，pointerup 清理不会抢在 click 之前", () => {
+      mockZoomState.scale = 2;
+      mockZoomState.isZoomed = true;
+      useImagePreviewStore.getState().open([mockImages[0]!]);
+      const { container } = render(<ImagePreview />);
+
+      const img = container.querySelector("img");
+      expect(img).not.toBeNull();
+      const stage = img!.parentElement!;
+
+      fireEvent.pointerDown(stage, { clientX: 195, clientY: 20 });
+      fireEvent.pointerUp(stage, { clientX: 195, clientY: 20 });
+      fireEvent.click(stage, { clientX: 195, clientY: 20 });
+
+      expect(useImagePreviewStore.getState().isOpen).toBe(false);
+    });
+
+    it("放大态拖动被打断后，下一次点空白仍会关闭", async () => {
+      mockZoomState.scale = 2;
+      mockZoomState.isZoomed = true;
+      useImagePreviewStore.getState().open([mockImages[0]!]);
+      const { container } = render(<ImagePreview />);
+
+      const img = container.querySelector("img");
+      expect(img).not.toBeNull();
+      const stage = img!.parentElement!;
+
+      // 原生图片拖拽会把手势打断成 pointercancel，不会产生 click
+      fireEvent.pointerDown(stage, { clientX: 100, clientY: 100 });
+      fireEvent.pointerCancel(stage, { clientX: 160, clientY: 100 });
+
+      // 等 pointercancel 后的延迟清理跑完
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      // 旧坐标已被清空，这一次干净点击不应再被当成拖动
+      fireEvent.click(stage, { clientX: 195, clientY: 20 });
+
+      expect(useImagePreviewStore.getState().isOpen).toBe(false);
+    });
+
+    it("可缩放的预览图禁用原生拖拽", () => {
+      useImagePreviewStore.getState().open(mockImages);
+      const { container } = render(<ImagePreview />);
+
+      const images = container.querySelectorAll("img");
+      expect(images.length).toBeGreaterThan(0);
+      for (const image of images) {
+        expect(image.draggable).toBe(false);
+      }
     });
   });
 });
