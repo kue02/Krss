@@ -1207,7 +1207,11 @@
     "article_quick_actions_hint": "How the read/unread and star buttons on each Inoreader-list row are shown",
     "article_quick_actions_expand": "Slide out on hover",
     "article_quick_actions_hover": "Show on hover",
-    "article_quick_actions_always": "Always visible"
+    "article_quick_actions_always": "Always visible",
+    "article_mobile_full_title": "Prioritize full title on mobile?",
+    "article_mobile_full_title_hint": "On: long titles wrap to show fully, with source · time on a second line. Off: the previous single-line truncated style with source · time on the right.",
+    "article_mobile_full_title_off": "Off",
+    "article_mobile_full_title_on": "On"
   },
   "folder": {
     "create": "New folder",

@@ -101,7 +101,7 @@ export function MobileSwipeEntryRow({ entry, children }: MobileSwipeEntryRowProp
       <div
         aria-hidden={!open}
         className={cn(
-          "absolute inset-y-0 right-0 z-0 flex border-b border-border bg-item-hover",
+          "absolute bottom-0.5 right-2 top-0.5 z-0 flex overflow-hidden rounded-[10px] border border-border/60 bg-item-hover",
           !open && "pointer-events-none",
         )}
         style={{ width: ACTION_WIDTH }}

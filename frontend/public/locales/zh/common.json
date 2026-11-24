@@ -1204,7 +1204,11 @@
     "article_quick_actions_hint": "Inoreader列表每行左侧「已读/未读 + 星标」按钮的显示方式",
     "article_quick_actions_expand": "悬浮滑出",
     "article_quick_actions_hover": "悬浮显示",
-    "article_quick_actions_always": "常显"
+    "article_quick_actions_always": "常显",
+    "article_mobile_full_title": "移动端下完整标题优先？",
+    "article_mobile_full_title_hint": "开启：标题一行放不下会换行完整显示，来源·时间显示在第二行小字；关闭：恢复原来的单行截断、来源·时间在右侧。",
+    "article_mobile_full_title_off": "关闭",
+    "article_mobile_full_title_on": "开启"
   },
   "folder": {
     "create": "新增文件夹",

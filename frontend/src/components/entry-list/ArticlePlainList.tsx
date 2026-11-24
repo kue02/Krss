@@ -49,6 +49,7 @@ export function ArticlePlainListRow({
   const { t } = useTranslation();
   const unreadStyle = useUISettingKey("unreadStyle");
   const articleListRowHeight = useUISettingKey("articleListRowHeight");
+  const articleMobileFullTitle = useUISettingKey("articleMobileFullTitle");
   const comfortable = articleListRowHeight === "comfortable";
   const feedMenu = useFeedMenuActions();
   const feedMenuFolders = useMemo(
@@ -106,7 +107,10 @@ export function ArticlePlainListRow({
           <div className="min-w-0 flex-1">
             <span
               className={cn(
-                "block truncate text-foreground",
+                "block text-foreground",
+                articleMobileFullTitle
+                  ? "whitespace-normal sm:truncate"
+                  : "truncate",
                 comfortable
                   ? "text-[15px] font-normal leading-[1.5]"
                   : "text-[14.5px] font-medium leading-[1.45]",
@@ -114,14 +118,19 @@ export function ArticlePlainListRow({
             >
               {entry.title || entry.url || ""}
             </span>
-            {meta && (
+            {meta && articleMobileFullTitle && (
               <span className="mt-0.5 block truncate text-xs text-muted-foreground sm:hidden">
                 {meta}
               </span>
             )}
           </div>
           {meta && (
-            <span className="ml-1 hidden shrink-0 text-xs text-muted-foreground sm:block">
+            <span
+              className={cn(
+                "ml-1 shrink-0 text-xs text-muted-foreground",
+                articleMobileFullTitle ? "hidden sm:block" : "block",
+              )}
+            >
               {meta}
             </span>
           )}

@@ -350,6 +350,7 @@ export function AppearanceSettings() {
     setHoverRowHeight,
     setArticleListRowHeight,
     setArticleQuickActionMode,
+    setArticleMobileFullTitle,
     setHoverImageSize,
     setGridStyle,
   } = useUISettingActions();
@@ -370,6 +371,7 @@ export function AppearanceSettings() {
   const hoverRowHeight = useUISettingKey("hoverRowHeight");
   const articleListRowHeight = useUISettingKey("articleListRowHeight");
   const articleQuickActionMode = useUISettingKey("articleQuickActionMode");
+  const articleMobileFullTitle = useUISettingKey("articleMobileFullTitle");
   const hoverImageSize = useUISettingKey("hoverImageSize");
   const hoverMultiImageSetting = useUISettingKey(
     "hoverMultiImage",
@@ -1333,6 +1335,31 @@ export function AppearanceSettings() {
                               label: t(
                                 "appearance_view.article_list_row_height_comfortable",
                               ),
+                            },
+                          ]}
+                        />
+                      </SettingRow>
+                    )}
+                    {/* 「Inoreader列表」移动端标题策略 */}
+                    {articleLayout === "inoreader" && (
+                      <SettingRow
+                        label={t("appearance_view.article_mobile_full_title")}
+                        hint={t("appearance_view.article_mobile_full_title_hint")}
+                      >
+                        <SegmentedControl
+                          className="shrink-0"
+                          value={articleMobileFullTitle ? "on" : "off"}
+                          onValueChange={(value) =>
+                            setArticleMobileFullTitle(value === "on")
+                          }
+                          options={[
+                            {
+                              value: "off",
+                              label: t("appearance_view.article_mobile_full_title_off"),
+                            },
+                            {
+                              value: "on",
+                              label: t("appearance_view.article_mobile_full_title_on"),
                             },
                           ]}
                         />
