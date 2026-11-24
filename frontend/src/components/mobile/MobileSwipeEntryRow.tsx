@@ -114,10 +114,9 @@ export function MobileSwipeEntryRow({ entry, children }: MobileSwipeEntryRowProp
             close();
             markAsRead({ id: entry.id, read: readAction.nextRead });
           }}
-          className="flex w-1/2 flex-col items-center justify-center gap-1 border-r border-border/60 bg-secondary text-foreground transition-[filter] duration-150 active:brightness-95"
+          className="flex w-1/2 items-center justify-center border-r border-border/60 bg-background text-muted-foreground transition-colors duration-150 hover:text-foreground active:brightness-95"
         >
           <ReadIcon className="size-5" />
-          <span className="text-[11px] leading-none">{t(readAction.labelKey)}</span>
         </button>
         <button
           type="button"
@@ -130,16 +129,11 @@ export function MobileSwipeEntryRow({ entry, children }: MobileSwipeEntryRowProp
             markAsStarred({ id: entry.id, starred: !isStarred });
           }}
           className={cn(
-            "flex w-1/2 flex-col items-center justify-center gap-1 bg-secondary transition-[filter] duration-150 active:brightness-95",
-            isStarred ? "text-amber-600" : "text-foreground",
+            "flex w-1/2 items-center justify-center bg-background transition-colors duration-150 hover:brightness-95",
+            isStarred ? "text-amber-500" : "text-muted-foreground hover:text-foreground",
           )}
         >
-          <Star
-            className={cn("size-5", isStarred && "fill-amber-500 text-amber-500")}
-          />
-          <span className="text-[11px] leading-none">
-            {t(isStarred ? "entry.remove_from_starred" : "entry.add_to_starred")}
-          </span>
+          <Star className={cn("size-5", isStarred && "fill-amber-500 text-amber-500")} />
         </button>
       </div>
 

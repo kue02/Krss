@@ -23,7 +23,10 @@ export function RowQuickActions({ entry, className }: RowQuickActionsProps) {
 
   return (
     <span
-      className={cn("flex shrink-0 items-center gap-0.5", className)}
+      className={cn(
+        "hidden shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 md:flex",
+        className,
+      )}
       data-testid="row-quick-actions"
     >
       <button

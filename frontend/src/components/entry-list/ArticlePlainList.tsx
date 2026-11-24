@@ -76,7 +76,7 @@ export function ArticlePlainListRow({
           /* 尺度照图片「悬停大图」的行实测值：padding 10px 16px、标题 14.5px/500、
              行高 1.45、图标 16px、右侧元信息 12px 且距标题 12px（gap 8 + ml 4） */
           className={cn(
-            "flex w-full items-center gap-2 border-b border-border px-4 py-[10px] text-left transition-colors hover:bg-item-hover",
+            "group flex w-full items-center gap-2 border-b border-border px-4 py-[10px] text-left transition-colors hover:bg-item-hover",
             selected && "bg-item-hover",
             unreadRowClass(isUnread, !!entry.starred, selected, unreadStyle),
           )}
