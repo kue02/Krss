@@ -568,22 +568,6 @@ func (s *backupService) importMCPServers(ctx context.Context, servers []BackupMC
 	return nil
 }
 
-// isExcludedSettingKey 复用设置导出的凭证排除清单（含 "anubis.cookie.*" 通配前缀）。
-func isExcludedSettingKey(key string) bool {
-	for _, pattern := range excludedSettingKeys() {
-		if strings.HasSuffix(pattern, "*") {
-			if strings.HasPrefix(key, strings.TrimSuffix(pattern, "*")) {
-				return true
-			}
-			continue
-		}
-		if key == pattern {
-			return true
-		}
-	}
-	return false
-}
-
 // isNeverExportSettingKey 账号安全类键：任何情况下都不导出/导入。
 func isNeverExportSettingKey(key string) bool {
 	return matchSettingPatterns(key, neverExportSettingKeys())
