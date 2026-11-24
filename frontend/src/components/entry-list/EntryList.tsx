@@ -719,9 +719,17 @@ export function EntryList({
     };
     update();
     const unsubscribe = surface.subscribe(update);
+    /* 双保险：文档滚动监听 window，容器滚动监听容器本身（部分浏览器/布局下
+       surface.subscribe 的落点与实际滚动元素不一致）。 */
+    const onScroll = () => update();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    const containerEl = containerRef.current;
+    containerEl?.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       window.clearTimeout(armTimer);
       unsubscribe();
+      window.removeEventListener("scroll", onScroll);
+      containerEl?.removeEventListener("scroll", onScroll);
     };
   }, [isMobile, inlineActive, selectedEntryId, scrollSurface, mobileHeaderArmed]);
   /* 合列正文接在「被点那一行」的后面（不是列表末尾）：读正文时还能继续往下滚看到
@@ -1742,7 +1750,8 @@ export function EntryList({
             );
           }}
           className={cn(
-            "w-full overflow-x-hidden rounded-[inherit]",
+            "w-full rounded-[inherit]",
+            usesDocumentScroll ? "overflow-x-clip" : "overflow-x-hidden",
             // 非虚拟列表时交给浏览器自己的 scroll anchoring：它和布局在同一帧里补偿，
             // 不会出现「先被推走一秒、再被 JS 拉回」的跳（旧 JS 兜底还会用过期锚点乱拉）。
             // 虚拟化文章列表仍然是 none + usePrependScrollAnchor 的 JS 补偿。
