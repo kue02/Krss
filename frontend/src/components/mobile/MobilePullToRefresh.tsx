@@ -15,13 +15,23 @@ interface MobilePullToRefreshProps {
 
 const PULL_THRESHOLD = 64;
 const MAX_PULL = 96;
+/** 方向判定所需的最小位移（px）：未达到前不拉进度条、不 preventDefault */
+const DIRECTION_LOCK_DISTANCE = 8;
+/** 纵向位移需超过横向的这个倍数才认定是下拉，其余一律视为横向并放弃本次手势 */
+const DIRECTION_LOCK_RATIO = 1.2;
+
+type PullDirection = "undetermined" | "vertical" | "ignored";
 
 /**
  * 移动端下拉刷新。
  *
  * 列表在移动端走文档滚动（`html.mobile-document-scroll`），所以监听 window 的 touch；
  * 只在 scrollY <= 0 时接管，并给橡皮筋阻尼，松手超过 64px 才真正刷新。
- * 顶栏按钮、输入框、弹层上的手势不拦，避免误触。
+ * 顶栏按钮、输入框、弹层、条目横滑行（`[data-swipe-row]`）上的手势不拦，避免误触。
+ *
+ * 带方向锁：手指移动 8px 后判定一次，只有「向下且纵向占优（|dy| > |dx| * 1.2）」
+ * 才进入下拉；判定为横向后本次手势彻底忽略（不 setPull、不 preventDefault），
+ * 与 `MobileSwipeEntryRow` 的横滑互不干扰。判定前不显示进度。
  */
 export function MobilePullToRefresh({
   enabled,
@@ -33,14 +43,18 @@ export function MobilePullToRefresh({
   const { t } = useTranslation();
   const [pull, setPull] = useState(0);
   const [busy, setBusy] = useState(false);
+  const startXRef = useRef<number | null>(null);
   const startYRef = useRef<number | null>(null);
+  const directionRef = useRef<PullDirection | null>(null);
   const pullRef = useRef(0);
 
   useEffect(() => {
     if (!enabled) return;
 
     const reset = () => {
+      startXRef.current = null;
       startYRef.current = null;
+      directionRef.current = null;
       pullRef.current = 0;
       setPull(0);
     };
@@ -50,27 +64,57 @@ export function MobilePullToRefresh({
         reset();
         return;
       }
-      const target = event.target as HTMLElement | null;
+      const target = event.target;
       if (
-        target?.closest(
-          "button, a, input, textarea, select, [role='dialog'], [data-no-pull]",
+        !(target instanceof Element) ||
+        target.closest(
+          "button, a, input, textarea, select, [role='dialog'], [data-no-pull], [data-swipe-row]",
         )
       ) {
         reset();
         return;
       }
+      startXRef.current = event.touches[0]?.clientX ?? null;
       startYRef.current = event.touches[0]?.clientY ?? null;
+      directionRef.current = "undetermined";
     };
 
     const onTouchMove = (event: TouchEvent) => {
-      if (startYRef.current === null || event.touches.length !== 1) return;
-      const delta = (event.touches[0]?.clientY ?? 0) - startYRef.current;
-      if (delta <= 0 || window.scrollY > 0) {
+      if (
+        startXRef.current === null ||
+        startYRef.current === null ||
+        event.touches.length !== 1
+      ) {
+        return;
+      }
+      const dx = (event.touches[0]?.clientX ?? 0) - startXRef.current;
+      const dy = (event.touches[0]?.clientY ?? 0) - startYRef.current;
+
+      // 8px 内方向未定：不拉进度条、不阻断滚动，等下一次 move 再判。
+      if (directionRef.current === "undetermined") {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) < DIRECTION_LOCK_DISTANCE) {
+          return;
+        }
+        if (
+          window.scrollY > 0 ||
+          dy <= 0 ||
+          Math.abs(dy) <= Math.abs(dx) * DIRECTION_LOCK_RATIO
+        ) {
+          // 横向 / 向上 / 页面已滚动：本次手势彻底放弃，直到 touchend。
+          directionRef.current = "ignored";
+          return;
+        }
+        directionRef.current = "vertical";
+      }
+
+      // 已判定横向（或其它非下拉方向）：保持静默，交给条目横滑。
+      if (directionRef.current !== "vertical") return;
+      if (dy <= 0 || window.scrollY > 0) {
         if (pullRef.current !== 0) reset();
         return;
       }
       // 阻尼：手指走 160px 时指示器大约走 80px，越拉越沉。
-      const next = Math.min(MAX_PULL, Math.pow(delta, 0.86));
+      const next = Math.min(MAX_PULL, Math.pow(dy, 0.86));
       pullRef.current = next;
       setPull(next);
       if (event.cancelable) event.preventDefault();
@@ -78,7 +122,8 @@ export function MobilePullToRefresh({
 
     const onTouchEnd = () => {
       if (startYRef.current === null) return;
-      const shouldRefresh = pullRef.current >= PULL_THRESHOLD;
+      const shouldRefresh =
+        directionRef.current === "vertical" && pullRef.current >= PULL_THRESHOLD;
       startYRef.current = null;
       if (!shouldRefresh) {
         reset();
