@@ -944,7 +944,12 @@ export function EntryList({
             ? paneAtTop
               ? "my-0 w-full rounded-none border-t border-border [clip-path:inset(0)]"
               : "mx-2 my-2 w-[calc(100%-1rem)] rounded-[12px] border border-border/60 shadow-nf [clip-path:inset(0_round_12px)]"
-            : "w-full rounded-[12px] border-t border-border [clip-path:inset(0_round_12px)]",
+            : /* 「原样」档也是全宽贴顶：之前只修了「卡片」档，这一档贴顶时仍保留
+                 12px 圆角 + 12px 圆角裁剪，圆角会把贴顶的直角边框切掉一块（用户
+                 2026-11-24 报「只解决了一半、偶现缺角」）。贴顶同样要换成直角。 */
+              paneAtTop
+              ? "w-full rounded-none border-t border-border [clip-path:inset(0)]"
+              : "w-full rounded-[12px] border-t border-border [clip-path:inset(0_round_12px)]",
         )}
       >
         {renderInlineContent?.(containerRef, {
