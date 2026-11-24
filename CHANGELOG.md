@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-11-24
+
+### Changed
+
+- **文件夹范围改为覆盖整棵子树**：选中父文件夹时，中栏条目与未读数、全部标读，以及自动化规则 / 智能视图里的文件夹范围，都包含孙级订阅，不再只看直接子级。
+- **卡片式正文栏的顶部工具栏背景改为纯遮罩**：去掉毛玻璃模糊，避免滚动后正文栏圆角缺块；「原样」正文栏保持原样。
+
+### Fixed
+
+- 修复多层级文件夹中选中父文件夹时，中栏只显示直接子级的订阅和条目、孙级完全看不到的问题。
+- 修复卡片式正文栏在列表滚动后点开正文时，左上 / 右上圆角偶发缺一块的问题（不滚动时正常，滚动后或后续再次点开才出现）。
+
 ## [1.3.0] - 2026-11-24
 
 ### Added
@@ -111,7 +123,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 修复开启翻译后正文排版被破坏的问题。
 - 「更多」面板里强制刷新的图标与面板内其它图标尺寸统一。
 
-[Unreleased]: https://github.com/kue02/Krss/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/kue02/Krss/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/kue02/Krss/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/kue02/Krss/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/kue02/Krss/compare/v1.1.9.1...v1.2.0
 [1.1.9.1]: https://github.com/kue02/Krss/compare/v1.1.9...v1.1.9.1
