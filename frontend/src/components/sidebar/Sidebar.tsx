@@ -964,9 +964,6 @@ export function Sidebar({
   );
 
   const isStarredSelected = selection.type === "starred";
-  /** 「只显示当前视图的星标」与「已加星标」是两档，别同时点亮 */
-  const isStarredViewSelected =
-    selection.type === "starred" && Boolean(selection.viewOnly);
   const isFeedSelected = (feedId: string) =>
     selection.type === "feed" && selection.feedId === feedId;
   const isFolderSelected = (folderId: string) =>
@@ -983,8 +980,7 @@ export function Sidebar({
     selection.type === "feed" && selection.feedId ? [selection.feedId] : [],
   );
 
-  // 数量角标（用户 11-15）：两档星标各一个数 + 每条视图的命中数，都跟进当前内容类型
-  const starredCountAll = useStarredCount().data?.count ?? 0;
+  // 数量角标（用户 11-15）：星标只显示「当前内容类型」下的星标数（不再显示全部）
   const starredCountView = useStarredCount(contentType).data?.count ?? 0;
   const viewCounts = useViewCounts(contentType).data?.counts;
   // 视图可以固定只在某些内容类型下显示（用户 11-5）：没设 = 都显示（老行为）
@@ -1141,7 +1137,7 @@ export function Sidebar({
                   2026-09-18 收敛：只剩这一行（行尾的「当前视图」开关已删，那一档挪到第二栏列表头的图标按钮），
                   点进来默认就是「只当前视图」那一档 */}
               <StarredItem
-                count={isStarredViewSelected ? starredCountView : starredCountAll}
+                count={starredCountView}
                 isActive={isStarredSelected}
                 onClick={onSelectStarred}
                 mobile={isMobile}
