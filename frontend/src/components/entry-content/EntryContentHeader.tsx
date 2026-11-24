@@ -93,9 +93,11 @@ interface EntryContentHeaderProps {
   mobileInlineSticky?: boolean;
   /**
    * 顶栏背景层是否叠加 `backdrop-blur`。默认跟随 `sticky`：第三栏那套（非内嵌）保留模糊；
-   * 内联合列（卡片式正文 pane）里必须关掉：Chromium 下带 backdrop-filter 的元素
+   * 卡片档内联合列里必须关掉：Chromium 下祖先 `overflow: clip` 的圆角裁剪遇到带
+   * backdrop-filter 的层时，圆角边框/阴影的合成会出错（角部看上去缺一块，实测不是
+   * 整块白底盖住圆角）
    * 不受祖先 `overflow: clip` 圆角裁剪的约束，会把卡片的圆角盖成直角（用户 2026-11-24 报的
-   * 「滑动后点开正文，卡片左上角缺一块」，不滚动时背景层 opacity-0 所以看不到）。
+   * 表现为「滑动后点开正文，卡片左上角缺一块」，不滚动时背景层 opacity-0 所以看不到）。
    */
   backgroundBlur?: boolean;
 }
@@ -191,7 +193,9 @@ export function EntryContentHeader({
         >
           <div
             className={cn(
-              "pointer-events-none absolute inset-0 border-b border-foreground/10 bg-overlay/80 backdrop-blur-xl transition-opacity duration-300 ease-in-out",
+              "pointer-events-none absolute inset-0 border-b border-foreground/10 bg-overlay/80 transition-opacity duration-300 ease-in-out",
+              /* 卡片档内联合列走 overflow:clip，带 backdrop-filter 会让圆角边框合成出错，同桌面分支 */
+              backgroundBlur && "backdrop-blur-xl",
               mobileInlineSticky ? "opacity-100" : isAtTop ? "opacity-0" : "opacity-100",
             )}
           />

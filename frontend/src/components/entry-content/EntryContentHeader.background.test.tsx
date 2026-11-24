@@ -70,3 +70,38 @@ describe("顶栏背景层 backdrop-blur（卡片 pane 缺角）", () => {
     expect(backgroundLayer(container).className).toContain("backdrop-blur-sm");
   });
 });
+
+describe("手机内联合列工具栏背景层 backdrop-blur", () => {
+  it("卡片档（backgroundBlur=false）不叠加 backdrop-blur-xl", () => {
+    const { container } = render(
+      <EntryContentHeader
+        {...baseProps}
+        isMobile
+        sticky
+        mobileInlineSticky
+        backgroundBlur={false}
+      />,
+    );
+    const cls = backgroundLayer(container).className;
+    expect(cls).not.toContain("backdrop-blur");
+    expect(cls).toContain("bg-overlay/80");
+  });
+
+  it("原样档（backgroundBlur=true）保留 backdrop-blur-xl", () => {
+    const { container } = render(
+      <EntryContentHeader
+        {...baseProps}
+        isMobile
+        sticky
+        mobileInlineSticky
+        backgroundBlur
+      />,
+    );
+    expect(backgroundLayer(container).className).toContain("backdrop-blur-xl");
+  });
+
+  it("手机第三栏（非 sticky，默认值）保留模糊", () => {
+    const { container } = render(<EntryContentHeader {...baseProps} isMobile />);
+    expect(backgroundLayer(container).className).toContain("backdrop-blur-xl");
+  });
+});
