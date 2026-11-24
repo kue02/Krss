@@ -656,7 +656,7 @@ export const defaultUISettings: UISettings = {
   articleQuickActionMode: "expand",
   articleMobileFullTitle: true,
   inoreaderSplitterPromptShown: false,
-  articlePaneStyle: "plain",
+  articlePaneStyle: "card",
   hoverImageSize: "small",
   hoverMultiImage: { rowWheel: true, floatWheel: false, hSwipe: false },
   notificationBodyOnHover: false,
