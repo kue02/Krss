@@ -187,8 +187,6 @@ function AuthenticatedApp() {
     isMobile,
     isTablet,
     mobileView,
-    sidebarOpen,
-    setSidebarOpen,
     showList,
     openSidebar,
     closeSidebar,
@@ -824,9 +822,9 @@ function AuthenticatedApp() {
               <VideoPreview />
             </>
           )}
-          <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-            {sidebarContent}
-          </Sheet>
+          {/* 侧栏开关走模块级 store（useMobileLayout），这里不传 open：
+              开关只让 Sheet 自己重渲染，App / EntryList 不跟着 commit */}
+          <Sheet>{sidebarContent}</Sheet>
           <ShortcutsHelpDialog
             open={isShortcutsOpen}
             onOpenChange={(open) => shortcutsHelp.set(open)}
@@ -991,10 +989,9 @@ function AuthenticatedApp() {
             <VideoPreview />
           </>
         )}
-        {/* Sheet rendered once to prevent animation flickering on route/mode changes */}
-        <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-          {sidebarContent}
-        </Sheet>
+        {/* Sheet rendered once to prevent animation flickering on route/mode changes；
+            开关走 useMobileLayout 的模块级 store，只让 Sheet 自己重渲染 */}
+        <Sheet>{sidebarContent}</Sheet>
         <ShortcutsHelpDialog
           open={isShortcutsOpen}
           onOpenChange={(open) => shortcutsHelp.set(open)}

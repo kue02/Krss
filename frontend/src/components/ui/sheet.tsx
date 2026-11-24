@@ -1,4 +1,8 @@
 import { useEffect, useRef } from "react";
+import {
+  setMobileSidebarOpen,
+  useMobileSidebarOpen,
+} from "@/hooks/useMobileLayout";
 import { cn } from "@/lib/utils";
 
 const BLOCK_BACKGROUND_SCROLL_OPTIONS = {
@@ -54,12 +58,24 @@ function preparePanel(panel: HTMLDivElement | null) {
 }
 
 interface SheetProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  /**
+   * 受控模式：不传就跟随移动端侧栏 store（`useMobileSidebarOpen`）。
+   * App 里两处调用点都不传，这样开关只让 Sheet 自己重渲染，
+   * AuthenticatedApp / EntryList 不跟着 commit（2026-11-25 实测的长任务来源）。
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   children: React.ReactNode;
 }
 
-export function Sheet({ open, onOpenChange, children }: SheetProps) {
+export function Sheet({
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+  children,
+}: SheetProps) {
+  const storeOpen = useMobileSidebarOpen();
+  const open = controlledOpen ?? storeOpen;
+  const onOpenChange = controlledOnOpenChange ?? setMobileSidebarOpen;
   const panelRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<PointerDrag | null>(null);
 

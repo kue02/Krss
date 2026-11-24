@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { useEffect, useState } from "react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { setMobileSidebarOpen } from "@/hooks/useMobileLayout";
 import { Sheet } from "./sheet";
 
 function dispatchScrollGesture(target: Element, type: "touchmove" | "wheel") {
@@ -65,6 +66,8 @@ function pointer(
 describe("Sheet", () => {
   beforeEach(() => {
     document.body.style.overflow = "";
+    // 模块级 store 会在用例之间留着，每条用例从「关」开始
+    setMobileSidebarOpen(false);
   });
 
   it("keeps the panel mounted before the first open so opening never mounts it", () => {
@@ -185,6 +188,97 @@ describe("Sheet", () => {
 
     pointer("pointerUp", content, { pointerId: 3, clientX: 200, clientY: 424 });
     expect(stateOf(root)).toBe("closed");
+  });
+
+  it("follows the mobile sidebar store when uncontrolled", () => {
+    const { container } = render(
+      <Sheet>
+        <button type="button">menu item</button>
+      </Sheet>,
+    );
+    const { root, overlay } = getSlots(container);
+
+    expect(stateOf(root)).toBe("closed");
+
+    act(() => setMobileSidebarOpen(true));
+    expect(stateOf(root)).toBe("open");
+    expect(screen.getByRole("button", { name: "menu item" })).toBeTruthy();
+
+    // 遮罩关闭要写回 store，而不是只关自己
+    fireEvent.click(overlay);
+    expect(stateOf(root)).toBe("closed");
+  });
+
+  it("does not re-render app-level siblings when the sidebar toggles", () => {
+    const siblingRenders = { current: 0 };
+    function AppShellSibling() {
+      // 每次真正的 render 后 +1（bail out 时不会执行）
+      useEffect(() => {
+        siblingRenders.current += 1;
+      });
+      return <div>app content</div>;
+    }
+
+    const { container } = render(
+      <>
+        <AppShellSibling />
+        <Sheet>
+          <button type="button">menu item</button>
+        </Sheet>
+      </>,
+    );
+    const { root } = getSlots(container);
+    const rendersBeforeToggle = siblingRenders.current;
+
+    act(() => setMobileSidebarOpen(true));
+
+    // 开关只让订阅者（Sheet）重渲染：App 级兄弟节点一次都不该重渲染
+    expect(stateOf(root)).toBe("open");
+    expect(siblingRenders.current).toBe(rendersBeforeToggle);
+
+    act(() => setMobileSidebarOpen(false));
+    expect(stateOf(root)).toBe("closed");
+    expect(siblingRenders.current).toBe(rendersBeforeToggle);
+  });
+
+  it("does not re-render the sidebar content when the panel opens", () => {
+    const sidebarRenders = { current: 0 };
+    function SidebarProbe() {
+      useEffect(() => {
+        sidebarRenders.current += 1;
+      });
+      return <button type="button">menu item</button>;
+    }
+
+    const { container } = render(
+      <Sheet>
+        <SidebarProbe />
+      </Sheet>,
+    );
+    const { root } = getSlots(container);
+    const rendersBeforeToggle = sidebarRenders.current;
+
+    act(() => setMobileSidebarOpen(true));
+
+    // children 元素对象没变，React 直接跳过 Sidebar 子树：只有面板的 style 变
+    expect(stateOf(root)).toBe("open");
+    expect(sidebarRenders.current).toBe(rendersBeforeToggle);
+  });
+
+  it("still lets props take precedence over the store", () => {
+    const onOpenChange = vi.fn();
+    const { container } = render(
+      <Sheet open={false} onOpenChange={onOpenChange}>
+        <button type="button">menu item</button>
+      </Sheet>,
+    );
+    const { root } = getSlots(container);
+
+    act(() => setMobileSidebarOpen(true));
+    expect(stateOf(root)).toBe("closed");
+
+    fireEvent.click(container.querySelector('[data-slot="sheet-overlay"]')!);
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
   it("keeps the two mobile call sites independent (no shared state)", () => {
