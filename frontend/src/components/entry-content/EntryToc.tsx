@@ -283,7 +283,7 @@ export function EntryToc({
     );
   }
 
-  return (
+  const tocPanel = (
     <div
       className={cn(
         "group/toc z-20 w-6",
@@ -335,4 +335,8 @@ export function EntryToc({
       </nav>
     </div>
   );
+
+  // 内联合列时正文栏用了圆角裁剪（clip-path），会把内部 fixed 目录一起裁掉；
+  // 目录改为挂到 body，独立于正文卡片的裁剪区域。
+  return fixedInline ? createPortal(tocPanel, document.body) : tocPanel;
 }

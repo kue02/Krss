@@ -402,11 +402,12 @@ describe("EntryList · 标准文章列表虚拟化", () => {
     // 未选中：没有正文 pane，底部「全部标记为已读」照常在
     expect(screen.queryByTestId("inline-article-pane")).toBeNull();
     expect(screen.getByTestId("mark-all-read-footer")).toBeTruthy();
-    // 未选中时仍走虚拟列表（只挂可视区）
+    // 「向下」合列整体不走虚拟列表：pane 必须在被点行后面、且要能继续下滑看后续条目，
+    // 因此从进入该模式起就全量渲染（避免点开的瞬间把整列从虚拟切全量导致闪烁）。
     expect(
       viewport.querySelector('[data-virtual-list="true"]'),
-    ).not.toBeNull();
-    expect(rowIds().length).toBeLessThanOrEqual(15);
+    ).toBeNull();
+    expect(rowIds().length).toBeGreaterThan(15);
 
     rerender(
       <EntryList
