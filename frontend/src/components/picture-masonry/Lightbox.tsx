@@ -44,6 +44,8 @@ export function Lightbox() {
 
   // Track pointer position to distinguish click from drag in carousel
   const pointerDownPos = useRef<{ x: number; y: number } | null>(null);
+  // pointer capture 会把 click 的 target 改到容器上，记录按下时的真实 target 以保留图片点击语义
+  const pointerDownTargetRef = useRef<Element | null>(null);
   const scrollLockYRef = useRef(0);
   const touchMoveHandlerRef = useRef<((e: TouchEvent) => void) | null>(null);
 
@@ -68,8 +70,14 @@ export function Lightbox() {
       startIndex: initialIndexRef.current,
       skipSnaps: false, // Snap to nearest slide (iOS behavior)
       duration: 25, // iOS-like snap duration (default 25, range 20-60)
-      // 放大或手势进行中时，单指拖动应平移图片而不是翻页
-      watchDrag: () => !isZoomedRef.current && !isInteractingRef.current,
+      // 放大、手势进行中，或双指按下时都不让 embla 抢走拖动
+      watchDrag: (
+        _emblaApi: unknown,
+        event?: Event & { touches?: { length: number } },
+      ) =>
+        !isZoomedRef.current &&
+        !isInteractingRef.current &&
+        (event?.touches?.length ?? 1) < 2,
     }),
     // Only recreate options when lightbox opens (images change)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -257,6 +265,8 @@ export function Lightbox() {
 
   const handleCarouselPointerDown = useCallback((e: React.PointerEvent) => {
     pointerDownPos.current = { x: e.clientX, y: e.clientY };
+    pointerDownTargetRef.current =
+      e.target instanceof Element ? e.target : null;
   }, []);
 
   // 等当次 click 处理完再清空按下坐标：pointercancel / 被原生拖拽打断时不会
@@ -264,6 +274,7 @@ export function Lightbox() {
   const schedulePointerDownReset = useCallback(() => {
     window.setTimeout(() => {
       pointerDownPos.current = null;
+      pointerDownTargetRef.current = null;
     }, 0);
   }, []);
 
@@ -283,20 +294,102 @@ export function Lightbox() {
     [schedulePointerDownReset, zoom.handlers.onPointerCancel],
   );
 
-  // 统一 click：图片外空白立即关闭（放大态也一样）；图片内保留点击关闭。
-  // 拖动超过 5px 不当作点击。
-  const handleStageClick = useCallback(
+  // 图片内点按：1x 单击延时关闭、双击缩放、放大态单击不关（与 ImagePreview 一致）
+  const tapTimerRef = useRef<number | null>(null);
+  const lastTapRef = useRef<{ t: number; x: number; y: number } | null>(null);
+  const suppressDblClickRef = useRef(0);
+  const TAP_CLOSE_DELAY = 320;
+  const DOUBLE_TAP_MS = 320;
+  const DOUBLE_TAP_SLOP = 30;
+  const clearTapTimer = useCallback(() => {
+    if (tapTimerRef.current !== null) {
+      window.clearTimeout(tapTimerRef.current);
+      tapTimerRef.current = null;
+    }
+  }, []);
+  useEffect(() => clearTapTimer, [clearTapTimer]);
+
+  const handleTapClose = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
+      pointerDownTargetRef.current = null;
+      // 拖动 / 滑动超过 5px 视为滑动手势，不当作点击
       if (pointerDownPos.current) {
         const dx = Math.abs(e.clientX - pointerDownPos.current.x);
         const dy = Math.abs(e.clientY - pointerDownPos.current.y);
         pointerDownPos.current = null;
         if (dx >= 5 || dy >= 5) return;
       }
+
+      const now = performance.now();
+      const last = lastTapRef.current;
+      const isDoubleTap =
+        !!last &&
+        now - last.t <= DOUBLE_TAP_MS &&
+        Math.hypot(e.clientX - last.x, e.clientY - last.y) <= DOUBLE_TAP_SLOP;
+
+      if (isDoubleTap) {
+        clearTapTimer();
+        lastTapRef.current = null;
+        suppressDblClickRef.current = now;
+        zoom.toggleZoomAt(e.clientX, e.clientY);
+        return;
+      }
+
+      lastTapRef.current = { t: now, x: e.clientX, y: e.clientY };
+
+      // 放大状态下单击不关闭（只记录，等第二次点按做复位）
+      if (zoom.isZoomed) return;
+
+      if (tapTimerRef.current !== null) {
+        clearTapTimer();
+        return;
+      }
+      tapTimerRef.current = window.setTimeout(() => {
+        tapTimerRef.current = null;
+        close();
+      }, TAP_CLOSE_DELAY);
+    },
+    [close, clearTapTimer, zoom],
+  );
+
+  // 统一 click：图片外空白立即关闭（放大态也一样）；图片内走点按语义。
+  // 拖动超过 5px 不当作点击。
+  const handleStageClick = useCallback(
+    (e: React.MouseEvent) => {
+      const target = e.target;
+      const startedOnImage = pointerDownTargetRef.current?.closest("img") != null;
+      const targetIsImage =
+        target instanceof Element && target.closest("img") !== null;
+      if (targetIsImage || startedOnImage) {
+        handleTapClose(e);
+        return;
+      }
+
+      e.stopPropagation();
+      pointerDownTargetRef.current = null;
+      if (pointerDownPos.current) {
+        const dx = Math.abs(e.clientX - pointerDownPos.current.x);
+        const dy = Math.abs(e.clientY - pointerDownPos.current.y);
+        pointerDownPos.current = null;
+        if (dx >= 5 || dy >= 5) return;
+      }
+
+      clearTapTimer();
+      lastTapRef.current = null;
       close();
     },
-    [close],
+    [close, clearTapTimer, handleTapClose],
+  );
+
+  // 原生 dblclick 兜底（鼠标/触控板）；触屏双击已被上面的 tap 逻辑处理时忽略。
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (performance.now() - suppressDblClickRef.current < 500) return;
+      zoom.toggleZoomAt(e.clientX, e.clientY);
+    },
+    [zoom],
   );
 
   const handleOverlayClick = useCallback(() => {
@@ -356,6 +449,9 @@ export function Lightbox() {
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
           className="fixed inset-0 z-50 flex flex-col bg-black/90 h-dvh"
+          role="dialog"
+          aria-modal="true"
+          data-overlay
           onClick={handleOverlayClick}
         >
           {/* Content container */}
@@ -451,6 +547,11 @@ export function Lightbox() {
                   className="relative flex size-full touch-none items-center justify-center"
                   ref={zoom.containerRef}
                   {...zoom.handlers}
+                  onDoubleClick={handleDoubleClick}
+                  onPointerDown={(e) => {
+                    handleCarouselPointerDown(e);
+                    zoom.handlers.onPointerDown?.(e);
+                  }}
                   onPointerUp={handleStagePointerUp}
                   onPointerCancel={handleStagePointerCancel}
                   onClick={handleStageClick}
@@ -460,6 +561,7 @@ export function Lightbox() {
                     src={images[0]}
                     alt=""
                     draggable={false}
+                    onLoad={zoom.onImageLoad}
                     className="max-h-full max-w-full object-contain"
                     style={zoom.style}
                   />
@@ -481,6 +583,7 @@ export function Lightbox() {
                   ref={zoom.containerRef}
                   className="size-full min-h-0 touch-none"
                   {...zoom.handlers}
+                  onDoubleClick={handleDoubleClick}
                   onPointerUp={handleStagePointerUp}
                   onPointerCancel={handleStagePointerCancel}
                 >
@@ -502,6 +605,9 @@ export function Lightbox() {
                           src={src}
                           alt=""
                           draggable={false}
+                          onLoad={
+                            index === currentIndex ? zoom.onImageLoad : undefined
+                          }
                           className="max-h-full max-w-full object-contain"
                           style={index === currentIndex ? zoom.style : undefined}
                           loading={

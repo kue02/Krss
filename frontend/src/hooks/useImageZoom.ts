@@ -95,7 +95,11 @@ export function useImageZoom(resetKey?: unknown) {
   /** 图片的实际布局尺寸（受 max-w/max-h 约束后的值），letterbox 时用它算边界 */
   const measureImage = useCallback((): Size | undefined => {
     const image = imageRef.current;
-    if (!image || image.clientWidth <= 0 || image.clientHeight <= 0) return undefined;
+    if (!image) return undefined;
+    // 图片还没解码完时没有布局尺寸：此时宁可禁止平移，也不能按容器尺寸放行
+    if (image.clientWidth <= 0 || image.clientHeight <= 0) {
+      return { width: 0, height: 0 };
+    }
     return { width: image.clientWidth, height: image.clientHeight };
   }, []);
 
@@ -274,6 +278,16 @@ export function useImageZoom(resetKey?: unknown) {
         y: event.clientY,
       });
 
+      // 鼠标拖出容器后仍要收到 pointermove/pointerup；capture 失败不影响触摸的隐式捕获
+      const container = containerRef.current;
+      if (container && typeof container.setPointerCapture === "function") {
+        try {
+          container.setPointerCapture(event.pointerId);
+        } catch {
+          // 某些浏览器在 pointerdown 默认行为取消后拒绝捕获，走 pointerleave 兜底
+        }
+      }
+
       const count = pointersRef.current.size;
       if (count === 1) {
         // 未放大时单指只用来判定点击 / 为随后的第二根手指做准备
@@ -388,14 +402,65 @@ export function useImageZoom(resetKey?: unknown) {
     [beginDrag, beginPinch, commit, endInteraction],
   );
 
+  /** 指针被系统打断 / 捕获丢失：清空全部手势状态并提交当前 transform */
+  const finishInterruptedGesture = useCallback(() => {
+    if (pointersRef.current.size === 0 && !gestureRef.current) return;
+    pointersRef.current.clear();
+    gestureRef.current = null;
+    commit();
+    endInteraction();
+  }, [commit, endInteraction]);
+
+  const onPointerCancel = useCallback(
+    (event: React.PointerEvent) => {
+      if (!pointersRef.current.has(event.pointerId)) return;
+      finishInterruptedGesture();
+    },
+    [finishInterruptedGesture],
+  );
+
+  const onLostPointerCapture = useCallback(
+    (event: React.PointerEvent) => {
+      // pointerup 自动释放 capture 时指针已经从 map 中移除，这里只处理意外丢失
+      if (!pointersRef.current.has(event.pointerId)) return;
+      finishInterruptedGesture();
+    },
+    [finishInterruptedGesture],
+  );
+
   const onPointerLeave = useCallback(
     (event: React.PointerEvent) => {
-      // 鼠标拖出容器后收不到 pointerup，就地结束，避免手势卡死
+      // 已成功 capture 时 pointerup 会回到容器，不能因为移出边界就提前结束拖动
+      const container = containerRef.current;
+      if (
+        container &&
+        typeof container.hasPointerCapture === "function" &&
+        container.hasPointerCapture(event.pointerId)
+      ) {
+        return;
+      }
+      // capture 不可用时，鼠标拖出容器后收不到 pointerup，就地结束，避免手势卡死
       if (event.pointerType !== "mouse") return;
       if (gestureRef.current) onPointerUp(event);
     },
     [onPointerUp],
   );
+
+  /** 图片 onLoad 后重新测量并夹紧 offset（未加载时边界为 0，不允许拖出） */
+  const onImageLoad = useCallback(() => {
+    const targetScale = scaleRef.current;
+    const next =
+      targetScale > 1
+        ? clampToBounds(offsetRef.current, targetScale)
+        : { x: 0, y: 0 };
+    offsetRef.current = next;
+    setOffset(next);
+    const image = imageRef.current;
+    if (image) {
+      image.style.transition = ZOOM_TRANSITION;
+      image.style.transform = transformCss(targetScale, next);
+    }
+  }, [clampToBounds]);
 
   const isZoomed = scale > 1;
 
@@ -408,13 +473,15 @@ export function useImageZoom(resetKey?: unknown) {
     isInteracting,
     reset,
     toggleZoomAt,
+    onImageLoad,
     handlers: {
       onWheel,
       onDoubleClick,
       onPointerDown,
       onPointerMove,
       onPointerUp,
-      onPointerCancel: onPointerUp,
+      onPointerCancel,
+      onLostPointerCapture,
       onPointerLeave,
     },
     /** 给图片元素用的 transform */

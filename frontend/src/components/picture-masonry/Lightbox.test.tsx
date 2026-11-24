@@ -36,18 +36,35 @@ const mockSelectedScrollSnap = vi.fn(() => 0);
 const mockOn = vi.fn();
 const mockOff = vi.fn();
 
+let capturedEmblaOptions: {
+  startIndex?: number;
+  watchDrag?: (
+    api?: unknown,
+    event?: { touches?: { length: number } },
+  ) => boolean;
+} = {};
+
 vi.mock("embla-carousel-react", () => ({
-  default: () => [
-    vi.fn(), // emblaRef
-    {
-      scrollPrev: mockScrollPrev,
-      scrollNext: mockScrollNext,
-      scrollTo: mockScrollTo,
-      selectedScrollSnap: mockSelectedScrollSnap,
-      on: mockOn,
-      off: mockOff,
-    },
-  ],
+  default: (options: {
+    startIndex?: number;
+    watchDrag?: (
+      api?: unknown,
+      event?: { touches?: { length: number } },
+    ) => boolean;
+  }) => {
+    capturedEmblaOptions = options;
+    return [
+      vi.fn(), // emblaRef
+      {
+        scrollPrev: mockScrollPrev,
+        scrollNext: mockScrollNext,
+        scrollTo: mockScrollTo,
+        selectedScrollSnap: mockSelectedScrollSnap,
+        on: mockOn,
+        off: mockOff,
+      },
+    ];
+  },
 }));
 
 // Mock framer-motion to avoid animation issues in tests
@@ -58,12 +75,27 @@ vi.mock("framer-motion", () => ({
       children,
       className,
       onClick,
+      onDoubleClick,
+      onPointerDown,
+      onPointerUp,
+      onPointerCancel,
     }: {
       children: React.ReactNode;
       className?: string;
-      onClick?: () => void;
+      onClick?: React.MouseEventHandler<HTMLDivElement>;
+      onDoubleClick?: React.MouseEventHandler<HTMLDivElement>;
+      onPointerDown?: React.PointerEventHandler<HTMLDivElement>;
+      onPointerUp?: React.PointerEventHandler<HTMLDivElement>;
+      onPointerCancel?: React.PointerEventHandler<HTMLDivElement>;
     }) => (
-      <div className={className} onClick={onClick}>
+      <div
+        className={className}
+        onClick={onClick}
+        onDoubleClick={onDoubleClick}
+        onPointerDown={onPointerDown}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
+      >
         {children}
       </div>
     ),
@@ -128,6 +160,7 @@ describe("Lightbox", () => {
     mockSelectedScrollSnap.mockClear();
     mockOn.mockClear();
     mockOff.mockClear();
+    capturedEmblaOptions = {};
     useLightboxStore.getState().reset();
   });
 
@@ -619,6 +652,83 @@ describe("Lightbox", () => {
 
       // emblaApi.off should be called to clean up
       expect(mockOff).toHaveBeenCalledWith("select", expect.any(Function));
+    });
+  });
+
+  describe("单图点击、拖动与双指手势", () => {
+    const openSingle = () => {
+      useLightboxStore
+        .getState()
+        .open(mockImageEntry, mockFeed, [mockImageEntry.thumbnailUrl!]);
+    };
+
+    it("单图单击图片延时 320ms 关闭", async () => {
+      openSingle();
+      const { container } = render(<Lightbox />, { wrapper: createWrapper() });
+
+      const img = container.querySelector("img");
+      expect(img).not.toBeNull();
+
+      fireEvent.click(img!);
+      expect(useLightboxStore.getState().isOpen).toBe(true);
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 420));
+      });
+      expect(useLightboxStore.getState().isOpen).toBe(false);
+    });
+
+    it("单图双击图片触发缩放且不关闭", async () => {
+      openSingle();
+      const { container } = render(<Lightbox />, { wrapper: createWrapper() });
+
+      const img = container.querySelector("img");
+      expect(img).not.toBeNull();
+
+      fireEvent.click(img!);
+      fireEvent.click(img!);
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 420));
+      });
+      expect(useLightboxStore.getState().isOpen).toBe(true);
+      expect(img!.style.transform).toContain("scale(2)");
+    });
+
+    it("单图拖动超过阈值后松手不关闭", async () => {
+      openSingle();
+      const { container } = render(<Lightbox />, { wrapper: createWrapper() });
+
+      const img = container.querySelector("img");
+      expect(img).not.toBeNull();
+      const stage = img!.parentElement!;
+
+      fireEvent.pointerDown(stage, { clientX: 100, clientY: 100 });
+      fireEvent.pointerUp(stage, { clientX: 160, clientY: 100 });
+      fireEvent.click(img!, { clientX: 160, clientY: 100 });
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 420));
+      });
+      expect(useLightboxStore.getState().isOpen).toBe(true);
+    });
+
+    it("双指按下时 watchDrag 返回 false", () => {
+      useLightboxStore
+        .getState()
+        .open(mockImageEntry, mockFeed, mockMultipleImages);
+      render(<Lightbox />, { wrapper: createWrapper() });
+
+      expect(
+        capturedEmblaOptions.watchDrag!(undefined, {
+          touches: { length: 2 },
+        }),
+      ).toBe(false);
+      expect(
+        capturedEmblaOptions.watchDrag!(undefined, {
+          touches: { length: 1 },
+        }),
+      ).toBe(true);
     });
   });
 });
