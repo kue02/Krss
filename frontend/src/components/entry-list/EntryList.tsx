@@ -234,6 +234,8 @@ export function EntryList({
   const pinnedRowRef = useRef<{ entryId: string; top: number } | null>(null);
   /** 列表 TOP 栏是否收起（对齐补偿要能读到最新值，不能只用挂载时的闭包） */
   const headerHiddenRef = useRef(false);
+  /** 正文栏是否贴顶铺满（同上，对齐补偿要读最新值） */
+  const paneAtTopRef = useRef(false);
   const headerRef = useRef<HTMLDivElement>(null);
   const listWrapperRef = useRef<HTMLDivElement>(null);
   const usesDocumentScroll = Boolean(isMobile);
@@ -761,8 +763,13 @@ export function EntryList({
       if (!row) return;
       if (headerHiddenRef.current !== lastHeaderHidden) {
         lastHeaderHidden = headerHiddenRef.current;
-        pinned.top = row.getBoundingClientRect().top;
-        return;
+        /* 只有「正文贴顶」时，顶栏收起/展开是由滚动位置反馈触发的：补它会和顶栏状态
+           互相推拉（-56/+56/-56），这时重设基准、不补。点条目时顶栏因重置而展开属于
+           正常布局变化，必须补 —— 否则被点行会停在 56px 之外。 */
+        if (paneAtTopRef.current) {
+          pinned.top = row.getBoundingClientRect().top;
+          return;
+        }
       }
       const delta = row.getBoundingClientRect().top - pinned.top;
       if (Math.abs(delta) < 0.5) return;
@@ -819,6 +826,7 @@ export function EntryList({
   headerHiddenRef.current = mobileHeaderHidden;
   /* 卡片正文栏滚到视口顶部后自动铺满宽度，不再留左右各 8px 的空白（用户 2026-11-24）。 */
   const [paneAtTop, setPaneAtTop] = useState(false);
+  paneAtTopRef.current = paneAtTop;
   const lastScrollYRef = useRef<number | null>(null);
   /* 点开正文后的自动吸顶会连续写 scrollTop；这段时间不要用「位置」去反推顶栏，
      否则收起/展开又反过来改变可视高度，paneTop 在阈值附近来回抖 → 点击时快速闪烁。 */
