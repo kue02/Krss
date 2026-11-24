@@ -78,7 +78,7 @@ export function ArticlePlainListRow({
           /* 尺度照图片「悬停大图」的行实测值：padding 10px 16px、标题 14.5px/500、
              行高 1.45、图标 16px、右侧元信息 12px 且距标题 12px（gap 8 + ml 4） */
           className={cn(
-            "group flex w-full items-center gap-2 border-b border-border px-4 text-left transition-colors hover:bg-item-hover",
+            "group mx-2 my-0.5 flex w-[calc(100%-1rem)] items-center gap-2 rounded-[10px] border border-transparent px-2 text-left transition-[background-color,border-color,box-shadow] duration-150 hover:bg-item-hover",
             comfortable ? "py-[10px]" : "py-[4px]",
             selected && "bg-item-hover",
             unreadRowClass(isUnread, !!entry.starred, selected, unreadStyle),
@@ -103,18 +103,25 @@ export function ArticlePlainListRow({
               <span className="inline-block size-4 shrink-0" />
             )}
           </UnreadIndicator>
-          <span
-            className={cn(
-              "min-w-0 flex-1 truncate text-foreground",
-              comfortable
-                ? "text-[15px] font-normal leading-[1.5]"
-                : "text-[14.5px] font-medium leading-[1.45]",
+          <div className="min-w-0 flex-1">
+            <span
+              className={cn(
+                "block truncate text-foreground",
+                comfortable
+                  ? "text-[15px] font-normal leading-[1.5]"
+                  : "text-[14.5px] font-medium leading-[1.45]",
+              )}
+            >
+              {entry.title || entry.url || ""}
+            </span>
+            {meta && (
+              <span className="mt-0.5 block truncate text-xs text-muted-foreground sm:hidden">
+                {meta}
+              </span>
             )}
-          >
-            {entry.title || entry.url || ""}
-          </span>
+          </div>
           {meta && (
-            <span className="ml-1 shrink-0 text-xs text-muted-foreground">
+            <span className="ml-1 hidden shrink-0 text-xs text-muted-foreground sm:block">
               {meta}
             </span>
           )}

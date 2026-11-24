@@ -176,7 +176,7 @@ export function EntryContentHeader({
                absolute 会浮在正文顶上、吸顶又会压住列表的固定顶栏 —— 两者都不合适。 */
             sticky
               ? mobileInlineSticky
-                ? "sticky top-0 z-30 bg-background"
+                ? "sticky top-0 z-30"
                 : "relative z-20"
               : "absolute inset-x-0 top-0 z-20",
           )}
@@ -184,7 +184,7 @@ export function EntryContentHeader({
           <div
             className={cn(
               "pointer-events-none absolute inset-0 border-b border-foreground/10 bg-overlay/80 backdrop-blur-xl transition-opacity duration-300 ease-in-out",
-              isAtTop ? "opacity-0" : "opacity-100",
+              mobileInlineSticky ? "opacity-100" : isAtTop ? "opacity-0" : "opacity-100",
             )}
           />
           <div className="relative pt-[env(safe-area-inset-top)]">

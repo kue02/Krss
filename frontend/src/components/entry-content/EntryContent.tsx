@@ -106,6 +106,8 @@ export function EntryContent({
   const markedAsReadRef = useRef<Set<string>>(new Set());
   // 自动「打开即已读」每篇文章只做一次：否则手动切回未读（快捷键 m）会被立刻改回已读
   const autoMarkedEntryRef = useRef<string | null>(null);
+  /** 手机内联合列：整段正文根节点，用来按视口算阅读进度（文档滚动，宿主容器不滚） */
+  const contentRootRef = useRef<HTMLDivElement>(null);
 
   const { data: feeds = [] } = useFeeds();
   // #5/#8 订阅级覆盖 + 条目级规则标记，口径与 autoSummary 对齐（唯一解析器）
@@ -251,6 +253,7 @@ export function EntryContent({
 
   return (
     <div
+      ref={contentRootRef}
       className={cn(
         "relative flex w-full flex-col",
         embedded ? "min-h-0" : "h-full overflow-hidden",
@@ -295,6 +298,7 @@ export function EntryContent({
           scrollNode={auxScrollNode}
           resetKey={entryId}
           sticky={embedded && showAuxiliary}
+          rangeRef={embedded && showAuxiliary && isMobile ? contentRootRef : undefined}
         />
       )}
       {showOriginalSite && entry.url ? (
@@ -323,6 +327,7 @@ export function EntryContent({
           scrollNode={auxScrollNode}
           entryId={entryId}
           isMobile={Boolean(isMobile)}
+          fixedInline={embedded && showAuxiliary && !isMobile}
         />
       )}
       {isMobile && !embedded && !showOriginalSite && (

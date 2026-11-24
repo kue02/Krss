@@ -23,6 +23,7 @@ export function ReadingProgressBar({
   resetKey,
   className,
   sticky = false,
+  rangeRef,
 }: {
   /** 正文的真实滚动节点 */
   scrollNode: HTMLElement | null;
@@ -31,45 +32,69 @@ export function ReadingProgressBar({
   className?: string;
   /** 内联合列：吸在正文工具栏下方 */
   sticky?: boolean;
+  /**
+   * 文档滚动（手机内联合列）：进度按这段正文相对视口的位置算。
+   * 传了它就不用 `scrollNode`（那个容器在文档滚动下不滚，永远 0%）。
+   */
+  rangeRef?: React.RefObject<HTMLElement | null>;
 }) {
   const { t } = useTranslation();
   const [percent, setPercent] = useState(0);
 
   useEffect(() => {
-    if (!scrollNode) return;
+    const range = rangeRef?.current ?? null;
+    if (!scrollNode && !range) return;
 
     const measure = () => {
-      const { percent: next } = computeReadingProgress({
-        scrollTop: scrollNode.scrollTop,
-        scrollHeight: scrollNode.scrollHeight,
-        clientHeight: scrollNode.clientHeight,
-      });
+      let next: number;
+      if (range) {
+        const rect = range.getBoundingClientRect();
+        const viewport = window.innerHeight || document.documentElement.clientHeight;
+        const total = rect.height - viewport;
+        next =
+          total > 0
+            ? Math.min(100, Math.max(0, (-rect.top / total) * 100))
+            : rect.top <= 0
+              ? 100
+              : 0;
+      } else {
+        next = computeReadingProgress({
+          scrollTop: scrollNode!.scrollTop,
+          scrollHeight: scrollNode!.scrollHeight,
+          clientHeight: scrollNode!.clientHeight,
+        }).percent;
+      }
       // 同样的值不必 setState：滚动时每帧都算，避免无意义的重渲染
       setPercent((prev) => (Math.abs(prev - next) < 0.05 ? prev : next));
     };
 
     measure();
-    scrollNode.addEventListener("scroll", measure, { passive: true });
+    const scrollTarget: HTMLElement | Window = range ? window : scrollNode!;
+    scrollTarget.addEventListener("scroll", measure, { passive: true });
     const observer = new ResizeObserver(measure);
-    observer.observe(scrollNode);
-    const content = scrollNode.firstElementChild;
-    if (content) observer.observe(content);
+    if (range) {
+      observer.observe(range);
+    } else {
+      observer.observe(scrollNode!);
+      const content = scrollNode!.firstElementChild;
+      if (content) observer.observe(content);
+    }
     // 字体/图片落地后高度还会再变一次，兜一次
     const retry = window.setTimeout(measure, 400);
 
     return () => {
-      scrollNode.removeEventListener("scroll", measure);
+      scrollTarget.removeEventListener("scroll", measure);
       observer.disconnect();
       window.clearTimeout(retry);
     };
-  }, [scrollNode, resetKey]);
+  }, [scrollNode, resetKey, rangeRef]);
 
   return (
     <div
       data-reading-progress=""
       className={cn(
         sticky
-          ? "pointer-events-none sticky top-12 z-20"
+          ? "pointer-events-none sticky top-11 z-20 sm:top-12"
           : "pointer-events-none absolute inset-x-0 top-[calc(2.75rem+env(safe-area-inset-top))] z-20 sm:top-12",
         className,
       )}
@@ -82,7 +107,9 @@ export function ReadingProgressBar({
         // 根是 `grid` 两行（label / output / track），这里只要一条轨道
         className="block w-full"
       >
-        <ProgressBar.Track className="h-[3px] rounded-none">
+        <ProgressBar.Track
+          className={cn("h-[3px] rounded-none", sticky && "bg-transparent")}
+        >
           {/* 滚动时跟着手指走，不要 HeroUI 自带的 300ms 宽度过渡（会拖尾） */}
           <ProgressBar.Fill className="rounded-none transition-none" />
         </ProgressBar.Track>
