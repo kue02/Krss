@@ -38,6 +38,15 @@ type EntryListFilter struct {
 // ListContentTruncate 列表/搜索默认的 content 截断字符数：卡片只需要开头一点正文，全文细读走 GetByID。
 const ListContentTruncate = 2000
 
+// folderSubtreeSQL 给定一个文件夹 id（一个占位符 ?），返回该文件夹自身 + 所有后代文件夹的 id。
+// 用于「选中父文件夹时，条目/未读/全部标读应覆盖整棵子树」——OPML 多层导入会产生多层文件夹，
+// 只按 f.folder_id = ? 匹配会漏掉子/孙级文件夹里的订阅。递归 CTE（SQLite 支持）。
+const folderSubtreeSQL = `WITH RECURSIVE folder_subtree(id) AS (
+	SELECT id FROM folders WHERE id = ?
+	UNION ALL
+	SELECT child.id FROM folders child JOIN folder_subtree sub ON child.parent_id = sub.id
+) SELECT id FROM folder_subtree`
+
 // listContentExpr 返回 List/Search SELECT 里的 content 表达式：0 = 全文，否则 substr 截断。
 // readable_content 在 List/Search 里永远不选（列表/计数/预览都不消费它），调用方直接拼 NULL 占位，scanEntry 列数不变。
 func listContentExpr(truncate int) string {
@@ -210,7 +219,9 @@ func (r *entryRepository) List(ctx context.Context, filter EntryListFilter) ([]m
 			args = append(args, id)
 		}
 	} else if filter.FolderID != nil {
-		conditions = append(conditions, "f.folder_id = ?")
+		// 选中一个文件夹时，条目应包含其所有后代（多级子文件夹）里的订阅，
+		// 而非只有直接挂在当前文件夹下的订阅。用递归 CTE 展开整棵子树。
+		conditions = append(conditions, "f.folder_id IN ("+folderSubtreeSQL+")")
 		args = append(args, *filter.FolderID)
 	}
 
@@ -465,10 +476,11 @@ func (r *entryRepository) MarkAllAsRead(ctx context.Context, feedID *int64, fold
 	now := formatTime(time.Now())
 
 	if folderID != nil {
+		// 与列表口径一致：选中文件夹「全部标为已读」要覆盖整棵子树，而不只是直接子文件夹。
 		_, err := r.db.ExecContext(
 			ctx,
 			`UPDATE entries SET read = 1, updated_at = ?
-			 WHERE feed_id IN (SELECT id FROM feeds WHERE folder_id = ?) AND read = 0`,
+			 WHERE feed_id IN (SELECT id FROM feeds WHERE folder_id IN (`+folderSubtreeSQL+`)) AND read = 0`,
 			now,
 			*folderID,
 		)

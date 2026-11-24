@@ -249,6 +249,47 @@ func TestEntryRepository_List_MultiFolderIDs(t *testing.T) {
 	require.Equal(t, "EB", *entries[0].Title)
 }
 
+// 选中父文件夹时，条目应覆盖其所有后代（多级子文件夹）里的订阅，而不只是直接子级。
+func TestEntryRepository_List_FolderIncludesDescendants(t *testing.T) {
+	db := testutil.NewTestDB(t)
+	repo := repository.NewEntryRepository(db)
+	ctx := context.Background()
+
+	root := testutil.SeedFolder(t, db, "Root", nil, "article")
+	child := testutil.SeedFolder(t, db, "Child", &root, "article")
+	grandchild := testutil.SeedFolder(t, db, "Grand", &child, "article")
+	sibling := testutil.SeedFolder(t, db, "Sibling", nil, "article")
+
+	feedRoot := testutil.SeedFeed(t, db, model.Feed{Title: "FR", URL: "fr", FolderID: &root})
+	feedGrand := testutil.SeedFeed(t, db, model.Feed{Title: "FG", URL: "fg", FolderID: &grandchild})
+	feedSibling := testutil.SeedFeed(t, db, model.Feed{Title: "FS", URL: "fs", FolderID: &sibling})
+	feedNone := testutil.SeedFeed(t, db, model.Feed{Title: "FN", URL: "fn"})
+
+	testutil.SeedEntry(t, db, model.Entry{FeedID: feedRoot, Title: stringPtr("E-root")})
+	testutil.SeedEntry(t, db, model.Entry{FeedID: feedGrand, Title: stringPtr("E-grand")})
+	testutil.SeedEntry(t, db, model.Entry{FeedID: feedSibling, Title: stringPtr("E-sibling")})
+	testutil.SeedEntry(t, db, model.Entry{FeedID: feedNone, Title: stringPtr("E-none")})
+
+	// 根文件夹：自身 feed + 孙级 feed 都命中；同级与未归类不命中。
+	entries, err := repo.List(ctx, repository.EntryListFilter{FolderID: &root})
+	require.NoError(t, err)
+	titles := map[string]bool{}
+	for _, e := range entries {
+		titles[*e.Title] = true
+	}
+	require.Len(t, entries, 2)
+	require.True(t, titles["E-root"])
+	require.True(t, titles["E-grand"])
+	require.False(t, titles["E-sibling"])
+	require.False(t, titles["E-none"])
+
+	// 子文件夹作为选中根时，也应继续向下覆盖到孙级。
+	entries, err = repo.List(ctx, repository.EntryListFilter{FolderID: &child})
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	require.Equal(t, "E-grand", *entries[0].Title)
+}
+
 func TestEntryRepository_UpdateStatus(t *testing.T) {
 	db := testutil.NewTestDB(t)
 	repo := repository.NewEntryRepository(db)
@@ -319,6 +360,34 @@ func TestEntryRepository_MarkAllAsRead(t *testing.T) {
 	counts, _ := repo.GetAllUnreadCounts(ctx)
 	require.Len(t, counts, 1)
 	require.Equal(t, feedID2, counts[0].FeedID)
+	require.Equal(t, 1, counts[0].Count)
+}
+
+// 选中文件夹「全部标为已读」应覆盖整棵子树，而不只是直接子级。
+func TestEntryRepository_MarkAllAsRead_FolderIncludesDescendants(t *testing.T) {
+	db := testutil.NewTestDB(t)
+	repo := repository.NewEntryRepository(db)
+	ctx := context.Background()
+
+	root := testutil.SeedFolder(t, db, "Root", nil, "article")
+	child := testutil.SeedFolder(t, db, "Child", &root, "article")
+	other := testutil.SeedFolder(t, db, "Other", nil, "article")
+
+	feedRoot := testutil.SeedFeed(t, db, model.Feed{Title: "FR", URL: "fr", FolderID: &root})
+	feedChild := testutil.SeedFeed(t, db, model.Feed{Title: "FC", URL: "fc", FolderID: &child})
+	feedOther := testutil.SeedFeed(t, db, model.Feed{Title: "FO", URL: "fo", FolderID: &other})
+
+	testutil.SeedEntry(t, db, model.Entry{FeedID: feedRoot, Read: false})
+	testutil.SeedEntry(t, db, model.Entry{FeedID: feedChild, Read: false})
+	testutil.SeedEntry(t, db, model.Entry{FeedID: feedOther, Read: false})
+
+	err := repo.MarkAllAsRead(ctx, nil, &root, nil)
+	require.NoError(t, err)
+
+	// 根与孙级（child 下）的未读都被清掉，只剩 other 文件夹 1 条未读。
+	counts, _ := repo.GetAllUnreadCounts(ctx)
+	require.Len(t, counts, 1)
+	require.Equal(t, feedOther, counts[0].FeedID)
 	require.Equal(t, 1, counts[0].Count)
 }
 
