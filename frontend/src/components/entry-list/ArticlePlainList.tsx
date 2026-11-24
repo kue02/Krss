@@ -79,7 +79,7 @@ export function ArticlePlainListRow({
              行高 1.45、图标 16px、右侧元信息 12px 且距标题 12px（gap 8 + ml 4） */
           className={cn(
             "group flex w-full items-center gap-2 border-b border-border px-4 text-left transition-colors hover:bg-item-hover",
-            comfortable ? "py-[13px]" : "py-[10px]",
+            comfortable ? "py-[10px]" : "py-[4px]",
             selected && "bg-item-hover",
             unreadRowClass(isUnread, !!entry.starred, selected, unreadStyle),
           )}

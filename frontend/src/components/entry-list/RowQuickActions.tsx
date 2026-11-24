@@ -24,7 +24,7 @@ export function RowQuickActions({ entry, className }: RowQuickActionsProps) {
   return (
     <span
       className={cn(
-        "hidden shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 md:flex",
+        "hidden w-0 shrink-0 items-center gap-0.5 overflow-hidden opacity-0 transition-[width,opacity] duration-150 group-hover:w-[58px] group-hover:opacity-100 group-focus-within:w-[58px] group-focus-within:opacity-100 md:flex",
         className,
       )}
       data-testid="row-quick-actions"
