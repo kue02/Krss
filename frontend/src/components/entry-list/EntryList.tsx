@@ -503,7 +503,11 @@ export function EntryList({
   /** 28-1：顶栏左上角那颗文章档位切换（只有文章视图会拿到它）。
    *  实验布局批：在「可见档位」里循环（传统三栏 → Inoreader列表 → [缩略图列表] → [悬停正文]）；
    *  后两档仅在对应实验开关打开时进入循环。 */
-  const { setArticleLayout } = useUISettingActions();
+  const {
+    setArticleLayout,
+    setSplitterVisibleForView,
+    setInoreaderSplitterPromptShown,
+  } = useUISettingActions();
   const handleToggleArticleLayout = useCallback(() => {
     const idx = Math.max(
       0,
@@ -513,6 +517,33 @@ export function EntryList({
       articleLayoutOrder[(idx + 1) % articleLayoutOrder.length] ?? "list";
     setArticleLayout(next);
   }, [articleLayout, articleLayoutOrder, setArticleLayout]);
+  // 「Inoreader列表」首次打开：若图片 / 社交媒体 / 通知视图的分界限是关闭的，问一次文章视图是否也关闭
+  const splitterVisibleByView = useUISettingKey("splitterVisibleByView");
+  const inoreaderSplitterPromptShown = useUISettingKey(
+    "inoreaderSplitterPromptShown",
+  );
+  const [splitterPromptOpen, setSplitterPromptOpen] = useState(false);
+  const suppressedSplitterViews = useMemo(
+    () =>
+      (["picture", "social", "notification"] as ContentType[])
+        .filter((view) => splitterVisibleByView?.[view] === false)
+        .map((view) => t(`content_type.${view}`)),
+    [splitterVisibleByView, t],
+  );
+  useEffect(() => {
+    if (contentType !== "article" || articleLayout !== "inoreader") return;
+    if (inoreaderSplitterPromptShown) return;
+    if (suppressedSplitterViews.length === 0) return;
+    setSplitterPromptOpen(true);
+    setInoreaderSplitterPromptShown(true);
+  }, [
+    contentType,
+    articleLayout,
+    inoreaderSplitterPromptShown,
+    suppressedSplitterViews.length,
+    setInoreaderSplitterPromptShown,
+  ]);
+
   const timelineGranularity = resolveTimelineGranularity(
     useUISettingKey("timelineGranularityByView")?.[contentType],
   );
@@ -749,7 +780,7 @@ export function EntryList({
       <div
         ref={inlineContentRef}
         data-testid="inline-article-pane"
-        className="mx-2 my-2 w-[calc(100%-1rem)] overflow-hidden rounded-[12px] border border-border/60 bg-card shadow-nf"
+        className="w-full overflow-hidden rounded-[12px] border-t border-border bg-card"
       >
         {renderInlineContent?.(containerRef, {
           headerStickyTop: mobileHeaderHidden
@@ -1670,6 +1701,52 @@ export function EntryList({
         />
 
         {/* 强制拉取确认（范围太大时先问一句，避免误选整轮重抓） */}
+        <AlertDialog>
+          <Button className="hidden" aria-hidden />
+          <AlertDialog.Backdrop
+            isOpen={splitterPromptOpen}
+            onOpenChange={(open) => !open && setSplitterPromptOpen(false)}
+          >
+            <AlertDialog.Container>
+              <AlertDialog.Dialog className="max-w-md">
+                <AlertDialog.Header>
+                  <AlertDialog.Heading>
+                    {t("appearance_view.inoreader_splitter_prompt_title")}
+                  </AlertDialog.Heading>
+                </AlertDialog.Header>
+                <AlertDialog.Body>
+                  <div className="text-sm text-muted-foreground">
+                    {t("appearance_view.inoreader_splitter_prompt_description", {
+                      views: suppressedSplitterViews.join(
+                        t("appearance_view.inoreader_splitter_prompt_separator"),
+                      ),
+                    })}
+                  </div>
+                </AlertDialog.Body>
+                <AlertDialog.Footer>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onPress={() => setSplitterPromptOpen(false)}
+                  >
+                    {t("appearance_view.inoreader_splitter_prompt_keep")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    onPress={() => {
+                      setSplitterVisibleForView("article", false);
+                      setSplitterPromptOpen(false);
+                    }}
+                  >
+                    {t("appearance_view.inoreader_splitter_prompt_also_off")}
+                  </Button>
+                </AlertDialog.Footer>
+              </AlertDialog.Dialog>
+            </AlertDialog.Container>
+          </AlertDialog.Backdrop>
+        </AlertDialog>
+
         <AlertDialog>
           <Button className="hidden" aria-hidden />
           <AlertDialog.Backdrop
