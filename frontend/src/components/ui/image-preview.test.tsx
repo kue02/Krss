@@ -515,8 +515,10 @@ describe("ImagePreview", () => {
         ".overflow-hidden.touch-manipulation",
       );
       expect(carousel).not.toBeNull();
+      const image = carousel!.querySelector("img");
+      expect(image).not.toBeNull();
 
-      fireEvent.click(carousel!);
+      fireEvent.click(image!);
       // 关闭带 ~320ms 延时（给双击留取消窗口），等它触发
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 420));
@@ -533,9 +535,11 @@ describe("ImagePreview", () => {
         ".overflow-hidden.touch-manipulation",
       );
       expect(carousel).not.toBeNull();
+      const image = carousel!.querySelector("img");
+      expect(image).not.toBeNull();
 
-      fireEvent.click(carousel!);
-      fireEvent.click(carousel!);
+      fireEvent.click(image!);
+      fireEvent.click(image!);
 
       expect(mockToggleZoomAt).toHaveBeenCalledTimes(1);
 
@@ -557,8 +561,10 @@ describe("ImagePreview", () => {
         ".overflow-hidden.touch-manipulation",
       );
       expect(carousel).not.toBeNull();
+      const image = carousel!.querySelector("img");
+      expect(image).not.toBeNull();
 
-      fireEvent.click(carousel!);
+      fireEvent.click(image!);
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 320));
       });
@@ -598,6 +604,70 @@ describe("ImagePreview", () => {
       const stage = img!.parentElement!;
 
       // 按下后横向拖动 60px 再抬起 —— 应识别为拖动，不当作点击
+      fireEvent.pointerDown(stage, { clientX: 100, clientY: 100 });
+      fireEvent.click(stage, { clientX: 160, clientY: 100 });
+
+      expect(useImagePreviewStore.getState().isOpen).toBe(true);
+    });
+  });
+
+  describe("点击空白处关闭", () => {
+    beforeEach(() => {
+      mockZoomState.scale = 1;
+      mockZoomState.isZoomed = false;
+    });
+
+    it("放大态点击单图 stage 空白立即关闭", () => {
+      mockZoomState.scale = 2;
+      mockZoomState.isZoomed = true;
+      useImagePreviewStore.getState().open([mockImages[0]!]);
+      const { container } = render(<ImagePreview />);
+
+      const img = container.querySelector("img");
+      expect(img).not.toBeNull();
+      fireEvent.click(img!.parentElement!);
+
+      expect(useImagePreviewStore.getState().isOpen).toBe(false);
+    });
+
+    it("放大态点击图片本身不关闭", () => {
+      mockZoomState.scale = 2;
+      mockZoomState.isZoomed = true;
+      useImagePreviewStore.getState().open([mockImages[0]!]);
+      const { container } = render(<ImagePreview />);
+
+      const img = container.querySelector("img");
+      expect(img).not.toBeNull();
+      fireEvent.click(img!);
+
+      expect(useImagePreviewStore.getState().isOpen).toBe(true);
+    });
+
+    it("多图放大态点击 embla 内层空白立即关闭", () => {
+      mockZoomState.scale = 2;
+      mockZoomState.isZoomed = true;
+      useImagePreviewStore.getState().open(mockImages);
+      const { container } = render(<ImagePreview />);
+
+      const carousel = container.querySelector(
+        ".overflow-hidden.touch-manipulation",
+      );
+      expect(carousel).not.toBeNull();
+      fireEvent.click(carousel!);
+
+      expect(useImagePreviewStore.getState().isOpen).toBe(false);
+    });
+
+    it("放大态拖动 60px 后抬起不关闭", () => {
+      mockZoomState.scale = 2;
+      mockZoomState.isZoomed = true;
+      useImagePreviewStore.getState().open([mockImages[0]!]);
+      const { container } = render(<ImagePreview />);
+
+      const img = container.querySelector("img");
+      expect(img).not.toBeNull();
+      const stage = img!.parentElement!;
+
       fireEvent.pointerDown(stage, { clientX: 100, clientY: 100 });
       fireEvent.click(stage, { clientX: 160, clientY: 100 });
 

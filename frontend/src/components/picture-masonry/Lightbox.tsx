@@ -56,6 +56,10 @@ export function Lightbox() {
     initialIndexRef.current = currentIndex;
   }
 
+  // 用 ref 暴露放大 / 手势状态，供 embla 的 watchDrag 实时判断，无需 reInit。
+  const isZoomedRef = useRef(false);
+  const isInteractingRef = useRef(false);
+
   // Memoize options to prevent unnecessary reInit (which would skip animations)
   // iOS-style animation: smooth, natural deceleration
   const emblaOptions = useMemo(
@@ -64,6 +68,8 @@ export function Lightbox() {
       startIndex: initialIndexRef.current,
       skipSnaps: false, // Snap to nearest slide (iOS behavior)
       duration: 25, // iOS-like snap duration (default 25, range 20-60)
+      // 放大或手势进行中时，单指拖动应平移图片而不是翻页
+      watchDrag: () => !isZoomedRef.current && !isInteractingRef.current,
     }),
     // Only recreate options when lightbox opens (images change)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -242,21 +248,29 @@ export function Lightbox() {
   // 图片手势：滚轮 / 双击 / 捏合缩放，放大后拖动平移（换图自动复位）
   const zoom = useImageZoom(`${entry?.id ?? ""}:${currentIndex}`);
 
+  useEffect(() => {
+    isZoomedRef.current = zoom.isZoomed;
+  }, [zoom.isZoomed]);
+  useEffect(() => {
+    isInteractingRef.current = zoom.isInteracting;
+  }, [zoom.isInteracting]);
+
   const handleCarouselPointerDown = useCallback((e: React.PointerEvent) => {
     pointerDownPos.current = { x: e.clientX, y: e.clientY };
   }, []);
 
-  const handleCarouselClick = useCallback(
+  // 统一 click：图片外空白立即关闭（放大态也一样）；图片内保留点击关闭。
+  // 拖动超过 5px 不当作点击。
+  const handleStageClick = useCallback(
     (e: React.MouseEvent) => {
-      // Only close if pointer moved less than 5px (pure click, not drag)
+      e.stopPropagation();
       if (pointerDownPos.current) {
         const dx = Math.abs(e.clientX - pointerDownPos.current.x);
         const dy = Math.abs(e.clientY - pointerDownPos.current.y);
-        if (dx < 5 && dy < 5) {
-          close();
-        }
+        pointerDownPos.current = null;
+        if (dx >= 5 || dy >= 5) return;
       }
-      pointerDownPos.current = null;
+      close();
     },
     [close],
   );
@@ -410,11 +424,13 @@ export function Lightbox() {
                   animate={{ scale: 1, opacity: 1 }}
                   exit={{ scale: 0.9, opacity: 0 }}
                   transition={{ duration: 0.2 }}
-                  className="relative flex size-full items-center justify-center"
+                  className="relative flex size-full touch-none items-center justify-center"
                   ref={zoom.containerRef}
                   {...zoom.handlers}
+                  onClick={handleStageClick}
                 >
                   <AuthedImage
+                    ref={zoom.imageRef}
                     src={images[0]}
                     alt=""
                     className="max-h-full max-w-full object-contain"
@@ -436,15 +452,15 @@ export function Lightbox() {
               ) : (
                 <div
                   ref={zoom.containerRef}
-                  className="size-full min-h-0"
-                  onWheel={zoom.handlers.onWheel}
-                  onDoubleClick={zoom.handlers.onDoubleClick}
+                  className="size-full min-h-0 touch-none"
+                  {...zoom.handlers}
                 >
                 <div
                   ref={emblaRef}
                   className="size-full min-h-0 overflow-hidden touch-manipulation"
+                  style={{ touchAction: "none" }}
                   onPointerDown={handleCarouselPointerDown}
-                  onClick={handleCarouselClick}
+                  onClick={handleStageClick}
                 >
                   <div className="flex size-full min-h-0 touch-pan-y will-change-transform">
                     {images.map((src, index) => (
@@ -453,6 +469,7 @@ export function Lightbox() {
                         className="flex min-h-0 min-w-0 flex-[0_0_100%] items-center justify-center px-0 will-change-transform sm:px-2 lg:px-4"
                       >
                         <AuthedImage
+                          ref={index === currentIndex ? zoom.imageRef : undefined}
                           src={src}
                           alt=""
                           className="max-h-full max-w-full object-contain"
