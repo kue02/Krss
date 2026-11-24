@@ -763,12 +763,12 @@ export function EntryList({
              顶栏收起/展开会改变列表可视高度，若用单一阈值，paneTop 会在 0 附近来回抖，
              表现为点击后顶栏快速闪烁。 */
           setPaneAtTop(paneTop <= 2);
-          setMobileHeaderHidden((current) => {
-            if (paneTop <= 2) return true;
-            if (paneTop >= 14) return false;
-            return current;
-          });
-          return;
+          /* 正文还没滚到顶部时，仍按普通列表的方向规则：下滑收起 TOP、上滑恢复。
+             正文一旦顶到视口顶（paneTop<=2），TOP 就让位给正文标题栏并保持收起。 */
+          if (paneTop <= 2) {
+            setMobileHeaderHidden(true);
+            return;
+          }
         }
       }
       const dy = y - prev;
