@@ -14,6 +14,8 @@ export function ImagePreview() {
 
   // Track pointer position to distinguish click from drag in carousel
   const pointerDownPos = useRef<{ x: number; y: number } | null>(null);
+  // pointer capture 会把 click 的 target 改到容器上，记录按下时的真实 target 以保留图片点击语义
+  const pointerDownTargetRef = useRef<Element | null>(null);
   const scrollLockYRef = useRef(0);
   const touchMoveHandlerRef = useRef<((e: TouchEvent) => void) | null>(null);
 
@@ -55,8 +57,14 @@ export function ImagePreview() {
       startIndex: initialIndexRef.current,
       skipSnaps: false,
       duration: 25,
-      // 放大或手势进行中禁掉 embla 的单指拖拽翻页：此时拖动应该平移图片
-      watchDrag: () => !isZoomedRef.current && !isInteractingRef.current,
+      // 放大、手势进行中，或双指按下时都不让 embla 抢走拖动
+      watchDrag: (
+        _emblaApi: unknown,
+        event?: Event & { touches?: { length: number } },
+      ) =>
+        !isZoomedRef.current &&
+        !isInteractingRef.current &&
+        (event?.touches?.length ?? 1) < 2,
     }),
     // Recreate options when preview opens (images change) or when initial index changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -201,6 +209,8 @@ export function ImagePreview() {
   const pointerTypeRef = useRef<string>("mouse");
   const handleCarouselPointerDown = useCallback((e: React.PointerEvent) => {
     pointerDownPos.current = { x: e.clientX, y: e.clientY };
+    pointerDownTargetRef.current =
+      e.target instanceof Element ? e.target : null;
     pointerTypeRef.current = e.pointerType || "mouse";
   }, []);
 
@@ -209,6 +219,7 @@ export function ImagePreview() {
   const schedulePointerDownReset = useCallback(() => {
     window.setTimeout(() => {
       pointerDownPos.current = null;
+      pointerDownTargetRef.current = null;
     }, 0);
   }, []);
 
@@ -250,6 +261,7 @@ export function ImagePreview() {
   const handleTapClose = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
+      pointerDownTargetRef.current = null;
       // 拖动 / 滑动超过 5px 视为滑动手势，不当作点击
       if (pointerDownPos.current) {
         const dx = Math.abs(e.clientX - pointerDownPos.current.x);
@@ -297,12 +309,16 @@ export function ImagePreview() {
   const handleStageClick = useCallback(
     (e: React.MouseEvent) => {
       const target = e.target;
-      if (target instanceof Element && target.closest("img")) {
+      const startedOnImage = pointerDownTargetRef.current?.closest("img") != null;
+      const targetIsImage =
+        target instanceof Element && target.closest("img") !== null;
+      if (targetIsImage || startedOnImage) {
         handleTapClose(e);
         return;
       }
 
       e.stopPropagation();
+      pointerDownTargetRef.current = null;
       if (pointerDownPos.current) {
         const dx = Math.abs(e.clientX - pointerDownPos.current.x);
         const dy = Math.abs(e.clientY - pointerDownPos.current.y);
@@ -340,6 +356,9 @@ export function ImagePreview() {
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
           className="fixed inset-0 z-50 flex flex-col bg-black/90 h-dvh"
+          role="dialog"
+          aria-modal="true"
+          data-overlay
           onClick={handleOverlayClick}
         >
           {/* Close button */}
@@ -412,6 +431,7 @@ export function ImagePreview() {
                   src={images[0]}
                   alt=""
                   draggable={false}
+                  onLoad={zoom.onImageLoad}
                   className="max-h-full max-w-full object-contain"
                   style={zoom.style}
                 />
@@ -445,6 +465,9 @@ export function ImagePreview() {
                           src={src}
                           alt=""
                           draggable={false}
+                          onLoad={
+                            index === currentIndex ? zoom.onImageLoad : undefined
+                          }
                           className="max-h-full max-w-full object-contain"
                           style={
                             index === currentIndex ? zoom.style : undefined

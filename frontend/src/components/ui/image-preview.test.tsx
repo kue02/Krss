@@ -17,11 +17,20 @@ const mockOff = vi.fn();
 // Store the embla options passed to useEmblaCarousel
 let capturedEmblaOptions: {
   startIndex?: number;
-  watchDrag?: () => boolean;
+  watchDrag?: (
+    api?: unknown,
+    event?: { touches?: { length: number } },
+  ) => boolean;
 } = {};
 
 vi.mock("embla-carousel-react", () => ({
-  default: (options: { startIndex?: number; watchDrag?: () => boolean }) => {
+  default: (options: {
+    startIndex?: number;
+    watchDrag?: (
+      api?: unknown,
+      event?: { touches?: { length: number } },
+    ) => boolean;
+  }) => {
     capturedEmblaOptions = options;
     return [
       vi.fn(), // emblaRef
@@ -517,6 +526,23 @@ describe("ImagePreview", () => {
       expect(capturedEmblaOptions.watchDrag!()).toBe(true);
     });
 
+    it("双指按下时 watchDrag 返回 false（1x 捏合不被 embla 抢走）", () => {
+      useImagePreviewStore.getState().open(mockImages, 0);
+
+      render(<ImagePreview />);
+
+      expect(
+        capturedEmblaOptions.watchDrag!(undefined, {
+          touches: { length: 2 },
+        }),
+      ).toBe(false);
+      expect(
+        capturedEmblaOptions.watchDrag!(undefined, {
+          touches: { length: 1 },
+        }),
+      ).toBe(true);
+    });
+
     it("scale===1 时点击图片关闭预览", async () => {
       useImagePreviewStore.getState().open(mockImages, 0);
       const { container } = render(<ImagePreview />);
@@ -649,6 +675,23 @@ describe("ImagePreview", () => {
       const img = container.querySelector("img");
       expect(img).not.toBeNull();
       fireEvent.click(img!);
+
+      expect(useImagePreviewStore.getState().isOpen).toBe(true);
+    });
+
+    it("pointer capture 使 click target 落到 stage 时仍按图片处理，不关闭", () => {
+      mockZoomState.scale = 2;
+      mockZoomState.isZoomed = true;
+      useImagePreviewStore.getState().open([mockImages[0]!]);
+      const { container } = render(<ImagePreview />);
+
+      const img = container.querySelector("img");
+      expect(img).not.toBeNull();
+      const stage = img!.parentElement!;
+
+      fireEvent.pointerDown(img!, { clientX: 150, clientY: 150 });
+      fireEvent.pointerUp(stage, { clientX: 150, clientY: 150 });
+      fireEvent.click(stage, { clientX: 150, clientY: 150 });
 
       expect(useImagePreviewStore.getState().isOpen).toBe(true);
     });

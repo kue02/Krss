@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useEffect } from "react";
 import { useImageZoom } from "./useImageZoom";
@@ -89,6 +89,10 @@ function setup(resetKey?: string) {
     configurable: true,
     value: CONTAINER_HEIGHT,
   });
+
+  // jsdom 没有 pointer capture，手动补上以便断言
+  container.setPointerCapture = vi.fn();
+  container.hasPointerCapture = vi.fn(() => false);
 
   return {
     container,
@@ -199,5 +203,94 @@ describe("useImageZoom", () => {
 
     act(() => rerenderKey("1:b"));
     expect(read()).toBe("1|0|0|false");
+  });
+
+  it("pointerdown 会对容器 setPointerCapture", () => {
+    const { container } = setup();
+    act(() => {
+      firePointer(container, "pointerdown", { id: 1, x: 150, y: 150 });
+    });
+    expect(container.setPointerCapture).toHaveBeenCalledWith(1);
+  });
+
+  it("lostpointercapture 会清空手势并提交当前位移", () => {
+    const { container, image, read } = setup();
+    act(() => getZoom().toggleZoomAt(200, 150));
+    act(() => {
+      firePointer(container, "pointerdown", { id: 1, x: 200, y: 150 });
+      firePointer(container, "pointermove", { id: 1, x: 260, y: 150 });
+    });
+    expect(image.style.transform).toBe("translate3d(60px, 0px, 0) scale(2)");
+
+    act(() => {
+      firePointer(container, "lostpointercapture", { id: 1, x: 260, y: 150 });
+    });
+    expect(read()).toBe("2|60|0|false");
+    expect(image.style.transition).toBe("transform 160ms ease-out");
+
+    // 指针已清空，后续 pointermove 不再生效
+    act(() => {
+      firePointer(container, "pointermove", { id: 1, x: 320, y: 150 });
+    });
+    expect(image.style.transform).toBe("translate3d(60px, 0px, 0) scale(2)");
+  });
+
+  it("pointercancel 会清空手势并提交当前位移", () => {
+    const { container, image, read } = setup();
+    act(() => getZoom().toggleZoomAt(200, 150));
+    act(() => {
+      firePointer(container, "pointerdown", { id: 1, x: 200, y: 150 });
+      firePointer(container, "pointermove", { id: 1, x: 250, y: 150 });
+    });
+
+    act(() => {
+      firePointer(container, "pointercancel", { id: 1, x: 250, y: 150 });
+    });
+    expect(read()).toBe("2|50|0|false");
+
+    act(() => {
+      firePointer(container, "pointermove", { id: 1, x: 300, y: 150 });
+    });
+    expect(image.style.transform).toBe("translate3d(50px, 0px, 0) scale(2)");
+  });
+
+  it("图片未加载（clientWidth=0）时不允许拖出，onLoad 后恢复", () => {
+    const { container, image, read } = setup();
+    Object.defineProperty(image, "clientWidth", {
+      configurable: true,
+      value: 0,
+    });
+    Object.defineProperty(image, "clientHeight", {
+      configurable: true,
+      value: 0,
+    });
+
+    act(() => getZoom().toggleZoomAt(200, 150));
+    act(() => {
+      firePointer(container, "pointerdown", { id: 1, x: 200, y: 150 });
+      firePointer(container, "pointermove", { id: 1, x: 300, y: 150 });
+    });
+    expect(image.style.transform).toBe("translate3d(0px, 0px, 0) scale(2)");
+
+    act(() => {
+      firePointer(container, "pointerup", { id: 1, x: 300, y: 150 });
+    });
+    expect(read()).toBe("2|0|0|false");
+
+    Object.defineProperty(image, "clientWidth", {
+      configurable: true,
+      value: CONTAINER_WIDTH,
+    });
+    Object.defineProperty(image, "clientHeight", {
+      configurable: true,
+      value: CONTAINER_HEIGHT,
+    });
+    act(() => getZoom().onImageLoad());
+
+    act(() => {
+      firePointer(container, "pointerdown", { id: 2, x: 200, y: 150 });
+      firePointer(container, "pointermove", { id: 2, x: 260, y: 150 });
+    });
+    expect(image.style.transform).toBe("translate3d(60px, 0px, 0) scale(2)");
   });
 });
