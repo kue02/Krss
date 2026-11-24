@@ -738,6 +738,148 @@ func TestSchedulerPerAttemptTimeoutFailsFast(t *testing.T) {
 	}
 }
 
+// 边界：单通道尝试上限恰好等于剩余总预算时，应走预算分支（budgetHit），
+// 不计通道失败、不冷却。
+func TestSchedulerPerAttemptEqualsBudgetUsesBudget(t *testing.T) {
+	oldTimeout, oldBudget := freeChannelAttemptTimeout, freeChannelTotalBudget
+	oldNet, oldMax := freeChannelNetworkBaseCooldown, freeChannelMaxCooldown
+	freeChannelAttemptTimeout = 150 * time.Millisecond
+	freeChannelTotalBudget = 150 * time.Millisecond
+	freeChannelNetworkBaseCooldown = 3 * time.Second
+	freeChannelMaxCooldown = 5 * time.Minute
+	defer func() {
+		freeChannelAttemptTimeout, freeChannelTotalBudget = oldTimeout, oldBudget
+		freeChannelNetworkBaseCooldown, freeChannelMaxCooldown = oldNet, oldMax
+	}()
+
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-time.After(400 * time.Millisecond):
+		}
+		_, _ = w.Write([]byte(`[[["慢","hi",null,null,10]],null,"en"]`))
+	}))
+	defer slow.Close()
+	original := googleTranslateEndpoint
+	googleTranslateEndpoint = slow.URL
+	defer func() { googleTranslateEndpoint = original }()
+
+	s := newFreeChannelScheduler()
+	_, _, err := s.translate(context.Background(), slow.Client(), []string{FreeChannelGoogle}, "hi", "zh-CN")
+	if err == nil || !strings.Contains(err.Error(), "skipped (budget)") {
+		t.Fatalf("尝试上限等于总预算应算预算耗尽，得到 %v", err)
+	}
+	s.mu.Lock()
+	st := s.states[FreeChannelGoogle]
+	var fails int
+	var cooling bool
+	if st != nil {
+		fails = st.consecutiveFails
+		cooling = s.now().Before(st.cooldownUntil)
+	}
+	s.mu.Unlock()
+	if fails != 0 || cooling {
+		t.Fatalf("预算绑定超时不应冷却/计失败，得到 fails=%d cooling=%v", fails, cooling)
+	}
+}
+
+// 边界：单通道尝试上限 <= 0 时，退化为仅受总预算约束（走预算分支，失败不计通道失败）。
+func TestSchedulerZeroPerAttemptUsesBudget(t *testing.T) {
+	oldTimeout, oldBudget := freeChannelAttemptTimeout, freeChannelTotalBudget
+	oldNet, oldMax := freeChannelNetworkBaseCooldown, freeChannelMaxCooldown
+	freeChannelAttemptTimeout = 0
+	freeChannelTotalBudget = 120 * time.Millisecond
+	freeChannelNetworkBaseCooldown = 3 * time.Second
+	freeChannelMaxCooldown = 5 * time.Minute
+	defer func() {
+		freeChannelAttemptTimeout, freeChannelTotalBudget = oldTimeout, oldBudget
+		freeChannelNetworkBaseCooldown, freeChannelMaxCooldown = oldNet, oldMax
+	}()
+
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-time.After(400 * time.Millisecond):
+		}
+		_, _ = w.Write([]byte(`[[["慢","hi",null,null,10]],null,"en"]`))
+	}))
+	defer slow.Close()
+	original := googleTranslateEndpoint
+	googleTranslateEndpoint = slow.URL
+	defer func() { googleTranslateEndpoint = original }()
+
+	s := newFreeChannelScheduler()
+	_, _, err := s.translate(context.Background(), slow.Client(), []string{FreeChannelGoogle}, "hi", "zh-CN")
+	if err == nil || !strings.Contains(err.Error(), "skipped (budget)") {
+		t.Fatalf("尝试上限<=0 应退化为总预算约束，得到 %v", err)
+	}
+	s.mu.Lock()
+	st := s.states[FreeChannelGoogle]
+	var fails int
+	if st != nil {
+		fails = st.consecutiveFails
+	}
+	s.mu.Unlock()
+	if fails != 0 {
+		t.Fatalf("预算绑定超时不应计失败，得到 %d", fails)
+	}
+}
+
+// 边界：总预算禁用（<=0）时，仍按单通道尝试上限快速失败，并计为通道网络失败进入冷却。
+func TestSchedulerNoTotalBudgetUsesPerAttempt(t *testing.T) {
+	oldTimeout, oldBudget := freeChannelAttemptTimeout, freeChannelTotalBudget
+	oldNet, oldMax := freeChannelNetworkBaseCooldown, freeChannelMaxCooldown
+	freeChannelAttemptTimeout = 150 * time.Millisecond
+	freeChannelTotalBudget = 0 // 禁用总预算
+	freeChannelNetworkBaseCooldown = 3 * time.Second
+	freeChannelMaxCooldown = 5 * time.Minute
+	defer func() {
+		freeChannelAttemptTimeout, freeChannelTotalBudget = oldTimeout, oldBudget
+		freeChannelNetworkBaseCooldown, freeChannelMaxCooldown = oldNet, oldMax
+	}()
+
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-time.After(400 * time.Millisecond):
+		}
+		_, _ = w.Write([]byte(`[[["慢","hi",null,null,10]],null,"en"]`))
+	}))
+	defer slow.Close()
+	fast := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"errorCode":0,"translation":["你好世界"]}`))
+	}))
+	defer fast.Close()
+	originalGoogle, originalYoudao := googleTranslateEndpoint, youdaoTranslateEndpoint
+	googleTranslateEndpoint = slow.URL
+	youdaoTranslateEndpoint = fast.URL
+	defer func() {
+		googleTranslateEndpoint = originalGoogle
+		youdaoTranslateEndpoint = originalYoudao
+	}()
+
+	s := newFreeChannelScheduler()
+	got, used, err := s.translate(context.Background(), slow.Client(), []string{FreeChannelGoogle, FreeChannelYoudao}, "Hello world", "zh-CN")
+	if err != nil || used != FreeChannelYoudao || got != "你好世界" {
+		t.Fatalf("应回退有道成功，得到 used=%q got=%q err=%v", used, got, err)
+	}
+	s.mu.Lock()
+	st := s.states[FreeChannelGoogle]
+	var fails int
+	var cooling bool
+	if st != nil {
+		fails = st.consecutiveFails
+		cooling = s.now().Before(st.cooldownUntil)
+	}
+	s.mu.Unlock()
+	if st == nil || fails == 0 || !cooling {
+		t.Fatalf("禁用总预算时慢通道应按单通道上限失败并冷却，得到 fails=%d cooling=%v", fails, cooling)
+	}
+}
+
 // 并发上限：同一通道同时最多 freeChannelMaxConcurrency 个在飞请求。
 func TestSchedulerRespectsConcurrencyCap(t *testing.T) {
 	oldConc, oldPS, oldPM, oldGap := freeChannelMaxConcurrency, freeChannelPerSecond, freeChannelPerMinute, freeChannelMinGap
