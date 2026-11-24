@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ProgressBar } from "@heroui/react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
@@ -112,7 +113,7 @@ export function MobilePullToRefresh({
       : 100
     : Math.min(100, (pull / PULL_THRESHOLD) * 100);
 
-  return (
+  return createPortal(
     <div
       data-testid="pull-refresh-progress"
       aria-hidden={!visible}
@@ -138,6 +139,7 @@ export function MobilePullToRefresh({
           />
         </ProgressBar.Track>
       </ProgressBar>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { useFeeds } from "@/hooks/useFeeds";
@@ -28,6 +28,30 @@ export function MobileTabBar({
   onSelect,
 }: MobileTabBarProps) {
   const { t } = useTranslation();
+  const [hidden, setHidden] = useState(false);
+  useEffect(() => {
+    let last = window.scrollY;
+    let lockUntil = 0;
+    const update = () => {
+      if (performance.now() < lockUntil) return;
+      const y = window.scrollY;
+      const dy = y - last;
+      last = y;
+      if (y <= 6) {
+        setHidden(false);
+        return;
+      }
+      if (dy > 2) {
+        setHidden(true);
+        lockUntil = performance.now() + 300;
+      } else if (dy < -2) {
+        setHidden(false);
+        lockUntil = performance.now() + 300;
+      }
+    };
+    window.addEventListener("scroll", update, { passive: true });
+    return () => window.removeEventListener("scroll", update);
+  }, []);
   const { data: feeds } = useFeeds();
   const { data: unreadCountsData } = useUnreadCounts();
 
@@ -54,7 +78,10 @@ export function MobileTabBar({
   return (
     <nav
       aria-label={t("content_type.nav_label")}
-      className="mobile-tab-bar fixed inset-x-0 bottom-0 z-20 border-t border-border/50 bg-background/75 pb-[env(safe-area-inset-bottom)] shadow-[0_-1px_0_rgba(0,0,0,0.03)] backdrop-blur-xl"
+      className={cn(
+        "mobile-tab-bar fixed inset-x-0 bottom-0 z-20 border-t border-border/50 bg-background/75 pb-[env(safe-area-inset-bottom)] shadow-[0_-1px_0_rgba(0,0,0,0.03)] backdrop-blur-xl transition-transform duration-300 ease-out",
+        hidden ? "translate-y-full" : "translate-y-0",
+      )}
     >
       <div role="tablist" className="mx-auto flex h-14 w-full max-w-md items-stretch">
         {tabs.map((type) => {
