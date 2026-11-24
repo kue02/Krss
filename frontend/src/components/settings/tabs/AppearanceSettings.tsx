@@ -372,6 +372,8 @@ export function AppearanceSettings() {
   const articleListRowHeight = useUISettingKey("articleListRowHeight");
   const articleQuickActionMode = useUISettingKey("articleQuickActionMode");
   const articleMobileFullTitle = useUISettingKey("articleMobileFullTitle");
+  const articlePaneStyle = useUISettingKey("articlePaneStyle");
+  const { setArticlePaneStyle } = useUISettingActions();
   const hoverImageSize = useUISettingKey("hoverImageSize");
   const hoverMultiImageSetting = useUISettingKey(
     "hoverMultiImage",
@@ -1335,6 +1337,31 @@ export function AppearanceSettings() {
                               label: t(
                                 "appearance_view.article_list_row_height_comfortable",
                               ),
+                            },
+                          ]}
+                        />
+                      </SettingRow>
+                    )}
+                    {/* 「Inoreader列表」正文栏容器样式（用户对比后决定） */}
+                    {articleLayout === "inoreader" && (
+                      <SettingRow
+                        label={t("appearance_view.article_pane_style")}
+                        hint={t("appearance_view.article_pane_style_hint")}
+                      >
+                        <SegmentedControl
+                          className="shrink-0"
+                          value={articlePaneStyle === "card" ? "card" : "plain"}
+                          onValueChange={(value) =>
+                            setArticlePaneStyle(value === "card" ? "card" : "plain")
+                          }
+                          options={[
+                            {
+                              value: "plain",
+                              label: t("appearance_view.article_pane_style_plain"),
+                            },
+                            {
+                              value: "card",
+                              label: t("appearance_view.article_pane_style_card"),
                             },
                           ]}
                         />
