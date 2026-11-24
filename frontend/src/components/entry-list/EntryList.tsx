@@ -653,6 +653,8 @@ export function EntryList({
     // Clear translation tracking for new list
     translationSession.current += 1;
     translatedEntries.current.clear();
+    // 清空失败冷却，避免跨订阅/内容类型残留（否则 Map 会无界增长，且旧冷却会误伤新列表）
+    translationFailedUntil.current.clear();
     pendingTranslation.current.clear();
     pendingDetection.current.clear();
     if (debounceTimer.current) {
@@ -1477,7 +1479,7 @@ export function EntryList({
           )?.summary;
           if (!cached?.title && !cached?.summary) {
             translationFailedUntil.current.set(
-              article.id,
+              `${article.id}:${targetLanguage}`,
               Date.now() + TRANSLATION_FAIL_COOLDOWN_MS,
             );
             translatedEntries.current.delete(article.id);
@@ -1485,7 +1487,7 @@ export function EntryList({
               summary: { state: "failed", error: errorMsg },
             });
           } else {
-            translationFailedUntil.current.delete(article.id);
+            translationFailedUntil.current.delete(`${article.id}:${targetLanguage}`);
             // 保留流式结果写入的 provider/model，只把状态收尾成 done
             translationActions.setStatus(article.id, targetLanguage, {
               summary: { ...prevSummary, state: "done" },
@@ -1527,13 +1529,18 @@ export function EntryList({
   const scheduleTranslation = useCallback(
     (entry: Entry) => {
       if (!isAutoTranslateEnabled(entry)) return;
+      // 失败冷却：同一条目在同一目标语言下失败后，冷却期内不再重排队，
+      // 避免每次 entries 变化/滚动都重新发起批量翻译（失败重试风暴）。
+      // 必须在 has(entry.id) 判断之前做：失败时已把 id 从 translatedEntries 删除，
+      // 若放在 has 分支内会永远进不去，冷却就成了死代码。
+      const failKey = `${entry.id}:${targetLanguage}`;
+      const failedUntil = translationFailedUntil.current.get(failKey);
+      if (failedUntil && Date.now() < failedUntil) return;
+      if (failedUntil) translationFailedUntil.current.delete(failKey);
       if (translatedEntries.current.has(entry.id)) {
         // Verify against store: if marked but no actual translation, allow retry
         const cached = translationActions.get(entry.id, targetLanguage);
         if (cached?.title || cached?.summary) return;
-        const until = translationFailedUntil.current.get(entry.id);
-        if (until && Date.now() < until) return;
-        if (until) translationFailedUntil.current.delete(entry.id);
         translatedEntries.current.delete(entry.id);
       }
       // Skip if user manually disabled translation for this article
