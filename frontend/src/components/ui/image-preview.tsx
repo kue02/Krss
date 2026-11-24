@@ -42,6 +42,12 @@ export function ImagePreview() {
     isZoomedRef.current = zoom.isZoomed;
   }, [zoom.isZoomed]);
 
+  // 手势进行中（捏合 / 放大后拖动）也不许 embla 抢走单指翻页
+  const isInteractingRef = useRef(zoom.isInteracting);
+  useEffect(() => {
+    isInteractingRef.current = zoom.isInteracting;
+  }, [zoom.isInteracting]);
+
   // Memoize options to prevent unnecessary reInit (which would skip animations)
   const emblaOptions = useMemo(
     () => ({
@@ -49,8 +55,8 @@ export function ImagePreview() {
       startIndex: initialIndexRef.current,
       skipSnaps: false,
       duration: 25,
-      // 放大时禁掉 embla 的单指拖拽翻页：此时横向拖动应该平移图片而不是翻页
-      watchDrag: () => !isZoomedRef.current,
+      // 放大或手势进行中禁掉 embla 的单指拖拽翻页：此时拖动应该平移图片
+      watchDrag: () => !isZoomedRef.current && !isInteractingRef.current,
     }),
     // Recreate options when preview opens (images change) or when initial index changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -262,6 +268,31 @@ export function ImagePreview() {
     [close, clearTapTimer, zoom],
   );
 
+  // 统一 click：图片内沿用上面的点按语义；图片外（stage/letterbox 空白）立即关闭。
+  // 放大态也关闭，但仍要求按下到抬起没有拖动，避免拖完图后误关。
+  const handleStageClick = useCallback(
+    (e: React.MouseEvent) => {
+      const target = e.target;
+      if (target instanceof Element && target.closest("img")) {
+        handleTapClose(e);
+        return;
+      }
+
+      e.stopPropagation();
+      if (pointerDownPos.current) {
+        const dx = Math.abs(e.clientX - pointerDownPos.current.x);
+        const dy = Math.abs(e.clientY - pointerDownPos.current.y);
+        pointerDownPos.current = null;
+        if (dx >= 5 || dy >= 5) return;
+      }
+
+      clearTapTimer();
+      lastTapRef.current = null;
+      close();
+    },
+    [close, clearTapTimer, handleTapClose],
+  );
+
   // 原生 dblclick 兜底（鼠标/触控板）；触屏双击已被上面的 tap 逻辑处理时忽略。
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -339,7 +370,7 @@ export function ImagePreview() {
                 animate={{ scale: 1, opacity: 1 }}
                 exit={{ scale: 0.9, opacity: 0 }}
                 transition={{ duration: 0.2 }}
-                className="relative flex size-full items-center justify-center safe-area-x"
+                className="relative flex size-full touch-none items-center justify-center safe-area-x"
                 ref={zoom.containerRef}
                 {...zoom.handlers}
                 onDoubleClick={handleDoubleClick}
@@ -348,9 +379,10 @@ export function ImagePreview() {
                   handleCarouselPointerDown(e);
                   zoom.handlers.onPointerDown?.(e);
                 }}
-                onClick={handleTapClose}
+                onClick={handleStageClick}
               >
                 <AuthedImage
+                  ref={zoom.imageRef}
                   src={images[0]}
                   alt=""
                   className="max-h-full max-w-full object-contain"
@@ -362,15 +394,16 @@ export function ImagePreview() {
               // 内层保留 embla 的指针记录与点击关闭。
               <div
                 ref={zoom.containerRef}
-                className="size-full min-h-0"
+                className="size-full min-h-0 touch-none"
                 {...zoom.handlers}
                 onDoubleClick={handleDoubleClick}
               >
                 <div
                   ref={emblaRef}
                   className="size-full min-h-0 overflow-hidden touch-manipulation"
+                  style={{ touchAction: "none" }}
                   onPointerDown={handleCarouselPointerDown}
-                  onClick={handleTapClose}
+                  onClick={handleStageClick}
                 >
                   <div className="flex size-full min-h-0 touch-pan-y will-change-transform">
                     {images.map((src, index) => (
@@ -379,6 +412,7 @@ export function ImagePreview() {
                         className="flex min-h-0 min-w-0 flex-[0_0_100%] items-center justify-center will-change-transform"
                       >
                         <AuthedImage
+                          ref={index === currentIndex ? zoom.imageRef : undefined}
                           src={src}
                           alt=""
                           className="max-h-full max-w-full object-contain"
