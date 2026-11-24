@@ -349,6 +349,7 @@ export function AppearanceSettings() {
     setArticleCoverList,
     setHoverRowHeight,
     setArticleListRowHeight,
+    setArticleQuickActionMode,
     setHoverImageSize,
     setGridStyle,
   } = useUISettingActions();
@@ -368,6 +369,7 @@ export function AppearanceSettings() {
   });
   const hoverRowHeight = useUISettingKey("hoverRowHeight");
   const articleListRowHeight = useUISettingKey("articleListRowHeight");
+  const articleQuickActionMode = useUISettingKey("articleQuickActionMode");
   const hoverImageSize = useUISettingKey("hoverImageSize");
   const hoverMultiImageSetting = useUISettingKey(
     "hoverMultiImage",
@@ -1331,6 +1333,37 @@ export function AppearanceSettings() {
                               label: t(
                                 "appearance_view.article_list_row_height_comfortable",
                               ),
+                            },
+                          ]}
+                        />
+                      </SettingRow>
+                    )}
+                    {/* 「Inoreader列表」左侧快捷按钮的显示方式 */}
+                    {articleLayout === "inoreader" && (
+                      <SettingRow
+                        label={t("appearance_view.article_quick_actions")}
+                        hint={t("appearance_view.article_quick_actions_hint")}
+                      >
+                        <SegmentedControl
+                          className="shrink-0"
+                          value={articleQuickActionMode}
+                          onValueChange={(value) =>
+                            setArticleQuickActionMode(
+                              value as "expand" | "hover" | "always",
+                            )
+                          }
+                          options={[
+                            {
+                              value: "expand",
+                              label: t("appearance_view.article_quick_actions_expand"),
+                            },
+                            {
+                              value: "hover",
+                              label: t("appearance_view.article_quick_actions_hover"),
+                            },
+                            {
+                              value: "always",
+                              label: t("appearance_view.article_quick_actions_always"),
                             },
                           ]}
                         />

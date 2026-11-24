@@ -1155,7 +1155,7 @@
     "article_push_direction_bottom": "From bottom",
     "article_push_direction_down": "Down",
     "article_cover_list": "Cover the entry list",
-    "article_cover_list_hint": "When on, the reading pane floats above and covers the second column; with nothing selected the third column takes no space (Inoreader-like list mode)",
+    "article_cover_list_hint": "When on, the reading pane floats above and covers the second column; with nothing selected the third column takes no space",
     "article_cover_off": "Off",
     "article_cover_on": "On",
     "experimental_disabled_hint": "You are using a disabled experimental layout. Re-enable it in Settings → Advanced → Experimental, or switch back to the regular layout.",
@@ -1202,7 +1202,12 @@
     "notification_body_hover": "Hover panel",
     "grid_style": "Grid · style",
     "grid_style_masonry": "Original ratio (default)",
-    "grid_style_square": "Square"
+    "grid_style_square": "Square",
+    "article_quick_actions": "Row quick actions",
+    "article_quick_actions_hint": "How the read/unread and star buttons on each Inoreader-list row are shown",
+    "article_quick_actions_expand": "Slide out on hover",
+    "article_quick_actions_hover": "Show on hover",
+    "article_quick_actions_always": "Always visible"
   },
   "folder": {
     "create": "New folder",

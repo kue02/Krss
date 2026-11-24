@@ -22,12 +22,15 @@ export function ReadingProgressBar({
   scrollNode,
   resetKey,
   className,
+  sticky = false,
 }: {
   /** 正文的真实滚动节点 */
   scrollNode: HTMLElement | null;
   /** 换条目时重算（同一节点上 scrollTop 会被重置） */
   resetKey?: string | null;
   className?: string;
+  /** 内联合列：吸在正文工具栏下方 */
+  sticky?: boolean;
 }) {
   const { t } = useTranslation();
   const [percent, setPercent] = useState(0);
@@ -65,7 +68,9 @@ export function ReadingProgressBar({
     <div
       data-reading-progress=""
       className={cn(
-        "pointer-events-none absolute inset-x-0 top-[calc(2.75rem+env(safe-area-inset-top))] z-20 sm:top-12",
+        sticky
+          ? "pointer-events-none sticky top-12 z-20"
+          : "pointer-events-none absolute inset-x-0 top-[calc(2.75rem+env(safe-area-inset-top))] z-20 sm:top-12",
         className,
       )}
     >

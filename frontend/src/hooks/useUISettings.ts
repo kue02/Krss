@@ -190,6 +190,8 @@ interface UISettings {
   hoverRowHeight: "compact" | "comfortable";
   /** 文章「Inoreader列表」的行高尺度；与图片悬停大图分开，默认紧凑 */
   articleListRowHeight: "compact" | "comfortable";
+  /** Inoreader 列表：行左侧快捷按钮的显示方式（滑出/悬浮显示/常显） */
+  articleQuickActionMode: "expand" | "hover" | "always";
   hoverImageSize: "small" | "large";
   /** 29-4：悬停大图档「多图切换」的三个触发开关（默认只开行上滚轮） */
   hoverMultiImage: HoverMultiImageConfig;
@@ -475,6 +477,7 @@ const SILENT_SAVE_UI_KEYS = new Set<string>([
   "gridStyle",
   "hoverRowHeight",
   "articleListRowHeight",
+  "articleQuickActionMode",
   "hoverImageSize",
   // 47-1：切「只显示未读 / 显示全部」，列表当场就换了，不必再弹一句
   "unreadOnly",
@@ -641,6 +644,7 @@ export const defaultUISettings: UISettings = {
   gridStyle: "masonry",
   hoverRowHeight: "compact",
   articleListRowHeight: "compact",
+  articleQuickActionMode: "expand",
   hoverImageSize: "small",
   hoverMultiImage: { rowWheel: true, floatWheel: false, hSwipe: false },
   notificationBodyOnHover: false,
@@ -942,6 +946,13 @@ export function useUISettingActions() {
     [],
   );
 
+  const setArticleQuickActionMode = useCallback(
+    (value: "expand" | "hover" | "always") => {
+      setUISetting("articleQuickActionMode", value);
+    },
+    [setUISetting],
+  );
+
   /** 28-7a：悬停浮块尺寸（small = 上游 400×250 / large = 5175 的 560px） */
   const setHoverImageSize = useCallback((value: "small" | "large") => {
     setUISetting("hoverImageSize", value);
@@ -1204,6 +1215,7 @@ export function useUISettingActions() {
     setGridStyle,
     setHoverRowHeight,
     setArticleListRowHeight,
+    setArticleQuickActionMode,
     setHoverImageSize,
     setArticleLayout,
     setArticlePushDirection,
