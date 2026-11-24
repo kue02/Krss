@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { SmartViewFolder, resolveMatchedFeeds } from "./SmartViewFolder";
@@ -113,6 +113,32 @@ describe("SmartViewFolder", () => {
     expect(getViewMatchedFeedsMock).toHaveBeenCalledWith("view-expand", undefined);
     // chevron 只负责展开，不应顺带选中视图
     expect(onSelectView).not.toHaveBeenCalled();
+  });
+
+  it("点名称/三角只展开下拉，不切换视图", async () => {
+    getViewMatchedFeedsMock.mockResolvedValue({ feeds: [] });
+    const { onSelectView } = renderFolder(makeView({ id: "view-name-click" }));
+
+    // 名称与三角同在展开开关 button 内：点名称 = 点开关 → 只展开、不选中
+    const toggleBtn = screen.getByRole("button");
+    fireEvent.click(within(toggleBtn).getByText("AI 周报"));
+
+    expect(onSelectView).not.toHaveBeenCalled();
+    expect(getViewMatchedFeedsMock).toHaveBeenCalledWith(
+      "view-name-click",
+      undefined,
+    );
+  });
+
+  it("点行内空白处（外层行）切换视图，触发 onSelectView 且不展开", () => {
+    const { onSelectView } = renderFolder(makeView({ id: "view-blank-click" }));
+
+    // 开关 button 的父节点就是整行；点空白落在它上面 → 选中视图
+    const row = screen.getByRole("button").parentElement as HTMLElement;
+    fireEvent.click(row);
+
+    expect(onSelectView).toHaveBeenCalledTimes(1);
+    expect(getViewMatchedFeedsMock).not.toHaveBeenCalled();
   });
 
   it("当前无匹配订阅时显示空态文案（内容消失的源不再出现）", async () => {

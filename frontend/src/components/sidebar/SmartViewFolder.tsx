@@ -133,10 +133,10 @@ export function SmartViewFolder({
             onClick={onSelectView}
           >
             <Ripple hoverOpacity={0} pressedOpacity={0.05} duration={100} />
-            {/* 箭头按钮 —— 只有它切换展开/收起 */}
+            {/* 三角 + 视图图标 + 名称：点这些都展开/收起（下拉），不切换 */}
             <button
               type="button"
-              className="flex h-full items-center"
+              className="flex h-full min-w-0 items-center gap-2 text-left"
               tabIndex={-1}
               onClick={(e) => {
                 e.stopPropagation();
@@ -151,13 +151,13 @@ export function SmartViewFolder({
                   )}
                 />
               </span>
+              <span className={sidebarItemIconStyles}>
+                <ViewIcon icon={view.icon} />
+              </span>
+              <span className="min-w-0 truncate">{view.name}</span>
             </button>
-            <span className={sidebarItemIconStyles}>
-              <ViewIcon icon={view.icon} />
-            </span>
-            <span className="grow truncate">{view.name}</span>
             {count > 0 && (
-              <span className="shrink-0 text-[0.7rem] font-medium tabular-nums text-muted-foreground">
+              <span className="ml-auto shrink-0 text-[0.7rem] font-medium tabular-nums text-muted-foreground">
                 {count > 99 ? "99+" : count}
               </span>
             )}
