@@ -730,6 +730,7 @@ export async function previewFeed(url: string): Promise<FeedPreview> {
 
 export async function listEntries(
   params: EntryListParams = {},
+  signal?: AbortSignal,
 ): Promise<EntryListResponse> {
   const searchParams = new URLSearchParams();
 
@@ -769,11 +770,14 @@ export async function listEntries(
 
   const queryString = searchParams.toString();
   const path = queryString ? `/api/entries?${queryString}` : "/api/entries";
-  return request<EntryListResponse>(path);
+  return request<EntryListResponse>(path, { signal });
 }
 
-export async function getEntry(id: string): Promise<Entry> {
-  return request<Entry>(`/api/entries/${id}`);
+export async function getEntry(
+  id: string,
+  signal?: AbortSignal,
+): Promise<Entry> {
+  return request<Entry>(`/api/entries/${id}`, { signal });
 }
 
 export async function updateEntryReadStatus(
@@ -1304,14 +1308,21 @@ export async function* streamBatchTranslate(
   articles: BatchTranslateArticle[],
   signal?: AbortSignal,
 ): AsyncGenerator<BatchTranslateResult> {
-  const url = `${API_BASE_URL}/api/ai/translate/batch`;
-  const response = await fetchWithAuth(url, {
-    method: "POST",
-    body: JSON.stringify({ articles }),
-    signal,
-  });
+  const releaseSlot = await acquireTranslateStreamSlot();
+  try {
+    const url = `${API_BASE_URL}/api/ai/translate/batch`;
+    const response = await fetchWithAuth(url, {
+      method: "POST",
+      body: JSON.stringify({ articles }),
+      signal,
+    });
 
-  yield* readNDJSONLines<BatchTranslateResult>(response);
+    yield* readNDJSONLines<BatchTranslateResult>(response);
+  } finally {
+    // 成功 / 报错 / 被 abort（调用方 break 会触发 return()）都要放行，
+    // 否则一次意外会让后续所有翻译永远排在队里
+    releaseSlot();
+  }
 }
 
 /**

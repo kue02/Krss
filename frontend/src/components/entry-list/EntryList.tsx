@@ -96,6 +96,9 @@ const REFRESH_MAX_WAIT_MS = 180_000;
  */
 const FORCE_REFRESH_CONFIRM_THRESHOLD = 20;
 
+/** 列表标题/摘要翻译失败后，这条在冷却期内不再重排队，避免每次 entries 变化就重试（毫秒）。 */
+const TRANSLATION_FAIL_COOLDOWN_MS = 5 * 60 * 1000;
+
 /** 列表筛选态（星标 / 未读 / 全部）；底部胶囊已移除，仅作请求参数与视图判断。 */
 type EntryFilter = "all" | "unread" | "starred";
 
@@ -332,6 +335,7 @@ export function EntryList({
   const pendingDetection = useRef(new Set<string>());
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const translationSession = useRef(0);
+  const translationFailedUntil = useRef<Map<string, number>>(new Map());
 
   const autoTranslate = aiSettings?.autoTranslate ?? false;
 
@@ -649,6 +653,8 @@ export function EntryList({
     // Clear translation tracking for new list
     translationSession.current += 1;
     translatedEntries.current.clear();
+    // 清空失败冷却，避免跨订阅/内容类型残留（否则 Map 会无界增长，且旧冷却会误伤新列表）
+    translationFailedUntil.current.clear();
     pendingTranslation.current.clear();
     pendingDetection.current.clear();
     if (debounceTimer.current) {
@@ -1472,11 +1478,16 @@ export function EntryList({
             targetLanguage,
           )?.summary;
           if (!cached?.title && !cached?.summary) {
+            translationFailedUntil.current.set(
+              `${article.id}:${targetLanguage}`,
+              Date.now() + TRANSLATION_FAIL_COOLDOWN_MS,
+            );
             translatedEntries.current.delete(article.id);
             translationActions.setStatus(article.id, targetLanguage, {
               summary: { state: "failed", error: errorMsg },
             });
           } else {
+            translationFailedUntil.current.delete(`${article.id}:${targetLanguage}`);
             // 保留流式结果写入的 provider/model，只把状态收尾成 done
             translationActions.setStatus(article.id, targetLanguage, {
               summary: { ...prevSummary, state: "done" },
@@ -1518,6 +1529,14 @@ export function EntryList({
   const scheduleTranslation = useCallback(
     (entry: Entry) => {
       if (!isAutoTranslateEnabled(entry)) return;
+      // 失败冷却：同一条目在同一目标语言下失败后，冷却期内不再重排队，
+      // 避免每次 entries 变化/滚动都重新发起批量翻译（失败重试风暴）。
+      // 必须在 has(entry.id) 判断之前做：失败时已把 id 从 translatedEntries 删除，
+      // 若放在 has 分支内会永远进不去，冷却就成了死代码。
+      const failKey = `${entry.id}:${targetLanguage}`;
+      const failedUntil = translationFailedUntil.current.get(failKey);
+      if (failedUntil && Date.now() < failedUntil) return;
+      if (failedUntil) translationFailedUntil.current.delete(failKey);
       if (translatedEntries.current.has(entry.id)) {
         // Verify against store: if marked but no actual translation, allow retry
         const cached = translationActions.get(entry.id, targetLanguage);

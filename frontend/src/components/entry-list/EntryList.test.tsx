@@ -465,7 +465,7 @@ describe("EntryList translation scheduling", () => {
     expect(mockTranslateArticlesBatch).not.toHaveBeenCalled();
   });
 
-  it("批量翻译失败后会允许下次重试", async () => {
+  it("批量翻译失败后在冷却期内不再重排，冷却过后允许重试", async () => {
     mockTranslationActionsGet.mockReturnValue(undefined);
 
     const { rerender } = render(
@@ -474,23 +474,39 @@ describe("EntryList translation scheduling", () => {
 
     await runBatchTimer();
 
+    // 首批可视项 1、2 翻译后拿不到译文 → 记为失败并进入 5 分钟冷却
     expect(mockTranslateArticlesBatch).toHaveBeenCalledTimes(1);
     mockTranslateArticlesBatch.mockClear();
 
+    // 冷却期内：切换到选中 3，只应翻译 3，不得重排失败的 1、2
     rerender(<EntryList {...defaultProps} selectedEntryId="3" />);
-
     await runBatchTimer();
 
     expect(mockTranslateArticlesBatch).toHaveBeenCalledTimes(1);
-    const calledArticles =
+    const coolIds = (
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (mockTranslateArticlesBatch.mock.calls[0] as any[])[0] as Array<{
         id: string;
-      }>;
-    const ids = calledArticles.map((article) => article.id);
-    expect(ids).toContain("1");
-    expect(ids).toContain("2");
-    expect(ids).toContain("3");
+      }>
+    ).map((article) => article.id);
+    expect(coolIds).toContain("3");
+    expect(coolIds).not.toContain("1");
+    expect(coolIds).not.toContain("2");
+
+    // 冷却期（5 分钟）过后：失败的 1、2 允许重试
+    mockTranslateArticlesBatch.mockClear();
+    vi.advanceTimersByTime(5 * 60 * 1000 + 1000);
+    rerender(<EntryList {...defaultProps} selectedEntryId={null} />);
+    await runBatchTimer();
+
+    expect(mockTranslateArticlesBatch).toHaveBeenCalledTimes(1);
+    const retryIds = (
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (mockTranslateArticlesBatch.mock.calls[0] as any[])[0] as Array<{
+        id: string;
+      }>
+    ).map((article) => article.id);
+    expect(retryIds).toEqual(expect.arrayContaining(["1", "2"]));
   });
 
   it("已成功翻译的文章不会重复进入批量队列", async () => {
