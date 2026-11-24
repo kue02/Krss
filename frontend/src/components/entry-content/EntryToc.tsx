@@ -194,7 +194,10 @@ export function EntryToc({
           type="button"
           onClick={() => setMobileOpen(true)}
           aria-label={t("entry.toc")}
-          className="absolute right-0 top-1/2 z-20 flex h-24 w-11 -translate-y-1/2 items-center justify-end pr-0.5 active:opacity-60"
+          className={cn(
+            "right-0 top-1/2 z-20 flex h-24 w-11 -translate-y-1/2 items-center justify-end pr-0.5 active:opacity-60",
+            fixedInline ? "fixed" : "absolute",
+          )}
         >
           <span className="flex h-16 w-1.5 flex-col items-center justify-center gap-1 rounded-full bg-foreground/15">
             <span className="size-0.5 rounded-full bg-foreground/40" />

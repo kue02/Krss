@@ -749,7 +749,7 @@ export function EntryList({
       <div
         ref={inlineContentRef}
         data-testid="inline-article-pane"
-        className="w-full border-t border-border"
+        className="mx-2 my-2 w-[calc(100%-1rem)] overflow-hidden rounded-[12px] border border-border/60 bg-card shadow-nf"
       >
         {renderInlineContent?.(containerRef, {
           headerStickyTop: mobileHeaderHidden

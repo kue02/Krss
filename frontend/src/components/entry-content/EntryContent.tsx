@@ -327,7 +327,7 @@ export function EntryContent({
           scrollNode={auxScrollNode}
           entryId={entryId}
           isMobile={Boolean(isMobile)}
-          fixedInline={embedded && showAuxiliary && !isMobile}
+          fixedInline={embedded && showAuxiliary}
         />
       )}
       {isMobile && !embedded && !showOriginalSite && (
