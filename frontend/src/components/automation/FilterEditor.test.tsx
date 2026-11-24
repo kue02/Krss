@@ -256,7 +256,9 @@ describe("FilterEditor", () => {
     );
 
     expect(screen.getByText("automation.conditions_any")).toBeTruthy();
-    fireEvent.click(screen.getByText("+ automation.add_condition"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "automation.add_condition" }),
+    );
     expect(screen.queryByText("automation.conditions_any")).toBeNull();
     expect(document.querySelectorAll("select").length).toBeGreaterThanOrEqual(2);
   });
@@ -281,13 +283,17 @@ describe("FilterEditor", () => {
       onPayloadChange.mock.calls.at(-1)![0] as FilterWritePayload;
 
     // 加第一条：新建条件就带 logic:"or"（首条连接词不展示，但数据要带上）
-    fireEvent.click(screen.getByText("+ automation.add_condition"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "automation.add_condition" }),
+    );
     const afterFirst = lastPayload().conditions;
     expect(afterFirst).toHaveLength(1);
     expect(afterFirst[0]?.logic).toBe("or");
 
     // 加第二条：连接词按钮默认显示「或」
-    fireEvent.click(screen.getByText("+ automation.add_condition"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "automation.add_condition" }),
+    );
     expect(lastPayload().conditions[1]?.logic).toBe("or");
     const toggle = screen.getByText("automation.logic_or");
 

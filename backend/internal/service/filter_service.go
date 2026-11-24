@@ -555,9 +555,17 @@ func (s *filterService) ApplyToHistory(ctx context.Context, filterID int64, limi
 	scope := repository.EntryListFilter{Limit: limit, IncludeMuted: true}
 	switch rule.ScopeType {
 	case model.FilterScopeFeed:
-		scope.FeedID = rule.ScopeID
+		if len(rule.ScopeIDs) > 0 {
+			scope.FeedIDs = rule.ScopeIDs
+		} else {
+			scope.FeedID = rule.ScopeID
+		}
 	case model.FilterScopeFolder:
-		scope.FolderID = rule.ScopeID
+		if len(rule.ScopeIDs) > 0 {
+			scope.FolderIDs = rule.ScopeIDs
+		} else {
+			scope.FolderID = rule.ScopeID
+		}
 	}
 	entries, err := s.entries.List(ctx, scope)
 	if err != nil {
@@ -889,6 +897,18 @@ func scopeMatches(scopeType string, scopeID *int64, scopeIDs []int64, feed model
 		}
 		return scopeID != nil && *scopeID == feed.ID
 	case model.FilterScopeFolder:
+		// 多选文件夹：集合里命中即可（与多选订阅同理）；没多选时沿用单个 scope_id
+		if len(scopeIDs) > 0 {
+			if feed.FolderID == nil {
+				return false
+			}
+			for _, id := range scopeIDs {
+				if id == *feed.FolderID {
+					return true
+				}
+			}
+			return false
+		}
 		return scopeID != nil && feed.FolderID != nil && *scopeID == *feed.FolderID
 	default:
 		return true
@@ -1390,7 +1410,11 @@ func scopeListFilter(params FilterWriteParams, limit int) repository.EntryListFi
 			filter.FeedID = params.ScopeID
 		}
 	case model.FilterScopeFolder:
-		filter.FolderID = params.ScopeID
+		if len(params.ScopeIDs) > 0 {
+			filter.FolderIDs = params.ScopeIDs
+		} else {
+			filter.FolderID = params.ScopeID
+		}
 	}
 	return filter
 }
@@ -1417,7 +1441,8 @@ func ValidateFilterParamsBody(params FilterWriteParams) error {
 	switch params.ScopeType {
 	case "", model.FilterScopeAll:
 	case model.FilterScopeFolder:
-		if params.ScopeID == nil || *params.ScopeID == 0 {
+		// 文件夹范围：单个 scope_id 或多个 scope_ids（多选文件夹）都行，但不能一个都没有
+		if len(normalizeScopeIDs(params.ScopeIDs)) == 0 && (params.ScopeID == nil || *params.ScopeID == 0) {
 			return ErrInvalidFilter
 		}
 	case model.FilterScopeFeed:
