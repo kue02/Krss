@@ -230,23 +230,11 @@ export function EntryList({
   const containerRef = useRef<HTMLDivElement>(null);
   /** 「向下」合列模式下接在「被点那一行」后面的正文块（点条目后要滚到它） */
   const inlineContentRef = useRef<HTMLDivElement>(null);
+  /** 点条目那一刻，被点那一行在视口里的位置（合列插正文后要对回原位） */
+  const pinnedRowRef = useRef<{ entryId: string; top: number } | null>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const listWrapperRef = useRef<HTMLDivElement>(null);
   const usesDocumentScroll = Boolean(isMobile);
-  /**
-   * 非虚拟列表（社媒 / 通知时间线）：直接交给浏览器原生 scroll anchoring。
-   *
-   * 2026-11-01 用户「还是不行」的根因就在这里：`overflow-anchor:none` 把浏览器
-   * 自带的补偿关掉之后，只能靠 `usePrependScrollAnchor` 的 JS 兜底 —— 它拿的是
-   * 上一帧量到的锚点坐标，图片/翻译异步撑高、或者锚点条目被换掉之后，那串旧坐标
-   * 会被当成「应该在哪」反复拉，于是整块往下走一段就停住（用户看到的形态）。
-   * 原生 anchoring 和布局在同一帧里补偿，不存在这个时间差。
-   *
-   * 虚拟化文章列表仍走 JS 补偿 —— 行是按 `estimateSize` 绝对定位的，插入新条目会让
-   * 所有行整体平移、总高度却可能不变，Chrome 的 anchoring 认不出这种「垫片内位移」
-   * （实测 3 条 148px 估计行 = 下移 444px 且没人补）。
-   */
-  const nativeScrollAnchor = contentType !== "article";
   const scrollSurface = useEntryListScrollSurface({
     documentScroll: usesDocumentScroll,
     containerRef,
@@ -622,6 +610,14 @@ export function EntryList({
         scrollKeyRef.current,
         scrollSurface.getScrollTop(),
       );
+      /* 合列时正文 pane 插在被点行**下面**：它下面的行会整体下移 paneH。
+         记下被点行此刻在视口里的位置，pane 挂载后据此对齐回来 —— 浏览器原生
+         anchoring、焦点 scroll-into-view、我们自己的补偿，只要把视口挪走了，
+         被点行的位置就会变，这里一并拉回（2026-11-24 用户报「点条目后跑到正文底部」）。 */
+      const row = findEntryRowNode(containerRef.current, entryId);
+      pinnedRowRef.current = row
+        ? { entryId, top: row.getBoundingClientRect().top }
+        : null;
       onSelectEntryRef.current(entryId);
     },
     [scrollSurface],
@@ -719,6 +715,85 @@ export function EntryList({
      正文 pane 插在这种祖先里会让 EntryContentHeader 的 sticky 失效（工具栏会浮在正文
      中部）。关掉虚拟化后 pane 落在普通文档流里，sticky 正常，正文也能滚动吸顶。 */
   const inlineNoVirtual = inlineActive;
+  /**
+   * 非虚拟列表（社媒 / 通知时间线）：直接交给浏览器原生 scroll anchoring。
+   *
+   * 2026-11-01 用户「还是不行」的根因就在这里：`overflow-anchor:none` 把浏览器
+   * 自带的补偿关掉之后，只能靠 `usePrependScrollAnchor` 的 JS 兜底 —— 它拿的是
+   * 上一帧量到的锚点坐标，图片/翻译异步撑高、或者锚点条目被换掉之后，那串旧坐标
+   * 会被当成「应该在哪」反复拉，于是整块往下走一段就停住（用户看到的形态）。
+   * 原生 anchoring 和布局在同一帧里补偿，不存在这个时间差。
+   *
+   * 虚拟化文章列表仍走 JS 补偿 —— 行是按 `estimateSize` 绝对定位的，插入新条目会让
+   * 所有行整体平移、总高度却可能不变，Chrome 的 anchoring 认不出这种「垫片内位移」
+   * （实测 3 条 148px 估计行 = 下移 444px 且没人补）。
+   *
+   * 合列（`inlineNoVirtual`）也算非虚拟：点条目时正文 pane 插在被点行下面，下方所有行
+   * 整体下移 `paneH`，而 `usePrependScrollAnchor` 的锚点坐标是**点击前**量的、且候选里
+   * 常常就是 pane 下面那几行 ⇒ `delta ≈ paneH`，一次 `scrollBy` 把视口甩到正文底部
+   * （2026-11-24 用户报「点条目后跑到正文底部」，实测 5/5 复现，栈就在 stabilize）。
+   * 这种「正文插入」本来就不该补偿：被点行不动、正文在它下面展开正是想要的。
+   */
+  const nativeScrollAnchor = contentType !== "article" || inlineNoVirtual;
+  /* 合列插正文后把被点行对回点击前的位置。
+     只盯「打开正文后的一小段时间」（`PIN_ALIGN_MS`），且用户一动手（滚轮/触摸/按键）
+     立刻收手 —— 之后 pane 里的图片再撑高也不追，否则用户正往下读会被反复拉回。
+     为什么不是「补一帧就完」：pane 顶部那条 sticky 标题栏、正文首屏的字体/图片
+     落位都要一两帧才稳，实测晚到 ~150ms 才把被点行又推开 56px（用户说的「抖动」）。 */
+  useLayoutEffect(() => {
+    const pinned = pinnedRowRef.current;
+    if (!pinned) return;
+    if (!inlineActive || selectedEntryId !== pinned.entryId) return;
+
+    const align = () => {
+      const row = findEntryRowNode(containerRef.current, pinned.entryId);
+      if (!row) return;
+      const delta = row.getBoundingClientRect().top - pinned.top;
+      if (Math.abs(delta) < 0.5) return;
+      /* 不设上限：这里要救的正是「视口被甩到正文底部」那种几千像素的位移
+         （实测 3462 / 4025 / 5730 / 8265 / 11149px）。范围由「只盯一小段时间 +
+         用户动手就停」限定。 */
+      scrollSurface.scrollBy(delta);
+    };
+
+    let stopped = false;
+    let frame = 0;
+    const deadline = performance.now() + PIN_ALIGN_MS;
+    const stop = () => {
+      stopped = true;
+      cancelAnimationFrame(frame);
+      pinnedRowRef.current = null;
+    };
+    const step = () => {
+      if (stopped) return;
+      align();
+      if (performance.now() >= deadline) {
+        stop();
+        return;
+      }
+      frame = requestAnimationFrame(step);
+    };
+
+    align();
+    frame = requestAnimationFrame(step);
+    /* 用户一动就不再对齐：此刻视口是他自己滚的，再补就是抢方向盘。 */
+    const events: (keyof WindowEventMap)[] = [
+      "wheel",
+      "touchstart",
+      "pointerdown",
+      "keydown",
+    ];
+    for (const name of events) {
+      window.addEventListener(name, stop, { once: true, passive: true });
+    }
+    return () => {
+      stopped = true;
+      cancelAnimationFrame(frame);
+      for (const name of events) {
+        window.removeEventListener(name, stop);
+      }
+    };
+  }, [inlineActive, scrollSurface, selectedEntryId]);
   /* 移动端列表 TOP 栏的滚动交互（用户 2026-11-24 第 2 条）：
      - 向下滚 → 收起；向上滚 → 出现；回到顶部 → 出现；
      - 打开内联正文后，正文标题栏优先级高于 TOP 栏：正文标题一到顶就把 TOP 收起，
@@ -2134,6 +2209,24 @@ export function EntryList({
       </div>
     </div>
   );
+}
+
+/* 打开正文后盯住被点行多久（毫秒）。实测两处晚到的位移都在这个窗口里：
+   - 挂载后 ~150ms：pane 顶部 sticky 标题栏落位，把被点行推开 56px；
+   - 挂载后 ~1600ms：上方那条正文里的图片/字体撑开，又把被点行推下 56px。
+   两处都是「上面的内容长高了」，被点行该待在原地，所以要盯够。 */
+const PIN_ALIGN_MS = 2000;
+
+/** 按 entryId 找列表里的行节点（行上带 data-entry-id；虚拟列表外层不带，见其组件注释） */
+function findEntryRowNode(
+  root: ParentNode | null,
+  entryId: string,
+): HTMLElement | null {
+  if (!root) return null;
+  for (const node of root.querySelectorAll<HTMLElement>("[data-entry-id]")) {
+    if (node.dataset.entryId === entryId) return node;
+  }
+  return null;
 }
 
 function EntryListSkeleton() {

@@ -27,6 +27,23 @@ const ANCHOR_LOCK_MS = 2_500;
 const ANCHOR_LOCK_MAX_FRAMES = 160;
 /** 同时记几个可见锚点：万一第一条被刷新换掉，用下一条还能算位移 */
 const ANCHOR_CANDIDATES = 3;
+/** 兜底补偿的位移上限：取「1.5 屏」与这个下限里的大者 */
+const MAX_STABILIZE_VIEWPORT_FACTOR = 1.5;
+const MAX_STABILIZE_MIN_PX = 240;
+
+/**
+ * 位移大到不可能是「图片/翻译晚一帧撑高」时返回 true。
+ *
+ * 2026-11-24 用户报「点条目后视口跑到正文底部」：合列时正文 pane 插在被点行下面，
+ * 下方所有行整体下移 `paneH`，而这里的锚点坐标是**点击前**量的、候选里常常就是
+ * pane 下面那几行 ⇒ `delta ≈ paneH`（实测 3462 / 4025 / 5730 / 8265 / 11149px），
+ * 一次 `scrollBy` 就把视口甩到正文底部。这种位移不是抖动，是结构变了：
+ * 丢弃补偿并重测锚点，比照着旧坐标硬拉正确得多。
+ */
+export function isStabilizeDeltaTooLarge(delta: number, viewportHeight: number): boolean {
+  const limit = Math.max(MAX_STABILIZE_MIN_PX, viewportHeight * MAX_STABILIZE_VIEWPORT_FACTOR);
+  return Math.abs(delta) > limit;
+}
 
 interface UsePrependScrollAnchorOptions {
   surface: ScrollSurface;
@@ -260,6 +277,12 @@ export function usePrependScrollAnchor({
       if (!node) return;
       const delta = node.getBoundingClientRect().top - chosen.top;
       if (Math.abs(delta) < 0.5) return;
+      if (isStabilizeDeltaTooLarge(delta, surface.getViewportRect().height)) {
+        /* 结构变了（正文 pane 插入 / 整块换列表），不是晚一帧的高度抖动：
+           按旧锚点补会把视口甩出去几千像素。丢这次、重测锚点，等真实的抖动再来。 */
+        measureAnchors();
+        return;
+      }
 
       compensatingRef.current = true;
       surface.scrollBy(delta);
@@ -347,6 +370,10 @@ export function usePrependScrollAnchor({
         }
         const delta = node.getBoundingClientRect().top - lock.top;
         if (Math.abs(delta) >= 0.5) {
+          if (isStabilizeDeltaTooLarge(delta, surface.getViewportRect().height)) {
+            lockRef.current = null;
+            return;
+          }
           // 同一帧里反复要求同样幅度的补偿 ⇒ 滚动没起作用（jsdom / 布局还没更新），放弃
           if (lock.lastDelta !== null && Math.abs(lock.lastDelta - delta) < 0.5) {
             lockRef.current = null;
@@ -424,17 +451,25 @@ export function usePrependScrollAnchor({
       if (node) {
         const nextTop = node.getBoundingClientRect().top;
         delta = nextTop - chosen.top;
-        if (Math.abs(delta) >= 0.5) {
+        const tooLarge = isStabilizeDeltaTooLarge(delta, surface.getViewportRect().height);
+        if (!tooLarge && Math.abs(delta) >= 0.5) {
           compensatingRef.current = true;
           surface.scrollBy(delta);
           requestAnimationFrame(() => {
             compensatingRef.current = false;
           });
         }
-        const locked: Anchor = { id: chosen.id, top: chosen.top };
-        anchorsRef.current = [locked, ...anchorsRef.current.filter((a) => a.id !== locked.id)];
-        // 提交后异步落下来的高度变化（图片/翻译）也拉回锚点
-        startLock(locked);
+        if (tooLarge) {
+          /* 位移大到不是「晚一帧撑高」：多半是插进来一整块内容（正文 pane）。
+             按旧锚点补会甩出几千像素，改为重测锚点、不锁、不补。 */
+          delta = 0;
+          measureAnchors();
+        } else {
+          const locked: Anchor = { id: chosen.id, top: chosen.top };
+          anchorsRef.current = [locked, ...anchorsRef.current.filter((a) => a.id !== locked.id)];
+          // 提交后异步落下来的高度变化（图片/翻译）也拉回锚点
+          startLock(locked);
+        }
       }
     }
 

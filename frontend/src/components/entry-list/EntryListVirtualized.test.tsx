@@ -445,6 +445,55 @@ describe("EntryList · 标准文章列表虚拟化", () => {
     expect(screen.getByTestId("mark-all-read-footer")).toBeTruthy();
   });
 
+  it("合列插正文把被点行推下去几千像素：自动对回原位（视口不会落到正文底部）", async () => {
+    setUISetting("articleLayout", "inoreader");
+    setUISetting("articlePushDirection", "down");
+    const renderInlineContent = vi.fn(() => (
+      <div data-testid="inline-body">正文</div>
+    ));
+    const { rerender } = render(
+      <EntryList {...defaultProps} renderInlineContent={renderInlineContent} />,
+    );
+    const viewport = screen.getByTestId("entry-list-viewport");
+    await act(async () => {
+      stubViewportScroll(viewport);
+      await Promise.resolve();
+    });
+
+    const row = viewport.querySelector('[data-entry-id="e-3"]') as HTMLElement;
+    // 点击前：这一行在视口里的位置
+    row.getBoundingClientRect = () =>
+      ({ top: 120, bottom: 268, height: 148, left: 0, right: 400, width: 400 }) as DOMRect;
+    fireEvent.click(row);
+
+    // 正文 pane 插到它下面，把它整体推下去 3000px（实测 3462~11149px 那个量级）。
+    // top 跟着 scrollTop 走，模拟真实滚动：补偿完第二次量到的是原位、不会再补。
+    row.getBoundingClientRect = () => {
+      const top = 3120 - viewport.scrollTop;
+      return {
+        top,
+        bottom: top + 148,
+        height: 148,
+        left: 0,
+        right: 400,
+        width: 400,
+      } as DOMRect;
+    };
+    rerender(
+      <EntryList
+        {...defaultProps}
+        selectedEntryId="e-3"
+        renderInlineContent={renderInlineContent}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // 补回 3000px：视口仍停在被点行上，而不是落到正文底部
+    expect(viewport.scrollTop).toBe(3000);
+  });
+
   it("手机档「向下」合列：正文同样接在被点行后面、与列表共用文档滚动", async () => {
     setUISetting("articleLayout", "inoreader");
     setUISetting("articlePushDirection", "down");
