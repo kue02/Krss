@@ -176,7 +176,7 @@ export function EntryContentHeader({
                absolute 会浮在正文顶上、吸顶又会压住列表的固定顶栏 —— 两者都不合适。 */
             sticky
               ? mobileInlineSticky
-                ? "sticky top-0 z-30"
+                ? "sticky top-0 z-30 bg-background"
                 : "relative z-20"
               : "absolute inset-x-0 top-0 z-20",
           )}

@@ -1622,7 +1622,13 @@ export function EntryList({
         hidden={mobileHeaderHidden}
       >
         <EntryListHeader
-          hidden={!isMobile && mobileHeaderHidden}
+          hidden={
+            !isMobile &&
+            mobileHeaderHidden &&
+            articleLayout === "inoreader" &&
+            inlineActive &&
+            Boolean(selectedEntryId)
+          }
           title={headerTitle}
           subtitle={headerSubtitle}
           onBackFromFeedJump={feedJumpBackHref ? onBackFromFeedJump : undefined}
