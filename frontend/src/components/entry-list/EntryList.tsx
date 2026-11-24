@@ -232,6 +232,8 @@ export function EntryList({
   const inlineContentRef = useRef<HTMLDivElement>(null);
   /** 点条目那一刻，被点那一行在视口里的位置（合列插正文后要对回原位） */
   const pinnedRowRef = useRef<{ entryId: string; top: number } | null>(null);
+  /** 列表 TOP 栏是否收起（对齐补偿要能读到最新值，不能只用挂载时的闭包） */
+  const headerHiddenRef = useRef(false);
   const headerRef = useRef<HTMLDivElement>(null);
   const listWrapperRef = useRef<HTMLDivElement>(null);
   const usesDocumentScroll = Boolean(isMobile);
@@ -749,9 +751,19 @@ export function EntryList({
     if (!pinned) return;
     if (!inlineActive || selectedEntryId !== pinned.entryId) return;
 
+    /* 顶栏收起/展开本身会让列表整体上移/下移一截（实测 ~56px），那是预期行为、
+       不是抖动。若把它当位移去补，会和顶栏状态互相推拉，变成用户看到的 56px 抖动
+       （审查 review-scroll-fix 实测：先补 -56、再补 +56、再补 -56）。
+       所以一旦顶栏状态变了，就把基准重设到当前位置、这一帧不补。 */
+    let lastHeaderHidden = headerHiddenRef.current;
     const align = () => {
       const row = findEntryRowNode(containerRef.current, pinned.entryId);
       if (!row) return;
+      if (headerHiddenRef.current !== lastHeaderHidden) {
+        lastHeaderHidden = headerHiddenRef.current;
+        pinned.top = row.getBoundingClientRect().top;
+        return;
+      }
       const delta = row.getBoundingClientRect().top - pinned.top;
       if (Math.abs(delta) < 0.5) return;
       /* 不设上限：这里要救的正是「视口被甩到正文底部」那种几千像素的位移
@@ -804,6 +816,7 @@ export function EntryList({
        滚回正文上方（paneTop > 0）时 TOP 再出现。
      自动吸顶那几帧是程序化滚动，用户没动手前不据此判定方向。 */
   const [mobileHeaderHidden, setMobileHeaderHidden] = useState(false);
+  headerHiddenRef.current = mobileHeaderHidden;
   /* 卡片正文栏滚到视口顶部后自动铺满宽度，不再留左右各 8px 的空白（用户 2026-11-24）。 */
   const [paneAtTop, setPaneAtTop] = useState(false);
   const lastScrollYRef = useRef<number | null>(null);
@@ -827,8 +840,10 @@ export function EntryList({
       const y = readY();
       const prev = last;
       last = y;
-      if (performance.now() < lockUntil) return;
-      if (performance.now() < suppressHeaderToggleUntilRef.current) return;
+      /* 「回到列表最顶」的复位必须放在 lockUntil / suppress 早退之前：
+         快速向上连滚时每个 dy<-2 都会把 lockUntil 刷新成 now+450，那条「到顶」的
+         scroll 事件就会被早退吞掉，paneAtTop 卡在 true —— 正文栏以直角全宽形态挂在
+         列表中间（审查 review-scroll-fix 实测可偶现）。到顶与否和方向锁定无关，先判它。 */
       if (y <= 6) {
         setMobileHeaderHidden(false);
         /* 回到列表最顶时正文一定不在视口顶（它排在列表里），必须把「铺满」复位，
@@ -837,6 +852,8 @@ export function EntryList({
         if (inlineActive) setPaneAtTop(false);
         return;
       }
+      if (performance.now() < lockUntil) return;
+      if (performance.now() < suppressHeaderToggleUntilRef.current) return;
       if (inlineActive && selectedEntryId) {
         const node = inlineContentRef.current;
         if (node) {

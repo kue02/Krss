@@ -224,7 +224,7 @@ describe("usePrependScrollAnchor（58-3 无感叠加）", () => {
     expect(onHeadAdditions).toHaveBeenCalledWith([], ["interleaved"], false);
   });
 
-  it("头部新条目把锚点推走几千像素（正文 pane 那种）：不补、只重测锚点", () => {
+  it("头部新条目把锚点推走几千像素：照实补（这个分支只可能是真插入了条目）", () => {
     const harness = makeHarness({ a: 100, b: 200 });
     const onHeadAdditions = vi.fn();
 
@@ -241,7 +241,8 @@ describe("usePrependScrollAnchor（58-3 无感叠加）", () => {
       { initialProps: { entries: [makeEntry("a"), makeEntry("b")] } },
     );
 
-    // 视口高 800 ⇒ 上限 1200；这里 a 被推下 2900（正文 pane 插进列表的量级）
+    // a 被新条目推下 2900：这是「真的插入了条目」，必须照实补回（正文 pane 插入不改
+    // entries、不会走这个分支，所以这里没有上限问题）
     harness.nodes.get("a")!.getBoundingClientRect = () =>
       ({ top: 3000, bottom: 3100, height: 100, left: 0, right: 600, width: 600 }) as DOMRect;
     const newNode = document.createElement("div");
@@ -254,7 +255,7 @@ describe("usePrependScrollAnchor（58-3 无感叠加）", () => {
       rerender({ entries: [makeEntry("n"), makeEntry("a"), makeEntry("b")] });
     });
 
-    expect(harness.scrollBy).not.toHaveBeenCalled();
+    expect(harness.scrollBy).toHaveBeenCalledWith(2900);
     // 仍然要回报新增（Toast 的数字不能因为不补偿就丢）
     expect(onHeadAdditions).toHaveBeenCalledWith(["n"], ["n"], false);
   });
