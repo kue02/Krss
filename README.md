@@ -4,25 +4,55 @@
 [![Build Docker Image](https://github.com/kue02/Krss/actions/workflows/docker-build.yml/badge.svg)](https://github.com/kue02/Krss/actions/workflows/docker-build.yml)
 [![Latest Release](https://img.shields.io/github/v/release/kue02/Krss)](https://github.com/kue02/Krss/releases)
 
-功能完整的自托管 RSS 阅读器：单个二进制 + SQLite，一条命令即可跑起来。内置 AI 摘要与翻译、自动化规则引擎、文章 / 社交媒体 / 通知 / 图片多视图，并支持 MCP 双向集成。
+一个跑在自己服务器上的 RSS 阅读器：单个二进制 + SQLite，一条命令即可启动。订阅、已读、星标和规则数据都在自己手里；界面参照 Folo 的文章 / 社交 / 通知 / 图片四视图形态，并内置插件系统、自动化规则、AI 摘要与翻译、双向 MCP 集成。
 
-> 下文截图均来自全新实例，订阅源为公开示例（Cloudflare Blog、GitHub Blog、阮一峰的网络日志、少数派、Smashing Magazine、Universe Today、xkcd），仅作演示。
+> 截图均取自全新实例，订阅公开示例源（Cloudflare Blog、GitHub Blog、阮一峰的网络日志、少数派、Smashing Magazine、Hacker News、Universe Today、xkcd、Saturday Morning Breakfast Cereal、GitHub Status）仅作演示。
+
+## 它和别的阅读器不一样的地方
+
+- **插件系统**：zip 安装，能加菜单、工具栏和独立视图，也能给自动化提供动作；Bark 推送、RSSHub 适配、GitHub 头像都是插件。
+- **自动化规则**：范围 + 关键词 / 正则 / AI 相关性，一句话生成规则；可预览命中、回溯历史、撤销、看命中日志。
+- **筛选视图**：一套条件存成侧栏入口，只筛不改数据，随时点开。
+- **双向 MCP**：把外部 MCP 服务当订阅源；Krss 自己也能作为 MCP 服务器，让 Claude 等客户端直接读取条目。
+- **智能代理**：直连不通自动走代理，按域名记住结论；订阅 / 文件夹可单独覆盖。
+- **RSSHub**：填地址 + Access Key 订阅微博 / B 站 / Telegram，图标反解真实站点，失败原因说人话。
+- **Folo 式多形态**：文章 / 社交 / 通知 / 图片四视图，每个源可单独指定类型。
+- **移动端**：底部四轨导航、长按操作、正文目录、PWA；另附 iOS 壳源码。
+- **翻译 / 摘要**：列表卡片直接显示译文，4 条免费翻译通道可轮换，全部失败再自动切回模型；按段翻译保留格式。
+- **图片 / 反爬**：图片代理 + 缓存解决防盗链；Anubis 类站点可填 Cookie。
 
 ## 截图
 
-![Krss 桌面端：文章三栏阅读界面](docs/images/desktop-01-list.png)
+![桌面端 · 文章视图：三栏布局，卡片列表 + 正文阅读](docs/images/desktop-01-article.png)
 
-| 文章正文与封面 | 图片视图 |
-| :---: | :---: |
-| ![文章正文阅读](docs/images/desktop-02-detail.png) | ![图片视图：照片网格](docs/images/desktop-03-picture.png) |
+**文章视图**：左侧订阅、中间列表、右侧正文；工具栏含 AI 摘要、翻译与打开原文，长文带右侧目录大纲。
 
-| 设置面板 | 移动端 · 文章列表 |
+| 图片视图 | 社交媒体视图 |
 | :---: | :---: |
-| ![设置面板](docs/images/desktop-04-settings.png) | ![移动端文章列表](docs/images/mobile-01-list.png) |
+| ![图片视图：照片墙 / 瀑布流](docs/images/desktop-02-picture.png) | ![社交媒体视图：Folo 式时间线](docs/images/desktop-03-social.png) |
+| 图片视图：照片墙，悬停 / 灯箱看大图 | 社交媒体视图：时间线里直接展开完整阅读器 |
 
-| 移动端 · 文章详情 | 移动端 · 侧边栏 |
+| 通知视图 | 自动化规则 + 智能文件夹 |
 | :---: | :---: |
-| ![移动端文章详情](docs/images/mobile-02-detail.png) | ![移动端侧边栏](docs/images/mobile-03-sidebar.png) |
+| ![通知视图：按日期分组的时间线](docs/images/desktop-04-notification.png) | ![自动化规则与智能文件夹](docs/images/desktop-05-automation.png) |
+| 通知视图：按日期分组，展开即完整正文 | 自动化规则与筛选视图：命中、预览、撤销一目了然 |
+
+| 插件系统 | AI 与免费翻译通道 |
+| :---: | :---: |
+| ![插件设置：Bark、RSSHub、GitHub 头像](docs/images/desktop-06-plugins.png) | ![AI 与免费翻译通道轮换](docs/images/desktop-07-ai.png) |
+| 插件系统：Bark 推送、RSSHub 适配、GitHub 头像 | 4 条免费翻译通道可排序轮换，失败再切模型 |
+
+| 智能代理 | 双向 MCP |
+| :---: | :---: |
+| ![网络与智能代理](docs/images/desktop-08-proxy.png) | ![MCP 服务器与客户端配置](docs/images/desktop-09-mcp.png) |
+| 智能代理：按订阅 / 文件夹单独覆盖 | 双向 MCP：Krss 当服务器，也能把外部 MCP 当源 |
+
+移动端（底部四轨导航 · 正文阅读 · 侧边栏）：
+
+| 文章列表 | 正文阅读 | 侧边栏 |
+| :---: | :---: | :---: |
+| ![移动端文章列表](docs/images/mobile-01-list.png) | ![移动端正文阅读](docs/images/mobile-02-article.png) | ![移动端侧边栏](docs/images/mobile-03-sidebar.png) |
+| 底部四轨 + 未读角标 | 正文目录、AI 摘要、翻译 | 文件夹与智能视图 |
 
 ## 功能特性
 
@@ -36,10 +66,11 @@
 - 站点反爬（Anubis 类）Cookie 配置
 - 定时刷新（间隔可配）、手动刷新与刷新报告
 
-### AI 能力（自备 API Key）
+### AI 摘要与翻译（自备 API Key，不配也能翻译）
 
-- 文章摘要、单篇翻译与批量翻译
+- 文章摘要、单篇翻译与批量翻译，列表卡片可直接显示译文
 - 支持 OpenAI、Anthropic 及兼容接口，可拉取模型列表并测试连通
+- 4 条内置免费翻译通道（Google / 有道 / 微软 / B 站），可排序轮换，全部失败后自动切回模型
 
 ### 自动化规则引擎
 
@@ -48,25 +79,36 @@
 - 动作：星标、标已读 / 未读、静音 / 取消静音、只看该来源、自动翻译 / 自动摘要标记、webhook 推送、Bark 兼容通知推送
 - 规则可预览命中条目、可作用于历史条目、可撤销（恢复被规则静音的条目）
 
+### 筛选视图
+
+- 一套条件（关键词 / 正则 / AI 相关性）存成侧栏入口，只筛不改数据
+- 与自动化规则共用同一套编辑体验，随时改条件、看实时命中数
+
+### 插件系统
+
+- zip 安装插件，可注册菜单、工具栏、独立视图，也能给自动化提供动作
+- 内置 Bark 推送、RSSHub 适配、GitHub 头像等插件，可在设置里直接开关与配置
+
 ### 多视图
 
 - **文章视图**：三栏布局（订阅 / 列表 / 正文），卡片列表 + 浮层阅读面板
 - **社交媒体视图**：Twitter/X 风格卡片 + 图片网格，时间线里可直接展开成完整阅读器
 - **通知视图**：推送时间线，展开即完整正文页（工具栏、大纲、AI 摘要、翻译全可用）
 - **图片视图**：网格 / 悬停大图 / 照片墙三种排布
+- 每个订阅可单独指定属于哪种视图，四种形态自由组合
 
 ### 集成
 
 - 内置 MCP 服务器（streamable-http，`/mcp`，长期 token 鉴权）：Claude 等外部 AI 客户端可直接读取条目
 - 可把外部 MCP 服务器作为订阅源接入
-- RSSHub 地址与 Access Key 配置
-- 代理：可按订阅 / 文件夹单独覆盖，密码字段掩码显示
+- RSSHub 地址与 Access Key 配置，图标反解真实站点
+- 代理：可按订阅 / 文件夹单独覆盖，密码字段掩码显示；直连失败自动走代理并按域名记住结论
 
 ### 界面与体验
 
 - 5 套主题（3 套浅色、2 套深色）并支持跟随系统；主题色、圆角、列表密度、正文字体 / 字号 / 行高可调
 - 键盘快捷键：`j` `k` 上下条、`m` 已读 / 未读、`s` 星标、`v` 原文、`r` 刷新、`f` 搜索、`?` 帮助（以「设置 → 快捷键」中的完整列表为准）
-- PWA，可安装到桌面与移动设备
+- PWA，可安装到桌面与移动设备；移动端底部四轨导航、长按操作、正文目录
 - 全部设置服务端持久化，换设备登录依然一致
 - 界面语言：简体中文 / English
 
@@ -100,10 +142,10 @@ services:
 ### Docker Run
 
 ```bash
-docker run -d \
-  --name krss \
-  -p 8090:8090 \
-  -v ./data:/app/data \
+docker run -d \\
+  --name krss \\
+  -p 8090:8090 \\
+  -v ./data:/app/data \\
   ghcr.io/kue02/krss:latest
 ```
 
