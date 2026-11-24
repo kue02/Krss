@@ -915,7 +915,7 @@ function AuthenticatedApp() {
               /* 移动端「向下」合列：正文接在被点行后，和列表一条滚动条 */
               renderInlineContent={
                 isArticleInlineMobile
-                  ? (scrollRef) =>
+                  ? (scrollRef, options) =>
                       mobileInlineEntryId ? (
                         <div className="pb-10">
                           <Suspense fallback={<EntryContentFallback />}>
@@ -926,7 +926,7 @@ function AuthenticatedApp() {
                               embedded
                               isMobile
                               containerRef={scrollRef}
-                              headerStickyTopClassName="top-[calc(2.75rem+env(safe-area-inset-top))]"
+                              headerStickyTopClassName={options.headerStickyTop}
                               onClose={() => setMobileInlineEntryId(null)}
                             />
                           </Suspense>

@@ -133,7 +133,10 @@ interface EntryListProps {
    * 因为内嵌正文要拿本列表的滚动容器（`embedded` 模式的 `containerRef`）
    * 才能让工具栏吸顶判断跟列表滚动走。不传则列表不带内联正文。
    */
-  renderInlineContent?: (scrollRef: RefObject<HTMLDivElement | null>) => ReactNode;
+  renderInlineContent?: (
+    scrollRef: RefObject<HTMLDivElement | null>,
+    options: { headerStickyTop: string },
+  ) => ReactNode;
 }
 
 export function EntryList({
@@ -685,6 +688,28 @@ export function EntryList({
      正文 pane 插在这种祖先里会让 EntryContentHeader 的 sticky 失效（工具栏会浮在正文
      中部）。关掉虚拟化后 pane 落在普通文档流里，sticky 正常，正文也能滚动吸顶。 */
   const inlineNoVirtual = inlineActive && Boolean(selectedEntryId);
+  /* 手机内联合列：向下滚动到正文顶栏该吸顶时，把列表顶部「全部文章」那条 TOP 栏收起来，
+     只留正文自己的顶栏吸顶（用户 2026-11-24 图一）。 */
+  const [mobileHeaderHidden, setMobileHeaderHidden] = useState(false);
+  useEffect(() => {
+    if (!isMobile || !inlineActive || !selectedEntryId) {
+      setMobileHeaderHidden(false);
+      return;
+    }
+    const surface = scrollSurface;
+    const update = () => {
+      const node = inlineContentRef.current;
+      if (!node) {
+        setMobileHeaderHidden(false);
+        return;
+      }
+      const paneTop =
+        node.getBoundingClientRect().top - surface.getViewportRect().top;
+      setMobileHeaderHidden(paneTop < 8);
+    };
+    update();
+    return surface.subscribe(update);
+  }, [isMobile, inlineActive, selectedEntryId, scrollSurface]);
   /* 合列正文接在「被点那一行」的后面（不是列表末尾）：读正文时还能继续往下滚看到
      后续条目；selectedEntryId 唯一 ⇒ 同时只有一条正文，点别的行就是换正文、上一条收起。 */
   const inlinePaneFor = (entryId: string | null) =>
@@ -694,7 +719,11 @@ export function EntryList({
         data-testid="inline-article-pane"
         className="w-full border-t border-border"
       >
-        {renderInlineContent?.(containerRef)}
+        {renderInlineContent?.(containerRef, {
+          headerStickyTop: mobileHeaderHidden
+            ? "top-0"
+            : "top-[calc(2.75rem+env(safe-area-inset-top))]",
+        })}
       </div>
     ) : null;
   useEffect(() => {
@@ -1558,6 +1587,7 @@ export function EntryList({
         enabled={usesDocumentScroll}
         headerRef={headerRef}
         testId="entry-list-header"
+        hidden={mobileHeaderHidden}
       >
         <EntryListHeader
           title={headerTitle}
