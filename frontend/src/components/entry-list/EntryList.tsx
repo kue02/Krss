@@ -694,8 +694,13 @@ export function EntryList({
   /* 只有用户自己往下滚过（不是点开时自动吸顶那一下）才收起顶栏：
      否则点开任意一条都会因为自动吸顶把顶栏瞬间藏掉，看起来像「一打开就没有 TOP 栏」。 */
   const mobileHeaderUserScrolledRef = useRef(false);
+  /* 换一条正文 / 离开合列时重置「用户滚动过」标记（单独一个 effect，避免主 effect
+     因依赖变化反复重建时把用户在滚动中刚设的标记清掉）。 */
   useEffect(() => {
     mobileHeaderUserScrolledRef.current = false;
+    setMobileHeaderHidden(false);
+  }, [selectedEntryId, isMobile, articlePushDirection]);
+  useEffect(() => {
     if (!isMobile || !inlineActive || !selectedEntryId) {
       setMobileHeaderHidden(false);
       return;
