@@ -492,8 +492,8 @@ export function EntryList({
    *  后两档仅在对应实验开关打开时进入循环。 */
   const {
     setArticleLayout,
-    setSplitterVisibleForView,
     setInoreaderSplitterPromptShown,
+    hideArticleSplitterFromPrompt,
   } = useUISettingActions();
   const handleToggleArticleLayout = useCallback(() => {
     const idx = Math.max(
@@ -521,6 +521,9 @@ export function EntryList({
   useEffect(() => {
     if (contentType !== "article" || articleLayout !== "inoreader") return;
     if (inoreaderSplitterPromptShown) return;
+    /* 文章视图这条线本来就关着时不必再问「要不要也一起关」——
+       问题前提不成立（用户早就自己关了）。 */
+    if (splitterVisibleByView?.article === false) return;
     if (suppressedSplitterViews.length === 0) return;
     setSplitterPromptOpen(true);
     setInoreaderSplitterPromptShown(true);
@@ -528,6 +531,7 @@ export function EntryList({
     contentType,
     articleLayout,
     inoreaderSplitterPromptShown,
+    splitterVisibleByView?.article,
     suppressedSplitterViews.length,
     setInoreaderSplitterPromptShown,
   ]);
@@ -827,6 +831,10 @@ export function EntryList({
       if (performance.now() < suppressHeaderToggleUntilRef.current) return;
       if (y <= 6) {
         setMobileHeaderHidden(false);
+        /* 回到列表最顶时正文一定不在视口顶（它排在列表里），必须把「铺满」复位，
+           否则从正文下方滚回顶部后 paneAtTop 还停在 true，正文栏会以直角铺满的
+           形态挂在列表中间、左右 8px 留白消失（用户 2026-11-24 报的缺口同批发现）。 */
+        if (inlineActive) setPaneAtTop(false);
         return;
       }
       if (inlineActive && selectedEntryId) {
@@ -871,12 +879,16 @@ export function EntryList({
         ref={inlineContentRef}
         data-testid="inline-article-pane"
         className={cn(
-          "bg-card [clip-path:inset(0_round_12px)] transition-[margin,width,border-radius] duration-200 ease-out",
+          /* 裁剪圆角必须跟着 border-radius 走：贴顶那档是 rounded-none（直角边框），
+             若裁剪还按 12px 圆角切，角上就会少一块（用户 2026-11-24 报的缺口）。
+             clip-path 一并进过渡表，否则切换途中两者不同步，反向（贴顶→卡片）时
+             裁剪圆角会先跳回 12px，照样露缺口。 */
+          "bg-card transition-[margin,width,border-radius,clip-path] duration-200 ease-out",
           articlePaneStyle === "card"
             ? paneAtTop
-              ? "my-0 w-full rounded-none border-t border-border"
-              : "mx-2 my-2 w-[calc(100%-1rem)] rounded-[12px] border border-border/60 shadow-nf"
-            : "w-full rounded-[12px] border-t border-border",
+              ? "my-0 w-full rounded-none border-t border-border [clip-path:inset(0)]"
+              : "mx-2 my-2 w-[calc(100%-1rem)] rounded-[12px] border border-border/60 shadow-nf [clip-path:inset(0_round_12px)]"
+            : "w-full rounded-[12px] border-t border-border [clip-path:inset(0_round_12px)]",
         )}
       >
         {renderInlineContent?.(containerRef, {
@@ -1735,12 +1747,25 @@ export function EntryList({
                   </AlertDialog.Heading>
                 </AlertDialog.Header>
                 <AlertDialog.Body>
-                  <div className="text-sm text-muted-foreground">
-                    {t("appearance_view.inoreader_splitter_prompt_description", {
-                      views: suppressedSplitterViews.join(
-                        t("appearance_view.inoreader_splitter_prompt_separator"),
-                      ),
-                    })}
+                  <div className="space-y-2 text-sm text-muted-foreground">
+                    <p>
+                      {t(
+                        "appearance_view.inoreader_splitter_prompt_description",
+                        {
+                          views: suppressedSplitterViews.join(
+                            t(
+                              "appearance_view.inoreader_splitter_prompt_separator",
+                            ),
+                          ),
+                        },
+                      )}
+                    </p>
+                    {/* 11-24（用户第 3 条）：说明这不是一次性选择，随时能回设置里改回来 */}
+                    <p>
+                      {t(
+                        "appearance_view.inoreader_splitter_prompt_settings_hint",
+                      )}
+                    </p>
                   </div>
                 </AlertDialog.Body>
                 <AlertDialog.Footer>
@@ -1755,7 +1780,8 @@ export function EntryList({
                     size="sm"
                     variant="primary"
                     onPress={() => {
-                      setSplitterVisibleForView("article", false);
+                      // 记下「这条是提示替用户关的」，切走 Inoreader 布局时自动恢复
+                      hideArticleSplitterFromPrompt();
                       setSplitterPromptOpen(false);
                     }}
                   >
