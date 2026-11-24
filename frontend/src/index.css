@@ -1070,3 +1070,16 @@ html[data-icon-radius] [data-slot="feed-avatar"],
 html[data-icon-radius] [data-slot="feed-icon"] {
   border-radius: var(--ui-icon-radius);
 }
+
+/* ------------------------------------------------------------------
+ * 合列正文栏的圆角裁剪：卡片档用 overflow:clip（裁剪边缘直接跟随
+ * border-radius，不会像 clip-path 那样出现两套圆角过渡不同步导致角上缺一块）。
+ * Safari 16 以下不支持 overflow:clip，退回 clip-path；老浏览器上过渡可能仍不同步，
+ * 但至少保证内容不会溢出圆角。
+ * ------------------------------------------------------------------ */
+@supports not (overflow: clip) {
+  /* 贴顶档是 rounded-none（直角），不能再用 12px 圆角裁，否则又露缺口 */
+  [data-testid="inline-article-pane"]:not(.rounded-none) {
+    clip-path: inset(0 round 12px);
+  }
+}
