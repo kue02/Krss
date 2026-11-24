@@ -343,9 +343,14 @@ export function ImagePreview() {
     [zoom],
   );
 
-  const handleOverlayClick = useCallback(() => {
-    close();
-  }, [close]);
+  const handleOverlayClick = useCallback(
+    (event: React.MouseEvent) => {
+      // 只关闭真正的遮罩点击；页码/工具栏等子元素冒泡不上来
+      if (event.target !== event.currentTarget) return;
+      close();
+    },
+    [close],
+  );
 
   return (
     <AnimatePresence onExitComplete={reset}>
@@ -446,6 +451,7 @@ export function ImagePreview() {
                 onDoubleClick={handleDoubleClick}
                 onPointerUp={handleStagePointerUp}
                 onPointerCancel={handleStagePointerCancel}
+                onClick={handleStageClick}
               >
                 <div
                   ref={emblaRef}

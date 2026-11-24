@@ -731,4 +731,34 @@ describe("Lightbox", () => {
       ).toBe(true);
     });
   });
+
+  describe("多图点击图片与计数区域", () => {
+    it("多图 1x 单击图片不会立即关闭（走 320ms 延时窗口）", async () => {
+      useLightboxStore
+        .getState()
+        .open(mockImageEntry, mockFeed, mockMultipleImages);
+      const { container } = render(<Lightbox />, { wrapper: createWrapper() });
+
+      const img = container.querySelector("img");
+      expect(img).not.toBeNull();
+
+      fireEvent.click(img!);
+      expect(useLightboxStore.getState().isOpen).toBe(true);
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 420));
+      });
+      expect(useLightboxStore.getState().isOpen).toBe(false);
+    });
+
+    it("点击页码计数区域不会关闭预览", () => {
+      useLightboxStore
+        .getState()
+        .open(mockImageEntry, mockFeed, mockMultipleImages);
+      render(<Lightbox />, { wrapper: createWrapper() });
+
+      fireEvent.click(screen.getByText("1 / 3"));
+      expect(useLightboxStore.getState().isOpen).toBe(true);
+    });
+  });
 });

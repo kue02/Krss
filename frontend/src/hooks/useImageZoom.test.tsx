@@ -205,15 +205,38 @@ describe("useImageZoom", () => {
     expect(read()).toBe("1|0|0|false");
   });
 
-  it("pointerdown 会对容器 setPointerCapture", () => {
+  it("scale===1 的普通 pointerdown 不 capture，避免抢走 click", () => {
     const { container } = setup();
     act(() => {
       firePointer(container, "pointerdown", { id: 1, x: 150, y: 150 });
     });
+    expect(container.setPointerCapture).not.toHaveBeenCalled();
+  });
+
+  it("第二根手指进入捏合时才 capture 两根手指", () => {
+    const { container } = setup();
+    act(() => {
+      firePointer(container, "pointerdown", { id: 1, x: 150, y: 150 });
+    });
+    expect(container.setPointerCapture).not.toHaveBeenCalled();
+
+    act(() => {
+      firePointer(container, "pointerdown", { id: 2, x: 250, y: 150 });
+    });
+    expect(container.setPointerCapture).toHaveBeenCalledWith(1);
+    expect(container.setPointerCapture).toHaveBeenCalledWith(2);
+  });
+
+  it("放大后开始拖动才 capture", () => {
+    const { container } = setup();
+    act(() => getZoom().toggleZoomAt(200, 150));
+    act(() => {
+      firePointer(container, "pointerdown", { id: 1, x: 200, y: 150 });
+    });
     expect(container.setPointerCapture).toHaveBeenCalledWith(1);
   });
 
-  it("lostpointercapture 会清空手势并提交当前位移", () => {
+  it("lostpointercapture 会恢复手势开始前的状态，不提交中间位移", () => {
     const { container, image, read } = setup();
     act(() => getZoom().toggleZoomAt(200, 150));
     act(() => {
@@ -225,14 +248,15 @@ describe("useImageZoom", () => {
     act(() => {
       firePointer(container, "lostpointercapture", { id: 1, x: 260, y: 150 });
     });
-    expect(read()).toBe("2|60|0|false");
+    expect(read()).toBe("2|0|0|false");
     expect(image.style.transition).toBe("transform 160ms ease-out");
+    expect(image.style.transform).toBe("translate3d(0px, 0px, 0) scale(2)");
 
     // 指针已清空，后续 pointermove 不再生效
     act(() => {
       firePointer(container, "pointermove", { id: 1, x: 320, y: 150 });
     });
-    expect(image.style.transform).toBe("translate3d(60px, 0px, 0) scale(2)");
+    expect(image.style.transform).toBe("translate3d(0px, 0px, 0) scale(2)");
   });
 
   it("pointercancel 会清空手势并提交当前位移", () => {
