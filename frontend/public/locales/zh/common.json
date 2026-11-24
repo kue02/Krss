@@ -1152,7 +1152,7 @@
     "article_push_direction_bottom": "从下",
     "article_push_direction_down": "向下",
     "article_cover_list": "正文覆盖条目栏",
-    "article_cover_list_hint": "开着时正文浮在第二栏之上覆盖它，未选中条目时第三栏不占位（仿 Inoreader 列表模式）",
+    "article_cover_list_hint": "开着时正文浮在第二栏之上覆盖它，未选中条目时第三栏不占位",
     "article_cover_off": "关闭",
     "article_cover_on": "开启",
     "experimental_disabled_hint": "当前正在使用已停用的实验布局；可在「设置 → 高级 → 实验性设置」重新开启，或直接切回常规。",
@@ -1199,7 +1199,12 @@
     "notification_body_hover": "悬停浮块",
     "grid_style": "网格 · 样式",
     "grid_style_masonry": "按原图比例（默认）",
-    "grid_style_square": "正方格"
+    "grid_style_square": "正方格",
+    "article_quick_actions": "行内快捷按钮",
+    "article_quick_actions_hint": "Inoreader列表每行左侧「已读/未读 + 星标」按钮的显示方式",
+    "article_quick_actions_expand": "悬浮滑出",
+    "article_quick_actions_hover": "悬浮显示",
+    "article_quick_actions_always": "常显"
   },
   "folder": {
     "create": "新增文件夹",

@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { CheckCircle2, Circle, Star } from "lucide-react";
 import { useMarkAsRead, useMarkAsStarred } from "@/hooks/useEntries";
 import { cn } from "@/lib/utils";
+import { useUISettingKey } from "@/hooks/useUISettings";
 import type { Entry } from "@/types/api";
 
 interface RowQuickActionsProps {
@@ -20,11 +21,20 @@ export function RowQuickActions({ entry, className }: RowQuickActionsProps) {
   const { t } = useTranslation();
   const { mutate: markAsRead } = useMarkAsRead();
   const { mutate: markAsStarred } = useMarkAsStarred();
+  const mode = useUISettingKey("articleQuickActionMode");
+
+  const modeClass =
+    mode === "always"
+      ? "w-auto opacity-100"
+      : mode === "hover"
+        ? "w-auto opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+        : "w-0 overflow-hidden opacity-0 group-hover:w-[58px] group-hover:opacity-100 group-focus-within:w-[58px] group-focus-within:opacity-100";
 
   return (
     <span
       className={cn(
-        "hidden w-0 shrink-0 items-center gap-0.5 overflow-hidden opacity-0 transition-[width,opacity] duration-150 group-hover:w-[58px] group-hover:opacity-100 group-focus-within:w-[58px] group-focus-within:opacity-100 md:flex",
+        "hidden shrink-0 items-center gap-0.5 transition-[width,opacity] duration-150 md:flex",
+        modeClass,
         className,
       )}
       data-testid="row-quick-actions"

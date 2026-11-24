@@ -688,6 +688,7 @@ function AuthenticatedApp() {
                       entryId={selectedEntryId}
                       contentType={contentType}
                       embedded
+                      showAuxiliary
                       containerRef={scrollRef}
                       onClose={() => selectEntry(null)}
                     />
@@ -924,6 +925,7 @@ function AuthenticatedApp() {
                               entryId={mobileInlineEntryId}
                               contentType={contentType}
                               embedded
+                              showAuxiliary
                               isMobile
                               containerRef={scrollRef}
                               headerStickyTopClassName={options.headerStickyTop}
