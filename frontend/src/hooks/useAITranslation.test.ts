@@ -634,3 +634,49 @@ describe("useAITranslation · 失败重试与手动开关重置", () => {
   });
 });
 
+/**
+ * 需求 2：两处低频同步 `stripHtml`（手动点击 / 可读性切换）挪进空闲回调，
+ * 不在点击路径同步解析长文，且不改变翻译语义。
+ */
+describe("useAITranslation · 摘要解析推迟到空闲回调", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockStoreGetTranslation.mockReturnValue(undefined);
+    mockNeedsTranslation.mockReturnValue(true);
+    mockTranslationActionsIsDisabled.mockReturnValue(false);
+    mockTranslateArticlesBatch.mockResolvedValue(undefined);
+    clearToasts();
+    mockStreamTranslateBlocks.mockImplementation(() =>
+      (async function* () {
+        yield { done: true };
+      })(),
+    );
+  });
+
+  it("手动点击翻译：stripHtml 不在点击路径同步执行，翻译照常发起", async () => {
+    const entry = createEntry("<p>一段很长的正文</p>");
+    const { result } = renderHook(() =>
+      useAITranslation({
+        entry,
+        isReadableActive: false,
+        readableContent: null,
+        autoTranslate: false,
+        targetLanguage: "zh-CN",
+      }),
+    );
+
+    const before = mockStripHtml.mock.calls.length;
+    await act(async () => {
+      await result.current.handleToggleTranslation();
+    });
+    // 点击路径没有同步解析正文
+    expect(mockStripHtml.mock.calls.length).toBe(before);
+
+    // 空闲回调推进后，解析仍会补上（摘要预热用），且翻译已经发起
+    await waitFor(() => {
+      expect(mockStripHtml.mock.calls.length).toBeGreaterThan(before);
+    });
+    expect(mockStreamTranslateBlocks).toHaveBeenCalled();
+  });
+});
+

@@ -337,6 +337,32 @@ describe("EntryListItem", () => {
       expect(screen.getByText(/无 IO 也要显示/)).toBeTruthy();
     });
 
+    it("虚拟分支传 deferSocialOffscreen={false}：即使离屏也渲染真实内容（裁剪交给虚拟容器）", () => {
+      inViewState.value = false;
+      vi.mocked(stripHtml).mockClear();
+      vi.mocked(extractContentMedia).mockClear();
+
+      const { container } = render(
+        <EntryListItem
+          entry={{
+            ...socialEntry,
+            content: '<p>虚拟容器里该显示</p><img src="https://example.com/x.jpg">',
+          }}
+          feed={feed}
+          isSelected={false}
+          onClick={vi.fn()}
+          social
+          deferSocialOffscreen={false}
+        />,
+      );
+
+      // 不再降级为固定 600px 占位（虚拟容器已只挂可视行）
+      expect(container.querySelector("[data-entry-placeholder]")).toBeNull();
+      expect(vi.mocked(stripHtml)).toHaveBeenCalled();
+      expect(vi.mocked(extractContentMedia)).toHaveBeenCalled();
+      expect(screen.getByText(/虚拟容器里该显示/)).toBeTruthy();
+    });
+
     it("只有社交视图才解析正文图片：文章视图不调用 extractContentMedia", () => {
       vi.mocked(extractContentMedia).mockClear();
 

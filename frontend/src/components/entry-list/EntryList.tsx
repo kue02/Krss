@@ -55,6 +55,7 @@ import { cn } from "@/lib/utils";
 import {
   useVirtualizedArticleList,
   VIRTUAL_PLAIN_ROW_ESTIMATE_PX,
+  VIRTUAL_SOCIAL_ESTIMATE_PX,
 } from "./useVirtualizedArticleList";
 import { VirtualizedArticleList } from "./VirtualizedArticleList";
 import { useScrollMarkRead } from "./useScrollMarkRead";
@@ -1048,19 +1049,27 @@ export function EntryList({
   // 列表滚上去以后，右上角浮出「当前序号 + 回到顶部」（对齐 Nextflux 的 Indicator）
   const [firstVisibleIndex, setFirstVisibleIndex] = useState(0);
   /**
-   * 虚拟化只覆盖「标准文章扁平流」：article 内容类型 + 非 hover 档（含 list 与 rows）。
-   * 社交 / 通知时间线 / hover 浮层档走原路径，一字不动。
+   * 虚拟化覆盖「标准文章扁平流」与「移动端社交列表」：
+   *   - article 内容类型 + 非 hover 档（含 list 与 rows）走原路径；
+   *   - 移动端社交（isMobile && social）动态行高，整份 entries 全挂会卡，接入同一虚拟容器；
+   *   - 桌面社交 / 通知时间线 / hover 浮层档仍走原路径，一字不动。
    */
   const useVirtualList =
-    contentType === "article" && !isArticleHover && !inlineNoVirtual;
+    !isArticleHover &&
+    !inlineNoVirtual &&
+    (contentType === "article" || (Boolean(isMobile) && isSocialView));
   const virtualList = useVirtualizedArticleList({
     enabled: useVirtualList,
     scrollSurface,
     scrollKey,
     containerRef,
     entries,
-    /* Inoreader列表 是固定 42px 单行档：按真实行高估，别用卡片档的 148px */
-    estimateSize: isArticlePlain ? VIRTUAL_PLAIN_ROW_ESTIMATE_PX : undefined,
+    /* 社交卡片变高，按 600px 估；Inoreader 列表是固定 42px 单行档；其余卡片档 148px */
+    estimateSize: isSocialView
+      ? VIRTUAL_SOCIAL_ESTIMATE_PX
+      : isArticlePlain
+        ? VIRTUAL_PLAIN_ROW_ESTIMATE_PX
+        : undefined,
   });
   useEffect(() => {
     const node = containerRef.current;
@@ -2129,6 +2138,7 @@ export function EntryList({
                         autoTranslate={autoTranslate}
                         targetLanguage={targetLanguage}
                         social={isSocialView}
+                        deferSocialOffscreen={false}
                         fetchReadable={fetchReadableEnabled}
                         autoExpandLong={expandLongByView?.[contentType] ?? false}
                         isMobile={isMobile}

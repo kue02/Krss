@@ -328,6 +328,26 @@ describe("EntryList · 标准文章列表虚拟化", () => {
     expect(rowIds()).toHaveLength(50);
   });
 
+  it("移动端社交列表接入虚拟容器：首屏只挂可视 + overscan，远少于 50 条", async () => {
+    render(<EntryList {...defaultProps} contentType="social" isMobile />);
+    const viewport = screen.getByTestId("entry-list-viewport");
+    await act(async () => {
+      stubViewportScroll(viewport);
+      await Promise.resolve();
+    });
+
+    // 走虚拟列表（data-virtual-list），不再整份 50 条全挂 DOM
+    expect(
+      viewport.querySelector('[data-virtual-list="true"]'),
+    ).not.toBeNull();
+    const ids = rowIds();
+    expect(ids.length).toBeGreaterThan(0);
+    // 社交卡片按 600px 估计行高，视口高度有限 + overscan，远小于 50
+    expect(ids.length).toBeLessThan(manyEntries.length);
+    expect(ids.length).toBeLessThanOrEqual(24);
+    expect(ids[0]).toBe("e-1");
+  });
+
   it("通知视图走时间线（不走虚拟列表）", () => {
     render(<EntryList {...defaultProps} contentType="notification" />);
 

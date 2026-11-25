@@ -86,6 +86,14 @@ interface EntryListItemProps {
   targetLanguage?: string;
   /** 社交媒体视图（第四类内容）：时间线式铺开正文，而不是卡片列表 */
   social?: boolean;
+  /**
+   * 社交媒体视图离屏时是否降级为轻量占位（默认 true）。
+   *
+   * 非虚拟路径下社交列表整份都在 DOM 里，离屏卡片需要占位来省掉正文解析；
+   * 而移动端社交已接入虚拟容器，容器本身只挂可视 + overscan 行，此时不需要
+   * 再叠一层固定 600px 占位（会虚高总高度），虚拟分支传 false。
+   */
+  deferSocialOffscreen?: boolean;
   /** 移动端：长按打开条目操作面板 */
   isMobile?: boolean;
   /** 长按条目回调（由列表统一渲染操作面板；带上触点用于「长按位置浮层」） */
@@ -322,6 +330,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
       onClick,
       targetLanguage,
       social = false,
+      deferSocialOffscreen = true,
       fetchReadable = false,
       autoExpandLong = false,
       isMobile = false,
@@ -426,7 +435,8 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
      * `socialBody` / `socialMedia` 的重解析，也不挂 `SocialMediaGallery`。
      * 进入视口（inView=true）后恢复全量计算。非社交视图恒为 false，行为不变。
      */
-    const deferSocialContent = isSocialView && !inView;
+    const deferSocialContent =
+      isSocialView && deferSocialOffscreen && !inView;
 
     /**
      * 第四十三批（移动端性能）：每行只解析一次正文。
@@ -486,8 +496,12 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     const { sourceProps } = useEntrySourceJump(feed, onSelectFeedFromEntry);
     const titleContainsUrl = URL_PATTERN.test(displayTitle ?? "");
     const summaryContainsUrl = URL_PATTERN.test(displaySummary ?? "");
-    // 只在进入视口时按需抓正文，避免一次并发抓取整屏
-    const autoReadable = useAutoReadable(entry, fetchReadable && inView);
+    // 只在进入视口时按需抓正文，避免一次并发抓取整屏。
+    // 社交虚拟分支（deferSocialOffscreen=false）里容器已只挂可视行，直接按需抓。
+    const autoReadable = useAutoReadable(
+      entry,
+      fetchReadable && (isSocialView ? !deferSocialContent : inView),
+    );
     const expandedBodyRef = useRef<HTMLDivElement | null>(null);
     const [isContentClipped, setIsContentClipped] = useState(false);
 
@@ -584,13 +598,19 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     const socialBody = useMemo(() => {
       // 非社交视图不渲染这段正文管线，直接空串省掉 stripContentImages 等解析。
       // 社交视图离屏时同样跳过：这些解析都是 DOMParser 全文，离屏用不到。
-      if (!isSocialView || !inView) return "";
+      if (!isSocialView || deferSocialContent) return "";
       const base = stripContentImages(displayContent);
       const withoutDuplicate = titleIsBodyPrefix
         ? base
         : stripDuplicatedTitle(base, displayTitle);
       return removeContentSeparators(withoutDuplicate);
-    }, [isSocialView, inView, displayContent, displayTitle, titleIsBodyPrefix]);
+    }, [
+      isSocialView,
+      deferSocialContent,
+      displayContent,
+      displayTitle,
+      titleIsBodyPrefix,
+    ]);
 
     /**
      * 47-5（用户 2026-10-12）：正文与引文是**两段**，顺序照来源 —— 卡片渲染顺序是
@@ -617,10 +637,16 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     // 长任务的主因（每行一次全量解析）。非社交视图给空数组，社交视图行为不变。
     const socialMedia = useMemo(
       () =>
-        isSocialView && inView
+        isSocialView && !deferSocialContent
           ? extractContentMedia(expandedContent, entry.url, entry.thumbnailUrl)
           : [],
-      [isSocialView, inView, expandedContent, entry.url, entry.thumbnailUrl],
+      [
+        isSocialView,
+        deferSocialContent,
+        expandedContent,
+        entry.url,
+        entry.thumbnailUrl,
+      ],
     );
     // 大图查看器要的是**代理后**的 URL 列表（点缩略图传的下标要对得上）
     const openImagePreview = useImagePreviewStore((state) => state.open);
@@ -840,7 +866,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                 {/* 正文：纯文字 + 300px 折叠（Folo 的 CollapsedSocialMediaItem）。
                     47-5：这里只放「正文段」，引文段在下面的图片画廊之后再渲染。 */}
                 <div className="relative mt-1">
-                  {inView ? (
+                  {!deferSocialContent ? (
                     <>
                       {socialBodyText && (
                       <div
