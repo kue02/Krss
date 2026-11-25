@@ -28,6 +28,7 @@ export function useMobileLongPress(
   const suppressClickRef = useRef(false);
   const suppressResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const firedRef = useRef(false);
+  const touchActiveRef = useRef(false);
 
   const clear = () => {
     if (timerRef.current !== null) {
@@ -72,6 +73,7 @@ export function useMobileLongPress(
     const touch = event.touches[0];
     if (!touch) return;
     firedRef.current = false;
+    touchActiveRef.current = true;
     startRef.current = { x: touch.clientX, y: touch.clientY };
     timerRef.current = setTimeout(() => {
       if (firedRef.current) return;
@@ -95,12 +97,17 @@ export function useMobileLongPress(
     }
   };
 
-  const onTouchEnd = () => clear();
-  const onTouchCancel = () => clear();
+  const onTouchEnd = () => {
+    touchActiveRef.current = false;
+    clear();
+  };
+  const onTouchCancel = () => {
+    touchActiveRef.current = false;
+    clear();
+  };
 
   const onContextMenu = (event: MouseEvent<HTMLElement>) => {
     if (!enabled || !onLongPress) return;
-    event.preventDefault();
     const target = event.target as HTMLElement | null;
     const interactive = target?.closest("a, button, input, textarea, select");
     if (
@@ -111,12 +118,14 @@ export function useMobileLongPress(
         interactive.hasAttribute("data-long-press-root")
       )
     ) {
+      // 嵌套按钮/链接保留自己的原生 contextmenu，不吞默认行为。
       return;
     }
+    event.preventDefault();
     if (firedRef.current) {
-      // 同一手势里 timer 已触发过（suppress click 窗口内）就不再重复打开；
-      // 窗口外的 contextmenu（鼠标右键 / 外接设备）仍应正常工作。
-      if (suppressClickRef.current) return;
+      // 同一根手指还没抬起时，timer 已处理过就不再重复；
+      // 松手后的鼠标右键 / 外接设备 contextmenu 仍应正常工作。
+      if (touchActiveRef.current || suppressClickRef.current) return;
       firedRef.current = false;
     }
     firedRef.current = true;

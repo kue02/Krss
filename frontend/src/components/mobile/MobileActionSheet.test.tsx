@@ -15,6 +15,7 @@ describe("MobileActionSheet", () => {
     expect(panel.getAttribute("data-placement")).toBe("sheet");
     expect(panel.className).toContain("[contain:layout_paint_style]");
     expect(panel.className).toContain("[will-change:transform,opacity]");
+    expect(panel.querySelector(".overflow-y-auto")).not.toBeNull();
     expect(screen.getByText("标为已读")).toBeTruthy();
 
     fireEvent.pointerDown(screen.getByTestId("mobile-action-sheet-backdrop"));
