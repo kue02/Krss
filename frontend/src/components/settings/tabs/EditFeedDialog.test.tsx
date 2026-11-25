@@ -277,6 +277,7 @@ describe("EditFeedDialog", () => {
       <EditFeedDialog feed={buildFeed()} open onOpenChange={mockOnOpenChange} />,
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "feeds.url_edit" }));
     fireEvent.change(screen.getByLabelText("feeds.feed_url"), {
       target: { value: "https://new.example.com/rss" },
     });
@@ -318,6 +319,7 @@ describe("EditFeedDialog", () => {
       <EditFeedDialog feed={buildFeed()} open onOpenChange={mockOnOpenChange} />,
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "feeds.url_edit" }));
     fireEvent.change(screen.getByLabelText("feeds.feed_url"), {
       target: { value: "not-a-url" },
     });
@@ -340,6 +342,7 @@ describe("EditFeedDialog", () => {
       <EditFeedDialog feed={buildFeed()} open onOpenChange={mockOnOpenChange} />,
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "feeds.url_edit" }));
     fireEvent.change(screen.getByLabelText("feeds.feed_url"), {
       target: { value: "https://taken.example.com/rss" },
     });
@@ -359,5 +362,25 @@ describe("EditFeedDialog", () => {
       expect(mockMergeFeed).toHaveBeenCalledWith("feed-1", "feed-2");
     });
     expect(mockOnOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("地址默认只读展示，点「修改」后才可编辑并显示下面的说明", () => {
+    render(
+      <EditFeedDialog feed={buildFeed()} open onOpenChange={mockOnOpenChange} />,
+    );
+
+    const input = screen.getByLabelText("feeds.feed_url") as HTMLInputElement;
+    expect(input.readOnly).toBe(true);
+    expect(screen.queryByText("feeds.url_change_hint")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "feeds.url_edit" }));
+
+    expect(
+      (screen.getByLabelText("feeds.feed_url") as HTMLInputElement).readOnly,
+    ).toBe(false);
+    expect(screen.getByText("feeds.url_change_hint")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "feeds.url_edit_cancel" }),
+    ).toBeTruthy();
   });
 });

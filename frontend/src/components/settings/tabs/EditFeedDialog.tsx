@@ -59,6 +59,8 @@ export function EditFeedDialog({
   const [title, setTitle] = useState("");
   const [summaryPromptReminder, setSummaryPromptReminder] = useState("");
   const [url, setUrl] = useState("");
+  // 地址默认只读展示，点「修改」后才可编辑（并显示下方说明）
+  const [urlEditing, setUrlEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // 改地址撞车时先挂住另一侧订阅，弹内联确认合并（不再嵌一层弹窗，免得 z-index 打架）
   const [mergePreview, setMergePreview] = useState<FeedMergePreview | null>(null);
@@ -90,6 +92,7 @@ export function EditFeedDialog({
       setTitle(feed.title);
       setSummaryPromptReminder(feed.summaryPromptReminder ?? "");
       setUrl(feed.url);
+      setUrlEditing(false);
       setAutoTranslate(feed.autoTranslate ?? null);
       setAutoSummary(feed.autoSummary ?? null);
       setReaderMode(feed.readerMode ?? null);
@@ -319,19 +322,40 @@ export function EditFeedDialog({
             )}
           </div>
           <div className="space-y-2">
-            <label
-              htmlFor="feed-url-input"
-              className="text-sm font-medium text-foreground"
-            >
-              {t("feeds.feed_url")}
-            </label>
-            {/* 52-3：URL 可复制；订阅地址可编辑（长地址用单行输入框，聚焦后左右滚动查看） */}
+            <div className="flex items-center justify-between gap-2">
+              <label
+                htmlFor="feed-url-input"
+                className="text-sm font-medium text-foreground"
+              >
+                {t("feeds.feed_url")}
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  if (urlEditing) {
+                    // 退出编辑：把输入框复位回已保存的地址
+                    setUrl(feed?.url ?? "");
+                    setUrlEditing(false);
+                  } else {
+                    setUrlEditing(true);
+                  }
+                }}
+                className={cn(
+                  "rounded-[var(--radius)] px-3 py-1.5 text-xs font-medium transition-colors",
+                  "border border-border bg-background hover:bg-secondary",
+                )}
+              >
+                {urlEditing ? t("feeds.url_edit_cancel") : t("feeds.url_edit")}
+              </button>
+            </div>
+            {/* 52-3：URL 可复制；点「修改」后才可编辑（长地址用单行输入框，聚焦后左右滚动查看） */}
             <div className="flex items-center gap-2">
               <input
                 id="feed-url-input"
                 type="text"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
+                readOnly={!urlEditing}
                 title={url}
                 placeholder={feed?.url}
                 spellCheck={false}
@@ -339,9 +363,12 @@ export function EditFeedDialog({
                 autoCapitalize="off"
                 autoCorrect="off"
                 className={cn(
-                  "min-w-0 flex-1 rounded-field border border-border bg-background px-3 py-2 text-sm",
+                  "min-w-0 flex-1 rounded-field border border-border px-3 py-2 text-sm",
                   "whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-primary/50",
                   "placeholder:text-muted-foreground",
+                  urlEditing
+                    ? "bg-background"
+                    : "cursor-default bg-secondary/50 text-muted-foreground",
                 )}
               />
               {url.trim() && (
@@ -365,9 +392,11 @@ export function EditFeedDialog({
                 </button>
               )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              {t("feeds.url_change_hint")}
-            </p>
+            {urlEditing && (
+              <p className="text-xs text-muted-foreground">
+                {t("feeds.url_change_hint")}
+              </p>
+            )}
           </div>
           {/* 16-14：MCP 订阅的取数配置入口（连接/工具 + 编辑按钮，进向导编辑模式） */}
           {isMCPFeed && (
