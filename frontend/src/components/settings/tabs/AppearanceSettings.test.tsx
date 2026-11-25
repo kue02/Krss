@@ -290,8 +290,8 @@ describe("AppearanceSettings 按视图设置", () => {
     expect(screen.getAllByText("appearance_reading.card_image")).toHaveLength(1);
     expect(screen.getAllByText("appearance_reading.preview_lines")).toHaveLength(1);
 
-    // 四个视图各一组「显示分界限」：文章那组（index 0）里应同时含 article_layout 与挪来的两项
-    const articleViewRow = rowOf("appearance_view.show_splitter", 0);
+    // 文章视图那组里应同时含 article_layout 与挪来的两项
+    const articleViewRow = rowOf("appearance_view.article_layout");
     const articleViewBlock = articleViewRow.parentElement as HTMLElement;
     expect(
       within(articleViewBlock).queryByText("appearance_view.article_layout"),
@@ -304,7 +304,7 @@ describe("AppearanceSettings 按视图设置", () => {
     ).not.toBeNull();
 
     // 图片视图那组不该再出现这两项
-    const pictureViewRow = rowOf("appearance_view.show_splitter", 1);
+    const pictureViewRow = rowOf("appearance_view.picture_layout");
     const pictureViewBlock = pictureViewRow.parentElement as HTMLElement;
     expect(
       within(pictureViewBlock).queryByText("appearance_reading.card_image"),
@@ -383,8 +383,7 @@ describe("AppearanceSettings 按视图设置", () => {
   it("粒度与折叠行数只出现在通知视图（其余视图不显示）", () => {
     render(<AppearanceSettings />);
 
-    // 每个视图一组「显示分界限」，通知那组里才有这三行
-    expect(screen.getAllByText("appearance_view.show_splitter")).toHaveLength(4);
+    // 时间粒度 / 折叠行数 / 时间基准 只出现在通知视图那组
     expect(screen.getAllByText("appearance_view.timeline_granularity")).toHaveLength(1);
     expect(screen.getAllByText("appearance_view.timeline_collapse")).toHaveLength(1);
     expect(screen.getAllByText("appearance_view.timeline_time_basis")).toHaveLength(1);
@@ -521,20 +520,23 @@ describe("AppearanceSettings 按视图设置", () => {
     expect(screen.getAllByText("appearance_view.scroll_read")).toHaveLength(4);
   });
 
-  it("「双栏自动隐藏分界限」独立一行，默认关（平时也画），可切到自动隐藏（11-24）", () => {
+  it("分界限改为随布局自动联动：只有一句说明，不再有手动开关（2026-11-25）", () => {
     render(<AppearanceSettings />);
 
-    // 只有一处（全局一项，不在四个视图里各来一遍）
+    // 新说明只出现一处（全局一项，不在四个视图里各来一遍）
     expect(
-      screen.getAllByText("appearance_view.splitter_auto_hide"),
+      screen.getAllByText("appearance_view.splitter_auto_title"),
+    ).toHaveLength(1);
+    expect(
+      screen.getAllByText("appearance_view.splitter_auto_note"),
     ).toHaveLength(1);
 
-    const row = rowOf("appearance_view.splitter_auto_hide");
-    expect(within(row).getByText("appearance_view.splitter_auto_hide_hint")).toBeTruthy();
-    // 默认关 = 平时也画
-    expect(row.querySelector("[data-value]")?.getAttribute("data-value")).toBe("off");
-
-    fireEvent.click(within(row).getByText("on"));
-    expect(setSplitterAutoHide).toHaveBeenCalledWith(true);
+    // 旧的手动开关与每视图「显示分界限」已移除
+    expect(
+      screen.queryAllByText("appearance_view.splitter_auto_hide"),
+    ).toHaveLength(0);
+    expect(
+      screen.queryAllByText("appearance_view.show_splitter"),
+    ).toHaveLength(0);
   });
 });

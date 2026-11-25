@@ -1178,6 +1178,8 @@
     "splitter_auto_hide_hint": "Dual column = feed sidebar + content. When on, the line is hidden until you hover the edge or drag it; when off, the line is always drawn. The second divider (entries ↔ article) is unaffected and still appears on hover.",
     "splitter_auto_hide_off": "Always drawn",
     "splitter_auto_hide_on": "Auto-hide",
+    "splitter_auto_title": "Divider visibility",
+    "splitter_auto_note": "Follows the layout automatically: in three columns (feed + entries + article) the divider stays visible; in two columns (feed + content) it is hidden until you hover the edge or drag it. The second divider (entries ↔ article) is unaffected and still appears on hover.",
     "timeline_granularity": "Time granularity",
     "timeline_granularity_hint": "Entries in the same bucket share one node (grouping and node labels only; no refetch)",
     "timeline_granularity_minute": "Per minute",

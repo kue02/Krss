@@ -14,7 +14,6 @@ import {
   defaultUISettings,
   useUISettingKey,
 } from "@/hooks/useUISettings";
-import { useSelection } from "@/hooks/useSelection";
 
 const FEED_COL_MIN = 256;
 const FEED_COL_MAX = 300;
@@ -181,18 +180,16 @@ export function ThreeColumnLayout({
 
   // Get stored feed column width for dynamic max calculation
   const storedFeedColWidth = useUISettingKey("feedColWidth");
-  // 第一栏的分界限是否显示，按当前内容类型决定（用户 11-7）
-  const splitterVisibleByView = useUISettingKey("splitterVisibleByView");
-  const { contentType } = useSelection();
-  const showFeedSplitter = splitterVisibleByView?.[contentType] !== false;
-  // 11-24：双栏分界限自动隐藏 —— 平时不画、悬浮到分界处（或拖拽）才出现
-  const splitterAutoHide = useUISettingKey("splitterAutoHide");
-  // 优先级：「这个视图不画」最优先（never），其次才是「平时画不画」（hover / always）
-  const feedSplitterVisibility: "always" | "hover" | "never" = !showFeedSplitter
-    ? "never"
-    : splitterAutoHide
-      ? "hover"
-      : "always";
+  // 第一栏分界限的显示方式随布局自动判断（用户 2026-11-25：双栏就隐藏、三栏就显示，
+  // 跟布局联动、不再手调）：
+  //   三栏（订阅栏 + 条目栏 + 正文）= 常显（always）；
+  //   双栏（订阅栏 + 内容：社交/图片/通知档、Inoreader 覆盖档、正文内联档，
+  //        以及文章未选中只剩条目栏时）= 平时隐藏，悬浮到分界处或拖拽才出现（hover）。
+  // 第二栏（条目 ↔ 正文）那条不受影响，永远 hover。
+  const isTwoPane = hideList || inlineContent || coverList || hideContent;
+  const feedSplitterVisibility: "always" | "hover" = isTwoPane
+    ? "hover"
+    : "always";
 
   // Calculate dynamic max for entry column
   const entryColMax = useMemo(() => {

@@ -517,11 +517,7 @@ export function EntryList({
   /** 28-1：顶栏左上角那颗文章档位切换（只有文章视图会拿到它）。
    *  实验布局批：在「可见档位」里循环（传统三栏 → Inoreader列表 → [缩略图列表] → [悬停正文]）；
    *  后两档仅在对应实验开关打开时进入循环。 */
-  const {
-    setArticleLayout,
-    setInoreaderSplitterPromptShown,
-    hideArticleSplitterFromPrompt,
-  } = useUISettingActions();
+  const { setArticleLayout } = useUISettingActions();
   const handleToggleArticleLayout = useCallback(() => {
     const idx = Math.max(
       0,
@@ -542,38 +538,8 @@ export function EntryList({
       "cards";
     setUISetting("notificationLayout", next);
   }, [notificationLayout, notificationLayoutOrder]);
-  // 「Inoreader列表」首次打开：若图片 / 社交媒体 / 通知视图的分界限是关闭的，问一次文章视图是否也关闭
-  const splitterVisibleByView = useUISettingKey("splitterVisibleByView");
-  const inoreaderSplitterPromptShown = useUISettingKey(
-    "inoreaderSplitterPromptShown",
-  );
-  const [splitterPromptOpen, setSplitterPromptOpen] = useState(false);
   const articlePaneFrame = useUISettingKey("articlePaneFrame");
   const articlePaneStyle = articlePaneStyleForFrame(articlePaneFrame);
-  const suppressedSplitterViews = useMemo(
-    () =>
-      (["picture", "social", "notification"] as ContentType[])
-        .filter((view) => splitterVisibleByView?.[view] === false)
-        .map((view) => t(`content_type.${view}`)),
-    [splitterVisibleByView, t],
-  );
-  useEffect(() => {
-    if (contentType !== "article" || articleLayout !== "inoreader") return;
-    if (inoreaderSplitterPromptShown) return;
-    /* 文章视图这条线本来就关着时不必再问「要不要也一起关」——
-       问题前提不成立（用户早就自己关了）。 */
-    if (splitterVisibleByView?.article === false) return;
-    if (suppressedSplitterViews.length === 0) return;
-    setSplitterPromptOpen(true);
-    setInoreaderSplitterPromptShown(true);
-  }, [
-    contentType,
-    articleLayout,
-    inoreaderSplitterPromptShown,
-    splitterVisibleByView?.article,
-    suppressedSplitterViews.length,
-    setInoreaderSplitterPromptShown,
-  ]);
 
   const timelineGranularity = resolveTimelineGranularity(
     useUISettingKey("timelineGranularityByView")?.[contentType],
@@ -1900,67 +1866,6 @@ export function EntryList({
           sidebarVisible={sidebarVisible}
           onSearchClick={onSearchClick}
         />
-
-        {/* 强制拉取确认（范围太大时先问一句，避免误选整轮重抓） */}
-        <AlertDialog>
-          <Button className="hidden" aria-hidden />
-          <AlertDialog.Backdrop
-            isOpen={splitterPromptOpen}
-            onOpenChange={(open) => !open && setSplitterPromptOpen(false)}
-          >
-            <AlertDialog.Container>
-              <AlertDialog.Dialog className="max-w-md">
-                <AlertDialog.Header>
-                  <AlertDialog.Heading>
-                    {t("appearance_view.inoreader_splitter_prompt_title")}
-                  </AlertDialog.Heading>
-                </AlertDialog.Header>
-                <AlertDialog.Body>
-                  <div className="space-y-2 text-sm text-muted-foreground">
-                    <p>
-                      {t(
-                        "appearance_view.inoreader_splitter_prompt_description",
-                        {
-                          views: suppressedSplitterViews.join(
-                            t(
-                              "appearance_view.inoreader_splitter_prompt_separator",
-                            ),
-                          ),
-                        },
-                      )}
-                    </p>
-                    {/* 11-24（用户第 3 条）：说明这不是一次性选择，随时能回设置里改回来 */}
-                    <p>
-                      {t(
-                        "appearance_view.inoreader_splitter_prompt_settings_hint",
-                      )}
-                    </p>
-                  </div>
-                </AlertDialog.Body>
-                <AlertDialog.Footer>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onPress={() => setSplitterPromptOpen(false)}
-                  >
-                    {t("appearance_view.inoreader_splitter_prompt_keep")}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    onPress={() => {
-                      // 记下「这条是提示替用户关的」，切走 Inoreader 布局时自动恢复
-                      hideArticleSplitterFromPrompt();
-                      setSplitterPromptOpen(false);
-                    }}
-                  >
-                    {t("appearance_view.inoreader_splitter_prompt_also_off")}
-                  </Button>
-                </AlertDialog.Footer>
-              </AlertDialog.Dialog>
-            </AlertDialog.Container>
-          </AlertDialog.Backdrop>
-        </AlertDialog>
 
         <AlertDialog>
           <Button className="hidden" aria-hidden />

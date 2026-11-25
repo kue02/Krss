@@ -1,8 +1,8 @@
 import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
+import type { ComponentProps } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThreeColumnLayout } from "./three-column-layout";
-import { setUISetting } from "@/hooks/useUISettings";
 
 describe("ThreeColumnLayout", () => {
   it("uses app viewport height instead of 100vh", () => {
@@ -92,12 +92,12 @@ describe("ThreeColumnLayout", () => {
 });
 
 /**
- * 11-24（用户第 3 条）：双栏（订阅侧栏 + 内容）分界限的「自动隐藏」。
- * 优先级：视图关掉（splitterVisibleByView=false → never）> 自动隐藏（hover）> 平时也画（always）。
+ * 2026-11-25（用户）：「双栏自动隐藏分界限」改为随布局自动联动——
+ * 三栏（订阅栏 + 条目栏 + 正文）常显；双栏（只有订阅栏 + 内容）平时隐藏、悬浮到分界处/拖拽才现。
  * 第二栏（条目 ↔ 正文）那条不受影响，永远是 hover。
  */
-describe("ThreeColumnLayout 第一栏分界限显示方式（11-24）", () => {
-  function renderLayout() {
+describe("ThreeColumnLayout 第一栏分界限按布局自动联动（2026-11-25）", () => {
+  function renderLayout(props: Partial<ComponentProps<typeof ThreeColumnLayout>> = {}) {
     const queryClient = new QueryClient();
     return render(
       <QueryClientProvider client={queryClient}>
@@ -105,6 +105,7 @@ describe("ThreeColumnLayout 第一栏分界限显示方式（11-24）", () => {
           sidebar={<div>sidebar</div>}
           list={<div>list</div>}
           content={<div>content</div>}
+          {...props}
         />
       </QueryClientProvider>,
     );
@@ -115,48 +116,28 @@ describe("ThreeColumnLayout 第一栏分界限显示方式（11-24）", () => {
     return Array.from(container.querySelectorAll('[role="separator"]'));
   }
 
-  beforeEach(() => {
-    localStorage.clear();
-    setUISetting("splitterVisibleByView", {
-      article: true,
-      picture: false,
-      notification: false,
-      social: false,
-    });
-    setUISetting("splitterAutoHide", false);
-  });
-
-  it("默认（自动隐藏关）= 平时也画这条线", () => {
+  it("三栏（默认）= 第一栏分界限常显（bg-border）", () => {
     const { container } = renderLayout();
     const [first] = separators(container);
     expect(first).toBeDefined();
     expect(first?.className).toContain("bg-border");
   });
 
-  it("自动隐藏开 = 平时透明，悬浮/拖拽才显出来", () => {
-    setUISetting("splitterAutoHide", true);
-    const { container } = renderLayout();
+  it("双栏（hideList 档，如社交/图片/通知）= 平时透明，悬浮/拖拽才现", () => {
+    const { container } = renderLayout({ hideList: true });
     const [first] = separators(container);
     expect(first).toBeDefined();
     expect(first?.className).toContain("bg-transparent");
     expect(first?.className).not.toContain("bg-border");
   });
 
-  it("视图关掉优先于自动隐藏：article=false 时第一条线根本不画", () => {
-    setUISetting("splitterVisibleByView", {
-      article: false,
-      picture: false,
-      notification: false,
-      social: false,
-    });
-    setUISetting("splitterAutoHide", true);
-    const { container } = renderLayout();
-    // 只剩第二栏那条（hover 档），第一栏那条不再渲染
-    expect(separators(container)).toHaveLength(1);
+  it("双栏（正文内联 inlineContent 档）= 平时透明", () => {
+    const { container } = renderLayout({ inlineContent: true });
+    const [first] = separators(container);
+    expect(first?.className).toContain("bg-transparent");
   });
 
-  it("第二栏那条始终是 hover 档，不跟自动隐藏走", () => {
-    setUISetting("splitterAutoHide", false);
+  it("第二栏那条始终是 hover 档，不跟布局走", () => {
     const { container } = renderLayout();
     const list = separators(container);
     const second = list[list.length - 1];

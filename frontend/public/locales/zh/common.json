@@ -1175,6 +1175,8 @@
     "splitter_auto_hide_hint": "双栏 = 订阅侧栏 + 内容。开启后这条线平时不画，鼠标移到分界处或拖动时才出现；关闭则平时也画这条线。第二栏（条目 ↔ 正文）那条不受影响，仍是悬浮才显示。",
     "splitter_auto_hide_off": "平时也画",
     "splitter_auto_hide_on": "自动隐藏",
+    "splitter_auto_title": "分界限显示方式",
+    "splitter_auto_note": "自动跟随布局：三栏（订阅栏 + 条目栏 + 正文）时这条线常显；双栏（订阅栏 + 内容）时平时隐藏，鼠标移到分界处或拖动时才出现。第二栏（条目 ↔ 正文）那条不受影响，仍是悬浮才显示。",
     "timeline_granularity": "时间粒度",
     "timeline_granularity_hint": "同一档的时间共用一个节点（只影响分组与节点标注，不重新请求数据）",
     "timeline_granularity_minute": "精确到分",
