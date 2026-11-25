@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Entry } from "@/types/api";
 import { NotificationTimeline } from "./NotificationTimeline";
@@ -118,8 +118,8 @@ function renderTimeline(
 const rowsOf = (container: HTMLElement) =>
   Array.from(container.querySelectorAll<HTMLElement>("[data-timeline-row]"));
 
-describe("NotificationTimeline · 主干形态（卡片流）", () => {
-  it("卡片流：每行一张卡片，行内有来源/时刻/标题，无聊天式竖轴", () => {
+describe("NotificationTimeline · 主干形态（15-1）", () => {
+  it("中轴 + 卡片左右交替：每行一个节点，行内同时有节点与卡片", () => {
     const entries = [
       entry("a", localIso(18, 14, 10)),
       entry("b", localIso(18, 13, 10)),
@@ -127,17 +127,23 @@ describe("NotificationTimeline · 主干形态（卡片流）", () => {
     ];
     const { container } = renderTimeline(entries);
 
-    // 卡片流布局，不再有中轴
-    expect(container.querySelector("[data-timeline-axis]")).toBeNull();
+    // 轴在中间（交替布局），1px 竖线
+    expect(container.querySelector("[data-timeline-axis]")).not.toBeNull();
     expect(
       screen.getByTestId("notification-timeline").dataset.timelineLayout,
-    ).toBe("cards");
+    ).toBe("alternating");
 
     const rows = rowsOf(container);
     expect(rows).toHaveLength(3);
-    // 每行一张卡片，卡片里有条目 id 与时刻（HH:MM）
+    // 左右交替落位
+    expect(
+      Array.from(container.querySelectorAll("[data-timeline-card]")).map(
+        (card) => (card as HTMLElement).dataset.timelineSide,
+      ),
+    ).toEqual(["left", "right", "left"]);
+    // 时间戳与节点在**同一行**（紧贴节点的结构前提；像素距离由真机量）
     for (const row of rows) {
-      expect(row.querySelector("[data-timeline-card]")).not.toBeNull();
+      expect(row.querySelector("[data-timeline-dot]")).not.toBeNull();
       expect(row.querySelector("[data-timeline-time]")).not.toBeNull();
       expect(row.querySelector("[data-entry-id]")).not.toBeNull();
     }
@@ -271,9 +277,9 @@ describe("NotificationTimeline · 折叠 / 展开（15-3）", () => {
       // 所以这里同步断言只能验「阅读器已挂上」（正文真的渲染出来由浏览器真机验）；
       // `data-timeline-reader` 是本批加的标记，真机也用它取数。
       expect(full?.dataset.timelineReader).toBe("a");
-      // 位置没变：还是同一行，该行仍有卡片
+      // 轴上的位置没变：还是同一行、同一行的节点还在
       expect(full!.closest("[data-timeline-row]")).toBe(rowBefore);
-      expect(rowBefore?.querySelector("[data-timeline-card]")).not.toBeNull();
+      expect(rowBefore?.querySelector("[data-timeline-dot]")).not.toBeNull();
       // 右下角拖拽手柄在
       expect(
         container.querySelector("[data-timeline-resize='a']"),
@@ -529,28 +535,18 @@ describe("NotificationTimeline · 与列表的契约", () => {
     }
   });
 
-  it("统一卡片布局：默认单列居中，autoSingleSide=false 时宽屏两列", () => {
-    const entries = [entry("a", localIso(18, 14, 10)), entry("b", localIso(18, 13, 10))];
-
-    // 默认（autoSingleSide 未传 = true）：单列、容器 max-w-[50rem]、段无 lg:grid-cols-2
-    const def = renderTimeline(entries);
-    const defRoot = def.container.querySelector<HTMLElement>(
-      "div[data-testid='notification-timeline']",
-    )!;
-    expect(defRoot.dataset.timelineLayout).toBe("cards");
-    expect(defRoot.className).toContain("max-w-[50rem]");
-    const defSection = def.container.querySelector<HTMLElement>("[data-timeline-section]")!;
-    expect(defSection.className).not.toContain("lg:grid-cols-2");
-
-    // autoSingleSide=false：容器 max-w-[56rem]、段挂 lg:grid-cols-2（宽屏两列）
-    const wide = renderTimeline(entries, { autoSingleSide: false });
-    const wideRoot = wide.container.querySelector<HTMLElement>(
-      "div[data-testid='notification-timeline']",
-    )!;
-    expect(wideRoot.dataset.timelineLayout).toBe("cards");
-    expect(wideRoot.className).toContain("max-w-[56rem]");
-    const wideSection = wide.container.querySelector<HTMLElement>("[data-timeline-section]")!;
-    expect(wideSection.className).toContain("lg:grid-cols-2");
+  it("窄栏合一栏关掉则始终交替（autoSingleSide=false）", () => {
+    const { container } = renderTimeline(
+      [
+        entry("a", localIso(18, 14, 10)),
+        entry("b", localIso(18, 13, 10)),
+      ],
+      { autoSingleSide: false },
+    );
+    expect(
+      container.querySelector<HTMLElement>("div[data-testid='notification-timeline']")?.dataset
+        .timelineLayout,
+    ).toBe("alternating");
   });
 
   it("回报给父级的可选条目 = 轴上的卡片（不含被吸进小节点的）", () => {
@@ -580,7 +576,7 @@ describe("NotificationTimeline · 与列表的契约", () => {
 });
 
 describe("NotificationTimeline · 日期吸顶（26-1 重做）", () => {
-  it("日期行原生 sticky：top-0 + 非吸顶时纯一行文字（无浮层底色/分隔线）", () => {
+  it("日期行原生 sticky：top-0 + 非吸顶时是纯一行文字（无底色、无分隔线）", () => {
     const { container } = renderTimeline([
       entry("a", localIso(18, 9, 0)),
       entry("b", localIso(17, 9, 0)),
@@ -590,24 +586,31 @@ describe("NotificationTimeline · 日期吸顶（26-1 重做）", () => {
     );
     expect(dates).toHaveLength(2);
     for (const date of dates) {
-      // 原生 sticky 吸顶：定位纯 CSS
+      // 原生 sticky 吸顶：无 scroll 监听、无 fixed，定位纯 CSS
       expect(date.className).toContain("sticky");
+      // 吸在自己的行位里（原来的位置），不是飘在列表上方的居中胶囊
       expect(date.className).toContain("top-0");
       expect(date.className).not.toContain("top-2");
-      // 日期行本身无全宽底色 / 分隔线 / 浮层（不做全宽条）
-      expect(date.className).not.toContain("bg-background");
+      // 最早那版形态：裸行 —— 不加半透底条、不加模糊、不加底部 inset 分隔线
+      expect(date.className).not.toContain("bg-background/85");
       expect(date.className).not.toContain("backdrop-blur");
-      expect(date.className).not.toContain("shadow-[");
-      // 非吸顶：日期文字是朴素小字，不带胶囊描边
+      expect(date.style.boxShadow).toBe("");
+      expect(date.style.backgroundColor).toBe("");
+      // 用户 9-25：「原来是在条目标题上方」= 单栏左对齐到卡片列 / 交替居中
+      expect(date.className).not.toContain("rounded-full");
+      expect(date.className).not.toContain("mx-auto");
+      expect(date.className).not.toContain("w-max");
+      // 文字仍是原来那颗无描边无投影的小 pill（保住字底、不带外框）
       const label = date.querySelector("span");
-      expect(label?.className).toContain("font-semibold");
-      expect(label?.className ?? "").not.toContain("rounded-full");
+      expect(label?.className).toContain("rounded-full");
+      expect(label?.className).toContain("bg-background");
+      // 严格认「描边工具类」，别被 transition-[background-color,box-shadow,border-color] 里的
+      // "border-color" 骗到（截断式断言踩过一次）
       expect(label?.className ?? "").not.toMatch(/(^|\s)border(-|\s|$)/);
-      expect(label?.className ?? "").not.toContain("shadow-nf");
     }
   });
 
-  it("只有正吸顶的那段浮起（日期胶囊 + 投影），其余保持朴素", async () => {
+  it("33-2/34-2 只有正吸顶的那条浮起（浮起胶囊），其余保持素胶囊裸行", async () => {
     const { container } = renderTimeline([
       entry("a", localIso(18, 9, 0)),
       entry("b", localIso(17, 9, 0)),
@@ -651,17 +654,24 @@ describe("NotificationTimeline · 日期吸顶（26-1 重做）", () => {
     const rows = Array.from(
       container.querySelectorAll<HTMLElement>("[data-timeline-date]"),
     );
-    // 吸顶段：日期文字变成浮起胶囊（圆角 + 描边 + 投影）
+    // 吸顶那条：文字胶囊自己变成 a96896d 那版浮起胶囊（描边 + 95% 底 + 模糊 + 投影）
     expect(rows[0]!.getAttribute("data-timeline-date-stuck")).toBe("true");
-    const stuckPill = rows[0]!.querySelector("span");
-    expect(stuckPill?.className).toContain("rounded-full");
-    expect(stuckPill?.className).toContain("border-border/60");
-    expect(stuckPill?.className).toContain("shadow-nf");
-    // 未吸顶段：朴素文字，无胶囊
+    const stuckPill = rows[0]!.querySelector("span")!;
+    expect(stuckPill.className).toContain("border");
+    expect(stuckPill.className).toContain("bg-background/95");
+    expect(stuckPill.className).toContain("backdrop-blur-md");
+    expect(stuckPill.className).toContain("shadow-nf");
+    expect(stuckPill.className).toContain("rounded-full");
+    // 没吸顶的那条：还是那颗素的文字胶囊（无描边、无投影、无模糊）
     expect(rows[1]!.getAttribute("data-timeline-date-stuck")).toBe("false");
-    const plainLabel = rows[1]!.querySelector("span");
-    expect(plainLabel?.className ?? "").not.toContain("rounded-full");
-    expect(plainLabel?.className ?? "").not.toContain("shadow-nf");
+    const plainPill = rows[1]!.querySelector("span")!;
+    expect(plainPill.className).not.toContain("bg-background/95");
+    expect(plainPill.className).not.toContain("backdrop-blur-md");
+    expect(plainPill.className).not.toContain("shadow-nf");
+    expect(plainPill.className).toContain("bg-background px-2");
+    // 日期行本身两侧不铺横条（不是全宽背衬那版）
+    expect(rows[0]!.className).not.toContain("bg-background/85");
+    expect(rows[0]!.style.boxShadow).toBe("");
   });
 
   it("日期行不挡卡片点击：自身不是按钮、无 pointer 事件拦截", () => {
@@ -736,4 +746,304 @@ describe("NotificationTimeline · 时间基准两档（26-2 重做）", () => {
       view.unmount();
     }
   });
+});
+
+describe("NotificationTimeline · 离屏卡片测量（第四十三批）", () => {
+  const scrollHeightDescriptor = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    "scrollHeight",
+  );
+  const originalIntersectionObserver = globalThis.IntersectionObserver;
+
+  afterEach(() => {
+    if (scrollHeightDescriptor) {
+      Object.defineProperty(
+        HTMLElement.prototype,
+        "scrollHeight",
+        scrollHeightDescriptor,
+      );
+    }
+    if (originalIntersectionObserver) {
+      globalThis.IntersectionObserver = originalIntersectionObserver;
+    } else {
+      delete (globalThis as unknown as { IntersectionObserver?: unknown })
+        .IntersectionObserver;
+    }
+  });
+
+  function stubTallScrollHeight() {
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get: () => 400,
+    });
+  }
+
+  it("卡片根节点带 content-visibility 与 140px 估算样式", () => {
+    const { container } = renderTimeline([entry("n1", localIso(18, 9, 0))]);
+    const card = container.querySelector<HTMLElement>("[data-timeline-card]")!;
+    expect(card.className).toContain("[content-visibility:auto]");
+    expect(card.className).toContain("[contain-intrinsic-size:auto_140px]");
+  });
+
+  it("没有 IntersectionObserver 时立即测量上报（长贴自动展开）", async () => {
+    delete (globalThis as unknown as { IntersectionObserver?: unknown })
+      .IntersectionObserver;
+    stubTallScrollHeight();
+    const { container } = renderTimeline([entry("n1", localIso(18, 9, 0))], {
+      autoExpandLong: true,
+    });
+    // 400 > 300 + 8，报告后应被判定长贴并自动展开
+    await waitFor(() =>
+      expect(container.querySelector("[data-timeline-full]")).not.toBeNull(),
+    );
+  });
+
+  it("有 IntersectionObserver 时进入视口附近才上报，未进入不测量", async () => {
+    const callbacks: IntersectionObserverCallback[] = [];
+    class MockIntersectionObserver {
+      root = null;
+      rootMargin = "";
+      thresholds: number[] = [];
+      constructor(callback: IntersectionObserverCallback) {
+        callbacks.push(callback);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      takeRecords() {
+        return [];
+      }
+    }
+    globalThis.IntersectionObserver =
+      MockIntersectionObserver as unknown as typeof IntersectionObserver;
+    stubTallScrollHeight();
+
+    const { container } = renderTimeline([entry("n1", localIso(18, 9, 0))], {
+      autoExpandLong: true,
+    });
+    // 未触发视口相交：不测量、不自动展开
+    expect(container.querySelector("[data-timeline-full]")).toBeNull();
+    expect(callbacks.length).toBeGreaterThan(0);
+
+    await act(async () => {
+      for (const callback of callbacks) {
+        callback(
+          [{ isIntersecting: true } as IntersectionObserverEntry],
+          {} as IntersectionObserver,
+        );
+      }
+    });
+
+    await waitFor(() =>
+      expect(container.querySelector("[data-timeline-full]")).not.toBeNull(),
+    );
+  });
+});
+
+describe("NotificationTimeline · 离屏卡片正文预览门控（第四十三批）", () => {
+  const originalIntersectionObserver = globalThis.IntersectionObserver;
+
+  afterEach(() => {
+    if (originalIntersectionObserver) {
+      globalThis.IntersectionObserver = originalIntersectionObserver;
+    } else {
+      delete (globalThis as unknown as { IntersectionObserver?: unknown })
+        .IntersectionObserver;
+    }
+  });
+
+  it("有 IntersectionObserver 时，未进入视口的卡片不渲染正文预览（空串门控）；进入后补算", async () => {
+    const callbacks: IntersectionObserverCallback[] = [];
+    class MockIntersectionObserver {
+      root = null;
+      rootMargin = "";
+      thresholds: number[] = [];
+      constructor(callback: IntersectionObserverCallback) {
+        callbacks.push(callback);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      takeRecords() {
+        return [];
+      }
+    }
+    globalThis.IntersectionObserver =
+      MockIntersectionObserver as unknown as typeof IntersectionObserver;
+
+    const { container } = renderTimeline([
+      entry("g1", localIso(18, 9, 0), {
+        content: "<p>离屏卡片正文不应该被解析</p>",
+      }),
+    ]);
+
+    const body = container.querySelector<HTMLElement>("[data-timeline-body]");
+    // 容器常驻（否则观察器观察不到），但预览文字在进入视口前为空
+    expect(body).not.toBeNull();
+    expect(body?.textContent ?? "").toBe("");
+
+    await act(async () => {
+      for (const callback of callbacks) {
+        callback(
+          [{ isIntersecting: true } as IntersectionObserverEntry],
+          {} as IntersectionObserver,
+        );
+      }
+    });
+
+    await waitFor(() =>
+      expect(
+        container.querySelector<HTMLElement>("[data-timeline-body]")?.textContent,
+      ).toContain("离屏卡片正文不应该被解析"),
+    );
+  });
+
+  it("jsdom 无 IntersectionObserver 时立即视为进入视口，正文预览照常渲染", () => {
+    delete (globalThis as unknown as { IntersectionObserver?: unknown })
+      .IntersectionObserver;
+
+    const { container } = renderTimeline([
+      entry("g2", localIso(18, 9, 0), { content: "<p>立即渲染的正文</p>" }),
+    ]);
+
+    expect(
+      container.querySelector<HTMLElement>("[data-timeline-body]")?.textContent,
+    ).toContain("立即渲染的正文");
+  });
+
+  it("段内行块只挂载视口附近：滚远的段变占位，滚回再挂载", async () => {
+    const instances: Array<{
+      callback: IntersectionObserverCallback;
+      targets: Element[];
+    }> = [];
+    class MockIntersectionObserver {
+      root = null;
+      rootMargin = "";
+      thresholds: number[] = [];
+      private entry: { callback: IntersectionObserverCallback; targets: Element[] };
+      constructor(callback: IntersectionObserverCallback) {
+        this.entry = { callback, targets: [] };
+        instances.push(this.entry);
+      }
+      observe(target: Element) {
+        this.entry.targets.push(target);
+      }
+      unobserve() {}
+      disconnect() {}
+      takeRecords() {
+        return [];
+      }
+    }
+    const original = globalThis.IntersectionObserver;
+    globalThis.IntersectionObserver =
+      MockIntersectionObserver as unknown as typeof IntersectionObserver;
+    try {
+      const { container } = renderTimeline([
+        entry("d18", localIso(18, 9, 0)),
+        entry("d17", localIso(17, 9, 0)),
+        entry("d16", localIso(16, 9, 0)),
+      ]);
+      const blocks = Array.from(
+        container.querySelectorAll<HTMLElement>("[data-timeline-rows]"),
+      );
+      expect(blocks.length).toBeGreaterThanOrEqual(3);
+      const far = blocks[blocks.length - 1]!;
+      const owner = instances.find((item) => item.targets.includes(far))!;
+      await act(async () => {
+        owner.callback(
+          [{ isIntersecting: false, target: far } as unknown as IntersectionObserverEntry],
+          {} as IntersectionObserver,
+        );
+      });
+      expect(far.getAttribute("aria-hidden")).toBe("true");
+      expect(far.querySelector("[data-timeline-card]")).toBeNull();
+      expect(far.style.height).not.toBe("");
+
+      await act(async () => {
+        owner.callback(
+          [{ isIntersecting: true, target: far } as unknown as IntersectionObserverEntry],
+          {} as IntersectionObserver,
+        );
+      });
+      expect(far.querySelector("[data-timeline-card]")).not.toBeNull();
+    } finally {
+      if (original) globalThis.IntersectionObserver = original;
+      else
+        delete (globalThis as unknown as { IntersectionObserver?: unknown })
+          .IntersectionObserver;
+    }
+  });
+
+  it("revealEntry 会先挂载未挂载的目标段，再滚动到该条目", async () => {
+    const scrollSpy = vi.fn();
+    const originalScroll = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrollSpy;
+    const instances: Array<{
+      callback: IntersectionObserverCallback;
+      targets: Element[];
+    }> = [];
+    class MockIntersectionObserver {
+      root = null;
+      rootMargin = "";
+      thresholds: number[] = [];
+      private entry: { callback: IntersectionObserverCallback; targets: Element[] };
+      constructor(callback: IntersectionObserverCallback) {
+        this.entry = { callback, targets: [] };
+        instances.push(this.entry);
+      }
+      observe(target: Element) {
+        this.entry.targets.push(target);
+      }
+      unobserve() {}
+      disconnect() {}
+      takeRecords() {
+        return [];
+      }
+    }
+    const original = globalThis.IntersectionObserver;
+    globalThis.IntersectionObserver =
+      MockIntersectionObserver as unknown as typeof IntersectionObserver;
+    try {
+      const handleRef: { current: import("./NotificationTimeline").NotificationTimelineHandle | null } = {
+        current: null,
+      };
+      const { container } = renderTimeline(
+        [
+          entry("f18", localIso(18, 9, 0)),
+          entry("f17", localIso(17, 9, 0)),
+          entry("f16", localIso(16, 9, 0)),
+        ],
+        { handleRef },
+      );
+      const blocks = Array.from(
+        container.querySelectorAll<HTMLElement>("[data-timeline-rows]"),
+      );
+      const far = blocks[blocks.length - 1]!;
+      const owner = instances.find((item) => item.targets.includes(far))!;
+      await act(async () => {
+        owner.callback(
+          [{ isIntersecting: false, target: far } as unknown as IntersectionObserverEntry],
+          {} as IntersectionObserver,
+        );
+      });
+      expect(far.querySelector("[data-timeline-card]")).toBeNull();
+
+      let revealed = false;
+      await act(async () => {
+        revealed = handleRef.current?.revealEntry("f16") ?? false;
+      });
+      expect(revealed).toBe(true);
+      await waitFor(() =>
+        expect(far.querySelector('[data-entry-id="f16"]')).not.toBeNull(),
+      );
+      await waitFor(() => expect(scrollSpy).toHaveBeenCalled());
+    } finally {
+      Element.prototype.scrollIntoView = originalScroll;
+      if (original) globalThis.IntersectionObserver = original;
+      else
+        delete (globalThis as unknown as { IntersectionObserver?: unknown })
+          .IntersectionObserver;
+    }
+  });
+
 });

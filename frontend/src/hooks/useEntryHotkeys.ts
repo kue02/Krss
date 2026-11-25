@@ -11,6 +11,12 @@ export interface EntryHotkeysOptions {
   onSelect: (entryId: string) => void;
   /** Esc：关闭详情（移动端/平板返回列表），可选 */
   onEscape?: () => void;
+  /**
+   * 键盘移动后把选中项滚进视口。默认用 DOM 的 scrollIntoView；
+   * 虚拟化列表里选中行可能已被卸载，调用方可传此回调（如 virtualizer.scrollToIndex）
+   * 把它重新挂回来。返回 true 表示已处理，false/未传则回退到 scrollIntoView。
+   */
+  onRevealEntry?: (entryId: string) => boolean;
   /** 列表不可见时（例如移动端正在读文章）不要抢键 */
   enabled?: boolean;
   /**
@@ -41,6 +47,7 @@ export function useEntryHotkeys({
   onEscape,
   enabled = true,
   arrowKeys = false,
+  onRevealEntry,
 }: EntryHotkeysOptions) {
   const markAsRead = useMarkAsRead();
   const markAsStarred = useMarkAsStarred();
@@ -49,11 +56,20 @@ export function useEntryHotkeys({
     if (!enabled) return;
 
     const revealEntry = (entryId: string) => {
-      // 键盘移动后让选中项留在视口内（列表是虚拟化无关的普通滚动容器）
-      const node = document.querySelector<HTMLElement>(
-        `[data-entry-id="${entryId}"]`,
-      );
-      node?.scrollIntoView({ block: "nearest" });
+      // 键盘移动后让选中项留在视口内。
+      const scrollIntoView = () => {
+        const node = document.querySelector<HTMLElement>(
+          `[data-entry-id="${entryId}"]`,
+        );
+        node?.scrollIntoView({ block: "nearest" });
+      };
+      // 虚拟化列表：选中行可能已被卸载，先交给调用方的 virtualizer 滚到该下标（会同步挂载），
+      // 下一帧再确认落进视口。
+      if (onRevealEntry?.(entryId)) {
+        requestAnimationFrame(scrollIntoView);
+        return;
+      }
+      scrollIntoView();
     };
 
     const selectAndMarkRead = (entry: Entry) => {
@@ -132,6 +148,7 @@ export function useEntryHotkeys({
     onSelect,
     onEscape,
     arrowKeys,
+    onRevealEntry,
     markAsRead,
     markAsStarred,
   ]);

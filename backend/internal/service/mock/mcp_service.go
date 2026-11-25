@@ -14,6 +14,7 @@ import (
 	model "krss/backend/internal/model"
 	service "krss/backend/internal/service"
 	reflect "reflect"
+	time "time"
 
 	gomock "go.uber.org/mock/gomock"
 )
@@ -69,6 +70,21 @@ func (m *MockMCPService) DeleteServer(ctx context.Context, id int64) error {
 func (mr *MockMCPServiceMockRecorder) DeleteServer(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteServer", reflect.TypeOf((*MockMCPService)(nil).DeleteServer), ctx, id)
+}
+
+// FeedRefreshInterval mocks base method.
+func (m *MockMCPService) FeedRefreshInterval(ctx context.Context, feed model.Feed) (time.Duration, bool) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FeedRefreshInterval", ctx, feed)
+	ret0, _ := ret[0].(time.Duration)
+	ret1, _ := ret[1].(bool)
+	return ret0, ret1
+}
+
+// FeedRefreshInterval indicates an expected call of FeedRefreshInterval.
+func (mr *MockMCPServiceMockRecorder) FeedRefreshInterval(ctx, feed any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FeedRefreshInterval", reflect.TypeOf((*MockMCPService)(nil).FeedRefreshInterval), ctx, feed)
 }
 
 // FetchFeedItems mocks base method.

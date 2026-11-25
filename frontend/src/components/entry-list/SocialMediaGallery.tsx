@@ -10,12 +10,14 @@ import {
   rowItemWidth,
   type ContentMedia,
 } from "@/lib/extract-content-media";
+import type { ImageDimension } from "@/lib/image-dimensions-db";
 import {
   isRecoverableProxyUrl,
   renewProxyCookie,
   withProxyCacheBust,
 } from "@/lib/proxy-image-recovery";
 import { useImageDimensionsStore } from "@/stores/image-dimensions-store";
+import { useInView } from "@/hooks/useInView";
 
 /**
  * 社交媒体视图的图片区（第四十二批 · §2.40）。
@@ -156,35 +158,76 @@ export const SocialMediaGallery = memo(function SocialMediaGallery({
   onOpenImage,
   className,
 }: SocialMediaGalleryProps) {
-  const failedImages = useImageDimensionsStore(
-    useShallow((state) => state.failedImages),
-  );
   const loadFromDB = useImageDimensionsStore((state) => state.loadFromDB);
-  // 尺寸表整体进依赖：任何一张量到新尺寸都会重排（无尺寸那批靠这条生效）
-  const dimensions = useImageDimensionsStore(
-    useShallow((state) => state.dimensions),
-  );
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
 
-  const visible = useMemo(
-    () => media.filter((m) => !failedImages.has(m.src)),
-    [media, failedImages],
+  /**
+   * 懒挂载：只有滚到（或接近，rootMargin 900px）视口附近才真正算代理 URL、
+   * 渲染 `<img>`。社交 tab 一次性挂几十条 × 多图时，这一层把 btoa 代理串 +
+   * 图片节点从「初始化全算」推迟到「接近视口才算」。jsdom 无 IntersectionObserver
+   * 时 useInView 直接返回 inView=true，既有测试照旧立即渲染。
+   */
+  const { ref: inViewRef, inView } = useInView<HTMLDivElement>("900px");
+
+  /**
+   * 外层容器在占位 ↔ 真实图片之间始终是同一个 DOM 节点（ResizeObserver 只在
+   * 挂载时 observe 一次，节点不能换），所以把 containerRef 和 inViewRef 合并。
+   */
+  const setRootRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      containerRef.current = node;
+      inViewRef.current = node;
+    },
+    [inViewRef],
   );
 
+  /**
+   * 只订阅**本 gallery 自己** media 的尺寸 / 失败状态，而不是整张 dimensions 表。
+   *
+   * 原来 `state.dimensions` / `state.failedImages` 整体进订阅：社交 tab 里
+   * 50 条 × 多图时，任何一张图量到尺寸（或任何一条有图加载失败）都会让所有
+   * gallery 重渲染，叠上 `setDimension` 每次都新建整表 → O(N²)，是社交 tab
+   * 切换卡顿的主因。这里用 `media` 的 src 列表生成 selector，`useShallow`
+   * 比较结果：本 gallery 的 src 尺寸变了才重渲染，别条的变了自己收不到。
+   */
+  const mediaSrcs = useMemo(() => media.map((m) => m.src), [media]);
+
+  const dimensionList = useImageDimensionsStore(
+    useShallow((state) => mediaSrcs.map((src) => state.dimensions[src])),
+  );
+  const dimensionsBySrc = useMemo(() => {
+    const map: Record<string, ImageDimension | undefined> = {};
+    mediaSrcs.forEach((src, i) => {
+      map[src] = dimensionList[i];
+    });
+    return map;
+  }, [mediaSrcs, dimensionList]);
+
+  const failedList = useImageDimensionsStore(
+    useShallow((state) => mediaSrcs.map((src) => state.failedImages.has(src))),
+  );
+
+  const visible = useMemo(
+    () => media.filter((_, i) => !failedList[i]),
+    [media, failedList],
+  );
+
+  // 延迟到进入视口附近才构造代理 URL（getProxiedImageUrl 内含 btoa，量不小）
   const proxiedUrls = useMemo(
-    () => visible.map((m) => getProxiedImageUrl(m.src, articleUrl)),
-    [visible, articleUrl],
+    () => (inView ? visible.map((m) => getProxiedImageUrl(m.src, articleUrl)) : []),
+    [inView, visible, articleUrl],
   );
 
   /**
    * 首屏先查 IndexedDB —— 上次量过的图同步命中，渲染即正确高度，
    * 不经历「3:4 占位 → 重排」。key 用原始 URL（`media.src`）。
+   * 进入视口附近才查，离线卡片不白读 DB。
    */
   useEffect(() => {
-    if (visible.length > 0) void loadFromDB(visible.map((m) => m.src));
-  }, [visible, loadFromDB]);
+    if (inView && visible.length > 0) void loadFromDB(visible.map((m) => m.src));
+  }, [inView, visible, loadFromDB]);
 
   /** 量容器宽 + 视口高：横排分支算盒子、封顶要用 `2/3 屏高` */
   useEffect(() => {
@@ -210,10 +253,10 @@ export const SocialMediaGallery = memo(function SocialMediaGallery({
       if (item.width && item.height) {
         return { width: item.width, height: item.height };
       }
-      const dim = dimensions[item.src];
+      const dim = dimensionsBySrc[item.src];
       return dim ? { width: dim.width, height: dim.height } : null;
     },
-    [dimensions],
+    [dimensionsBySrc],
   );
 
   if (visible.length === 0) return null;
@@ -223,65 +266,61 @@ export const SocialMediaGallery = memo(function SocialMediaGallery({
   // 比例是否一致只看**已知**尺寸：某张还没量到就退回 grid 之外的保守排法，
   // 等它量到之后重渲染即可（store 变化会触发）
   const sameRatio = isSameRatio(visible, false);
-
-  const open = (index: number) => onOpenImage?.(proxiedUrls, index);
-
-  if (!sameRatio) {
-    const cols = gridColumns(visible.length);
-    return (
-      <div
-        ref={containerRef}
-        data-slot="social-media-gallery"
-        data-branch="grid"
-        className={cn(
-          "mt-3 grid gap-2",
-          cols === 3 ? "grid-cols-3" : "grid-cols-2",
-          className,
-        )}
-      >
-        {visible.map((item, i) => (
-          <GalleryImage
-            key={item.src}
-            item={item}
-            proxied={proxiedUrls[i] ?? item.src}
-            onOpen={() => open(i)}
-          />
-        ))}
-      </div>
-    );
-  }
-
+  const cols = gridColumns(visible.length);
   const itemWidth = rowItemWidth(visible.length, width);
   const maxHeight = viewport * SINGLE_MAX_HEIGHT_RATIO;
 
+  const open = (index: number) => onOpenImage?.(proxiedUrls, index);
+
+  // 外层容器始终保持挂载（占位 ↔ 真实共享同一节点，ResizeObserver 只 observe 一次），
+  // 仅当进入视口附近（inView）才渲染真实图片。
   return (
     <div
-      ref={containerRef}
+      ref={setRootRef}
       data-slot="social-media-gallery"
-      data-branch="row"
+      data-branch={!inView ? "pending" : sameRatio ? "row" : "grid"}
       className={cn(
-        "mt-3 flex items-start gap-2 overflow-x-auto pb-1",
+        "mt-3",
+        inView &&
+          (sameRatio
+            ? "flex items-start gap-2 overflow-x-auto pb-1"
+            : cn("grid gap-2", cols === 3 ? "grid-cols-3" : "grid-cols-2")),
         className,
       )}
     >
-      {visible.map((item, i) => {
-        const known = resolveKnown(item);
-        const ratio = known ? known.height / known.width : DEFAULT_RATIO;
-        // 单图才封顶（Folo 口径）；多图按各自的真实比例算高
-        const box =
-          visible.length === 1 && known
-            ? computeSingleBox(itemWidth, known.width, known.height, maxHeight)
-            : { width: itemWidth, height: itemWidth * ratio };
-        return (
-          <GalleryImage
-            key={item.src}
-            item={item}
-            proxied={proxiedUrls[i] ?? item.src}
-            box={box}
-            onOpen={() => open(i)}
-          />
-        );
-      })}
+      {inView &&
+        (sameRatio
+          ? visible.map((item, i) => {
+              const known = resolveKnown(item);
+              const ratio = known ? known.height / known.width : DEFAULT_RATIO;
+              // 单图才封顶（Folo 口径）；多图按各自的真实比例算高
+              const box =
+                visible.length === 1 && known
+                  ? computeSingleBox(
+                      itemWidth,
+                      known.width,
+                      known.height,
+                      maxHeight,
+                    )
+                  : { width: itemWidth, height: itemWidth * ratio };
+              return (
+                <GalleryImage
+                  key={item.src}
+                  item={item}
+                  proxied={proxiedUrls[i] ?? item.src}
+                  box={box}
+                  onOpen={() => open(i)}
+                />
+              );
+            })
+          : visible.map((item, i) => (
+              <GalleryImage
+                key={item.src}
+                item={item}
+                proxied={proxiedUrls[i] ?? item.src}
+                onOpen={() => open(i)}
+              />
+            )))}
     </div>
   );
 });

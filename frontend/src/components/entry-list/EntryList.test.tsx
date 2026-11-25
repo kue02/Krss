@@ -140,7 +140,7 @@ vi.mock("./NotificationTimeline", () => ({
   }) => (
     <div
       data-testid="notification-timeline"
-      data-variant="cards"
+      data-variant="timeline"
       data-granularity={granularity}
       data-collapse={collapse}
       data-time-basis={timeBasis}
@@ -149,8 +149,8 @@ vi.mock("./NotificationTimeline", () => ({
     />
   ),
 }));
-vi.mock("./NotificationTimelineClassic", () => ({
-  NotificationTimelineClassic: ({
+vi.mock("./NotificationCards", () => ({
+  NotificationCards: ({
     entries,
     granularity,
     collapse,
@@ -165,7 +165,7 @@ vi.mock("./NotificationTimelineClassic", () => ({
   }) => (
     <div
       data-testid="notification-timeline"
-      data-variant="timeline"
+      data-variant="cards"
       data-granularity={granularity}
       data-collapse={collapse}
       data-time-basis={timeBasis}

@@ -20,6 +20,7 @@ import {
   defaultEntryToolbar,
   type EntryToolbarItem,
 } from "@/lib/entry-toolbar";
+import type { ArticlePaneFrame } from "@/lib/article-pane-style";
 
 export type CardImageSize = "none" | "small" | "large";
 export type ScrollReadOverride = "inherit" | "on" | "off";
@@ -209,8 +210,8 @@ interface UISettings {
    * 不碰用户在设置里自己手动关掉的情况（防止误伤）。恢复后立即置回 false。
    */
   inoreaderSplitterAutoOff: boolean;
-  /** 「Inoreader列表」内联正文的容器样式：card = 卡片（圆角+留白+阴影），plain = 原样（全宽圆角） */
-  articlePaneStyle: "card" | "plain";
+  /** 「Inoreader列表」正文栏外框：subtle = 淡边框（默认），none = 卡片档无边框，full = 原样（无边框全宽） */
+  articlePaneFrame: ArticlePaneFrame;
   hoverImageSize: "small" | "large";
   /** 29-4：悬停大图档「多图切换」的三个触发开关（默认只开行上滚轮） */
   hoverMultiImage: HoverMultiImageConfig;
@@ -280,6 +281,12 @@ interface UISettings {
    *  - anchor = 在长按位置附近弹出浮层（V1 的形态）
    */
   mobileEntryMenuPlacement: "sheet" | "anchor";
+  /**
+   * 移动端条目左滑露出的动作按钮样式：
+   *  - flat = 旧版扁平方块（默认）
+   *  - circle = 独立圆形按钮（描边 + 卡片底 + 阴影）
+   */
+  mobileSwipeActionStyle: "flat" | "circle";
   /** 社交媒体视图里，条目正文过短（只给摘要）时是否自动抓正文 */
   fetchReadableByView: ViewFlags;
   /**
@@ -509,8 +516,9 @@ const SILENT_SAVE_UI_KEYS = new Set<string>([
   "articleListRowHeight",
   "articleQuickActionMode",
   "articleMobileFullTitle",
+  "mobileSwipeActionStyle",
   "inoreaderSplitterPromptShown",
-  "articlePaneStyle",
+  "articlePaneFrame",
   "hoverImageSize",
   // 11-24：分界限的显示方式在侧栏边上当场就变（且切走 Inoreader 布局时的自动恢复不该弹框）
   "splitterVisibleByView",
@@ -554,6 +562,8 @@ function emptyPackage(): UISettingsPackageShape {
 }
 
 /** 认得的档位集合（用来丢弃老档位，如 18 批去掉的 `md` 6px） */
+const SWIPE_ACTION_STYLES = new Set<string>(["flat", "circle"]);
+
 const RADIUS_PRESETS = new Set<string>([
   "default",
   "none",
@@ -563,6 +573,9 @@ const RADIUS_PRESETS = new Set<string>([
   "xl",
   "full",
 ]);
+
+/** 正文栏外框的合法档位（老数据里的 default 会在下方迁成 subtle）。 */
+const ARTICLE_PANE_FRAMES = new Set<string>(["subtle", "none", "full"]);
 
 /**
  * 收窄一个 bag：只留认识的键、类型对得上的值；对象型的项与默认值浅合并
@@ -607,6 +620,28 @@ function sanitizeBag(input: unknown): Record<string, unknown> {
     if (typeof out[key] === "string" && !RADIUS_PRESETS.has(out[key] as string)) {
       delete out[key];
     }
+  }
+
+  // 枚举型设置认不得的值直接丢掉，回落默认档，避免设置页「一个都不选中」。
+  if (
+    typeof out.mobileSwipeActionStyle === "string" &&
+    !SWIPE_ACTION_STYLES.has(out.mobileSwipeActionStyle)
+  ) {
+    delete out.mobileSwipeActionStyle;
+  }
+
+  // 正文栏外框合并了旧的「原样」档：老版 articlePaneStyle=plain 一律迁成 full；
+  // 旧数字档 default（现状）迁成新的默认 subtle；不认识的档位丢掉回落默认。
+  if (input.articlePaneStyle === "plain") {
+    out.articlePaneFrame = "full";
+  } else if (out.articlePaneFrame === "default") {
+    out.articlePaneFrame = "subtle";
+  }
+  if (
+    typeof out.articlePaneFrame === "string" &&
+    !ARTICLE_PANE_FRAMES.has(out.articlePaneFrame)
+  ) {
+    delete out.articlePaneFrame;
   }
 
   // 字号 / 行高是跨设备同步的数值：本地存的旧值或别的设备写回来的越界值，
@@ -685,7 +720,7 @@ export const defaultUISettings: UISettings = {
   articleMobileFullTitle: true,
   inoreaderSplitterPromptShown: false,
   inoreaderSplitterAutoOff: false,
-  articlePaneStyle: "card",
+  articlePaneFrame: "subtle",
   hoverImageSize: "small",
   hoverMultiImage: { rowWheel: true, floatWheel: false, hSwipe: false },
   notificationBodyOnHover: false,
@@ -707,6 +742,7 @@ export const defaultUISettings: UISettings = {
   entryLineHeight: 1.8,
   mobileSidebarShowViews: false,
   mobileEntryMenuPlacement: "sheet",
+  mobileSwipeActionStyle: "flat",
   fetchReadableByView: {
     article: false,
     picture: false,
@@ -1031,9 +1067,10 @@ export function useUISettingActions() {
     setUISetting("splitterAutoHide", value);
   }, []);
 
-  const setArticlePaneStyle = useCallback(
-    (value: "card" | "plain") => {
-      setUISetting("articlePaneStyle", value);
+  /** 正文栏外框（subtle 淡边框 / none 卡片档无边框 / full 无边框全宽） */
+  const setArticlePaneFrame = useCallback(
+    (value: ArticlePaneFrame) => {
+      setUISetting("articlePaneFrame", value);
     },
     [setUISetting],
   );
@@ -1330,7 +1367,7 @@ export function useUISettingActions() {
     setInoreaderSplitterPromptShown,
     hideArticleSplitterFromPrompt,
     setSplitterAutoHide,
-    setArticlePaneStyle,
+    setArticlePaneFrame,
     setHoverImageSize,
     setArticleLayout,
     setArticlePushDirection,

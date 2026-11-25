@@ -8,6 +8,29 @@ import type { Entry, Feed } from "@/types/api";
 // Mock window.scrollTo (not implemented in jsdom)
 vi.stubGlobal("scrollTo", vi.fn());
 
+/** 用 MouseEvent 补齐 pointer 字段派发，驱动真实 useImageZoom 的触屏判定 */
+function fireTouchPointer(
+  element: Element,
+  type: "pointerdown" | "pointerup",
+  x: number,
+  y: number,
+  pointerId = 1,
+) {
+  const event = new MouseEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    clientX: x,
+    clientY: y,
+    button: 0,
+  });
+  Object.defineProperties(event, {
+    pointerId: { value: pointerId },
+    pointerType: { value: "touch" },
+    isPrimary: { value: pointerId === 1 },
+  });
+  fireEvent(element, event);
+}
+
 // Mock react-i18next
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -36,18 +59,35 @@ const mockSelectedScrollSnap = vi.fn(() => 0);
 const mockOn = vi.fn();
 const mockOff = vi.fn();
 
+let capturedEmblaOptions: {
+  startIndex?: number;
+  watchDrag?: (
+    api?: unknown,
+    event?: { touches?: { length: number } },
+  ) => boolean;
+} = {};
+
 vi.mock("embla-carousel-react", () => ({
-  default: () => [
-    vi.fn(), // emblaRef
-    {
-      scrollPrev: mockScrollPrev,
-      scrollNext: mockScrollNext,
-      scrollTo: mockScrollTo,
-      selectedScrollSnap: mockSelectedScrollSnap,
-      on: mockOn,
-      off: mockOff,
-    },
-  ],
+  default: (options: {
+    startIndex?: number;
+    watchDrag?: (
+      api?: unknown,
+      event?: { touches?: { length: number } },
+    ) => boolean;
+  }) => {
+    capturedEmblaOptions = options;
+    return [
+      vi.fn(), // emblaRef
+      {
+        scrollPrev: mockScrollPrev,
+        scrollNext: mockScrollNext,
+        scrollTo: mockScrollTo,
+        selectedScrollSnap: mockSelectedScrollSnap,
+        on: mockOn,
+        off: mockOff,
+      },
+    ];
+  },
 }));
 
 // Mock framer-motion to avoid animation issues in tests
@@ -58,12 +98,27 @@ vi.mock("framer-motion", () => ({
       children,
       className,
       onClick,
+      onDoubleClick,
+      onPointerDown,
+      onPointerUp,
+      onPointerCancel,
     }: {
       children: React.ReactNode;
       className?: string;
-      onClick?: () => void;
+      onClick?: React.MouseEventHandler<HTMLDivElement>;
+      onDoubleClick?: React.MouseEventHandler<HTMLDivElement>;
+      onPointerDown?: React.PointerEventHandler<HTMLDivElement>;
+      onPointerUp?: React.PointerEventHandler<HTMLDivElement>;
+      onPointerCancel?: React.PointerEventHandler<HTMLDivElement>;
     }) => (
-      <div className={className} onClick={onClick}>
+      <div
+        className={className}
+        onClick={onClick}
+        onDoubleClick={onDoubleClick}
+        onPointerDown={onPointerDown}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
+      >
         {children}
       </div>
     ),
@@ -128,6 +183,7 @@ describe("Lightbox", () => {
     mockSelectedScrollSnap.mockClear();
     mockOn.mockClear();
     mockOff.mockClear();
+    capturedEmblaOptions = {};
     useLightboxStore.getState().reset();
   });
 
@@ -619,6 +675,175 @@ describe("Lightbox", () => {
 
       // emblaApi.off should be called to clean up
       expect(mockOff).toHaveBeenCalledWith("select", expect.any(Function));
+    });
+  });
+
+  describe("单图点击、拖动与双指手势", () => {
+    const openSingle = () => {
+      useLightboxStore
+        .getState()
+        .open(mockImageEntry, mockFeed, [mockImageEntry.thumbnailUrl!]);
+    };
+
+    it("单图单击图片延时 320ms 关闭", async () => {
+      openSingle();
+      const { container } = render(<Lightbox />, { wrapper: createWrapper() });
+
+      const img = container.querySelector("img");
+      expect(img).not.toBeNull();
+
+      fireEvent.click(img!);
+      expect(useLightboxStore.getState().isOpen).toBe(true);
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 420));
+      });
+      expect(useLightboxStore.getState().isOpen).toBe(false);
+    });
+
+    it("单图双击图片触发缩放且不关闭", async () => {
+      openSingle();
+      const { container } = render(<Lightbox />, { wrapper: createWrapper() });
+
+      const img = container.querySelector("img");
+      expect(img).not.toBeNull();
+
+      fireEvent.click(img!);
+      fireEvent.click(img!);
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 420));
+      });
+      expect(useLightboxStore.getState().isOpen).toBe(true);
+      expect(img!.style.transform).toContain("scale(2)");
+    });
+
+    it("单图拖动超过阈值后松手不关闭", async () => {
+      openSingle();
+      const { container } = render(<Lightbox />, { wrapper: createWrapper() });
+
+      const img = container.querySelector("img");
+      expect(img).not.toBeNull();
+      const stage = img!.parentElement!;
+
+      fireEvent.pointerDown(stage, { clientX: 100, clientY: 100 });
+      fireEvent.pointerUp(stage, { clientX: 160, clientY: 100 });
+      fireEvent.click(img!, { clientX: 160, clientY: 100 });
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 420));
+      });
+      expect(useLightboxStore.getState().isOpen).toBe(true);
+    });
+
+    it("双指按下时 watchDrag 返回 false", () => {
+      useLightboxStore
+        .getState()
+        .open(mockImageEntry, mockFeed, mockMultipleImages);
+      render(<Lightbox />, { wrapper: createWrapper() });
+
+      expect(
+        capturedEmblaOptions.watchDrag!(undefined, {
+          touches: { length: 2 },
+        }),
+      ).toBe(false);
+      expect(
+        capturedEmblaOptions.watchDrag!(undefined, {
+          touches: { length: 1 },
+        }),
+      ).toBe(true);
+    });
+
+    it("第二指落下后即使 touches 报 1，watchDrag 也返回 false", () => {
+      useLightboxStore
+        .getState()
+        .open(mockImageEntry, mockFeed, mockMultipleImages);
+      const { container } = render(<Lightbox />, {
+        wrapper: createWrapper(),
+      });
+      const img = container.querySelector("img")!;
+
+      expect(
+        capturedEmblaOptions.watchDrag!(undefined, { touches: { length: 1 } }),
+      ).toBe(true);
+
+      // 第一指先落、第二指后落（touches 仍可能报 1），实时多指标记应兜底
+      fireTouchPointer(img, "pointerdown", 100, 100, 1);
+      fireTouchPointer(img, "pointerdown", 200, 100, 2);
+      expect(
+        capturedEmblaOptions.watchDrag!(undefined, { touches: { length: 1 } }),
+      ).toBe(false);
+    });
+
+    it("触屏双击放大后立刻点空白能关闭（不被 suppress 误吞）", () => {
+      openSingle();
+      const { container } = render(<Lightbox />, { wrapper: createWrapper() });
+      const img = container.querySelector("img")!;
+      const stage = img.parentElement!;
+
+      // 第一次点按（记录上一次点按）
+      fireTouchPointer(img, "pointerdown", 120, 120);
+      fireTouchPointer(stage, "pointerup", 120, 120);
+      fireEvent.click(img, { clientX: 120, clientY: 120 });
+      // 第二次点按 → 双击放大，进入 500ms suppress 窗口
+      fireTouchPointer(img, "pointerdown", 120, 120);
+      fireTouchPointer(stage, "pointerup", 120, 120);
+      expect(img.style.transform).toContain("scale(2)");
+
+      // 立刻点空白（stage，落点非 img）：应继续走空白关闭，立即关闭
+      fireTouchPointer(stage, "pointerdown", 300, 300);
+      fireEvent.click(stage, { clientX: 300, clientY: 300 });
+      expect(useLightboxStore.getState().isOpen).toBe(false);
+    });
+
+    it("触屏双击放大后点图片本身不关闭、也不二次切换", () => {
+      openSingle();
+      const { container } = render(<Lightbox />, { wrapper: createWrapper() });
+      const img = container.querySelector("img")!;
+      const stage = img.parentElement!;
+
+      fireTouchPointer(img, "pointerdown", 120, 120);
+      fireTouchPointer(stage, "pointerup", 120, 120);
+      fireEvent.click(img, { clientX: 120, clientY: 120 });
+      fireTouchPointer(img, "pointerdown", 120, 120);
+      fireTouchPointer(stage, "pointerup", 120, 120);
+      expect(img.style.transform).toContain("scale(2)");
+
+      // 立刻点图片本身：落点仍在 img，suppress 窗口内被吞，不关闭、不二次切换（仍 scale(2)）
+      fireTouchPointer(img, "pointerdown", 120, 120);
+      fireEvent.click(img, { clientX: 120, clientY: 120 });
+      expect(useLightboxStore.getState().isOpen).toBe(true);
+      expect(img.style.transform).toContain("scale(2)");
+    });
+  });
+
+  describe("多图点击图片与计数区域", () => {
+    it("多图 1x 单击图片不会立即关闭（走 320ms 延时窗口）", async () => {
+      useLightboxStore
+        .getState()
+        .open(mockImageEntry, mockFeed, mockMultipleImages);
+      const { container } = render(<Lightbox />, { wrapper: createWrapper() });
+
+      const img = container.querySelector("img");
+      expect(img).not.toBeNull();
+
+      fireEvent.click(img!);
+      expect(useLightboxStore.getState().isOpen).toBe(true);
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 420));
+      });
+      expect(useLightboxStore.getState().isOpen).toBe(false);
+    });
+
+    it("点击页码计数区域不会关闭预览", () => {
+      useLightboxStore
+        .getState()
+        .open(mockImageEntry, mockFeed, mockMultipleImages);
+      render(<Lightbox />, { wrapper: createWrapper() });
+
+      fireEvent.click(screen.getByText("1 / 3"));
+      expect(useLightboxStore.getState().isOpen).toBe(true);
     });
   });
 });

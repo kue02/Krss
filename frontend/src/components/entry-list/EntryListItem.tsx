@@ -86,6 +86,14 @@ interface EntryListItemProps {
   targetLanguage?: string;
   /** 社交媒体视图（第四类内容）：时间线式铺开正文，而不是卡片列表 */
   social?: boolean;
+  /**
+   * 社交媒体视图离屏时是否降级为轻量占位（默认 true）。
+   *
+   * 非虚拟路径下社交列表整份都在 DOM 里，离屏卡片需要占位来省掉正文解析；
+   * 而移动端社交已接入虚拟容器，容器本身只挂可视 + overscan 行，此时不需要
+   * 再叠一层固定 600px 占位（会虚高总高度），虚拟分支传 false。
+   */
+  deferSocialOffscreen?: boolean;
   /** 移动端：长按打开条目操作面板 */
   isMobile?: boolean;
   /** 长按条目回调（由列表统一渲染操作面板；带上触点用于「长按位置浮层」） */
@@ -125,6 +133,14 @@ const SOCIAL_COLLAPSED_HEIGHT = `${SOCIAL_COLLAPSED_PX}px`;
 /** Folo 的 mask-b-2xl：只在最后 90px 做淡出 */
 const SOCIAL_COLLAPSE_MASK =
   "linear-gradient(to bottom, #000 calc(100% - 90px), transparent)";
+/**
+ * 社交卡片离屏占位的最小高度（约一张卡的高度）。
+ *
+ * 社交视图没有虚拟化，整列表都在 DOM 里；离屏卡片先渲染这个空占位，等进入
+ * 视口再挂真实内容。给足最小高度是为了让滚动条与行位置稳定，进入视口时
+ * 不会因为「0 高 → 满高」把可见内容顶得跳动。
+ */
+const SOCIAL_PLACEHOLDER_MIN_HEIGHT = 600;
 
 /**
  * 「已静音」细标签 —— 被过滤规则静音时的标记。
@@ -314,6 +330,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
       onClick,
       targetLanguage,
       social = false,
+      deferSocialOffscreen = true,
       fetchReadable = false,
       autoExpandLong = false,
       isMobile = false,
@@ -395,27 +412,82 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
         : undefined,
     );
 
-    const strippedContent = useMemo(
-      () => (entry.content ? stripHtml(entry.content).slice(0, 150) : null),
-      [entry.content],
+    const isSocialView = social;
+    /**
+     * 进入视口前多久挂载正文 / 解析正文。
+     *
+     * 社交视图的正文、图片与缩略图都要 `DOMParser` 全文解析，而社交 tab **没有虚拟化**，
+     * 整列表几十条都在 DOM 里 —— 无条件解析会把切换 tab 卡住。这里用 `inView` 门控：
+     * 离屏只渲染轻量占位，进入视口附近才算正文。
+     *
+     * 为什么上方留 2400px、下方只留 1200px（非对称）：
+     *   - 向下滚时，新卡片在**下方**挂载，撑开不影响可见内容；
+     *   - 向上滚时，卡片是在**上方**挂载的 —— 上方撑开会把可见内容整体往下推，表现为
+     *     「条目跳动」（用户报的 BUG-2）。所以上方要留得足够远，让用户往回滚之前它早就挂载好了。
+     * 非社交视图（文章 / 普通列表）本来就有虚拟化或行高很小，保持 600px 即可。
+     */
+    const socialRootMargin = isSocialView
+      ? "2400px 0px 1200px 0px"
+      : "600px";
+    const { ref: inViewRef, inView } = useInView<HTMLDivElement>(socialRootMargin);
+    /**
+     * 社交卡片离屏：跳过 `plainContent` / `thumbnail`（无 thumbnailUrl 时）/
+     * `socialBody` / `socialMedia` 的重解析，也不挂 `SocialMediaGallery`。
+     * 进入视口（inView=true）后恢复全量计算。非社交视图恒为 false，行为不变。
+     */
+    const deferSocialContent =
+      isSocialView && deferSocialOffscreen && !inView;
+
+    /**
+     * 第四十三批（移动端性能）：每行只解析一次正文。
+     *
+     * 原来 `strippedContent` / `titleIsBodyPrefix` 各 `stripHtml` 一次、`readingTime`
+     * 又对全文跑一遍正则 —— 切 tab / 回滚重挂载时同一段长文被 `DOMParser` 解析多次。
+     * 这里算一份 `plainContent` 供三处复用（`stripHtml` 内部已带 LRU 缓存，这里再
+     * 省掉重复的切片/正则）。
+     */
+    const plainContent = useMemo(
+      () =>
+        deferSocialContent
+          ? null
+          : entry.content
+            ? stripHtml(entry.content)
+            : null,
+      [deferSocialContent, entry.content],
     );
 
-    /** 缩略图：优先 thumbnailUrl，其次正文首图（都走图片代理） */
+    const strippedContent = useMemo(
+      () => (plainContent === null ? null : plainContent.slice(0, 150)),
+      [plainContent],
+    );
+
+    /**
+     * 缩略图：优先 thumbnailUrl，其次正文首图（都走图片代理）。
+     *
+     * 有 `thumbnailUrl` 时直接拼代理 URL，**不再解析正文**（`getEntryImages` 内部
+     * 会 `DOMParser` 全文找图，纯属浪费）；只有没有 thumbnailUrl 才退回正文首图。
+     */
     const thumbnail = useMemo(() => {
-      const images = getEntryImages(entry.thumbnailUrl, entry.content, entry.url);
+      if (deferSocialContent && !entry.thumbnailUrl) {
+        // 社交卡片离屏且没有现成缩略图：不解析正文找首图（离屏也用不到）
+        return null;
+      }
+      if (entry.thumbnailUrl) {
+        return getProxiedImageUrl(entry.thumbnailUrl, entry.url);
+      }
+      const images = getEntryImages(undefined, entry.content, entry.url);
       return images[0] ?? null;
-    }, [entry.thumbnailUrl, entry.content, entry.url]);
+    }, [deferSocialContent, entry.thumbnailUrl, entry.content, entry.url]);
     const thumbnailSrc = thumbRecovered && thumbnail ? withProxyCacheBust(thumbnail) : thumbnail;
     const authedThumbnail = useAuthedImageUrl(thumbnailSrc ?? undefined);
 
-    /** 阅读时长（与 EntryContentBody 同口径） */
+    /** 阅读时长（与 EntryContentBody 同口径）：复用 plainContent，不再全文正则 */
     const readingTime = useMemo(() => {
-      if (!entry.content) return null;
-      const text = entry.content.replace(/<[^>]*>/g, "");
-      const words = text.match(/[\u4e00-\u9fa5]|\w+/g)?.length || 0;
+      if (plainContent === null) return null;
+      const words = plainContent.match(/[\u4e00-\u9fa5]|\w+/g)?.length || 0;
       const mins = Math.ceil(words / 230);
       return mins > 0 ? t("entry.min_read", { mins }) : null;
-    }, [entry.content, t]);
+    }, [plainContent, t]);
 
     const displayTitle = translation?.title ?? entry.title;
     const displaySummary = translation?.summary ?? strippedContent;
@@ -424,23 +496,12 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     const { sourceProps } = useEntrySourceJump(feed, onSelectFeedFromEntry);
     const titleContainsUrl = URL_PATTERN.test(displayTitle ?? "");
     const summaryContainsUrl = URL_PATTERN.test(displaySummary ?? "");
-    const isSocialView = social;
-    /**
-     * 进入视口前多久挂载正文（社交媒体视图的正文是 `inView ? 正文 : 占位` 门控的，
-     * 一挂载就可能撑开 300px 折叠高度）。
-     *
-     * 为什么上方留 2400px、下方只留 1200px（非对称）：
-     *   - 向下滚时，新卡片在**下方**挂载，撑开不影响可见内容；
-     *   - 向上滚时，卡片是在**上方**挂载的 —— 上方撑开会把可见内容整体往下推，表现为「条目跳动」
-     *     （用户报的 BUG-2）。所以上方要留得足够远，让用户往回滚之前它早就挂载好了。
-     * 取 2000/1000 而不是更大：够覆盖两屏的回滚距离，又不会为看不到的内容多抓正文。
-     * 代价是多挂载几张卡（约 3000px 内容），换滚动不跳。
-     */
-    const { ref: inViewRef, inView } = useInView<HTMLDivElement>(
-      "600px",
+    // 只在进入视口时按需抓正文，避免一次并发抓取整屏。
+    // 社交虚拟分支（deferSocialOffscreen=false）里容器已只挂可视行，直接按需抓。
+    const autoReadable = useAutoReadable(
+      entry,
+      fetchReadable && (isSocialView ? !deferSocialContent : inView),
     );
-    // 只在进入视口时按需抓正文，避免一次并发抓取整屏
-    const autoReadable = useAutoReadable(entry, fetchReadable && inView);
     const expandedBodyRef = useRef<HTMLDivElement | null>(null);
     const [isContentClipped, setIsContentClipped] = useState(false);
 
@@ -505,6 +566,8 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     // 图片也从正文摘掉，交给下面的缩略图行（对齐 Folo 的 noMedia + MediaGallery）
     // 社交帖常把正文开头当成标题：这时不单独渲染标题，避免同一句话出现两次
     const titleIsBodyPrefix = useMemo(() => {
+      // 只有社交视图渲染标题重复判定；文章 / 普通列表视图直接 false，省掉一次比较
+      if (!isSocialView) return false;
       // 源的标题往往是「正文掐掉换行后的版本」：两边都去掉全部空白再比前缀，
       // 免得 stripHtml 不给 <br> 补空格导致比对失败
       const squash = (value: string) => value.replace(/\s+/g, "");
@@ -523,22 +586,31 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
       const title = squash(
         (entry.title ?? "").replace(/(?:\.{2,}|…)\s*$/, ""),
       );
-      const raw = squash(stripHtml(entry.content ?? ""));
+      const raw = squash(plainContent ?? "");
       if (title.length < 6 || !raw) return false;
       return raw.startsWith(title);
-    }, [entry.title, entry.content]);
+    }, [isSocialView, entry.title, plainContent]);
     /**
      * 正文正文：标题重复的开头只在「标题另渲染一份」时才剥掉。
      * 反之（标题就是正文开头、标题不渲染）必须留全文 —— 否则正文被剥掉一半，
      * 引用推文那种条目就只剩底下的引文了（用户报的「只显示引文内容」）。
      */
     const socialBody = useMemo(() => {
+      // 非社交视图不渲染这段正文管线，直接空串省掉 stripContentImages 等解析。
+      // 社交视图离屏时同样跳过：这些解析都是 DOMParser 全文，离屏用不到。
+      if (!isSocialView || deferSocialContent) return "";
       const base = stripContentImages(displayContent);
       const withoutDuplicate = titleIsBodyPrefix
         ? base
         : stripDuplicatedTitle(base, displayTitle);
       return removeContentSeparators(withoutDuplicate);
-    }, [displayContent, displayTitle, titleIsBodyPrefix]);
+    }, [
+      isSocialView,
+      deferSocialContent,
+      displayContent,
+      displayTitle,
+      titleIsBodyPrefix,
+    ]);
 
     /**
      * 47-5（用户 2026-10-12）：正文与引文是**两段**，顺序照来源 —— 卡片渲染顺序是
@@ -559,16 +631,27 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     // 社交媒体视图的图片区（第四十二批）：按原图比例排版，替代旧的 112px 正方形横排。
     // `extractContentMedia` 返回原始 URL + HTML 里的 width/height；store 缓存与
     // onLoad 实测在 SocialMediaGallery 内部补（key 与图片视图同为原始 URL）。
+    //
+    // 只在社交视图才算：这函数会对每行 HTML 跑一次 DOMParser，article / 普通列表
+    // 根本不用这份清单 —— 原来无条件执行，是文章 tab 切换时 `parseFromString`
+    // 长任务的主因（每行一次全量解析）。非社交视图给空数组，社交视图行为不变。
     const socialMedia = useMemo(
-      () => extractContentMedia(expandedContent, entry.url, entry.thumbnailUrl),
-      [expandedContent, entry.url, entry.thumbnailUrl],
+      () =>
+        isSocialView && !deferSocialContent
+          ? extractContentMedia(expandedContent, entry.url, entry.thumbnailUrl)
+          : [],
+      [
+        isSocialView,
+        deferSocialContent,
+        expandedContent,
+        entry.url,
+        entry.thumbnailUrl,
+      ],
     );
     // 大图查看器要的是**代理后**的 URL 列表（点缩略图传的下标要对得上）
     const openImagePreview = useImagePreviewStore((state) => state.open);
-    const socialImages = useMemo(
-      () => socialMedia.map((m) => getProxiedImageUrl(m.src, entry.url)),
-      [socialMedia, entry.url],
-    );
+    // 代理 URL 含 btoa，改成「点图那一刻」才算：卡片渲染阶段不再为每张图预先构造
+    // （社交列表几十条 × 多图时这是纯浪费，绝大多数图用户不会点）
     // 「长贴自动展开」开启后不做折叠（按视图设置，由 EntryList 传进来）
     const bodyClamped = isContentClipped && !bodyExpanded && !autoExpandLong;
     const isUnread = !entry.read;
@@ -583,6 +666,41 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     // 头像在左、作者行在右；正文纯文字（图片抽到下面的缩略图行）；
     // 正文超过 300px 折叠 + 遮罩淡出 + 「显示更多」；未读点在最左侧。
     if (isSocialView) {
+      /**
+       * 离屏轻量占位：不渲染标题 / 正文 / 图片，也不触发任何正文解析。
+       *
+       * 保留根节点的 class、`data-*` 与 `inViewRef`，让 IntersectionObserver 能继续
+       * 观察这张卡；进入视口（inView=true 后保持 true）再换成下面的真实内容。
+       * 没有 IntersectionObserver 时 `useInView` 首帧即 true，直接走真实内容 ——
+       * 不会出现空白列表。
+       */
+      if (deferSocialContent) {
+        return (
+          <div
+            ref={(node) => {
+              if (typeof ref === "function") ref(node);
+              else if (ref) ref.current = node;
+              inViewRef.current = node;
+            }}
+            className={cn(
+              "group relative mx-auto mb-1 flex w-full max-w-[clamp(45ch,60vw,65ch)] cursor-pointer rounded-xl border border-transparent px-3 py-4 transition-colors duration-200",
+              isSelected ? "border-border/60 bg-card shadow-nf" : "hover:bg-item-hover",
+              unreadRowClass(isUnread, !!entry.starred, isSelected, unreadStyle),
+            )}
+            style={{ ...style, minHeight: SOCIAL_PLACEHOLDER_MIN_HEIGHT }}
+            data-index={dataIndex}
+            data-entry-id={dataEntryId}
+            data-entry-card=""
+            data-entry-placeholder=""
+            {...longPress.touchHandlers}
+            onClick={() => {
+              if (longPress.consumeClick()) return;
+              onClick(entry.id);
+            }}
+          />
+        );
+      }
+
       return (
         <ContextMenu>
           <ContextMenuTrigger asChild disabled={isMobile}>
@@ -594,7 +712,9 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
               }}
               className={cn(
                 // Folo 的社交时间线是「居中可读宽度」而不是通栏
-                "group relative mx-auto mb-1 flex w-full max-w-[clamp(45ch,60vw,65ch)] cursor-pointer rounded-xl border border-transparent px-3 py-4 transition-colors duration-200",
+                // contain:layout 隔离内部布局（卡片自带绝对定位未读点/悬停操作条），
+                // 但不用 paint：paint 会裁掉卡片自绘阴影与 -left-0.5 溢出的未读圆点
+                "group relative mx-auto mb-1 flex w-full max-w-[clamp(45ch,60vw,65ch)] cursor-pointer rounded-xl border border-transparent px-3 py-4 transition-colors duration-200 [contain:layout]",
                 isSelected ? "border-border/60 bg-card shadow-nf" : "hover:bg-item-hover",
                 unreadRowClass(isUnread, !!entry.starred, isSelected, unreadStyle),
               )}
@@ -746,7 +866,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                 {/* 正文：纯文字 + 300px 折叠（Folo 的 CollapsedSocialMediaItem）。
                     47-5：这里只放「正文段」，引文段在下面的图片画廊之后再渲染。 */}
                 <div className="relative mt-1">
-                  {inView ? (
+                  {!deferSocialContent ? (
                     <>
                       {socialBodyText && (
                       <div
@@ -759,8 +879,11 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                             event.preventDefault();
                             event.stopPropagation();
                             const src = target.getAttribute("src") ?? "";
-                            const index = socialImages.findIndex((url) => url === src);
-                            openImagePreview(socialImages, index >= 0 ? index : 0);
+                            const urls = socialMedia.map((m) =>
+                              getProxiedImageUrl(m.src, entry.url),
+                            );
+                            const index = urls.findIndex((url) => url === src);
+                            openImagePreview(urls, index >= 0 ? index : 0);
                             return;
                           }
                           /**
@@ -982,7 +1105,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
               // 只过渡真正会变的属性：transition-all 会让几百张卡片为「任何」属性变化做检查
               // 移动端改成「纸面列表」：整宽、无卡片边框、行间细线，给文字更多呼吸；
               // 桌面端（sm 起）保持原来的圆角卡片。
-              "group relative cursor-pointer overflow-hidden border-0 border-b border-border/45 px-4 py-3.5",
+              "group relative cursor-pointer overflow-hidden border-0 border-b border-border/45 px-4 py-3.5 [contain:layout]",
               "sm:mx-2 sm:mb-1.5 sm:rounded-[10px] sm:border sm:p-2",
               "transition-[background-color,border-color,box-shadow,opacity] duration-200",
               // 24-7：上下结构（来源行顶满 + 标题摘要/右图行），大图档保持纵向

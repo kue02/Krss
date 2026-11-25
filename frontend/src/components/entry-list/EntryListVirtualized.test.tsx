@@ -4,7 +4,8 @@
  * 覆盖语义：
  * 1. 50 条时首屏挂载的卡数 <= 15（可视区 600px / 估计行高 148px ≈ 4 行 + overscan 8*2 上限）。
  * 2. 滚动到底能加载出后面的卡（range 跟着 scrollTop 走）。
- * 3. 虚拟化只作用于标准文章列表：社交 / 通知时间线 / hover 档走原路径。
+ * 3. 虚拟化作用于标准文章列表 + 社交列表（桌面 / 移动端同一份 EntryListItem）；
+ *    通知时间线（吸附分组 + sticky 日期头）与 hover 浮层档走原路径。
  *
  * 手法：jsdom 里 offsetWidth/offsetHeight 全 0，虚拟库拿不到容器尺寸。
  * 这里给 viewport 打桩（offsetHeight/clientHeight/scrollTop 可写），让 range 真实算出来。
@@ -129,8 +130,8 @@ vi.mock("./EntryListHeader", () => ({
 vi.mock("./NotificationTimeline", () => ({
   NotificationTimeline: () => <div data-testid="notification-timeline" />,
 }));
-vi.mock("./NotificationTimelineClassic", () => ({
-  NotificationTimelineClassic: () => <div data-testid="notification-timeline" />,
+vi.mock("./NotificationCards", () => ({
+  NotificationCards: () => <div data-testid="notification-timeline" />,
 }));
 
 // hover 档的浮块本体在这里只关心「有没有走到虚拟分支」，本体 mock 掉
@@ -258,7 +259,7 @@ describe("EntryList · 标准文章列表虚拟化", () => {
     entryListScrollPositions.clear();
     useFilterViewStore.getState().setMutedOnly(false);
     setUISetting("articleLayout", "list");
-    setUISetting("articlePaneStyle", "card");
+    setUISetting("articlePaneFrame", "subtle");
     installLayoutStubs();
     vi.mocked(useEntriesInfinite).mockReturnValue({
       data: { pages: [{ entries: manyEntries, hasMore: false }] },
@@ -319,16 +320,44 @@ describe("EntryList · 标准文章列表虚拟化", () => {
     expect(lastScreen).not.toContain("e-1");
   });
 
-  it("社交视图不虚拟化（50 条全渲染，走原路径）", () => {
+  it("桌面社交视图接入虚拟容器：首屏只挂可视 + overscan，远少于 50 条", async () => {
     render(<EntryList {...defaultProps} contentType="social" />);
+    const viewport = screen.getByTestId("entry-list-viewport");
+    await act(async () => {
+      stubViewportScroll(viewport);
+      await Promise.resolve();
+    });
 
     expect(screen.queryByTestId("notification-timeline")).toBeNull();
+    // 桌面社交与移动端共用同一虚拟容器，不再 50 条全挂 DOM
     expect(
-      screen
-        .getByTestId("entry-list-viewport")
-        .querySelector('[data-virtual-list="true"]'),
-    ).toBeNull();
-    expect(rowIds()).toHaveLength(50);
+      viewport.querySelector('[data-virtual-list="true"]'),
+    ).not.toBeNull();
+    const ids = rowIds();
+    expect(ids.length).toBeGreaterThan(0);
+    expect(ids.length).toBeLessThan(manyEntries.length);
+    // 首屏从第一条开始
+    expect(ids[0]).toBe("e-1");
+  });
+
+  it("移动端社交列表接入虚拟容器：首屏只挂可视 + overscan，远少于 50 条", async () => {
+    render(<EntryList {...defaultProps} contentType="social" isMobile />);
+    const viewport = screen.getByTestId("entry-list-viewport");
+    await act(async () => {
+      stubViewportScroll(viewport);
+      await Promise.resolve();
+    });
+
+    // 走虚拟列表（data-virtual-list），不再整份 50 条全挂 DOM
+    expect(
+      viewport.querySelector('[data-virtual-list="true"]'),
+    ).not.toBeNull();
+    const ids = rowIds();
+    expect(ids.length).toBeGreaterThan(0);
+    // 社交卡片按 600px 估计行高，视口高度有限 + overscan，远小于 50
+    expect(ids.length).toBeLessThan(manyEntries.length);
+    expect(ids.length).toBeLessThanOrEqual(24);
+    expect(ids[0]).toBe("e-1");
   });
 
   it("通知视图走时间线（不走虚拟列表）", () => {
@@ -406,12 +435,12 @@ describe("EntryList · 标准文章列表虚拟化", () => {
     // 未选中：没有正文 pane，底部「全部标记为已读」照常在
     expect(screen.queryByTestId("inline-article-pane")).toBeNull();
     expect(screen.getByTestId("mark-all-read-footer")).toBeTruthy();
-    // 「向下」合列整体不走虚拟列表：pane 必须在被点行后面、且要能继续下滑看后续条目，
-    // 因此从进入该模式起就全量渲染（避免点开的瞬间把整列从虚拟切全量导致闪烁）。
+    // 桌面「向下」合列现在也走虚拟列表（pane 作为被点行的一部分渲染，行用 top 定位
+    // 以免 transform 祖先破坏 pane 里 sticky 标题栏）。jsdom 测不到尺寸时按 12 行回退。
     expect(
       viewport.querySelector('[data-virtual-list="true"]'),
-    ).toBeNull();
-    expect(rowIds().length).toBeGreaterThan(15);
+    ).not.toBeNull();
+    expect(rowIds().length).toBeLessThan(manyEntries.length);
 
     rerender(
       <EntryList
@@ -424,14 +453,17 @@ describe("EntryList · 标准文章列表虚拟化", () => {
       await Promise.resolve();
     });
 
-    // 选中后关掉虚拟化：pane 落进普通文档流（否则 sticky 工具栏会失效），
-    // 整表全量渲染，后续条目都在 DOM 里可继续下滑查看。
+    // 选中后仍保持虚拟化：pane 渲染在被点行（e-1 在首屏窗口内）内部，后续条目照常
+    // 由虚拟容器管理。sticky 靠行改用 top 定位保证（不靠关掉虚拟化）。
     expect(
       viewport.querySelector('[data-virtual-list="true"]'),
-    ).toBeNull();
-    expect(rowIds()).toHaveLength(manyEntries.length);
+    ).not.toBeNull();
+    expect(rowIds().length).toBeLessThan(manyEntries.length);
 
-    expect(renderInlineContent).toHaveBeenCalled();
+    expect(renderInlineContent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ paneAtTop: false }),
+    );
     const pane = screen.getByTestId("inline-article-pane");
     expect(pane.contains(screen.getByTestId("inline-body"))).toBe(true);
     // 正文接在被点的那一行后面：e-1 行在前、pane 在后，随后的 e-2 行还在 pane 之后
@@ -522,7 +554,10 @@ describe("EntryList · 标准文章列表虚拟化", () => {
       viewport.querySelector('[data-virtual-list="true"]'),
     ).toBeNull();
     expect(rowIds()).toHaveLength(50);
-    expect(renderInlineContent).toHaveBeenCalled();
+    expect(renderInlineContent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ paneAtTop: false }),
+    );
     const pane = screen.getByTestId("inline-article-pane");
     expect(pane.contains(screen.getByTestId("inline-body"))).toBe(true);
     const row1 = viewport.querySelector('[data-entry-id="e-1"]') as HTMLElement;
@@ -583,6 +618,11 @@ describe("EntryList · 标准文章列表虚拟化", () => {
       expect(pane.className).toContain("rounded-none");
       expect(pane.className).toContain("[overflow:clip]");
       expect(pane.className).not.toContain("clip-path");
+      // 接线断言：贴顶时 renderInlineContent 的第二个参数必须带 paneAtTop=true，
+      // App 据此把 headerBackgroundRoundedTopFor 算成 false（不加顶部圆角）。
+      expect((renderInlineContent.mock.lastCall as unknown[] | undefined)?.[1]).toMatchObject({
+        paneAtTop: true,
+      });
 
       /* 滚回列表最顶：正文已不在视口顶，必须复位成卡片档，不能保持铺满直角 */
       await act(async () => {
@@ -591,6 +631,9 @@ describe("EntryList · 标准文章列表虚拟化", () => {
       });
       expect(pane.className).toContain("rounded-[12px]");
       expect(pane.className).toContain("[overflow:clip]");
+      expect((renderInlineContent.mock.lastCall as unknown[] | undefined)?.[1]).toMatchObject({
+        paneAtTop: false,
+      });
     } finally {
       if (scrollYDescriptor) {
         Object.defineProperty(window, "scrollY", scrollYDescriptor);
@@ -598,6 +641,68 @@ describe("EntryList · 标准文章列表虚拟化", () => {
         Reflect.deleteProperty(window, "scrollY");
       }
     }
+  });
+
+  it.each([
+    ["subtle", "border-border/40", "shadow-[0_1px_2px_rgba(0,0,0,0.04)]"],
+    ["none", "border-0", "shadow-none"],
+  ] as const)(
+    "卡片档正文栏外框按设置映射（%s）",
+    async (frame, expectedBorder, expectedShadow) => {
+      setUISetting("articleLayout", "inoreader");
+      setUISetting("articlePushDirection", "down");
+      setUISetting("articlePaneFrame", frame);
+      const renderInlineContent = vi.fn(() => (
+        <div data-testid="inline-body">正文</div>
+      ));
+      render(
+        <EntryList
+          {...defaultProps}
+          isMobile
+          selectedEntryId="e-1"
+          renderInlineContent={renderInlineContent}
+        />,
+      );
+      await act(async () => {
+        await Promise.resolve();
+      });
+      const pane = screen.getByTestId("inline-article-pane");
+      expect(pane.className).toContain("mx-2");
+      expect(pane.className).toContain("rounded-[12px]");
+      expect(pane.className).toContain(expectedBorder);
+      expect(pane.className).toContain(expectedShadow);
+      expect(pane.className).not.toContain("border-border/60");
+      expect(pane.className).not.toContain("shadow-nf");
+    },
+  );
+
+  it("正文栏外框选「全宽」时无边框、无顶部分隔线并铺满整栏", async () => {
+    setUISetting("articleLayout", "inoreader");
+    setUISetting("articlePushDirection", "down");
+    setUISetting("articlePaneFrame", "full");
+    const renderInlineContent = vi.fn(() => (
+      <div data-testid="inline-body">正文</div>
+    ));
+    render(
+      <EntryList
+        {...defaultProps}
+        isMobile
+        selectedEntryId="e-1"
+        renderInlineContent={renderInlineContent}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const pane = screen.getByTestId("inline-article-pane");
+    expect(pane.className).toContain("w-full");
+    expect(pane.className).toContain("rounded-[12px]");
+    expect(pane.className).not.toContain("border-t");
+    expect(pane.className).not.toContain("border-border");
+    expect(pane.className).toContain("[clip-path:inset(0_round_12px)]");
+    expect(pane.className).not.toContain("mx-2");
+    expect(pane.className).not.toContain("border-border/40");
+    expect(pane.className).not.toContain("shadow-");
   });
 
   it("文章「Inoreader列表」在手机档包一层左滑动作（与其它列表一致）", async () => {

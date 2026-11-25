@@ -10,6 +10,7 @@ const setTimelineTimeBasisForView = vi.fn();
 const setEntryFontSize = vi.fn();
 const setEntryLineHeight = vi.fn();
 const setSplitterAutoHide = vi.fn();
+const setArticlePaneFrame = vi.fn();
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: "zh" } }),
@@ -137,6 +138,7 @@ vi.mock("@/hooks/useUISettings", async () => {
     articleLayout: "list",
     articlePushDirection: "right",
     articleCoverList: false,
+    articlePaneFrame: "subtle",
     pictureLayout: "grid",
     gridStyle: "masonry",
     hoverRowHeight: "compact",
@@ -168,6 +170,7 @@ vi.mock("@/hooks/useUISettings", async () => {
       setExpandLongForView,
       setReduceMotion,
       setArticleLayout: vi.fn(),
+      setArticlePaneFrame,
       setSplitterAutoHide,
       setPictureLayout: vi.fn(),
       setArticlePushDirection: vi.fn(),
@@ -223,6 +226,7 @@ describe("AppearanceSettings 按视图设置", () => {
     setTimelineCollapseForView.mockClear();
     setTimelineTimeBasisForView.mockClear();
     setSplitterAutoHide.mockClear();
+    setArticlePaneFrame.mockClear();
     scrollReadState.mode = "perView";
   });
 
@@ -430,6 +434,36 @@ describe("AppearanceSettings 按视图设置", () => {
     expect(within(pictureRow).getByText("grid")).toBeTruthy();
     expect(within(pictureRow).queryByText("hover")).toBeNull();
     expect(within(pictureRow).queryByText("wall")).toBeNull();
+  });
+
+  it("Inoreader 下出现「正文栏外框」三档（默认淡边框），选中即写入 articlePaneFrame", () => {
+    uiOverride.articleLayout = "inoreader";
+    try {
+      render(<AppearanceSettings />);
+
+      const row = rowOf("appearance_view.article_pane_frame");
+      for (const optionValue of ["subtle", "none", "full"]) {
+        expect(within(row).getByText(optionValue)).toBeTruthy();
+      }
+      expect(row.querySelector("[data-value]")?.getAttribute("data-value")).toBe(
+        "subtle",
+      );
+
+      fireEvent.click(within(row).getByText("full"));
+      expect(setArticlePaneFrame).toHaveBeenCalledWith("full");
+    } finally {
+      uiOverride.articleLayout = undefined;
+    }
+  });
+
+  it("非 Inoreader 布局不显示「正文栏外框」", () => {
+    uiOverride.articleLayout = "list";
+    try {
+      render(<AppearanceSettings />);
+      expect(screen.queryByText("appearance_view.article_pane_frame")).toBeNull();
+    } finally {
+      uiOverride.articleLayout = undefined;
+    }
   });
 
   it("M1 回归：实验关闭时，即使当前正用着 hover/wall，选择器也不泄漏这两个实验入口", () => {

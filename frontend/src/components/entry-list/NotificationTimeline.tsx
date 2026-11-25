@@ -1,4 +1,4 @@
-import { memo, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronUp, Star } from "lucide-react";
 import { Ripple } from "m3-ripple";
@@ -18,6 +18,7 @@ import {
   SOCIAL_COLLAPSED_PX,
 } from "./EntryListItem";
 import { useFeedMenuActions } from "@/hooks/useFeedMenuActions";
+import { useInView } from "@/hooks/useInView";
 import { useFolders } from "@/hooks/useFolders";
 import { UnreadIndicator, unreadRowClass } from "./unread-indicator";
 import { useMarkAsRead } from "@/hooks/useEntries";
@@ -28,6 +29,7 @@ import { resolveEntryAutoTranslate } from "@/lib/auto-translate";
 import {
   buildTimelineRows,
   expandTimelineRows,
+  isSingleSideWidth,
   pickStuckDateKeys,
   resolveTimelineTimeBasis,
   splitTimelineSections,
@@ -35,22 +37,34 @@ import {
   type TimelineCollapse,
   type TimelineGranularity,
   type TimelineRow,
+  type TimelineSide,
   type TimelineTimeBasis,
 } from "@/lib/timeline-model";
 import type { Entry, Feed } from "@/types/api";
 
 /**
- * 通知视图 · 卡片流（重新设计）。
+ * 通知视图 · 时间线（第十五批 15-1~15-4）。
  *
- * 形态（用户 2026-11-25 拍板 A 卡片流）：
+ * 形态（用户已拍板，效果图 `mockups/notification-timeline.html`（本地草图，未入库））：
  *   - 只作用于 `contentType === "notification"`，其余视图一行不动；
- *   - 跨天分段，日期行吸顶；每条一张轻卡片（来源行 + 时刻 / 标题 / 正文预览），去掉聊天式竖轴与左右交替；
- *   - 默认单列居中；`autoSingleSide=false` 时宽屏 ≥lg 双列、展开态横跨整行；最新在最上（数据本就 DESC）；
- *   - 同一时间桶太密集时，多余条目吸成一个「N 条」簇卡片，点一下就地展开；
- *   - 卡片默认折叠（档位 1/2/3/全文由设置给），点「展开全文」就地展开（内嵌完整正文页）；
- *   - 键盘只在卡片之间吸附（簇内条目不算节点），见 EntryList 的 useEntryHotkeys；滚轮不拦截。
+ *   - 中间一条竖轴，卡片左右交替；时间戳**紧贴节点**；最新在最上（数据本来就是 DESC）；
+ *   - 同一个时间桶太密集时，多出来的条目吸成一个**小节点 + 计数**，点一下就地展开；
+ *   - 跨天插一条日期分隔；容器宽度 **< 768px（移动端断点）真退化成单侧**（左时间列 + 右卡片）；
+ *   - 卡片**默认折叠**（档位 1/2/3/全文由设置给），点「展开全文」**就地展开**，
+ *     节点仍钉在卡片顶部 ⇒ 轴的位置不动、也不改滚动位置；
+ *   - 键盘只在**轴上的卡片**之间吸附（被吸进小节点的条目不算节点），见 EntryList 的 useEntryHotkeys；
+ *     滚轮不做任何拦截 —— 手感仍归浏览器。
  */
 
+/** 单侧（退化）布局：时间列宽度 = 轴的位置（与 grid 第一列的 76px 必须一致，改就一起改） */
+const SINGLE_SIDE_TIME_COLUMN = 76;
+/** 节点与行的顶部间距（卡片上下都有内边距，节点对齐卡片第一行文字） */
+const NODE_TOP_OFFSET = 12;
+/** 交替布局下「时间戳紧贴节点」的间距（节点下缘 → 时间戳上缘） */
+const TIME_GAP_AFTER_NODE = 3;
+/** 节点直径（px）—— 头节点 9 / 小节点 6，与效果图一致，时间戳的落位也按它算 */
+const TIMELINE_DOT_MAJOR = 9;
+const TIMELINE_DOT_MINOR = 6;
 /** 空集合常量：让 `useMemo` 在「开关关」时返回同一个引用，不至于每次渲染都造新 Set */
 const EMPTY_ID_SET: ReadonlySet<string> = new Set<string>();
 /**
@@ -69,13 +83,82 @@ const LazyEntryContent = lazy(async () => {
   return { default: module.EntryContent };
 });
 
+function cnRow(singleSide: boolean): string {
+  return cn(
+    "relative grid items-start",
+    singleSide
+      ? "grid-cols-[76px_minmax(0,1fr)]"
+      : "grid-cols-[minmax(0,1fr)_64px_minmax(0,1fr)]",
+  );
+}
+
+/** 轴上的节点：major = 桶的头节点，minor = 同桶里的后续条目（小节点） */
+function TimelineDot({
+  node,
+  unread,
+  left,
+}: {
+  node: "major" | "minor";
+  unread: boolean;
+  left: string;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      data-timeline-dot={node}
+      data-timeline-dot-size={node === "major" ? TIMELINE_DOT_MAJOR : TIMELINE_DOT_MINOR}
+      style={{ left, top: NODE_TOP_OFFSET }}
+      className={cn(
+        "absolute z-[1] -translate-x-1/2 rounded-full bg-background",
+        // 档位照效果图：头节点 9px/2px 描边，小节点 6px/1.5px（密集条目吸成的小节点）
+        node === "major"
+          ? "size-[9px] border-2"
+          : "size-[6px] border-[1.5px]",
+        unread ? "border-primary" : "border-border",
+        unread && node === "major" && "bg-primary",
+      )}
+    />
+  );
+}
+
+/**
+ * 中栏宽度（判断窄栏退化用）。
+ *
+ * 量的是**中栏自己**的宽度而不是 `window.innerWidth`：用户可以把第二栏拖窄，
+ * 那时窗口很宽但时间线已经放不下左右交替了（效果图里也是按栏宽说的 350px）。
+ */
+function useContainerWidth(ref: React.RefObject<HTMLDivElement | null>): number {
+  const [width, setWidth] = useState(0);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+
+    const measure = () => {
+      const next = node.getBoundingClientRect().width;
+      setWidth((current) => (Math.abs(current - next) < 1 ? current : next));
+    };
+
+    measure();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [ref]);
+
+  return width;
+}
+
 interface TimelineCardProps {
   entry: Entry;
   feed?: Feed;
   feedUnreadCount?: number;
   isSelected: boolean;
-  /** 卡片里显示的时刻（HH:MM），日期在分段头 */
-  timeLabel: string;
+  side: TimelineSide;
   node: "major" | "minor";
   /** 同桶里的条目数（> 1 时头节点上挂一个「N 条」计数） */
   bucketCount: number;
@@ -119,12 +202,65 @@ export function timelineFullMaxHeight(): number {
   return Math.floor(window.innerHeight * 0.7);
 }
 
+/**
+ * 第四十三批（移动端性能）：正文自然高度上报 / 截断判定只在卡片接近视口时测量。
+ *
+ * 通知 tab 一屏几十张卡，两个 effect 无条件读 `scrollHeight` 会强制布局每一张
+ * 离屏卡，正好抵消卡片根节点上的 `content-visibility:auto`。这里用
+ * IntersectionObserver（rootMargin 200px）观察测量节点：进入视口附近才跑一次 +
+ * 400ms 复测，离开时清掉复测定时器（避免给离屏卡留定时器）。
+ *
+ * 没有 IntersectionObserver（jsdom / 老浏览器）时退回原来的立即测量 + 400ms
+ * 复测，现有单测语义不变。
+ */
+function observeMeasureWhenVisible(
+  node: HTMLElement | null,
+  run: () => void,
+): () => void {
+  if (!node) {
+    run();
+    return () => {};
+  }
+  const Observer = globalThis.IntersectionObserver;
+  if (typeof Observer !== "function") {
+    run();
+    const retryNoIO = setTimeout(run, 400);
+    return () => clearTimeout(retryNoIO);
+  }
+  let retry: ReturnType<typeof setTimeout> | null = null;
+  const clearRetry = () => {
+    if (retry !== null) {
+      clearTimeout(retry);
+      retry = null;
+    }
+  };
+  const measureNow = () => {
+    run();
+    clearRetry();
+    retry = setTimeout(run, 400);
+  };
+  const observer = new Observer(
+    (entries) => {
+      for (const item of entries) {
+        if (item.isIntersecting) measureNow();
+        else clearRetry();
+      }
+    },
+    { rootMargin: "200px" },
+  );
+  observer.observe(node);
+  return () => {
+    observer.disconnect();
+    clearRetry();
+  };
+}
+
 const TimelineCard = memo(function TimelineCard({
   entry,
   feed,
   feedUnreadCount,
   isSelected,
-  timeLabel,
+  side,
   node,
   bucketCount,
   clampLines,
@@ -158,6 +294,16 @@ const TimelineCard = memo(function TimelineCard({
     [feed, allFolders],
   );
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * 第四十三批（移动端性能）：只有接近视口的卡片才计算正文纯文字预览。
+   *
+   * 通知 tab 一屏几十张卡，每张都对 `entry.content` 全量 `stripHtml` 纯属浪费；
+   * 用 `useInView("800px")`（与卡片 content-visibility 的 140px 估算配合）门控，
+   * 未进入视口的卡片 `previewText` 直接空串。观察节点绑在**正文预览容器**上。
+   * jsdom 无 IntersectionObserver 时 `useInView` 立即返回 true，测试行为不变。
+   */
+  const { ref: previewInViewRef, inView: previewInView } =
+    useInView<HTMLDivElement>("800px");
   const [isClipped, setIsClipped] = useState(false);
   const unreadStyle = useUISettingKey("unreadStyle");
   const showIcon = feed?.iconPath && !iconError;
@@ -184,11 +330,13 @@ const TimelineCard = memo(function TimelineCard({
    * 这里只是把「同一段文字的来源」从原文换成译文。
    */
   const previewText = useMemo(() => {
+    // 第四十三批：未接近视口的卡片不做全量解析（离屏卡由 content-visibility 按 140px 估算）
+    if (!previewInView) return "";
     const source = translation?.content ?? entry.content;
     const raw = source ? stripHtml(source) : "";
     const text = raw.replace(/\s+/g, " ").trim();
     return text || (displayTitle ?? "");
-  }, [entry.content, displayTitle, translation?.content]);
+  }, [previewInView, entry.content, displayTitle, translation?.content]);
 
   // 折叠态下正文是否真的被截断（用 scrollHeight 判定，图片异步加载会改高度 → 复测一次）
   // 另把自然高度（= 不钳制时的渲染高度）上报给父级：父级拿它判「长贴」（> 300px），
@@ -200,9 +348,8 @@ const TimelineCard = memo(function TimelineCard({
     const node2 = bodyRef.current;
     if (onNaturalHeightChange) {
       const report = () => onNaturalHeightChange(entry.id, node2?.scrollHeight ?? 0);
-      report();
-      const retry = setTimeout(report, 400);
-      return () => clearTimeout(retry);
+      // 第四十三批：只在卡片接近视口时测量，离屏卡不再强制布局
+      return observeMeasureWhenVisible(node2, report);
     }
     return undefined;
   }, [entry.id, previewText, clampLines, onNaturalHeightChange, bodyOnHover]);
@@ -216,9 +363,8 @@ const TimelineCard = memo(function TimelineCard({
       return;
     }
     const measure = () => setIsClipped(node2.scrollHeight > node2.clientHeight + 1);
-    measure();
-    const retry = setTimeout(measure, 400);
-    return () => clearTimeout(retry);
+    // 第四十三批：只在卡片接近视口时测量，离屏卡不再强制布局
+    return observeMeasureWhenVisible(node2, measure);
   }, [previewText, clampLines, autoExpandLongEntry, bodyOnHover]);
 
   const effectiveClampLines = autoExpandLongEntry ? null : clampLines;
@@ -271,6 +417,7 @@ const TimelineCard = memo(function TimelineCard({
         <div
           data-entry-id={entry.id}
           data-timeline-card={node}
+          data-timeline-side={side}
           data-body-on-hover={bodyOnHover ? "true" : undefined}
           onClick={() => onSelect(entry.id)}
           onMouseEnter={
@@ -290,12 +437,13 @@ const TimelineCard = memo(function TimelineCard({
           }
           onMouseLeave={bodyOnHover ? () => onHoverLeave?.() : undefined}
           className={cn(
-            "group relative cursor-pointer overflow-hidden rounded-[14px] border p-3 transition-[background-color,border-color,box-shadow] duration-200",
+            // 第四十三批（移动端性能）：通知卡片实测高 88–149px，离屏时用 140px
+            // 估算跳过布局/绘制；进入视口再由浏览器收敛到真实高度。
+            "[content-visibility:auto] [contain-intrinsic-size:auto_140px]",
+            "group relative cursor-pointer overflow-hidden rounded-[10px] border p-2.5 transition-[background-color,border-color,box-shadow,opacity] duration-200",
             isSelected
-              ? "border-primary/40 bg-card shadow-nf"
-              : isUnread
-                ? "border-border/60 bg-card hover:border-border hover:shadow-nf"
-                : "border-border/40 bg-card/30 hover:border-border hover:bg-card hover:shadow-nf",
+              ? "border-border/60 bg-card shadow-nf"
+              : "border-transparent hover:bg-item-hover",
             unreadRowClass(isUnread, !!entry.starred, isSelected, unreadStyle),
           )}
         >
@@ -347,7 +495,7 @@ const TimelineCard = memo(function TimelineCard({
                 </Chip.Label>
               </Chip>
             )}
-            <span className="ml-auto flex shrink-0 items-center gap-1.5">
+            <span className="ml-auto flex shrink-0 items-center gap-1">
               {/* 54-5：预览文字显示的是译文时挂语言图标（判据 = store 里真有译文） */}
               {translation?.content && <MachineTranslatedBadge />}
               {entry.starred && (
@@ -362,15 +510,6 @@ const TimelineCard = memo(function TimelineCard({
                   {t("automation.muted_badge")}
                 </span>
               )}
-              <span
-                data-timeline-time=""
-                className={cn(
-                  "whitespace-nowrap tabular-nums text-foreground/80",
-                  isUnread && "font-semibold",
-                )}
-              >
-                {timeLabel}
-              </span>
             </span>
           </div>
 
@@ -380,8 +519,8 @@ const TimelineCard = memo(function TimelineCard({
           {bodyOnHover || !expanded ? (
             <div
               className={cn(
-                "mt-2 line-clamp-2 text-[14.5px] font-semibold leading-[1.45] tracking-[-0.01em] wrap-anywhere",
-                isUnread ? "text-foreground" : "text-foreground/80",
+                "mt-1 line-clamp-2 text-[13.5px] font-semibold leading-5 wrap-anywhere",
+                isUnread ? "text-foreground" : "text-muted-foreground",
               )}
             >
               {displayTitle || t("entry.untitled")}
@@ -436,7 +575,7 @@ const TimelineCard = memo(function TimelineCard({
                     title={t("timeline.resize_hint")}
                     onPointerDown={handleResizeStart}
                     onClick={(event) => event.stopPropagation()}
-                    className="absolute bottom-1.5 right-1.5 cursor-ns-resize select-none text-[12px] tracking-[-2px] text-foreground/80 transition-colors duration-200 hover:text-foreground"
+                    className="absolute bottom-1.5 right-1.5 cursor-ns-resize select-none text-[12px] tracking-[-2px] text-muted-foreground transition-colors duration-200 hover:text-foreground"
                   >
                     ⋰
                   </span>
@@ -447,7 +586,7 @@ const TimelineCard = memo(function TimelineCard({
                     event.stopPropagation();
                     onCollapse(entry.id);
                   }}
-                  className="mt-1 flex items-center gap-1 text-[11px] text-foreground/80 transition-colors duration-200 hover:text-foreground"
+                  className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground transition-colors duration-200 hover:text-foreground"
                 >
                   <ChevronUp className="size-3.5" />
                   {t("timeline.collapse")}
@@ -456,30 +595,35 @@ const TimelineCard = memo(function TimelineCard({
             </div>
           ) : (
             <>
-              {/* 正文预览：折叠态 clamp 到设置的行数 */}
-              {previewText && (
-                <div
-                  ref={bodyRef}
-                  data-timeline-body={
-                    effectiveClampLines === null ? "full" : String(effectiveClampLines)
-                  }
-                  className={cn(
-                    "mt-1.5 text-[13px] leading-[1.6] text-foreground/80 wrap-anywhere",
-                  )}
-                  style={
-                    effectiveClampLines !== null && !expanded
-                      ? {
-                          display: "-webkit-box",
-                          WebkitBoxOrient: "vertical",
-                          WebkitLineClamp: effectiveClampLines,
-                          overflow: "hidden",
-                        }
-                      : undefined
-                  }
-                >
-                  {previewText}
-                </div>
-              )}
+              {/* 正文预览：折叠态 clamp 到设置的行数。
+                  容器**常驻**（即使 previewText 为空串）—— 否则离屏卡
+                  `previewText=""` 时容器不挂，`useInView` 的 ref 永远观察不到，
+                  视口内也永远不会补算正文。离屏卡靠 content-visibility 按 140px 估算。 */}
+              <div
+                ref={(node) => {
+                  bodyRef.current = node;
+                  previewInViewRef.current = node;
+                }}
+                data-timeline-body={
+                  effectiveClampLines === null ? "full" : String(effectiveClampLines)
+                }
+                className={cn(
+                  "mt-1 text-[12.5px] leading-5 text-muted-foreground wrap-anywhere",
+                  !isUnread && "text-muted-foreground/70",
+                )}
+                style={
+                  effectiveClampLines !== null && !expanded
+                    ? {
+                        display: "-webkit-box",
+                        WebkitBoxOrient: "vertical",
+                        WebkitLineClamp: effectiveClampLines,
+                        overflow: "hidden",
+                      }
+                    : undefined
+                }
+              >
+                {previewText}
+              </div>
 
               {/* 展开/收起：就地展开，不跳轴（节点钉在卡片顶部，长的部分往下长） */}
               {showToggle && (
@@ -490,7 +634,7 @@ const TimelineCard = memo(function TimelineCard({
                     event.stopPropagation();
                     onToggleExpand(entry.id);
                   }}
-                  className="mt-2 inline-flex items-center gap-1 text-[12px] font-medium text-foreground/80 transition-colors duration-200 hover:text-foreground"
+                  className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground transition-colors duration-200 hover:text-foreground"
                 >
                   {expanded ? (
                     <ChevronUp className="size-3.5" />
@@ -534,7 +678,7 @@ function TimelineClusterCard({
       type="button"
       data-timeline-cluster={count}
       onClick={onToggle}
-      className="flex w-full items-center gap-2 rounded-[14px] border border-dashed border-border/70 bg-card/30 px-3 py-2.5 text-left text-xs text-muted-foreground transition-colors duration-200 hover:border-border hover:bg-card"
+      className="flex w-full items-center gap-2 rounded-[10px] border border-dashed border-border/70 px-2.5 py-2 text-left text-xs text-muted-foreground transition-colors duration-200 hover:bg-item-hover"
     >
       <Chip size="sm" variant="soft" color="accent" className="shrink-0">
         <Chip.Label className="text-[10.5px] leading-none">
@@ -555,6 +699,11 @@ function TimelineClusterCard({
   );
 }
 
+export interface NotificationTimelineHandle {
+  /** 让目标条目所在段先挂载，再把该条目滚进视口（跨段 j/k 用）。 */
+  revealEntry: (entryId: string) => boolean;
+}
+
 export interface NotificationTimelineProps {
   entries: Entry[];
   feeds: Map<string, Feed>;
@@ -571,7 +720,7 @@ export interface NotificationTimelineProps {
   autoExpandLong?: boolean;
   /** 26-2：时间基准（发布时间 / 抓取时间），默认发布时间 = 现状 */
   timeBasis?: TimelineTimeBasis;
-  /** 宽屏双列开关（默认单列居中；`false` = 宽屏 ≥lg 两列、展开态横跨整行） */
+  /** 窄栏自动合一栏（默认开；关掉则始终左右交替） */
   autoSingleSide?: boolean;
   autoTranslate: boolean;
   targetLanguage: string;
@@ -585,6 +734,98 @@ export interface NotificationTimelineProps {
    * 键盘 j/k、↑/↓ 就在这些节点之间吸附，不会选到看不见的条目。
    */
   onSelectableEntriesChange?: (entries: Entry[]) => void;
+  /** 暴露命令式句柄：通知视图本身不虚拟整列，j/k 跨段时要先挂载目标段 */
+  handleRef?: React.MutableRefObject<NotificationTimelineHandle | null>;
+}
+
+
+/**
+ * 通知时间线的「段内行窗口化」（DOM 级虚拟化）：
+ * 一天一段，段内可能有几十条卡片。日期吸顶头保持在段容器里（只有几段，代价很小），
+ * 但段内的行卡片只在接近视口（rootMargin 1200px）时才挂载，滚远后卸载，
+ * 用上一次实测高度做占位，既省 React 挂载/布局，又不破坏 sticky 头与整段高度。
+ */
+function TimelineLazyRows({
+  sectionKey,
+  rowCount,
+  heights,
+  forceMount = false,
+  children,
+}: {
+  sectionKey: string;
+  rowCount: number;
+  heights: React.MutableRefObject<Map<string, number>>;
+  /** 跨段 reveal 时强制挂载（挂上后由滚动位置接管） */
+  forceMount?: boolean;
+  children: () => ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  // 初值 false：首帧只渲染占位高度，布局效应在**绘制前**按真实滚容器位置裁一次，
+  // 命中视口的段立刻挂载，远离的保持占位 —— 进入通知视图的首个提交不再全量挂载。
+  const [mounted, setMounted] = useState(false);
+
+  useLayoutEffect(() => {
+    if (forceMount) {
+      setMounted(true);
+      return;
+    }
+    const node = ref.current;
+    if (!node) return;
+    const rect = node.getBoundingClientRect();
+    const viewportH = window.innerHeight || 0;
+    setMounted(rect.bottom > -1200 && rect.top < viewportH + 1200);
+  }, [forceMount]);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const Observer = globalThis.IntersectionObserver;
+    if (typeof Observer !== "function") {
+      setMounted(true);
+      return;
+    }
+    // 桌面真正的滚容器是内层 entry-list-viewport（overflow-y-auto），
+    // 不传 root 时 rootMargin 会被这层 clip 抵消，预挂载缓冲等于失效。
+    const root = node.closest('[data-testid="entry-list-viewport"]');
+    const observer = new Observer(
+      (entries) => {
+        for (const item of entries) {
+          if (item.isIntersecting) setMounted(true);
+          else if (!forceMount) setMounted(false);
+        }
+      },
+      { root: root instanceof Element ? root : null, rootMargin: "1200px 0px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [forceMount]);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || !mounted) return;
+    const measure = () => {
+      const h = node.offsetHeight;
+      if (h > 0) heights.current.set(sectionKey, h);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [mounted, sectionKey, heights]);
+
+  const estimate =
+    heights.current.get(sectionKey) ?? Math.max(96, rowCount * 140);
+  return (
+    <div
+      ref={ref}
+      data-timeline-rows={sectionKey}
+      aria-hidden={mounted ? undefined : true}
+      style={mounted ? undefined : { height: `${estimate}px` }}
+    >
+      {mounted ? children() : null}
+    </div>
+  );
 }
 
 export function NotificationTimeline({
@@ -595,19 +836,22 @@ export function NotificationTimeline({
   onSelectEntry,
   onMarkAboveEntry,
   onCloseEntry,
-  autoSingleSide = true,
   granularity,
   collapse,
   autoExpandLong = false,
   timeBasis,
+  autoSingleSide = true,
   autoTranslate,
   targetLanguage,
   bodyOnHover = false,
   onSelectableEntriesChange,
   onSelectFeedFromEntry,
+  handleRef,
 }: NotificationTimelineProps) {
   const { t, i18n } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const width = useContainerWidth(containerRef);
+  const singleSide = autoSingleSide && isSingleSideWidth(width);
   const clampLines = timelineCollapseClampLines(collapse);
   /**
    * 「长贴自动展开」的长贴判据 —— 与社交视图同一口径（渲染高度 > 300px）。
@@ -979,6 +1223,96 @@ export function NotificationTimeline({
     [displayRows],
   );
 
+  /** 段内行块实测高度（卸载后用占位，避免滚动条跳动） */
+  const rowsHeightsRef = useRef<Map<string, number>>(new Map());
+  /** 被命令式 reveal 强制挂载的段（滚到目标后清掉，交还 observer） */
+  const [forcedSections, setForcedSections] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+  const pendingRevealIdRef = useRef<string | null>(null);
+
+  /**
+   * 命令式 reveal：通知视图不虚拟整列，但段内行块会卸载。j/k 跨到未挂载段时
+   * `document.querySelector` 必然落空，所以要先把目标段强挂上，再滚动。
+   * 目标若被吸进聚合卡，还要先展开那个聚合卡（卡片本身也是段内行）。
+   */
+  useEffect(() => {
+    if (!handleRef) return;
+    handleRef.current = {
+      revealEntry: (entryId: string) => {
+        const section = sections.find((item) =>
+          item.rows.some((row) =>
+            row.kind === "cluster"
+              ? row.entries.some((e) => e.id === entryId)
+              : row.entry.id === entryId,
+          ),
+        );
+        if (!section) return false;
+        const targetRow = section.rows.find((row) =>
+          row.kind === "cluster"
+            ? row.entries.some((e) => e.id === entryId)
+            : row.entry.id === entryId,
+        );
+        if (targetRow?.kind === "cluster") {
+          setExpandedClusters((prev) => {
+            if (prev.has(targetRow.key)) return prev;
+            const next = new Set(prev);
+            next.add(targetRow.key);
+            return next;
+          });
+        }
+        pendingRevealIdRef.current = entryId;
+        /* 替换而非累加：连续跨段时上一段的强制挂载必须释放，否则泄漏成常驻；
+           同段连按也要换新引用，才能让依赖 forcedSections 的滚动 effect 重跑。 */
+        setForcedSections(new Set([section.key]));
+        return true;
+      },
+    };
+    return () => {
+      handleRef.current = null;
+    };
+  }, [handleRef, sections, setExpandedClusters]);
+
+  /** 段强制挂载后，等该条目真正进 DOM 再滚；最多等 20 帧。滚完交还 observer。 */
+  useEffect(() => {
+    const entryId = pendingRevealIdRef.current;
+    if (!entryId) return;
+    let frame = 0;
+    let raf = 0;
+    const sectionKey = sections.find((item) =>
+      item.rows.some((row) =>
+        row.kind === "cluster"
+          ? row.entries.some((e) => e.id === entryId)
+          : row.entry.id === entryId,
+      ),
+    )?.key;
+    const tick = () => {
+      const target = document.querySelector<HTMLElement>(
+        `[data-entry-id="${CSS.escape(entryId)}"]`,
+      );
+      if (target) {
+        target.scrollIntoView({ block: "nearest" });
+        pendingRevealIdRef.current = null;
+        if (sectionKey) {
+          setForcedSections((prev) => {
+            if (!prev.has(sectionKey)) return prev;
+            const next = new Set(prev);
+            next.delete(sectionKey);
+            return next;
+          });
+        }
+        return;
+      }
+      if (frame++ < 20) raf = requestAnimationFrame(tick);
+      else {
+        pendingRevealIdRef.current = null;
+        if (sectionKey) setForcedSections(new Set());
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [forcedSections, expandedClusters, sections]);
+
   /** 轴上的卡片（顺序即键盘吸附顺序） */
   const selectableEntries = useMemo(
     () =>
@@ -1091,30 +1425,25 @@ export function NotificationTimeline({
     <div
       ref={containerRef}
       data-testid="notification-timeline"
-      data-timeline-layout="cards"
-      // 40-2：「点空白收起全部」由 `EntryList` 的滚动视口发事件，这里只监听（见下方 useEffect）。
-      // 卡片流：日期分段 + 每条一张轻卡片；默认单列居中（扫读舒适），
-      // `autoSingleSide === false` 时宽屏 ≥lg 两列、展开态横跨整行。
-      className={cn(
-        "relative mx-auto w-full px-4 sm:px-5 lg:px-0 md:max-w-[42rem]",
-        autoSingleSide === false
-          ? "max-w-[56rem] lg:max-w-[56rem]"
-          : "max-w-[50rem] lg:max-w-[50rem]",
-      )}
+      data-timeline-layout={singleSide ? "single" : "alternating"}
+      // 40-2：真正的「空白」在列表列两侧的留白里（在时间线根之外），所以收起全部的
+      // 触发由 `EntryList` 的滚动视口发事件，这里只监听（见下方 useEffect）。
+      // 收窄到社交视图同款居中可读宽度（用户反馈：之前三栏中栏窄，现在两栏太宽）
+      className="relative mx-auto w-full max-w-[clamp(45ch,60vw,65ch)]"
     >
+      {/* 中轴：横跨整条时间线，1px */}
+      <div
+        aria-hidden="true"
+        data-timeline-axis=""
+        className="absolute bottom-3 top-3 z-0 w-px bg-border"
+        style={{ left: singleSide ? SINGLE_SIDE_TIME_COLUMN : "50%" }}
+      />
 
       {sections.map((section) => {
         const dateStuck = stuckDateKeys.includes(section.key);
         return (
         /* 每段一层容器 = sticky 的作用域：本段滚完，日期行被段底边推走，下一段接替 */
-        <div
-          key={section.key}
-          data-timeline-section={section.key}
-          className={cn(
-            "relative grid grid-cols-1 items-start gap-3 pt-1",
-            autoSingleSide === false && "lg:grid-cols-2 lg:gap-3",
-          )}
-        >
+        <div key={section.key} data-timeline-section={section.key} className="relative">
           {/* 日期分隔行（用户 9-24 要吸顶 / 9-25 居中胶囊 → 2423cda 全宽条 → 2026-09-25
               复验后按用户「要最早那版：纯一行文字、无底色、无分隔线」回到 2423cda 之前那版）：
               只有一行文字（solid `bg-background` 小 pill 保住字底、无描边无投影），
@@ -1128,8 +1457,8 @@ export function NotificationTimeline({
             data-timeline-date={section.label}
             data-timeline-date-stuck={dateStuck ? "true" : "false"}
             className={cn(
-              "sticky top-0 z-10 col-span-full flex items-baseline gap-2 pb-2.5 pt-4 pointer-events-none transition-colors duration-200",
-              dateStuck && "bg-card/95 backdrop-blur-sm",
+              "sticky top-0 z-10 flex items-center py-3",
+              singleSide ? "justify-start pl-[86px]" : "justify-center",
             )}
           >
             {/* 34-2（用户 2026-09-26 二次校正）：「不是这个吸顶样式，是之前的胶囊悬浮吸顶样式」
@@ -1139,16 +1468,29 @@ export function NotificationTimeline({
                 胶囊那版的 `mx-auto` 居中他当时否过；`top-2` 也没跟过来（吸顶瞬间不跳 8px）。 */}
             <span
               className={cn(
-                "text-[13px] font-semibold tracking-tight text-foreground/80 transition-[background-color,box-shadow,border-color] duration-200 ease-[var(--ease-ios)]",
-                dateStuck &&
-                  "rounded-full border border-border/60 bg-background/95 px-2.5 py-1 shadow-nf backdrop-blur-sm",
+                "rounded-full text-[11.5px] font-semibold tabular-nums text-foreground transition-[background-color,box-shadow,border-color] duration-200 ease-[var(--ease-ios)]",
+                dateStuck
+                  ? // 投影用项目自己的浮层令牌 shadow-nf：a96896d 那版写的是任意值
+                    // `shadow-[0_6px_16px_rgba(0,0,0,0.10)]`，实测在本项目的 Tailwind v4 里**不生效**
+                    // （探针元素上也只算出 Tailwind 的复位值），所以那版当时其实是无投影的
+                    "border border-border bg-background/95 px-3 py-[3px] shadow-nf backdrop-blur-md"
+                  : "bg-background px-2",
               )}
             >
               {section.label}
             </span>
           </div>
 
-          {section.rows.map((row) => {
+          <TimelineLazyRows
+            sectionKey={section.key}
+            rowCount={section.rows.length}
+            heights={rowsHeightsRef}
+            forceMount={forcedSections.has(section.key)}
+          >
+            {() => section.rows.map((row) => {
+        const dotLeft = singleSide ? `${SINGLE_SIDE_TIME_COLUMN}px` : "50%";
+        const isLeft = row.side === "left";
+
         if (row.kind === "cluster") {
           const clusterExpanded = expandedClusters.has(row.key);
           const cluster = (
@@ -1162,9 +1504,11 @@ export function NotificationTimeline({
             />
           );
           return (
-            /* 58-2：折叠簇里的条目没有自己的 DOM 节点，把 id 挂到簇行上，交给 useScrollMarkRead
-               按「多 id 目标」处理（看到簇、再滚出顶部 → 整簇标已读）。展开后各自渲染 [data-entry-id]，
-               此时不能再挂这个属性。 */
+            /* 58-2：折叠小节点里的条目**没有自己的 DOM 节点**（没渲染），滚动标已读
+               就永远观察不到它们 —— 把被吸进来的 id 挂在簇行上，交给 useScrollMarkRead
+               按「多 id 目标」处理（看到簇、簇再滚出顶部 → 整簇标已读）。
+               展开后这些条目会各自渲染出 [data-entry-id]，此时不能再挂这个属性，
+               否则簇头部滚出时会把下面还没滚到的展开条目一起标掉。 */
             <div
               key={row.key}
               data-timeline-row="cluster"
@@ -1173,9 +1517,25 @@ export function NotificationTimeline({
                   ? undefined
                   : row.entries.map((entry) => entry.id).join(",")
               }
-              className="min-w-0"
+              className={cnRow(singleSide)}
             >
-              {cluster}
+              <TimelineDot
+                node="minor"
+                unread={row.entries.some((entry) => !entry.read)}
+                left={dotLeft}
+              />
+              {singleSide ? (
+                <>
+                  <span />
+                  <div className="min-w-0 pb-2 pl-3">{cluster}</div>
+                </>
+              ) : (
+                <>
+                  {isLeft ? <div className="min-w-0 px-1 pb-2">{cluster}</div> : <span />}
+                  <span />
+                  {!isLeft ? <div className="min-w-0 px-1 pb-2">{cluster}</div> : <span />}
+                </>
+              )}
             </div>
           );
         }
@@ -1187,7 +1547,7 @@ export function NotificationTimeline({
             feed={feeds.get(entry.feedId)}
             feedUnreadCount={unreadCounts?.[entry.feedId]}
             isSelected={entry.id === selectedEntryId}
-            timeLabel={row.shortLabel}
+            side={row.side}
             node={row.node}
             bucketCount={row.bucketCount}
             clampLines={clampLines}
@@ -1221,21 +1581,65 @@ export function NotificationTimeline({
           />
         );
 
-        const isOpen =
-          !hoverMode &&
-          (expandedEntries.has(entry.id) ||
-            entry.id === selectedEntryId ||
-            isAutoExpanded(entry.id));
         return (
           <div
             key={row.key}
             data-timeline-row={row.node}
-            className={cn("min-w-0", autoSingleSide === false && isOpen && "lg:col-span-2")}
+            className={cnRow(singleSide)}
           >
-            {card}
+            <TimelineDot node={row.node} unread={!entry.read} left={dotLeft} />
+
+            {singleSide ? (
+              <>
+                {/* 单侧：时间列在轴左边、右对齐 —— 时间戳右缘紧贴节点左缘；
+                    C-②：76px 列只留 HH:MM（日期看跨天分隔头）+ nowrap，390 下不再挤两行 */}
+                <div className="flex justify-end pr-2 pt-[11px]">
+                  <span
+                    data-timeline-time=""
+                    className={cn(
+                      "whitespace-nowrap tabular-nums",
+                      row.node === "major"
+                        ? "text-[11px] font-semibold text-foreground"
+                        : "text-[10.5px] text-muted-foreground",
+                    )}
+                  >
+                    {row.shortLabel}
+                  </span>
+                </div>
+                <div className="min-w-0 pb-2.5 pl-3">{card}</div>
+              </>
+            ) : (
+              <>
+                {isLeft ? <div className="min-w-0 px-1 pb-2.5">{card}</div> : <span />}
+                {/* 交替：时间戳挂在节点正下方（紧贴） */}
+                <div
+                  className="flex justify-center"
+                  style={{
+                    paddingTop:
+                      NODE_TOP_OFFSET +
+                      (row.node === "major" ? TIMELINE_DOT_MAJOR : TIMELINE_DOT_MINOR) +
+                      TIME_GAP_AFTER_NODE,
+                  }}
+                >
+                  <span
+                    data-timeline-time=""
+                    className={cn(
+                      "whitespace-nowrap tabular-nums",
+                      row.node === "major"
+                        ? "text-[11px] font-semibold text-foreground"
+                        : "text-[10.5px] text-muted-foreground",
+                    )}
+                  >
+                    {row.label}
+                  </span>
+                </div>
+                {!isLeft ? <div className="min-w-0 px-1 pb-2.5">{card}</div> : <span />}
+              </>
+            )}
           </div>
         );
-          })}
+            })}
+          </TimelineLazyRows>
         </div>
         );
       })}

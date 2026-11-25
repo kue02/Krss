@@ -29,6 +29,9 @@ type FeedRepository interface {
 	RecordRefreshFailure(ctx context.Context, id int64, failedAt time.Time) error
 	// ResetRefreshFailure 抓取成功一次就清零（22-4）。
 	ResetRefreshFailure(ctx context.Context, id int64) error
+	// RecordFeedFetched 记录一次真正发起过的抓取（迁移 41）：总是写 last_fetched_at；
+	// success && changed → no_change_streak 清零；success && !changed → streak+1（封顶 6）；失败 → 写时间并把 streak 清零。
+	RecordFeedFetched(ctx context.Context, id int64, fetchedAt time.Time, success bool, changed bool) error
 	UpdateType(ctx context.Context, id int64, feedType string) error
 	// UpdateProxyOverride 只写代理覆盖两列（迁移 26）：mode nil = 跟随文件夹链 → 全局。
 	UpdateProxyOverride(ctx context.Context, id int64, mode *model.ProxyMode, cfg *model.ProxyOverrideConfig) error
@@ -90,7 +93,7 @@ func (r *feedRepository) Create(ctx context.Context, feed model.Feed) (model.Fee
 }
 
 func (r *feedRepository) GetByID(ctx context.Context, id int64) (model.Feed, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config, refresh_fail_count, refresh_last_fail_at, source_type, mcp_config, sort_order FROM feeds WHERE id = ?`, id)
+	row := r.db.QueryRowContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config, refresh_fail_count, refresh_last_fail_at, source_type, mcp_config, sort_order, last_fetched_at, no_change_streak FROM feeds WHERE id = ?`, id)
 	return scanFeed(row)
 }
 
@@ -103,7 +106,7 @@ func (r *feedRepository) GetByIDs(ctx context.Context, ids []int64) ([]model.Fee
 	for i, id := range ids {
 		args[i] = id
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config, refresh_fail_count, refresh_last_fail_at, source_type, mcp_config, sort_order FROM feeds WHERE id IN (`+placeholders+`)`, args...)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config, refresh_fail_count, refresh_last_fail_at, source_type, mcp_config, sort_order, last_fetched_at, no_change_streak FROM feeds WHERE id IN (`+placeholders+`)`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("get feeds by ids: %w", err)
 	}
@@ -124,7 +127,7 @@ func (r *feedRepository) GetByIDs(ctx context.Context, ids []int64) ([]model.Fee
 }
 
 func (r *feedRepository) FindByURL(ctx context.Context, url string) (*model.Feed, error) {
-	row := r.db.QueryRowContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config, refresh_fail_count, refresh_last_fail_at, source_type, mcp_config, sort_order FROM feeds WHERE url = ?`, url)
+	row := r.db.QueryRowContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config, refresh_fail_count, refresh_last_fail_at, source_type, mcp_config, sort_order, last_fetched_at, no_change_streak FROM feeds WHERE url = ?`, url)
 	feed, err := scanFeed(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -136,10 +139,10 @@ func (r *feedRepository) FindByURL(ctx context.Context, url string) (*model.Feed
 }
 
 func (r *feedRepository) List(ctx context.Context, folderID *int64) ([]model.Feed, error) {
-	query := `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config, refresh_fail_count, refresh_last_fail_at, source_type, mcp_config, sort_order FROM feeds ORDER BY sort_order, title`
+	query := `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config, refresh_fail_count, refresh_last_fail_at, source_type, mcp_config, sort_order, last_fetched_at, no_change_streak FROM feeds ORDER BY sort_order, title`
 	args := []interface{}{}
 	if folderID != nil {
-		query = `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config, refresh_fail_count, refresh_last_fail_at, source_type, mcp_config, sort_order FROM feeds WHERE folder_id = ? ORDER BY sort_order, title`
+		query = `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config, refresh_fail_count, refresh_last_fail_at, source_type, mcp_config, sort_order, last_fetched_at, no_change_streak FROM feeds WHERE folder_id = ? ORDER BY sort_order, title`
 		args = append(args, *folderID)
 	}
 	rows, err := r.db.QueryContext(ctx, query, args...)
@@ -164,7 +167,7 @@ func (r *feedRepository) List(ctx context.Context, folderID *int64) ([]model.Fee
 }
 
 func (r *feedRepository) ListWithoutIcon(ctx context.Context) ([]model.Feed, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config, refresh_fail_count, refresh_last_fail_at, source_type, mcp_config, sort_order FROM feeds WHERE icon_path IS NULL OR icon_path = ''`)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, folder_id, title, url, site_url, description, summary_prompt_reminder, icon_path, type, etag, last_modified, error_message, created_at, updated_at, auto_translate, auto_summary, reader_mode, proxy_mode, proxy_config, refresh_fail_count, refresh_last_fail_at, source_type, mcp_config, sort_order, last_fetched_at, no_change_streak FROM feeds WHERE icon_path IS NULL OR icon_path = ''`)
 	if err != nil {
 		return nil, fmt.Errorf("list feeds without icon: %w", err)
 	}
@@ -304,6 +307,26 @@ func (r *feedRepository) ResetRefreshFailure(ctx context.Context, id int64) erro
 	return err
 }
 
+// RecordFeedFetched 记录一次真正发起过的抓取（迁移 41）。
+// 不改 updated_at：仅因后台抓取而刷新源的「更新时间」会让前端误判源有更新。
+func (r *feedRepository) RecordFeedFetched(ctx context.Context, id int64, fetchedAt time.Time, success bool, changed bool) error {
+	set := `last_fetched_at = ?`
+	switch {
+	case success && changed:
+		set += `, no_change_streak = 0`
+	case success && !changed:
+		// 封顶到 6（effectiveRefreshInterval 里再 clamp 到 4 位移），避免长期稳定源该计数无限增长。
+		set += `, no_change_streak = MIN(no_change_streak + 1, 6)`
+	default:
+		// 失败：本次并非「抓到但无变化」，不计入降频，反而清零 streak，
+		// 让该源回到全局间隔重试（由 22-4 失败退避单独治理），
+		// 否则此前稳定(streak>0)的源一次失败后会被到期门按 2^streak×全局 长时跳过（最高 24h）。
+		set += `, no_change_streak = 0`
+	}
+	_, err := r.db.ExecContext(ctx, `UPDATE feeds SET `+set+` WHERE id = ?`, formatTime(fetchedAt.UTC()), id)
+	return err
+}
+
 func (r *feedRepository) UpdateType(ctx context.Context, id int64, feedType string) error {
 	_, err := r.db.ExecContext(
 		ctx,
@@ -407,6 +430,8 @@ func scanFeed(scanner interface {
 	var refreshLastFailAt sql.NullString
 	var sourceType sql.NullString
 	var mcpConfig sql.NullString
+	var lastFetchedAt sql.NullString
+	var noChangeStreak int
 	if err := scanner.Scan(
 		&feed.ID,
 		&folderID,
@@ -432,6 +457,8 @@ func scanFeed(scanner interface {
 		&sourceType,
 		&mcpConfig,
 		&feed.SortOrder,
+		&lastFetchedAt,
+		&noChangeStreak,
 	); err != nil {
 		return model.Feed{}, err
 	}
@@ -491,6 +518,10 @@ func scanFeed(scanner interface {
 	if mcpConfig.Valid {
 		feed.MCPConfig = &mcpConfig.String
 	}
+	if lastFetchedAt.Valid {
+		feed.LastFetchedAt = parseTimePtr(lastFetchedAt.String)
+	}
+	feed.NoChangeStreak = noChangeStreak
 	var err error
 	feed.CreatedAt, err = parseTime(createdAt)
 	if err != nil {

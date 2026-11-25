@@ -83,7 +83,73 @@ function positiveInt(value: string | null): number | undefined {
 }
 
 /**
- * 从正文 HTML 里抽出图片清单（带可用的 width/height）。
+ * 有界模块级缓存（第四十三批，移动端性能）。
+ *
+ * 切 tab / 往回滚会反复挂载同一批条目的 `EntryListItem`，每次都拿同一段
+ * `entry.content` 再 `new DOMParser()` 解析一遍 —— 文章体量不小，纯属重复劳动。
+ * 这里按 `html + baseUrl + thumbnailUrl` 缓存解析结果，命中直接返回**同一份
+ * 只读数组**（调用方只 map/读取，不改写）。
+ *
+ * 必须**有界**：正文 HTML 可能很大，无界缓存会把整段正文都留在内存里。上限
+ * {@link EXTRACT_CACHE_LIMIT} 条，超出按插入顺序淘汰最旧的一条（近似 FIFO，
+ * 命中不回填，够用且简单）。
+ */
+const EXTRACT_CACHE_LIMIT = 200;
+const extractCache = new Map<string, ContentMedia[]>();
+
+/**
+ * 32 位 FNV-1a 指纹（十六进制）。只用于缓存 key，不参与任何语义。
+ *
+ * key 不再拼完整 html：原来把整段正文当 key 常驻内存，200 条长文会白占几十 MB。
+ * 改成「长度 + hash 指纹」后缓存里只剩结果数组本身。hash 碰撞概率极低（再叠加
+ * 长度），真撞了只会返回一份错误清单，可接受。
+ */
+function hashHtml(html: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < html.length; i += 1) {
+    hash ^= html.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16);
+}
+
+function extractCacheKey(
+  html: string,
+  baseUrl: string | undefined,
+  thumbnailUrl: string | undefined,
+): string {
+  // 长度 + hash 做指纹；不把 html 本身放进 key，避免长文常驻内存。
+  return `${baseUrl ?? ""}|${thumbnailUrl ?? ""}|${html.length}|${hashHtml(html)}`;
+}
+
+/**
+ * 从正文 HTML 里抽出图片清单（带可用的 width/height）。带模块级缓存，
+ * 相同入参返回同一份冻结数组；语义与纯函数一致（入参相同 ⇒ 结果相同）。
+ */
+export function extractContentMedia(
+  html: string | null | undefined,
+  baseUrl?: string,
+  thumbnailUrl?: string,
+): ContentMedia[] {
+  const key = extractCacheKey(html ?? "", baseUrl, thumbnailUrl);
+  const cached = extractCache.get(key);
+  if (cached) return cached;
+
+  const result = computeContentMedia(html, baseUrl, thumbnailUrl);
+  // 数组和每一项都冻结后再放进缓存：调用方拿到的是只读视图，不会顺手改坏缓存内容。
+  for (const item of result) Object.freeze(item);
+  Object.freeze(result);
+
+  if (extractCache.size >= EXTRACT_CACHE_LIMIT) {
+    const oldest = extractCache.keys().next().value;
+    if (oldest !== undefined) extractCache.delete(oldest);
+  }
+  extractCache.set(key, result);
+  return result;
+}
+
+/**
+ * 从正文 HTML 里抽出图片清单（带可用的 width/height）。纯计算，无缓存。
  *
  * @param html       条目正文
  * @param baseUrl    条目地址，用于把 `/path` 这类站点绝对路径补全
@@ -93,7 +159,7 @@ function positiveInt(value: string | null): number | undefined {
  *   注意：去重只在 `thumbnailUrl` 确实命中正文某张图时生效，命中了就整条丢掉
  *   （保留正文那份，它带尺寸）；没命中才把 thumbnail 作为第一张加入。
  */
-export function extractContentMedia(
+function computeContentMedia(
   html: string | null | undefined,
   baseUrl?: string,
   thumbnailUrl?: string,

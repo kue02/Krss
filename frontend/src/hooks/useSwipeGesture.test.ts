@@ -152,6 +152,118 @@ describe("useSwipeGesture", () => {
     expect(onSwipe).toHaveBeenCalledWith("right");
   });
 
+  describe("逐帧跟手回调 (onDrag*)", () => {
+    /** 用可控时钟驱动 Date.now，模拟真实手指移动的时间间隔 */
+    function withClock() {
+      let clock = 1000;
+      vi.spyOn(Date, "now").mockImplementation(() => clock);
+      return {
+        advance(ms: number) {
+          clock += ms;
+        },
+      };
+    }
+
+    it("逐帧上报位移与瞬时速度，松手回调拿到真实速度", () => {
+      const clock = withClock();
+      const onDragStart = vi.fn();
+      const onDragMove = vi.fn();
+      const onDragEnd = vi.fn();
+
+      renderHook(() =>
+        useSwipeGesture(ref, { onDragStart, onDragMove, onDragEnd }),
+      );
+
+      element.dispatchEvent(createTouchEvent("touchstart", 200, 100));
+      clock.advance(20);
+      element.dispatchEvent(createTouchEvent("touchmove", 180, 100)); // -20px, -1px/ms
+      clock.advance(40);
+      element.dispatchEvent(createTouchEvent("touchmove", 145, 100)); // -55px, -0.875px/ms
+      clock.advance(10);
+      element.dispatchEvent(createTouchEvent("touchend", 145, 100));
+
+      expect(onDragStart).toHaveBeenCalledTimes(1);
+      expect(onDragMove).toHaveBeenNthCalledWith(1, -20, 0, -1);
+      expect(onDragMove).toHaveBeenNthCalledWith(2, -55, 0, -0.875);
+      expect(onDragEnd).toHaveBeenCalledTimes(1);
+      const [offsetX, velocityX] = onDragEnd.mock.calls[0]!;
+      expect(offsetX).toBe(-55);
+      expect(velocityX).toBeCloseTo(-0.875);
+    });
+
+    it("快速短距离左甩：onDragEnd 速度非零且为负（回归：不再恒为 0）", () => {
+      const clock = withClock();
+      const onDragEnd = vi.fn();
+
+      renderHook(() =>
+        useSwipeGesture(ref, {
+          onDragStart: () => {},
+          onDragMove: () => {},
+          onDragEnd,
+        }),
+      );
+
+      element.dispatchEvent(createTouchEvent("touchstart", 200, 100));
+      clock.advance(20);
+      element.dispatchEvent(createTouchEvent("touchmove", 180, 100));
+      clock.advance(40);
+      element.dispatchEvent(createTouchEvent("touchmove", 150, 100));
+      clock.advance(10);
+      element.dispatchEvent(createTouchEvent("touchend", 150, 100));
+
+      const [, velocityX] = onDragEnd.mock.calls[0]!;
+      expect(velocityX).toBeLessThan(-0.4);
+    });
+
+    it("快速短距离右甩：onDragEnd 速度非零且为正", () => {
+      const clock = withClock();
+      const onDragEnd = vi.fn();
+
+      renderHook(() =>
+        useSwipeGesture(ref, {
+          onDragStart: () => {},
+          onDragMove: () => {},
+          onDragEnd,
+        }),
+      );
+
+      element.dispatchEvent(createTouchEvent("touchstart", 100, 100));
+      clock.advance(20);
+      element.dispatchEvent(createTouchEvent("touchmove", 120, 100));
+      clock.advance(40);
+      element.dispatchEvent(createTouchEvent("touchmove", 150, 100));
+      clock.advance(10);
+      element.dispatchEvent(createTouchEvent("touchend", 150, 100));
+
+      const [, velocityX] = onDragEnd.mock.calls[0]!;
+      expect(velocityX).toBeGreaterThan(0.4);
+    });
+
+    it("松手距最后一次 move 超过 80ms 时速度按 0 处理", () => {
+      const clock = withClock();
+      const onDragEnd = vi.fn();
+
+      renderHook(() =>
+        useSwipeGesture(ref, {
+          onDragStart: () => {},
+          onDragMove: () => {},
+          onDragEnd,
+        }),
+      );
+
+      element.dispatchEvent(createTouchEvent("touchstart", 200, 100));
+      clock.advance(20);
+      element.dispatchEvent(createTouchEvent("touchmove", 180, 100));
+      clock.advance(40);
+      element.dispatchEvent(createTouchEvent("touchmove", 150, 100)); // -0.75px/ms
+      clock.advance(100); // 手指停稳后再松手
+      element.dispatchEvent(createTouchEvent("touchend", 150, 100));
+
+      const [, velocityX] = onDragEnd.mock.calls[0]!;
+      expect(velocityX).toBe(0);
+    });
+  });
+
   it("should only start swipe detection inside the configured edge zone", () => {
     const onSwipeRight = vi.fn();
 

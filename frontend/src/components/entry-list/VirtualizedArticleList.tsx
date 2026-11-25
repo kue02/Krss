@@ -7,6 +7,12 @@ interface VirtualizedArticleListProps {
   entries: Entry[];
   /** 与原 `entries.map` 里那份 `EntryListItem` 一字不差（props 接口不变） */
   renderItem: (entry: Entry, index: number) => ReactNode;
+  /**
+   * 行内会吸顶内容（合列正文 pane 的 sticky 工具栏）时置 true：
+   * 用 `top` 定位代替 `transform: translateY`，避免 transform 祖先破坏 sticky。
+   * 普通列表保持 transform（合成层更省）。
+   */
+  disableTransform?: boolean;
 }
 
 /**
@@ -25,6 +31,7 @@ export function VirtualizedArticleList({
   virtualList,
   entries,
   renderItem,
+  disableTransform = false,
 }: VirtualizedArticleListProps) {
   const { virtualizer, windowVirtualizer, spacers } = virtualList;
   const active = virtualizer ?? windowVirtualizer;
@@ -34,11 +41,16 @@ export function VirtualizedArticleList({
   }
 
   const virtualItems = active.getVirtualItems();
-  // jsdom 回退：测不到容器尺寸时 range 为空 → 全量渲染（见上面注释）
+  // jsdom / 首帧回退：测不到容器尺寸时 range 为空。首帧绝不能把 50 张大卡片
+  // 全量挂载（会抵消虚拟化收益），最多先渲染前 12 行；小列表（<=12）仍全量，
+  // 保持既有 jsdom 回归测试语义。
+  const FALLBACK_ROWS = 12;
+  const fallbackEntries =
+    entries.length > FALLBACK_ROWS ? entries.slice(0, FALLBACK_ROWS) : entries;
   const items =
     virtualItems.length > 0
       ? virtualItems
-      : entries.map((entry, index) => ({
+      : fallbackEntries.map((entry, index) => ({
           key: entry.id,
           index,
           start: 0,
@@ -63,7 +75,9 @@ export function VirtualizedArticleList({
 
   const rowStyle = (start: number): CSSProperties | undefined =>
     virtualItems.length > 0
-      ? { position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${start}px)` }
+      ? disableTransform
+        ? { position: "absolute", top: start, left: 0, width: "100%" }
+        : { position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${start}px)` }
       : undefined;
 
   return (

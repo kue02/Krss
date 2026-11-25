@@ -6,6 +6,31 @@ import { ImagePreview } from "./image-preview";
 // Mock window.scrollTo (not implemented in jsdom)
 vi.stubGlobal("scrollTo", vi.fn());
 
+/**
+ * jsdom 不一定实现 PointerEvent，用 MouseEvent 补 pointerType 等字段派发；
+ * React 的 pointer 事件插件只读这些字段，足以驱动「触屏双击 pointerup 判定」。
+ */
+function fireTouchPointer(
+  element: Element,
+  type: "pointerdown" | "pointerup",
+  x: number,
+  y: number,
+) {
+  const event = new MouseEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    clientX: x,
+    clientY: y,
+    button: 0,
+  });
+  Object.defineProperties(event, {
+    pointerId: { value: 1 },
+    pointerType: { value: "touch" },
+    isPrimary: { value: true },
+  });
+  fireEvent(element, event);
+}
+
 // Mock embla-carousel-react with controllable API
 const mockScrollPrev = vi.fn();
 const mockScrollNext = vi.fn();
@@ -17,11 +42,20 @@ const mockOff = vi.fn();
 // Store the embla options passed to useEmblaCarousel
 let capturedEmblaOptions: {
   startIndex?: number;
-  watchDrag?: () => boolean;
+  watchDrag?: (
+    api?: unknown,
+    event?: { touches?: { length: number } },
+  ) => boolean;
 } = {};
 
 vi.mock("embla-carousel-react", () => ({
-  default: (options: { startIndex?: number; watchDrag?: () => boolean }) => {
+  default: (options: {
+    startIndex?: number;
+    watchDrag?: (
+      api?: unknown,
+      event?: { touches?: { length: number } },
+    ) => boolean;
+  }) => {
     capturedEmblaOptions = options;
     return [
       vi.fn(), // emblaRef
@@ -38,13 +72,17 @@ vi.mock("embla-carousel-react", () => ({
 }));
 
 // Mock useImageZoom so tests can drive isZoomed/scale and assert the resetKey
-const { mockZoomState, capturedZoomResetKeys, mockToggleZoomAt } = vi.hoisted(
-  () => ({
-    mockZoomState: { scale: 1, isZoomed: false },
-    capturedZoomResetKeys: [] as string[],
-    mockToggleZoomAt: vi.fn(),
-  }),
-);
+const {
+  mockZoomState,
+  capturedZoomResetKeys,
+  mockToggleZoomAt,
+  mockIsMultiTouchRef,
+} = vi.hoisted(() => ({
+  mockZoomState: { scale: 1, isZoomed: false },
+  capturedZoomResetKeys: [] as string[],
+  mockToggleZoomAt: vi.fn(),
+  mockIsMultiTouchRef: { current: false },
+}));
 
 vi.mock("@/hooks/useImageZoom", () => ({
   useImageZoom: (resetKey?: string) => {
@@ -54,6 +92,8 @@ vi.mock("@/hooks/useImageZoom", () => ({
       scale: mockZoomState.scale,
       offset: { x: 0, y: 0 },
       isZoomed: mockZoomState.isZoomed,
+      isMultiTouchRef: mockIsMultiTouchRef,
+      getPointerCount: () => 0,
       reset: vi.fn(),
       toggleZoomAt: mockToggleZoomAt,
       handlers: {},
@@ -84,13 +124,23 @@ vi.mock("framer-motion", () => ({
       className,
       onClick,
       onPointerDown,
+      onPointerUp,
+      onPointerCancel,
     }: {
       children: React.ReactNode;
       className?: string;
       onClick?: () => void;
       onPointerDown?: React.PointerEventHandler<HTMLDivElement>;
+      onPointerUp?: React.PointerEventHandler<HTMLDivElement>;
+      onPointerCancel?: React.PointerEventHandler<HTMLDivElement>;
     }) => (
-      <div className={className} onClick={onClick} onPointerDown={onPointerDown}>
+      <div
+        className={className}
+        onClick={onClick}
+        onPointerDown={onPointerDown}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
+      >
         {children}
       </div>
     ),
@@ -468,6 +518,7 @@ describe("ImagePreview", () => {
     beforeEach(() => {
       mockZoomState.scale = 1;
       mockZoomState.isZoomed = false;
+      mockIsMultiTouchRef.current = false;
       capturedZoomResetKeys.length = 0;
     });
 
@@ -507,6 +558,37 @@ describe("ImagePreview", () => {
       expect(capturedEmblaOptions.watchDrag!()).toBe(true);
     });
 
+    it("双指按下时 watchDrag 返回 false（1x 捏合不被 embla 抢走）", () => {
+      useImagePreviewStore.getState().open(mockImages, 0);
+
+      render(<ImagePreview />);
+
+      expect(
+        capturedEmblaOptions.watchDrag!(undefined, {
+          touches: { length: 2 },
+        }),
+      ).toBe(false);
+      expect(
+        capturedEmblaOptions.watchDrag!(undefined, {
+          touches: { length: 1 },
+        }),
+      ).toBe(true);
+    });
+
+    it("第二指已落下但 touches 仍报 1 时，watchDrag 仍返回 false（isMultiTouchRef 兜底）", () => {
+      useImagePreviewStore.getState().open(mockImages, 0);
+      render(<ImagePreview />);
+
+      expect(
+        capturedEmblaOptions.watchDrag!(undefined, { touches: { length: 1 } }),
+      ).toBe(true);
+
+      mockIsMultiTouchRef.current = true;
+      expect(
+        capturedEmblaOptions.watchDrag!(undefined, { touches: { length: 1 } }),
+      ).toBe(false);
+    });
+
     it("scale===1 时点击图片关闭预览", async () => {
       useImagePreviewStore.getState().open(mockImages, 0);
       const { container } = render(<ImagePreview />);
@@ -515,8 +597,10 @@ describe("ImagePreview", () => {
         ".overflow-hidden.touch-manipulation",
       );
       expect(carousel).not.toBeNull();
+      const image = carousel!.querySelector("img");
+      expect(image).not.toBeNull();
 
-      fireEvent.click(carousel!);
+      fireEvent.click(image!);
       // 关闭带 ~320ms 延时（给双击留取消窗口），等它触发
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 420));
@@ -533,9 +617,11 @@ describe("ImagePreview", () => {
         ".overflow-hidden.touch-manipulation",
       );
       expect(carousel).not.toBeNull();
+      const image = carousel!.querySelector("img");
+      expect(image).not.toBeNull();
 
-      fireEvent.click(carousel!);
-      fireEvent.click(carousel!);
+      fireEvent.click(image!);
+      fireEvent.click(image!);
 
       expect(mockToggleZoomAt).toHaveBeenCalledTimes(1);
 
@@ -544,6 +630,86 @@ describe("ImagePreview", () => {
       });
 
       // 第二次点按已取消关闭定时器，预览应仍然打开
+      expect(useImagePreviewStore.getState().isOpen).toBe(true);
+    });
+
+    it("触屏双击在 pointerup 即判定放大、不必等第二次 click（随后 click 被吞掉）", async () => {
+      mockZoomState.scale = 1;
+      mockZoomState.isZoomed = false;
+      mockToggleZoomAt.mockClear();
+      useImagePreviewStore.getState().open([mockImages[0]!]);
+      const { container } = render(<ImagePreview />);
+
+      const img = container.querySelector("img");
+      expect(img).not.toBeNull();
+      // 单图：img 的父级就是挂了 pointerup / click / doubleclick 的 stage
+      const stage = img!.parentElement!;
+
+      // 第一次点按：pointerdown → pointerup → click（记录上一次点按，起 320ms 关闭计时）
+      fireTouchPointer(img!, "pointerdown", 120, 120);
+      fireTouchPointer(stage, "pointerup", 120, 120);
+      fireEvent.click(img!, { clientX: 120, clientY: 120 });
+      expect(mockToggleZoomAt).not.toHaveBeenCalled();
+
+      // 第二次点按：只到 pointerup 就应判定为双击并放大（不等 click）
+      fireTouchPointer(img!, "pointerdown", 120, 120);
+      fireTouchPointer(stage, "pointerup", 120, 120);
+      expect(mockToggleZoomAt).toHaveBeenCalledTimes(1);
+
+      // 浏览器随后补发的 click 必须被吞掉：不二次切换、不重新起关闭计时
+      fireEvent.click(img!, { clientX: 120, clientY: 120 });
+      expect(mockToggleZoomAt).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 420));
+      });
+      expect(useImagePreviewStore.getState().isOpen).toBe(true);
+    });
+
+    it("触屏双击放大后立刻点空白仍能关闭（不被 suppress 窗口误吞）", () => {
+      mockZoomState.scale = 1;
+      mockZoomState.isZoomed = false;
+      mockToggleZoomAt.mockClear();
+      useImagePreviewStore.getState().open([mockImages[0]!]);
+      const { container } = render(<ImagePreview />);
+      const img = container.querySelector("img")!;
+      const stage = img.parentElement!;
+
+      // 第一次点按（记录上一次点按）
+      fireTouchPointer(img!, "pointerdown", 120, 120);
+      fireTouchPointer(stage, "pointerup", 120, 120);
+      fireEvent.click(img!, { clientX: 120, clientY: 120 });
+      // 第二次点按 → 双击放大，进入 500ms suppress 窗口
+      fireTouchPointer(img!, "pointerdown", 120, 120);
+      fireTouchPointer(stage, "pointerup", 120, 120);
+      expect(mockToggleZoomAt).toHaveBeenCalledTimes(1);
+
+      // 立刻点空白（stage，落点非 img）：应继续走空白关闭，立即关闭
+      fireTouchPointer(stage, "pointerdown", 300, 300);
+      fireEvent.click(stage, { clientX: 300, clientY: 300 });
+      expect(useImagePreviewStore.getState().isOpen).toBe(false);
+    });
+
+    it("触屏双击放大后点图片本身不关闭、也不二次切换", () => {
+      mockZoomState.scale = 1;
+      mockZoomState.isZoomed = false;
+      mockToggleZoomAt.mockClear();
+      useImagePreviewStore.getState().open([mockImages[0]!]);
+      const { container } = render(<ImagePreview />);
+      const img = container.querySelector("img")!;
+      const stage = img.parentElement!;
+
+      fireTouchPointer(img!, "pointerdown", 120, 120);
+      fireTouchPointer(stage, "pointerup", 120, 120);
+      fireEvent.click(img!, { clientX: 120, clientY: 120 });
+      fireTouchPointer(img!, "pointerdown", 120, 120);
+      fireTouchPointer(stage, "pointerup", 120, 120);
+      expect(mockToggleZoomAt).toHaveBeenCalledTimes(1);
+
+      // 立刻点图片本身：落点仍在 img，suppress 窗口内被吞，不关闭、不二次切换
+      fireTouchPointer(img!, "pointerdown", 120, 120);
+      fireEvent.click(img!, { clientX: 120, clientY: 120 });
+      expect(mockToggleZoomAt).toHaveBeenCalledTimes(1);
       expect(useImagePreviewStore.getState().isOpen).toBe(true);
     });
 
@@ -557,8 +723,10 @@ describe("ImagePreview", () => {
         ".overflow-hidden.touch-manipulation",
       );
       expect(carousel).not.toBeNull();
+      const image = carousel!.querySelector("img");
+      expect(image).not.toBeNull();
 
-      fireEvent.click(carousel!);
+      fireEvent.click(image!);
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 320));
       });
@@ -602,6 +770,151 @@ describe("ImagePreview", () => {
       fireEvent.click(stage, { clientX: 160, clientY: 100 });
 
       expect(useImagePreviewStore.getState().isOpen).toBe(true);
+    });
+  });
+
+  describe("点击空白处关闭", () => {
+    beforeEach(() => {
+      mockZoomState.scale = 1;
+      mockZoomState.isZoomed = false;
+    });
+
+    it("放大态点击单图 stage 空白立即关闭", () => {
+      mockZoomState.scale = 2;
+      mockZoomState.isZoomed = true;
+      useImagePreviewStore.getState().open([mockImages[0]!]);
+      const { container } = render(<ImagePreview />);
+
+      const img = container.querySelector("img");
+      expect(img).not.toBeNull();
+      fireEvent.click(img!.parentElement!);
+
+      expect(useImagePreviewStore.getState().isOpen).toBe(false);
+    });
+
+    it("放大态点击图片本身不关闭", () => {
+      mockZoomState.scale = 2;
+      mockZoomState.isZoomed = true;
+      useImagePreviewStore.getState().open([mockImages[0]!]);
+      const { container } = render(<ImagePreview />);
+
+      const img = container.querySelector("img");
+      expect(img).not.toBeNull();
+      fireEvent.click(img!);
+
+      expect(useImagePreviewStore.getState().isOpen).toBe(true);
+    });
+
+    it("pointer capture 使 click target 落到 stage 时仍按图片处理，不关闭", () => {
+      mockZoomState.scale = 2;
+      mockZoomState.isZoomed = true;
+      useImagePreviewStore.getState().open([mockImages[0]!]);
+      const { container } = render(<ImagePreview />);
+
+      const img = container.querySelector("img");
+      expect(img).not.toBeNull();
+      const stage = img!.parentElement!;
+
+      fireEvent.pointerDown(img!, { clientX: 150, clientY: 150 });
+      fireEvent.pointerUp(stage, { clientX: 150, clientY: 150 });
+      fireEvent.click(stage, { clientX: 150, clientY: 150 });
+
+      expect(useImagePreviewStore.getState().isOpen).toBe(true);
+    });
+
+    it("多图放大态点击 embla 内层空白立即关闭", () => {
+      mockZoomState.scale = 2;
+      mockZoomState.isZoomed = true;
+      useImagePreviewStore.getState().open(mockImages);
+      const { container } = render(<ImagePreview />);
+
+      const carousel = container.querySelector(
+        ".overflow-hidden.touch-manipulation",
+      );
+      expect(carousel).not.toBeNull();
+      fireEvent.click(carousel!);
+
+      expect(useImagePreviewStore.getState().isOpen).toBe(false);
+    });
+
+    it("放大态拖动 60px 后抬起不关闭", () => {
+      mockZoomState.scale = 2;
+      mockZoomState.isZoomed = true;
+      useImagePreviewStore.getState().open([mockImages[0]!]);
+      const { container } = render(<ImagePreview />);
+
+      const img = container.querySelector("img");
+      expect(img).not.toBeNull();
+      const stage = img!.parentElement!;
+
+      fireEvent.pointerDown(stage, { clientX: 100, clientY: 100 });
+      fireEvent.click(stage, { clientX: 160, clientY: 100 });
+
+      expect(useImagePreviewStore.getState().isOpen).toBe(true);
+    });
+
+    it("点击页码计数区域不会关闭预览", () => {
+      mockZoomState.scale = 2;
+      mockZoomState.isZoomed = true;
+      useImagePreviewStore.getState().open(mockImages);
+      render(<ImagePreview />);
+
+      fireEvent.click(screen.getByText("1 / 3"));
+
+      expect(useImagePreviewStore.getState().isOpen).toBe(true);
+    });
+
+    it("干净点击空白时，pointerup 清理不会抢在 click 之前", () => {
+      mockZoomState.scale = 2;
+      mockZoomState.isZoomed = true;
+      useImagePreviewStore.getState().open([mockImages[0]!]);
+      const { container } = render(<ImagePreview />);
+
+      const img = container.querySelector("img");
+      expect(img).not.toBeNull();
+      const stage = img!.parentElement!;
+
+      fireEvent.pointerDown(stage, { clientX: 195, clientY: 20 });
+      fireEvent.pointerUp(stage, { clientX: 195, clientY: 20 });
+      fireEvent.click(stage, { clientX: 195, clientY: 20 });
+
+      expect(useImagePreviewStore.getState().isOpen).toBe(false);
+    });
+
+    it("放大态拖动被打断后，下一次点空白仍会关闭", async () => {
+      mockZoomState.scale = 2;
+      mockZoomState.isZoomed = true;
+      useImagePreviewStore.getState().open([mockImages[0]!]);
+      const { container } = render(<ImagePreview />);
+
+      const img = container.querySelector("img");
+      expect(img).not.toBeNull();
+      const stage = img!.parentElement!;
+
+      // 原生图片拖拽会把手势打断成 pointercancel，不会产生 click
+      fireEvent.pointerDown(stage, { clientX: 100, clientY: 100 });
+      fireEvent.pointerCancel(stage, { clientX: 160, clientY: 100 });
+
+      // 等 pointercancel 后的延迟清理跑完
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      // 旧坐标已被清空，这一次干净点击不应再被当成拖动
+      fireEvent.click(stage, { clientX: 195, clientY: 20 });
+
+      expect(useImagePreviewStore.getState().isOpen).toBe(false);
+    });
+
+    it("可缩放的预览图禁用原生拖拽", () => {
+      useImagePreviewStore.getState().open(mockImages);
+      const { container } = render(<ImagePreview />);
+
+      const images = container.querySelectorAll("img");
+      expect(images.length).toBeGreaterThan(0);
+      for (const image of images) {
+        expect(image.draggable).toBe(false);
+      }
     });
   });
 });

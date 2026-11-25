@@ -52,6 +52,7 @@ import { cn } from "@/lib/utils";
 import { Button, Input, Label, NumberField } from "@heroui/react";
 import { FeedAvatar } from "@/components/ui/feed-avatar";
 import { SegmentedControl } from "@/components/ui/segmented-control";
+import type { ArticlePaneFrame } from "@/lib/article-pane-style";
 import { Select } from "@/components/ui/select";
 import {
   ArrowUpDown,
@@ -304,6 +305,7 @@ export function AppearanceSettings() {
   const reduceMotion = useUISettingKey("reduceMotion");
   const mobileSidebarShowViews = useUISettingKey("mobileSidebarShowViews");
   const mobileEntryMenuPlacement = useUISettingKey("mobileEntryMenuPlacement");
+  const mobileSwipeActionStyle = useUISettingKey("mobileSwipeActionStyle");
   const showLineNumbers = useUISettingKey("showLineNumbers");
   const uiScale = useUISettingKey("uiScale");
   const quoteStyle = useUISettingKey("quoteStyle");
@@ -376,8 +378,8 @@ export function AppearanceSettings() {
   const articleListRowHeight = useUISettingKey("articleListRowHeight");
   const articleQuickActionMode = useUISettingKey("articleQuickActionMode");
   const articleMobileFullTitle = useUISettingKey("articleMobileFullTitle");
-  const articlePaneStyle = useUISettingKey("articlePaneStyle");
-  const { setArticlePaneStyle } = useUISettingActions();
+  const articlePaneFrame = useUISettingKey("articlePaneFrame");
+  const { setArticlePaneFrame } = useUISettingActions();
   const hoverImageSize = useUISettingKey("hoverImageSize");
   const hoverMultiImageSetting = useUISettingKey(
     "hoverMultiImage",
@@ -907,6 +909,31 @@ export function AppearanceSettings() {
               ]}
             />
           </SettingRow>
+          <SettingRow
+            label={t("appearance_mobile.swipe_action_style")}
+            hint={t("appearance_mobile.swipe_action_style_hint")}
+          >
+            <SegmentedControl
+              className="shrink-0 max-sm:h-12 max-sm:p-0.5 max-sm:[&>button]:h-11 max-sm:[&>button]:px-4"
+              value={mobileSwipeActionStyle ?? "flat"}
+              onValueChange={(value) =>
+                setUISetting(
+                  "mobileSwipeActionStyle",
+                  value as "flat" | "circle",
+                )
+              }
+              options={[
+                {
+                  value: "flat",
+                  label: t("appearance_mobile.swipe_action_flat"),
+                },
+                {
+                  value: "circle",
+                  label: t("appearance_mobile.swipe_action_circle"),
+                },
+              ]}
+            />
+          </SettingRow>
         </div>
       </SectionCard>
 
@@ -1396,26 +1423,30 @@ export function AppearanceSettings() {
                         />
                       </SettingRow>
                     )}
-                    {/* 「Inoreader列表」正文栏容器样式（用户对比后决定） */}
+                    {/* 「Inoreader列表」正文栏外框：淡边框 / 无边框 / 原样的全宽（用户对比后定稿） */}
                     {articleLayout === "inoreader" && (
                       <SettingRow
-                        label={t("appearance_view.article_pane_style")}
-                        hint={t("appearance_view.article_pane_style_hint")}
+                        label={t("appearance_view.article_pane_frame")}
+                        hint={t("appearance_view.article_pane_frame_hint")}
                       >
                         <SegmentedControl
                           className="shrink-0"
-                          value={articlePaneStyle === "card" ? "card" : "plain"}
+                          value={articlePaneFrame}
                           onValueChange={(value) =>
-                            setArticlePaneStyle(value === "card" ? "card" : "plain")
+                            setArticlePaneFrame(value as ArticlePaneFrame)
                           }
                           options={[
                             {
-                              value: "plain",
-                              label: t("appearance_view.article_pane_style_plain"),
+                              value: "subtle",
+                              label: t("appearance_view.article_pane_frame_subtle"),
                             },
                             {
-                              value: "card",
-                              label: t("appearance_view.article_pane_style_card"),
+                              value: "none",
+                              label: t("appearance_view.article_pane_frame_none"),
+                            },
+                            {
+                              value: "full",
+                              label: t("appearance_view.article_pane_frame_full"),
                             },
                           ]}
                         />

@@ -171,6 +171,9 @@ type MCPService interface {
 	OAuthRevoke(ctx context.Context, id int64) error
 	// FetchFeedItems 按该订阅的映射抓一次，产出可直接进 saveEntries 的条目。
 	FetchFeedItems(ctx context.Context, feed model.Feed) (MCPFetchResult, error)
+	// FeedRefreshInterval 返回该 MCP 订阅所属连接的刷新间隔（duration）以及是否显式配置了间隔。
+	// 未配置 / 配置 <=0 → (0,false)，由调用方回落到全局间隔；解析或查连接失败一律宽容返回 (0,false)，绝不报错。
+	FeedRefreshInterval(ctx context.Context, feed model.Feed) (time.Duration, bool)
 }
 
 type mcpService struct {
@@ -1069,6 +1072,27 @@ func (s *mcpService) FetchFeedItems(ctx context.Context, feed model.Feed) (MCPFe
 	_ = s.servers.TouchLastUsed(ctx, server.ID)
 	s.markStatus(ctx, server, nil, server.ToolCount, server.ResourceCount)
 	return out, nil
+}
+
+// FeedRefreshInterval 读取该 MCP 订阅所属连接配置的刷新间隔。
+// 未配置 / <=0 → (0,false)，交给调用方回落到全局间隔。
+// 任何解析或查库失败都宽容地返回 (0,false)，绝不因为读取配置失败而打断刷新。
+func (s *mcpService) FeedRefreshInterval(ctx context.Context, feed model.Feed) (time.Duration, bool) {
+	config, err := ParseMCPFeedConfig(feed.MCPConfig)
+	if err != nil {
+		return 0, false
+	}
+	if config.ServerID.Int64() == 0 {
+		return 0, false
+	}
+	server, err := s.servers.GetByID(ctx, config.ServerID.Int64())
+	if err != nil {
+		return 0, false
+	}
+	if server.RefreshIntervalMinutes != nil && *server.RefreshIntervalMinutes > 0 {
+		return time.Duration(*server.RefreshIntervalMinutes) * time.Minute, true
+	}
+	return 0, false
 }
 
 // toGofeedItem 把候选条目变成 gofeed.Item —— 这样就能原样喂给既有的 saveEntries()。

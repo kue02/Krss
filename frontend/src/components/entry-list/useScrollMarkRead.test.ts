@@ -156,6 +156,38 @@ describe("useScrollMarkRead 的已读判定时机", () => {
     expect(firstCall?.[0]).toMatchObject({ ids: ["e1"], read: true });
   });
 
+  it("虚拟列表：滚动后新挂载的行也会被 observe 并正常标记", async () => {
+    const container = document.createElement("div");
+    const { contentRoot, card, surface } = makeHarness(container);
+    renderScrollMarkRead({
+      contentRoot,
+      surface,
+      entries: [makeEntry("e1"), makeEntry("e2")],
+    });
+
+    const observer = FakeObserver.instances.at(-1) as FakeObserver;
+    expect(observer.elements).toContain(card);
+
+    // 模拟虚拟列表滚动：把 e2 新挂进 contentRoot（e1 仍在）。
+    const card2 = document.createElement("div");
+    card2.dataset.entryId = "e2";
+    card2.getBoundingClientRect = () =>
+      ({ top: 300, bottom: 400, height: 100, left: 0, right: 600, width: 600 }) as DOMRect;
+    contentRoot.appendChild(card2);
+    // 等 MutationObserver 回调（微任务）跑完
+    await act(async () => {
+      await new Promise<void>((res) => queueMicrotask(() => res()));
+    });
+
+    expect(observer.elements).toContain(card2);
+
+    // 新行滚出顶部照样能标记已读（旧实现只 observe 首屏节点，e2 会漏）
+    observer.emit([{ target: card2, isIntersecting: false, bottom: -20 }]);
+    vi.advanceTimersByTime(3000);
+    expect(markManyAsRead).toHaveBeenCalledTimes(1);
+    expect(markManyAsRead.mock.calls[0]?.[0]).toMatchObject({ ids: ["e2"], read: true });
+  });
+
   it("onVisible（Folo 语义）：进入视口并停留后即标记已读", () => {
     const container = document.createElement("div");
     const { contentRoot, card, surface } = makeHarness(container);

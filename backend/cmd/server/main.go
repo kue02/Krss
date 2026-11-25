@@ -248,6 +248,9 @@ func main() {
 			logger.Warn("backfill stop timeout")
 		}
 
+		// 图标异步队列：停止接收新任务并等待在途任务退出（可重复调用）。
+		iconService.Close()
+
 		if pprofServer != nil {
 			if err := pprofServer.Shutdown(ctx); err != nil {
 				logger.Error("pprof shutdown", "module", "server", "action", "shutdown", "resource", "pprof", "result", "failed", "error", err)
