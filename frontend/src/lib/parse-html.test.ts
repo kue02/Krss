@@ -44,12 +44,28 @@ describe("parse-html", () => {
       expect(hastToHtml(result.hastTree)).toBe("<p>Hello World</p>");
     });
 
-    it("should remove iframe and object fallback text", () => {
+    it("should keep safe iframe and remove object fallback text", () => {
       const html =
-        '<iframe src="https://example.com/embed">iframe fallback</iframe><object data="movie.swf">object fallback</object><p>Hello World</p>';
+        '<iframe src="https://player.bilibili.com/player.html?bvid=BV1tZh76LEVK" onload="alert(1)" allowfullscreen></iframe><object data="movie.swf">object fallback</object><p>Hello World</p>';
       const result = parseHtml(html);
+      const output = hastToHtml(result.hastTree);
 
-      expect(hastToHtml(result.hastTree)).toBe("<p>Hello World</p>");
+      expect(output).toContain("<iframe");
+      expect(output).toContain('src="https://player.bilibili.com/player.html?bvid=BV1tZh76LEVK"');
+      expect(output).not.toContain("onload");
+      expect(output).not.toContain("object fallback");
+      expect(output).not.toContain("<object");
+      expect(output).toContain("<p>Hello World</p>");
+    });
+
+    it("should drop iframe with a non-http(s) src", () => {
+      const result = parseHtml(
+        '<iframe src="javascript:alert(1)"></iframe><p>Hello World</p>',
+      );
+      const output = hastToHtml(result.hastTree);
+
+      expect(output).not.toContain("<iframe");
+      expect(output).toBe("<p>Hello World</p>");
     });
 
     it("should remove textarea raw text and legacy fallback tags", () => {

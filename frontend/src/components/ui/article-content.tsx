@@ -10,6 +10,7 @@ import { getProxiedImageUrl } from "@/lib/image-proxy";
 import { useImagePreviewStore } from "@/stores/image-preview-store";
 import { ArticleImage, ArticleLinkContext } from "./article-image";
 import { ArticleVideo } from "./article-video";
+import { ArticleIframe } from "./article-iframe";
 
 // Context for image preview - provides images list and open function
 export interface ImagePreviewContextValue {
@@ -197,6 +198,13 @@ const ArticleContentBlockRenderer = memo(function ArticleContentBlockRenderer({
           videoElementCache.set(cacheKey, element);
           pruneVideoCache();
           return element;
+        },
+        iframe: ({ node: iframeNode, ...props }) => {
+          const nodeOffset = iframeNode?.position?.start?.offset ?? 0;
+          return createElement(ArticleIframe, {
+            ...(props as React.ComponentProps<typeof ArticleIframe>),
+            key: `${articleUrl || ""}-iframe-${nodeOffset}-${props.src || ""}`,
+          });
         },
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         a: ({ node: _, ...props }) =>
