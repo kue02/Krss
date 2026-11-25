@@ -132,7 +132,8 @@ function rehypeDropIframesWithoutHttpSrc() {
       if (!parent || index === undefined) return;
       if (node.tagName !== "iframe") return;
       const src = node.properties?.src;
-      if (typeof src === "string" && /^https?:/i.test(src)) return;
+      // 协议相对地址（//player.bilibili.com/...）也是合法 http(s)，渲染层会补 https:。
+      if (typeof src === "string" && /^(https?:|\/\/)/i.test(src)) return;
 
       parent.children.splice(index, 1);
       return index;

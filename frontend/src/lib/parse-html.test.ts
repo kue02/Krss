@@ -58,6 +58,15 @@ describe("parse-html", () => {
       expect(output).toContain("<p>Hello World</p>");
     });
 
+    it("should keep protocol-relative iframe src", () => {
+      const result = parseHtml(
+        '<iframe src="//player.bilibili.com/player.html?bvid=BV1tZh76LEVK"></iframe>',
+      );
+      const output = hastToHtml(result.hastTree);
+      expect(output).toContain("<iframe");
+      expect(output).toContain("//player.bilibili.com/player.html");
+    });
+
     it("should drop iframe with a non-http(s) src", () => {
       const result = parseHtml(
         '<iframe src="javascript:alert(1)"></iframe><p>Hello World</p>',

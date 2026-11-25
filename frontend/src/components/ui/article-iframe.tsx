@@ -48,10 +48,19 @@ function isAllowedHost(hostname: string): boolean {
   );
 }
 
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    // 畸形 % 序列（如 /embed/100%pure）不能让它抛 URIError 把整篇正文渲染带崩。
+    return value;
+  }
+}
+
 /** RSSHub 的 YouTube 数据里会混进 `&quot;` 或被 URL 编码成 %22，统一清掉再校验。 */
 function cleanYouTubeId(value: string | null | undefined): string | undefined {
   if (!value) return undefined;
-  const id = decodeURIComponent(value)
+  const id = safeDecode(value)
     .replace(/&quot;/g, '"')
     .replace(/^["'\s]+|["'\s]+$/g, "");
   return /^[A-Za-z0-9_-]{6,}$/.test(id) ? id : undefined;
@@ -59,7 +68,7 @@ function cleanYouTubeId(value: string | null | undefined): string | undefined {
 
 function extractYouTubeId(url: URL): string | undefined {
   const host = url.hostname.toLowerCase();
-  const parts = decodeURIComponent(url.pathname).split("/").filter(Boolean);
+  const parts = safeDecode(url.pathname).split("/").filter(Boolean);
   let id: string | undefined;
 
   if (host === "youtu.be") {
@@ -106,12 +115,11 @@ export function resolveIframeSrc(raw: string | undefined): string | null {
     host.endsWith(".youtube-nocookie.com")
   ) {
     const id = extractYouTubeId(url);
-    if (id) {
-      const start = url.searchParams.get("t") ?? url.searchParams.get("start");
-      const params = new URLSearchParams({ rel: "0", modestbranding: "1" });
-      if (start && /^\d+$/.test(start)) params.set("start", start);
-      return `https://www.youtube-nocookie.com/embed/${id}?${params.toString()}`;
-    }
+    if (!id) return null; // playlist / 频道页等无法内嵌，交给外链降级，别塞原始页白屏
+    const start = url.searchParams.get("t") ?? url.searchParams.get("start");
+    const params = new URLSearchParams({ rel: "0", modestbranding: "1" });
+    if (start && /^\d+$/.test(start)) params.set("start", start);
+    return `https://www.youtube-nocookie.com/embed/${id}?${params.toString()}`;
   }
 
   return url.toString();
@@ -133,17 +141,37 @@ export interface ArticleIframeProps
   src?: string;
 }
 
+function isTinyOrHidden(
+  width: string | number | undefined,
+  height: string | number | undefined,
+  style: React.CSSProperties | string | undefined,
+  hidden: boolean | undefined,
+): boolean {
+  const w = Number(width);
+  const h = Number(height);
+  if (Number.isFinite(w) && w <= 1) return true;
+  if (Number.isFinite(h) && h <= 1) return true;
+  if (hidden) return true;
+  if (typeof style === "string") return /display\s*:\s*none/i.test(style);
+  if (style && typeof style === "object" && style.display === "none") return true;
+  return false;
+}
+
 export function ArticleIframe({
   src,
   title,
   className,
   style,
-  allow,
+  width,
+  height,
+  hidden,
   ...rest
 }: ArticleIframeProps) {
   const resolved = resolveIframeSrc(src);
 
   if (!resolved) {
+    // 追踪像素 / 广告位常是 1×1 或 display:none 的 iframe，不降级成可见药丸。
+    if (isTinyOrHidden(width, height, style, hidden)) return null;
     const fallback = getFallback(src);
     if (!fallback) return null;
     return (
@@ -178,7 +206,7 @@ export function ArticleIframe({
           loading="lazy"
           referrerPolicy="strict-origin-when-cross-origin"
           sandbox={IFRAME_SANDBOX}
-          allow={allow || DEFAULT_ALLOW}
+          allow={DEFAULT_ALLOW}
           allowFullScreen
           className="absolute inset-0 h-full w-full border-0"
         />

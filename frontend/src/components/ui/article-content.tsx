@@ -53,6 +53,9 @@ const IMAGE_CACHE_MAX_SIZE = 200;
 /** video 用同一个键规则单独一池：正文里的视频远少于图，20 足够覆盖一屏 */
 const videoElementCache = new Map<string, React.ReactElement>();
 const VIDEO_CACHE_MAX_SIZE = 20;
+/** iframe 同理：正文更新（拉到全文 / 翻译）时不能把正在播放的内嵌视频重建重载。 */
+const iframeElementCache = new Map<string, React.ReactElement>();
+const IFRAME_CACHE_MAX_SIZE = 20;
 
 // Simple LRU-like cleanup: remove oldest entries when cache exceeds max size
 function pruneImageCache() {
@@ -72,6 +75,16 @@ function pruneVideoCache() {
       videoElementCache.size - VIDEO_CACHE_MAX_SIZE,
     );
     keysToDelete.forEach((key) => videoElementCache.delete(key));
+  }
+}
+
+function pruneIframeCache() {
+  if (iframeElementCache.size > IFRAME_CACHE_MAX_SIZE) {
+    const keysToDelete = Array.from(iframeElementCache.keys()).slice(
+      0,
+      iframeElementCache.size - IFRAME_CACHE_MAX_SIZE,
+    );
+    keysToDelete.forEach((key) => iframeElementCache.delete(key));
   }
 }
 
@@ -201,10 +214,19 @@ const ArticleContentBlockRenderer = memo(function ArticleContentBlockRenderer({
         },
         iframe: ({ node: iframeNode, ...props }) => {
           const nodeOffset = iframeNode?.position?.start?.offset ?? 0;
-          return createElement(ArticleIframe, {
+          const cacheKey = `${articleUrl || ""}-iframe-${nodeOffset}-${
+            props.src || ""
+          }`;
+          if (iframeElementCache.has(cacheKey)) {
+            return iframeElementCache.get(cacheKey)!;
+          }
+          const element = createElement(ArticleIframe, {
             ...(props as React.ComponentProps<typeof ArticleIframe>),
-            key: `${articleUrl || ""}-iframe-${nodeOffset}-${props.src || ""}`,
+            key: cacheKey,
           });
+          iframeElementCache.set(cacheKey, element);
+          pruneIframeCache();
+          return element;
         },
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         a: ({ node: _, ...props }) =>
