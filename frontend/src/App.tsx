@@ -6,6 +6,7 @@ import {
   useMemo,
   useEffect,
   useRef,
+  useLayoutEffect,
 } from "react";
 import { Router, useLocation, useSearch, Redirect } from "wouter";
 import { useTranslation } from "react-i18next";
@@ -632,26 +633,43 @@ function AuthenticatedApp() {
   }, [contentType, articlePushDirection, isMobile]);
 
   /**
-   * 移动端详情页返回列表时，正文面板要整块「滑出去」。如果这一刻立刻把内容换成
-   * 「选择一篇文章开始阅读」的空占位，滑出的过程中就会闪一块**空的正文栏**
-   * （用户真机复现：右滑返回瞬间出现一个空的「正文栏」）。
-   * 这里保留「上一条正文」的 id：返回后详情面板滑出去时显示的仍是刚才那篇文章，
-   * **滑出动画结束**（`onTransitionEnd`，兜底 1200ms）后再卸载成占位——
-   * 面板此时已在屏幕外、inert，用户看不到占位；卸载也顺带停掉正文里的媒体、
-   * 并让 EntryContent 卸载时补登记「已读但先别从只看未读列表移除」的 defer。
+   * 移动端详情页返回列表时，正文面板有两种离场方式，分别处理，避免「闪一下正文栏」：
+   * - **应用内返回按钮**（`showList`，客户端导航）：保留 300ms 滑出动画。滑出过程中
+   *   仍显示刚才那篇文章（`retainedDetailEntryId`），动画结束（`onTransitionEnd`，兜底
+   *   1200ms）后再卸载成占位——否则立刻换成占位会在滑出时闪一块**空的正文栏**。
+   * - **系统右滑手势 / 浏览器后退**（`popstate`）：iOS 已由系统做过一次原生滑动，这里再叠
+   *   CSS 滑出会在「切回列表」的瞬间多绘一帧正文面板（真机复现：闪一下**带内容**的正文栏）。
+   *   这类关闭改为**瞬时归位**（`transition-none`），并**立即**清空 retained，让正文/媒体/
+   *   「已读 defer」的卸载时序恢复到「关闭即清理」。
    * 只有用户另选一篇时才替换；首次进入（无选中）时才是 null → 占位。
    */
   const [retainedDetailEntryId, setRetainedDetailEntryId] = useState<
     string | null
   >(selectedEntryId);
+
+  // 关闭意图：区分「应用内返回（要滑出动画）」与「系统手势 / 浏览器后退（瞬时归位）」。
+  // 默认 instant（任何未知关闭路径都瞬时，最不容易闪）；应用内返回按钮显式设为 slide。
+  const closeIntentRef = useRef<"instant" | "slide">("instant");
+  useEffect(() => {
+    const onPopState = () => {
+      closeIntentRef.current = "instant";
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
   useEffect(() => {
     if (selectedEntryId) {
       setRetainedDetailEntryId(selectedEntryId);
       return;
     }
-    // 返回列表：优先等详情面板滑出动画的 transitionend 再清空（见下方 handler）；
-    // 兜底定时器防止 transitionend 因 reduced-motion / 元素被隐藏而不触发，
-    // 导致离屏正文（含内嵌视频/音频）一直存活。
+    // 已返回列表：瞬时关闭 → 立即清空（不等动画）；
+    // 滑出关闭 → 等 transitionend（见下方 handler），兜底定时器防止 transitionend
+    // 因 reduced-motion / 元素被隐藏而不触发导致离屏正文一直存活。
+    if (closeIntentRef.current === "instant") {
+      setRetainedDetailEntryId(null);
+      return;
+    }
     const timer = window.setTimeout(
       () => setRetainedDetailEntryId(null),
       1200,
@@ -659,7 +677,7 @@ function AuthenticatedApp() {
     return () => window.clearTimeout(timer);
   }, [selectedEntryId]);
 
-  // 详情面板滑出动画结束、且已无选中条目时，把离屏正文卸载成占位。
+  // 详情面板滑出动画结束、且已无选中条目时，把离屏正文卸载成占位（滑出路径用）。
   const handleDetailTransitionEnd = useCallback(
     (event: React.TransitionEvent<HTMLElement>) => {
       if (event.target !== event.currentTarget) return;
@@ -671,19 +689,24 @@ function AuthenticatedApp() {
     [selectedEntryId],
   );
 
-  // 关闭详情（返回列表）时不要走 CSS 滑出动画：
-  // iOS 的边缘右滑返回手势已经由系统做过一次原生滑动，如果这里再叠一段 300ms
-  // 的 translate 滑出，就会在「手势结束、切回列表」的瞬间露出一帧正文面板，
-  // 表现为「闪一下正文栏」。返回直接瞬时归位，交给系统手势的滑动即可，观感干净。
-  // 进入详情仍保留滑入动画（点开条目是客户端导航，没有系统动画，需要这层过渡）。
-  // 用 ref 记住上一次的 mobileView，据此判断「这一帧是不是正在关闭」，
-  // 避免影响进入/详情内切换条目等其它情形。
+  // 应用内返回按钮：标记为「滑出」再走 showList（客户端导航，保留滑出动画）。
+  const handleMobileBack = useCallback(() => {
+    closeIntentRef.current = "slide";
+    showList();
+  }, [showList]);
+
+  // 用 ref 记住上一次的 mobileView，判断「这一帧是不是正在关闭」。
+  // 用 useLayoutEffect 在绘制前回写，避免快速 open→close 时读到旧值而误判。
   const prevMobileViewRef = useRef(mobileView);
-  const isDetailClosing =
-    prevMobileViewRef.current === "detail" && mobileView === "list";
-  useEffect(() => {
+  useLayoutEffect(() => {
     prevMobileViewRef.current = mobileView;
   }, [mobileView]);
+  // 正在关闭、且是系统手势 / 浏览器后退（瞬时意图），才禁用过渡；
+  // 应用内返回仍滑出；进入详情仍滑入。
+  const isDetailInstantClose =
+    prevMobileViewRef.current === "detail" &&
+    mobileView === "list" &&
+    closeIntentRef.current === "instant";
 
   // 桌面三栏的第三栏：Nextflux 式转场（reader-transition 批）。
   // 未选 → 首次选中 = 整块从右侧推进；已选 → 换另一条 = 正文上下滑动。
@@ -712,7 +735,7 @@ function AuthenticatedApp() {
         entryId={retainedDetailEntryId}
         contentType={contentType}
         isMobile
-        onBack={showList}
+        onBack={handleMobileBack}
       />
     </Suspense>
   ) : (
@@ -1019,7 +1042,7 @@ function AuthenticatedApp() {
           <section
             className={cn(
               "mobile-detail-page fixed inset-0 z-30 h-[var(--app-dvh)] overflow-hidden bg-background",
-              isDetailClosing
+              isDetailInstantClose
                 ? "transition-none"
                 : "transition-transform duration-300 ease-out",
               mobileView === "detail"
