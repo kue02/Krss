@@ -14,11 +14,13 @@ vi.mock("idb-keyval", () => {
     del: vi.fn(async (key: unknown) => {
       memory.delete(key);
     }),
+    keys: vi.fn(async () => Array.from(memory.keys())),
   };
 });
 
 import {
   PERSIST_MAX_AGE,
+  bootstrapQueryCache,
   boundDehydratedState,
   clearSnapshot,
   computeDehydratedState,
@@ -298,6 +300,25 @@ describe("IndexedDB storage round-trip", () => {
     const source = new QueryClient();
     source.setQueryData(["entries", { limit: 50 }], entriesData);
     await persistNow(source);
+    expect(await readSnapshot()).toBeUndefined();
+  });
+
+  it("新账号启动时清掉其它账号遗留的快照键", async () => {
+    const source = new QueryClient();
+    source.setQueryData(["entries", { limit: 50 }], entriesData);
+
+    localStorage.setItem("krss_auth_token", "account-a");
+    await persistNow(source);
+    expect(await readSnapshot()).toBeDefined();
+
+    localStorage.setItem("krss_auth_token", "account-b");
+    await persistNow(source);
+    await bootstrapQueryCache(new QueryClient(), { timeoutMs: 100 });
+
+    // 自己的还在
+    expect(await readSnapshot()).toBeDefined();
+    // 上一位账号的键被清掉
+    localStorage.setItem("krss_auth_token", "account-a");
     expect(await readSnapshot()).toBeUndefined();
   });
 

@@ -5,7 +5,7 @@ import {
   type Query,
   type QueryClient,
 } from "@tanstack/react-query";
-import { createStore, del, get, set } from "idb-keyval";
+import { createStore, del, get, keys, set } from "idb-keyval";
 import { LS_KEYS } from "@/lib/settings-storage";
 
 /**
@@ -31,7 +31,7 @@ export const PERSIST_MAX_AGE = 24 * 60 * 60 * 1000;
 export const PERSIST_THROTTLE_MS = 1000;
 
 /** 恢复阶段最多等这么久，避免 IndexedDB 异常卡住首屏（超时后照常渲染，后台仍会补 hydrate）。 */
-const RESTORE_TIMEOUT_MS = 1500;
+const RESTORE_TIMEOUT_MS = 500;
 
 /**
  * 每个「条目列表」无限查询只持久化**第一页**（约 pageSize 条）。
@@ -359,5 +359,25 @@ export async function bootstrapQueryCache(
   attachPersister(queryClient);
 
   // 清理 29 版遗留的全局快照键：旧格式不含账号归属，可能含上一位账号的条目，直接丢弃。
-  void del("snapshot", idbStore).catch(() => undefined);
+  await del("snapshot", idbStore).catch(() => undefined);
+  await purgeOtherSnapshots().catch(() => undefined);
+}
+
+/**
+ * 清理其它账号留下的 `snapshot:*` 键。
+ *
+ * 每个账号的快照按令牌指纹分键，换账号后旧键不会被再次读取，但会一直占 IndexedDB；
+ * 这里在新账号启动时顺手删掉。未登录（anon）时**不删**，否则会在登录页把真实账号的缓存清空。
+ */
+async function purgeOtherSnapshots(): Promise<void> {
+  if (ownerFingerprint() === "anon") return;
+  const keep = getSnapshotKey();
+  const all = await keys(idbStore);
+  const stale = all.filter(
+    (key): key is string =>
+      typeof key === "string" &&
+      key.startsWith("snapshot:") &&
+      key !== keep,
+  );
+  await Promise.all(stale.map((key) => del(key, idbStore)));
 }
