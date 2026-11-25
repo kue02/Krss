@@ -508,3 +508,129 @@ describe("useAITranslation · 第四十三批空闲解析与切条目竞态", ()
     await waitFor(() => expect(mockStreamTranslateBlocks).toHaveBeenCalled());
   });
 });
+
+/**
+ * 失败重试 / 手动开关重置（本轮修复）：
+ * - generateTranslation 抛错后同条目仍能（有限次）自动重试，且不会无限循环。
+ * - 关闭再开启 autoTranslate 会把 attemptKey / 重试计数清掉，重新允许自动翻译。
+ * - 用户手动点按钮重试不受自动 attemptKey 限制。
+ */
+describe("useAITranslation · 失败重试与手动开关重置", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockStoreGetTranslation.mockReturnValue(undefined);
+    mockNeedsTranslation.mockReturnValue(true);
+    mockTranslationActionsIsDisabled.mockReturnValue(false);
+    mockTranslateArticlesBatch.mockResolvedValue(undefined);
+    clearToasts();
+  });
+
+  it("generateTranslation 失败后会有限重试，到上限即停（不无限循环）", async () => {
+    let calls = 0;
+    mockStreamTranslateBlocks.mockImplementation(() => {
+      calls += 1;
+      return (async function* () {
+        throw new Error("boom");
+      })();
+    });
+
+    const entry = createEntry("foreign normal content");
+    renderHook(() =>
+      useAITranslation({
+        entry,
+        isReadableActive: false,
+        readableContent: null,
+        autoTranslate: true,
+        targetLanguage: "zh-CN",
+      }),
+    );
+
+    // 第一次失败后自动重试一次 → 共 2 次
+    await waitFor(() => {
+      expect(mockStreamTranslateBlocks).toHaveBeenCalledTimes(2);
+    });
+
+    // 再等一段时间，确认到上限后不再自动发起
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    expect(mockStreamTranslateBlocks).toHaveBeenCalledTimes(2);
+    expect(calls).toBe(2);
+  });
+
+  it("关闭再开启 autoTranslate 会重置重试限制，可再次自动发起", async () => {
+    mockStreamTranslateBlocks.mockImplementation(() =>
+      (async function* () {
+        throw new Error("boom");
+      })(),
+    );
+
+    const entry = createEntry("foreign normal content");
+    const { rerender } = renderHook(
+      ({ autoTranslate }: { autoTranslate: boolean }) =>
+        useAITranslation({
+          entry,
+          isReadableActive: false,
+          readableContent: null,
+          autoTranslate,
+          targetLanguage: "zh-CN",
+        }),
+      { initialProps: { autoTranslate: true } },
+    );
+
+    // 先跑到上限 2 次
+    await waitFor(() => {
+      expect(mockStreamTranslateBlocks).toHaveBeenCalledTimes(2);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    expect(mockStreamTranslateBlocks).toHaveBeenCalledTimes(2);
+
+    // 关闭再开启：attemptKey / 计数清零 → 允许重新自动发起
+    rerender({ autoTranslate: false });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    rerender({ autoTranslate: true });
+
+    // 重置后重新自动发起（失败会再按上限重试一次），用 >2 证明重置生效
+    await waitFor(() => {
+      expect(mockStreamTranslateBlocks.mock.calls.length).toBeGreaterThan(2);
+    });
+  });
+
+  it("用户手动点击翻译不受自动 attemptKey 限制，可再次发起", async () => {
+    mockStreamTranslateBlocks.mockImplementation(() =>
+      (async function* () {
+        throw new Error("boom");
+      })(),
+    );
+
+    const entry = createEntry("foreign normal content");
+    const { result } = renderHook(() =>
+      useAITranslation({
+        entry,
+        isReadableActive: false,
+        readableContent: null,
+        autoTranslate: true,
+        targetLanguage: "zh-CN",
+      }),
+    );
+
+    // 自动重试跑到上限 2 次
+    await waitFor(() => {
+      expect(mockStreamTranslateBlocks).toHaveBeenCalledTimes(2);
+    });
+
+    // 手动点击：直接 generateTranslation，无视 attemptKey
+    await act(async () => {
+      await result.current.handleToggleTranslation();
+    });
+
+    await waitFor(() => {
+      expect(mockStreamTranslateBlocks).toHaveBeenCalledTimes(3);
+    });
+  });
+});
+
