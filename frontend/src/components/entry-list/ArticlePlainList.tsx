@@ -97,7 +97,7 @@ export function ArticlePlainListRow({
           /* 尺度照图片「悬停大图」的行实测值：padding 10px 16px、标题 14.5px/500、
              行高 1.45、图标 16px、右侧元信息 12px 且距标题 12px（gap 8 + ml 4） */
           className={cn(
-            "group mx-2 my-0.5 flex w-[calc(100%-1rem)] items-center gap-2 rounded-[10px] border border-transparent px-2 text-left transition-[background-color,border-color,box-shadow] duration-150 hover:bg-item-hover",
+            "group mx-2 my-0.5 flex w-[calc(100%-1rem)] items-center gap-2 rounded-[10px] border border-transparent px-2 text-left transition-[background-color,border-color,box-shadow] duration-150 hover:bg-item-hover [contain:layout_paint]",
             comfortable ? "py-[10px]" : "py-[4px]",
             selected && "bg-item-hover",
             unreadRowClass(isUnread, !!entry.starred, selected, unreadStyle),
