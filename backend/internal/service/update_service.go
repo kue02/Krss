@@ -4,6 +4,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 
 	"krss/backend/internal/config"
 	"krss/backend/pkg/logger"
@@ -81,6 +84,10 @@ type updateService struct {
 	mu       sync.Mutex
 	cached   *UpdateInfo
 	cachedAt time.Time
+
+	// group 合并并发的冷缓存请求：GitHub 匿名接口每小时只有 60 次，
+	// 多端同时打开「关于」页时不能让每个请求都真打一次（审查 P1 实测 10 并发 = 10 次出网）。
+	group singleflight.Group
 }
 
 // NewUpdateService 创建更新检查服务。repo 从 config.AppRepo 派生，版本取 config.AppVersion。
@@ -120,27 +127,76 @@ type githubRelease struct {
 }
 
 func (s *updateService) Check(ctx context.Context) (*UpdateInfo, error) {
-	s.mu.Lock()
-	if s.cached != nil && time.Since(s.cachedAt) < updateCacheTTL {
-		cached := *s.cached
+	if cached := s.cachedInfo(); cached != nil {
+		return cached, nil
+	}
+
+	// 冷缓存：并发的调用合并成一次出网，拿到结果后所有等待者共享同一份。
+	// 失败同样共享（不缓存），调用方各自拿到同一个错误。
+	ch := s.group.DoChan("check", func() (any, error) {
+		// 双检：排队期间可能已经有别的请求填好了缓存。
+		if cached := s.cachedInfo(); cached != nil {
+			return cached, nil
+		}
+		info, err := s.fetch(ctx)
+		if err != nil {
+			s.logCheckFailure(err)
+			return nil, err
+		}
+		s.mu.Lock()
+		s.cached = info
+		s.cachedAt = time.Now()
 		s.mu.Unlock()
-		return &cached, nil
-	}
-	s.mu.Unlock()
+		return info, nil
+	})
 
-	info, err := s.fetch(ctx)
-	if err != nil {
-		logger.Error("update check failed", "module", "service", "action", "check", "resource", "update", "result", "failed", "error", err)
-		return nil, err
+	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("%w: %v", ErrUpdateCheckFailed, ctx.Err())
+	case res := <-ch:
+		if res.Err != nil {
+			return nil, res.Err
+		}
+		info, ok := res.Val.(*UpdateInfo)
+		if !ok || info == nil {
+			return nil, fmt.Errorf("%w: unexpected empty result", ErrUpdateCheckFailed)
+		}
+		return cloneUpdateInfo(info), nil
 	}
+}
 
+// cachedInfo 返回缓存副本；未命中返回 nil。
+func (s *updateService) cachedInfo() *UpdateInfo {
 	s.mu.Lock()
-	s.cached = info
-	s.cachedAt = time.Now()
-	s.mu.Unlock()
+	defer s.mu.Unlock()
+	if s.cached == nil || time.Since(s.cachedAt) >= updateCacheTTL {
+		return nil
+	}
+	return cloneUpdateInfo(s.cached)
+}
 
-	cached := *info
-	return &cached, nil
+// cloneUpdateInfo 深拷贝（Assets 切片不能与缓存共享底层数组，
+// 否则调用方一排序/截断就把缓存改脏）。
+func cloneUpdateInfo(info *UpdateInfo) *UpdateInfo {
+	if info == nil {
+		return nil
+	}
+	out := *info
+	// make 而不是 append 到 nil：空切片要序列化成 []，不能是 null，
+	// 前端拿到 null 会当成「没有这个字段」直接读 length 崩掉。
+	out.Assets = make([]UpdateAsset, len(info.Assets))
+	copy(out.Assets, info.Assets)
+	return &out
+}
+
+// logCheckFailure 记录失败：限流/仓库不存在属预期内状况，降为 warn，免得污染错误日志与告警。
+func (s *updateService) logCheckFailure(err error) {
+	fields := []any{"module", "service", "action", "check", "resource", "update", "result", "failed", "error", err}
+	if errors.Is(err, ErrUpdateRateLimited) || errors.Is(err, ErrUpdateReleaseNotFound) {
+		logger.Warn("update check failed", fields...)
+		return
+	}
+	logger.Error("update check failed", fields...)
 }
 
 func (s *updateService) fetch(ctx context.Context) (*UpdateInfo, error) {
@@ -161,13 +217,35 @@ func (s *updateService) fetch(ctx context.Context) (*UpdateInfo, error) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	// 把「限流」与「仓库/Release 不存在」分出来：它们对用户是不同的排查方向，
+	// 塌缩成一句「连不上 GitHub」只会让人一直重试（而每次重试都真打一次 GitHub）。
+	switch resp.StatusCode {
+	case http.StatusOK:
+	case http.StatusForbidden, http.StatusTooManyRequests:
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return nil, fmt.Errorf("%w: github status %d: %s", ErrUpdateRateLimited, resp.StatusCode, strings.TrimSpace(string(body)))
+	case http.StatusNotFound:
+		return nil, fmt.Errorf("%w: %s", ErrUpdateReleaseNotFound, s.repo)
+	default:
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		return nil, fmt.Errorf("%w: github status %d: %s", ErrUpdateCheckFailed, resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
+	// 先按上限多读 1 字节再判断：GitHub 若不给 Content-Length（分块响应），
+	// 直接交给 json.Decoder 只会得到「decode: unexpected EOF」，看不出是响应过大。
+	if resp.ContentLength > updateMaxResponseBytes {
+		return nil, fmt.Errorf("%w: response too large (%d bytes)", ErrUpdateCheckFailed, resp.ContentLength)
+	}
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, updateMaxResponseBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("%w: read body: %v", ErrUpdateCheckFailed, err)
+	}
+	if int64(len(raw)) > updateMaxResponseBytes {
+		return nil, fmt.Errorf("%w: response too large (>%d bytes)", ErrUpdateCheckFailed, updateMaxResponseBytes)
+	}
+
 	var rel githubRelease
-	if err := json.NewDecoder(io.LimitReader(resp.Body, updateMaxResponseBytes)).Decode(&rel); err != nil {
+	if err := json.Unmarshal(raw, &rel); err != nil {
 		return nil, fmt.Errorf("%w: decode: %v", ErrUpdateCheckFailed, err)
 	}
 

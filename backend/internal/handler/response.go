@@ -54,6 +54,12 @@ func writeServiceError(c echo.Context, err error) error {
 	case errors.Is(err, service.ErrFeedFetch):
 		return c.JSON(http.StatusBadGateway, errorResponse{Error: "feed fetch failed"})
 	// 检查自身更新时请求 GitHub 失败（网络/限流/响应异常）—— 网关类故障，502。
+	// 限流与「仓库/Release 不存在」要排在它前面：它们也 wrap 了 ErrUpdateCheckFailed，
+	// 但给用户的排查方向完全不同（一个是等会儿再试，一个是仓库配错了）。
+	case errors.Is(err, service.ErrUpdateRateLimited):
+		return c.JSON(http.StatusTooManyRequests, errorResponse{Error: "update check rate limited"})
+	case errors.Is(err, service.ErrUpdateReleaseNotFound):
+		return c.JSON(http.StatusBadGateway, errorResponse{Error: "update release not found"})
 	case errors.Is(err, service.ErrUpdateCheckFailed):
 		return c.JSON(http.StatusBadGateway, errorResponse{Error: "update check failed"})
 	case errors.Is(err, service.ErrPluginNotFound):

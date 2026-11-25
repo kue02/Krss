@@ -245,6 +245,88 @@ func TestNewRouter_LogoutRouteIsPublic(t *testing.T) {
 	require.Equal(t, -1, authCookie.MaxAge)
 }
 
+// TestNewRouter_UpdateCheckRequiresAuth 检查自身更新的接口必须挂在登录态后面：
+// 它是「服务端代打 GitHub」，匿名可调就等于把匿名配额（每小时 60 次）开放给任何人。
+func TestNewRouter_UpdateCheckRequiresAuth(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	folderService := mock.NewMockFolderService(ctrl)
+	feedService := mock.NewMockFeedService(ctrl)
+	entryService := mock.NewMockEntryService(ctrl)
+	opmlService := mock.NewMockOPMLService(ctrl)
+	iconService := mock.NewMockIconService(ctrl)
+	proxyService := mock.NewMockProxyService(ctrl)
+	settingsService := mock.NewMockSettingsService(ctrl)
+	aiService := mock.NewMockAIService(ctrl)
+	authService := mock.NewMockAuthService(ctrl)
+	// 坏 token 会走到 ValidateToken；这里只关心「有没有被拦在 handler 之前」。
+	authService.EXPECT().ValidateToken(gomock.Any()).Return(false, nil).AnyTimes()
+	domainRateLimitService := mock.NewMockDomainRateLimitService(ctrl)
+	refreshService := mock.NewMockRefreshService(ctrl)
+	readabilityService := mock.NewMockReadabilityService(ctrl)
+	importTaskService := mock.NewMockImportTaskService(ctrl)
+
+	folderHandler := handler.NewFolderHandler(folderService)
+	feedHandler := handler.NewFeedHandler(feedService, refreshService)
+	entryHandler := handler.NewEntryHandler(entryService, readabilityService)
+	opmlHandler := handler.NewOPMLHandler(opmlService, importTaskService)
+	iconHandler := handler.NewIconHandler(iconService)
+	proxyHandler := handler.NewProxyHandler(proxyService)
+	settingsHandler := handler.NewSettingsHandler(settingsService, network.NewClientFactoryForTest(&http.Client{}))
+	aiHandler := handler.NewAIHandler(aiService)
+	authHandler := handler.NewAuthHandler(authService)
+	domainRateLimitHandler := handler.NewDomainRateLimitHandler(domainRateLimitService)
+	filterHandler := handler.NewFilterHandler(mock.NewMockFilterService(ctrl))
+	proxySourceHandler := handler.NewProxySourceHandler(mock.NewMockProxySourceService(ctrl))
+	mcpOutboundService := mock.NewMockMCPOutboundService(ctrl)
+	mcpHandler := handler.NewMCPHandler(mock.NewMockMCPService(ctrl), mcpOutboundService)
+	mcpEndpointHandler := handler.NewMCPEndpointHandler(mcpOutboundService)
+	pluginHandler := handler.NewPluginHandler(mock.NewMockPluginService(ctrl))
+	exportHandler := handler.NewExportHandler(service.NewExportService(mock.NewMockSettingsService(ctrl)))
+	backupHandler := handler.NewBackupHandler(mock.NewMockBackupService(ctrl))
+
+	e := gh.NewRouter(
+		folderHandler,
+		feedHandler,
+		entryHandler,
+		opmlHandler,
+		iconHandler,
+		proxyHandler,
+		settingsHandler,
+		aiHandler,
+		authHandler,
+		domainRateLimitHandler,
+		filterHandler,
+		proxySourceHandler,
+		mcpHandler,
+		mcpEndpointHandler,
+		pluginHandler,
+		exportHandler,
+		backupHandler,
+		handler.NewUpdateHandler(nil),
+		authService,
+		"",
+		false,
+	)
+
+	for _, tc := range []struct{ name, token, wantErr string }{
+		{"no token", "", "missing authentication"},
+		{"bad token", "not-a-real-token", "invalid token"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/api/update/check", nil)
+			if tc.token != "" {
+				req.Header.Set("Authorization", "Bearer "+tc.token)
+			}
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
+			require.Equal(t, http.StatusUnauthorized, rec.Code)
+			require.Contains(t, rec.Body.String(), tc.wantErr)
+		})
+	}
+}
+
 func hasRoute(e *echo.Echo, method, path string) bool {
 	for _, r := range e.Routes() {
 		if r.Method == method && r.Path == path {

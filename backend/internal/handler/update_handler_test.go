@@ -59,3 +59,35 @@ func TestUpdateHandler_Check_FailureMapsTo502(t *testing.T) {
 	parseJSONResponse(t, rec, &body)
 	require.Equal(t, "update check failed", body["error"])
 }
+
+func TestUpdateHandler_Check_RateLimitedMapsTo429(t *testing.T) {
+	// 限流要回 429 而不是 502：前端据此提示「稍后再试」，
+	// 而不是「连不上 GitHub」——后者会让人一直点重试、每次都真打一次 GitHub。
+	e := newTestEcho()
+	svc := &stubUpdateService{err: fmt.Errorf("%w: github status 403", service.ErrUpdateRateLimited)}
+	handler.NewUpdateHandler(svc).RegisterRoutes(e.Group(""))
+
+	req := newJSONRequest(http.MethodGet, "/update/check", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusTooManyRequests, rec.Code)
+	var body map[string]string
+	parseJSONResponse(t, rec, &body)
+	require.Equal(t, "update check rate limited", body["error"])
+}
+
+func TestUpdateHandler_Check_ReleaseNotFoundMapsTo502(t *testing.T) {
+	e := newTestEcho()
+	svc := &stubUpdateService{err: fmt.Errorf("%w: owner/repo", service.ErrUpdateReleaseNotFound)}
+	handler.NewUpdateHandler(svc).RegisterRoutes(e.Group(""))
+
+	req := newJSONRequest(http.MethodGet, "/update/check", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadGateway, rec.Code)
+	var body map[string]string
+	parseJSONResponse(t, rec, &body)
+	require.Equal(t, "update release not found", body["error"])
+}
