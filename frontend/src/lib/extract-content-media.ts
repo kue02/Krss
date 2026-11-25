@@ -97,13 +97,29 @@ function positiveInt(value: string | null): number | undefined {
 const EXTRACT_CACHE_LIMIT = 200;
 const extractCache = new Map<string, ContentMedia[]>();
 
+/**
+ * 32 位 FNV-1a 指纹（十六进制）。只用于缓存 key，不参与任何语义。
+ *
+ * key 不再拼完整 html：原来把整段正文当 key 常驻内存，200 条长文会白占几十 MB。
+ * 改成「长度 + hash 指纹」后缓存里只剩结果数组本身。hash 碰撞概率极低（再叠加
+ * 长度），真撞了只会返回一份错误清单，可接受。
+ */
+function hashHtml(html: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < html.length; i += 1) {
+    hash ^= html.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16);
+}
+
 function extractCacheKey(
   html: string,
   baseUrl: string | undefined,
   thumbnailUrl: string | undefined,
 ): string {
-  // html 放最后：前面是短的分隔字段，调试时一眼能看出是哪条。
-  return `${baseUrl ?? ""}\u0000${thumbnailUrl ?? ""}\u0000${html}`;
+  // 长度 + hash 做指纹；不把 html 本身放进 key，避免长文常驻内存。
+  return `${baseUrl ?? ""}|${thumbnailUrl ?? ""}|${html.length}|${hashHtml(html)}`;
 }
 
 /**
@@ -120,7 +136,8 @@ export function extractContentMedia(
   if (cached) return cached;
 
   const result = computeContentMedia(html, baseUrl, thumbnailUrl);
-  // 冻结后再放进缓存：调用方拿到的是只读视图，不会顺手改坏缓存内容。
+  // 数组和每一项都冻结后再放进缓存：调用方拿到的是只读视图，不会顺手改坏缓存内容。
+  for (const item of result) Object.freeze(item);
   Object.freeze(result);
 
   if (extractCache.size >= EXTRACT_CACHE_LIMIT) {
