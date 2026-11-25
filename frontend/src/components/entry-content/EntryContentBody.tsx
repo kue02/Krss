@@ -170,7 +170,7 @@ export function EntryContentBody({
           <SocialAuthorHeader entry={entry} />
         ) : (
         <header className="mb-6">
-          <h1 className="text-[26px] font-semibold leading-[1.2] tracking-[-0.02em] text-foreground wrap-anywhere sm:text-[32px] sm:leading-[1.18]">
+          <h1 className="text-[24px] font-semibold leading-[1.22] tracking-[-0.02em] text-foreground wrap-anywhere sm:text-[28px] sm:leading-[1.2]">
             {entry.url && isSafeUrl(entry.url) ? (
               <a
                 href={entry.url}

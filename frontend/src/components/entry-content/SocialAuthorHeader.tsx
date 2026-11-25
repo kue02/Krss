@@ -69,7 +69,7 @@ export function SocialAuthorHeader({ entry }: { entry: Entry }) {
         />
         <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-1">
           {authorName && (
-            <span className="truncate text-[22px] font-semibold leading-[1.25] tracking-[-0.01em] text-foreground sm:text-[24px]">
+            <span className="truncate text-[20px] font-semibold leading-[1.28] tracking-[-0.01em] text-foreground sm:text-[22px]">
               {authorName}
             </span>
           )}
