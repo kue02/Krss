@@ -88,6 +88,10 @@ describe("Sheet", () => {
     expect(content.style.transform).toBe("translateX(-100%)");
     // 关闭态同时 visibility:hidden，避免常驻合成层在 iOS 返回过渡里被绘出一帧。
     expect(content.style.visibility).toBe("hidden");
+    // 退出动画期间仍可见，滑出（EXIT_DURATION_MS=200ms）结束后才切 hidden。
+    expect(content.style.transition).toBe(
+      "transform 200ms cubic-bezier(0.32, 0.72, 0, 1), visibility 0s linear 200ms",
+    );
   });
 
   it("opens from the trigger with a CSS transition instead of frame-by-frame JS", () => {
