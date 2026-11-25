@@ -16,8 +16,8 @@ interface UseSwipeGestureOptions {
   onDragStart?: () => void;
   /** offsetX/offsetY 为相对起点的位移（px），velocityX 为瞬时横向速度（px/ms，向右为正） */
   onDragMove?: (offsetX: number, offsetY: number, velocityX: number) => void;
-  /** 松手时的位移与横向速度（px/ms，向右为正）；速度在采样过短时按 0 处理 */
-  onDragEnd?: (offsetX: number, velocityX: number) => void;
+  /** 松手时的位移与横向速度（px/ms，向右为正）；速度在采样过短时按 0 处理；canceled=true 表示 touchcancel */
+  onDragEnd?: (offsetX: number, velocityX: number, canceled?: boolean) => void;
   threshold?: number; // Minimum distance for a swipe (px)
   velocityThreshold?: number; // Minimum velocity for a swipe (px/ms)
   enabledDirections?: SwipeDirection[]; // Which directions to detect
@@ -278,8 +278,12 @@ export function useSwipeGesture(
     const state = touchState.current;
     if (!state) return;
     if (state.dragging) {
-      // 取消时按当前位移结算，避免内容层卡在拖拽中途
-      dragHandlers.current.onDragEnd?.(state.currentX - state.startX, 0);
+      // 取消按「取消」结算：调用方应回到手势前状态，而不是按位移/速度展开
+      dragHandlers.current.onDragEnd?.(
+        state.currentX - state.startX,
+        0,
+        true,
+      );
     }
     touchState.current = null;
   }, []);

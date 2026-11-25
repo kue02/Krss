@@ -37,13 +37,16 @@ function makeEntry(overrides: Partial<Entry> = {}): Entry {
 }
 
 function touch(
-  type: "touchstart" | "touchmove" | "touchend",
+  type: "touchstart" | "touchmove" | "touchend" | "touchcancel",
   x: number,
   y: number,
 ): TouchEvent {
   const event = new Event(type, { bubbles: true, cancelable: true }) as TouchEvent;
   Object.defineProperty(event, "touches", {
-    value: type === "touchend" ? [] : [{ clientX: x, clientY: y }],
+    value:
+      type === "touchend" || type === "touchcancel"
+        ? []
+        : [{ clientX: x, clientY: y }],
   });
   return event;
 }
@@ -225,6 +228,48 @@ describe("MobileSwipeEntryRow", () => {
     expect(content.style.transform).toBe("translateX(-70px)");
   });
 
+  it("拖动中另一行触发 SWIPE_OPEN_EVENT 改变 open 时不覆盖跟手位移", async () => {
+    const { container } = render(
+      <MobileSwipeEntryRow entry={makeEntry()}>
+        <div>卡片内容</div>
+      </MobileSwipeEntryRow>,
+    );
+    const row = container.querySelector("[data-swipe-row]") as HTMLElement;
+    const content = container.querySelector(
+      "[data-swipe-content]",
+    ) as HTMLElement;
+
+    // 先展开（open=true，位移 -132）
+    swipeLeft(row);
+    await screen.findByRole("button", { name: "entry.mark_read" });
+    expect(content.style.transform).toBe("translateX(-132px)");
+
+    // 展开状态下向右拖 40px：基准 -132 → -92px
+    await act(async () => {
+      row.dispatchEvent(touch("touchstart", 100, 100));
+      row.dispatchEvent(touch("touchmove", 140, 100));
+      await nextFrame();
+    });
+    expect(content.style.transform).toBe("translateX(-92px)");
+
+    // 拖动中另一行打开 → 本行收到 SWIPE_OPEN_EVENT 被改 open=false（触发父级重渲染）
+    await act(async () => {
+      window.dispatchEvent(
+        new CustomEvent("krss:mobile-swipe-open", { detail: "other-entry" }),
+      );
+      await nextFrame();
+    });
+    // open 变了，但当前手指位移不能被 React 覆盖
+    expect(content.style.transform).toBe("translateX(-92px)");
+
+    // 松手：位移 92px > 66px，按最终手势吸附展开
+    await act(async () => {
+      row.dispatchEvent(touch("touchend", 140, 100));
+      await nextFrame();
+    });
+    expect(content.style.transform).toBe("translateX(-132px)");
+  });
+
   it("松手未过阈值时回弹到 0", () => {
     const { container } = render(
       <MobileSwipeEntryRow entry={makeEntry()}>
@@ -335,6 +380,62 @@ describe("MobileSwipeEntryRow", () => {
 
     expect(content.style.transform).toBe("translateX(0px)");
     expect(screen.queryByRole("button", { name: "entry.mark_read" })).toBeNull();
+  });
+
+  it("拖过 100px 后 touchcancel 不打开（按取消回弹到关闭）", async () => {
+    const { container } = render(
+      <MobileSwipeEntryRow entry={makeEntry()}>
+        <div>卡片内容</div>
+      </MobileSwipeEntryRow>,
+    );
+    const row = container.querySelector("[data-swipe-row]") as HTMLElement;
+    const content = container.querySelector(
+      "[data-swipe-content]",
+    ) as HTMLElement;
+
+    await act(async () => {
+      row.dispatchEvent(touch("touchstart", 220, 100));
+      row.dispatchEvent(touch("touchmove", 150, 100)); // 左拖 70px
+      row.dispatchEvent(touch("touchmove", 110, 100)); // 左拖 110px
+      await nextFrame();
+    });
+    expect(content.style.transform).toBe("translateX(-110px)");
+
+    act(() => {
+      row.dispatchEvent(touch("touchcancel", 110, 100));
+    });
+
+    // 取消不算展开：110px > 66px 也不打开，回到 0
+    expect(content.style.transform).toBe("translateX(0px)");
+    expect(screen.queryByRole("button", { name: "entry.mark_read" })).toBeNull();
+  });
+
+  it("已展开行 touchcancel 保持展开（回到手势前 open 状态）", async () => {
+    const { container } = render(
+      <MobileSwipeEntryRow entry={makeEntry()}>
+        <div>卡片内容</div>
+      </MobileSwipeEntryRow>,
+    );
+    const row = container.querySelector("[data-swipe-row]") as HTMLElement;
+    const content = container.querySelector(
+      "[data-swipe-content]",
+    ) as HTMLElement;
+
+    swipeLeft(row);
+    await screen.findByRole("button", { name: "entry.mark_read" });
+    expect(content.style.transform).toBe("translateX(-132px)");
+
+    act(() => {
+      row.dispatchEvent(touch("touchstart", 100, 100));
+      row.dispatchEvent(touch("touchmove", 120, 100)); // 右拖 20px（基准 -132 → -112）
+      row.dispatchEvent(touch("touchcancel", 120, 100));
+    });
+
+    // 取消回到手势前的展开状态
+    expect(content.style.transform).toBe("translateX(-132px)");
+    expect(
+      screen.queryByRole("button", { name: "entry.mark_read" }),
+    ).toBeTruthy();
   });
 
   it("使用旧版动作条与按钮样式", async () => {
