@@ -94,6 +94,17 @@ export function useImageZoom(resetKey?: unknown) {
   const gestureRef = useRef<Gesture | null>(null);
   /** 手势开始前已提交的 scale/offset，系统意外取消时恢复到这里 */
   const gestureStartRef = useRef<{ scale: number; offset: Offset } | null>(null);
+  /**
+   * 手势期间复用的容器 / 图片尺寸缓存。
+   * 之前每次 pointermove 都经 clampToBounds → measureContainer/measureImage 读
+   * getBoundingClientRect / clientWidth，逐帧强制同步布局，是移动端缩放「顿感」的根因。
+   * 现在只在手势开始、图片 onLoad、窗口 resize 时刷新，move 期间只读缓存。
+   */
+  const metricsRef = useRef<{ container: Size; image: Size | undefined } | null>(
+    null,
+  );
+  /** 实时多指状态（>=2 根手指）：第二指按下即置真，所有指抬起后置假 */
+  const isMultiTouchRef = useRef(false);
 
   const measureContainer = useCallback((): Size => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -111,11 +122,38 @@ export function useImageZoom(resetKey?: unknown) {
     return { width: image.clientWidth, height: image.clientHeight };
   }, []);
 
-  const clampToBounds = useCallback(
-    (next: Offset, targetScale: number): Offset =>
-      clampOffset(next, targetScale, measureContainer(), measureImage()),
+  const measureMetrics = useCallback(
+    (): { container: Size; image: Size | undefined } => ({
+      container: measureContainer(),
+      image: measureImage(),
+    }),
     [measureContainer, measureImage],
   );
+
+  /** 只在手势开始 / 图片 onLoad / resize 时刷新缓存，逐帧路径绝不触发强制布局 */
+  const refreshMetrics = useCallback(() => {
+    metricsRef.current = measureMetrics();
+  }, [measureMetrics]);
+
+  /** 取缓存；首次访问（尚未刷新）时才测量一次 */
+  const getMetrics = useCallback(() => {
+    if (!metricsRef.current) metricsRef.current = measureMetrics();
+    return metricsRef.current;
+  }, [measureMetrics]);
+
+  const clampToBounds = useCallback(
+    (next: Offset, targetScale: number): Offset => {
+      const { container, image } = getMetrics();
+      // image 为 undefined 时 clampOffset 退回按容器尺寸计算（保持旧语义）
+      return clampOffset(next, targetScale, container, image);
+    },
+    [getMetrics],
+  );
+
+  /** 惰性同步多指标记：仅在指针集合变化时调用，不在逐帧路径里 */
+  const syncMultiTouch = useCallback(() => {
+    isMultiTouchRef.current = pointersRef.current.size >= 2;
+  }, []);
 
   /** 屏幕坐标 → 相对容器中心的坐标；容器还没挂载时返回 undefined */
   const anchorFor = useCallback((clientX: number, clientY: number): Offset | undefined => {
@@ -176,6 +214,8 @@ export function useImageZoom(resetKey?: unknown) {
 
   const beginDrag = useCallback(
     (pointerId: number, sample: PointerSample) => {
+      // 手势开始即缓存容器/图片尺寸，之后 move 只读缓存
+      refreshMetrics();
       gestureStartRef.current = {
         scale: scaleRef.current,
         offset: { ...offsetRef.current },
@@ -190,7 +230,7 @@ export function useImageZoom(resetKey?: unknown) {
       capturePointer(pointerId, sample.target);
       beginInteraction();
     },
-    [beginInteraction, capturePointer],
+    [beginInteraction, capturePointer, refreshMetrics],
   );
 
   const beginPinch = useCallback(() => {
@@ -198,6 +238,7 @@ export function useImageZoom(resetKey?: unknown) {
     const first = entries[0];
     const second = entries[1];
     if (!first || !second) return;
+    refreshMetrics();
     const [firstId, firstSample] = first;
     const [secondId, secondSample] = second;
     gestureStartRef.current = {
@@ -223,7 +264,7 @@ export function useImageZoom(resetKey?: unknown) {
         : { x: 0, y: 0 },
     };
     beginInteraction();
-  }, [beginInteraction, capturePointer]);
+  }, [beginInteraction, capturePointer, refreshMetrics]);
 
   /** 双击 / 滚轮：提交到 state，并让 React 用 style 里的短缓动做动画 */
   const applyScale = useCallback(
@@ -254,6 +295,8 @@ export function useImageZoom(resetKey?: unknown) {
     pointersRef.current.clear();
     gestureRef.current = null;
     gestureStartRef.current = null;
+    isMultiTouchRef.current = false;
+    refreshMetrics();
     scaleRef.current = 1;
     offsetRef.current = { x: 0, y: 0 };
     setScale(1);
@@ -264,12 +307,20 @@ export function useImageZoom(resetKey?: unknown) {
       image.style.transition = ZOOM_TRANSITION;
       image.style.transform = transformCss(1, { x: 0, y: 0 });
     }
-  }, []);
+  }, [refreshMetrics]);
 
   // 换图 / 关闭时复位
   useEffect(() => {
     reset();
   }, [resetKey, reset]);
+
+  // 窗口尺寸变化时刷新尺寸缓存（无手势时缓存失效即可，下次手势开始用最新值）
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleResize = () => refreshMetrics();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [refreshMetrics]);
 
   const toggleZoomAt = useCallback(
     (clientX: number, clientY: number) => {
@@ -312,6 +363,7 @@ export function useImageZoom(resetKey?: unknown) {
         y: event.clientY,
         target: event.target instanceof Element ? event.target : null,
       });
+      syncMultiTouch();
 
       const count = pointersRef.current.size;
       if (count === 1) {
@@ -327,7 +379,7 @@ export function useImageZoom(resetKey?: unknown) {
       event.stopPropagation();
       beginPinch();
     },
-    [beginDrag, beginPinch],
+    [beginDrag, beginPinch, syncMultiTouch],
   );
 
   const onPointerMove = useCallback(
@@ -382,6 +434,7 @@ export function useImageZoom(resetKey?: unknown) {
   const onPointerUp = useCallback(
     (event: React.PointerEvent) => {
       if (!pointersRef.current.delete(event.pointerId)) return;
+      syncMultiTouch();
 
       const gesture = gestureRef.current;
       if (!gesture) {
@@ -424,25 +477,17 @@ export function useImageZoom(resetKey?: unknown) {
       commit();
       endInteraction();
     },
-    [beginDrag, beginPinch, commit, endInteraction],
+    [beginDrag, beginPinch, commit, endInteraction, syncMultiTouch],
   );
 
-  /** 系统取消手势：清空状态并把当前进度提交为最终值 */
-  const finishInterruptedGesture = useCallback(() => {
-    if (pointersRef.current.size === 0 && !gestureRef.current) return;
-    pointersRef.current.clear();
-    gestureRef.current = null;
-    commit();
-    endInteraction();
-  }, [commit, endInteraction]);
-
-  /** capture 意外丢失：多半是浏览器接管手势，恢复到手势开始前的已提交状态 */
+  /** capture 意外丢失或系统取消：恢复到手势开始前的已提交状态 */
   const abortInterruptedGesture = useCallback(() => {
     if (pointersRef.current.size === 0 && !gestureRef.current) return;
     const snapshot = gestureStartRef.current;
     pointersRef.current.clear();
     gestureRef.current = null;
     gestureStartRef.current = null;
+    isMultiTouchRef.current = false;
     if (snapshot) {
       scaleRef.current = snapshot.scale;
       offsetRef.current = snapshot.offset;
@@ -460,10 +505,12 @@ export function useImageZoom(resetKey?: unknown) {
 
   const onPointerCancel = useCallback(
     (event: React.PointerEvent) => {
+      // 系统取消（如浏览器接管原生图片拖拽）时回滚到手势开始前的快照，
+      // 不能把中间位移/缩放当成最终值提交；只有正常 pointerup 才 commit。
       if (!pointersRef.current.has(event.pointerId)) return;
-      finishInterruptedGesture();
+      abortInterruptedGesture();
     },
-    [finishInterruptedGesture],
+    [abortInterruptedGesture],
   );
 
   const onLostPointerCapture = useCallback(
@@ -490,12 +537,15 @@ export function useImageZoom(resetKey?: unknown) {
       // capture 不可用时，鼠标拖出容器后收不到 pointerup，就地结束，避免手势卡死
       if (event.pointerType !== "mouse") return;
       if (gestureRef.current) onPointerUp(event);
+      // 兜底结束后确保缓动恢复，避免鼠标拖出容器时 transition 卡在 none
+      if (!gestureRef.current) setDomTransition(ZOOM_TRANSITION);
     },
-    [onPointerUp],
+    [onPointerUp, setDomTransition],
   );
 
   /** 图片 onLoad 后重新测量并夹紧 offset（未加载时边界为 0，不允许拖出） */
   const onImageLoad = useCallback(() => {
+    refreshMetrics();
     const targetScale = scaleRef.current;
     const next =
       targetScale > 1
@@ -513,7 +563,7 @@ export function useImageZoom(resetKey?: unknown) {
       image.style.transition = ZOOM_TRANSITION;
     }
     image.style.transform = transformCss(targetScale, next);
-  }, [clampToBounds]);
+  }, [clampToBounds, refreshMetrics]);
 
   const isZoomed = scale > 1;
 
@@ -531,6 +581,10 @@ export function useImageZoom(resetKey?: unknown) {
     offset,
     isZoomed,
     isInteracting,
+    /** 实时多指状态：供 embla 的 watchDrag 判断，第二指按下即为 true */
+    isMultiTouchRef,
+    /** 当前按下的指针数量（含非主指） */
+    getPointerCount: () => pointersRef.current.size,
     reset,
     toggleZoomAt,
     onImageLoad,
