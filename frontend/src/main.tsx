@@ -5,6 +5,7 @@ import "./index.css";
 import "m3-ripple/ripple.css";
 import App from "./App.tsx";
 import { queryClient } from "@/lib/queryClient";
+import { bootstrapQueryCache } from "@/lib/query-persist";
 import { I18nProvider } from "@/components/i18n-provider";
 
 const BOOT_READY_ATTR = "data-krss-boot-ready";
@@ -97,15 +98,27 @@ if ("serviceWorker" in navigator) {
     });
 }
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <I18nProvider>
-        <App />
-      </I18nProvider>
-    </QueryClientProvider>
-  </StrictMode>,
-);
+/**
+ * 29：渲染前先把 IndexedDB 里的缓存恢复进 queryClient，让首帧就拿到上次的条目
+ * （stale-but-instant），随后组件挂载靠既有 staleTime=30s 自动后台重拉。
+ * `bootstrapQueryCache` 内部带超时兜底，IndexedDB 异常也不会卡住启动；
+ * 非浏览器环境（测试）里整体 no-op。
+ */
+async function renderApp(): Promise<void> {
+  await bootstrapQueryCache(queryClient);
+
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <I18nProvider>
+          <App />
+        </I18nProvider>
+      </QueryClientProvider>
+    </StrictMode>,
+  );
+
+  markReadyAfterPaint();
+}
 
 /**
  * 22-1：**隐藏页面不跑 rAF**，所以「等两帧」在后台/被遮挡时会永远等不到 ——
@@ -124,4 +137,4 @@ function markReadyAfterPaint(): void {
   });
 }
 
-markReadyAfterPaint();
+void renderApp();
