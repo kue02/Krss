@@ -32,3 +32,27 @@ export function headerBackgroundRoundedTopFor(
 ): boolean {
   return style !== "plain" && !paneAtTop;
 }
+
+/**
+ * 卡片档正文栏外框的三档强度（用户 2026-11-25：「三个切换来决定看保留哪个」）。
+ *  - default：现状，`border-border/60` + `shadow-nf`；
+ *  - subtle：边框降到 40% 几乎看不见，投影改成一层极轻的 2px；
+ *  - none：完全不画边框和投影。
+ * 只作用于「卡片档 + 正文栏非贴顶」；贴顶档与「原样」档不受影响。
+ */
+export type ArticlePaneFrame = "default" | "subtle" | "none";
+
+/** 卡片档非贴顶时叠加到 pane 上的边框 + 投影类；未知值按现状处理，避免读回脏档位后没有样式。 */
+export function articlePaneFrameClasses(
+  frame: ArticlePaneFrame | undefined,
+): string {
+  switch (frame) {
+    case "subtle":
+      return "border border-border/40 shadow-[0_1px_2px_rgba(0,0,0,0.04)]";
+    case "none":
+      return "border-0 shadow-none";
+    case "default":
+    default:
+      return "border border-border/60 shadow-nf";
+  }
+}
