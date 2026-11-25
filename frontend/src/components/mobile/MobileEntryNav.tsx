@@ -45,7 +45,7 @@ export function MobileEntryNav({ entryId }: MobileEntryNavProps) {
   if (!nav) return null;
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-30 flex justify-center px-4">
+    <div className="pointer-events-none absolute inset-x-0 bottom-[max(2.75rem,calc(env(safe-area-inset-bottom)+0.75rem))] z-30 flex justify-center px-4">
       <div className="pointer-events-auto flex h-11 items-center gap-0.5 rounded-full border border-border/60 bg-overlay/90 p-0.5 shadow-nf-md backdrop-blur-xl">
         <button
           type="button"
