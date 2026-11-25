@@ -1262,12 +1262,9 @@ export function NotificationTimeline({
           });
         }
         pendingRevealIdRef.current = entryId;
-        setForcedSections((prev) => {
-          if (prev.has(section.key)) return prev;
-          const next = new Set(prev);
-          next.add(section.key);
-          return next;
-        });
+        /* 替换而非累加：连续跨段时上一段的强制挂载必须释放，否则泄漏成常驻；
+           同段连按也要换新引用，才能让依赖 forcedSections 的滚动 effect 重跑。 */
+        setForcedSections(new Set([section.key]));
         return true;
       },
     };
@@ -1294,7 +1291,7 @@ export function NotificationTimeline({
         `[data-entry-id="${CSS.escape(entryId)}"]`,
       );
       if (target) {
-        target.scrollIntoView({ block: "center" });
+        target.scrollIntoView({ block: "nearest" });
         pendingRevealIdRef.current = null;
         if (sectionKey) {
           setForcedSections((prev) => {
@@ -1307,7 +1304,10 @@ export function NotificationTimeline({
         return;
       }
       if (frame++ < 20) raf = requestAnimationFrame(tick);
-      else pendingRevealIdRef.current = null;
+      else {
+        pendingRevealIdRef.current = null;
+        if (sectionKey) setForcedSections(new Set());
+      }
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
