@@ -1018,6 +1018,26 @@
   "dialog": {
     "a11y": "Dialog content"
   },
+  "article_iframe": {
+    "click_to_load": "Click to load video from {{host}}",
+    "click_to_load_short": "Click to load video",
+    "embedded_video": "Embedded video"
+  },
+  "appearance_video": {
+    "title": "Article video",
+    "description": "Sites on the allowlist embed directly; others load after a click. Direct video files (.mp4/.webm/.mov/.m4v/.ogv/.ogg) use the built-in player.",
+    "unknown_click": "Click to load unknown sites",
+    "unknown_click_hint": "When off, show a “host ↗” link instead of loading a third-party iframe",
+    "extra_hosts": "Extra site allowlist",
+    "extra_hosts_hint": "Domain or full URL; bilibili / YouTube / Wistia are built in",
+    "add": "Add",
+    "placeholder": "example.com",
+    "empty": "No sites added yet",
+    "invalid": "Enter a valid domain, such as example.com",
+    "duplicate": "This site is already on the allowlist",
+    "remove": "Remove {{host}}",
+    "builtin": "Built in: bilibili, YouTube, Wistia"
+  },
   "appearance_reading": {
     "ui_scale": "UI scale",
     "ui_scale_small": "Small",

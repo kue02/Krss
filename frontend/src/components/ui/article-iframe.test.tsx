@@ -1,10 +1,29 @@
 import { createElement } from "react";
-import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { parseHtml } from "@/lib/parse-html";
 import { ArticleIframe, resolveIframeSrc } from "./article-iframe";
 
 afterEach(cleanup);
+
+const uiState = vi.hoisted(() => ({
+  unknownClickToLoad: true,
+  hosts: [] as string[],
+}));
+
+vi.mock("@/hooks/useUISettings", () => ({
+  useUISettingKey: (key: string) =>
+    key === "iframeVideoHosts"
+      ? uiState.hosts
+      : key === "iframeUnknownClickToLoad"
+        ? uiState.unknownClickToLoad
+        : undefined,
+}));
+
+beforeEach(() => {
+  uiState.unknownClickToLoad = true;
+  uiState.hosts = [];
+});
 
 function getIframe(container: HTMLElement): HTMLIFrameElement {
   const iframe = container.querySelector("iframe");
@@ -53,16 +72,27 @@ describe("ArticleIframe · 正文内嵌视频", () => {
     expect(getIframe(container).getAttribute("src")).toBe(src);
   });
 
-  it("非白名单域名不内嵌，降级成外链药丸", () => {
+  it("非白名单域名默认显示点击加载占位，点击后才挂 iframe", () => {
     const { container } = render(
-      <ArticleIframe src="https://evil.example/embed/x" />,
+      <ArticleIframe src="https://video.example/embed/x" />,
     );
     expect(container.querySelector("iframe")).toBeNull();
-    const link = screen.getByRole("link");
-    expect(link.getAttribute("href")).toBe("https://evil.example/embed/x");
-    expect(link.getAttribute("target")).toBe("_blank");
-    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
-    expect(link.textContent).toContain("evil.example");
+    const placeholder = container.querySelector(
+      '[data-slot="article-iframe-placeholder"]',
+    );
+    expect(placeholder).not.toBeNull();
+    expect(placeholder?.textContent).toContain("video.example");
+
+    fireEvent.click(screen.getByRole("button"));
+    expect(container.querySelector("iframe")?.getAttribute("src")).toBe(
+      "https://video.example/embed/x",
+    );
+  });
+
+  it("用户白名单里的站点直接内嵌", () => {
+    expect(
+      resolveIframeSrc("https://video.example/embed/x", ["video.example"]),
+    ).toBe("https://video.example/embed/x");
   });
 
   it("javascript: 地址既不内嵌也不给外链", () => {
@@ -133,4 +163,46 @@ describe("ArticleIframe · 正文内嵌视频", () => {
     );
     expect(hidden.container.querySelector("a")).toBeNull();
   });
+  it("关闭「未知站点点击加载」后，未知视频 iframe 降级为外链药丸", () => {
+    uiState.unknownClickToLoad = false;
+    const { container } = render(
+      <ArticleIframe src="https://video.example/embed/x" />,
+    );
+    expect(
+      container.querySelector('[data-slot="article-iframe-placeholder"]'),
+    ).toBeNull();
+    expect(container.querySelector("iframe")).toBeNull();
+    expect(screen.getByRole("link").getAttribute("href")).toBe(
+      "https://video.example/embed/x",
+    );
+  });
+
+  it("未知非视频 iframe 保持外链药丸，不生成视频占位", () => {
+    for (const src of [
+      "https://widgets.example/map/widget",
+      "https://platform.twitter.com/embed/Tweet.html?id=1",
+      "https://www.google.com/maps/embed?pb=abc",
+    ]) {
+      const { container, unmount } = render(<ArticleIframe src={src} />);
+      expect(
+        container.querySelector('[data-slot="article-iframe-placeholder"]'),
+      ).toBeNull();
+      expect(screen.getByRole("link").getAttribute("href")).toBe(src);
+      unmount();
+    }
+  });
+
+  it("用户白名单中的未知视频站点直接内嵌（不经点击占位）", () => {
+    uiState.hosts = ["video.example"];
+    const { container } = render(
+      <ArticleIframe src="https://video.example/embed/x" />,
+    );
+    expect(
+      container.querySelector('[data-slot="article-iframe-placeholder"]'),
+    ).toBeNull();
+    expect(getIframe(container).getAttribute("src")).toBe(
+      "https://video.example/embed/x",
+    );
+  });
+
 });

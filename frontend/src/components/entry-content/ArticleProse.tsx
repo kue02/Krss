@@ -8,6 +8,8 @@ import { ArticleContent } from "@/components/ui/article-content";
 import type { ArticleContentBlock } from "@/components/ui/article-content";
 import { ArticleIframe } from "@/components/ui/article-iframe";
 import { resolveIframeSrc } from "@/components/ui/article-iframe";
+import { ArticleVideo } from "@/components/ui/article-video";
+import { isDirectVideoUrl } from "@/lib/video-embed";
 import { cn } from "@/lib/utils";
 
 /**
@@ -64,6 +66,7 @@ export function ArticleProse({
   const entryFontFamily = useUISettingKey("entryFontFamily");
   const entryFontSize = useUISettingKey("entryFontSize");
   const entryLineHeight = useUISettingKey("entryLineHeight");
+  const iframeVideoHosts = useUISettingKey("iframeVideoHosts");
   const readingFontStack = resolveReadingFontStack(entryFontFamily);
 
   // 正文也走一遍规范化：去掉 <hr> 分隔线、把引文作者拆成单独一行
@@ -83,11 +86,17 @@ export function ArticleProse({
   // 与 Miniflux 的 add_youtube_video 规则等价：能从原文地址解析出「被改写过的播放器地址」时直接渲染。
   // 要求 resolved !== articleUrl，排除 bilibili 空间页、Wistia 原始页这类只能原样返回的地址，
   // 避免把整页塞进 16:9 iframe（多半被 X-Frame-Options 拒成黑块）。
-  const resolvedEntryEmbed = !hasContent ? resolveIframeSrc(articleUrl) : null;
+  const resolvedEntryEmbed = !hasContent
+    ? resolveIframeSrc(articleUrl, iframeVideoHosts)
+    : null;
   const embedSrc =
     resolvedEntryEmbed && resolvedEntryEmbed !== articleUrl
       ? resolvedEntryEmbed
       : null;
+  // 小站订阅常见：正文为空，但 entry.url 本身就是一个视频文件（.mp4/.webm/.m3u8…）。
+  // 这种地址没法「内嵌 iframe」，直接用内置 Video.js 播放器播放。
+  const entryDirectVideoSrc =
+    !hasContent && !embedSrc && isDirectVideoUrl(articleUrl) ? articleUrl : null;
 
   return (
     <div
@@ -122,6 +131,8 @@ export function ArticleProse({
         )
       ) : embedSrc ? (
         <ArticleIframe src={embedSrc} />
+      ) : entryDirectVideoSrc ? (
+        <ArticleVideo src={entryDirectVideoSrc} />
       ) : (
         <div className="rounded-lg border border-dashed border-border p-8 text-center text-muted-foreground">
           {t("entry.no_content")}
