@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { AboutSettings } from "./AboutSettings";
 import { ApiError } from "@/api";
 import type { UpdateCheckResult } from "@/types/settings";
@@ -40,6 +46,13 @@ function result(overrides: Partial<UpdateCheckResult> = {}): UpdateCheckResult {
     assets: [],
     ...overrides,
   };
+}
+
+/** 打开「更新详情」弹窗：内容区都在弹窗里，不开就等于没测。 */
+async function openDetails() {
+  const trigger = await screen.findByText("update.view_details");
+  fireEvent.click(trigger);
+  await waitFor(() => expect(screen.getByText("update.close")).toBeTruthy());
 }
 
 describe("AboutSettings", () => {
@@ -97,9 +110,9 @@ describe("AboutSettings", () => {
     expect(screen.queryByText("update.available")).toBeNull();
   });
 
-  it("Release 不存在（502 release not found）给的是配置方向", async () => {
+  it("Release 不存在（404）给的是配置方向", async () => {
     mocks.checkForUpdate.mockRejectedValue(
-      new ApiError("update release not found", 502),
+      new ApiError("update release not found", 404),
     );
 
     render(<AboutSettings />);
@@ -133,16 +146,15 @@ describe("AboutSettings", () => {
     expect(screen.queryByText("v1.4.0")).toBeNull();
   });
 
-  it("发布说明为空时不崩、显示 no_notes 文案", async () => {
+  it("发布说明为空时弹窗显示 no_notes", async () => {
     mocks.checkForUpdate.mockResolvedValue(
       result({ releaseNotesHtml: "", hasUpdate: true }),
     );
 
     render(<AboutSettings />);
+    await openDetails();
 
-    await waitFor(() => expect(screen.getByText("update.available")).toBeTruthy());
-    // 详情弹窗默认关闭，说明区只在打开后渲染；这里只验证组件本身不抛错
-    expect(screen.queryByText("update.no_notes")).toBeNull();
+    expect(await screen.findByText("update.no_notes")).toBeTruthy();
   });
 
   it("publishedAt 非法不崩（原样渲染）", async () => {
@@ -151,16 +163,109 @@ describe("AboutSettings", () => {
     );
 
     render(<AboutSettings />);
+    await openDetails();
 
-    expect(await screen.findByText("update.available")).toBeTruthy();
+    // formatDate 解析失败时原样输出，不抛错
+    expect(await screen.findByText(/not-a-date/)).toBeTruthy();
   });
 
-  it("assets 为空时不渲染下载区块", async () => {
+  it("assets 为空时弹窗不渲染下载区块", async () => {
     mocks.checkForUpdate.mockResolvedValue(result({ assets: [] }));
 
     render(<AboutSettings />);
+    await openDetails();
 
-    await waitFor(() => expect(screen.getByText("update.available")).toBeTruthy());
+    expect(await screen.findByText("update.close")).toBeTruthy();
     expect(screen.queryByText("update.downloads")).toBeNull();
+  });
+
+  it("有附件时弹窗列出文件名与大小，size 0 不显示大小", async () => {
+    mocks.checkForUpdate.mockResolvedValue(
+      result({
+        assets: [
+          {
+            name: "krss-linux-amd64",
+            url: "https://example.com/dl/linux",
+            size: 12345678,
+          },
+          {
+            name: "krss-windows-amd64.exe",
+            url: "https://example.com/dl/windows",
+            size: 0,
+          },
+        ],
+      }),
+    );
+
+    render(<AboutSettings />);
+    await openDetails();
+
+    expect(await screen.findByText("update.downloads")).toBeTruthy();
+    expect(screen.getByText("krss-linux-amd64")).toBeTruthy();
+    expect(screen.getByText("12 MB")).toBeTruthy();
+    // size 0 的条目不显示大小，但文件名要在
+    expect(screen.getByText("krss-windows-amd64.exe")).toBeTruthy();
+    expect(screen.queryByText("0 B")).toBeNull();
+  });
+
+  it("发布说明里的链接一律开新标签（否则会把 SPA 导航走）", async () => {
+    mocks.checkForUpdate.mockResolvedValue(
+      result({
+        releaseNotesHtml:
+          '<p>看看<a href="https://github.com/example/krss/compare/v1.4.0...v1.5.0">完整改动</a>。</p>',
+      }),
+    );
+
+    render(<AboutSettings />);
+    await openDetails();
+
+    const link = await screen.findByText("完整改动");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+  });
+
+  it("重新检查进行中横幅不消失（有更新是事实，不随 loading 变）", async () => {
+    mocks.checkForUpdate.mockResolvedValueOnce(result());
+
+    render(<AboutSettings />);
+    expect(await screen.findByText("update.available")).toBeTruthy();
+
+    // 第二次检查挂住不 resolve，模拟「正在检查」
+    let release: (value: UpdateCheckResult) => void = () => {};
+    mocks.checkForUpdate.mockReturnValueOnce(
+      new Promise<UpdateCheckResult>((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    fireEvent.click(screen.getByText("update.recheck"));
+
+    // 期间反复采样，横幅必须一直在
+    for (let i = 0; i < 5; i += 1) {
+      await new Promise((r) => setTimeout(r, 20));
+      expect(screen.queryByText("update.available")).toBeTruthy();
+    }
+
+    release(result());
+    await waitFor(() => expect(mocks.checkForUpdate).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText("update.available")).toBeTruthy();
+  });
+
+  it("重新检查失败时保留上次结果，同时给出失败提示", async () => {
+    // 这是 hasUpdate 与 status 解耦后的既定行为：横幅说的是「上次查到的结果」，
+    // 版本行说的是「这次没查成」，两者并不矛盾。用测试把预期钉住。
+    mocks.checkForUpdate.mockResolvedValueOnce(result());
+    mocks.checkForUpdate.mockRejectedValueOnce(new ApiError("boom", 502));
+
+    render(<AboutSettings />);
+    expect(await screen.findByText("update.available")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("update.recheck"));
+
+    await waitFor(() =>
+      expect(screen.getByText("update.check_failed")).toBeTruthy(),
+    );
+    expect(screen.getByText("update.check_failed_hint")).toBeTruthy();
+    expect(screen.queryByText("update.available")).toBeTruthy();
   });
 });

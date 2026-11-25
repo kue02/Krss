@@ -50,12 +50,13 @@ const ERROR_HINT_KEYS: Record<UpdateErrorKind, string> = {
   generic: "update.check_failed_hint",
 };
 
+// 只按状态码分类，不匹配错误文案：文案一改前端会静默退回通用提示，两边都不会报错。
+// 429 = 限流（backend/internal/handler/response.go 的 ErrUpdateRateLimited），
+// 404 = 仓库或 Release 不存在（ErrUpdateReleaseNotFound）。
 function classifyError(error: unknown): UpdateErrorKind {
   if (error instanceof ApiError) {
     if (error.status === 429) return "rateLimited";
-    if (error.status === 502 && error.message.includes("release not found")) {
-      return "notFound";
-    }
+    if (error.status === 404) return "notFound";
   }
   return "generic";
 }
@@ -212,9 +213,16 @@ export function AboutSettings() {
           </Alert.Indicator>
           {/* role/aria-live 只挂在文字区：挂在整块 Alert 上会把按钮文案一起念出来 */}
           <Alert.Content role="status" aria-live="polite">
-            <Alert.Title className="flex flex-wrap items-center gap-2">
+            {/* text-foreground 是必须的：Alert 的 warning 变体默认给标题 text-warning-soft-foreground，
+                在 stone/leaf 这类亮色主题上算出来只有 3.45:1 / 3.67:1，14px 正文达不到 AA 4.5:1 */}
+            <Alert.Title className="flex flex-wrap items-center gap-2 text-foreground">
               {t("update.available")}
-              <Chip size="sm" color="warning" variant="soft" className="font-mono font-semibold">
+              <Chip
+                size="sm"
+                color="warning"
+                variant="soft"
+                className="font-mono font-semibold text-foreground"
+              >
                 {result.latestVersion}
               </Chip>
             </Alert.Title>
