@@ -4,6 +4,7 @@ import {
   MIN_IMAGE_SCALE,
   clampOffset,
   clampScale,
+  isDoubleTap,
   nextScale,
   offsetForZoomAt,
 } from "@/lib/image-zoom";
@@ -70,5 +71,19 @@ describe("image-zoom", () => {
     expect(nextScale(2, 400)).toBeLessThan(2);
     expect(nextScale(1, -4000)).toBe(MAX_IMAGE_SCALE);
     expect(nextScale(4, 4000)).toBe(MIN_IMAGE_SCALE);
+  });
+
+  it("双击判定：时间窗口内且位移不超过阈值才算双击", () => {
+    const last = { t: 1000, x: 100, y: 100 };
+    // 150ms 后、同一点 → 双击
+    expect(isDoubleTap(last, 1150, 100, 100, 320, 30)).toBe(true);
+    // 位移 20px（≤30）仍算双击
+    expect(isDoubleTap(last, 1150, 120, 100, 320, 30)).toBe(true);
+    // 超过 320ms → 不是
+    expect(isDoubleTap(last, 1400, 100, 100, 320, 30)).toBe(false);
+    // 位移超过 30px → 不是
+    expect(isDoubleTap(last, 1150, 140, 100, 320, 30)).toBe(false);
+    // 没有上一次点按 → 不是
+    expect(isDoubleTap(null, 1150, 100, 100, 320, 30)).toBe(false);
   });
 });

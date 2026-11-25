@@ -6,6 +6,31 @@ import { ImagePreview } from "./image-preview";
 // Mock window.scrollTo (not implemented in jsdom)
 vi.stubGlobal("scrollTo", vi.fn());
 
+/**
+ * jsdom 不一定实现 PointerEvent，用 MouseEvent 补 pointerType 等字段派发；
+ * React 的 pointer 事件插件只读这些字段，足以驱动「触屏双击 pointerup 判定」。
+ */
+function fireTouchPointer(
+  element: Element,
+  type: "pointerdown" | "pointerup",
+  x: number,
+  y: number,
+) {
+  const event = new MouseEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    clientX: x,
+    clientY: y,
+    button: 0,
+  });
+  Object.defineProperties(event, {
+    pointerId: { value: 1 },
+    pointerType: { value: "touch" },
+    isPrimary: { value: true },
+  });
+  fireEvent(element, event);
+}
+
 // Mock embla-carousel-react with controllable API
 const mockScrollPrev = vi.fn();
 const mockScrollNext = vi.fn();
@@ -584,6 +609,39 @@ describe("ImagePreview", () => {
       });
 
       // 第二次点按已取消关闭定时器，预览应仍然打开
+      expect(useImagePreviewStore.getState().isOpen).toBe(true);
+    });
+
+    it("触屏双击在 pointerup 即判定放大、不必等第二次 click（随后 click 被吞掉）", async () => {
+      mockZoomState.scale = 1;
+      mockZoomState.isZoomed = false;
+      mockToggleZoomAt.mockClear();
+      useImagePreviewStore.getState().open([mockImages[0]!]);
+      const { container } = render(<ImagePreview />);
+
+      const img = container.querySelector("img");
+      expect(img).not.toBeNull();
+      // 单图：img 的父级就是挂了 pointerup / click / doubleclick 的 stage
+      const stage = img!.parentElement!;
+
+      // 第一次点按：pointerdown → pointerup → click（记录上一次点按，起 320ms 关闭计时）
+      fireTouchPointer(img!, "pointerdown", 120, 120);
+      fireTouchPointer(stage, "pointerup", 120, 120);
+      fireEvent.click(img!, { clientX: 120, clientY: 120 });
+      expect(mockToggleZoomAt).not.toHaveBeenCalled();
+
+      // 第二次点按：只到 pointerup 就应判定为双击并放大（不等 click）
+      fireTouchPointer(img!, "pointerdown", 120, 120);
+      fireTouchPointer(stage, "pointerup", 120, 120);
+      expect(mockToggleZoomAt).toHaveBeenCalledTimes(1);
+
+      // 浏览器随后补发的 click 必须被吞掉：不二次切换、不重新起关闭计时
+      fireEvent.click(img!, { clientX: 120, clientY: 120 });
+      expect(mockToggleZoomAt).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 420));
+      });
       expect(useImagePreviewStore.getState().isOpen).toBe(true);
     });
 

@@ -100,6 +100,8 @@ function setup(resetKey?: string) {
     read: () => screen.getByTestId("zoom-state").textContent ?? "",
     rerenderKey: (next: string) =>
       utils.rerender(<ZoomHarness resetKey={next} />),
+    // 用同样的 props 重渲染，模拟父组件因无关状态（onLoad/已读/翻译）触发的 render
+    rerenderSame: () => utils.rerender(<ZoomHarness resetKey={resetKey} />),
   };
 }
 
@@ -192,7 +194,39 @@ describe("useImageZoom", () => {
       firePointer(container, "pointerup", { id: 1, x: 130, y: 150 });
     });
     expect(read()).toBe("2|30|0|false");
-    expect(image.style.transition).toBe("transform 160ms ease-out");
+    expect(image.style.transition).toBe("transform 240ms cubic-bezier(0.22, 1, 0.36, 1)");
+  });
+
+  it("手势中父组件重渲染不会把手势里已 paint 的 transform 覆盖回旧 state", () => {
+    const { container, image, read, rerenderSame } = setup();
+
+    // 先放大到 2x（提交态 offset=0）
+    act(() => getZoom().toggleZoomAt(200, 150));
+    expect(read()).toBe("2|0|0|false");
+
+    // 放大后拖动 60px：paint 只写 DOM，state 仍是提交态
+    act(() => {
+      firePointer(container, "pointerdown", { id: 1, x: 200, y: 150 });
+      firePointer(container, "pointermove", { id: 1, x: 260, y: 150 });
+    });
+    expect(image.style.transform).toBe("translate3d(60px, 0px, 0) scale(2)");
+
+    // 父组件重渲染（模拟 onLoad / 已读状态 / 翻译等）：React 会重写 style.transform
+    act(() => {
+      rerenderSame();
+    });
+
+    // 关键：仍然是手势里的实时值，而不是回跳到 offset=0
+    expect(image.style.transform).toBe("translate3d(60px, 0px, 0) scale(2)");
+    // state 本身还是提交态（未抬手提交）
+    expect(read()).toBe("2|0|0|true");
+
+    // 抬手后正常提交
+    act(() => {
+      firePointer(container, "pointerup", { id: 1, x: 260, y: 150 });
+    });
+    expect(read()).toBe("2|60|0|false");
+    expect(image.style.transform).toBe("translate3d(60px, 0px, 0) scale(2)");
   });
 
   it("resetKey 变化时复位缩放", () => {
@@ -249,7 +283,7 @@ describe("useImageZoom", () => {
       firePointer(container, "lostpointercapture", { id: 1, x: 260, y: 150 });
     });
     expect(read()).toBe("2|0|0|false");
-    expect(image.style.transition).toBe("transform 160ms ease-out");
+    expect(image.style.transition).toBe("transform 240ms cubic-bezier(0.22, 1, 0.36, 1)");
     expect(image.style.transform).toBe("translate3d(0px, 0px, 0) scale(2)");
 
     // 指针已清空，后续 pointermove 不再生效
