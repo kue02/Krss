@@ -53,6 +53,9 @@ func writeServiceError(c echo.Context, err error) error {
 		return c.JSON(http.StatusConflict, errorResponse{Error: "conflict"})
 	case errors.Is(err, service.ErrFeedFetch):
 		return c.JSON(http.StatusBadGateway, errorResponse{Error: "feed fetch failed"})
+	// 检查自身更新时请求 GitHub 失败（网络/限流/响应异常）—— 网关类故障，502。
+	case errors.Is(err, service.ErrUpdateCheckFailed):
+		return c.JSON(http.StatusBadGateway, errorResponse{Error: "update check failed"})
 	case errors.Is(err, service.ErrPluginNotFound):
 		return c.JSON(http.StatusNotFound, errorResponse{Error: "plugin not found"})
 	case errors.Is(err, service.ErrPluginDisabled):

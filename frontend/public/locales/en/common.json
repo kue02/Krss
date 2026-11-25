@@ -989,7 +989,29 @@
   },
   "update": {
     "available": "Update Available",
-    "description": "Click to refresh and apply the update"
+    "description": "Click to refresh and apply the update",
+    "check_title": "Version update",
+    "check_desc": "Check whether a newer version of Krss is available.",
+    "current_version": "Current version",
+    "latest_version": "Latest version",
+    "check_now": "Check for updates",
+    "recheck": "Check again",
+    "checking": "Checking…",
+    "has_update_short": "Update available",
+    "up_to_date_short": "Up to date",
+    "check_failed": "Check failed",
+    "check_failed_hint": "Couldn't reach GitHub. Please try again later.",
+    "banner_desc": "Version {{version}} is available. See what's new.",
+    "view_details": "View update details",
+    "release_page": "Release page",
+    "open_on_github": "View on GitHub",
+    "checked_at": "Last checked: {{time}}",
+    "details_title": "What's new in {{version}}",
+    "published_at": "Published {{date}}",
+    "no_notes": "This release has no notes.",
+    "downloads": "Downloads",
+    "open_release": "Go to download",
+    "close": "Close"
   },
   "entry_filter": {
     "muted": "Muted"

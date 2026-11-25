@@ -31,6 +31,7 @@ func TestHandler_RegisterRoutes(t *testing.T) {
 	authHandler.RegisterProtectedRoutes(g)
 
 	handler.NewDomainRateLimitHandler(nil).RegisterRoutes(g)
+	handler.NewUpdateHandler(nil).RegisterRoutes(g)
 	handler.NewEntryHandler(nil, nil).RegisterRoutes(g)
 	handler.NewFeedHandler(nil, nil).RegisterRoutes(g)
 	handler.NewFolderHandler(nil).RegisterRoutes(g)
@@ -63,6 +64,8 @@ func TestHandler_RegisterRoutes(t *testing.T) {
 	assertRoute(t, routes, http.MethodPost, "/domain-rate-limits")
 	assertRoute(t, routes, http.MethodPut, "/domain-rate-limits/:host")
 	assertRoute(t, routes, http.MethodDelete, "/domain-rate-limits/:host")
+
+	assertRoute(t, routes, http.MethodGet, "/update/check")
 
 	assertRoute(t, routes, http.MethodGet, "/filters")
 	assertRoute(t, routes, http.MethodPost, "/filters")

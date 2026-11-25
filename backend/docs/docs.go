@@ -1553,6 +1553,32 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/update/check": {
+            "get": {
+                "description": "请求 GitHub 最新 Release，返回运行版本、最新版本、是否有更新，以及渲染好的发布说明 HTML 和可下载附件。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "update"
+                ],
+                "summary": "Check for Krss updates",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/krss_backend_internal_service.UpdateInfo"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/login": {
             "post": {
                 "description": "Authenticate a user with username or email and get a JWT token",
@@ -4962,7 +4988,7 @@ const docTemplate = `{
                     }
                 },
                 "useProxy": {
-                    "description": "UseProxy：AI 调用是否走代理（含智能代理），默认 true",
+                    "description": "UseProxy：AI 调用是否走代理（含智能代理），默认 false（默认直连）",
                     "type": "boolean"
                 }
             }
@@ -5033,7 +5059,7 @@ const docTemplate = `{
                     }
                 },
                 "useProxy": {
-                    "description": "UseProxy：AI 调用是否走代理（含智能代理），默认 true",
+                    "description": "UseProxy：AI 调用是否走代理（含智能代理），默认 false（默认直连）",
                     "type": "boolean"
                 }
             }
@@ -8348,6 +8374,52 @@ const docTemplate = `{
                 },
                 "version": {
                     "type": "integer"
+                }
+            }
+        },
+        "krss_backend_internal_service.UpdateAsset": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "size": {
+                    "type": "integer"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_service.UpdateInfo": {
+            "type": "object",
+            "properties": {
+                "assets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_service.UpdateAsset"
+                    }
+                },
+                "currentVersion": {
+                    "type": "string"
+                },
+                "hasUpdate": {
+                    "type": "boolean"
+                },
+                "latestVersion": {
+                    "type": "string"
+                },
+                "publishedAt": {
+                    "type": "string"
+                },
+                "releaseName": {
+                    "type": "string"
+                },
+                "releaseNotesHtml": {
+                    "type": "string"
+                },
+                "releaseUrl": {
+                    "type": "string"
                 }
             }
         }
