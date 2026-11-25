@@ -1049,15 +1049,18 @@ export function EntryList({
   // 列表滚上去以后，右上角浮出「当前序号 + 回到顶部」（对齐 Nextflux 的 Indicator）
   const [firstVisibleIndex, setFirstVisibleIndex] = useState(0);
   /**
-   * 虚拟化覆盖「标准文章扁平流」与「移动端社交列表」：
+   * 虚拟化覆盖「标准文章扁平流」与「社交列表（桌面 + 移动端）」：
    *   - article 内容类型 + 非 hover 档（含 list 与 rows）走原路径；
-   *   - 移动端社交（isMobile && social）动态行高，整份 entries 全挂会卡，接入同一虚拟容器；
-   *   - 桌面社交 / 通知时间线 / hover 浮层档仍走原路径，一字不动。
+   *   - 社交视图动态行高，整份 entries 全挂会卡：桌面与移动端共用同一份
+   *     EntryListItem，统一接入同一虚拟容器（桌面走元素滚动、移动端走 window
+   *     滚动，由 scrollSurface 决定，无需在此分叉）；
+   *   - 通知时间线（吸附分组 + sticky 日期头，见 NotificationTimeline 结构说明）
+   *     与 hover 浮层档仍走原路径，一字不动。
    */
   const useVirtualList =
     !isArticleHover &&
     !inlineNoVirtual &&
-    (contentType === "article" || (Boolean(isMobile) && isSocialView));
+    (contentType === "article" || isSocialView);
   const virtualList = useVirtualizedArticleList({
     enabled: useVirtualList,
     scrollSurface,
@@ -1081,13 +1084,20 @@ export function EntryList({
       const items = node.querySelectorAll<HTMLElement>("[data-entry-id]");
       if (items.length === 0) return;
       const containerTop = node.getBoundingClientRect().top;
-      let index = items.length - 1;
+      // 虚拟列表下 DOM 顺序 ≠ 绝对序号（只挂可视 + overscan 一小段）：优先用行上的
+      // data-index（EntryListItem 透传的绝对下标）；非虚拟列表无 data-index 时回退 DOM 顺序。
+      const absIndex = (el: HTMLElement, fallback: number) => {
+        const raw = el.dataset.index;
+        const abs = raw != null && raw !== "" ? Number(raw) : NaN;
+        return Number.isFinite(abs) ? abs : fallback;
+      };
+      let index = absIndex(items[items.length - 1] as HTMLElement, items.length - 1);
       for (let i = 0; i < items.length; i += 1) {
         const el = items[i];
         if (!el) continue;
         const bottom = el.getBoundingClientRect().bottom - containerTop + 8;
         if (bottom > 0) {
-          index = i;
+          index = absIndex(el, i);
           break;
         }
       }
