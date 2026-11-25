@@ -20,6 +20,7 @@ import {
   defaultEntryToolbar,
   type EntryToolbarItem,
 } from "@/lib/entry-toolbar";
+import type { ArticlePaneFrame } from "@/lib/article-pane-style";
 
 export type CardImageSize = "none" | "small" | "large";
 export type ScrollReadOverride = "inherit" | "on" | "off";
@@ -204,6 +205,8 @@ interface UISettings {
   inoreaderSplitterAutoOff: boolean;
   /** 「Inoreader列表」内联正文的容器样式：card = 卡片（圆角+留白+阴影），plain = 原样（全宽圆角） */
   articlePaneStyle: "card" | "plain";
+  /** 卡片档正文栏外框的边框/投影强度：default = 现状，subtle = 淡边框，none = 无边框 */
+  articlePaneFrame: ArticlePaneFrame;
   hoverImageSize: "small" | "large";
   /** 29-4：悬停大图档「多图切换」的三个触发开关（默认只开行上滚轮） */
   hoverMultiImage: HoverMultiImageConfig;
@@ -501,6 +504,7 @@ const SILENT_SAVE_UI_KEYS = new Set<string>([
   "articleMobileFullTitle",
   "inoreaderSplitterPromptShown",
   "articlePaneStyle",
+  "articlePaneFrame",
   "hoverImageSize",
   // 11-24：分界限的显示方式在侧栏边上当场就变（且切走 Inoreader 布局时的自动恢复不该弹框）
   "splitterVisibleByView",
@@ -676,6 +680,7 @@ export const defaultUISettings: UISettings = {
   inoreaderSplitterPromptShown: false,
   inoreaderSplitterAutoOff: false,
   articlePaneStyle: "card",
+  articlePaneFrame: "default",
   hoverImageSize: "small",
   hoverMultiImage: { rowWheel: true, floatWheel: false, hSwipe: false },
   notificationBodyOnHover: false,
@@ -1027,6 +1032,14 @@ export function useUISettingActions() {
     [setUISetting],
   );
 
+  /** 卡片档正文栏外框强度（default / subtle / none），用户对比后决定保留哪一档 */
+  const setArticlePaneFrame = useCallback(
+    (value: ArticlePaneFrame) => {
+      setUISetting("articlePaneFrame", value);
+    },
+    [setUISetting],
+  );
+
   /** 28-7a：悬停浮块尺寸（small = 上游 400×250 / large = 5175 的 560px） */
   const setHoverImageSize = useCallback((value: "small" | "large") => {
     setUISetting("hoverImageSize", value);
@@ -1320,6 +1333,7 @@ export function useUISettingActions() {
     hideArticleSplitterFromPrompt,
     setSplitterAutoHide,
     setArticlePaneStyle,
+    setArticlePaneFrame,
     setHoverImageSize,
     setArticleLayout,
     setArticlePushDirection,

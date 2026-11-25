@@ -37,6 +37,7 @@ import {
   computeFolderSubtreeUnread,
 } from "@/lib/folder-tree";
 import { stripHtml } from "@/lib/html-utils";
+import { articlePaneFrameClasses } from "@/lib/article-pane-style";
 import { EntryListItem } from "./EntryListItem";
 import { ArticleRowsListRow } from "./ArticleRowsList";
 import { ArticlePlainListRow } from "./ArticlePlainList";
@@ -523,6 +524,7 @@ export function EntryList({
   );
   const [splitterPromptOpen, setSplitterPromptOpen] = useState(false);
   const articlePaneStyle = useUISettingKey("articlePaneStyle");
+  const articlePaneFrame = useUISettingKey("articlePaneFrame");
   const suppressedSplitterViews = useMemo(
     () =>
       (["picture", "social", "notification"] as ContentType[])
@@ -932,7 +934,10 @@ export function EntryList({
           articlePaneStyle === "card"
             ? paneAtTop
               ? "my-0 w-full rounded-none border-t border-border [overflow:clip]"
-              : "mx-2 my-2 w-[calc(100%-1rem)] rounded-[12px] border border-border/60 shadow-nf [overflow:clip]"
+              : cn(
+                  "mx-2 my-2 w-[calc(100%-1rem)] rounded-[12px] [overflow:clip]",
+                  articlePaneFrameClasses(articlePaneFrame),
+                )
             : "w-full rounded-[12px] border-t border-border [clip-path:inset(0_round_12px)]",
         )}
       >

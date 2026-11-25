@@ -10,6 +10,8 @@ const setTimelineTimeBasisForView = vi.fn();
 const setEntryFontSize = vi.fn();
 const setEntryLineHeight = vi.fn();
 const setSplitterAutoHide = vi.fn();
+const setArticlePaneFrame = vi.fn();
+const setArticlePaneStyle = vi.fn();
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: "zh" } }),
@@ -137,6 +139,8 @@ vi.mock("@/hooks/useUISettings", async () => {
     articleLayout: "list",
     articlePushDirection: "right",
     articleCoverList: false,
+    articlePaneStyle: "card",
+    articlePaneFrame: "default",
     pictureLayout: "grid",
     gridStyle: "masonry",
     hoverRowHeight: "compact",
@@ -168,6 +172,8 @@ vi.mock("@/hooks/useUISettings", async () => {
       setExpandLongForView,
       setReduceMotion,
       setArticleLayout: vi.fn(),
+      setArticlePaneStyle,
+      setArticlePaneFrame,
       setSplitterAutoHide,
       setPictureLayout: vi.fn(),
       setArticlePushDirection: vi.fn(),
@@ -223,6 +229,8 @@ describe("AppearanceSettings 按视图设置", () => {
     setTimelineCollapseForView.mockClear();
     setTimelineTimeBasisForView.mockClear();
     setSplitterAutoHide.mockClear();
+    setArticlePaneFrame.mockClear();
+    setArticlePaneStyle.mockClear();
     scrollReadState.mode = "perView";
   });
 
@@ -430,6 +438,23 @@ describe("AppearanceSettings 按视图设置", () => {
     expect(within(pictureRow).getByText("grid")).toBeTruthy();
     expect(within(pictureRow).queryByText("hover")).toBeNull();
     expect(within(pictureRow).queryByText("wall")).toBeNull();
+  });
+
+  it("卡片档下出现「正文栏外框」三档，选中即写入 articlePaneFrame", () => {
+    uiOverride.articleLayout = "inoreader";
+    try {
+      render(<AppearanceSettings />);
+
+      const row = rowOf("appearance_view.article_pane_frame");
+      for (const optionValue of ["default", "subtle", "none"]) {
+        expect(within(row).getByText(optionValue)).toBeTruthy();
+      }
+
+      fireEvent.click(within(row).getByText("subtle"));
+      expect(setArticlePaneFrame).toHaveBeenCalledWith("subtle");
+    } finally {
+      uiOverride.articleLayout = undefined;
+    }
   });
 
   it("M1 回归：实验关闭时，即使当前正用着 hover/wall，选择器也不泄漏这两个实验入口", () => {

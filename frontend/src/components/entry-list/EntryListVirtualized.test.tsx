@@ -256,6 +256,7 @@ describe("EntryList · 标准文章列表虚拟化", () => {
     useFilterViewStore.getState().setMutedOnly(false);
     setUISetting("articleLayout", "list");
     setUISetting("articlePaneStyle", "card");
+    setUISetting("articlePaneFrame", "default");
     installLayoutStubs();
     vi.mocked(useEntriesInfinite).mockReturnValue({
       data: { pages: [{ entries: manyEntries, hasMore: false }] },
@@ -610,6 +611,41 @@ describe("EntryList · 标准文章列表虚拟化", () => {
       }
     }
   });
+
+  it.each([
+    ["default", "border-border/60", "shadow-nf"],
+    ["subtle", "border-border/40", "shadow-[0_1px_2px_rgba(0,0,0,0.04)]"],
+    ["none", "border-0", "shadow-none"],
+  ] as const)(
+    "卡片档正文栏外框按设置映射（%s）",
+    async (frame, expectedBorder, expectedShadow) => {
+      setUISetting("articleLayout", "inoreader");
+      setUISetting("articlePushDirection", "down");
+      setUISetting("articlePaneFrame", frame);
+      const renderInlineContent = vi.fn(() => (
+        <div data-testid="inline-body">正文</div>
+      ));
+      render(
+        <EntryList
+          {...defaultProps}
+          isMobile
+          selectedEntryId="e-1"
+          renderInlineContent={renderInlineContent}
+        />,
+      );
+      await act(async () => {
+        await Promise.resolve();
+      });
+      const pane = screen.getByTestId("inline-article-pane");
+      expect(pane.className).toContain("rounded-[12px]");
+      expect(pane.className).toContain(expectedBorder);
+      expect(pane.className).toContain(expectedShadow);
+      if (frame !== "default") {
+        expect(pane.className).not.toContain("border-border/60");
+        expect(pane.className).not.toContain("shadow-nf");
+      }
+    },
+  );
 
   it("文章「Inoreader列表」在手机档包一层左滑动作（与其它列表一致）", async () => {
     setUISetting("articleLayout", "inoreader");

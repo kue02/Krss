@@ -52,6 +52,7 @@ import { cn } from "@/lib/utils";
 import { Button, Input, Label, NumberField } from "@heroui/react";
 import { FeedAvatar } from "@/components/ui/feed-avatar";
 import { SegmentedControl } from "@/components/ui/segmented-control";
+import type { ArticlePaneFrame } from "@/lib/article-pane-style";
 import { Select } from "@/components/ui/select";
 import {
   ArrowUpDown,
@@ -376,7 +377,8 @@ export function AppearanceSettings() {
   const articleQuickActionMode = useUISettingKey("articleQuickActionMode");
   const articleMobileFullTitle = useUISettingKey("articleMobileFullTitle");
   const articlePaneStyle = useUISettingKey("articlePaneStyle");
-  const { setArticlePaneStyle } = useUISettingActions();
+  const articlePaneFrame = useUISettingKey("articlePaneFrame");
+  const { setArticlePaneStyle, setArticlePaneFrame } = useUISettingActions();
   const hoverImageSize = useUISettingKey("hoverImageSize");
   const hoverMultiImageSetting = useUISettingKey(
     "hoverMultiImage",
@@ -1390,6 +1392,35 @@ export function AppearanceSettings() {
                             {
                               value: "card",
                               label: t("appearance_view.article_pane_style_card"),
+                            },
+                          ]}
+                        />
+                      </SettingRow>
+                    )}
+                    {/* 卡片档正文栏外框：三档对比，用户选定后保留一档 */}
+                    {articleLayout === "inoreader" && articlePaneStyle === "card" && (
+                      <SettingRow
+                        label={t("appearance_view.article_pane_frame")}
+                        hint={t("appearance_view.article_pane_frame_hint")}
+                      >
+                        <SegmentedControl
+                          className="shrink-0"
+                          value={articlePaneFrame ?? "default"}
+                          onValueChange={(value) =>
+                            setArticlePaneFrame(value as ArticlePaneFrame)
+                          }
+                          options={[
+                            {
+                              value: "default",
+                              label: t("appearance_view.article_pane_frame_default"),
+                            },
+                            {
+                              value: "subtle",
+                              label: t("appearance_view.article_pane_frame_subtle"),
+                            },
+                            {
+                              value: "none",
+                              label: t("appearance_view.article_pane_frame_none"),
                             },
                           ]}
                         />
