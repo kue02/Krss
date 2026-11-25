@@ -1096,8 +1096,10 @@ export function NotificationTimeline({
       // 卡片流：日期分段 + 每条一张轻卡片；默认单列居中（扫读舒适），
       // `autoSingleSide === false` 时宽屏 ≥lg 两列、展开态横跨整行。
       className={cn(
-        "relative mx-auto w-full",
-        autoSingleSide === false ? "max-w-[56rem]" : "max-w-[50rem]",
+        "relative mx-auto w-full px-4 sm:px-5 lg:px-0 md:max-w-[42rem]",
+        autoSingleSide === false
+          ? "max-w-[56rem] lg:max-w-[56rem]"
+          : "max-w-[50rem] lg:max-w-[50rem]",
       )}
     >
 
@@ -1109,7 +1111,7 @@ export function NotificationTimeline({
           key={section.key}
           data-timeline-section={section.key}
           className={cn(
-            "relative grid grid-cols-1 items-start gap-2.5 pt-1",
+            "relative grid grid-cols-1 items-start gap-3 pt-1",
             autoSingleSide === false && "lg:grid-cols-2 lg:gap-3",
           )}
         >
@@ -1126,7 +1128,7 @@ export function NotificationTimeline({
             data-timeline-date={section.label}
             data-timeline-date-stuck={dateStuck ? "true" : "false"}
             className={cn(
-              "sticky top-0 z-10 col-span-full flex items-baseline gap-2 px-1 pb-2.5 pt-4 pointer-events-none transition-colors duration-200",
+              "sticky top-0 z-10 col-span-full flex items-baseline gap-2 pb-2.5 pt-4 pointer-events-none transition-colors duration-200",
               dateStuck && "bg-card/95 backdrop-blur-sm",
             )}
           >
