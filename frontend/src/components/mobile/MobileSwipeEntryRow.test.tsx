@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MobileSwipeEntryRow } from "./MobileSwipeEntryRow";
 import type { Entry } from "@/types/api";
@@ -53,6 +54,11 @@ function swipeLeft(row: HTMLElement) {
   row.dispatchEvent(touch("touchmove", 210, 100));
   row.dispatchEvent(touch("touchmove", 150, 100));
   row.dispatchEvent(touch("touchend", 150, 100));
+}
+
+/** 等一帧：拖动期间的 transform 由 rAF 合并写入，断言前需让出这一帧 */
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
 describe("MobileSwipeEntryRow", () => {
@@ -133,7 +139,7 @@ describe("MobileSwipeEntryRow", () => {
     expect(screen.queryByRole("button", { name: "entry.mark_read" })).toBeNull();
   });
 
-  it("touchmove 过程中内容层已随位移变化（跟手，不是松手才变）", () => {
+  it("touchmove 过程中内容层已随位移变化（跟手，不是松手才变）", async () => {
     const { container } = render(
       <MobileSwipeEntryRow entry={makeEntry()}>
         <div>卡片内容</div>
@@ -144,12 +150,78 @@ describe("MobileSwipeEntryRow", () => {
       "[data-swipe-content]",
     ) as HTMLElement;
 
-    act(() => {
+    await act(async () => {
       row.dispatchEvent(touch("touchstart", 220, 100));
       row.dispatchEvent(touch("touchmove", 150, 100));
+      await nextFrame();
     });
 
     // 松手前 inline transform 就已跟手变化到 -70px
+    expect(content.style.transform).toBe("translateX(-70px)");
+  });
+
+  it("拖动期间内容层不因每帧 setState 重渲染（父级不受影响）", async () => {
+    const childRender = vi.fn();
+    function Child() {
+      childRender();
+      return <div>卡片内容</div>;
+    }
+    const { container } = render(
+      <MobileSwipeEntryRow entry={makeEntry()}>
+        <Child />
+      </MobileSwipeEntryRow>,
+    );
+    const row = container.querySelector("[data-swipe-row]") as HTMLElement;
+    const content = container.querySelector(
+      "[data-swipe-content]",
+    ) as HTMLElement;
+    childRender.mockClear();
+
+    await act(async () => {
+      row.dispatchEvent(touch("touchstart", 220, 100));
+      row.dispatchEvent(touch("touchmove", 200, 100));
+      row.dispatchEvent(touch("touchmove", 180, 100));
+      row.dispatchEvent(touch("touchmove", 150, 100));
+      await nextFrame();
+    });
+
+    // 整个拖动过程中子内容只随父级初始渲染一次，没有因逐帧位移重渲染
+    expect(childRender).not.toHaveBeenCalled();
+    expect(content.style.transform).toBe("translateX(-70px)");
+  });
+
+  it("拖动过程中父级重渲染不会把内容层的跟手 transform 重置", async () => {
+    function Harness() {
+      const [, setTick] = useState(0);
+      return (
+        <div>
+          <button type="button" onClick={() => setTick((v) => v + 1)}>
+            重渲染父级
+          </button>
+          <MobileSwipeEntryRow entry={makeEntry()}>
+            <div>卡片内容</div>
+          </MobileSwipeEntryRow>
+        </div>
+      );
+    }
+    const { container } = render(<Harness />);
+    const row = container.querySelector("[data-swipe-row]") as HTMLElement;
+    const content = container.querySelector(
+      "[data-swipe-content]",
+    ) as HTMLElement;
+
+    await act(async () => {
+      row.dispatchEvent(touch("touchstart", 220, 100));
+      row.dispatchEvent(touch("touchmove", 150, 100));
+      await nextFrame();
+    });
+    expect(content.style.transform).toBe("translateX(-70px)");
+
+    // 父级重渲染（同一帧内再触发一次）后，跟手中的 transform 不能被 React 用 0 覆盖
+    await act(async () => {
+      fireEvent.click(screen.getByText("重渲染父级"));
+      await nextFrame();
+    });
     expect(content.style.transform).toBe("translateX(-70px)");
   });
 
@@ -170,6 +242,72 @@ describe("MobileSwipeEntryRow", () => {
       row.dispatchEvent(touch("touchend", 205, 100));
     });
 
+    expect(content.style.transform).toBe("translateX(0px)");
+    expect(screen.queryByRole("button", { name: "entry.mark_read" })).toBeNull();
+  });
+
+  it("快速短距离左甩（位移不到 66px）也能展开", async () => {
+    let clock = 1000;
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => clock);
+    const { container } = render(
+      <MobileSwipeEntryRow entry={makeEntry()}>
+        <div>卡片内容</div>
+      </MobileSwipeEntryRow>,
+    );
+    const row = container.querySelector("[data-swipe-row]") as HTMLElement;
+    const content = container.querySelector(
+      "[data-swipe-content]",
+    ) as HTMLElement;
+
+    await act(async () => {
+      row.dispatchEvent(touch("touchstart", 200, 100));
+      clock += 20;
+      row.dispatchEvent(touch("touchmove", 180, 100)); // -1 px/ms
+      clock += 40;
+      row.dispatchEvent(touch("touchmove", 145, 100)); // 位移仅 -55px，速度 -0.875 px/ms
+      clock += 10;
+      row.dispatchEvent(touch("touchend", 145, 100));
+      await nextFrame();
+    });
+    nowSpy.mockRestore();
+
+    // 55px < 66px，单靠位移不会展开；靠快速左甩的速度判定展开
+    expect(content.style.transform).toBe("translateX(-132px)");
+    expect(
+      await screen.findByRole("button", { name: "entry.mark_read" }),
+    ).toBeTruthy();
+  });
+
+  it("已展开时快速短距离右甩也能收起（位移不到阈值、靠速度判定）", async () => {
+    const { container } = render(
+      <MobileSwipeEntryRow entry={makeEntry()}>
+        <div>卡片内容</div>
+      </MobileSwipeEntryRow>,
+    );
+    const row = container.querySelector("[data-swipe-row]") as HTMLElement;
+    const content = container.querySelector(
+      "[data-swipe-content]",
+    ) as HTMLElement;
+
+    swipeLeft(row);
+    await screen.findByRole("button", { name: "entry.mark_read" });
+    expect(content.style.transform).toBe("translateX(-132px)");
+
+    let clock = 1000;
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => clock);
+    await act(async () => {
+      row.dispatchEvent(touch("touchstart", 100, 100));
+      clock += 20;
+      row.dispatchEvent(touch("touchmove", 120, 100)); // +1 px/ms
+      clock += 20;
+      row.dispatchEvent(touch("touchmove", 132, 100)); // 右移 32px，速度 +0.6 px/ms
+      clock += 10;
+      row.dispatchEvent(touch("touchend", 132, 100));
+      await nextFrame();
+    });
+    nowSpy.mockRestore();
+
+    // 基准 -132 + 32 = -100，abs(100) > 66 单靠位移会保持展开；靠快速右甩速度收起
     expect(content.style.transform).toBe("translateX(0px)");
     expect(screen.queryByRole("button", { name: "entry.mark_read" })).toBeNull();
   });

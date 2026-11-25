@@ -51,11 +51,15 @@ export function MobileSwipeEntryRow({
 }: MobileSwipeEntryRowProps) {
   const { t } = useTranslation();
   const rowRef = useRef<HTMLDivElement>(null);
+  /** 内容层节点：拖动期间直接写它的 transform，不触发 React 重渲染 */
+  const contentRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  /** 拖动中的实时位移（px，0 ~ -ACTION_WIDTH）；null 表示非拖动，由 open 决定 */
-  const [dragOffset, setDragOffset] = useState<number | null>(null);
   /** 拖动起点的基准位移（展开 = -ACTION_WIDTH，收起 = 0） */
   const baseOffsetRef = useRef(0);
+  /** 拖动中的目标位移（px，0 ~ -ACTION_WIDTH）；null 表示当前未拖动 */
+  const dragOffsetRef = useRef<number | null>(null);
+  /** 合并到下一帧的 rAF 句柄，保证每帧最多写一次 DOM */
+  const rafRef = useRef<number | null>(null);
   const { mutate: markAsRead } = useMarkAsRead();
   const { mutate: markAsStarred } = useMarkAsStarred();
 
@@ -71,18 +75,51 @@ export function MobileSwipeEntryRow({
     setOpen(true);
   }, [entry.id]);
 
+  /** 取消尚未执行的合帧（touchend / 卸载时用） */
+  const cancelPendingFrame = useCallback(() => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+  }, []);
+
+  /** rAF 回调：把最新目标位移写到内容层（每帧最多一次） */
+  const flushDragTransform = useCallback(() => {
+    rafRef.current = null;
+    const content = contentRef.current;
+    const offset = dragOffsetRef.current;
+    if (content && offset !== null) {
+      content.style.transform = `translateX(${offset}px)`;
+    }
+  }, []);
+
+  const scheduleDragTransform = useCallback(() => {
+    if (rafRef.current !== null) return;
+    rafRef.current = requestAnimationFrame(flushDragTransform);
+  }, [flushDragTransform]);
+
   const handleDragStart = useCallback(() => {
     baseOffsetRef.current = open ? -ACTION_WIDTH : 0;
-    setDragOffset(baseOffsetRef.current);
+    dragOffsetRef.current = baseOffsetRef.current;
+    const content = contentRef.current;
+    if (content) {
+      // 拖动期间关掉过渡，保证内容层严格跟手；松手时再恢复类上的过渡
+      content.style.transition = "none";
+      content.style.transform = `translateX(${baseOffsetRef.current}px)`;
+    }
   }, [open]);
 
-  const handleDragMove = useCallback((offsetX: number) => {
-    const next = Math.min(
-      0,
-      Math.max(-ACTION_WIDTH, baseOffsetRef.current + offsetX),
-    );
-    setDragOffset(next);
-  }, []);
+  const handleDragMove = useCallback(
+    (offsetX: number) => {
+      const next = Math.min(
+        0,
+        Math.max(-ACTION_WIDTH, baseOffsetRef.current + offsetX),
+      );
+      dragOffsetRef.current = next;
+      scheduleDragTransform();
+    },
+    [scheduleDragTransform],
+  );
 
   const handleDragEnd = useCallback(
     (offsetX: number, velocityX: number) => {
@@ -95,12 +132,25 @@ export function MobileSwipeEntryRow({
       } else {
         shouldOpen = Math.abs(offset) > ACTION_WIDTH / 2;
       }
-      setDragOffset(null);
+
+      cancelPendingFrame();
+      dragOffsetRef.current = null;
+      const content = contentRef.current;
+      if (content) {
+        // 恢复类上的 transition（内联清空后由 className 接管），直接吸附到目标位移。
+        // 强制一次样式计算，确保恢复的过渡在 transform 变化前已生效，吸附才有动画。
+        content.style.transition = "";
+        void content.offsetWidth;
+        content.style.transform = `translateX(${shouldOpen ? -ACTION_WIDTH : 0}px)`;
+      }
       if (shouldOpen) openRow();
       else close();
     },
-    [close, openRow],
+    [cancelPendingFrame, close, openRow],
   );
+
+  // 卸载时清掉挂起的合帧，避免回调落到已卸载节点
+  useEffect(() => cancelPendingFrame, [cancelPendingFrame]);
 
   useSwipeGesture(rowRef, {
     enabledDirections: ["left", "right"],
@@ -145,9 +195,6 @@ export function MobileSwipeEntryRow({
     event.stopPropagation();
     setOpen(false);
   };
-
-  const dragging = dragOffset !== null;
-  const displayOffset = dragging ? dragOffset : open ? -ACTION_WIDTH : 0;
 
   return (
     <div
@@ -213,20 +260,18 @@ export function MobileSwipeEntryRow({
         </button>
       </div>
 
-      {/* 内容层：不透明底盖住动作条；拖动时实时跟随，松手后吸附 */}
+      {/* 内容层：不透明底盖住动作条；拖动时由 rAF 直接写 transform 跟手，松手后吸附 */}
       <div
+        ref={contentRef}
         onClickCapture={handleContentClickCapture}
         data-swipe-content
         className={cn(
-          "relative z-10",
-          dragging
-            ? "transition-none"
-            : "transition-transform duration-200 ease-out",
+          "relative z-10 transition-transform duration-200 ease-out",
           open
             ? "bg-item-hover shadow-[-10px_0_18px_-8px_rgba(0,0,0,0.28)]"
             : "bg-background",
         )}
-        style={{ transform: `translateX(${displayOffset}px)` }}
+        style={{ transform: `translateX(${open ? -ACTION_WIDTH : 0}px)` }}
       >
         {children}
       </div>

@@ -39,6 +39,10 @@ interface TouchState {
   currentY: number;
   prevX: number; // 上一次采样点（用于瞬时速度）
   prevTime: number;
+  /** 最近一次 touchmove 采样到的瞬时横向速度（px/ms，向右为正） */
+  lastVelocityX: number;
+  /** 最近一次采样的时间戳，用于 touchend 判断该速度是否仍然新鲜 */
+  lastMoveTime: number;
   isScrolling: boolean | null; // null = undetermined, true = vertical scroll, false = horizontal swipe
   dragging: boolean; // 是否已进入逐帧跟手阶段（仅在判定为横向后置真）
 }
@@ -47,6 +51,12 @@ const DIRECTION_LOCK_RATIO = 1.2;
 
 /** 速度采样间隔过短（同一 tick 内的合成事件）时速度不可信，按 0 处理 */
 const MIN_VELOCITY_SAMPLE_MS = 8;
+
+/**
+ * touchend 距最后一次 touchmove 的时长上限：超过则视为手指已停稳，速度按 0 处理。
+ * 手指停住后才松手不该被判成「甩动」。
+ */
+const FLING_SAMPLE_WINDOW_MS = 80;
 
 export function useSwipeGesture(
   elementRef: React.RefObject<HTMLElement | null>,
@@ -111,6 +121,8 @@ export function useSwipeGesture(
         currentY: touch.clientY,
         prevX: touch.clientX,
         prevTime: now,
+        lastVelocityX: 0,
+        lastMoveTime: now,
         isScrolling: null,
         dragging: false,
       };
@@ -168,6 +180,10 @@ export function useSwipeGesture(
             elapsed >= MIN_VELOCITY_SAMPLE_MS
               ? (touch.clientX - state.prevX) / elapsed
               : 0;
+          // 在更新 prevX/prevTime 之前把本次瞬时速度留档：touchend 时 currentX 已等于 prevX，
+          // 再算只会得到 0，快速甩动分支就永远不生效（本次修复的核心缺陷）。
+          state.lastVelocityX = velocityX;
+          state.lastMoveTime = now;
           state.prevX = touch.clientX;
           state.prevTime = now;
           handlers.onDragMove?.(
@@ -190,10 +206,11 @@ export function useSwipeGesture(
     if (state.dragging) {
       const handlers = dragHandlers.current;
       const now = Date.now();
-      const elapsed = now - state.prevTime;
+      // 用最后一次 move 采样到的瞬时速度；手指已停稳（距上次采样超过 80ms）则视为 0。
+      // 注意这里不能再拿 currentX - prevX 计算：move 已把 prevX 同步为 currentX，结果恒为 0。
       const velocityX =
-        elapsed >= MIN_VELOCITY_SAMPLE_MS
-          ? (state.currentX - state.prevX) / elapsed
+        now - state.lastMoveTime <= FLING_SAMPLE_WINDOW_MS
+          ? state.lastVelocityX
           : 0;
       handlers.onDragEnd?.(state.currentX - state.startX, velocityX);
       touchState.current = null;
