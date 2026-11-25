@@ -1230,10 +1230,11 @@
     "inoreader_splitter_prompt_keep": "Keep showing",
     "inoreader_splitter_prompt_also_off": "Hide in article too",
     "inoreader_splitter_prompt_settings_hint": "You can change this anytime in Settings → Appearance → Per-view settings. Switching away from the Inoreader list layout turns the article divider back on automatically.",
-    "article_pane_style": "Reading pane style",
-    "article_pane_style_hint": "“Card” is a floating card with padding and shadow; “Plain” is the original full-width rounded pane. Both are kept for now — tell me which one to keep.",
-    "article_pane_style_card": "Card",
-    "article_pane_style_plain": "Plain"
+    "article_pane_frame": "Reading pane frame",
+    "article_pane_frame_hint": "Frame and width of the reading pane. “Subtle” is almost invisible (default); “None” removes the card border and shadow; “Full width” is the original plain layout that fills the whole pane.",
+    "article_pane_frame_subtle": "Subtle",
+    "article_pane_frame_none": "None",
+    "article_pane_frame_full": "Full width"
   },
   "folder": {
     "create": "New folder",

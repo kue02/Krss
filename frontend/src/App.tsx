@@ -93,7 +93,11 @@ import {
 import { useRefreshStatus } from "@/hooks/useRefreshStatus";
 import { isAddFeedPath } from "@/lib/router";
 import { initProxyImageRecovery } from "@/lib/proxy-image-recovery";
-import { headerBackgroundBlurFor } from "@/lib/article-pane-style";
+import {
+  articlePaneStyleForFrame,
+  headerBackgroundBlurFor,
+  headerBackgroundRoundedTopFor,
+} from "@/lib/article-pane-style";
 import { cn } from "@/lib/utils";
 import type { ContentType, Feed, Folder } from "@/types/api";
 
@@ -480,7 +484,8 @@ function AuthenticatedApp() {
     initProxyImageRecovery();
   }, []);
 
-  const articlePaneStyle = useUISettingKey("articlePaneStyle");
+  const articlePaneFrame = useUISettingKey("articlePaneFrame");
+  const articlePaneStyle = articlePaneStyleForFrame(articlePaneFrame);
   const reduceMotion = useUISettingKey("reduceMotion");
   useEffect(() => {
     applyReduceMotionToDocument(Boolean(reduceMotion));
@@ -687,7 +692,7 @@ function AuthenticatedApp() {
       /* 合列模式（向下）：正文接在被点那一行后面，共用列表那条滚动条 */
       renderInlineContent={
         isArticleInlineLayout
-          ? (scrollRef) =>
+          ? (scrollRef, options) =>
               selectedEntryId ? (
                 <div className="pb-10">
                   <Suspense fallback={<EntryContentFallback />}>
@@ -699,6 +704,10 @@ function AuthenticatedApp() {
                       showAuxiliary
                       containerRef={scrollRef}
                       headerBackgroundBlur={headerBackgroundBlurFor(articlePaneStyle)}
+                      headerBackgroundRoundedTop={headerBackgroundRoundedTopFor(
+                        articlePaneStyle,
+                        options.paneAtTop,
+                      )}
                       onClose={() => selectEntry(null)}
                     />
                   </Suspense>
@@ -939,6 +948,10 @@ function AuthenticatedApp() {
                               containerRef={scrollRef}
                               headerStickyTopClassName={options.headerStickyTop}
                               headerBackgroundBlur={headerBackgroundBlurFor(articlePaneStyle)}
+                              headerBackgroundRoundedTop={headerBackgroundRoundedTopFor(
+                                articlePaneStyle,
+                                options.paneAtTop,
+                              )}
                               onClose={() => setMobileInlineEntryId(null)}
                             />
                           </Suspense>

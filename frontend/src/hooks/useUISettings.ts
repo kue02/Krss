@@ -20,6 +20,7 @@ import {
   defaultEntryToolbar,
   type EntryToolbarItem,
 } from "@/lib/entry-toolbar";
+import type { ArticlePaneFrame } from "@/lib/article-pane-style";
 
 export type CardImageSize = "none" | "small" | "large";
 export type ScrollReadOverride = "inherit" | "on" | "off";
@@ -202,8 +203,8 @@ interface UISettings {
    * 不碰用户在设置里自己手动关掉的情况（防止误伤）。恢复后立即置回 false。
    */
   inoreaderSplitterAutoOff: boolean;
-  /** 「Inoreader列表」内联正文的容器样式：card = 卡片（圆角+留白+阴影），plain = 原样（全宽圆角） */
-  articlePaneStyle: "card" | "plain";
+  /** 「Inoreader列表」正文栏外框：subtle = 淡边框（默认），none = 卡片档无边框，full = 原样（无边框全宽） */
+  articlePaneFrame: ArticlePaneFrame;
   hoverImageSize: "small" | "large";
   /** 29-4：悬停大图档「多图切换」的三个触发开关（默认只开行上滚轮） */
   hoverMultiImage: HoverMultiImageConfig;
@@ -507,7 +508,7 @@ const SILENT_SAVE_UI_KEYS = new Set<string>([
   "articleMobileFullTitle",
   "mobileSwipeActionStyle",
   "inoreaderSplitterPromptShown",
-  "articlePaneStyle",
+  "articlePaneFrame",
   "hoverImageSize",
   // 11-24：分界限的显示方式在侧栏边上当场就变（且切走 Inoreader 布局时的自动恢复不该弹框）
   "splitterVisibleByView",
@@ -563,6 +564,9 @@ const RADIUS_PRESETS = new Set<string>([
   "full",
 ]);
 
+/** 正文栏外框的合法档位（老数据里的 default 会在下方迁成 subtle）。 */
+const ARTICLE_PANE_FRAMES = new Set<string>(["subtle", "none", "full"]);
+
 /**
  * 收窄一个 bag：只留认识的键、类型对得上的值；对象型的项与默认值浅合并
  * （防止服务端/导入回来的半份配置把组件读成 undefined）。
@@ -614,6 +618,20 @@ function sanitizeBag(input: unknown): Record<string, unknown> {
     !SWIPE_ACTION_STYLES.has(out.mobileSwipeActionStyle)
   ) {
     delete out.mobileSwipeActionStyle;
+  }
+
+  // 正文栏外框合并了旧的「原样」档：老版 articlePaneStyle=plain 一律迁成 full；
+  // 旧数字档 default（现状）迁成新的默认 subtle；不认识的档位丢掉回落默认。
+  if (input.articlePaneStyle === "plain") {
+    out.articlePaneFrame = "full";
+  } else if (out.articlePaneFrame === "default") {
+    out.articlePaneFrame = "subtle";
+  }
+  if (
+    typeof out.articlePaneFrame === "string" &&
+    !ARTICLE_PANE_FRAMES.has(out.articlePaneFrame)
+  ) {
+    delete out.articlePaneFrame;
   }
 
   // 字号 / 行高是跨设备同步的数值：本地存的旧值或别的设备写回来的越界值，
@@ -692,7 +710,7 @@ export const defaultUISettings: UISettings = {
   articleMobileFullTitle: true,
   inoreaderSplitterPromptShown: false,
   inoreaderSplitterAutoOff: false,
-  articlePaneStyle: "card",
+  articlePaneFrame: "subtle",
   hoverImageSize: "small",
   hoverMultiImage: { rowWheel: true, floatWheel: false, hSwipe: false },
   notificationBodyOnHover: false,
@@ -1038,9 +1056,10 @@ export function useUISettingActions() {
     setUISetting("splitterAutoHide", value);
   }, []);
 
-  const setArticlePaneStyle = useCallback(
-    (value: "card" | "plain") => {
-      setUISetting("articlePaneStyle", value);
+  /** 正文栏外框（subtle 淡边框 / none 卡片档无边框 / full 无边框全宽） */
+  const setArticlePaneFrame = useCallback(
+    (value: ArticlePaneFrame) => {
+      setUISetting("articlePaneFrame", value);
     },
     [setUISetting],
   );
@@ -1337,7 +1356,7 @@ export function useUISettingActions() {
     setInoreaderSplitterPromptShown,
     hideArticleSplitterFromPrompt,
     setSplitterAutoHide,
-    setArticlePaneStyle,
+    setArticlePaneFrame,
     setHoverImageSize,
     setArticleLayout,
     setArticlePushDirection,

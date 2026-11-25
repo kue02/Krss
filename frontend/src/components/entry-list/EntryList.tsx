@@ -37,6 +37,10 @@ import {
   computeFolderSubtreeUnread,
 } from "@/lib/folder-tree";
 import { stripHtml } from "@/lib/html-utils";
+import {
+  articlePaneFrameClasses,
+  articlePaneStyleForFrame,
+} from "@/lib/article-pane-style";
 import { EntryListItem } from "./EntryListItem";
 import { ArticleRowsListRow } from "./ArticleRowsList";
 import { ArticlePlainListRow } from "./ArticlePlainList";
@@ -145,7 +149,7 @@ interface EntryListProps {
    */
   renderInlineContent?: (
     scrollRef: RefObject<HTMLDivElement | null>,
-    options: { headerStickyTop: string },
+    options: { headerStickyTop: string; paneAtTop: boolean },
   ) => ReactNode;
 }
 
@@ -525,7 +529,8 @@ export function EntryList({
     "inoreaderSplitterPromptShown",
   );
   const [splitterPromptOpen, setSplitterPromptOpen] = useState(false);
-  const articlePaneStyle = useUISettingKey("articlePaneStyle");
+  const articlePaneFrame = useUISettingKey("articlePaneFrame");
+  const articlePaneStyle = articlePaneStyleForFrame(articlePaneFrame);
   const suppressedSplitterViews = useMemo(
     () =>
       (["picture", "social", "notification"] as ContentType[])
@@ -938,14 +943,18 @@ export function EntryList({
           articlePaneStyle === "card"
             ? paneAtTop
               ? "my-0 w-full rounded-none border-t border-border [overflow:clip]"
-              : "mx-2 my-2 w-[calc(100%-1rem)] rounded-[12px] border border-border/60 shadow-nf [overflow:clip]"
-            : "w-full rounded-[12px] border-t border-border [clip-path:inset(0_round_12px)]",
+              : cn(
+                  "mx-2 my-2 w-[calc(100%-1rem)] rounded-[12px] [overflow:clip]",
+                  articlePaneFrameClasses(articlePaneFrame),
+                )
+            : "w-full rounded-[12px] [clip-path:inset(0_round_12px)]",
         )}
       >
         {renderInlineContent?.(containerRef, {
           headerStickyTop: mobileHeaderHidden
             ? "top-0"
             : "top-[calc(2.75rem+env(safe-area-inset-top))]",
+          paneAtTop,
         })}
       </div>
     ) : null;
