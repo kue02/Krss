@@ -1,5 +1,5 @@
 /**
- * 「正文栏样式」到「内联工具栏背景层是否保留 backdrop-blur」的映射。
+ * 「正文栏外框」到「内联工具栏背景层是否保留 backdrop-blur」的映射。
  *
  * 卡片档 pane 用 `overflow: clip` 裁圆角；Chromium 下带 backdrop-filter 的层会逃逸祖先圆角的
  * 裁剪，表现为滚动后点开正文、卡片左上角缺一块。修复方式是让模糊层自带顶部圆角
@@ -34,25 +34,29 @@ export function headerBackgroundRoundedTopFor(
 }
 
 /**
- * 卡片档正文栏外框的三档强度（用户 2026-11-25：「三个切换来决定看保留哪个」）。
- *  - default：现状，`border-border/60` + `shadow-nf`；
- *  - subtle：边框降到 40% 几乎看不见，投影改成一层极轻的 2px；
- *  - none：完全不画边框和投影。
- * 只作用于「卡片档 + 正文栏非贴顶」；贴顶档与「原样」档不受影响。
+ * 正文栏外框（用户 2026-11-25：三档切换后定稿；同日再把原来的「原样」并进来）。
+ *  - subtle：默认，边框降到 40% 几乎看不见，投影改成一层极轻的 2px；
+ *  - none：卡片档完全不画边框和投影；
+ *  - full：原来的「原样」，无边框、铺满整栏（不再走卡片容器的留白/圆角外框）。
  */
-export type ArticlePaneFrame = "default" | "subtle" | "none";
+export type ArticlePaneFrame = "subtle" | "none" | "full";
 
-/** 卡片档非贴顶时叠加到 pane 上的边框 + 投影类；未知值按现状处理，避免读回脏档位后没有样式。 */
-export function articlePaneFrameClasses(
-  frame: ArticlePaneFrame | undefined,
-): string {
+/** 外框档位 → 正文栏容器形态：full 是原来的全宽「原样」档，其余都是卡片档。 */
+export function articlePaneStyleForFrame(
+  frame: ArticlePaneFrame,
+): "card" | "plain" {
+  return frame === "full" ? "plain" : "card";
+}
+
+/** 卡片档非贴顶时叠加到 pane 上的边框 + 投影类；full 不走这里，未知值按默认 subtle 处理。 */
+export function articlePaneFrameClasses(frame: ArticlePaneFrame): string {
   switch (frame) {
-    case "subtle":
-      return "border border-border/40 shadow-[0_1px_2px_rgba(0,0,0,0.04)]";
     case "none":
       return "border-0 shadow-none";
-    case "default":
+    case "full":
+      return "";
+    case "subtle":
     default:
-      return "border border-border/60 shadow-nf";
+      return "border border-border/40 shadow-[0_1px_2px_rgba(0,0,0,0.04)]";
   }
 }

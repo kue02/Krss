@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   articlePaneFrameClasses,
+  articlePaneStyleForFrame,
   headerBackgroundBlurFor,
   headerBackgroundRoundedTopFor,
 } from "./article-pane-style";
@@ -38,26 +39,29 @@ describe("headerBackgroundRoundedTopFor（背景层是否自带顶部圆角）",
   });
 });
 
-describe("articlePaneFrameClasses（卡片档正文栏外框三档）", () => {
-  it("default 保持现状：border-border/60 + shadow-nf", () => {
-    expect(articlePaneFrameClasses("default")).toBe(
-      "border border-border/60 shadow-nf",
-    );
-  });
-
-  it("subtle 降为 40% 边框 + 极轻投影", () => {
+describe("articlePaneFrameClasses（正文栏外框）", () => {
+  it("subtle 默认档：40% 边框 + 极轻投影", () => {
     expect(articlePaneFrameClasses("subtle")).toBe(
       "border border-border/40 shadow-[0_1px_2px_rgba(0,0,0,0.04)]",
     );
   });
 
-  it("none 去掉边框和投影", () => {
+  it("none 去掉卡片档边框和投影", () => {
     expect(articlePaneFrameClasses("none")).toBe("border-0 shadow-none");
   });
 
-  it("缺省/未知值按现状兜底，避免读回脏档位后没有外框", () => {
-    expect(articlePaneFrameClasses(undefined)).toBe(
-      "border border-border/60 shadow-nf",
-    );
+  it("full 由全宽分支处理，不叠加卡片外框", () => {
+    expect(articlePaneFrameClasses("full")).toBe("");
+  });
+});
+
+describe("articlePaneStyleForFrame（外框档位 → 容器形态）", () => {
+  it("full 对应原来的「原样」全宽形态", () => {
+    expect(articlePaneStyleForFrame("full")).toBe("plain");
+  });
+
+  it("subtle / none 都是卡片形态", () => {
+    expect(articlePaneStyleForFrame("subtle")).toBe("card");
+    expect(articlePaneStyleForFrame("none")).toBe("card");
   });
 });
