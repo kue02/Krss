@@ -35,6 +35,9 @@ export function ImagePreview() {
   }, []);
   useEffect(() => clearTapTimer, [clearTapTimer]);
   const scrollLockYRef = useRef(0);
+  // 是否真的加过滚动锁。mount（isOpen=false）与重复 cleanup 时不得清理样式或滚动，
+  // 否则会把背景列表在打开瞬间偷偷滚到 0（即用户报的「关图跳顶」竞争根源）。
+  const scrollLockActiveRef = useRef(false);
   const touchMoveHandlerRef = useRef<((e: TouchEvent) => void) | null>(null);
 
   // Track if index change is from embla interaction (to avoid scrollTo interrupting animation)
@@ -165,6 +168,10 @@ export function ImagePreview() {
     );
 
     const unlockScroll = () => {
+      // 未加过锁：不清理、不滚动。幂等——首次恢复后置 false，二次 cleanup 直接跳过。
+      if (!scrollLockActiveRef.current) return;
+      scrollLockActiveRef.current = false;
+
       const storedTop = document.body.style.top;
       document.body.style.position = "";
       document.body.style.top = "";
@@ -204,7 +211,9 @@ export function ImagePreview() {
     };
 
     if (isOpen) {
+      // 先取保存位（分文不动），再加锁。
       scrollLockYRef.current = window.scrollY;
+      scrollLockActiveRef.current = true;
 
       if (isIOSPWA) {
         document.documentElement.style.overflow = "hidden";

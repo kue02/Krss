@@ -468,6 +468,10 @@ describe("ImagePreview", () => {
 
     afterEach(() => {
       document.documentElement.classList.remove("mobile-document-scroll");
+      Object.defineProperty(window, "scrollY", {
+        value: 0,
+        configurable: true,
+      });
     });
 
     it("should lock body scroll when open (non-iOS)", () => {
@@ -502,14 +506,25 @@ describe("ImagePreview", () => {
       document.documentElement.classList.add("mobile-document-scroll");
       const scrollToMock = window.scrollTo as unknown as ReturnType<typeof vi.fn>;
       scrollToMock.mockClear();
+      // 模拟打开前的滚动位置
+      Object.defineProperty(window, "scrollY", {
+        value: 500,
+        configurable: true,
+      });
+
+      // 未打开时 mount 再卸载：清理阶段不得触发任何 scrollTo（尤其不能 scrollTo(0,0)）
+      const closed = render(<ImagePreview />);
+      closed.unmount();
+      expect(scrollToMock).not.toHaveBeenCalled();
 
       useImagePreviewStore.getState().open(mockImages);
       const { unmount } = render(<ImagePreview />);
 
-      // 打开：不设 position:fixed，改用 overflow 锁
+      // 打开：不设 position:fixed，改用 overflow 锁；此时也不应触发 scrollTo
       expect(document.body.style.position).toBe("");
       expect(document.documentElement.style.overflow).toBe("hidden");
       expect(document.body.style.overflow).toBe("hidden");
+      expect(scrollToMock).not.toHaveBeenCalled();
 
       act(() => {
         useImagePreviewStore.getState().close();
@@ -522,7 +537,7 @@ describe("ImagePreview", () => {
       expect(document.body.style.overflow).toBe("");
       expect(document.body.style.position).toBe("");
 
-      // 双重 rAF 后恢复滚动位置
+      // 双重 rAF 后恢复滚动位置：最后一次 scrollTo 应为 (0, 保存的 500)
       await act(async () => {
         await new Promise<void>((resolve) => {
           requestAnimationFrame(() =>
@@ -531,6 +546,8 @@ describe("ImagePreview", () => {
         });
       });
       expect(scrollToMock).toHaveBeenCalled();
+      expect(scrollToMock.mock.calls.at(-1)).toEqual([0, 500]);
+      expect(scrollToMock).not.toHaveBeenCalledWith(0, 0);
 
       document.documentElement.classList.remove("mobile-document-scroll");
     });
