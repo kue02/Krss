@@ -559,9 +559,16 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     // 社交媒体视图的图片区（第四十二批）：按原图比例排版，替代旧的 112px 正方形横排。
     // `extractContentMedia` 返回原始 URL + HTML 里的 width/height；store 缓存与
     // onLoad 实测在 SocialMediaGallery 内部补（key 与图片视图同为原始 URL）。
+    //
+    // 只在社交视图才算：这函数会对每行 HTML 跑一次 DOMParser，article / 普通列表
+    // 根本不用这份清单 —— 原来无条件执行，是文章 tab 切换时 `parseFromString`
+    // 长任务的主因（每行一次全量解析）。非社交视图给空数组，社交视图行为不变。
     const socialMedia = useMemo(
-      () => extractContentMedia(expandedContent, entry.url, entry.thumbnailUrl),
-      [expandedContent, entry.url, entry.thumbnailUrl],
+      () =>
+        isSocialView
+          ? extractContentMedia(expandedContent, entry.url, entry.thumbnailUrl)
+          : [],
+      [isSocialView, expandedContent, entry.url, entry.thumbnailUrl],
     );
     // 大图查看器要的是**代理后**的 URL 列表（点缩略图传的下标要对得上）
     const openImagePreview = useImagePreviewStore((state) => state.open);
