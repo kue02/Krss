@@ -79,18 +79,22 @@ describe("Sheet", () => {
     const { root, content } = getSlots(container);
 
     // 内容在首次打开之前就已经在 DOM 里（预热挂载），整块停在屏幕外。
-    // 关闭态带 aria-hidden/inert，按可访问性查询要显式要求 hidden。
-    expect(
-      screen.getByRole("button", { name: "menu item", hidden: true }),
-    ).toBeTruthy();
+    // 关闭态 visibility:hidden + aria-hidden/inert 后不再进可访问性树，改用文本查询确认内容仍挂载。
+    expect(screen.getByText("menu item")).toBeTruthy();
     expect(stateOf(root)).toBe("closed");
     expect(stateOf(content)).toBe("closed");
     expect(content.hasAttribute("inert")).toBe(true);
     expect(content.getAttribute("aria-hidden")).toBe("true");
     expect(content.style.transform).toBe("translateX(-100%)");
+    // 关闭态同时 visibility:hidden，避免常驻合成层在 iOS 返回过渡里被绘出一帧。
+    expect(content.style.visibility).toBe("hidden");
+    // 退出动画期间仍可见，滑出（EXIT_DURATION_MS=200ms）结束后才切 hidden。
+    expect(content.style.transition).toBe(
+      "transform 200ms cubic-bezier(0.32, 0.72, 0, 1), visibility 0s linear 200ms",
+    );
   });
 
-  it("opens from the trigger with a CSS transition instead of frame-by-frame JS", () => {
+  it("opens from the trigger with a CSS transition instead of frame-by-frame JS", async () => {
     const { container } = render(<ControlledSheet />);
     const { root, content, overlay } = getSlots(container);
 
@@ -99,9 +103,15 @@ describe("Sheet", () => {
     expect(stateOf(root)).toBe("open");
     expect(stateOf(content)).toBe("open");
     expect(content.style.transition).toBe(
-      "transform 250ms cubic-bezier(0.32, 0.72, 0, 1)",
+      "transform 250ms cubic-bezier(0.32, 0.72, 0, 1), visibility 0s linear 0s",
     );
-    // 组件自身不跑 rAF/spring：打开只换 style，动画交给合成层
+    expect(content.style.visibility).toBe("visible");
+    // 打开首帧先就位（-100%），下一帧 rAF 再切到 0 触发滑入过渡：推进一帧确认已滑入。
+    await act(async () => {
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      );
+    });
     expect(content.style.transform).toBe("translateX(0px)");
     expect(overlay.style.transition).toContain("opacity 250ms");
     expect(content.hasAttribute("aria-hidden")).toBe(false);

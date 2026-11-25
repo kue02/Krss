@@ -33,7 +33,7 @@ export function BackToTopButton({
       type="button"
       onClick={handleClick}
       className={cn(
-        "fixed bottom-6 right-6 z-30",
+        "fixed right-4 bottom-[max(2.75rem,calc(env(safe-area-inset-bottom)+0.75rem))] md:bottom-6 md:right-6 z-30",
         "flex size-10 items-center justify-center rounded-full",
         "bg-background/80 backdrop-blur border border-border shadow-lg",
         "text-muted-foreground hover:text-foreground hover:bg-background",
