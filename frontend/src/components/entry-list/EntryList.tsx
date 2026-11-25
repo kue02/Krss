@@ -2180,7 +2180,9 @@ export function EntryList({
                   return (
                     <Fragment key={entry.id}>
                       {isMobile ? (
-                        <MobileSwipeEntryRow entry={entry}>{item}</MobileSwipeEntryRow>
+                        <MobileSwipeEntryRow entry={entry} contentVisibility={isSocialView}>
+                          {item}
+                        </MobileSwipeEntryRow>
                       ) : (
                         item
                       )}
