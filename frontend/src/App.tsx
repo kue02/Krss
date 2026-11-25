@@ -635,16 +635,40 @@ function AuthenticatedApp() {
    * 「选择一篇文章开始阅读」的空占位，滑出的过程中就会闪一块**空的正文栏**
    * （用户真机复现：右滑返回瞬间出现一个空的「正文栏」）。
    * 这里保留「上一条正文」的 id：返回后详情面板滑出去时显示的仍是刚才那篇文章，
-   * 之后再没有新的选中就一直是它（面板此时已在屏幕外、inert，不可交互，用户看不到）。
-   * 不用定时器清空，避免滑出动画慢于定时器时又在半途闪回空占位。
+   * **滑出动画结束**（`onTransitionEnd`，兜底 1200ms）后再卸载成占位——
+   * 面板此时已在屏幕外、inert，用户看不到占位；卸载也顺带停掉正文里的媒体、
+   * 并让 EntryContent 卸载时补登记「已读但先别从只看未读列表移除」的 defer。
    * 只有用户另选一篇时才替换；首次进入（无选中）时才是 null → 占位。
    */
   const [retainedDetailEntryId, setRetainedDetailEntryId] = useState<
     string | null
   >(selectedEntryId);
   useEffect(() => {
-    if (selectedEntryId) setRetainedDetailEntryId(selectedEntryId);
+    if (selectedEntryId) {
+      setRetainedDetailEntryId(selectedEntryId);
+      return;
+    }
+    // 返回列表：优先等详情面板滑出动画的 transitionend 再清空（见下方 handler）；
+    // 兜底定时器防止 transitionend 因 reduced-motion / 元素被隐藏而不触发，
+    // 导致离屏正文（含内嵌视频/音频）一直存活。
+    const timer = window.setTimeout(
+      () => setRetainedDetailEntryId(null),
+      1200,
+    );
+    return () => window.clearTimeout(timer);
   }, [selectedEntryId]);
+
+  // 详情面板滑出动画结束、且已无选中条目时，把离屏正文卸载成占位。
+  const handleDetailTransitionEnd = useCallback(
+    (event: React.TransitionEvent<HTMLElement>) => {
+      if (event.target !== event.currentTarget) return;
+      if (event.propertyName !== "transform" && event.propertyName !== "translate")
+        return;
+      if (selectedEntryId !== null) return;
+      setRetainedDetailEntryId(null);
+    },
+    [selectedEntryId],
+  );
 
   // 桌面三栏的第三栏：Nextflux 式转场（reader-transition 批）。
   // 未选 → 首次选中 = 整块从右侧推进；已选 → 换另一条 = 正文上下滑动。
@@ -990,6 +1014,7 @@ function AuthenticatedApp() {
             )}
             aria-hidden={mobileView !== "detail"}
             inert={mobileView !== "detail" ? true : undefined}
+            onTransitionEnd={handleDetailTransitionEnd}
           >
             {mobileEntryContent}
           </section>

@@ -196,11 +196,14 @@ export function Sheet({
   // 面板内 Tab 循环 + 面板外焦点拉回 + 关闭态 inert」覆盖键盘与指针两条路径，
   // 读屏虚拟光标仍可游走背景 —— 记为待观察项。
   useEffect(() => {
-    if (!open) return;
+    // 依赖 mounted：打开那一刻同一批 passive effect 里 mounted 仍是 false、
+    // 面板还是 display:none，直接 focus() 对不可见元素无效（真机打开侧栏焦点不进面板）。
+    // 等 mounted 变 true（面板真正 display:block）后再聚焦。
+    if (!open || !mounted) return;
     const panel = panelRef.current;
     if (!panel || panel.contains(document.activeElement)) return;
     panel.focus({ preventScroll: true });
-  }, [open]);
+  }, [open, mounted]);
 
   const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!open || !event.isPrimary || event.button !== 0) return;
