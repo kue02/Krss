@@ -1,9 +1,13 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useFeeds } from "@/hooks/useFeeds";
+import { estimateReadingMinutes } from "@/lib/reading-time";
 import type { Entry } from "@/types/api";
 
-export function useEntryMeta(entry: Entry | null | undefined) {
+export function useEntryMeta(
+  entry: Entry | null | undefined,
+  readingContent?: string | null,
+) {
   const { data: feeds } = useFeeds();
   const { t, i18n } = useTranslation();
 
@@ -50,12 +54,9 @@ export function useEntryMeta(entry: Entry | null | undefined) {
   }, [publishedAt, shortDateFormatter]);
 
   const readingTime = useMemo(() => {
-    if (!entry?.content) return null;
-    const text = entry.content.replace(/<[^>]*>/g, "");
-    const words = text.match(/[\u4e00-\u9fa5]|\w+/g)?.length || 0;
-    const mins = Math.ceil(words / 230); // Adjusted for mixed content
-    return mins > 0 ? t("entry.min_read", { mins }) : null;
-  }, [entry, t]);
+    const mins = estimateReadingMinutes(readingContent ?? entry?.content);
+    return mins ? t("entry.min_read", { mins }) : null;
+  }, [entry, readingContent, t]);
 
   return { feedTitle, publishedLong, publishedShort, readingTime };
 }

@@ -15,9 +15,15 @@ import type { Entry } from "@/types/api";
  * 排版对齐文章视图的编辑化页头（`EntryContentBody` 非社交分支）：大头像 + 大号作者名、
  * 一行 `·` 分隔的 byline、底部发丝线 + 左侧主色短强调线；仍不带标题、不带眉标。
  */
-export function SocialAuthorHeader({ entry }: { entry: Entry }) {
+export function SocialAuthorHeader({
+  entry,
+  content,
+}: {
+  entry: Entry;
+  content?: string | null;
+}) {
   const { data: feeds = [] } = useFeeds();
-  const { publishedLong, readingTime } = useEntryMeta(entry);
+  const { publishedLong, readingTime } = useEntryMeta(entry, content);
 
   const feed = useMemo(
     () => feeds.find((item) => item.id === entry.feedId),

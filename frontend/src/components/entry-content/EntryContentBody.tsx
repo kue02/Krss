@@ -56,7 +56,7 @@ export function EntryContentBody({
   notice,
 }: EntryContentBodyProps) {
   const { t } = useTranslation();
-  const { publishedLong, readingTime } = useEntryMeta(entry);
+  const { publishedLong, readingTime } = useEntryMeta(entry, displayContent);
   const { data: feeds = [] } = useFeeds();
   const sourceFeed = feeds.find((feed) => feed.id === entry.feedId);
   const [iconFailed, setIconFailed] = useState(false);
@@ -186,7 +186,7 @@ export function EntryContentBody({
       >
         {/* 37-2：社交视图不显示标题（社交条目的标题多半就是正文开头），作者行改用订阅源头像 */}
         {isSocial ? (
-          <SocialAuthorHeader entry={entry} />
+          <SocialAuthorHeader entry={entry} content={displayContent} />
         ) : (
         <header className="mb-6">
           <h1 className="text-[24px] font-semibold leading-[1.22] tracking-[-0.02em] text-foreground wrap-anywhere sm:text-[28px] sm:leading-[1.2]">
