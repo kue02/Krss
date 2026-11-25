@@ -156,6 +156,14 @@ export function ImagePreview() {
     // iOS PWA uses touchmove lock to avoid position: fixed viewport bugs.
     const isIOSPWA = isIOS && isStandalone;
 
+    // 移动端列表用的是「文档滚动」：html 才是滚动容器（见 useMobileDocumentScrollMode）。
+    // 此时 body position:fixed 会让 body 脱离文档流、html 内容高度塌陷，scrollY 被 clamp 到 0，
+    // iOS WebKit 解锁后常被 clamp 回 0 → 关闭大图跳到列表顶部。故文档滚动模式改用 overflow 锁，
+    // 不塌陷布局，关闭时再用 rAF 恢复滚动位置。桌面等仍走原来的 position:fixed 逻辑。
+    const usesDocScroll = document.documentElement.classList.contains(
+      "mobile-document-scroll",
+    );
+
     const unlockScroll = () => {
       const storedTop = document.body.style.top;
       document.body.style.position = "";
@@ -177,6 +185,19 @@ export function ImagePreview() {
         return;
       }
 
+      if (usesDocScroll) {
+        // 文档滚动分支：等浏览器完成 reflow 后再恢复滚动位置，避免 iOS WebKit
+        // 在解锁瞬间按塌陷前的高度把 scrollY clamp 回 0。双重 rAF 更稳。
+        const savedY = scrollLockYRef.current;
+        const restore = () => window.scrollTo(0, savedY);
+        if (typeof requestAnimationFrame === "function") {
+          requestAnimationFrame(() => requestAnimationFrame(restore));
+        } else {
+          restore();
+        }
+        return;
+      }
+
       if (storedTop) {
         window.scrollTo(0, parseInt(storedTop, 10) * -1);
       }
@@ -193,6 +214,10 @@ export function ImagePreview() {
         };
         touchMoveHandlerRef.current = handler;
         document.addEventListener("touchmove", handler, { passive: false });
+      } else if (usesDocScroll) {
+        // 文档滚动模式：只锁 overflow，不动 body 定位，布局不塌陷。
+        document.documentElement.style.overflow = "hidden";
+        document.body.style.overflow = "hidden";
       } else {
         document.body.style.position = "fixed";
         document.body.style.top = `-${scrollLockYRef.current}px`;

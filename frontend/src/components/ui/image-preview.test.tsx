@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { useImagePreviewStore } from "@/stores/image-preview-store";
 import { ImagePreview } from "./image-preview";
@@ -466,6 +466,10 @@ describe("ImagePreview", () => {
       document.documentElement.style.overflow = "";
     });
 
+    afterEach(() => {
+      document.documentElement.classList.remove("mobile-document-scroll");
+    });
+
     it("should lock body scroll when open (non-iOS)", () => {
       useImagePreviewStore.getState().open(mockImages);
 
@@ -491,6 +495,44 @@ describe("ImagePreview", () => {
 
       expect(document.body.style.position).toBe("");
       expect(document.body.style.overflow).toBe("");
+    });
+
+    it("should use overflow lock (not position:fixed) in mobile document scroll mode", async () => {
+      // 移动端文档滚动：html 才是滚动容器，body position:fixed 会塌陷布局导致关图跳顶。
+      document.documentElement.classList.add("mobile-document-scroll");
+      const scrollToMock = window.scrollTo as unknown as ReturnType<typeof vi.fn>;
+      scrollToMock.mockClear();
+
+      useImagePreviewStore.getState().open(mockImages);
+      const { unmount } = render(<ImagePreview />);
+
+      // 打开：不设 position:fixed，改用 overflow 锁
+      expect(document.body.style.position).toBe("");
+      expect(document.documentElement.style.overflow).toBe("hidden");
+      expect(document.body.style.overflow).toBe("hidden");
+
+      act(() => {
+        useImagePreviewStore.getState().close();
+        useImagePreviewStore.getState().reset();
+      });
+      unmount();
+
+      // 关闭：overflow 清空、body 定位未被污染
+      expect(document.documentElement.style.overflow).toBe("");
+      expect(document.body.style.overflow).toBe("");
+      expect(document.body.style.position).toBe("");
+
+      // 双重 rAF 后恢复滚动位置
+      await act(async () => {
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => resolve()),
+          );
+        });
+      });
+      expect(scrollToMock).toHaveBeenCalled();
+
+      document.documentElement.classList.remove("mobile-document-scroll");
     });
   });
 
