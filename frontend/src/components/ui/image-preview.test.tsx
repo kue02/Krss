@@ -72,13 +72,17 @@ vi.mock("embla-carousel-react", () => ({
 }));
 
 // Mock useImageZoom so tests can drive isZoomed/scale and assert the resetKey
-const { mockZoomState, capturedZoomResetKeys, mockToggleZoomAt } = vi.hoisted(
-  () => ({
-    mockZoomState: { scale: 1, isZoomed: false },
-    capturedZoomResetKeys: [] as string[],
-    mockToggleZoomAt: vi.fn(),
-  }),
-);
+const {
+  mockZoomState,
+  capturedZoomResetKeys,
+  mockToggleZoomAt,
+  mockIsMultiTouchRef,
+} = vi.hoisted(() => ({
+  mockZoomState: { scale: 1, isZoomed: false },
+  capturedZoomResetKeys: [] as string[],
+  mockToggleZoomAt: vi.fn(),
+  mockIsMultiTouchRef: { current: false },
+}));
 
 vi.mock("@/hooks/useImageZoom", () => ({
   useImageZoom: (resetKey?: string) => {
@@ -88,6 +92,8 @@ vi.mock("@/hooks/useImageZoom", () => ({
       scale: mockZoomState.scale,
       offset: { x: 0, y: 0 },
       isZoomed: mockZoomState.isZoomed,
+      isMultiTouchRef: mockIsMultiTouchRef,
+      getPointerCount: () => 0,
       reset: vi.fn(),
       toggleZoomAt: mockToggleZoomAt,
       handlers: {},
@@ -512,6 +518,7 @@ describe("ImagePreview", () => {
     beforeEach(() => {
       mockZoomState.scale = 1;
       mockZoomState.isZoomed = false;
+      mockIsMultiTouchRef.current = false;
       capturedZoomResetKeys.length = 0;
     });
 
@@ -566,6 +573,20 @@ describe("ImagePreview", () => {
           touches: { length: 1 },
         }),
       ).toBe(true);
+    });
+
+    it("第二指已落下但 touches 仍报 1 时，watchDrag 仍返回 false（isMultiTouchRef 兜底）", () => {
+      useImagePreviewStore.getState().open(mockImages, 0);
+      render(<ImagePreview />);
+
+      expect(
+        capturedEmblaOptions.watchDrag!(undefined, { touches: { length: 1 } }),
+      ).toBe(true);
+
+      mockIsMultiTouchRef.current = true;
+      expect(
+        capturedEmblaOptions.watchDrag!(undefined, { touches: { length: 1 } }),
+      ).toBe(false);
     });
 
     it("scale===1 时点击图片关闭预览", async () => {
@@ -642,6 +663,53 @@ describe("ImagePreview", () => {
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 420));
       });
+      expect(useImagePreviewStore.getState().isOpen).toBe(true);
+    });
+
+    it("触屏双击放大后立刻点空白仍能关闭（不被 suppress 窗口误吞）", () => {
+      mockZoomState.scale = 1;
+      mockZoomState.isZoomed = false;
+      mockToggleZoomAt.mockClear();
+      useImagePreviewStore.getState().open([mockImages[0]!]);
+      const { container } = render(<ImagePreview />);
+      const img = container.querySelector("img")!;
+      const stage = img.parentElement!;
+
+      // 第一次点按（记录上一次点按）
+      fireTouchPointer(img!, "pointerdown", 120, 120);
+      fireTouchPointer(stage, "pointerup", 120, 120);
+      fireEvent.click(img!, { clientX: 120, clientY: 120 });
+      // 第二次点按 → 双击放大，进入 500ms suppress 窗口
+      fireTouchPointer(img!, "pointerdown", 120, 120);
+      fireTouchPointer(stage, "pointerup", 120, 120);
+      expect(mockToggleZoomAt).toHaveBeenCalledTimes(1);
+
+      // 立刻点空白（stage，落点非 img）：应继续走空白关闭，立即关闭
+      fireTouchPointer(stage, "pointerdown", 300, 300);
+      fireEvent.click(stage, { clientX: 300, clientY: 300 });
+      expect(useImagePreviewStore.getState().isOpen).toBe(false);
+    });
+
+    it("触屏双击放大后点图片本身不关闭、也不二次切换", () => {
+      mockZoomState.scale = 1;
+      mockZoomState.isZoomed = false;
+      mockToggleZoomAt.mockClear();
+      useImagePreviewStore.getState().open([mockImages[0]!]);
+      const { container } = render(<ImagePreview />);
+      const img = container.querySelector("img")!;
+      const stage = img.parentElement!;
+
+      fireTouchPointer(img!, "pointerdown", 120, 120);
+      fireTouchPointer(stage, "pointerup", 120, 120);
+      fireEvent.click(img!, { clientX: 120, clientY: 120 });
+      fireTouchPointer(img!, "pointerdown", 120, 120);
+      fireTouchPointer(stage, "pointerup", 120, 120);
+      expect(mockToggleZoomAt).toHaveBeenCalledTimes(1);
+
+      // 立刻点图片本身：落点仍在 img，suppress 窗口内被吞，不关闭、不二次切换
+      fireTouchPointer(img!, "pointerdown", 120, 120);
+      fireEvent.click(img!, { clientX: 120, clientY: 120 });
+      expect(mockToggleZoomAt).toHaveBeenCalledTimes(1);
       expect(useImagePreviewStore.getState().isOpen).toBe(true);
     });
 

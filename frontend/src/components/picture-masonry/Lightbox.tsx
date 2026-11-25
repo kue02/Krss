@@ -80,6 +80,11 @@ export function Lightbox() {
   const isZoomedRef = useRef(false);
   const isInteractingRef = useRef(false);
 
+  // 手势缩放 / 双指捏合 / 放大后拖动平移；换图或关闭时自动复位
+  const zoom = useImageZoom(`${entry?.id ?? ""}:${currentIndex}`);
+  // 别名 zoom 的实时多指 ref（同一对象），供 watchDrag 读取
+  const { isMultiTouchRef } = zoom;
+
   // Memoize options to prevent unnecessary reInit (which would skip animations)
   // iOS-style animation: smooth, natural deceleration
   const emblaOptions = useMemo(
@@ -88,14 +93,16 @@ export function Lightbox() {
       startIndex: initialIndexRef.current,
       skipSnaps: false, // Snap to nearest slide (iOS behavior)
       duration: 25, // iOS-like snap duration (default 25, range 20-60)
-      // 放大、手势进行中，或双指按下时都不让 embla 抢走拖动
+      // 放大、手势进行中，或双指按下时都不让 embla 抢走拖动。
+      // 第一指先动、第二指后落时 touches 可能仍是 1，故再用实时多指标记兜底。
       watchDrag: (
         _emblaApi: unknown,
         event?: Event & { touches?: { length: number } },
       ) =>
         !isZoomedRef.current &&
         !isInteractingRef.current &&
-        (event?.touches?.length ?? 1) < 2,
+        (event?.touches?.length ?? 1) < 2 &&
+        !isMultiTouchRef.current,
     }),
     // Only recreate options when lightbox opens (images change)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -272,7 +279,7 @@ export function Lightbox() {
   }, [isOpen]);
 
   // 图片手势：滚轮 / 双击 / 捏合缩放，放大后拖动平移（换图自动复位）
-  const zoom = useImageZoom(`${entry?.id ?? ""}:${currentIndex}`);
+  // （zoom 已在上面声明，此处仅同步放大 / 手势状态）
 
   useEffect(() => {
     isZoomedRef.current = zoom.isZoomed;
@@ -302,7 +309,13 @@ export function Lightbox() {
 
       // 触屏：抬起即判双击，避免等浏览器补发第二次 click 排队造成「慢半拍」。
       // 只对「落在图片上、且几乎没有移动」的触屏指针生效；鼠标仍走原生 click/dblclick。
-      if ((e.pointerType || "mouse") !== "mouse") {
+      // 加 e.isPrimary + 单指条件（getPointerCount()===0，已在上面 onPointerUp 移除本指），
+      // 避免多指捏合时某一指抬起被误判为双击。
+      if (
+        (e.pointerType || "mouse") !== "mouse" &&
+        e.isPrimary &&
+        zoom.getPointerCount() === 0
+      ) {
         const start = pointerDownPos.current;
         const moved = start
           ? Math.hypot(e.clientX - start.x, e.clientY - start.y)
@@ -401,17 +414,22 @@ export function Lightbox() {
     (e: React.MouseEvent) => {
       // pointerup 已即时处理过的触屏双击：吞掉浏览器随后补发的 click，
       // 否则会再走一遍点按语义导致二次切换或误关。
-      if (performance.now() - suppressClickRef.current < 500) {
+      // 但仅当落点仍在图片上才吞——若用户双击放大后立刻点空白想关闭，
+      // 落点不是图片则应继续走下面的空白关闭，不能被 suppress 窗口误吞。
+      const target = e.target;
+      const startedOnImage = pointerDownTargetRef.current?.closest("img") != null;
+      const targetIsImage =
+        target instanceof Element && target.closest("img") !== null;
+      if (
+        performance.now() - suppressClickRef.current < 500 &&
+        (targetIsImage || startedOnImage)
+      ) {
         e.stopPropagation();
         pointerDownTargetRef.current = null;
         pointerDownPos.current = null;
         return;
       }
 
-      const target = e.target;
-      const startedOnImage = pointerDownTargetRef.current?.closest("img") != null;
-      const targetIsImage =
-        target instanceof Element && target.closest("img") !== null;
       if (targetIsImage || startedOnImage) {
         handleTapClose(e);
         return;

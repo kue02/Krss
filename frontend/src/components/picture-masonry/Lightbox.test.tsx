@@ -8,6 +8,29 @@ import type { Entry, Feed } from "@/types/api";
 // Mock window.scrollTo (not implemented in jsdom)
 vi.stubGlobal("scrollTo", vi.fn());
 
+/** 用 MouseEvent 补齐 pointer 字段派发，驱动真实 useImageZoom 的触屏判定 */
+function fireTouchPointer(
+  element: Element,
+  type: "pointerdown" | "pointerup",
+  x: number,
+  y: number,
+  pointerId = 1,
+) {
+  const event = new MouseEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    clientX: x,
+    clientY: y,
+    button: 0,
+  });
+  Object.defineProperties(event, {
+    pointerId: { value: pointerId },
+    pointerType: { value: "touch" },
+    isPrimary: { value: pointerId === 1 },
+  });
+  fireEvent(element, event);
+}
+
 // Mock react-i18next
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -729,6 +752,68 @@ describe("Lightbox", () => {
           touches: { length: 1 },
         }),
       ).toBe(true);
+    });
+
+    it("第二指落下后即使 touches 报 1，watchDrag 也返回 false", () => {
+      useLightboxStore
+        .getState()
+        .open(mockImageEntry, mockFeed, mockMultipleImages);
+      const { container } = render(<Lightbox />, {
+        wrapper: createWrapper(),
+      });
+      const img = container.querySelector("img")!;
+
+      expect(
+        capturedEmblaOptions.watchDrag!(undefined, { touches: { length: 1 } }),
+      ).toBe(true);
+
+      // 第一指先落、第二指后落（touches 仍可能报 1），实时多指标记应兜底
+      fireTouchPointer(img, "pointerdown", 100, 100, 1);
+      fireTouchPointer(img, "pointerdown", 200, 100, 2);
+      expect(
+        capturedEmblaOptions.watchDrag!(undefined, { touches: { length: 1 } }),
+      ).toBe(false);
+    });
+
+    it("触屏双击放大后立刻点空白能关闭（不被 suppress 误吞）", () => {
+      openSingle();
+      const { container } = render(<Lightbox />, { wrapper: createWrapper() });
+      const img = container.querySelector("img")!;
+      const stage = img.parentElement!;
+
+      // 第一次点按（记录上一次点按）
+      fireTouchPointer(img, "pointerdown", 120, 120);
+      fireTouchPointer(stage, "pointerup", 120, 120);
+      fireEvent.click(img, { clientX: 120, clientY: 120 });
+      // 第二次点按 → 双击放大，进入 500ms suppress 窗口
+      fireTouchPointer(img, "pointerdown", 120, 120);
+      fireTouchPointer(stage, "pointerup", 120, 120);
+      expect(img.style.transform).toContain("scale(2)");
+
+      // 立刻点空白（stage，落点非 img）：应继续走空白关闭，立即关闭
+      fireTouchPointer(stage, "pointerdown", 300, 300);
+      fireEvent.click(stage, { clientX: 300, clientY: 300 });
+      expect(useLightboxStore.getState().isOpen).toBe(false);
+    });
+
+    it("触屏双击放大后点图片本身不关闭、也不二次切换", () => {
+      openSingle();
+      const { container } = render(<Lightbox />, { wrapper: createWrapper() });
+      const img = container.querySelector("img")!;
+      const stage = img.parentElement!;
+
+      fireTouchPointer(img, "pointerdown", 120, 120);
+      fireTouchPointer(stage, "pointerup", 120, 120);
+      fireEvent.click(img, { clientX: 120, clientY: 120 });
+      fireTouchPointer(img, "pointerdown", 120, 120);
+      fireTouchPointer(stage, "pointerup", 120, 120);
+      expect(img.style.transform).toContain("scale(2)");
+
+      // 立刻点图片本身：落点仍在 img，suppress 窗口内被吞，不关闭、不二次切换（仍 scale(2)）
+      fireTouchPointer(img, "pointerdown", 120, 120);
+      fireEvent.click(img, { clientX: 120, clientY: 120 });
+      expect(useLightboxStore.getState().isOpen).toBe(true);
+      expect(img.style.transform).toContain("scale(2)");
     });
   });
 

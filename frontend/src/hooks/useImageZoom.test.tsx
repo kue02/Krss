@@ -293,23 +293,28 @@ describe("useImageZoom", () => {
     expect(image.style.transform).toBe("translate3d(0px, 0px, 0) scale(2)");
   });
 
-  it("pointercancel 会清空手势并提交当前位移", () => {
+  it("pointercancel 会回滚到手势开始前的状态，不提交中间位移", () => {
     const { container, image, read } = setup();
     act(() => getZoom().toggleZoomAt(200, 150));
     act(() => {
       firePointer(container, "pointerdown", { id: 1, x: 200, y: 150 });
       firePointer(container, "pointermove", { id: 1, x: 250, y: 150 });
     });
+    // 拖动中：画面确实已跟手到 50px
+    expect(image.style.transform).toBe("translate3d(50px, 0px, 0) scale(2)");
 
     act(() => {
       firePointer(container, "pointercancel", { id: 1, x: 250, y: 150 });
     });
-    expect(read()).toBe("2|50|0|false");
+    // 系统取消应回滚到手势开始快照（scale=2, offset=0），而不是把 50px 当最终值
+    expect(read()).toBe("2|0|0|false");
+    expect(image.style.transform).toBe("translate3d(0px, 0px, 0) scale(2)");
+    expect(image.style.transition).toBe("transform 240ms cubic-bezier(0.22, 1, 0.36, 1)");
 
     act(() => {
       firePointer(container, "pointermove", { id: 1, x: 300, y: 150 });
     });
-    expect(image.style.transform).toBe("translate3d(50px, 0px, 0) scale(2)");
+    expect(image.style.transform).toBe("translate3d(0px, 0px, 0) scale(2)");
   });
 
   it("图片未加载（clientWidth=0）时不允许拖出，onLoad 后恢复", () => {
@@ -350,5 +355,87 @@ describe("useImageZoom", () => {
       firePointer(container, "pointermove", { id: 2, x: 260, y: 150 });
     });
     expect(image.style.transform).toBe("translate3d(60px, 0px, 0) scale(2)");
+  });
+
+  it("第二指按下后 isMultiTouchRef / getPointerCount 实时反映多指状态", () => {
+    const { container } = setup();
+    expect(getZoom().getPointerCount()).toBe(0);
+    expect(getZoom().isMultiTouchRef.current).toBe(false);
+
+    act(() => {
+      firePointer(container, "pointerdown", { id: 1, x: 150, y: 150 });
+    });
+    expect(getZoom().getPointerCount()).toBe(1);
+    expect(getZoom().isMultiTouchRef.current).toBe(false);
+
+    act(() => {
+      firePointer(container, "pointerdown", { id: 2, x: 250, y: 150 });
+    });
+    expect(getZoom().getPointerCount()).toBe(2);
+    expect(getZoom().isMultiTouchRef.current).toBe(true);
+
+    act(() => {
+      firePointer(container, "pointerup", { id: 2, x: 250, y: 150 });
+      firePointer(container, "pointerup", { id: 1, x: 150, y: 150 });
+    });
+    expect(getZoom().getPointerCount()).toBe(0);
+    expect(getZoom().isMultiTouchRef.current).toBe(false);
+  });
+
+  it("拖动期间复用缓存的尺寸，pointermove 不再触发强制布局", () => {
+    const { container, image } = setup();
+    act(() => getZoom().toggleZoomAt(200, 150));
+    act(() => {
+      firePointer(container, "pointerdown", { id: 1, x: 200, y: 150 });
+    });
+
+    // 手势已开始（beginDrag 已刷新缓存），此后统计布局读取
+    const originalRect = container.getBoundingClientRect.bind(container);
+    const rectSpy = vi.fn(originalRect);
+    container.getBoundingClientRect = rectSpy;
+
+    act(() => {
+      firePointer(container, "pointermove", { id: 1, x: 240, y: 150 });
+      firePointer(container, "pointermove", { id: 1, x: 280, y: 150 });
+      firePointer(container, "pointermove", { id: 1, x: 320, y: 150 });
+    });
+
+    // 逐帧移动只读缓存，不应再调用 getBoundingClientRect
+    expect(rectSpy).not.toHaveBeenCalled();
+    expect(image.style.transform).toBe("translate3d(120px, 0px, 0) scale(2)");
+  });
+
+  it("鼠标拖出容器兜底结束拖动时会恢复 transition", () => {
+    const { container, image } = setup();
+    act(() => getZoom().toggleZoomAt(200, 150));
+    act(() => {
+      firePointer(container, "pointerdown", {
+        id: 1,
+        x: 200,
+        y: 150,
+        pointerType: "mouse",
+      });
+      firePointer(container, "pointermove", {
+        id: 1,
+        x: 240,
+        y: 150,
+        pointerType: "mouse",
+      });
+    });
+    expect(image.style.transition).toBe("none");
+
+    act(() => {
+      // hasPointerCapture 被 mock 成 false → 走鼠标兜底结束。
+      // 直接调 handler：jsdom 里 onPointerLeave 由 pointerout 合成，裸 pointerleave 不触发。
+      getZoom().handlers.onPointerLeave?.({
+        pointerId: 1,
+        pointerType: "mouse",
+        clientX: 240,
+        clientY: 150,
+      } as unknown as import("react").PointerEvent);
+    });
+    expect(image.style.transition).toBe(
+      "transform 240ms cubic-bezier(0.22, 1, 0.36, 1)",
+    );
   });
 });
