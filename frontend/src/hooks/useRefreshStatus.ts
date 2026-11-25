@@ -4,6 +4,40 @@ import { getRefreshStatus } from "@/api";
 import { requestEntriesHeadSync } from "@/lib/entries-head-sync";
 
 /**
+ * 空闲且页面可见时的轮询间隔。
+ *
+ * 原来是固定 15 秒：后端每 15 分钟定时刷新跑完后，前端最多要等下一次空闲轮询（跨过「刚刷完」）
+ * 才把新条目拉出来，最坏 ~15 秒。可见时缩到 5 秒，把这段延迟压到 ~5 秒。
+ */
+const IDLE_VISIBLE_POLL_MS = 5_000;
+/** 刷新中的快轮询间隔：进度条 / 逐源结果要跟得上 */
+const REFRESHING_POLL_MS = 2_000;
+/**
+ * 页面隐藏（切到后台标签页）时的间隔。配合 TanStack 默认的
+ * `refetchIntervalInBackground: false`，后台本就不会轮询，这里再拉长只是兜底，避免反而更费电。
+ */
+const HIDDEN_POLL_MS = 60_000;
+
+/** 页面当前是否可见（SSR / 测试环境可能没有 document） */
+function isPageVisible(): boolean {
+  return typeof document !== "undefined" && document.visibilityState === "visible";
+}
+
+/**
+ * 计算 `["refreshStatus"]` 的轮询间隔（纯函数，便于单测）。
+ * - 隐藏：60s 兜底（后台实际不轮询，见 HIDDEN_POLL_MS 注释）
+ * - 可见 + 刷新中：2s 快轮询
+ * - 可见 + 空闲：5s（原 15s，见 IDLE_VISIBLE_POLL_MS 注释）
+ */
+export function getRefreshStatusPollInterval(
+  isRefreshing: boolean,
+  visible: boolean,
+): number {
+  if (!visible) return HIDDEN_POLL_MS;
+  return isRefreshing ? REFRESHING_POLL_MS : IDLE_VISIBLE_POLL_MS;
+}
+
+/**
  * Polls the backend refresh status and automatically invalidates
  * entries/unreadCounts/feeds caches when a scheduled refresh completes.
  *
@@ -22,18 +56,46 @@ export function useRefreshStatus() {
    */
   const prevCompletedRef = useRef<number | null>(null);
 
-  const { data } = useQuery({
+  const { data, refetch } = useQuery({
     queryKey: ["refreshStatus"],
     queryFn: getRefreshStatus,
     /**
-     * 12-10：刷新中 2 秒一次，空闲 15 秒。
-     *
-     * 原来固定 15 秒 —— 侧栏右键「刷新」是后台跑的（POST 立刻 204），
-     * 中栏进度条与「刷新完成」弹框只能等下一次轮询，用户看到的就是「点了没反应」。
+     * 12-10：刷新中 2 秒一次。
+     * 11-25：可见时空闲轮询由 15 秒缩到 5 秒，把「自动刷新完成 → 新条目出现」的最坏延迟从
+     *         ~15s 压到 ~5s；隐藏时降到 60s 兜底（且 refetchIntervalInBackground 保持默认 false，
+     *         后台不轮询，不耗电）。刷新中仍保持 2 秒快轮询。
      */
-    refetchInterval: (query) => (query.state.data?.isRefreshing ? 2_000 : 15_000),
+    refetchInterval: (query) =>
+      getRefreshStatusPollInterval(
+        query.state.data?.isRefreshing === true,
+        isPageVisible(),
+      ),
     staleTime: 1_000,
   });
+
+  /**
+   * 切回前台立即刷新一次状态：用户从别的标签页/窗口切回来时马上看到最新状态，
+   * 不用再等下一次 5 秒轮询。组件卸载 / 依赖变化时移除监听。
+   */
+  useEffect(() => {
+    if (typeof document === "undefined" || typeof window === "undefined") return;
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refetch();
+      }
+    };
+    const onFocus = () => {
+      void refetch();
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [refetch]);
 
   useEffect(() => {
     if (!data) return;
