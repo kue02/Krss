@@ -432,14 +432,12 @@ describe("EntryList · 标准文章列表虚拟化", () => {
     // 未选中：没有正文 pane，底部「全部标记为已读」照常在
     expect(screen.queryByTestId("inline-article-pane")).toBeNull();
     expect(screen.getByTestId("mark-all-read-footer")).toBeTruthy();
-    // 「向下」合列整体不走虚拟列表：pane 必须在被点行后面、且要能继续下滑看后续条目，
-    // 因此从进入该模式起就全量渲染（避免点开的瞬间把整列从虚拟切全量导致闪烁）。
+    // 桌面「向下」合列现在也走虚拟列表（pane 作为被点行的一部分渲染，行用 top 定位
+    // 以免 transform 祖先破坏 pane 里 sticky 标题栏）。jsdom 测不到尺寸时按 12 行回退。
     expect(
       viewport.querySelector('[data-virtual-list="true"]'),
-    ).toBeNull();
-    expect(rowIds().length).toBeGreaterThan(15);
-    // 合列非虚拟路径也要「渲染层虚拟化」：行外层带 content-visibility，离屏行不渲染
-    expect(viewport.querySelector('[class*="content-visibility:auto"]')).not.toBeNull();
+    ).not.toBeNull();
+    expect(rowIds().length).toBeLessThan(manyEntries.length);
 
     rerender(
       <EntryList
@@ -452,12 +450,12 @@ describe("EntryList · 标准文章列表虚拟化", () => {
       await Promise.resolve();
     });
 
-    // 选中后关掉虚拟化：pane 落进普通文档流（否则 sticky 工具栏会失效），
-    // 整表全量渲染，后续条目都在 DOM 里可继续下滑查看。
+    // 选中后仍保持虚拟化：pane 渲染在被点行（e-1 在首屏窗口内）内部，后续条目照常
+    // 由虚拟容器管理。sticky 靠行改用 top 定位保证（不靠关掉虚拟化）。
     expect(
       viewport.querySelector('[data-virtual-list="true"]'),
-    ).toBeNull();
-    expect(rowIds()).toHaveLength(manyEntries.length);
+    ).not.toBeNull();
+    expect(rowIds().length).toBeLessThan(manyEntries.length);
 
     expect(renderInlineContent).toHaveBeenCalled();
     const pane = screen.getByTestId("inline-article-pane");

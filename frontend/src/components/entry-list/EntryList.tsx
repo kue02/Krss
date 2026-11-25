@@ -735,10 +735,13 @@ export function EntryList({
   const inlineMarkedRef = useRef<string | null>(null);
   /* 只有真接了内联正文（桌面合列）才滚/标已读；移动端仍是列表→详情页，不插手 */
   const inlineActive = isArticleInline && Boolean(renderInlineContent);
-  /* 合列且已选中正文时关掉虚拟化：虚拟列表的行是 position:absolute + transform 包裹，
-     正文 pane 插在这种祖先里会让 EntryContentHeader 的 sticky 失效（工具栏会浮在正文
-     中部）。关掉虚拟化后 pane 落在普通文档流里，sticky 正常，正文也能滚动吸顶。 */
-  const inlineNoVirtual = inlineActive;
+  /* 合列虚拟化口径：
+     - 桌面：**保持虚拟化**（pane 作为被点行的一部分渲染），虚拟行改用 `top` 定位而不是
+       transform —— transform 祖先会让 pane 里 EntryContentHeader 的 sticky 失效；`top`
+       定位不建立 fixed/sticky 包含块，sticky 照常。打开正文期间暂停内容位移兜底，
+       由 pin-align 负责把被点行对回原位（大位移兜底原本也会丢弃）。
+     - 移动端：文档滚动 + 行只有几十像素，沿用非虚拟（content-visibility 渲染跳过）。 */
+  const inlineNoVirtual = inlineActive && isMobile;
   /**
    * 非虚拟列表（社媒 / 通知时间线）：直接交给浏览器原生 scroll anchoring。
    *
@@ -961,6 +964,21 @@ export function EntryList({
       deferEntryRemoval(selectedEntryId, { ...target, read: true }, index);
     }
   }, [inlineActive, selectedEntryId, entries, markAsRead]);
+  /* 打开合列正文期间暂停「内容位移兜底」：pane 插在被点行下会把下方行整体推高，
+     兜底拿到的是点击前的锚点，会按旧坐标 scrollBy 把视口甩到正文底部
+     （2026-11-24 用户实测）。这里暂停兜底，初始对齐交给上面的 pin-align effect，
+     pane 内部图片撑高只往下长、被点行 top 不变，无需补偿。 */
+  useEffect(() => {
+    if (!(inlineActive && selectedEntryId)) return;
+    anchorStabilizePausedRef.current = true;
+    const timer = window.setTimeout(() => {
+      anchorStabilizePausedRef.current = false;
+    }, PIN_ALIGN_MS + 300);
+    return () => {
+      window.clearTimeout(timer);
+      anchorStabilizePausedRef.current = false;
+    };
+  }, [inlineActive, selectedEntryId]);
 
   /**
    * 进视口预载：观察器挂在本列表的滚动容器上（root 与 `scroll-surface` 同一口径，
@@ -2094,6 +2112,7 @@ export function EntryList({
                     <VirtualizedArticleList
                       virtualList={virtualList}
                       entries={entries}
+                      disableTransform={inlineActive}
                       renderItem={(entry) => {
                         const row = (
                           <ArticlePlainListRow
@@ -2147,6 +2166,7 @@ export function EntryList({
                     <VirtualizedArticleList
                       virtualList={virtualList}
                       entries={entries}
+                      disableTransform={inlineActive}
                       renderItem={(entry) => (
                         <>
                           <ArticleRowsListRow
@@ -2168,6 +2188,7 @@ export function EntryList({
                 <VirtualizedArticleList
                   virtualList={virtualList}
                   entries={entries}
+                  disableTransform={inlineActive}
                   renderItem={(entry, index) => {
                     const item = (
                       <EntryListItem
