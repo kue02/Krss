@@ -6,7 +6,6 @@ import {
   expandTimelineRows,
   formatBucketLabel,
   formatClockTime,
-  isSingleSideWidth,
   pickStuckDateKeys,
   localDayKey,
   resolveTimelineCollapse,
@@ -14,7 +13,6 @@ import {
   resolveTimelineTimeBasis,
   splitTimelineSections,
   timelineCollapseClampLines,
-  TIMELINE_SINGLE_SIDE_WIDTH,
   type TimelineRow,
 } from "./timeline-model";
 import type { Entry } from "@/types/api";
@@ -63,15 +61,6 @@ describe("timeline-model · 档位解析", () => {
     expect(timelineCollapseClampLines("1")).toBe(1);
     expect(timelineCollapseClampLines("3")).toBe(3);
     expect(timelineCollapseClampLines("full")).toBeNull();
-  });
-
-  it("窄栏阈值 768px（移动端断点）：小于才退化（等于 / 更大都不退）", () => {
-    expect(isSingleSideWidth(TIMELINE_SINGLE_SIDE_WIDTH - 1)).toBe(true);
-    expect(isSingleSideWidth(655)).toBe(true);
-    expect(isSingleSideWidth(TIMELINE_SINGLE_SIDE_WIDTH)).toBe(false);
-    expect(isSingleSideWidth(1024)).toBe(false);
-    // 还没量到宽度（0）时不要擅自退化
-    expect(isSingleSideWidth(0)).toBe(false);
   });
 });
 

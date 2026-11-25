@@ -64,7 +64,6 @@ export const DEFAULT_TIMELINE_COLLAPSE: TimelineCollapse = "2";
  * 用户反馈：桌面两栏后容器恒宽 65ch，385 的旧阈值永远触发不了，「合一栏跟没了似的」。
  * 关掉「窄栏合一栏」设置则始终左右交替。
  */
-export const TIMELINE_SINGLE_SIDE_WIDTH = 768;
 
 /** 同一时间桶里最多平铺几张卡，再多就吸成「小节点 + 计数」（可点开，就地展开） */
 export const TIMELINE_BUCKET_CARD_LIMIT = 3;
@@ -176,11 +175,6 @@ export function timelineCollapseClampLines(
   value: TimelineCollapse,
 ): number | null {
   return value === "full" ? null : Number(value);
-}
-
-/** 窄栏判定（< 768px 即移动端宽度，真退化成单侧） */
-export function isSingleSideWidth(width: number): boolean {
-  return width > 0 && width < TIMELINE_SINGLE_SIDE_WIDTH;
 }
 
 /** 条目在轴上的时间基准：没有 publishedAt 的条目退回 createdAt */
