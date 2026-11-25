@@ -9,7 +9,7 @@ import {
   fetchCachedTranslations,
   type TranslateBlockData,
 } from "@/api";
-import { needsTranslation } from "@/lib/language-detect";
+import { needsTranslation } from "@/lib/language-detect-async";
 import { stripHtml } from "@/lib/html-utils";
 import {
   useTranslationStore,
@@ -23,6 +23,44 @@ import {
 } from "@/services/content-translation-inflight";
 import { showToast } from "@/stores/toast-store";
 import type { Entry } from "@/types/api";
+
+/**
+ * 自动翻译失败后最多自动尝试的次数（同一 `条目id|是否可读模式`）。
+ * 失败会清 attemptKey 让下一轮 effect 再试一次，但到上限就保留 key 停止自动重试，
+ * 避免网络/服务端持续失败时无限重试、无限弹 toast。用户仍可手动点按钮重试。
+ */
+const MAX_AUTO_TRANSLATE_ATTEMPTS = 2;
+
+/**
+ * 第四十三批（移动端性能）：把非关键的语言判定挪到空闲时段跑。
+ *
+ * `needsTranslation` 背后是 ELD（~1.5 MB n-gram 模型）。以前在本 hook 顶部静态
+ * 引入同步版，打开正文首帧就把 ELD 解析进主线程关键路径（CPU 4x 下 profile 里
+ * `eld_small.js` 160 samples）。现在改用 `@/lib/language-detect-async`（动态
+ * `import()`，ELD 单独成 chunk），并且只在 `requestIdleCallback`（无则
+ * `setTimeout 0`）里触发，避免和正文首帧抢主线程。
+ *
+ * 返回取消函数：effect 清理/入参变化时取消尚未执行的回调。
+ */
+function scheduleIdle(callback: () => void): () => void {
+  const g = globalThis as {
+    requestIdleCallback?: (
+      cb: () => void,
+      options?: { timeout: number },
+    ) => number;
+    cancelIdleCallback?: (handle: number) => void;
+  };
+  if (typeof g.requestIdleCallback === "function") {
+    const handle = g.requestIdleCallback(callback, { timeout: 1000 });
+    return () => {
+      if (typeof g.cancelIdleCallback === "function") {
+        g.cancelIdleCallback(handle);
+      }
+    };
+  }
+  const handle = setTimeout(callback, 0);
+  return () => clearTimeout(handle);
+}
 
 interface UseAITranslationOptions {
   entry: Entry | undefined;
@@ -91,6 +129,34 @@ export function useAITranslation({
   const requestSeqRef = useRef(0);
   const hasExistingTranslationRef = useRef(false);
   const isTranslatingRef = useRef(false);
+  /**
+   * 当前条目 id。异步回调（空闲里的 `needsTranslation` 返回后）用它确认条目没被切走 ——
+   * 列表里快速切条目时，旧条目的异步结果绝不能落到新条目上（误触发翻译 / 误弹 toast）。
+   */
+  const activeEntryIdRef = useRef<string | undefined>(entry?.id);
+  /**
+   * 已经自动发起过翻译的 `条目id|是否可读模式`。自动翻译 effect 依赖 `isTranslating`，
+   * 翻译失败 / 结束时 `isTranslating` 由 true→false 会再触发一次 effect；不挡住就会
+   * 对同一条目无限重试（失败时每轮还弹一次 toast）。同一 key 只自动发起一次；
+   * 切条目 / 切可读模式时 key 变化，自然允许重新发起。
+   */
+  const autoTranslateAttemptedKeyRef = useRef<string | null>(null);
+
+  /**
+   * 自动翻译失败的有限重试计数（按 attemptKey 记）。失败后清 attemptKey 让下一轮
+   * effect 再试一次，但最多 `MAX_AUTO_TRANSLATE_ATTEMPTS` 次，到上限就保留 key
+   * 停止自动重试，避免无限循环。
+   */
+  const autoTranslateRetryRef = useRef<{ key: string; count: number }>({
+    key: "",
+    count: 0,
+  });
+  /**
+   * 失败重试信号：自动翻译失败且未到重试上限时 +1，作为自动翻译 effect 的依赖，
+   * 强制它再跑一轮（只清 attemptKey 未必能让 effect 重新执行 —— isTranslating
+   * true→false 可能被批到同一次渲染里，依赖值看起来没变）。
+   */
+  const [autoRetryTick, setAutoRetryTick] = useState(0);
 
   const clearTranslationState = useCallback(() => {
     setTranslatedContent(null);
@@ -113,6 +179,8 @@ export function useAITranslation({
 
   // Reset state when entry changes
   useEffect(() => {
+    activeEntryIdRef.current = entry?.id;
+    autoTranslateAttemptedKeyRef.current = null;
     cancelInFlightTranslation();
     clearTranslationState();
     translateRequestedRef.current = false;
@@ -143,11 +211,41 @@ export function useAITranslation({
     ? translatedContent
     : null;
 
-  const isAlreadyTargetLanguage = useMemo(() => {
-    if (!entry) return false;
-    const content = isReadableActive ? readableContent : entry.content;
-    const summary = content ? stripHtml(content).slice(0, 200) : null;
-    return !needsTranslation(entry.title || "", summary, targetLanguage);
+  /**
+   * 是否已是目标语言（决定翻译按钮是否禁用）。**默认 false**（先当作「不是
+   * 目标语言」，按钮可用），真正判定在空闲时段异步补上 —— 绝不用同步 ELD 阻塞
+   * 正文首帧。`needsTranslation` 现在来自 `@/lib/language-detect-async`。
+   */
+  const [isAlreadyTargetLanguage, setIsAlreadyTargetLanguage] = useState(false);
+
+  useEffect(() => {
+    if (!entry) {
+      setIsAlreadyTargetLanguage(false);
+      return;
+    }
+    let cancelled = false;
+    const cancelIdle = scheduleIdle(() => {
+      void (async () => {
+        try {
+          // 全量 stripHtml 只在空闲时段跑：不要阻塞正文首帧（原来在 scheduleIdle
+          // 之前同步解析整篇长文，正是「点条目正文加载瞬间」卡顿的主因）。
+          const content = isReadableActive ? readableContent : entry.content;
+          const summary = content ? stripHtml(content).slice(0, 200) : null;
+          const needs = await needsTranslation(
+            entry.title || "",
+            summary,
+            targetLanguage,
+          );
+          if (!cancelled) setIsAlreadyTargetLanguage(!needs);
+        } catch {
+          // 动态 import 失败（离线 / chunk 加载失败）就保持默认值，按钮照常可用
+        }
+      })();
+    });
+    return () => {
+      cancelled = true;
+      cancelIdle();
+    };
   }, [entry, isReadableActive, readableContent, targetLanguage]);
 
   const displayTitle = useMemo(() => {
@@ -245,11 +343,14 @@ export function useAITranslation({
   );
 
   const generateTranslation = useCallback(
-    async (forReadability: boolean, options?: { allowAttach?: boolean }) => {
-      if (!entry) return;
+    async (
+      forReadability: boolean,
+      options?: { allowAttach?: boolean },
+    ): Promise<boolean> => {
+      if (!entry) return false;
 
       const content = forReadability ? readableContent : entry.content;
-      if (!content) return;
+      if (!content) return false;
 
       requestSeqRef.current += 1;
       if (translateAbortRef.current) {
@@ -285,7 +386,7 @@ export function useAITranslation({
         );
         if (attached) {
           await attached;
-          if (requestSeqRef.current !== requestSeq) return;
+          if (requestSeqRef.current !== requestSeq) return false;
           const prefetched = translationActions.get(
             entry.id,
             targetLanguage,
@@ -296,7 +397,7 @@ export function useAITranslation({
             setTranslationError(null);
             setIsTranslating(false);
             isTranslatingRef.current = false;
-            return;
+            return true;
           }
           // 预载那条没成 —— 继续往下走「自己发」这条路（不再递归订阅自己）
         }
@@ -325,18 +426,21 @@ export function useAITranslation({
 
         for await (const event of stream) {
           if (requestSeqRef.current !== requestSeq) {
-            return;
+            return false;
           }
 
           claim?.emit(event);
           if (applyTranslateEvent(event)) break;
         }
+        // 流正常跑完（即使只收到一个 done、没有内容块）也算这次尝试成功：
+        // 失败重试只针对「抛异常 / 请求已过期 / 被 abort」这些真正的失败路径。
+        return true;
       } catch (err) {
         if (requestSeqRef.current !== requestSeq) {
-          return;
+          return false;
         }
         if (err instanceof Error && err.name === "AbortError") {
-          return;
+          return false;
         }
         // REQ3：整条流失败（网络 / 服务端）也要能把正文工具栏按钮标成失败态。
         setTranslationError(
@@ -344,7 +448,7 @@ export function useAITranslation({
             ? err.message
             : t("entry.translate_failed"),
         );
-        return;
+        return false;
       } finally {
         claim?.finish();
         if (requestSeqRef.current === requestSeq) {
@@ -408,17 +512,38 @@ export function useAITranslation({
       return;
     }
 
+    const wasManuallyDisabled = manuallyDisabledRef.current;
     manuallyDisabledRef.current = false;
+    // 用户手动「关 → 开」：清掉自动尝试的 key 与失败计数，让这条条目能重新自动发起
+    // （否则关闭前那次 attemptKey 还留着，重开后被 `attemptKey === ...` 挡住）。
+    if (wasManuallyDisabled) {
+      autoTranslateAttemptedKeyRef.current = null;
+      autoTranslateRetryRef.current = { key: "", count: 0 };
+    }
     translationActions.enable(entry.id);
 
-    const summary = entry.content
-      ? stripHtml(entry.content).slice(0, 200)
-      : null;
-    if (needsTranslation(entry.title || "", summary, targetLanguage)) {
-      translateArticlesBatch(
-        [{ id: entry.id, title: entry.title || "", summary }],
-        targetLanguage,
-      ).catch(() => {});
+    // 手动点击翻译时也可能面对长文：把摘要的 `stripHtml`（内部虽有 LRU 缓存，
+    // 首次仍要 DOMParser 全文）挪到空闲回调，避免点击瞬间同步解析阻塞主线程。
+    // 解析完再判定是否需要翻译并预热批量译文，然后立即发起当前条目的翻译，
+    // 翻译语义与原先一致（generateTranslation 不依赖这里的 summary）。
+    if (entry.content) {
+      const contentSnapshot = entry.content;
+      const entryIdSnapshot = entry.id;
+      scheduleIdle(() => {
+        if (activeEntryIdRef.current !== entryIdSnapshot) return;
+        const summary = stripHtml(contentSnapshot).slice(0, 200);
+        void (async () => {
+          if (
+            await needsTranslation(entry.title || "", summary, targetLanguage)
+          ) {
+            if (activeEntryIdRef.current !== entryIdSnapshot) return;
+            translateArticlesBatch(
+              [{ id: entry.id, title: entry.title || "", summary }],
+              targetLanguage,
+            ).catch(() => {});
+          }
+        })();
+      });
     }
 
     await generateTranslation(isReadableActive);
@@ -435,6 +560,7 @@ export function useAITranslation({
 
   // Auto-regenerate when readability mode changes
   useEffect(() => {
+    let cancelled = false;
     if (prevTranslateReadableRef.current !== isReadableActive) {
       prevTranslateReadableRef.current = isReadableActive;
       if (
@@ -451,17 +577,37 @@ export function useAITranslation({
         }
 
         const content = isReadableActive ? readableContent : entry?.content;
-        const summary = content ? stripHtml(content).slice(0, 200) : null;
 
-        if (needsTranslation(entry?.title || "", summary, targetLanguage)) {
-          generateTranslation(isReadableActive);
-        } else {
-          cancelInFlightTranslation();
-          clearTranslationState();
-          translateRequestedRef.current = false;
-        }
+        void (async () => {
+          // 长文 `stripHtml` 放到空闲回调，避免切换「正文/原文」时同步解析卡顿。
+          const summary = await new Promise<string | null>((resolve) => {
+            if (!content) {
+              resolve(null);
+              return;
+            }
+            scheduleIdle(() => resolve(stripHtml(content).slice(0, 200)));
+          });
+          const needs = await needsTranslation(
+            entry?.title || "",
+            summary,
+            targetLanguage,
+          );
+          // 用户快速「原文/正文」来回切或切走条目后，旧空闲回调不能再用旧闭包
+          // 发起翻译/覆盖新视图状态。
+          if (cancelled || activeEntryIdRef.current !== entry?.id) return;
+          if (needs) {
+            generateTranslation(isReadableActive);
+          } else {
+            cancelInFlightTranslation();
+            clearTranslationState();
+            translateRequestedRef.current = false;
+          }
+        })();
       }
     }
+    return () => {
+      cancelled = true;
+    };
   }, [
     isReadableActive,
     cancelInFlightTranslation,
@@ -473,12 +619,27 @@ export function useAITranslation({
     cachedTranslation,
   ]);
 
+  // 用户关闭「自动翻译」再打开时（autoTranslate false→true），重置自动尝试的 key 与
+  // 失败计数，让已有条目能重新自动翻译一次（否则关闭前那次 attemptKey 会挡住重开后的自动翻译）。
+  const prevAutoTranslateRef = useRef(autoTranslate);
+  useEffect(() => {
+    if (!prevAutoTranslateRef.current && autoTranslate) {
+      autoTranslateAttemptedKeyRef.current = null;
+      autoTranslateRetryRef.current = { key: "", count: 0 };
+    }
+    prevAutoTranslateRef.current = autoTranslate;
+  }, [autoTranslate]);
+
   // Auto-translate when entry is selected
   useEffect(() => {
     if (!autoTranslate || !entry || isTranslating || isTranslatingRef.current)
       return;
     if (manuallyDisabledRef.current) return;
     if (hasTranslation) return;
+    // 同一条目同一模式只自动发起一次：避免 isTranslating true→false（翻译结束/失败）
+    // 再次触发本 effect，对同一条目无限重试（失败时每轮还会弹一次 toast）。
+    const attemptKey = `${entry.id}|${isReadableActive}`;
+    if (autoTranslateAttemptedKeyRef.current === attemptKey) return;
 
     if (cachedTranslation?.content) {
       setTranslatedContent(cachedTranslation.content);
@@ -487,20 +648,72 @@ export function useAITranslation({
       return;
     }
 
-    const content = isReadableActive ? readableContent : entry.content;
-    const summary = content ? stripHtml(content).slice(0, 200) : null;
-    if (!needsTranslation(entry.title || "", summary, targetLanguage)) {
-      return;
+    autoTranslateAttemptedKeyRef.current = attemptKey;
+    // 新的 attemptKey：把失败计数归零（同一条目切模式/切条目时重新计数）。
+    if (autoTranslateRetryRef.current.key !== attemptKey) {
+      autoTranslateRetryRef.current = { key: attemptKey, count: 0 };
     }
+    const currentEntryId = entry.id;
+    let cancelled = false;
+    /**
+     * 这次 attempt 是否已真正跑完 `needsTranslation`（无论结论 true/false）。
+     *
+     * `attemptKey` 在调度 idle **之前**就置位；若 effect 因 `entry` 对象引用变化
+     * （markRead、翻译状态更新等会换新的 entry 对象）触发 cleanup，`cancelIdle`
+     * 把这次 idle 取消了，但 key 还留着 —— 下一轮 effect 会直接 return，自动翻译
+     * 就永远发不起来。所以 cleanup 里若「没跑完」要把 key 清掉，允许重新尝试；
+     * 跑完（true→已翻译 / false→不需要）则保留，避免 isTranslating 翻转导致无限重试。
+     */
+    let completed = false;
+    // 全量 stripHtml 也挪进空闲回调：不在正文首帧同步解析长文。
+    const cancelIdle = scheduleIdle(() => {
+      void (async () => {
+        if (cancelled) return;
+        const content = isReadableActive ? readableContent : entry.content;
+        const summary = content ? stripHtml(content).slice(0, 200) : null;
+        const needs = await needsTranslation(
+          entry.title || "",
+          summary,
+          targetLanguage,
+        );
+        // 一旦拿到结论就算「跑完」——即使结论是 false（不需要翻）也不再重试。
+        completed = true;
+        if (!needs) return;
 
-    // 自动翻译也是「自己动起来」的，给个提示说明正在做什么。
-    // 49-3：**每条条目只弹一次** —— 这条链路会为同一条目跑两遍（预载没落库时再自发一次），
-    // 列表里快速切换就会叠出一屏一模一样的胶囊（用户报的就是这个）。
-    if (!autoTranslateToastShownRef.current) {
-      autoTranslateToastShownRef.current = true;
-      showToast(t("entry.auto_translate_on"));
-    }
-    generateTranslation(isReadableActive);
+        // 条目已切走 / effect 已清理 → 旧条目的异步结果不得落到新条目上
+        // （否则会在新条目上误触发翻译、误弹「已自动翻译」toast）。
+        if (cancelled || activeEntryIdRef.current !== currentEntryId) return;
+
+        // 自动翻译也是「自己动起来」的，给个提示说明正在做什么。
+        // 49-3：**每条条目只弹一次** —— 这条链路会为同一条目跑两遍（预载没落库时再自发一次），
+        // 列表里快速切换就会叠出一屏一模一样的胶囊（用户报的就是这个）。
+        if (!autoTranslateToastShownRef.current) {
+          autoTranslateToastShownRef.current = true;
+          showToast(t("entry.auto_translate_on"));
+        }
+        const ok = await generateTranslation(isReadableActive);
+        // 条目已切走就不再为旧条目记账（isTranslating 翻转导致的 cleanup 会把
+        // cancelled 置 true，但那不代表条目切走，所以这里只看条目 id）。
+        if (activeEntryIdRef.current !== currentEntryId) return;
+        if (!ok) {
+          const prev = autoTranslateRetryRef.current;
+          const count = (prev.key === attemptKey ? prev.count : 0) + 1;
+          autoTranslateRetryRef.current = { key: attemptKey, count };
+          if (count < MAX_AUTO_TRANSLATE_ATTEMPTS) {
+            // 未到上限：清 key 并触发下一轮 effect，再自动试一次。
+            autoTranslateAttemptedKeyRef.current = null;
+            setAutoRetryTick((n) => n + 1);
+          }
+          // 到上限：保留 attemptKey，停止自动重试（用户仍可手动点按钮重试）。
+        }
+      })();
+    });
+    return () => {
+      cancelled = true;
+      cancelIdle();
+      // 没跑完就被取消：清掉 attemptKey，让下一轮 effect 能重新发起（否则永久卡死）。
+      if (!completed) autoTranslateAttemptedKeyRef.current = null;
+    };
   }, [
     autoTranslate,
     entry,
@@ -511,6 +724,7 @@ export function useAITranslation({
     isTranslating,
     hasTranslation,
     generateTranslation,
+    autoRetryTick,
   ]);
 
   // Save translation to store when completed

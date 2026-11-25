@@ -41,6 +41,13 @@ export const useImageDimensionsStore = create<ImageDimensionsState>(
     },
 
     setDimension: (src, width, height) => {
+      // 判等：同一张图反复量到相同尺寸（`complete` 图每次挂载都会补记一次，
+      // 回访/滚动来回时很常见）时直接 return —— 原来每次都新建整张 dimensions
+      // 对象，会通知所有订阅方重渲染，社交 tab 多图时退化成 O(N²)。
+      const prev = get().dimensions[src];
+      if (prev && prev.width === width && prev.height === height) {
+        return;
+      }
       const dim: ImageDimension = {
         src,
         width,

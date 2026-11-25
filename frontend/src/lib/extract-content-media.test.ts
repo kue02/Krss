@@ -215,3 +215,60 @@ describe("rowItemWidth", () => {
     expect(rowItemWidth(5, 600)).toBe(200);
   });
 });
+describe("extractContentMedia · 模块级缓存（移动端性能）", () => {
+  it("相同 html/baseUrl/thumbnailUrl 命中缓存，返回同一份只读数组", () => {
+    const html =
+      '<img src="https://cdn.example.com/cache-hit.jpg" width="800" height="600">';
+    const first = extractContentMedia(
+      html,
+      "https://site.tld/post/1",
+      "https://cdn.example.com/cache-hit.jpg",
+    );
+    const second = extractContentMedia(
+      html,
+      "https://site.tld/post/1",
+      "https://cdn.example.com/cache-hit.jpg",
+    );
+
+    // 同一份引用 —— 切 tab 反复挂载不会重复解析
+    expect(second).toBe(first);
+    // 只读，调用方无法顺手改坏缓存内容
+    expect(Object.isFrozen(first)).toBe(true);
+  });
+
+  it("baseUrl 不同则各自成键，不串缓存", () => {
+    const html = '<img src="/relative.jpg">';
+    const a = extractContentMedia(html, "https://a.example.com/post/1");
+    const b = extractContentMedia(html, "https://b.example.com/post/1");
+
+    expect(a).not.toBe(b);
+    expect(a[0]?.src).toBe("https://a.example.com/relative.jpg");
+    expect(b[0]?.src).toBe("https://b.example.com/relative.jpg");
+  });
+});
+
+describe("extractContentMedia · 缓存键不保留 html（移动端性能）", () => {
+  it("不同 html 同长度也不串缓存（长度 + hash 指纹区分内容）", () => {
+    // 故意构造两段「字符数完全相同、内容不同」的正文
+    const htmlA = '<img src="https://cdn.example.com/a.jpg">';
+    const htmlB = '<img src="https://cdn.example.com/b.jpg">';
+    expect(htmlA.length).toBe(htmlB.length);
+
+    const a = extractContentMedia(htmlA, "https://site.tld/post/1");
+    const b = extractContentMedia(htmlB, "https://site.tld/post/1");
+
+    expect(a).not.toBe(b);
+    expect(a[0]?.src).toBe("https://cdn.example.com/a.jpg");
+    expect(b[0]?.src).toBe("https://cdn.example.com/b.jpg");
+  });
+
+  it("命中缓存返回同一份冻结数组，且内部对象也被冻结", () => {
+    const html = '<img src="https://cdn.example.com/frozen.jpg" width="10" height="20">';
+    const first = extractContentMedia(html, "https://site.tld/post/1");
+    const second = extractContentMedia(html, "https://site.tld/post/1");
+
+    expect(second).toBe(first);
+    expect(Object.isFrozen(first)).toBe(true);
+    expect(first.every((item) => Object.isFrozen(item))).toBe(true);
+  });
+});

@@ -10,6 +10,7 @@ import {
   rowItemWidth,
   type ContentMedia,
 } from "@/lib/extract-content-media";
+import type { ImageDimension } from "@/lib/image-dimensions-db";
 import {
   isRecoverableProxyUrl,
   renewProxyCookie,
@@ -156,21 +157,40 @@ export const SocialMediaGallery = memo(function SocialMediaGallery({
   onOpenImage,
   className,
 }: SocialMediaGalleryProps) {
-  const failedImages = useImageDimensionsStore(
-    useShallow((state) => state.failedImages),
-  );
   const loadFromDB = useImageDimensionsStore((state) => state.loadFromDB);
-  // 尺寸表整体进依赖：任何一张量到新尺寸都会重排（无尺寸那批靠这条生效）
-  const dimensions = useImageDimensionsStore(
-    useShallow((state) => state.dimensions),
-  );
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
 
+  /**
+   * 只订阅**本 gallery 自己** media 的尺寸 / 失败状态，而不是整张 dimensions 表。
+   *
+   * 原来 `state.dimensions` / `state.failedImages` 整体进订阅：社交 tab 里
+   * 50 条 × 多图时，任何一张图量到尺寸（或任何一条有图加载失败）都会让所有
+   * gallery 重渲染，叠上 `setDimension` 每次都新建整表 → O(N²)，是社交 tab
+   * 切换卡顿的主因。这里用 `media` 的 src 列表生成 selector，`useShallow`
+   * 比较结果：本 gallery 的 src 尺寸变了才重渲染，别条的变了自己收不到。
+   */
+  const mediaSrcs = useMemo(() => media.map((m) => m.src), [media]);
+
+  const dimensionList = useImageDimensionsStore(
+    useShallow((state) => mediaSrcs.map((src) => state.dimensions[src])),
+  );
+  const dimensionsBySrc = useMemo(() => {
+    const map: Record<string, ImageDimension | undefined> = {};
+    mediaSrcs.forEach((src, i) => {
+      map[src] = dimensionList[i];
+    });
+    return map;
+  }, [mediaSrcs, dimensionList]);
+
+  const failedList = useImageDimensionsStore(
+    useShallow((state) => mediaSrcs.map((src) => state.failedImages.has(src))),
+  );
+
   const visible = useMemo(
-    () => media.filter((m) => !failedImages.has(m.src)),
-    [media, failedImages],
+    () => media.filter((_, i) => !failedList[i]),
+    [media, failedList],
   );
 
   const proxiedUrls = useMemo(
@@ -210,10 +230,10 @@ export const SocialMediaGallery = memo(function SocialMediaGallery({
       if (item.width && item.height) {
         return { width: item.width, height: item.height };
       }
-      const dim = dimensions[item.src];
+      const dim = dimensionsBySrc[item.src];
       return dim ? { width: dim.width, height: dim.height } : null;
     },
-    [dimensions],
+    [dimensionsBySrc],
   );
 
   if (visible.length === 0) return null;

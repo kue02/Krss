@@ -18,6 +18,7 @@ import {
   SOCIAL_COLLAPSED_PX,
 } from "./EntryListItem";
 import { useFeedMenuActions } from "@/hooks/useFeedMenuActions";
+import { useInView } from "@/hooks/useInView";
 import { useFolders } from "@/hooks/useFolders";
 import { UnreadIndicator, unreadRowClass } from "./unread-indicator";
 import { useMarkAsRead } from "@/hooks/useEntries";
@@ -201,6 +202,59 @@ export function timelineFullMaxHeight(): number {
   return Math.floor(window.innerHeight * 0.7);
 }
 
+/**
+ * 第四十三批（移动端性能）：正文自然高度上报 / 截断判定只在卡片接近视口时测量。
+ *
+ * 通知 tab 一屏几十张卡，两个 effect 无条件读 `scrollHeight` 会强制布局每一张
+ * 离屏卡，正好抵消卡片根节点上的 `content-visibility:auto`。这里用
+ * IntersectionObserver（rootMargin 200px）观察测量节点：进入视口附近才跑一次 +
+ * 400ms 复测，离开时清掉复测定时器（避免给离屏卡留定时器）。
+ *
+ * 没有 IntersectionObserver（jsdom / 老浏览器）时退回原来的立即测量 + 400ms
+ * 复测，现有单测语义不变。
+ */
+function observeMeasureWhenVisible(
+  node: HTMLElement | null,
+  run: () => void,
+): () => void {
+  if (!node) {
+    run();
+    return () => {};
+  }
+  const Observer = globalThis.IntersectionObserver;
+  if (typeof Observer !== "function") {
+    run();
+    const retryNoIO = setTimeout(run, 400);
+    return () => clearTimeout(retryNoIO);
+  }
+  let retry: ReturnType<typeof setTimeout> | null = null;
+  const clearRetry = () => {
+    if (retry !== null) {
+      clearTimeout(retry);
+      retry = null;
+    }
+  };
+  const measureNow = () => {
+    run();
+    clearRetry();
+    retry = setTimeout(run, 400);
+  };
+  const observer = new Observer(
+    (entries) => {
+      for (const item of entries) {
+        if (item.isIntersecting) measureNow();
+        else clearRetry();
+      }
+    },
+    { rootMargin: "200px" },
+  );
+  observer.observe(node);
+  return () => {
+    observer.disconnect();
+    clearRetry();
+  };
+}
+
 const TimelineCard = memo(function TimelineCard({
   entry,
   feed,
@@ -240,6 +294,16 @@ const TimelineCard = memo(function TimelineCard({
     [feed, allFolders],
   );
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * 第四十三批（移动端性能）：只有接近视口的卡片才计算正文纯文字预览。
+   *
+   * 通知 tab 一屏几十张卡，每张都对 `entry.content` 全量 `stripHtml` 纯属浪费；
+   * 用 `useInView("800px")`（与卡片 content-visibility 的 140px 估算配合）门控，
+   * 未进入视口的卡片 `previewText` 直接空串。观察节点绑在**正文预览容器**上。
+   * jsdom 无 IntersectionObserver 时 `useInView` 立即返回 true，测试行为不变。
+   */
+  const { ref: previewInViewRef, inView: previewInView } =
+    useInView<HTMLDivElement>("800px");
   const [isClipped, setIsClipped] = useState(false);
   const unreadStyle = useUISettingKey("unreadStyle");
   const showIcon = feed?.iconPath && !iconError;
@@ -266,11 +330,13 @@ const TimelineCard = memo(function TimelineCard({
    * 这里只是把「同一段文字的来源」从原文换成译文。
    */
   const previewText = useMemo(() => {
+    // 第四十三批：未接近视口的卡片不做全量解析（离屏卡由 content-visibility 按 140px 估算）
+    if (!previewInView) return "";
     const source = translation?.content ?? entry.content;
     const raw = source ? stripHtml(source) : "";
     const text = raw.replace(/\s+/g, " ").trim();
     return text || (displayTitle ?? "");
-  }, [entry.content, displayTitle, translation?.content]);
+  }, [previewInView, entry.content, displayTitle, translation?.content]);
 
   // 折叠态下正文是否真的被截断（用 scrollHeight 判定，图片异步加载会改高度 → 复测一次）
   // 另把自然高度（= 不钳制时的渲染高度）上报给父级：父级拿它判「长贴」（> 300px），
@@ -282,9 +348,8 @@ const TimelineCard = memo(function TimelineCard({
     const node2 = bodyRef.current;
     if (onNaturalHeightChange) {
       const report = () => onNaturalHeightChange(entry.id, node2?.scrollHeight ?? 0);
-      report();
-      const retry = setTimeout(report, 400);
-      return () => clearTimeout(retry);
+      // 第四十三批：只在卡片接近视口时测量，离屏卡不再强制布局
+      return observeMeasureWhenVisible(node2, report);
     }
     return undefined;
   }, [entry.id, previewText, clampLines, onNaturalHeightChange, bodyOnHover]);
@@ -298,9 +363,8 @@ const TimelineCard = memo(function TimelineCard({
       return;
     }
     const measure = () => setIsClipped(node2.scrollHeight > node2.clientHeight + 1);
-    measure();
-    const retry = setTimeout(measure, 400);
-    return () => clearTimeout(retry);
+    // 第四十三批：只在卡片接近视口时测量，离屏卡不再强制布局
+    return observeMeasureWhenVisible(node2, measure);
   }, [previewText, clampLines, autoExpandLongEntry, bodyOnHover]);
 
   const effectiveClampLines = autoExpandLongEntry ? null : clampLines;
@@ -373,6 +437,9 @@ const TimelineCard = memo(function TimelineCard({
           }
           onMouseLeave={bodyOnHover ? () => onHoverLeave?.() : undefined}
           className={cn(
+            // 第四十三批（移动端性能）：通知卡片实测高 88–149px，离屏时用 140px
+            // 估算跳过布局/绘制；进入视口再由浏览器收敛到真实高度。
+            "[content-visibility:auto] [contain-intrinsic-size:auto_140px]",
             "group relative cursor-pointer overflow-hidden rounded-[10px] border p-2.5 transition-[background-color,border-color,box-shadow,opacity] duration-200",
             isSelected
               ? "border-border/60 bg-card shadow-nf"
@@ -528,31 +595,35 @@ const TimelineCard = memo(function TimelineCard({
             </div>
           ) : (
             <>
-              {/* 正文预览：折叠态 clamp 到设置的行数 */}
-              {previewText && (
-                <div
-                  ref={bodyRef}
-                  data-timeline-body={
-                    effectiveClampLines === null ? "full" : String(effectiveClampLines)
-                  }
-                  className={cn(
-                    "mt-1 text-[12.5px] leading-5 text-muted-foreground wrap-anywhere",
-                    !isUnread && "text-muted-foreground/70",
-                  )}
-                  style={
-                    effectiveClampLines !== null && !expanded
-                      ? {
-                          display: "-webkit-box",
-                          WebkitBoxOrient: "vertical",
-                          WebkitLineClamp: effectiveClampLines,
-                          overflow: "hidden",
-                        }
-                      : undefined
-                  }
-                >
-                  {previewText}
-                </div>
-              )}
+              {/* 正文预览：折叠态 clamp 到设置的行数。
+                  容器**常驻**（即使 previewText 为空串）—— 否则离屏卡
+                  `previewText=""` 时容器不挂，`useInView` 的 ref 永远观察不到，
+                  视口内也永远不会补算正文。离屏卡靠 content-visibility 按 140px 估算。 */}
+              <div
+                ref={(node) => {
+                  bodyRef.current = node;
+                  previewInViewRef.current = node;
+                }}
+                data-timeline-body={
+                  effectiveClampLines === null ? "full" : String(effectiveClampLines)
+                }
+                className={cn(
+                  "mt-1 text-[12.5px] leading-5 text-muted-foreground wrap-anywhere",
+                  !isUnread && "text-muted-foreground/70",
+                )}
+                style={
+                  effectiveClampLines !== null && !expanded
+                    ? {
+                        display: "-webkit-box",
+                        WebkitBoxOrient: "vertical",
+                        WebkitLineClamp: effectiveClampLines,
+                        overflow: "hidden",
+                      }
+                    : undefined
+                }
+              >
+                {previewText}
+              </div>
 
               {/* 展开/收起：就地展开，不跳轴（节点钉在卡片顶部，长的部分往下长） */}
               {showToggle && (

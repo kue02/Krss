@@ -39,6 +39,14 @@ export const VIRTUAL_ARTICLE_ESTIMATE_PX = 148;
  * 依赖列表高度的定位会跟着漂，所以按真实值给。
  */
 export const VIRTUAL_PLAIN_ROW_ESTIMATE_PX = 42;
+/**
+ * 移动端社交卡片的估计行高（首屏占位用）。
+ *
+ * 社交卡片是「头像行 + 正文 + 图片 + 操作栏」的变高卡片，实测值通常在 400~700px；
+ * 取 700px 作为首屏估计（实测社交卡片平均约 699px），比 148px 的卡片档更接近真实高度，避免首屏总高度先少算
+ * 一大截、实测后骤然撑开。进入视口后 measureElement 会用实测值替换。
+ */
+export const VIRTUAL_SOCIAL_ESTIMATE_PX = 700;
 /** 可视区上下各多渲染的行数（滚动时不白屏，又不至于挂太多 DOM） */
 export const VIRTUAL_ARTICLE_OVERSCAN = 8;
 

@@ -34,11 +34,16 @@ export function VirtualizedArticleList({
   }
 
   const virtualItems = active.getVirtualItems();
-  // jsdom 回退：测不到容器尺寸时 range 为空 → 全量渲染（见上面注释）
+  // jsdom / 首帧回退：测不到容器尺寸时 range 为空。首帧绝不能把 50 张大卡片
+  // 全量挂载（会抵消虚拟化收益），最多先渲染前 12 行；小列表（<=12）仍全量，
+  // 保持既有 jsdom 回归测试语义。
+  const FALLBACK_ROWS = 12;
+  const fallbackEntries =
+    entries.length > FALLBACK_ROWS ? entries.slice(0, FALLBACK_ROWS) : entries;
   const items =
     virtualItems.length > 0
       ? virtualItems
-      : entries.map((entry, index) => ({
+      : fallbackEntries.map((entry, index) => ({
           key: entry.id,
           index,
           start: 0,

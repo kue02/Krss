@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Entry } from "@/types/api";
 import { NotificationTimeline } from "./NotificationTimeline";
@@ -745,5 +745,169 @@ describe("NotificationTimeline · 时间基准两档（26-2 重做）", () => {
       ).toHaveLength(1);
       view.unmount();
     }
+  });
+});
+
+describe("NotificationTimeline · 离屏卡片测量（第四十三批）", () => {
+  const scrollHeightDescriptor = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    "scrollHeight",
+  );
+  const originalIntersectionObserver = globalThis.IntersectionObserver;
+
+  afterEach(() => {
+    if (scrollHeightDescriptor) {
+      Object.defineProperty(
+        HTMLElement.prototype,
+        "scrollHeight",
+        scrollHeightDescriptor,
+      );
+    }
+    if (originalIntersectionObserver) {
+      globalThis.IntersectionObserver = originalIntersectionObserver;
+    } else {
+      delete (globalThis as unknown as { IntersectionObserver?: unknown })
+        .IntersectionObserver;
+    }
+  });
+
+  function stubTallScrollHeight() {
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get: () => 400,
+    });
+  }
+
+  it("卡片根节点带 content-visibility 与 140px 估算样式", () => {
+    const { container } = renderTimeline([entry("n1", localIso(18, 9, 0))]);
+    const card = container.querySelector<HTMLElement>("[data-timeline-card]")!;
+    expect(card.className).toContain("[content-visibility:auto]");
+    expect(card.className).toContain("[contain-intrinsic-size:auto_140px]");
+  });
+
+  it("没有 IntersectionObserver 时立即测量上报（长贴自动展开）", async () => {
+    delete (globalThis as unknown as { IntersectionObserver?: unknown })
+      .IntersectionObserver;
+    stubTallScrollHeight();
+    const { container } = renderTimeline([entry("n1", localIso(18, 9, 0))], {
+      autoExpandLong: true,
+    });
+    // 400 > 300 + 8，报告后应被判定长贴并自动展开
+    await waitFor(() =>
+      expect(container.querySelector("[data-timeline-full]")).not.toBeNull(),
+    );
+  });
+
+  it("有 IntersectionObserver 时进入视口附近才上报，未进入不测量", async () => {
+    const callbacks: IntersectionObserverCallback[] = [];
+    class MockIntersectionObserver {
+      root = null;
+      rootMargin = "";
+      thresholds: number[] = [];
+      constructor(callback: IntersectionObserverCallback) {
+        callbacks.push(callback);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      takeRecords() {
+        return [];
+      }
+    }
+    globalThis.IntersectionObserver =
+      MockIntersectionObserver as unknown as typeof IntersectionObserver;
+    stubTallScrollHeight();
+
+    const { container } = renderTimeline([entry("n1", localIso(18, 9, 0))], {
+      autoExpandLong: true,
+    });
+    // 未触发视口相交：不测量、不自动展开
+    expect(container.querySelector("[data-timeline-full]")).toBeNull();
+    expect(callbacks.length).toBeGreaterThan(0);
+
+    await act(async () => {
+      for (const callback of callbacks) {
+        callback(
+          [{ isIntersecting: true } as IntersectionObserverEntry],
+          {} as IntersectionObserver,
+        );
+      }
+    });
+
+    await waitFor(() =>
+      expect(container.querySelector("[data-timeline-full]")).not.toBeNull(),
+    );
+  });
+});
+
+describe("NotificationTimeline · 离屏卡片正文预览门控（第四十三批）", () => {
+  const originalIntersectionObserver = globalThis.IntersectionObserver;
+
+  afterEach(() => {
+    if (originalIntersectionObserver) {
+      globalThis.IntersectionObserver = originalIntersectionObserver;
+    } else {
+      delete (globalThis as unknown as { IntersectionObserver?: unknown })
+        .IntersectionObserver;
+    }
+  });
+
+  it("有 IntersectionObserver 时，未进入视口的卡片不渲染正文预览（空串门控）；进入后补算", async () => {
+    const callbacks: IntersectionObserverCallback[] = [];
+    class MockIntersectionObserver {
+      root = null;
+      rootMargin = "";
+      thresholds: number[] = [];
+      constructor(callback: IntersectionObserverCallback) {
+        callbacks.push(callback);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      takeRecords() {
+        return [];
+      }
+    }
+    globalThis.IntersectionObserver =
+      MockIntersectionObserver as unknown as typeof IntersectionObserver;
+
+    const { container } = renderTimeline([
+      entry("g1", localIso(18, 9, 0), {
+        content: "<p>离屏卡片正文不应该被解析</p>",
+      }),
+    ]);
+
+    const body = container.querySelector<HTMLElement>("[data-timeline-body]");
+    // 容器常驻（否则观察器观察不到），但预览文字在进入视口前为空
+    expect(body).not.toBeNull();
+    expect(body?.textContent ?? "").toBe("");
+
+    await act(async () => {
+      for (const callback of callbacks) {
+        callback(
+          [{ isIntersecting: true } as IntersectionObserverEntry],
+          {} as IntersectionObserver,
+        );
+      }
+    });
+
+    await waitFor(() =>
+      expect(
+        container.querySelector<HTMLElement>("[data-timeline-body]")?.textContent,
+      ).toContain("离屏卡片正文不应该被解析"),
+    );
+  });
+
+  it("jsdom 无 IntersectionObserver 时立即视为进入视口，正文预览照常渲染", () => {
+    delete (globalThis as unknown as { IntersectionObserver?: unknown })
+      .IntersectionObserver;
+
+    const { container } = renderTimeline([
+      entry("g2", localIso(18, 9, 0), { content: "<p>立即渲染的正文</p>" }),
+    ]);
+
+    expect(
+      container.querySelector<HTMLElement>("[data-timeline-body]")?.textContent,
+    ).toContain("立即渲染的正文");
   });
 });

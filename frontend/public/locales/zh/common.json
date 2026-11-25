@@ -34,7 +34,8 @@
     "views": "智能文件夹",
     "view_no_matches": "暂无匹配的订阅",
     "starred_view": "只看当前视图的星标",
-    "plugin_views": "插件"
+    "plugin_views": "插件",
+    "dialog_label": "侧栏"
   },
   "content_type": {
     "article": "文章",
@@ -1117,7 +1118,11 @@
     "entry_menu": "长按条目的菜单位置",
     "entry_menu_hint": "两种位置都包含「所属订阅」操作",
     "entry_menu_sheet": "底部面板",
-    "entry_menu_anchor": "长按位置浮层"
+    "entry_menu_anchor": "长按位置浮层",
+    "swipe_action_style": "条目滑动按钮样式",
+    "swipe_action_style_hint": "左滑条目后露出的两个快捷动作，选你顺手的外观",
+    "swipe_action_flat": "扁平",
+    "swipe_action_circle": "圆形"
   },
   "appearance_view": {
     "title": "按视图设置",

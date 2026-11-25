@@ -9,14 +9,26 @@ const MOVE_TOLERANCE_PX = 10;
  */
 export type LongPressPoint = { x: number; y: number };
 
+export interface MobileLongPressOptions {
+  /**
+   * 行根本身就是 `<button>` 时（如 Inoreader 列表行）传 true：
+   * 只放行带 `data-long-press-root` 的那一个根按钮，行内嵌套按钮/链接仍不触发长按。
+   */
+  allowButtonRoot?: boolean;
+}
+
 export function useMobileLongPress(
   enabled: boolean,
   onLongPress?: (point: LongPressPoint) => void,
+  options: MobileLongPressOptions = {},
 ) {
+  const allowButtonRoot = options.allowButtonRoot ?? false;
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startRef = useRef<{ x: number; y: number } | null>(null);
   const suppressClickRef = useRef(false);
   const suppressResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const firedRef = useRef(false);
+  const touchActiveRef = useRef(false);
 
   const clear = () => {
     if (timerRef.current !== null) {
@@ -47,11 +59,25 @@ export function useMobileLongPress(
   const onTouchStart = (event: TouchEvent<HTMLElement>) => {
     if (!enabled || !onLongPress) return;
     const target = event.target as HTMLElement | null;
-    if (target?.closest("a, button, input, textarea, select")) return;
+    const interactive = target?.closest("a, button, input, textarea, select");
+    if (
+      interactive &&
+      !(
+        allowButtonRoot &&
+        interactive instanceof HTMLElement &&
+        interactive.hasAttribute("data-long-press-root")
+      )
+    ) {
+      return;
+    }
     const touch = event.touches[0];
     if (!touch) return;
+    firedRef.current = false;
+    touchActiveRef.current = true;
     startRef.current = { x: touch.clientX, y: touch.clientY };
     timerRef.current = setTimeout(() => {
+      if (firedRef.current) return;
+      firedRef.current = true;
       const point = startRef.current;
       if (point) onLongPress(point);
       armSuppressClick();
@@ -71,12 +97,38 @@ export function useMobileLongPress(
     }
   };
 
-  const onTouchEnd = () => clear();
-  const onTouchCancel = () => clear();
+  const onTouchEnd = () => {
+    touchActiveRef.current = false;
+    clear();
+  };
+  const onTouchCancel = () => {
+    touchActiveRef.current = false;
+    clear();
+  };
 
   const onContextMenu = (event: MouseEvent<HTMLElement>) => {
     if (!enabled || !onLongPress) return;
+    const target = event.target as HTMLElement | null;
+    const interactive = target?.closest("a, button, input, textarea, select");
+    if (
+      interactive &&
+      !(
+        allowButtonRoot &&
+        interactive instanceof HTMLElement &&
+        interactive.hasAttribute("data-long-press-root")
+      )
+    ) {
+      // 嵌套按钮/链接保留自己的原生 contextmenu，不吞默认行为。
+      return;
+    }
     event.preventDefault();
+    if (firedRef.current) {
+      // 同一根手指还没抬起时，timer 已处理过就不再重复；
+      // 松手后的鼠标右键 / 外接设备 contextmenu 仍应正常工作。
+      if (touchActiveRef.current || suppressClickRef.current) return;
+      firedRef.current = false;
+    }
+    firedRef.current = true;
     const fallback = startRef.current;
     const point = {
       x: event.clientX || fallback?.x || 0,

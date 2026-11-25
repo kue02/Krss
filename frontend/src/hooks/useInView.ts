@@ -8,7 +8,14 @@ import { useEffect, useRef, useState } from "react";
  */
 export function useInView<T extends HTMLElement>(rootMargin = "600px") {
   const ref = useRef<T | null>(null);
-  const [inView, setInView] = useState(false);
+  /**
+   * 没有 IntersectionObserver（jsdom / 很老的浏览器）时**首帧就当作已进入视口**：
+   * 这些环境无法观察，任何「等观察结果再渲染」的门控都会变成永远空列表。
+   * 有 IO 时从 false 开始，等观察回调翻转。
+   */
+  const [inView, setInView] = useState(() => {
+    return typeof IntersectionObserver === "undefined";
+  });
 
   useEffect(() => {
     if (inView) return;

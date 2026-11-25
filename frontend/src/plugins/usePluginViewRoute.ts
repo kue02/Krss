@@ -41,6 +41,9 @@ export function withoutViewParam(location: string, search: string): string {
 /** 插件视图想按条目看数据时带的 `?entry=<id>`（id 是字符串：19 位 snowflake 不能进 number） */
 export type PluginViewEntry = { id: string };
 
+/** 清单还没回来时共用同一个空数组（引用稳定，memo 才拦得住无关重渲染） */
+const EMPTY_VIEWS: PluginView[] = [];
+
 export type PluginViewRoute = {
   /** 当前地址 vs 插件视图清单的解析结果 */
   resolution: PluginViewResolution;
@@ -100,7 +103,8 @@ export function usePluginViewRoute(): PluginViewRoute {
 
   return {
     resolution,
-    views: data ?? [],
+    // 用模块级常量：`data ?? []` 每次渲染都会造新数组，会让 Sidebar 的 memo 失效
+    views: data ?? EMPTY_VIEWS,
     entry: entryParam ? { id: entryParam } : null,
     activeKey:
       resolution.status === "resolved" ? pluginViewKey(resolution.view) : null,

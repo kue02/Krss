@@ -2,8 +2,43 @@ import { readFileSync } from "node:fs";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EntryListItem } from "./EntryListItem";
+import { extractContentMedia } from "@/lib/extract-content-media";
+import { getEntryImages } from "@/lib/extract-images";
+import { stripHtml } from "@/lib/html-utils";
 import { useFilterEditorStore } from "@/stores/filter-editor-store";
 import type { Entry, Feed } from "@/types/api";
+
+// 部分 mock：保留真实实现，只把 extractContentMedia 换成可断言的 spy。
+// 用来验证「article 视图不再无条件解析正文 HTML」（社交视图仍会调用）。
+vi.mock("@/lib/extract-content-media", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/extract-content-media")>();
+  return { ...actual, extractContentMedia: vi.fn(actual.extractContentMedia) };
+});
+
+// 第四十三批：缩略图不再解析正文找首图。部分 mock extract-images，只把
+// getEntryImages（EntryListItem 直接调用、内部才会解析正文找图）换成可断言的 spy。
+vi.mock("@/lib/extract-images", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/extract-images")>();
+  return { ...actual, getEntryImages: vi.fn(actual.getEntryImages) };
+});
+
+/** 还原图片代理 URL 里的原始地址（`/api/proxy/image/<base64url>`）。 */
+function decodeProxiedImageSrc(src: string): string {
+  const match = src.match(/\/api\/proxy\/image\/([^?]+)/);
+  const encoded = match?.[1];
+  if (!encoded) return src;
+  let b64 = encoded.replace(/-/g, "+").replace(/_/g, "/");
+  while (b64.length % 4) b64 += "=";
+  return Buffer.from(b64, "base64").toString("utf8");
+}
+
+// 社交视图会渲染 SocialMediaGallery，其 loadFromDB 走 IndexedDB；jsdom 没有
+// indexedDB，打桩掉这层（本用例只关心「是否调用 extractContentMedia」）。
+vi.mock("@/lib/image-dimensions-db", () => ({
+  getDimensionsBatch: vi.fn(() => Promise.resolve(new Map())),
+  saveDimension: vi.fn(() => Promise.resolve()),
+}));
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -72,6 +107,21 @@ vi.mock("@/hooks/useFeedMenuActions", () => ({
   useFeedMenuActions: () => ({ ...feedMenuActions, folders: [] }),
 }));
 
+// 社交视图的 inView 门控：默认 true（jsdom 无 IntersectionObserver 时真实
+// useInView 也返回 true），离屏用例里把 inViewState.value 置 false。
+// 传一个可写的 ref 对象，模拟 useInView 返回的 { ref, inView }。
+const { inViewState } = vi.hoisted(() => ({ inViewState: { value: true } }));
+
+vi.mock("@/hooks/useInView", () => ({
+  useInView: () => ({ ref: { current: null }, inView: inViewState.value }),
+}));
+
+// partial mock：保留真实 stripHtml，仅换成可断言的 spy，用来验证「离屏不解析正文」。
+vi.mock("@/lib/html-utils", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/html-utils")>();
+  return { ...actual, stripHtml: vi.fn(actual.stripHtml) };
+});
+
 const entry: Entry = {
   id: "entry-1",
   feedId: "feed-1",
@@ -103,6 +153,7 @@ describe("EntryListItem", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    inViewState.value = true;
   });
 
   it("keeps published time outside the truncated feed title", () => {
@@ -195,6 +246,207 @@ describe("EntryListItem", () => {
       ...entry,
       url: "https://x.com/op7418/status/2100033975758856654",
     };
+
+    it("离屏时只渲染轻量占位：不解析正文、不挂图片画廊", () => {
+      inViewState.value = false;
+      vi.mocked(stripHtml).mockClear();
+      vi.mocked(extractContentMedia).mockClear();
+      vi.mocked(getEntryImages).mockClear();
+
+      const { container } = render(
+        <EntryListItem
+          entry={{
+            ...socialEntry,
+            content: '<p>离屏正文不该解析</p><img src="https://example.com/x.jpg">',
+          }}
+          feed={feed}
+          isSelected={false}
+          onClick={vi.fn()}
+          data-entry-id="entry-1"
+          social
+        />,
+      );
+
+      const placeholder = container.querySelector<HTMLElement>(
+        "[data-entry-placeholder]",
+      );
+      expect(placeholder).not.toBeNull();
+      // 保留观测 / 测试需要的身份属性与最小高度，避免回滚时列表塌陷
+      expect(placeholder?.getAttribute("data-entry-id")).toBe("entry-1");
+      expect(placeholder?.getAttribute("data-entry-card")).toBe("");
+      expect(placeholder?.style.minHeight).toBe("600px");
+
+      // 离屏：一句正文都不解析，也不挂图片画廊
+      expect(vi.mocked(stripHtml)).not.toHaveBeenCalled();
+      expect(vi.mocked(extractContentMedia)).not.toHaveBeenCalled();
+      expect(vi.mocked(getEntryImages)).not.toHaveBeenCalled();
+      expect(
+        container.querySelector('[data-slot="social-media-gallery"]'),
+      ).toBeNull();
+      // 占位卡不渲染标题 / 正文 / 图片
+      expect(container.textContent).toBe("");
+      expect(container.querySelector("img")).toBeNull();
+    });
+
+    it("进入视口后恢复正常：解析正文并挂图片画廊", () => {
+      inViewState.value = true;
+      vi.mocked(stripHtml).mockClear();
+      vi.mocked(extractContentMedia).mockClear();
+
+      const { container } = render(
+        <EntryListItem
+          entry={{
+            ...socialEntry,
+            content: '<p>进入视口的正文</p><img src="https://example.com/x.jpg">',
+          }}
+          feed={feed}
+          isSelected={false}
+          onClick={vi.fn()}
+          social
+        />,
+      );
+
+      expect(container.querySelector("[data-entry-placeholder]")).toBeNull();
+      expect(vi.mocked(stripHtml)).toHaveBeenCalled();
+      expect(vi.mocked(extractContentMedia)).toHaveBeenCalled();
+      expect(screen.getByText(/进入视口的正文/)).toBeTruthy();
+      expect(
+        container.querySelector('[data-slot="social-media-gallery"]'),
+      ).not.toBeNull();
+    });
+
+    it("没有 IntersectionObserver 时回退为直接显示真实内容（不空列表）", () => {
+      // 模拟 useInView 在无 IO 环境下的返回：首帧 inView=true
+      inViewState.value = true;
+      vi.mocked(extractContentMedia).mockClear();
+
+      const { container } = render(
+        <EntryListItem
+          entry={{
+            ...socialEntry,
+            content: '<p>无 IO 也要显示</p>',
+          }}
+          feed={feed}
+          isSelected={false}
+          onClick={vi.fn()}
+          social
+        />,
+      );
+
+      expect(container.querySelector("[data-entry-placeholder]")).toBeNull();
+      expect(screen.getByText(/无 IO 也要显示/)).toBeTruthy();
+    });
+
+    it("虚拟分支传 deferSocialOffscreen={false}：即使离屏也渲染真实内容（裁剪交给虚拟容器）", () => {
+      inViewState.value = false;
+      vi.mocked(stripHtml).mockClear();
+      vi.mocked(extractContentMedia).mockClear();
+
+      const { container } = render(
+        <EntryListItem
+          entry={{
+            ...socialEntry,
+            content: '<p>虚拟容器里该显示</p><img src="https://example.com/x.jpg">',
+          }}
+          feed={feed}
+          isSelected={false}
+          onClick={vi.fn()}
+          social
+          deferSocialOffscreen={false}
+        />,
+      );
+
+      // 不再降级为固定 600px 占位（虚拟容器已只挂可视行）
+      expect(container.querySelector("[data-entry-placeholder]")).toBeNull();
+      expect(vi.mocked(stripHtml)).toHaveBeenCalled();
+      expect(vi.mocked(extractContentMedia)).toHaveBeenCalled();
+      expect(screen.getByText(/虚拟容器里该显示/)).toBeTruthy();
+    });
+
+    it("只有社交视图才解析正文图片：文章视图不调用 extractContentMedia", () => {
+      vi.mocked(extractContentMedia).mockClear();
+
+      // article 视图（默认 social=false）：不应触碰 DOMParser
+      const article = render(
+        <EntryListItem
+          entry={entry}
+          feed={feed}
+          isSelected={false}
+          onClick={() => {}}
+        />,
+      );
+      expect(vi.mocked(extractContentMedia)).not.toHaveBeenCalled();
+      article.unmount();
+
+      // 社交视图：仍然正常解析
+      render(
+        <EntryListItem
+          entry={{
+            ...socialEntry,
+            content: '<p><img src="https://example.com/x.jpg"></p>',
+          }}
+          feed={feed}
+          isSelected={false}
+          onClick={() => {}}
+          social
+        />,
+      );
+      expect(vi.mocked(extractContentMedia)).toHaveBeenCalled();
+    });
+
+    it("已有 thumbnailUrl 时直接用代理缩略图，不解析正文找首图", () => {
+      vi.mocked(getEntryImages).mockClear();
+
+      const { container } = render(
+        <EntryListItem
+          entry={{
+            ...entry,
+            thumbnailUrl: "https://example.com/cover.png",
+            content:
+              '<p>body</p><img src="https://example.com/body-only.jpg">',
+          }}
+          feed={feed}
+          isSelected={false}
+          onClick={vi.fn()}
+        />,
+      );
+
+      // 有 thumbnailUrl → 不解析正文
+      expect(getEntryImages).not.toHaveBeenCalled();
+      const image = container.querySelector<HTMLImageElement>(
+        "img[loading='lazy']",
+      );
+      expect(image).not.toBeNull();
+      // 渲染的是 thumbnailUrl 那张，不是正文首图
+      const decoded = decodeProxiedImageSrc(image?.src ?? "");
+      expect(decoded).toContain("example.com/cover.png");
+      expect(decoded).not.toContain("body-only.jpg");
+    });
+
+    it("没有 thumbnailUrl 时退回正文首图（仍解析正文）", () => {
+      vi.mocked(getEntryImages).mockClear();
+
+      const { container } = render(
+        <EntryListItem
+          entry={{
+            ...entry,
+            thumbnailUrl: undefined,
+            content: '<p>body</p><img src="https://example.com/body-only.jpg">',
+          }}
+          feed={feed}
+          isSelected={false}
+          onClick={vi.fn()}
+        />,
+      );
+
+      expect(getEntryImages).toHaveBeenCalled();
+      const image = container.querySelector<HTMLImageElement>(
+        "img[loading='lazy']",
+      );
+      expect(decodeProxiedImageSrc(image?.src ?? "")).toContain(
+        "example.com/body-only.jpg",
+      );
+    });
 
     it("条目用居中可读宽度（对齐 Folo），不是通栏", () => {
       const { container } = render(

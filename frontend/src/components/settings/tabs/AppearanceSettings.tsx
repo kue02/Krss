@@ -304,6 +304,7 @@ export function AppearanceSettings() {
   const reduceMotion = useUISettingKey("reduceMotion");
   const mobileSidebarShowViews = useUISettingKey("mobileSidebarShowViews");
   const mobileEntryMenuPlacement = useUISettingKey("mobileEntryMenuPlacement");
+  const mobileSwipeActionStyle = useUISettingKey("mobileSwipeActionStyle");
   const showLineNumbers = useUISettingKey("showLineNumbers");
   const uiScale = useUISettingKey("uiScale");
   const quoteStyle = useUISettingKey("quoteStyle");
@@ -902,6 +903,31 @@ export function AppearanceSettings() {
                 {
                   value: "anchor",
                   label: t("appearance_mobile.entry_menu_anchor"),
+                },
+              ]}
+            />
+          </SettingRow>
+          <SettingRow
+            label={t("appearance_mobile.swipe_action_style")}
+            hint={t("appearance_mobile.swipe_action_style_hint")}
+          >
+            <SegmentedControl
+              className="shrink-0 max-sm:h-12 max-sm:p-0.5 max-sm:[&>button]:h-11 max-sm:[&>button]:px-4"
+              value={mobileSwipeActionStyle ?? "flat"}
+              onValueChange={(value) =>
+                setUISetting(
+                  "mobileSwipeActionStyle",
+                  value as "flat" | "circle",
+                )
+              }
+              options={[
+                {
+                  value: "flat",
+                  label: t("appearance_mobile.swipe_action_flat"),
+                },
+                {
+                  value: "circle",
+                  label: t("appearance_mobile.swipe_action_circle"),
                 },
               ]}
             />
