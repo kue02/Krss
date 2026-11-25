@@ -482,29 +482,61 @@ export function useScrollMarkRead({
       },
     );
 
-    const visibleRect = surface.getViewportRect();
+    const observeTarget = (item: HTMLElement): void => {
+      const targetIds = readTargetEntryIds(item).filter((id) =>
+        unreadIds.has(id),
+      );
+      if (targetIds.length === 0) return;
+      if (targetIds.every((id) => markedReadIds.current.has(id))) return;
+
+      const viewport = surface.getViewportRect();
+      const itemRect = item.getBoundingClientRect();
+      if (itemRect.bottom > viewport.top && itemRect.top < viewport.bottom) {
+        for (const id of targetIds) seenEntryIds.current.add(id);
+      }
+      observer.observe(item);
+    };
+
     for (const item of contentRoot.querySelectorAll<HTMLElement>(
       // 58-2：单个条目 + 通知时间线折叠簇（簇里 N 条共用一个 DOM 节点）
       "[data-entry-id], [data-cluster-entry-ids]",
     )) {
-      const targetIds = readTargetEntryIds(item).filter((id) =>
-        unreadIds.has(id),
-      );
-      if (targetIds.length === 0) continue;
-      if (targetIds.every((id) => markedReadIds.current.has(id))) continue;
-
-      const itemRect = item.getBoundingClientRect();
-      if (
-        itemRect.bottom > visibleRect.top &&
-        itemRect.top < visibleRect.bottom
-      ) {
-        for (const id of targetIds) seenEntryIds.current.add(id);
-      }
-      observer.observe(item);
+      observeTarget(item);
     }
+
+    // 虚拟列表：滚动时视口外的行会被卸载、滚进来的行是新挂载的。IntersectionObserver 只
+    // observe 首帧已存在的节点，滚动后新挂上的行永远发现不了，导致「滚动标已读」只覆盖
+    // 首屏窗口。用 MutationObserver 监听 contentRoot 子树的新增节点与 data-entry-id 变更，
+    // 把新出现的行补 observe（同元素重复 observe 是幂等的，不会重复计数）。
+    const mutationObserver = new MutationObserver((records) => {
+      for (const record of records) {
+        if (record.type === "attributes") {
+          if (record.target instanceof HTMLElement) observeTarget(record.target);
+          continue;
+        }
+        record.addedNodes.forEach((node) => {
+          if (!(node instanceof HTMLElement)) return;
+          if (node.matches("[data-entry-id], [data-cluster-entry-ids]")) {
+            observeTarget(node);
+          }
+          node
+            .querySelectorAll<HTMLElement>(
+              "[data-entry-id], [data-cluster-entry-ids]",
+            )
+            .forEach((child) => observeTarget(child));
+        });
+      }
+    });
+    mutationObserver.observe(contentRoot, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["data-entry-id", "data-cluster-entry-ids"],
+    });
 
     return () => {
       observer.disconnect();
+      mutationObserver.disconnect();
       for (const timer of dwellTimers.current.values()) clearTimeout(timer);
       dwellTimers.current.clear();
     };

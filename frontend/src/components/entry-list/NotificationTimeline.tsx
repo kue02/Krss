@@ -1,4 +1,4 @@
-import { memo, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronUp, Star } from "lucide-react";
 import { Ripple } from "m3-ripple";
@@ -699,6 +699,11 @@ function TimelineClusterCard({
   );
 }
 
+export interface NotificationTimelineHandle {
+  /** 让目标条目所在段先挂载，再把该条目滚进视口（跨段 j/k 用）。 */
+  revealEntry: (entryId: string) => boolean;
+}
+
 export interface NotificationTimelineProps {
   entries: Entry[];
   feeds: Map<string, Feed>;
@@ -729,6 +734,98 @@ export interface NotificationTimelineProps {
    * 键盘 j/k、↑/↓ 就在这些节点之间吸附，不会选到看不见的条目。
    */
   onSelectableEntriesChange?: (entries: Entry[]) => void;
+  /** 暴露命令式句柄：通知视图本身不虚拟整列，j/k 跨段时要先挂载目标段 */
+  handleRef?: React.MutableRefObject<NotificationTimelineHandle | null>;
+}
+
+
+/**
+ * 通知时间线的「段内行窗口化」（DOM 级虚拟化）：
+ * 一天一段，段内可能有几十条卡片。日期吸顶头保持在段容器里（只有几段，代价很小），
+ * 但段内的行卡片只在接近视口（rootMargin 1200px）时才挂载，滚远后卸载，
+ * 用上一次实测高度做占位，既省 React 挂载/布局，又不破坏 sticky 头与整段高度。
+ */
+function TimelineLazyRows({
+  sectionKey,
+  rowCount,
+  heights,
+  forceMount = false,
+  children,
+}: {
+  sectionKey: string;
+  rowCount: number;
+  heights: React.MutableRefObject<Map<string, number>>;
+  /** 跨段 reveal 时强制挂载（挂上后由滚动位置接管） */
+  forceMount?: boolean;
+  children: () => ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  // 初值 false：首帧只渲染占位高度，布局效应在**绘制前**按真实滚容器位置裁一次，
+  // 命中视口的段立刻挂载，远离的保持占位 —— 进入通知视图的首个提交不再全量挂载。
+  const [mounted, setMounted] = useState(false);
+
+  useLayoutEffect(() => {
+    if (forceMount) {
+      setMounted(true);
+      return;
+    }
+    const node = ref.current;
+    if (!node) return;
+    const rect = node.getBoundingClientRect();
+    const viewportH = window.innerHeight || 0;
+    setMounted(rect.bottom > -1200 && rect.top < viewportH + 1200);
+  }, [forceMount]);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const Observer = globalThis.IntersectionObserver;
+    if (typeof Observer !== "function") {
+      setMounted(true);
+      return;
+    }
+    // 桌面真正的滚容器是内层 entry-list-viewport（overflow-y-auto），
+    // 不传 root 时 rootMargin 会被这层 clip 抵消，预挂载缓冲等于失效。
+    const root = node.closest('[data-testid="entry-list-viewport"]');
+    const observer = new Observer(
+      (entries) => {
+        for (const item of entries) {
+          if (item.isIntersecting) setMounted(true);
+          else if (!forceMount) setMounted(false);
+        }
+      },
+      { root: root instanceof Element ? root : null, rootMargin: "1200px 0px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [forceMount]);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || !mounted) return;
+    const measure = () => {
+      const h = node.offsetHeight;
+      if (h > 0) heights.current.set(sectionKey, h);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [mounted, sectionKey, heights]);
+
+  const estimate =
+    heights.current.get(sectionKey) ?? Math.max(96, rowCount * 140);
+  return (
+    <div
+      ref={ref}
+      data-timeline-rows={sectionKey}
+      aria-hidden={mounted ? undefined : true}
+      style={mounted ? undefined : { height: `${estimate}px` }}
+    >
+      {mounted ? children() : null}
+    </div>
+  );
 }
 
 export function NotificationTimeline({
@@ -749,6 +846,7 @@ export function NotificationTimeline({
   bodyOnHover = false,
   onSelectableEntriesChange,
   onSelectFeedFromEntry,
+  handleRef,
 }: NotificationTimelineProps) {
   const { t, i18n } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -1125,6 +1223,96 @@ export function NotificationTimeline({
     [displayRows],
   );
 
+  /** 段内行块实测高度（卸载后用占位，避免滚动条跳动） */
+  const rowsHeightsRef = useRef<Map<string, number>>(new Map());
+  /** 被命令式 reveal 强制挂载的段（滚到目标后清掉，交还 observer） */
+  const [forcedSections, setForcedSections] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+  const pendingRevealIdRef = useRef<string | null>(null);
+
+  /**
+   * 命令式 reveal：通知视图不虚拟整列，但段内行块会卸载。j/k 跨到未挂载段时
+   * `document.querySelector` 必然落空，所以要先把目标段强挂上，再滚动。
+   * 目标若被吸进聚合卡，还要先展开那个聚合卡（卡片本身也是段内行）。
+   */
+  useEffect(() => {
+    if (!handleRef) return;
+    handleRef.current = {
+      revealEntry: (entryId: string) => {
+        const section = sections.find((item) =>
+          item.rows.some((row) =>
+            row.kind === "cluster"
+              ? row.entries.some((e) => e.id === entryId)
+              : row.entry.id === entryId,
+          ),
+        );
+        if (!section) return false;
+        const targetRow = section.rows.find((row) =>
+          row.kind === "cluster"
+            ? row.entries.some((e) => e.id === entryId)
+            : row.entry.id === entryId,
+        );
+        if (targetRow?.kind === "cluster") {
+          setExpandedClusters((prev) => {
+            if (prev.has(targetRow.key)) return prev;
+            const next = new Set(prev);
+            next.add(targetRow.key);
+            return next;
+          });
+        }
+        pendingRevealIdRef.current = entryId;
+        /* 替换而非累加：连续跨段时上一段的强制挂载必须释放，否则泄漏成常驻；
+           同段连按也要换新引用，才能让依赖 forcedSections 的滚动 effect 重跑。 */
+        setForcedSections(new Set([section.key]));
+        return true;
+      },
+    };
+    return () => {
+      handleRef.current = null;
+    };
+  }, [handleRef, sections, setExpandedClusters]);
+
+  /** 段强制挂载后，等该条目真正进 DOM 再滚；最多等 20 帧。滚完交还 observer。 */
+  useEffect(() => {
+    const entryId = pendingRevealIdRef.current;
+    if (!entryId) return;
+    let frame = 0;
+    let raf = 0;
+    const sectionKey = sections.find((item) =>
+      item.rows.some((row) =>
+        row.kind === "cluster"
+          ? row.entries.some((e) => e.id === entryId)
+          : row.entry.id === entryId,
+      ),
+    )?.key;
+    const tick = () => {
+      const target = document.querySelector<HTMLElement>(
+        `[data-entry-id="${CSS.escape(entryId)}"]`,
+      );
+      if (target) {
+        target.scrollIntoView({ block: "nearest" });
+        pendingRevealIdRef.current = null;
+        if (sectionKey) {
+          setForcedSections((prev) => {
+            if (!prev.has(sectionKey)) return prev;
+            const next = new Set(prev);
+            next.delete(sectionKey);
+            return next;
+          });
+        }
+        return;
+      }
+      if (frame++ < 20) raf = requestAnimationFrame(tick);
+      else {
+        pendingRevealIdRef.current = null;
+        if (sectionKey) setForcedSections(new Set());
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [forcedSections, expandedClusters, sections]);
+
   /** 轴上的卡片（顺序即键盘吸附顺序） */
   const selectableEntries = useMemo(
     () =>
@@ -1293,7 +1481,13 @@ export function NotificationTimeline({
             </span>
           </div>
 
-          {section.rows.map((row) => {
+          <TimelineLazyRows
+            sectionKey={section.key}
+            rowCount={section.rows.length}
+            heights={rowsHeightsRef}
+            forceMount={forcedSections.has(section.key)}
+          >
+            {() => section.rows.map((row) => {
         const dotLeft = singleSide ? `${SINGLE_SIDE_TIME_COLUMN}px` : "50%";
         const isLeft = row.side === "left";
 
@@ -1444,7 +1638,8 @@ export function NotificationTimeline({
             )}
           </div>
         );
-          })}
+            })}
+          </TimelineLazyRows>
         </div>
         );
       })}

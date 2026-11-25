@@ -12,6 +12,8 @@ import {
   type AuthUser,
 } from "@/api";
 import { isNetworkError } from "@/lib/errors";
+import { queryClient } from "@/lib/queryClient";
+import { clearSnapshot } from "@/lib/query-persist";
 import i18n from "@/i18n";
 
 export type AuthState =
@@ -141,11 +143,17 @@ export const useAuthStore = create<AuthStore>((set, get) => {
       } catch {
         // Ignore errors, still clear local state
       }
+      // 先清内存缓存与本地快照（此刻令牌仍在，clearSnapshot 才能命中当前账号的键），
+      // 再清令牌，避免下一位登录者在同一浏览器看到上一位账号的条目。
+      queryClient.clear();
+      await clearSnapshot();
       clearAuthToken();
       set({ state: "unauthenticated", user: null, shouldRedirectToRoot: true });
     },
 
     handleUnauthorized: () => {
+      queryClient.clear();
+      void clearSnapshot();
       clearAuthToken();
       set({
         state: "unauthenticated",

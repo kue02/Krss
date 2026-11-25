@@ -910,4 +910,140 @@ describe("NotificationTimeline · 离屏卡片正文预览门控（第四十三�
       container.querySelector<HTMLElement>("[data-timeline-body]")?.textContent,
     ).toContain("立即渲染的正文");
   });
+
+  it("段内行块只挂载视口附近：滚远的段变占位，滚回再挂载", async () => {
+    const instances: Array<{
+      callback: IntersectionObserverCallback;
+      targets: Element[];
+    }> = [];
+    class MockIntersectionObserver {
+      root = null;
+      rootMargin = "";
+      thresholds: number[] = [];
+      private entry: { callback: IntersectionObserverCallback; targets: Element[] };
+      constructor(callback: IntersectionObserverCallback) {
+        this.entry = { callback, targets: [] };
+        instances.push(this.entry);
+      }
+      observe(target: Element) {
+        this.entry.targets.push(target);
+      }
+      unobserve() {}
+      disconnect() {}
+      takeRecords() {
+        return [];
+      }
+    }
+    const original = globalThis.IntersectionObserver;
+    globalThis.IntersectionObserver =
+      MockIntersectionObserver as unknown as typeof IntersectionObserver;
+    try {
+      const { container } = renderTimeline([
+        entry("d18", localIso(18, 9, 0)),
+        entry("d17", localIso(17, 9, 0)),
+        entry("d16", localIso(16, 9, 0)),
+      ]);
+      const blocks = Array.from(
+        container.querySelectorAll<HTMLElement>("[data-timeline-rows]"),
+      );
+      expect(blocks.length).toBeGreaterThanOrEqual(3);
+      const far = blocks[blocks.length - 1]!;
+      const owner = instances.find((item) => item.targets.includes(far))!;
+      await act(async () => {
+        owner.callback(
+          [{ isIntersecting: false, target: far } as unknown as IntersectionObserverEntry],
+          {} as IntersectionObserver,
+        );
+      });
+      expect(far.getAttribute("aria-hidden")).toBe("true");
+      expect(far.querySelector("[data-timeline-card]")).toBeNull();
+      expect(far.style.height).not.toBe("");
+
+      await act(async () => {
+        owner.callback(
+          [{ isIntersecting: true, target: far } as unknown as IntersectionObserverEntry],
+          {} as IntersectionObserver,
+        );
+      });
+      expect(far.querySelector("[data-timeline-card]")).not.toBeNull();
+    } finally {
+      if (original) globalThis.IntersectionObserver = original;
+      else
+        delete (globalThis as unknown as { IntersectionObserver?: unknown })
+          .IntersectionObserver;
+    }
+  });
+
+  it("revealEntry 会先挂载未挂载的目标段，再滚动到该条目", async () => {
+    const scrollSpy = vi.fn();
+    const originalScroll = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrollSpy;
+    const instances: Array<{
+      callback: IntersectionObserverCallback;
+      targets: Element[];
+    }> = [];
+    class MockIntersectionObserver {
+      root = null;
+      rootMargin = "";
+      thresholds: number[] = [];
+      private entry: { callback: IntersectionObserverCallback; targets: Element[] };
+      constructor(callback: IntersectionObserverCallback) {
+        this.entry = { callback, targets: [] };
+        instances.push(this.entry);
+      }
+      observe(target: Element) {
+        this.entry.targets.push(target);
+      }
+      unobserve() {}
+      disconnect() {}
+      takeRecords() {
+        return [];
+      }
+    }
+    const original = globalThis.IntersectionObserver;
+    globalThis.IntersectionObserver =
+      MockIntersectionObserver as unknown as typeof IntersectionObserver;
+    try {
+      const handleRef: { current: import("./NotificationTimeline").NotificationTimelineHandle | null } = {
+        current: null,
+      };
+      const { container } = renderTimeline(
+        [
+          entry("f18", localIso(18, 9, 0)),
+          entry("f17", localIso(17, 9, 0)),
+          entry("f16", localIso(16, 9, 0)),
+        ],
+        { handleRef },
+      );
+      const blocks = Array.from(
+        container.querySelectorAll<HTMLElement>("[data-timeline-rows]"),
+      );
+      const far = blocks[blocks.length - 1]!;
+      const owner = instances.find((item) => item.targets.includes(far))!;
+      await act(async () => {
+        owner.callback(
+          [{ isIntersecting: false, target: far } as unknown as IntersectionObserverEntry],
+          {} as IntersectionObserver,
+        );
+      });
+      expect(far.querySelector("[data-timeline-card]")).toBeNull();
+
+      let revealed = false;
+      await act(async () => {
+        revealed = handleRef.current?.revealEntry("f16") ?? false;
+      });
+      expect(revealed).toBe(true);
+      await waitFor(() =>
+        expect(far.querySelector('[data-entry-id="f16"]')).not.toBeNull(),
+      );
+      await waitFor(() => expect(scrollSpy).toHaveBeenCalled());
+    } finally {
+      Element.prototype.scrollIntoView = originalScroll;
+      if (original) globalThis.IntersectionObserver = original;
+      else
+        delete (globalThis as unknown as { IntersectionObserver?: unknown })
+          .IntersectionObserver;
+    }
+  });
+
 });

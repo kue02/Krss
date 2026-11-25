@@ -56,6 +56,7 @@ import {
   useVirtualizedArticleList,
   VIRTUAL_PLAIN_ROW_ESTIMATE_PX,
   VIRTUAL_SOCIAL_ESTIMATE_PX,
+  type VirtualizedArticleListState,
 } from "./useVirtualizedArticleList";
 import { VirtualizedArticleList } from "./VirtualizedArticleList";
 import { useScrollMarkRead } from "./useScrollMarkRead";
@@ -81,6 +82,7 @@ import {
 import {
   COLLAPSE_ALL_EVENT,
   NotificationTimeline,
+  type NotificationTimelineHandle,
 } from "./NotificationTimeline";
 import { NotificationBodyPreview } from "./NotificationBodyPreview";
 import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
@@ -734,10 +736,13 @@ export function EntryList({
   const inlineMarkedRef = useRef<string | null>(null);
   /* 只有真接了内联正文（桌面合列）才滚/标已读；移动端仍是列表→详情页，不插手 */
   const inlineActive = isArticleInline && Boolean(renderInlineContent);
-  /* 合列且已选中正文时关掉虚拟化：虚拟列表的行是 position:absolute + transform 包裹，
-     正文 pane 插在这种祖先里会让 EntryContentHeader 的 sticky 失效（工具栏会浮在正文
-     中部）。关掉虚拟化后 pane 落在普通文档流里，sticky 正常，正文也能滚动吸顶。 */
-  const inlineNoVirtual = inlineActive;
+  /* 合列虚拟化口径：
+     - 桌面：**保持虚拟化**（pane 作为被点行的一部分渲染），虚拟行改用 `top` 定位而不是
+       transform —— transform 祖先会让 pane 里 EntryContentHeader 的 sticky 失效；`top`
+       定位不建立 fixed/sticky 包含块，sticky 照常。打开正文期间暂停内容位移兜底，
+       由 pin-align 负责把被点行对回原位（大位移兜底原本也会丢弃）。
+     - 移动端：文档滚动 + 行只有几十像素，沿用非虚拟（content-visibility 渲染跳过）。 */
+  const inlineNoVirtual = inlineActive && isMobile;
   /**
    * 非虚拟列表（社媒 / 通知时间线）：直接交给浏览器原生 scroll anchoring。
    *
@@ -960,6 +965,21 @@ export function EntryList({
       deferEntryRemoval(selectedEntryId, { ...target, read: true }, index);
     }
   }, [inlineActive, selectedEntryId, entries, markAsRead]);
+  /* 打开合列正文期间暂停「内容位移兜底」：pane 插在被点行下会把下方行整体推高，
+     兜底拿到的是点击前的锚点，会按旧坐标 scrollBy 把视口甩到正文底部
+     （2026-11-24 用户实测）。这里暂停兜底，初始对齐交给上面的 pin-align effect，
+     pane 内部图片撑高只往下长、被点行 top 不变，无需补偿。 */
+  useEffect(() => {
+    if (!(inlineActive && selectedEntryId)) return;
+    anchorStabilizePausedRef.current = true;
+    const timer = window.setTimeout(() => {
+      anchorStabilizePausedRef.current = false;
+    }, PIN_ALIGN_MS + 300);
+    return () => {
+      window.clearTimeout(timer);
+      anchorStabilizePausedRef.current = false;
+    };
+  }, [inlineActive, selectedEntryId]);
 
   /**
    * 进视口预载：观察器挂在本列表的滚动容器上（root 与 `scroll-surface` 同一口径，
@@ -1036,6 +1056,10 @@ export function EntryList({
   );
 
   // 键盘快捷键：j/k 上下篇（选中即已读）、m 已读、s 星标、v 打开原文、Esc 关闭
+  // 虚拟列表里选中行可能被卸载，reveal 时先用 virtualizer.scrollToIndex 把它挂回来。
+  const virtualListRef = useRef<VirtualizedArticleListState | null>(null);
+  /** 通知时间线不是整列虚拟，但段内行块会卸载，跨段 j/k 得先让目标段挂载 */
+  const notificationTimelineRef = useRef<NotificationTimelineHandle | null>(null);
   useEntryHotkeys({
     // 通知视图走时间线：吸附顺序 = 轴上的卡片（被吸进小节点的条目不算节点）
     entries: (isNotificationTimeline ? timelineSelectableEntries : null) ?? entries,
@@ -1045,19 +1069,33 @@ export function EntryList({
     enabled: isActive,
     // 15-4：只有时间线视图额外认 ↑/↓（其余视图一行不动，行为零变化）
     arrowKeys: isNotificationTimeline,
+    onRevealEntry: (entryId) => {
+      const state = virtualListRef.current;
+      const virtualizer = state?.windowVirtualizer ?? state?.virtualizer ?? null;
+      if (!virtualizer) return notificationTimelineRef.current?.revealEntry(entryId) ?? false;
+      const list =
+        (isNotificationTimeline ? timelineSelectableEntries : null) ?? entries;
+      const index = list.findIndex((entry) => entry.id === entryId);
+      if (index < 0) return false;
+      virtualizer.scrollToIndex(index, { align: "auto" });
+      return true;
+    },
   });
   // 列表滚上去以后，右上角浮出「当前序号 + 回到顶部」（对齐 Nextflux 的 Indicator）
   const [firstVisibleIndex, setFirstVisibleIndex] = useState(0);
   /**
-   * 虚拟化覆盖「标准文章扁平流」与「移动端社交列表」：
+   * 虚拟化覆盖「标准文章扁平流」与「社交列表（桌面 + 移动端）」：
    *   - article 内容类型 + 非 hover 档（含 list 与 rows）走原路径；
-   *   - 移动端社交（isMobile && social）动态行高，整份 entries 全挂会卡，接入同一虚拟容器；
-   *   - 桌面社交 / 通知时间线 / hover 浮层档仍走原路径，一字不动。
+   *   - 社交视图动态行高，整份 entries 全挂会卡：桌面与移动端共用同一份
+   *     EntryListItem，统一接入同一虚拟容器（桌面走元素滚动、移动端走 window
+   *     滚动，由 scrollSurface 决定，无需在此分叉）；
+   *   - 通知时间线（吸附分组 + sticky 日期头，见 NotificationTimeline 结构说明）
+   *     与 hover 浮层档仍走原路径，一字不动。
    */
   const useVirtualList =
     !isArticleHover &&
     !inlineNoVirtual &&
-    (contentType === "article" || (Boolean(isMobile) && isSocialView));
+    (contentType === "article" || isSocialView);
   const virtualList = useVirtualizedArticleList({
     enabled: useVirtualList,
     scrollSurface,
@@ -1071,6 +1109,10 @@ export function EntryList({
         ? VIRTUAL_PLAIN_ROW_ESTIMATE_PX
         : undefined,
   });
+  // 供键盘 j/k 的 revealEntry 使用（把被虚拟化卸载的选中行滚回来）。
+  useEffect(() => {
+    virtualListRef.current = virtualList;
+  }, [virtualList]);
   useEffect(() => {
     const node = containerRef.current;
     if (!node) return;
@@ -1081,13 +1123,23 @@ export function EntryList({
       const items = node.querySelectorAll<HTMLElement>("[data-entry-id]");
       if (items.length === 0) return;
       const containerTop = node.getBoundingClientRect().top;
-      let index = items.length - 1;
+      // 虚拟列表下 DOM 顺序 ≠ 绝对序号（只挂可视 + overscan 一小段）：优先用行上的
+      // data-index（EntryListItem 透传的绝对下标）；非虚拟列表无 data-index 时回退 DOM 顺序。
+      const absIndex = (el: HTMLElement, fallback: number) => {
+        // 虚拟容器把绝对下标放在外层 [data-index] 上；行本身（ArticlePlainList /
+        // ArticleRowsList 的卡片）不带 data-index，需向最近的祖先取。
+        const holder = el.closest<HTMLElement>("[data-index]");
+        const raw = el.dataset.index ?? holder?.dataset.index;
+        const abs = raw != null && raw !== "" ? Number(raw) : NaN;
+        return Number.isFinite(abs) ? abs : fallback;
+      };
+      let index = absIndex(items[items.length - 1] as HTMLElement, items.length - 1);
       for (let i = 0; i < items.length; i += 1) {
         const el = items[i];
         if (!el) continue;
         const bottom = el.getBoundingClientRect().bottom - containerTop + 8;
         if (bottom > 0) {
-          index = i;
+          index = absIndex(el, i);
           break;
         }
       }
@@ -2025,6 +2077,7 @@ export function EntryList({
                   targetLanguage={targetLanguage}
                   onSelectableEntriesChange={setTimelineSelectableEntries}
                   onSelectFeedFromEntry={onSelectFeedFromEntry}
+                  handleRef={notificationTimelineRef}
                 />
               ) : isArticlePlain ? (
                 /* 常规「Inoreader列表」—— 来源图标 + 加粗标题 + 右侧来源·时间，
@@ -2046,11 +2099,15 @@ export function EntryList({
                       );
                       return (
                         <Fragment key={entry.id}>
-                          {isMobile ? (
-                            <MobileSwipeEntryRow entry={entry}>{row}</MobileSwipeEntryRow>
-                          ) : (
-                            row
-                          )}
+                          {/* 合列非虚拟（行全量挂载）：离屏行用 content-visibility 跳过
+                              渲染/绘制，等价于「渲染层虚拟化」，避免几百行同屏布局。 */}
+                          <div className="[content-visibility:auto] [contain-intrinsic-size:auto_64px]">
+                            {isMobile ? (
+                              <MobileSwipeEntryRow entry={entry}>{row}</MobileSwipeEntryRow>
+                            ) : (
+                              row
+                            )}
+                          </div>
                           {inlinePaneFor(entry.id)}
                         </Fragment>
                       );
@@ -2059,6 +2116,7 @@ export function EntryList({
                     <VirtualizedArticleList
                       virtualList={virtualList}
                       entries={entries}
+                      disableTransform={inlineActive}
                       renderItem={(entry) => {
                         const row = (
                           <ArticlePlainListRow
@@ -2094,15 +2152,17 @@ export function EntryList({
                   {inlineNoVirtual ? (
                     entries.map((entry) => (
                       <Fragment key={entry.id}>
-                        <ArticleRowsListRow
-                          entry={entry}
-                          feed={feedsMap.get(entry.feedId)}
-                          onSelectEntry={handleSelectEntry}
-                          selectedEntryId={selectedEntryId}
-                          onMarkAboveEntry={handleMarkAboveEntry}
-                          isMobile={isMobile}
-                          feedUnreadCount={unreadCounts?.counts?.[entry.feedId]}
-                        />
+                        <div className="[content-visibility:auto] [contain-intrinsic-size:auto_88px]">
+                          <ArticleRowsListRow
+                            entry={entry}
+                            feed={feedsMap.get(entry.feedId)}
+                            onSelectEntry={handleSelectEntry}
+                            selectedEntryId={selectedEntryId}
+                            onMarkAboveEntry={handleMarkAboveEntry}
+                            isMobile={isMobile}
+                            feedUnreadCount={unreadCounts?.counts?.[entry.feedId]}
+                          />
+                        </div>
                         {inlinePaneFor(entry.id)}
                       </Fragment>
                     ))
@@ -2110,6 +2170,7 @@ export function EntryList({
                     <VirtualizedArticleList
                       virtualList={virtualList}
                       entries={entries}
+                      disableTransform={inlineActive}
                       renderItem={(entry) => (
                         <>
                           <ArticleRowsListRow
@@ -2131,6 +2192,7 @@ export function EntryList({
                 <VirtualizedArticleList
                   virtualList={virtualList}
                   entries={entries}
+                  disableTransform={inlineActive}
                   renderItem={(entry, index) => {
                     const item = (
                       <EntryListItem

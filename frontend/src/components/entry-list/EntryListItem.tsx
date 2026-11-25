@@ -650,10 +650,8 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     );
     // 大图查看器要的是**代理后**的 URL 列表（点缩略图传的下标要对得上）
     const openImagePreview = useImagePreviewStore((state) => state.open);
-    const socialImages = useMemo(
-      () => socialMedia.map((m) => getProxiedImageUrl(m.src, entry.url)),
-      [socialMedia, entry.url],
-    );
+    // 代理 URL 含 btoa，改成「点图那一刻」才算：卡片渲染阶段不再为每张图预先构造
+    // （社交列表几十条 × 多图时这是纯浪费，绝大多数图用户不会点）
     // 「长贴自动展开」开启后不做折叠（按视图设置，由 EntryList 传进来）
     const bodyClamped = isContentClipped && !bodyExpanded && !autoExpandLong;
     const isUnread = !entry.read;
@@ -714,7 +712,9 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
               }}
               className={cn(
                 // Folo 的社交时间线是「居中可读宽度」而不是通栏
-                "group relative mx-auto mb-1 flex w-full max-w-[clamp(45ch,60vw,65ch)] cursor-pointer rounded-xl border border-transparent px-3 py-4 transition-colors duration-200",
+                // contain:layout 隔离内部布局（卡片自带绝对定位未读点/悬停操作条），
+                // 但不用 paint：paint 会裁掉卡片自绘阴影与 -left-0.5 溢出的未读圆点
+                "group relative mx-auto mb-1 flex w-full max-w-[clamp(45ch,60vw,65ch)] cursor-pointer rounded-xl border border-transparent px-3 py-4 transition-colors duration-200 [contain:layout]",
                 isSelected ? "border-border/60 bg-card shadow-nf" : "hover:bg-item-hover",
                 unreadRowClass(isUnread, !!entry.starred, isSelected, unreadStyle),
               )}
@@ -879,8 +879,11 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                             event.preventDefault();
                             event.stopPropagation();
                             const src = target.getAttribute("src") ?? "";
-                            const index = socialImages.findIndex((url) => url === src);
-                            openImagePreview(socialImages, index >= 0 ? index : 0);
+                            const urls = socialMedia.map((m) =>
+                              getProxiedImageUrl(m.src, entry.url),
+                            );
+                            const index = urls.findIndex((url) => url === src);
+                            openImagePreview(urls, index >= 0 ? index : 0);
                             return;
                           }
                           /**
@@ -1102,7 +1105,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
               // 只过渡真正会变的属性：transition-all 会让几百张卡片为「任何」属性变化做检查
               // 移动端改成「纸面列表」：整宽、无卡片边框、行间细线，给文字更多呼吸；
               // 桌面端（sm 起）保持原来的圆角卡片。
-              "group relative cursor-pointer overflow-hidden border-0 border-b border-border/45 px-4 py-3.5",
+              "group relative cursor-pointer overflow-hidden border-0 border-b border-border/45 px-4 py-3.5 [contain:layout]",
               "sm:mx-2 sm:mb-1.5 sm:rounded-[10px] sm:border sm:p-2",
               "transition-[background-color,border-color,box-shadow,opacity] duration-200",
               // 24-7：上下结构（来源行顶满 + 标题摘要/右图行），大图档保持纵向

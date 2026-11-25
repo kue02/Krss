@@ -80,7 +80,7 @@ export function ArticleRowsListRow({
           aria-current={selected ? "true" : undefined}
           onClick={() => onSelectEntry?.(entry.id)}
           className={cn(
-            "group mx-2 my-0.5 flex w-[calc(100%-1rem)] items-stretch gap-3 rounded-[10px] border border-transparent px-2 py-2.5 text-left transition-[background-color,border-color,box-shadow] duration-150 hover:bg-item-hover",
+            "group mx-2 my-0.5 flex w-[calc(100%-1rem)] items-stretch gap-3 rounded-[10px] border border-transparent px-2 py-2.5 text-left transition-[background-color,border-color,box-shadow] duration-150 hover:bg-item-hover [contain:layout]",
             selected && "bg-item-hover",
             unreadRowClass(isUnread, !!entry.starred, selected, unreadStyle),
           )}
