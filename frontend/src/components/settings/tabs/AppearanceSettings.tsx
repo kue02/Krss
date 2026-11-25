@@ -376,9 +376,8 @@ export function AppearanceSettings() {
   const articleListRowHeight = useUISettingKey("articleListRowHeight");
   const articleQuickActionMode = useUISettingKey("articleQuickActionMode");
   const articleMobileFullTitle = useUISettingKey("articleMobileFullTitle");
-  const articlePaneStyle = useUISettingKey("articlePaneStyle");
   const articlePaneFrame = useUISettingKey("articlePaneFrame");
-  const { setArticlePaneStyle, setArticlePaneFrame } = useUISettingActions();
+  const { setArticlePaneFrame } = useUISettingActions();
   const hoverImageSize = useUISettingKey("hoverImageSize");
   const hoverMultiImageSetting = useUISettingKey(
     "hoverMultiImage",
@@ -1372,48 +1371,19 @@ export function AppearanceSettings() {
                         />
                       </SettingRow>
                     )}
-                    {/* 「Inoreader列表」正文栏容器样式（用户对比后决定） */}
+                    {/* 「Inoreader列表」正文栏外框：淡边框 / 无边框 / 原样的全宽（用户对比后定稿） */}
                     {articleLayout === "inoreader" && (
-                      <SettingRow
-                        label={t("appearance_view.article_pane_style")}
-                        hint={t("appearance_view.article_pane_style_hint")}
-                      >
-                        <SegmentedControl
-                          className="shrink-0"
-                          value={articlePaneStyle === "card" ? "card" : "plain"}
-                          onValueChange={(value) =>
-                            setArticlePaneStyle(value === "card" ? "card" : "plain")
-                          }
-                          options={[
-                            {
-                              value: "plain",
-                              label: t("appearance_view.article_pane_style_plain"),
-                            },
-                            {
-                              value: "card",
-                              label: t("appearance_view.article_pane_style_card"),
-                            },
-                          ]}
-                        />
-                      </SettingRow>
-                    )}
-                    {/* 卡片档正文栏外框：三档对比，用户选定后保留一档 */}
-                    {articleLayout === "inoreader" && articlePaneStyle === "card" && (
                       <SettingRow
                         label={t("appearance_view.article_pane_frame")}
                         hint={t("appearance_view.article_pane_frame_hint")}
                       >
                         <SegmentedControl
                           className="shrink-0"
-                          value={articlePaneFrame ?? "default"}
+                          value={articlePaneFrame}
                           onValueChange={(value) =>
                             setArticlePaneFrame(value as ArticlePaneFrame)
                           }
                           options={[
-                            {
-                              value: "default",
-                              label: t("appearance_view.article_pane_frame_default"),
-                            },
                             {
                               value: "subtle",
                               label: t("appearance_view.article_pane_frame_subtle"),
@@ -1421,6 +1391,10 @@ export function AppearanceSettings() {
                             {
                               value: "none",
                               label: t("appearance_view.article_pane_frame_none"),
+                            },
+                            {
+                              value: "full",
+                              label: t("appearance_view.article_pane_frame_full"),
                             },
                           ]}
                         />

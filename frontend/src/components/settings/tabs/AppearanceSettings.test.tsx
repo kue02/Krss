@@ -11,7 +11,6 @@ const setEntryFontSize = vi.fn();
 const setEntryLineHeight = vi.fn();
 const setSplitterAutoHide = vi.fn();
 const setArticlePaneFrame = vi.fn();
-const setArticlePaneStyle = vi.fn();
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: "zh" } }),
@@ -139,8 +138,7 @@ vi.mock("@/hooks/useUISettings", async () => {
     articleLayout: "list",
     articlePushDirection: "right",
     articleCoverList: false,
-    articlePaneStyle: "card",
-    articlePaneFrame: "default",
+    articlePaneFrame: "subtle",
     pictureLayout: "grid",
     gridStyle: "masonry",
     hoverRowHeight: "compact",
@@ -172,7 +170,6 @@ vi.mock("@/hooks/useUISettings", async () => {
       setExpandLongForView,
       setReduceMotion,
       setArticleLayout: vi.fn(),
-      setArticlePaneStyle,
       setArticlePaneFrame,
       setSplitterAutoHide,
       setPictureLayout: vi.fn(),
@@ -230,7 +227,6 @@ describe("AppearanceSettings 按视图设置", () => {
     setTimelineTimeBasisForView.mockClear();
     setSplitterAutoHide.mockClear();
     setArticlePaneFrame.mockClear();
-    setArticlePaneStyle.mockClear();
     scrollReadState.mode = "perView";
   });
 
@@ -440,18 +436,31 @@ describe("AppearanceSettings 按视图设置", () => {
     expect(within(pictureRow).queryByText("wall")).toBeNull();
   });
 
-  it("卡片档下出现「正文栏外框」三档，选中即写入 articlePaneFrame", () => {
+  it("Inoreader 下出现「正文栏外框」三档（默认淡边框），选中即写入 articlePaneFrame", () => {
     uiOverride.articleLayout = "inoreader";
     try {
       render(<AppearanceSettings />);
 
       const row = rowOf("appearance_view.article_pane_frame");
-      for (const optionValue of ["default", "subtle", "none"]) {
+      for (const optionValue of ["subtle", "none", "full"]) {
         expect(within(row).getByText(optionValue)).toBeTruthy();
       }
+      expect(row.querySelector("[data-value]")?.getAttribute("data-value")).toBe(
+        "subtle",
+      );
 
-      fireEvent.click(within(row).getByText("subtle"));
-      expect(setArticlePaneFrame).toHaveBeenCalledWith("subtle");
+      fireEvent.click(within(row).getByText("full"));
+      expect(setArticlePaneFrame).toHaveBeenCalledWith("full");
+    } finally {
+      uiOverride.articleLayout = undefined;
+    }
+  });
+
+  it("非 Inoreader 布局不显示「正文栏外框」", () => {
+    uiOverride.articleLayout = "list";
+    try {
+      render(<AppearanceSettings />);
+      expect(screen.queryByText("appearance_view.article_pane_frame")).toBeNull();
     } finally {
       uiOverride.articleLayout = undefined;
     }

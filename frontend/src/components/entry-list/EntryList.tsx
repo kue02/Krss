@@ -37,7 +37,10 @@ import {
   computeFolderSubtreeUnread,
 } from "@/lib/folder-tree";
 import { stripHtml } from "@/lib/html-utils";
-import { articlePaneFrameClasses } from "@/lib/article-pane-style";
+import {
+  articlePaneFrameClasses,
+  articlePaneStyleForFrame,
+} from "@/lib/article-pane-style";
 import { EntryListItem } from "./EntryListItem";
 import { ArticleRowsListRow } from "./ArticleRowsList";
 import { ArticlePlainListRow } from "./ArticlePlainList";
@@ -523,8 +526,8 @@ export function EntryList({
     "inoreaderSplitterPromptShown",
   );
   const [splitterPromptOpen, setSplitterPromptOpen] = useState(false);
-  const articlePaneStyle = useUISettingKey("articlePaneStyle");
   const articlePaneFrame = useUISettingKey("articlePaneFrame");
+  const articlePaneStyle = articlePaneStyleForFrame(articlePaneFrame);
   const suppressedSplitterViews = useMemo(
     () =>
       (["picture", "social", "notification"] as ContentType[])

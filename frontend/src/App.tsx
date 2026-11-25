@@ -94,6 +94,7 @@ import { useRefreshStatus } from "@/hooks/useRefreshStatus";
 import { isAddFeedPath } from "@/lib/router";
 import { initProxyImageRecovery } from "@/lib/proxy-image-recovery";
 import {
+  articlePaneStyleForFrame,
   headerBackgroundBlurFor,
   headerBackgroundRoundedTopFor,
 } from "@/lib/article-pane-style";
@@ -485,7 +486,8 @@ function AuthenticatedApp() {
     initProxyImageRecovery();
   }, []);
 
-  const articlePaneStyle = useUISettingKey("articlePaneStyle");
+  const articlePaneFrame = useUISettingKey("articlePaneFrame");
+  const articlePaneStyle = articlePaneStyleForFrame(articlePaneFrame);
   const reduceMotion = useUISettingKey("reduceMotion");
   useEffect(() => {
     applyReduceMotionToDocument(Boolean(reduceMotion));
