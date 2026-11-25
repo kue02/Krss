@@ -197,3 +197,25 @@ export interface SettingsExportPayload {
 export interface SettingsImportResponse {
   imported: number;
 }
+
+/** 检查更新：GitHub Release 里的一个可下载附件 */
+export interface UpdateAsset {
+  name: string;
+  url: string;
+  /** 字节数，0 或缺省表示未知 */
+  size: number;
+}
+
+/** GET /api/update/check 的结果：当前版本对比 GitHub 最新 Release */
+export interface UpdateCheckResult {
+  currentVersion: string;
+  latestVersion: string;
+  hasUpdate: boolean;
+  releaseName: string;
+  releaseUrl: string;
+  /** ISO 时间串（GitHub published_at），可能为空 */
+  publishedAt: string;
+  /** GitHub 渲染好的发布说明 HTML（前端仍会再经 unified+rehype 消毒） */
+  releaseNotesHtml: string;
+  assets: UpdateAsset[];
+}

@@ -986,7 +986,29 @@
   },
   "update": {
     "available": "发现新版本",
-    "description": "点击刷新以应用更新"
+    "description": "点击刷新以应用更新",
+    "check_title": "版本更新",
+    "check_desc": "检查 Krss 是否有新版本可更新。",
+    "current_version": "当前版本",
+    "latest_version": "最新版本",
+    "check_now": "检查更新",
+    "recheck": "重新检查",
+    "checking": "正在检查…",
+    "has_update_short": "可更新",
+    "up_to_date_short": "已是最新",
+    "check_failed": "检查失败",
+    "check_failed_hint": "无法连接 GitHub，请稍后重试。",
+    "banner_desc": "新版本 {{version}} 已发布，查看更新内容。",
+    "view_details": "查看更新内容",
+    "release_page": "发布页面",
+    "open_on_github": "在 GitHub 查看",
+    "checked_at": "上次检查：{{time}}",
+    "details_title": "版本 {{version}} 更新内容",
+    "published_at": "发布于 {{date}}",
+    "no_notes": "这个版本没有附加发布说明。",
+    "downloads": "下载",
+    "open_release": "前往下载",
+    "close": "关闭"
   },
   "entry_filter": {
     "muted": "已静音"
