@@ -73,6 +73,7 @@ func TestNewRouter_RegistersRoutes(t *testing.T) {
 		pluginHandler,
 		exportHandler,
 		backupHandler,
+		handler.NewUpdateHandler(nil),
 		authService,
 		"",
 		true,
@@ -88,6 +89,8 @@ func TestNewRouter_RegistersRoutes(t *testing.T) {
 	require.True(t, hasRoute(e, http.MethodPost, "/api/mcp/servers/:id/inspect"))
 	require.True(t, hasRoute(e, http.MethodGet, "/api/mcp/outbound"))
 	require.True(t, hasRoute(e, http.MethodPost, "/mcp"))
+	// 检查自身更新
+	require.True(t, hasRoute(e, http.MethodGet, "/api/update/check"))
 }
 
 func TestNewRouter_SwaggerDisabled(t *testing.T) {
@@ -147,6 +150,7 @@ func TestNewRouter_SwaggerDisabled(t *testing.T) {
 		pluginHandler,
 		exportHandler,
 		backupHandler,
+		handler.NewUpdateHandler(nil),
 		authService,
 		"",
 		false,
@@ -216,6 +220,7 @@ func TestNewRouter_LogoutRouteIsPublic(t *testing.T) {
 		pluginHandler,
 		exportHandler,
 		backupHandler,
+		handler.NewUpdateHandler(nil),
 		authService,
 		"",
 		false,

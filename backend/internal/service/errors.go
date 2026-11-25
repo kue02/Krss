@@ -11,6 +11,8 @@ var (
 	ErrConflict  = errors.New("conflict")
 	ErrInvalid   = errors.New("invalid")
 	ErrFeedFetch = errors.New("feed fetch failed")
+	// ErrUpdateCheckFailed 检查自身更新时请求 GitHub 失败（网络/限流/响应异常）—— handler 回 502。
+	ErrUpdateCheckFailed = errors.New("update check failed")
 	// ErrUnknownSettingKey 导入设置时出现白名单以外的键（21 批）——
 	// 单独一个错误是为了给前端一句能看懂的话（列出到底哪个键不认），而不是笼统的 400。
 	ErrUnknownSettingKey = errors.New("unknown setting key")
