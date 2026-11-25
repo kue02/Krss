@@ -1,7 +1,10 @@
 # AGENTS.md —— Krss 项目规则
 
-> 这份文件给**所有** AI 编码工具看（Codex / Claude Code / OpenCode / Cursor / DSH…），是 Krss 的**唯一权威规则来源**。
-> `docs/dev/` 下的文档（todo / IDEA / 变更记录 / 移植笔记 / 发版）只在本机、已被 `.gitignore` 忽略；换了机器或新 clone 没有这些文件，照本文件的规则做即可。
+## 子树并行修改与集成（必须遵守）
+
+- 规则见 `docs/subtree-parallel-workflow.md`，其中的规则**必须严格遵守**。
+- 除非用户明确要求「直接在主树做」，否则一律按该文档执行。
+- **合并进主树后清理本子树残留**：合并完成后，删除本子树创建、且**未被其它服务/会话引用**的子树产物——`git worktree remove` 掉本子树的 worktree、删除其已合入的分支、停掉它起的本地服务（前端 dev server、后端进程、临时库副本），避免残留占用端口/磁盘。删前先 `git branch --merged main` 确认该分支已合入、并确认没有其它 worktree/进程占用该分支或端口；`main` 树、`.agents/worktrees/`、`.worktrees/ios` 等其它任务的树一律不动。
 
 ## 一、必须遵守（违反即验收不合格）
 
@@ -36,7 +39,9 @@ Docker 镜像同流程：tag 一推 `release.yml` 同时构建推 `ghcr.io/kue02
 - **提交信息禁止出现 `Co-Authored-By: Hermes Agent`**：该署名邮箱绑定了无关的 GitHub 账号，会把合著算到别人头上、污染仓库 Contributors 图（2026-11-22 已因此重写历史清除一次）。协作署名只写真实贡献者，或干脆不写。
 - 迁移编号：**不要写死数字，取 `backend/internal/db/migrations.go` 里最后一个 `Migration` 号 +1**（历史上 21 过滤 / 25 视图图标 / 26 代理 / 27 MCP）。给**已经跑过迁移的开发库**补字段要**新建号**，不要改已应用的迁移（`addColumnIfMissing` 在已迁移副本上不会再生效，表现是「改了没反应」）。
 - 质量门（提交前）：后端 `cd backend && make test && make lint`（`PATH="$HOME/go/bin:$PATH"`；接口改过记得 `make gen` 重生成 mock、`swag init` 重生成文档）；前端 `cd frontend && bun run test`（退出码必须 0）+ `bunx tsc -b`。
-- **子树并行修改与集成（必须遵守）**：规则见 `docs/subtree-parallel-workflow.md`，除非用户明确要求「直接在主树做」，否则一律按该文档执行。用 git worktree：各自一条分支、各自目录，基线显式写 `main`：`git worktree add .worktrees/<名字> -b feat/<名字> main`（`.worktrees/` 已写进 `.git/info/exclude`，不要提交它）。
-  - **各树各开各的端口、各用各的库副本，绝不互相干扰**：`:8090` + 真实库只归主树；并行树用 `:8082` 起（一棵一个），库用副本 `data-<名字>`；前端 `KRSS_DEV_BACKEND=http://localhost:808X bun run dev --port 517X`。
-  - **各树做完不许自己往 `main` 合并**，合并由用户在主树新开 session、主动指派「合哪棵子树」后才做；口径变了 / 上下文满了要换会话接着干时，**换 session，不换树**（重开树等于白扔已跑通的后端骨架与测试）。
-  - 多棵树共同的热点文件（`migrations.go`、`locales/*/common.json`、`api/index.ts`、`types/api.ts`、`hooks/useUISettings.ts`、`AppearanceSettings.tsx`、`index.css`、`refresh_service.go`）请小步提交，便于合并前 rebase。
+
+## 四、开发 / 测试账号
+
+- 所有开发、测试环境统一使用同一账号：**用户名 `dev`、密码 `dev`**（昵称 `Dev`，邮箱 `dev@example.com`）。联调、验收、自动化一律用这套，不用个人账号。
+- 该密码以 bcrypt 哈希存在设置表 `settings` 的 `user.password_hash`，用户名在 `user.username`。因注册 / 改密接口强制密码 ≥ 6 位，`dev` 这种短密码需**直接写库**设置（哈希用 `golang.org/x/crypto/bcrypt` 生成），不要走 `/api/auth/register`、`PUT /api/auth/profile`。
+- 新建开发库或重置数据后，按上一条把账号初始化成 `dev` / `dev`。
