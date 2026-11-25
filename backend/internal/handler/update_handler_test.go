@@ -77,7 +77,7 @@ func TestUpdateHandler_Check_RateLimitedMapsTo429(t *testing.T) {
 	require.Equal(t, "update check rate limited", body["error"])
 }
 
-func TestUpdateHandler_Check_ReleaseNotFoundMapsTo502(t *testing.T) {
+func TestUpdateHandler_Check_ReleaseNotFoundMapsTo404(t *testing.T) {
 	e := newTestEcho()
 	svc := &stubUpdateService{err: fmt.Errorf("%w: owner/repo", service.ErrUpdateReleaseNotFound)}
 	handler.NewUpdateHandler(svc).RegisterRoutes(e.Group(""))
@@ -86,7 +86,7 @@ func TestUpdateHandler_Check_ReleaseNotFoundMapsTo502(t *testing.T) {
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
-	require.Equal(t, http.StatusBadGateway, rec.Code)
+	require.Equal(t, http.StatusNotFound, rec.Code)
 	var body map[string]string
 	parseJSONResponse(t, rec, &body)
 	require.Equal(t, "update release not found", body["error"])

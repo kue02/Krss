@@ -133,12 +133,18 @@ func (s *updateService) Check(ctx context.Context) (*UpdateInfo, error) {
 
 	// 冷缓存：并发的调用合并成一次出网，拿到结果后所有等待者共享同一份。
 	// 失败同样共享（不缓存），调用方各自拿到同一个错误。
+	//
+	// 共享的这次出网**不能**用第一个调用方的 ctx：那个人关掉标签页，
+	// 所有排队等同一份结果的人都会跟着收到取消错误。改成脱离取消的 ctx
+	// 再套自己的超时——调用方自己的 ctx 仍在外层 select 里各自生效。
+	sharedCtx, cancelShared := context.WithTimeout(context.WithoutCancel(ctx), updateCheckTimeout)
 	ch := s.group.DoChan("check", func() (any, error) {
+		defer cancelShared()
 		// 双检：排队期间可能已经有别的请求填好了缓存。
 		if cached := s.cachedInfo(); cached != nil {
 			return cached, nil
 		}
-		info, err := s.fetch(ctx)
+		info, err := s.fetch(sharedCtx)
 		if err != nil {
 			s.logCheckFailure(err)
 			return nil, err
@@ -152,7 +158,7 @@ func (s *updateService) Check(ctx context.Context) (*UpdateInfo, error) {
 
 	select {
 	case <-ctx.Done():
-		return nil, fmt.Errorf("%w: %v", ErrUpdateCheckFailed, ctx.Err())
+		return nil, fmt.Errorf("%w: %w", ErrUpdateCheckFailed, ctx.Err())
 	case res := <-ch:
 		if res.Err != nil {
 			return nil, res.Err

@@ -271,6 +271,65 @@ func TestUpdateService_Check_ContextCanceled(t *testing.T) {
 	_, err := svc.Check(ctx)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, service.ErrUpdateCheckFailed))
+	require.True(t, errors.Is(err, context.Canceled), "canceled 要能被 errors.Is 认出来")
+}
+
+func TestUpdateService_Check_CallerCancelDoesNotFailOtherWaiters(t *testing.T) {
+	// 共享的那次出网不能绑在第一个调用方的 ctx 上：
+	// 一个人关掉标签页，排队等同一份结果的其他人不该跟着收到取消错误。
+	var hits int32
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		<-release
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(sampleReleaseJSON))
+	}))
+	t.Cleanup(srv.Close)
+
+	svc := newUpdateService(t, srv, "1.4.0")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	canceled := make(chan error, 1)
+	go func() {
+		_, err := svc.Check(ctx)
+		canceled <- err
+	}()
+
+	require.Eventually(t, func() bool { return atomic.LoadInt32(&hits) == 1 }, 2*time.Second, 5*time.Millisecond)
+
+	// 第一个调用方放弃
+	cancel()
+	select {
+	case err := <-canceled:
+		require.Error(t, err)
+		require.True(t, errors.Is(err, context.Canceled))
+	case <-time.After(2 * time.Second):
+		t.Fatal("canceled caller should return promptly")
+	}
+
+	// 第二个调用方此时加入同一个 singleflight，应能拿到结果
+	type result struct {
+		info *service.UpdateInfo
+		err  error
+	}
+	other := make(chan result, 1)
+	go func() {
+		info, err := svc.Check(context.Background())
+		other <- result{info, err}
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	close(release)
+
+	select {
+	case got := <-other:
+		require.NoError(t, got.err, "另一个等待者不该被第一个调用方的取消牵连")
+		require.NotNil(t, got.info)
+		require.Equal(t, "v9.9.9", got.info.LatestVersion)
+	case <-time.After(5 * time.Second):
+		t.Fatal("waiter never got a result")
+	}
 }
 
 func TestUpdateService_Check_CachedResultIsIndependent(t *testing.T) {

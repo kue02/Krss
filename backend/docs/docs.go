@@ -1555,7 +1555,7 @@ const docTemplate = `{
         },
         "/api/update/check": {
             "get": {
-                "description": "请求 GitHub 最新 Release，返回运行版本、最新版本、是否有更新，以及渲染好的发布说明 HTML 和可下载附件。\n限流时返回 429，仓库或 Release 不存在时返回 502，其余失败返回 502。",
+                "description": "请求 GitHub 最新 Release，返回运行版本、最新版本、是否有更新，以及渲染好的发布说明 HTML 和可下载附件。\n限流时返回 429，仓库或 Release 不存在时返回 404，其余失败返回 502。",
                 "produces": [
                     "application/json"
                 ],
@@ -1568,6 +1568,12 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/krss_backend_internal_service.UpdateInfo"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
                         }
                     },
                     "429": {
