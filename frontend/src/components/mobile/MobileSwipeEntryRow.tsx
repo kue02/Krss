@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { Star } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -122,10 +129,14 @@ export function MobileSwipeEntryRow({
   );
 
   const handleDragEnd = useCallback(
-    (offsetX: number, velocityX: number) => {
+    (offsetX: number, velocityX: number, canceled = false) => {
+      // touchcancel 属于「取消」：不按位移/速度判定，直接回到手势前的 open 状态
+      const wasOpen = baseOffsetRef.current === -ACTION_WIDTH;
       const offset = baseOffsetRef.current + offsetX;
       let shouldOpen: boolean;
-      if (velocityX <= -FLING_VELOCITY) {
+      if (canceled) {
+        shouldOpen = wasOpen;
+      } else if (velocityX <= -FLING_VELOCITY) {
         shouldOpen = true; // 快速左甩 → 展开
       } else if (velocityX >= FLING_VELOCITY) {
         shouldOpen = false; // 快速右甩 → 收起
@@ -151,6 +162,17 @@ export function MobileSwipeEntryRow({
 
   // 卸载时清掉挂起的合帧，避免回调落到已卸载节点
   useEffect(() => cancelPendingFrame, [cancelPendingFrame]);
+
+  // 非拖动时由 open 驱动内容层位移（点外部 / 滚动 / 他行 SWIPE_OPEN_EVENT 收起都走这里）。
+  // 拖动中（dragOffsetRef 非空）不接管：外部 open 变化不得覆盖当前手指位移。
+  // 内容层不再由 React 渲染 style，避免 React 用 open 的新值覆盖 rAF 写入的 transform。
+  useLayoutEffect(() => {
+    if (dragOffsetRef.current !== null) return;
+    const content = contentRef.current;
+    if (!content) return;
+    content.style.transition = "";
+    content.style.transform = `translateX(${open ? -ACTION_WIDTH : 0}px)`;
+  }, [open]);
 
   useSwipeGesture(rowRef, {
     enabledDirections: ["left", "right"],
@@ -260,7 +282,8 @@ export function MobileSwipeEntryRow({
         </button>
       </div>
 
-      {/* 内容层：不透明底盖住动作条；拖动时由 rAF 直接写 transform 跟手，松手后吸附 */}
+      {/* 内容层：不透明底盖住动作条；位移全程由 ref 直接写 DOM（rAF 跟手 + open 同步），
+          不交给 React style，避免外部 open 变化覆盖拖动中的跟手位移 */}
       <div
         ref={contentRef}
         onClickCapture={handleContentClickCapture}
@@ -271,7 +294,6 @@ export function MobileSwipeEntryRow({
             ? "bg-item-hover shadow-[-10px_0_18px_-8px_rgba(0,0,0,0.28)]"
             : "bg-background",
         )}
-        style={{ transform: `translateX(${open ? -ACTION_WIDTH : 0}px)` }}
       >
         {children}
       </div>
