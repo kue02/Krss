@@ -630,6 +630,21 @@ function AuthenticatedApp() {
     setMobileInlineEntryId(null);
   }, [contentType, articlePushDirection, isMobile]);
 
+  /**
+   * 移动端详情页返回列表时，正文面板要整块「滑出去」。如果这一刻立刻把内容换成
+   * 「选择一篇文章开始阅读」的空占位，滑出的过程中就会闪一块**空的正文栏**
+   * （用户真机复现：右滑返回瞬间出现一个空的「正文栏」）。
+   * 这里保留「上一条正文」的 id：返回后详情面板滑出去时显示的仍是刚才那篇文章，
+   * 之后再没有新的选中就一直是它（面板此时已在屏幕外、inert，不可交互，用户看不到）。
+   * 不用定时器清空，避免滑出动画慢于定时器时又在半途闪回空占位。
+   * 只有用户另选一篇时才替换；首次进入（无选中）时才是 null → 占位。
+   */
+  const [retainedDetailEntryId, setRetainedDetailEntryId] = useState<
+    string | null
+  >(selectedEntryId);
+  useEffect(() => {
+    if (selectedEntryId) setRetainedDetailEntryId(selectedEntryId);
+  }, [selectedEntryId]);
 
   // 桌面三栏的第三栏：Nextflux 式转场（reader-transition 批）。
   // 未选 → 首次选中 = 整块从右侧推进；已选 → 换另一条 = 正文上下滑动。
@@ -651,11 +666,11 @@ function AuthenticatedApp() {
     </EntryContentTransition>
   );
 
-  const mobileEntryContent = selectedEntryId ? (
+  const mobileEntryContent = retainedDetailEntryId ? (
     <Suspense fallback={<EntryContentFallback />}>
       <LazyEntryContent
-        key={selectedEntryId}
-        entryId={selectedEntryId}
+        key={retainedDetailEntryId}
+        entryId={retainedDetailEntryId}
         contentType={contentType}
         isMobile
         onBack={showList}

@@ -120,7 +120,10 @@ export function useMobileLayout() {
     };
   }, []);
 
-  // Navigate back to list by removing entryId from URL
+  // Navigate back to list by removing entryId from URL.
+  // 用 replace 而不是 push：详情是从列表 push 上来的，返回若再 push 一条列表历史，
+  // 浏览器再后退会先回到刚关掉的正文（真机反馈「右滑返回像退了一个网页」的鬼影）。
+  // 大多数切视图的入口本来就该 replace，保持一致。
   const showList = useCallback(() => {
     const routeState = parseRoute(location, search, rememberedUnreadOnly);
     navigate(
@@ -130,6 +133,7 @@ export function useMobileLayout() {
         routeState.unreadOnly,
         routeState.contentType,
       ),
+      { replace: true },
     );
   }, [location, search, navigate, rememberedUnreadOnly]);
 
