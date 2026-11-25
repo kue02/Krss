@@ -1,5 +1,5 @@
 import { QueryClient, type DehydratedState, type Query } from "@tanstack/react-query";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // 轻量内存版 idb-keyval：测试只关心「存了什么、能不能读回来 / 什么时候被清掉」，
 // 不需要真实 IndexedDB。工厂里的 memory 在所有 get/set/del 间共享。
@@ -28,6 +28,7 @@ import {
   readSnapshot,
   restoreSnapshot,
   shouldDehydrateQuery,
+  writeSnapshot,
   type PersistedSnapshot,
 } from "./query-persist";
 
@@ -164,6 +165,7 @@ describe("boundDehydratedState", () => {
 describe("isSnapshotFresh", () => {
   const snapshot: PersistedSnapshot = {
     buster: "1.0.0",
+    owner: "u-test",
     savedAt: 1_000,
     state: { mutations: [], queries: [] },
   };
@@ -189,7 +191,13 @@ describe("IndexedDB storage round-trip", () => {
   beforeEach(async () => {
     // jsdom 没有 indexedDB；这里补一个占位符让 isBrowser() 成立，真正的存储由上面的 mock 承担。
     vi.stubGlobal("indexedDB", { open: () => undefined });
+    // 未登录（无令牌）时 persistNow 会跳过落盘，测试里放一个令牌代表已登录用户。
+    localStorage.setItem("krss_auth_token", "test-token");
     await clearSnapshot();
+  });
+
+  afterEach(() => {
+    localStorage.removeItem("krss_auth_token");
   });
 
   it("persistNow → readSnapshot → restoreSnapshot restores entries data", async () => {
@@ -225,8 +233,7 @@ describe("IndexedDB storage round-trip", () => {
       ...(stored as PersistedSnapshot),
       buster: "0.0.1",
     };
-    const idb = await import("idb-keyval");
-    await idb.set("snapshot", staleSnapshot);
+    await writeSnapshot(staleSnapshot);
 
     const target = new QueryClient();
     const restored = await restoreSnapshot(target);
@@ -249,9 +256,47 @@ describe("IndexedDB storage round-trip", () => {
     expect(target.getQueryData(["entries", { limit: 50 }])).toBeUndefined();
   });
 
-  it("clears the snapshot when there is nothing persistable", async () => {
+  it("does not create a snapshot when there is nothing persistable", async () => {
     const source = new QueryClient();
     source.setQueryData(["unreadCounts"], { total: 3 });
+    await persistNow(source);
+    expect(await readSnapshot()).toBeUndefined();
+  });
+
+  it("does not wipe an existing snapshot when a persist pass is transiently empty", async () => {
+    const withEntries = new QueryClient();
+    withEntries.setQueryData(["entries", { limit: 50 }], entriesData);
+    await persistNow(withEntries);
+    expect(await readSnapshot()).toBeDefined();
+
+    // 模拟「查询正处于 refetch、被 shouldDehydrateQuery 跳过」导致的空状态：
+    // 这不应清掉已有快照（旧版会在此处误删本地优先缓存）。
+    const transient = new QueryClient();
+    transient.setQueryData(["unreadCounts"], { total: 3 });
+    await persistNow(transient);
+    const snapshot = await readSnapshot();
+    expect(snapshot).toBeDefined();
+    expect(snapshot?.state.queries).toHaveLength(1);
+  });
+
+  it("does not persist or restore another account's snapshot (owner isolation)", async () => {
+    const source = new QueryClient();
+    source.setQueryData(["entries", { limit: 50 }], entriesData);
+    await persistNow(source);
+    expect(await readSnapshot()).toBeDefined();
+
+    // 换账号（令牌变化）：读不到上一位的快照，也不会恢复它的条目。
+    localStorage.setItem("krss_auth_token", "another-account-token");
+    expect(await readSnapshot()).toBeUndefined();
+    const target = new QueryClient();
+    expect(await restoreSnapshot(target)).toBe(false);
+    expect(target.getQueryData(["entries", { limit: 50 }])).toBeUndefined();
+  });
+
+  it("does not persist while signed out (no token)", async () => {
+    localStorage.removeItem("krss_auth_token");
+    const source = new QueryClient();
+    source.setQueryData(["entries", { limit: 50 }], entriesData);
     await persistNow(source);
     expect(await readSnapshot()).toBeUndefined();
   });

@@ -6,6 +6,7 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import { createStore, del, get, set } from "idb-keyval";
+import { LS_KEYS } from "@/lib/settings-storage";
 
 /**
  * 29：把 react-query 缓存持久化到 IndexedDB，让「切换视图 / 刷新页面」先秒出上次的条目，
@@ -45,7 +46,27 @@ const MAX_PERSISTED_PAGES = 1;
 
 const IDB_DB_NAME = "krss-query-cache";
 const IDB_STORE_NAME = "cache";
-const SNAPSHOT_KEY = "snapshot";
+
+/**
+ * 缓存归属隔离：快照按「当前登录令牌的指纹」分键存放。
+ * - 换账号 / 退出后令牌变化，指纹随之变化，旧快照既读不到也覆盖不了（防跨账号串数据）。
+ * - 只存令牌的哈希指纹，不落令牌原文。
+ * - 未登录（无令牌）时不落盘，返回 "anon"，persistNow 会直接跳过。
+ */
+function ownerFingerprint(): string {
+  if (typeof localStorage === "undefined") return "anon";
+  const token = localStorage.getItem(LS_KEYS.authToken.key) ?? "";
+  if (!token) return "anon";
+  let h = 5381;
+  for (let i = 0; i < token.length; i += 1) {
+    h = ((h << 5) + h + token.charCodeAt(i)) | 0;
+  }
+  return `u${(h >>> 0).toString(36)}`;
+}
+
+function getSnapshotKey(): string {
+  return `snapshot:${ownerFingerprint()}`;
+}
 
 /**
  * 落盘白名单：按 queryKey[0]（查询族根）判断。
@@ -59,6 +80,8 @@ const idbStore = createStore(IDB_DB_NAME, IDB_STORE_NAME);
 export interface PersistedSnapshot {
   /** 版本号（app version），版本一变即视为不可用并丢弃旧缓存。 */
   buster: string;
+  /** 落盘时的账号令牌指纹，恢复前二次校验，防止跨账号串数据。 */
+  owner: string;
   /** 落盘时间戳（ms），用于 maxAge 过期判断。 */
   savedAt: number;
   state: DehydratedState;
@@ -110,27 +133,47 @@ interface InfiniteLikeData {
  * 非无限查询（条目详情）原样保留。
  */
 export function boundDehydratedState(state: DehydratedState): DehydratedState {
+  const trimmed = state.queries.map((query) => {
+    if (query.queryType !== "infinite") return query;
+    const data = query.state.data as InfiniteLikeData | undefined;
+    if (!data || !Array.isArray(data.pages)) return query;
+    if (data.pages.length <= MAX_PERSISTED_PAGES) return query;
+    return {
+      ...query,
+      state: {
+        ...query.state,
+        data: {
+          ...data,
+          pages: data.pages.slice(0, MAX_PERSISTED_PAGES),
+          pageParams: Array.isArray(data.pageParams)
+            ? data.pageParams.slice(0, MAX_PERSISTED_PAGES)
+            : data.pageParams,
+        },
+      },
+    };
+  });
+
+  // 进一步限流（控制落盘体积）：entries 列表只留「最近更新的一条」——每次切视图都会生成
+  // 新的 queryKey，全局 gcTime=24h 会把访问过的都留着，全量序列化会是多 MB 的写与膨胀；
+  // entry 详情最多留 15 条。其余族（本就不在白名单）原样保留以防将来扩展。
+  type DQ = DehydratedState["queries"][number];
+  const byUpdatedDesc = (a: DQ, b: DQ): number =>
+    (b.state.dataUpdatedAt ?? 0) - (a.state.dataUpdatedAt ?? 0);
+  const entries = trimmed
+    .filter((q) => q.queryKey[0] === "entries")
+    .sort(byUpdatedDesc)
+    .slice(0, 1);
+  const entryDetails = trimmed
+    .filter((q) => q.queryKey[0] === "entry")
+    .sort(byUpdatedDesc)
+    .slice(0, 15);
+  const rest = trimmed.filter(
+    (q) => q.queryKey[0] !== "entries" && q.queryKey[0] !== "entry",
+  );
+
   return {
     mutations: state.mutations,
-    queries: state.queries.map((query) => {
-      if (query.queryType !== "infinite") return query;
-      const data = query.state.data as InfiniteLikeData | undefined;
-      if (!data || !Array.isArray(data.pages)) return query;
-      if (data.pages.length <= MAX_PERSISTED_PAGES) return query;
-      return {
-        ...query,
-        state: {
-          ...query.state,
-          data: {
-            ...data,
-            pages: data.pages.slice(0, MAX_PERSISTED_PAGES),
-            pageParams: Array.isArray(data.pageParams)
-              ? data.pageParams.slice(0, MAX_PERSISTED_PAGES)
-              : data.pageParams,
-          },
-        },
-      };
-    }),
+    queries: [...entries, ...entryDetails, ...rest],
   };
 }
 
@@ -151,7 +194,7 @@ export function isSnapshotFresh(
 export async function readSnapshot(): Promise<PersistedSnapshot | undefined> {
   if (!isBrowser()) return undefined;
   try {
-    return await get<PersistedSnapshot>(SNAPSHOT_KEY, idbStore);
+    return await get<PersistedSnapshot>(getSnapshotKey(), idbStore);
   } catch (error) {
     console.warn("[cache] 读取 IndexedDB 快照失败", error);
     return undefined;
@@ -162,7 +205,7 @@ export async function readSnapshot(): Promise<PersistedSnapshot | undefined> {
 export async function writeSnapshot(snapshot: PersistedSnapshot): Promise<void> {
   if (!isBrowser()) return;
   try {
-    await set(SNAPSHOT_KEY, snapshot, idbStore);
+    await set(getSnapshotKey(), snapshot, idbStore);
   } catch (error) {
     console.warn("[cache] 写入 IndexedDB 快照失败", error);
   }
@@ -172,7 +215,7 @@ export async function writeSnapshot(snapshot: PersistedSnapshot): Promise<void> 
 export async function clearSnapshot(): Promise<void> {
   if (!isBrowser()) return;
   try {
-    await del(SNAPSHOT_KEY, idbStore);
+    await del(getSnapshotKey(), idbStore);
   } catch (error) {
     console.warn("[cache] 清理 IndexedDB 快照失败", error);
   }
@@ -183,13 +226,16 @@ export async function clearSnapshot(): Promise<void> {
  */
 export async function persistNow(queryClient: QueryClient): Promise<void> {
   if (!isBrowser()) return;
+  const owner = ownerFingerprint();
+  // 未登录不落盘（避免把登录页 / 上一位用户的残留写进 anon 桶）。
+  if (owner === "anon") return;
   const state = boundDehydratedState(computeDehydratedState(queryClient));
-  if (state.queries.length === 0) {
-    await clearSnapshot();
-    return;
-  }
+  // 空状态多半是「查询正在 refetch（被 shouldDehydrateQuery 跳过）」的瞬时态，
+  // 不能据此清空已有快照，否则一次后台重拉就会把本地优先缓存抹掉。
+  if (state.queries.length === 0) return;
   await writeSnapshot({
     buster: getCacheBuster(),
+    owner,
     savedAt: Date.now(),
     state,
   });
@@ -254,17 +300,26 @@ export function attachPersister(queryClient: QueryClient): () => void {
  */
 export async function restoreSnapshot(
   queryClient: QueryClient,
-  options?: { now?: number; maxAge?: number },
+  options?: { now?: number; maxAge?: number; isCancelled?: () => boolean },
 ): Promise<boolean> {
   if (!isBrowser()) return false;
   const snapshot = await readSnapshot();
   if (!snapshot) return false;
+
+  // 归属二次校验：指纹不一致（换账号 / 令牌轮换）→ 丢弃，绝不跨账号恢复。
+  if (snapshot.owner !== ownerFingerprint()) {
+    await clearSnapshot();
+    return false;
+  }
 
   const now = options?.now ?? Date.now();
   if (!isSnapshotFresh(snapshot, getCacheBuster(), now, options?.maxAge)) {
     await clearSnapshot();
     return false;
   }
+
+  // 引导超时后（此时应用可能已拉到新数据）不再 hydrate，避免旧快照回灌覆盖新数据。
+  if (options?.isCancelled?.()) return false;
 
   hydrate(queryClient, snapshot.state);
   return true;
@@ -281,13 +336,20 @@ export async function bootstrapQueryCache(
   if (!isBrowser()) return;
 
   const timeoutMs = options?.timeoutMs ?? RESTORE_TIMEOUT_MS;
+  let timedOut = false;
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<null>((resolve) => {
-    timeoutId = setTimeout(() => resolve(null), timeoutMs);
+    timeoutId = setTimeout(() => {
+      timedOut = true;
+      resolve(null);
+    }, timeoutMs);
   });
 
   try {
-    await Promise.race([restoreSnapshot(queryClient), timeout]);
+    await Promise.race([
+      restoreSnapshot(queryClient, { isCancelled: () => timedOut }),
+      timeout,
+    ]);
   } catch (error) {
     console.warn("[cache] 恢复 IndexedDB 快照失败", error);
   } finally {
