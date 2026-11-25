@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mmcdole/gofeed"
@@ -42,6 +43,12 @@ const (
 	htmlIconTimeout = 10 * time.Second
 	// 首页最多读这么多字节再解析（图标声明都在 <head> 里）
 	htmlIconScanBytes = 512 * 1024
+
+	// 异步图标队列：把「刷新后补图标」移出刷新热路径。
+	// 队列满时非阻塞丢弃（图标只是锦上添花，不值得反压刷新）；去重同一 feedID 的在途任务。
+	iconEnqueueBuffer = 256
+	iconWorkerCount   = 3
+	iconWorkerTimeout = 30 * time.Second
 )
 
 type IconService interface {
@@ -50,6 +57,11 @@ type IconService interface {
 	FetchAndSaveIcon(ctx context.Context, feedImageURL, siteURL string) (string, error)
 	// FetchAndSaveIconForFeed 同上，但按这条订阅生效的代理出网（订阅 → 文件夹父级链 → 全局）
 	FetchAndSaveIconForFeed(ctx context.Context, feedID int64, feedImageURL, siteURL string) (string, error)
+	// EnqueueIconFetch 把「刷新后补图标」丢进异步有界队列：同一 feedID 在途去重、
+	// 队列满时非阻塞丢弃。调用方不再同步等待下载，刷新热路径因此不再被图标拖慢。
+	EnqueueIconFetch(feedID int64, imageURL, siteURL string)
+	// Close 优雅关闭异步图标队列：停止接收新任务并等待在途任务退出，可重复调用。
+	Close()
 	// EnsureIcon checks if the icon file exists, re-downloads if missing
 	EnsureIcon(ctx context.Context, iconPath, siteURL string) error
 	// EnsureIconForFeed 同上，但按这条订阅生效的代理出网
@@ -71,6 +83,20 @@ type iconService struct {
 	anubis        AnubisSolver
 	// plugins 可选：接上后，FeedIconProvider 插件可为订阅提供专用图标 URL（如 GitHub 头像）。
 	plugins *plugin.Registry
+
+	// 异步图标队列（见 EnqueueIconFetch / Close）
+	queue     chan iconJob
+	pending   sync.Map // map[int64]struct{}：在途去重
+	workers   sync.WaitGroup
+	done      chan struct{}
+	closeOnce sync.Once
+}
+
+// iconJob 是一条待抓图标的订阅。
+type iconJob struct {
+	feedID   int64
+	imageURL string
+	siteURL  string
 }
 
 // IconServiceOption 是 NewIconService 的函数式选项，避免为了新依赖改动所有既有调用点。
@@ -91,7 +117,78 @@ func NewIconService(dataDir string, feeds repository.FeedRepository, clientFacto
 	for _, opt := range opts {
 		opt(s)
 	}
+	s.queue = make(chan iconJob, iconEnqueueBuffer)
+	s.done = make(chan struct{})
+	s.workers.Add(iconWorkerCount)
+	for i := 0; i < iconWorkerCount; i++ {
+		go s.iconWorker()
+	}
 	return s
+}
+
+// EnqueueIconFetch 把一条订阅的图标抓取投递到异步队列（去重、非阻塞）。
+// 关闭后变为空操作；队列满时丢弃并记录日志，绝不阻塞刷新热路径。
+func (s *iconService) EnqueueIconFetch(feedID int64, imageURL, siteURL string) {
+	select {
+	case <-s.done:
+		return
+	default:
+	}
+	if _, loaded := s.pending.LoadOrStore(feedID, struct{}{}); loaded {
+		return // 同一订阅已在途，避免重复下载
+	}
+	select {
+	case s.queue <- iconJob{feedID: feedID, imageURL: imageURL, siteURL: siteURL}:
+	default:
+		s.pending.Delete(feedID)
+		logger.Warn("icon fetch queue full, dropping", "module", "service", "action", "icon", "resource", "feed", "result", "dropped", "feed_id", feedID)
+	}
+}
+
+func (s *iconService) iconWorker() {
+	defer s.workers.Done()
+	for {
+		select {
+		case <-s.done:
+			return
+		case job := <-s.queue:
+			s.processIconJob(job)
+			s.pending.Delete(job.feedID)
+		}
+	}
+}
+
+func (s *iconService) processIconJob(job iconJob) {
+	ctx, cancel := context.WithTimeout(context.Background(), iconWorkerTimeout)
+	defer cancel()
+	iconPath, err := s.FetchAndSaveIconForFeed(ctx, job.feedID, job.imageURL, job.siteURL)
+	if err != nil {
+		logger.Warn("async icon fetch failed", "module", "service", "action", "icon", "resource", "feed", "result", "failed", "feed_id", job.feedID, "error", err)
+		return
+	}
+	if iconPath == "" {
+		return
+	}
+	if err := s.feeds.UpdateIconPath(ctx, job.feedID, iconPath); err != nil {
+		logger.Warn("async icon update path failed", "module", "service", "action", "icon", "resource", "feed", "result", "failed", "feed_id", job.feedID, "error", err)
+	}
+}
+
+// Close 停止接收新任务并等待在途任务退出；可重复调用。
+func (s *iconService) Close() {
+	s.closeOnce.Do(func() {
+		close(s.done)
+		s.workers.Wait()
+		// 清空未被处理的排队任务，避免 pending 里残留条目。
+		for {
+			select {
+			case job := <-s.queue:
+				s.pending.Delete(job.feedID)
+			default:
+				return
+			}
+		}
+	})
 }
 
 // supportedIconExts lists all supported icon extensions

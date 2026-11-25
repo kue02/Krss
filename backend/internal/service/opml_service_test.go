@@ -432,6 +432,11 @@ func (s *iconServiceStub) ClearAllIcons(ctx context.Context) (int64, error) {
 	return 0, nil
 }
 
+// EnqueueIconFetch / Close：17 批异步图标队列新增的接口方法，stub 里无需真抓。
+func (s *iconServiceStub) EnqueueIconFetch(feedID int64, imageURL, siteURL string) {}
+
+func (s *iconServiceStub) Close() {}
+
 func int64Ptr(value int64) *int64 {
 	return &value
 }

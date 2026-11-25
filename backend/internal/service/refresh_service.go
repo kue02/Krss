@@ -321,19 +321,13 @@ func (s *refreshService) saveAndPostProcess(ctx context.Context, feed model.Feed
 		}
 	}
 
-	// 每次刷新都让图标服务重新判断一次：
+	// 每次刷新都让图标服务重新判断一次，但改成异步投递：
 	// 1) 没有图标时照旧补一个；
 	// 2) 已有通用 favicon 但插件（如 GitHub 头像）认领了这条订阅时，插件头像会替换它。
 	// FetchAndSaveIconForFeed 内部对「已是目标头像」会直接命中缓存文件，不会重复下载。
+	// 图标下载不再阻塞刷新热路径（async 队列去重 + 有界 + 可优雅关闭）。
 	if s.icons != nil {
-		if iconPath, err := s.icons.FetchAndSaveIconForFeed(ctx, feed.ID, imageURL, siteURL); err == nil && iconPath != "" {
-			if feed.IconPath == nil || *feed.IconPath != iconPath {
-				if err := s.feeds.UpdateIconPath(ctx, feed.ID, iconPath); err == nil {
-					p := iconPath
-					feed.IconPath = &p
-				}
-			}
-		}
+		s.icons.EnqueueIconFetch(feed.ID, imageURL, siteURL)
 	}
 	s.recordFeedSuccess(ctx, feed.ID)
 }

@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -596,7 +597,7 @@ func TestIconService_ExtractIconURLs(t *testing.T) {
 	require.Equal(t, []string{
 		"https://example.com/blog/apple-touch-icon.png", // 相对路径按首页解析
 		"https://cdn.example.com/favicon.ico",           // 协议相对路径
-		"https://example.com/icon-32.png",              // 绝对路径，重复只留一次
+		"https://example.com/icon-32.png",               // 绝对路径，重复只留一次
 	}, got, "应跳过 mask-icon 与 data:，并保持文档顺序")
 }
 
@@ -917,4 +918,105 @@ func TestIconService_BackfillRefetchesAggregatorIcon(t *testing.T) {
 	defer mu.Unlock()
 	require.Contains(t, cleared, int64(100), "实例 logo 那行应被清掉 icon_path 交给重抓")
 	require.Equal(t, "t.me.png", refetched[100], "重抓后应拿到真实站点 t.me 的图标")
+}
+
+// 17 批：图标异步队列。同一 feed 在途去重 —— 连投两次只会真正下载/回填一次。
+func TestIconService_EnqueueIconFetch_Dedup(t *testing.T) {
+	iconData := pngBytes(t, 2, 2)
+	var hits int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/icon.png" {
+			atomic.AddInt32(&hits, 1)
+			time.Sleep(150 * time.Millisecond) // 让首个任务在途，第二次入队应被去重
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(iconData)
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+
+	var updates int32
+	doneCh := make(chan struct{}, 4)
+	repo := &feedRepoStub{updateIconPathFn: func(context.Context, int64, string) error {
+		if atomic.AddInt32(&updates, 1) == 1 {
+			select {
+			case doneCh <- struct{}{}:
+			default:
+			}
+		}
+		return nil
+	}}
+
+	svc := service.NewIconService(t.TempDir(), repo, network.NewClientFactoryForTest(&http.Client{}), nil)
+	defer svc.Close()
+
+	svc.EnqueueIconFetch(7, server.URL+"/icon.png", server.URL)
+	svc.EnqueueIconFetch(7, server.URL+"/icon.png", server.URL) // 同一 feed，应被去重
+
+	select {
+	case <-doneCh:
+	case <-time.After(3 * time.Second):
+		t.Fatal("icon job not processed in time")
+	}
+	time.Sleep(300 * time.Millisecond) // 给可能的第二个任务留出执行窗口
+	require.Equal(t, int32(1), atomic.LoadInt32(&hits), "同一 feed 只应下载一次")
+	require.Equal(t, int32(1), atomic.LoadInt32(&updates), "同一 feed 只应回填一次")
+}
+
+// 17 批：队列满时 EnqueueIconFetch 非阻塞丢弃，不 panic、不卡住调用方。
+func TestIconService_EnqueueIconFetch_FullQueueDropsWithoutBlocking(t *testing.T) {
+	iconData := pngBytes(t, 2, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(iconData)
+	}))
+	defer server.Close()
+
+	repo := &feedRepoStub{updateIconPathFn: func(context.Context, int64, string) error { return nil }}
+	svc := service.NewIconService(t.TempDir(), repo, network.NewClientFactoryForTest(&http.Client{}), nil)
+
+	start := time.Now()
+	for i := int64(1); i <= 600; i++ { // 远超 256 缓冲 + 3 worker，必然触发满队丢弃
+		svc.EnqueueIconFetch(i, server.URL+"/icon.png", server.URL)
+	}
+	elapsed := time.Since(start)
+	require.Less(t, elapsed, 2*time.Second, "队列满时入队应保持非阻塞")
+	svc.Close()
+}
+
+// 17 批：Close 后不再处理新任务、可重复调用、且不残留 worker goroutine。
+func TestIconService_Close_StopsProcessingAndReleasesWorkers(t *testing.T) {
+	iconData := pngBytes(t, 2, 2)
+	var hits int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(iconData)
+	}))
+	defer server.Close()
+
+	var updates int32
+	repo := &feedRepoStub{updateIconPathFn: func(context.Context, int64, string) error {
+		atomic.AddInt32(&updates, 1)
+		return nil
+	}}
+
+	before := runtime.NumGoroutine()
+	svc := service.NewIconService(t.TempDir(), repo, network.NewClientFactoryForTest(&http.Client{}), nil)
+	require.Greater(t, runtime.NumGoroutine(), before, "应已启动 worker")
+
+	svc.Close()
+	svc.Close() // 幂等
+
+	require.Eventually(t, func() bool {
+		return runtime.NumGoroutine() <= before+1
+	}, 2*time.Second, 20*time.Millisecond, "Close 后 worker 应退出")
+
+	hitsAfter := atomic.LoadInt32(&hits)
+	updatesAfter := atomic.LoadInt32(&updates)
+	svc.EnqueueIconFetch(99, server.URL+"/icon.png", server.URL)
+	time.Sleep(200 * time.Millisecond)
+	require.Equal(t, hitsAfter, atomic.LoadInt32(&hits), "Close 后不应再发起图标请求")
+	require.Equal(t, updatesAfter, atomic.LoadInt32(&updates), "Close 后不应再回填图标路径")
 }

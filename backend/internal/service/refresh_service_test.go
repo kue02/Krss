@@ -123,8 +123,7 @@ func TestRefreshService_RefreshFeed_Success(t *testing.T) {
 		},
 	)
 	mockFeeds.EXPECT().UpdateSiteURL(gomock.Any(), int64(10), "https://example.com").Return(nil)
-	mockIcons.EXPECT().FetchAndSaveIconForFeed(gomock.Any(), int64(10), "https://example.com/icon.png", "https://example.com").Return("example.com.png", nil)
-	mockFeeds.EXPECT().UpdateIconPath(gomock.Any(), int64(10), "example.com.png").Return(nil)
+	mockIcons.EXPECT().EnqueueIconFetch(int64(10), "https://example.com/icon.png", "https://example.com")
 
 	mockEntries.EXPECT().GetExistingEntry(gomock.Any(), int64(10), hashString("https://example.com/1"), "https://example.com/1").Return(nil, nil)
 	mockEntries.EXPECT().CreateOrUpdateSkippingTombstones(gomock.Any(), gomock.Any()).Return(true, nil)
@@ -179,8 +178,7 @@ func TestRefreshService_RefreshFeed_RechecksExistingIcon(t *testing.T) {
 		},
 	)
 	mockFeeds.EXPECT().UpdateSiteURL(gomock.Any(), int64(11), "https://example.com").Return(nil)
-	mockIcons.EXPECT().FetchAndSaveIconForFeed(gomock.Any(), int64(11), "https://example.com/icon.png", "https://example.com").Return("abc123.jpg", nil)
-	mockFeeds.EXPECT().UpdateIconPath(gomock.Any(), int64(11), "abc123.jpg").Return(nil)
+	mockIcons.EXPECT().EnqueueIconFetch(int64(11), "https://example.com/icon.png", "https://example.com")
 
 	mockEntries.EXPECT().GetExistingEntry(gomock.Any(), int64(11), hashString("https://example.com/1"), "https://example.com/1").Return(nil, nil)
 	mockEntries.EXPECT().CreateOrUpdateSkippingTombstones(gomock.Any(), gomock.Any()).Return(true, nil)
@@ -634,9 +632,9 @@ func TestRefreshService_RefreshAllAuto_IntervalGate(t *testing.T) {
 	fortyMinAgo := now.Add(-40 * time.Minute)
 
 	feeds := []model.Feed{
-		{ID: 101, URL: "https://never.example/rss", Title: "NeverFetched"},                                         // nil → 到期
-		{ID: 102, URL: "https://fresh.example/rss", Title: "Fresh", LastFetchedAt: &fiveMinAgo},                    // 15min 内 → 跳过
-		{ID: 103, URL: "https://streak1.example/rss", Title: "Streak1", LastFetchedAt: &twentyMinAgo, NoChangeStreak: 1}, // 有效 30min，20min → 跳过
+		{ID: 101, URL: "https://never.example/rss", Title: "NeverFetched"},                                                    // nil → 到期
+		{ID: 102, URL: "https://fresh.example/rss", Title: "Fresh", LastFetchedAt: &fiveMinAgo},                               // 15min 内 → 跳过
+		{ID: 103, URL: "https://streak1.example/rss", Title: "Streak1", LastFetchedAt: &twentyMinAgo, NoChangeStreak: 1},      // 有效 30min，20min → 跳过
 		{ID: 104, URL: "https://streak1old.example/rss", Title: "Streak1Old", LastFetchedAt: &fortyMinAgo, NoChangeStreak: 1}, // 有效 30min，40min → 到期
 	}
 

@@ -190,7 +190,7 @@ func (s *feedService) Add(ctx context.Context, feedURL string, folderID *int64, 
 
 	logger.Info("feed created", "module", "service", "action", "create", "resource", "feed", "result", "ok", "feed_id", created.ID, "feed_title", created.Title, "host", network.ExtractHost(created.URL))
 
-	// Download and save icon
+	// 异步补图标：不阻塞新增订阅的返回；稍后由图标队列下载并回填 icon_path。
 	if s.icons != nil {
 		siteURL := ""
 		if created.SiteURL != nil {
@@ -199,10 +199,7 @@ func (s *feedService) Add(ctx context.Context, feedURL string, folderID *int64, 
 		if siteURL == "" {
 			siteURL = trimmedURL // Use feed URL as fallback for favicon
 		}
-		if iconPath, err := s.icons.FetchAndSaveIconForFeed(ctx, created.ID, fetched.imageURL, siteURL); err == nil && iconPath != "" {
-			_ = s.feeds.UpdateIconPath(ctx, created.ID, iconPath)
-			created.IconPath = &iconPath
-		}
+		s.icons.EnqueueIconFetch(created.ID, fetched.imageURL, siteURL)
 	}
 
 	// Save entries from the fetched feed
