@@ -5,6 +5,7 @@ import {
   useState,
   useMemo,
   useEffect,
+  useRef,
 } from "react";
 import { Router, useLocation, useSearch, Redirect } from "wouter";
 import { useTranslation } from "react-i18next";
@@ -670,6 +671,20 @@ function AuthenticatedApp() {
     [selectedEntryId],
   );
 
+  // 关闭详情（返回列表）时不要走 CSS 滑出动画：
+  // iOS 的边缘右滑返回手势已经由系统做过一次原生滑动，如果这里再叠一段 300ms
+  // 的 translate 滑出，就会在「手势结束、切回列表」的瞬间露出一帧正文面板，
+  // 表现为「闪一下正文栏」。返回直接瞬时归位，交给系统手势的滑动即可，观感干净。
+  // 进入详情仍保留滑入动画（点开条目是客户端导航，没有系统动画，需要这层过渡）。
+  // 用 ref 记住上一次的 mobileView，据此判断「这一帧是不是正在关闭」，
+  // 避免影响进入/详情内切换条目等其它情形。
+  const prevMobileViewRef = useRef(mobileView);
+  const isDetailClosing =
+    prevMobileViewRef.current === "detail" && mobileView === "list";
+  useEffect(() => {
+    prevMobileViewRef.current = mobileView;
+  }, [mobileView]);
+
   // 桌面三栏的第三栏：Nextflux 式转场（reader-transition 批）。
   // 未选 → 首次选中 = 整块从右侧推进；已选 → 换另一条 = 正文上下滑动。
   // 触发条件与数值见 entry-content/reader-transition.ts（抄自 Nextflux ArticleView.jsx L146-202）。
@@ -1003,7 +1018,10 @@ function AuthenticatedApp() {
           {/* Detail remains an internal scroller and slides over the document list. */}
           <section
             className={cn(
-              "mobile-detail-page fixed inset-0 z-30 h-[var(--app-dvh)] overflow-hidden bg-background transition-transform duration-300 ease-out",
+              "mobile-detail-page fixed inset-0 z-30 h-[var(--app-dvh)] overflow-hidden bg-background",
+              isDetailClosing
+                ? "transition-none"
+                : "transition-transform duration-300 ease-out",
               mobileView === "detail"
                 ? mobileDetailVertical
                   ? "translate-y-0"
