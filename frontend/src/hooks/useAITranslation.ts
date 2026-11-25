@@ -536,6 +536,7 @@ export function useAITranslation({
           if (
             await needsTranslation(entry.title || "", summary, targetLanguage)
           ) {
+            if (activeEntryIdRef.current !== entryIdSnapshot) return;
             translateArticlesBatch(
               [{ id: entry.id, title: entry.title || "", summary }],
               targetLanguage,
