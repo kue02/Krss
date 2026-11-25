@@ -439,7 +439,6 @@ export function HoverImg({ projects = defaultProjects, className, isContained = 
                     if (srcs.length <= 1) {
                         return (
                             <div className="hover-img-thumbnail" key={index}>
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <AuthedImage src={project.imageSrc} alt={project.title} />
                             </div>
                         );
@@ -456,7 +455,6 @@ export function HoverImg({ projects = defaultProjects, className, isContained = 
                                 data-img-count={srcs.length}
                             >
                                 {srcs.map((src, si) => (
-                                    /* eslint-disable-next-line @next/next/no-img-element */
                                     <AuthedImage key={si} src={src} alt={project.title} loading="lazy" />
                                 ))}
                             </div>

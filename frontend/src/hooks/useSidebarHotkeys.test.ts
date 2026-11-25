@@ -68,7 +68,7 @@ describe("useSidebarHotkeys", () => {
   });
 
   it("x 折叠选中订阅所属的分组", () => {
-    const { } = setup({ type: "feed", feedId: "2" });
+    setup({ type: "feed", feedId: "2" });
     press("x");
     expect(toggleCategory).toHaveBeenCalledWith("科技");
   });

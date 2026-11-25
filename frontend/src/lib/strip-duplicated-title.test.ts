@@ -25,7 +25,7 @@ describe("stripDuplicatedTitle", () => {
   });
 
   it("首段以标题开头且无剩余内容时整段删掉", () => {
-    const html = `<p>${TITLE}　</p><p>正文。</p>`;
+    const html = `<p>${TITLE}\u3000</p><p>正文。</p>`;
     expect(stripDuplicatedTitle(html, TITLE)).toBe("<p>正文。</p>");
   });
 

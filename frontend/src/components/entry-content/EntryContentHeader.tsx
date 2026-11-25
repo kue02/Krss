@@ -182,6 +182,14 @@ export function EntryContentHeader({
   const [moreOpen, setMoreOpen] = useState(false);
   const [readingSettingsOpen, setReadingSettingsOpen] = useState(false);
 
+  // 正文工具栏自定义顺序 / 显隐（REQ1）：读取归一后的配置，按它渲染。
+  // 必须在移动端 early-return 之前调用，保证 Hook 调用顺序恒定。
+  const entryToolbarConfig = useUISettingKey("entryToolbar");
+  const toolbarItems = useMemo(
+    () => normalizeEntryToolbar(entryToolbarConfig),
+    [entryToolbarConfig],
+  );
+
   if (isMobile) {
     return (
       <>
@@ -424,13 +432,6 @@ export function EntryContentHeader({
       </>
     );
   }
-
-  // 正文工具栏自定义顺序 / 显隐（REQ1）：读取归一后的配置，按它渲染。
-  const entryToolbarConfig = useUISettingKey("entryToolbar");
-  const toolbarItems = useMemo(
-    () => normalizeEntryToolbar(entryToolbarConfig),
-    [entryToolbarConfig],
-  );
 
   const translationButtonState: TranslationButtonState = {
     isDisabled: !!translationDisabled,

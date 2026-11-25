@@ -61,7 +61,6 @@ export function CreateFolderDialog({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3 px-4 pb-4">
           <input
-            // eslint-disable-next-line jsx-a11y/no-autofocus
             autoFocus
             type="text"
             value={name}
