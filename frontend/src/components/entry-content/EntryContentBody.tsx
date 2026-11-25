@@ -1,4 +1,4 @@
-import { useEffect, useState, type RefCallback } from "react";
+import { Fragment, useEffect, useState, type ReactNode, type RefCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useEntryMeta } from "@/hooks/useEntryMeta";
 import { useFeeds } from "@/hooks/useFeeds";
@@ -6,6 +6,7 @@ import { apiUrl } from "@/lib/server-url";
 import { isSafeUrl } from "@/lib/url";
 import type { ArticleContentBlock } from "@/components/ui/article-content";
 import { CalendarIcon, ClockIcon } from "@/components/ui/icons";
+import { FeedIcon } from "@/components/ui/feed-icon";
 import { PluginSlot } from "@/plugins/PluginSlot";
 import { useEntryDecorations } from "@/components/reader/useEntryDecorations";
 import { useReaderTextRange } from "@/components/reader/useReaderTextRange";
@@ -61,6 +62,66 @@ export function EntryContentBody({
   }, [entry.feedId, sourceFeed?.iconPath]);
   const title = displayTitle ?? entry.title ?? t("entry.untitled");
 
+  // 正文栏页头的署名行：把「源 / 作者 / 日期 / 阅读时长」里实际存在的字段收进数组，
+  // 再统一用 `·` 分隔，避免出现孤立的间隔符。
+  const bylineFields: { key: string; node: ReactNode }[] = [];
+  if (sourceFeed?.title) {
+    bylineFields.push({
+      key: "source",
+      node: (
+        <span className="flex min-w-0 items-center gap-1.5">
+          {sourceFeed.iconPath && !iconFailed ? (
+            <img
+              src={apiUrl(`/icons/${sourceFeed.iconPath}`)}
+              alt=""
+              width={18}
+              height={18}
+              loading="lazy"
+              decoding="async"
+              className="size-[18px] shrink-0 rounded-[3px] object-contain"
+              onError={() => setIconFailed(true)}
+            />
+          ) : (
+            <span className="flex size-[18px] shrink-0 items-center justify-center rounded-[3px] bg-secondary text-muted-foreground">
+              <FeedIcon className="size-3" />
+            </span>
+          )}
+          <span className="min-w-0 truncate font-medium text-foreground/85">
+            {sourceFeed.title}
+          </span>
+        </span>
+      ),
+    });
+  }
+  if (entry.author) {
+    bylineFields.push({
+      key: "author",
+      node: <span className="min-w-0 truncate">{entry.author}</span>,
+    });
+  }
+  if (publishedLong) {
+    bylineFields.push({
+      key: "date",
+      node: (
+        <span className="inline-flex items-center gap-1">
+          <CalendarIcon className="size-3.5 shrink-0 opacity-60" />
+          <span className="tabular-nums">{publishedLong}</span>
+        </span>
+      ),
+    });
+  }
+  if (readingTime) {
+    bylineFields.push({
+      key: "readingTime",
+      node: (
+        <span className="inline-flex items-center gap-1">
+          <ClockIcon className="size-3.5 shrink-0 opacity-60" />
+          {readingTime}
+        </span>
+      ),
+    });
+  }
+
   /**
    * 56-23：插件在正文上画的两样东西都锚在**同一个容器**上 —— `ArticleProse` 里那个
    * `data-slot="article-prose"`（正文 HTML 的宿主）。装饰的 rune 偏移、选中区间的 rune 偏移
@@ -108,8 +169,8 @@ export function EntryContentBody({
         {isSocial ? (
           <SocialAuthorHeader entry={entry} />
         ) : (
-        <header className="mb-4 space-y-5">
-          <h1 className="text-2xl font-semibold leading-tight tracking-tight text-foreground wrap-anywhere sm:text-[25.6px] sm:font-semibold sm:leading-8">
+        <header className="mb-6">
+          <h1 className="text-[26px] font-semibold leading-[1.2] tracking-[-0.02em] text-foreground wrap-anywhere sm:text-[32px] sm:leading-[1.18]">
             {entry.url && isSafeUrl(entry.url) ? (
               <a
                 href={entry.url}
@@ -124,44 +185,25 @@ export function EntryContentBody({
             )}
           </h1>
 
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-sm text-muted-foreground">
-            {entry.author && (
-              <div className="flex min-w-0 items-center gap-2">
-                {sourceFeed?.iconPath && !iconFailed ? (
-                  <img
-                    src={apiUrl(`/icons/${sourceFeed.iconPath}`)}
-                    alt=""
-                    width={24}
-                    height={24}
-                    loading="lazy"
-                    decoding="async"
-                    className="size-6 shrink-0 rounded-full object-cover"
-                    onError={() => setIconFailed(true)}
-                  />
-                ) : (
-                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-secondary text-[11px] font-semibold text-muted-foreground">
-                    {entry.author.trim().charAt(0).toUpperCase() || "?"}
-                  </span>
-                )}
-                <span className="truncate">{entry.author}</span>
-              </div>
-            )}
+          {bylineFields.length > 0 && (
+            <div className="mt-4 flex flex-wrap items-center gap-x-2.5 gap-y-2 text-[13px] leading-5 text-foreground/80">
+              {bylineFields.map((field, index) => (
+                <Fragment key={field.key}>
+                  {index > 0 && (
+                    <span className="text-muted-foreground/40">·</span>
+                  )}
+                  {field.node}
+                </Fragment>
+              ))}
+            </div>
+          )}
 
-            {publishedLong && (
-              <div className="flex items-center gap-1.5">
-                <CalendarIcon className="size-4 opacity-70" />
-                <span className="tabular-nums">{publishedLong}</span>
-              </div>
-            )}
-
-            {readingTime && (
-              <div className="flex items-center gap-1.5">
-                <ClockIcon className="size-4 opacity-70" />
-                <span>{readingTime}</span>
-              </div>
-            )}
+          <div
+            aria-hidden="true"
+            className="relative mt-5 h-px w-full bg-border/50"
+          >
+            <span className="absolute left-0 top-1/2 h-[2px] w-10 -translate-y-1/2 rounded-full bg-primary" />
           </div>
-          <hr className="border-border/60" />
         </header>
         )}
 
