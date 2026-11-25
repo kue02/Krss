@@ -357,4 +357,7 @@ export async function bootstrapQueryCache(
   }
 
   attachPersister(queryClient);
+
+  // 清理 29 版遗留的全局快照键：旧格式不含账号归属，可能含上一位账号的条目，直接丢弃。
+  void del("snapshot", idbStore).catch(() => undefined);
 }
