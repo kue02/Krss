@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
+import { Button } from "@heroui/react";
 import {
   useEntry,
   useMarkAsRead,
@@ -23,6 +24,7 @@ import { ReadingProgressBar } from "./ReadingProgressBar";
 import { MobileEntryNav } from "@/components/mobile/MobileEntryNav";
 import { deferUnreadRemovals } from "@/components/entry-list/deferred-removal";
 import { isPlainKey, isTypingTarget } from "@/lib/keyboard";
+import { findCachedListEntry } from "@/lib/entry-cache";
 import { resolveEntryAutoTranslate } from "@/lib/auto-translate";
 import { cn } from "@/lib/utils";
 import type { ContentType } from "@/types/api";
@@ -70,12 +72,24 @@ export function EntryContent({
   headerBackgroundBlur,
 }: EntryContentProps) {
   const { t } = useTranslation();
-  const { data: entry, isLoading } = useEntry(entryId);
+  const queryClient = useQueryClient();
+  const {
+    data: queryEntry,
+    isLoading,
+    isError,
+    refetch,
+  } = useEntry(entryId);
+  const fallbackEntry = useMemo(() => {
+    if (!isError || entryId === null) return undefined;
+    return findCachedListEntry(queryClient, entryId);
+  }, [isError, entryId, queryClient]);
+  const entry = queryEntry ?? fallbackEntry;
+  const cachePreviewNotice =
+    !queryEntry && fallbackEntry ? t("entry.content_from_cache") : undefined;
   const { data: aiSettings } = useAISettings();
   const { data: generalSettings } = useGeneralSettings();
   const { mutate: markAsRead } = useMarkAsRead();
   const { mutate: markAsStarred } = useMarkAsStarred();
-  const queryClient = useQueryClient();
   const { scrollRef, isAtTop, scrollNode } = useEntryContentScroll(entryId);
   // #13 在阅读栏里直接加载原站
   const [showOriginalSite, setShowOriginalSite] = useState(false);
@@ -189,13 +203,15 @@ export function EntryContent({
   // 这里再标一次会走两遍写库 + 两条 deferred 记录，所以整段跳过。
   useEffect(() => {
     if (embedded) return;
-    if (!entry || autoMarkedEntryRef.current === entry.id) return;
-    autoMarkedEntryRef.current = entry.id;
-    if (!entry.read) {
-      markedAsReadRef.current.add(entry.id);
-      markAsRead({ id: entry.id, read: true, skipInvalidate: true });
+    // 只有真实详情加载成功才自动标已读；错误降级预览（queryEntry 为空）不能触发，
+    // 否则 PATCH 失败后 markedAsReadRef 仍会把它从未读列表摘掉（表现为「打开即消失」）。
+    if (!queryEntry || autoMarkedEntryRef.current === queryEntry.id) return;
+    autoMarkedEntryRef.current = queryEntry.id;
+    if (!queryEntry.read) {
+      markedAsReadRef.current.add(queryEntry.id);
+      markAsRead({ id: queryEntry.id, read: true, skipInvalidate: true });
     }
-  }, [entry, markAsRead, embedded]);
+  }, [queryEntry, markAsRead, embedded]);
 
   // 快捷键 g：切换阅读模式（原文 / Readability）
   useEffect(() => {
@@ -255,7 +271,17 @@ export function EntryContent({
   }
 
   if (!entry) {
-    return <EntryContentEmpty message={t("entry.select_article")} />;
+    // entryId 有值却拿不到条目：详情请求失败（旧条目已被清理/断网等），
+    // 不能再显示「选择一篇文章」误导用户。
+    return (
+      <EntryContentEmpty
+        message={
+          isError ? t("entry.load_failed") : t("entry.select_article")
+        }
+        onRetry={isError ? () => void refetch() : undefined}
+        retryLabel={t("entry.retry")}
+      />
+    );
   }
 
   return (
@@ -327,6 +353,7 @@ export function EntryContent({
         aiSummary={aiSummary}
         isLoadingSummary={isLoadingSummary}
         summaryError={summaryError}
+        notice={cachePreviewNotice}
       />
       )}
       {/* 39-1：大纲是 `absolute inset-y-0`，内嵌时要对着宿主容器的可见区域，
@@ -348,7 +375,15 @@ export function EntryContent({
 
 const noopRef: React.RefCallback<HTMLDivElement> = () => {};
 
-function EntryContentEmpty({ message }: { message: string }) {
+function EntryContentEmpty({
+  message,
+  onRetry,
+  retryLabel,
+}: {
+  message: string;
+  onRetry?: () => void;
+  retryLabel?: string;
+}) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-12 items-center px-6" />
@@ -368,6 +403,16 @@ function EntryContentEmpty({ message }: { message: string }) {
             />
           </svg>
           <p className="mt-2 text-sm">{message}</p>
+          {onRetry && (
+            <Button
+              className="mt-4"
+              size="sm"
+              variant="primary"
+              onPress={onRetry}
+            >
+              {retryLabel}
+            </Button>
+          )}
         </div>
       </div>
     </div>

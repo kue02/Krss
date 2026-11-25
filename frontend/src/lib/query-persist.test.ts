@@ -316,6 +316,8 @@ describe("IndexedDB storage round-trip", () => {
     localStorage.setItem("krss_auth_token", "account-b");
     await persistNow(source);
     await bootstrapQueryCache(new QueryClient(), { timeoutMs: 100 });
+    // purgeOtherSnapshots 是 fire-and-forget，等一个宏任务让清理完成
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     // 自己的还在
     expect(await readSnapshot()).toBeDefined();

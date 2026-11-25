@@ -35,6 +35,8 @@ interface EntryContentBodyProps {
   aiSummary?: string | null;
   isLoadingSummary?: boolean;
   summaryError?: string | null;
+  /** 降级提示（如正文来自列表缓存、可能被截断） */
+  notice?: string;
 }
 
 export function EntryContentBody({
@@ -50,6 +52,7 @@ export function EntryContentBody({
   aiSummary,
   isLoadingSummary,
   summaryError,
+  notice,
 }: EntryContentBodyProps) {
   const { t } = useTranslation();
   const { publishedLong, readingTime } = useEntryMeta(entry);
@@ -106,6 +109,13 @@ export function EntryContentBody({
        * 640–767px 仍走移动端布局，`sm:` 会让这段又只剩 24px。
        * `md` 起：非 embedded 恢复 80px，embedded 回到原来的 24px（桌面合列/时间线紧凑档）。
        */}
+      {notice && (
+        <div className="mx-auto w-full max-w-[clamp(45ch,60vw,65ch)] px-4 pt-4 sm:px-5">
+          <p className="rounded-md border border-border/60 bg-secondary/60 px-3 py-2 text-xs text-muted-foreground">
+            {notice}
+          </p>
+        </div>
+      )}
       <article
         className={
           embedded

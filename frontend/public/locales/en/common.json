@@ -416,7 +416,10 @@
     "translate_timeout": "Translation timed out, please try again",
     "summary_translating": "Translating summary…",
     "summary_translate_failed": "Summary translation failed",
-    "summary_translated": "Summary translated"
+    "summary_translated": "Summary translated",
+    "load_failed": "Failed to load this article. Check your connection and try again.",
+    "content_from_cache": "Showing a cached preview from the list; it may be incomplete.",
+    "retry": "Retry"
   },
   "ai_settings": {
     "translate_channel": "Free translation channels",
