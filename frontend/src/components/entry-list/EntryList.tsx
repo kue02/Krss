@@ -1112,6 +1112,12 @@ export function EntryList({
     entry: Entry;
     point: { x: number; y: number };
   } | null>(null);
+  const handleEntryLongPress = useCallback(
+    (entry: Entry, point: { x: number; y: number }) => {
+      setMobileActions({ entry, point });
+    },
+    [],
+  );
   const [isRefreshing, setIsRefreshing] = useState(false);
   /** 强制拉取前待确认的源数（null = 没有待确认的） */
   const [forcePending, setForcePending] = useState<number | null>(null);
@@ -2034,9 +2040,7 @@ export function EntryList({
                           selectedEntryId={selectedEntryId}
                           onMarkAboveEntry={handleMarkAboveEntry}
                           isMobile={isMobile}
-                          onLongPress={(entry, point) =>
-                            setMobileActions({ entry, point })
-                          }
+                          onLongPress={handleEntryLongPress}
                           feedUnreadCount={unreadCounts?.counts?.[entry.feedId]}
                         />
                       );
@@ -2064,9 +2068,7 @@ export function EntryList({
                             selectedEntryId={selectedEntryId}
                             onMarkAboveEntry={handleMarkAboveEntry}
                             isMobile={isMobile}
-                            onLongPress={(entry, point) =>
-                              setMobileActions({ entry, point })
-                            }
+                            onLongPress={handleEntryLongPress}
                             feedUnreadCount={unreadCounts?.counts?.[entry.feedId]}
                           />
                         );
@@ -2148,9 +2150,7 @@ export function EntryList({
                         fetchReadable={fetchReadableEnabled}
                         autoExpandLong={expandLongByView?.[contentType] ?? false}
                         isMobile={isMobile}
-                        onLongPress={(entry, point) =>
-                          setMobileActions({ entry, point })
-                        }
+                        onLongPress={handleEntryLongPress}
                         onSelectFeedFromEntry={onSelectFeedFromEntry}
                       />
                     );
@@ -2187,9 +2187,7 @@ export function EntryList({
                       fetchReadable={fetchReadableEnabled}
                       autoExpandLong={expandLongByView?.[contentType] ?? false}
                       isMobile={isMobile}
-                      onLongPress={(entry, point) =>
-                        setMobileActions({ entry, point })
-                      }
+                      onLongPress={handleEntryLongPress}
                       onSelectFeedFromEntry={onSelectFeedFromEntry}
                     />
                   );

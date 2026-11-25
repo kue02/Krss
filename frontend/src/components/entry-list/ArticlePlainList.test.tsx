@@ -60,6 +60,7 @@ describe("ArticlePlainListRow（文章「Inoreader列表」= inoreader）", () =
   it("移动端长按行根按钮打开操作面板（不再因根是 button 而失效）", () => {
     vi.useFakeTimers();
     const onLongPress = vi.fn();
+    const onSelectEntry = vi.fn();
     const entry = makeEntry({ id: "e-press", title: "长按标题" });
     const { container } = render(
       <ArticlePlainListRow
@@ -67,6 +68,7 @@ describe("ArticlePlainListRow（文章「Inoreader列表」= inoreader）", () =
         feed={makeFeed({})}
         isMobile
         onLongPress={onLongPress}
+        onSelectEntry={onSelectEntry}
       />,
     );
 
@@ -74,6 +76,7 @@ describe("ArticlePlainListRow（文章「Inoreader列表」= inoreader）", () =
       "button[data-long-press-root]",
     ) as HTMLElement;
     expect(button).not.toBeNull();
+    expect(button.hasAttribute("data-entry-card")).toBe(true);
     fireEvent.touchStart(button, {
       touches: [{ clientX: 12, clientY: 34 }],
     });
@@ -82,6 +85,33 @@ describe("ArticlePlainListRow（文章「Inoreader列表」= inoreader）", () =
     });
 
     expect(onLongPress).toHaveBeenCalledWith(entry, { x: 12, y: 34 });
+    // 长按抬起后的合成 click 必须被吞掉，不能同时进入详情
+    fireEvent.click(button);
+    expect(onSelectEntry).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("Android 在长按定时器后再派发 contextmenu 不会重复打开", () => {
+    vi.useFakeTimers();
+    const onLongPress = vi.fn();
+    const entry = makeEntry({ id: "e-press-menu", title: "长按菜单" });
+    const { container } = render(
+      <ArticlePlainListRow
+        entry={entry}
+        feed={makeFeed({})}
+        isMobile
+        onLongPress={onLongPress}
+      />,
+    );
+    const button = container.querySelector(
+      "button[data-long-press-root]",
+    ) as HTMLElement;
+    fireEvent.touchStart(button, { touches: [{ clientX: 12, clientY: 34 }] });
+    act(() => {
+      vi.advanceTimersByTime(520);
+    });
+    fireEvent.contextMenu(button, { clientX: 12, clientY: 34 });
+    expect(onLongPress).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
   });
 

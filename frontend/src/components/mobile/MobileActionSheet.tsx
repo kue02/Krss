@@ -86,11 +86,11 @@ export function MobileActionSheet({
         <>
           <motion.div
             key="mobile-action-sheet-backdrop"
-            className="fixed inset-0 z-50 bg-black/35 backdrop-blur-[1px]"
+            className="fixed inset-0 z-50 bg-black/35 will-change-[opacity]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.18, ease: "easeOut" }}
+            transition={{ duration: 0.16, ease: "easeOut" }}
             // 用 pointerdown 而不是 click 关闭：长按打开时，手指抬起补发的
             // click 会命中刚出现的全屏遮罩，click 关闭会让面板刚开就关；
             // 而那次手指的 pointerdown 发生在遮罩出现之前，不会命中这里。
@@ -105,7 +105,7 @@ export function MobileActionSheet({
               aria-modal="true"
               aria-label={title || "Actions"}
               data-placement="anchor"
-              className="fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-border/70 bg-overlay shadow-[0_18px_50px_rgba(0,0,0,0.22)]"
+              className="fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-border/70 bg-overlay shadow-[0_18px_50px_rgba(0,0,0,0.22)] [contain:layout_paint_style] [will-change:transform,opacity]"
               style={{
                 left: panelLeft,
                 top: panelTop,
@@ -134,11 +134,11 @@ export function MobileActionSheet({
               aria-modal="true"
               aria-label={title || "Actions"}
               data-placement="sheet"
-              className="fixed inset-x-0 bottom-0 z-50 overflow-hidden rounded-t-[22px] border-t border-border/70 bg-overlay pb-[env(safe-area-inset-bottom)] shadow-[0_-18px_50px_rgba(0,0,0,0.18)]"
+              className="fixed inset-x-0 bottom-0 z-50 overflow-hidden rounded-t-[22px] border-t border-border/70 bg-overlay pb-[env(safe-area-inset-bottom)] shadow-[0_-18px_50px_rgba(0,0,0,0.18)] [contain:layout_paint_style] [will-change:transform,opacity]"
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
-              transition={{ type: "spring", stiffness: 420, damping: 36 }}
+              transition={{ duration: 0.2, ease: [0.32, 0.72, 0, 1] }}
             >
               <div className="mx-auto mt-2 h-1 w-9 rounded-full bg-border" />
               {title ? (

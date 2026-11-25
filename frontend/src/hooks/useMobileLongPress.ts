@@ -27,6 +27,7 @@ export function useMobileLongPress(
   const startRef = useRef<{ x: number; y: number } | null>(null);
   const suppressClickRef = useRef(false);
   const suppressResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const firedRef = useRef(false);
 
   const clear = () => {
     if (timerRef.current !== null) {
@@ -70,8 +71,11 @@ export function useMobileLongPress(
     }
     const touch = event.touches[0];
     if (!touch) return;
+    firedRef.current = false;
     startRef.current = { x: touch.clientX, y: touch.clientY };
     timerRef.current = setTimeout(() => {
+      if (firedRef.current) return;
+      firedRef.current = true;
       const point = startRef.current;
       if (point) onLongPress(point);
       armSuppressClick();
@@ -97,6 +101,8 @@ export function useMobileLongPress(
   const onContextMenu = (event: MouseEvent<HTMLElement>) => {
     if (!enabled || !onLongPress) return;
     event.preventDefault();
+    if (firedRef.current) return;
+    firedRef.current = true;
     const fallback = startRef.current;
     const point = {
       x: event.clientX || fallback?.x || 0,

@@ -551,6 +551,8 @@ function emptyPackage(): UISettingsPackageShape {
 }
 
 /** 认得的档位集合（用来丢弃老档位，如 18 批去掉的 `md` 6px） */
+const SWIPE_ACTION_STYLES = new Set<string>(["flat", "circle"]);
+
 const RADIUS_PRESETS = new Set<string>([
   "default",
   "none",
@@ -604,6 +606,14 @@ function sanitizeBag(input: unknown): Record<string, unknown> {
     if (typeof out[key] === "string" && !RADIUS_PRESETS.has(out[key] as string)) {
       delete out[key];
     }
+  }
+
+  // 枚举型设置认不得的值直接丢掉，回落默认档，避免设置页「一个都不选中」。
+  if (
+    typeof out.mobileSwipeActionStyle === "string" &&
+    !SWIPE_ACTION_STYLES.has(out.mobileSwipeActionStyle)
+  ) {
+    delete out.mobileSwipeActionStyle;
   }
 
   // 字号 / 行高是跨设备同步的数值：本地存的旧值或别的设备写回来的越界值，

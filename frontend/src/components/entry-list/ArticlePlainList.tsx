@@ -85,6 +85,7 @@ export function ArticlePlainListRow({
         <button
           type="button"
           data-entry-id={entry.id}
+          data-entry-card
           data-long-press-root
           {...longPress.touchHandlers}
           data-selected={selected ? "true" : undefined}
