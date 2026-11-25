@@ -522,14 +522,25 @@ export function useAITranslation({
     }
     translationActions.enable(entry.id);
 
-    const summary = entry.content
-      ? stripHtml(entry.content).slice(0, 200)
-      : null;
-    if (await needsTranslation(entry.title || "", summary, targetLanguage)) {
-      translateArticlesBatch(
-        [{ id: entry.id, title: entry.title || "", summary }],
-        targetLanguage,
-      ).catch(() => {});
+    // 手动点击翻译时也可能面对长文：把摘要的 `stripHtml`（内部虽有 LRU 缓存，
+    // 首次仍要 DOMParser 全文）挪到空闲回调，避免点击瞬间同步解析阻塞主线程。
+    // 解析完再判定是否需要翻译并预热批量译文，然后立即发起当前条目的翻译，
+    // 翻译语义与原先一致（generateTranslation 不依赖这里的 summary）。
+    if (entry.content) {
+      const contentSnapshot = entry.content;
+      scheduleIdle(() => {
+        const summary = stripHtml(contentSnapshot).slice(0, 200);
+        void (async () => {
+          if (
+            await needsTranslation(entry.title || "", summary, targetLanguage)
+          ) {
+            translateArticlesBatch(
+              [{ id: entry.id, title: entry.title || "", summary }],
+              targetLanguage,
+            ).catch(() => {});
+          }
+        })();
+      });
     }
 
     await generateTranslation(isReadableActive);
@@ -562,9 +573,16 @@ export function useAITranslation({
         }
 
         const content = isReadableActive ? readableContent : entry?.content;
-        const summary = content ? stripHtml(content).slice(0, 200) : null;
 
         void (async () => {
+          // 长文 `stripHtml` 放到空闲回调，避免切换「正文/原文」时同步解析卡顿。
+          const summary = await new Promise<string | null>((resolve) => {
+            if (!content) {
+              resolve(null);
+              return;
+            }
+            scheduleIdle(() => resolve(stripHtml(content).slice(0, 200)));
+          });
           const needs = await needsTranslation(
             entry?.title || "",
             summary,
