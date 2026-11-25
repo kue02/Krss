@@ -56,6 +56,7 @@ import {
   useVirtualizedArticleList,
   VIRTUAL_PLAIN_ROW_ESTIMATE_PX,
   VIRTUAL_SOCIAL_ESTIMATE_PX,
+  type VirtualizedArticleListState,
 } from "./useVirtualizedArticleList";
 import { VirtualizedArticleList } from "./VirtualizedArticleList";
 import { useScrollMarkRead } from "./useScrollMarkRead";
@@ -1036,6 +1037,8 @@ export function EntryList({
   );
 
   // 键盘快捷键：j/k 上下篇（选中即已读）、m 已读、s 星标、v 打开原文、Esc 关闭
+  // 虚拟列表里选中行可能被卸载，reveal 时先用 virtualizer.scrollToIndex 把它挂回来。
+  const virtualListRef = useRef<VirtualizedArticleListState | null>(null);
   useEntryHotkeys({
     // 通知视图走时间线：吸附顺序 = 轴上的卡片（被吸进小节点的条目不算节点）
     entries: (isNotificationTimeline ? timelineSelectableEntries : null) ?? entries,
@@ -1045,6 +1048,17 @@ export function EntryList({
     enabled: isActive,
     // 15-4：只有时间线视图额外认 ↑/↓（其余视图一行不动，行为零变化）
     arrowKeys: isNotificationTimeline,
+    onRevealEntry: (entryId) => {
+      const state = virtualListRef.current;
+      const virtualizer = state?.windowVirtualizer ?? state?.virtualizer ?? null;
+      if (!virtualizer) return false;
+      const list =
+        (isNotificationTimeline ? timelineSelectableEntries : null) ?? entries;
+      const index = list.findIndex((entry) => entry.id === entryId);
+      if (index < 0) return false;
+      virtualizer.scrollToIndex(index, { align: "auto" });
+      return true;
+    },
   });
   // 列表滚上去以后，右上角浮出「当前序号 + 回到顶部」（对齐 Nextflux 的 Indicator）
   const [firstVisibleIndex, setFirstVisibleIndex] = useState(0);
@@ -1074,6 +1088,10 @@ export function EntryList({
         ? VIRTUAL_PLAIN_ROW_ESTIMATE_PX
         : undefined,
   });
+  // 供键盘 j/k 的 revealEntry 使用（把被虚拟化卸载的选中行滚回来）。
+  useEffect(() => {
+    virtualListRef.current = virtualList;
+  }, [virtualList]);
   useEffect(() => {
     const node = containerRef.current;
     if (!node) return;
@@ -1087,7 +1105,10 @@ export function EntryList({
       // 虚拟列表下 DOM 顺序 ≠ 绝对序号（只挂可视 + overscan 一小段）：优先用行上的
       // data-index（EntryListItem 透传的绝对下标）；非虚拟列表无 data-index 时回退 DOM 顺序。
       const absIndex = (el: HTMLElement, fallback: number) => {
-        const raw = el.dataset.index;
+        // 虚拟容器把绝对下标放在外层 [data-index] 上；行本身（ArticlePlainList /
+        // ArticleRowsList 的卡片）不带 data-index，需向最近的祖先取。
+        const holder = el.closest<HTMLElement>("[data-index]");
+        const raw = el.dataset.index ?? holder?.dataset.index;
         const abs = raw != null && raw !== "" ? Number(raw) : NaN;
         return Number.isFinite(abs) ? abs : fallback;
       };
