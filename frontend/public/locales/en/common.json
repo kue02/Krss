@@ -1013,11 +1013,12 @@
   },
   "article_iframe": {
     "click_to_load": "Click to load video from {{host}}",
-    "click_to_load_short": "Click to load video"
+    "click_to_load_short": "Click to load video",
+    "embedded_video": "Embedded video"
   },
   "appearance_video": {
     "title": "Article video",
-    "description": "Sites on the allowlist embed directly; others load after a click. Direct video files (.mp4/.webm/.m3u8) use the built-in player.",
+    "description": "Sites on the allowlist embed directly; others load after a click. Direct video files (.mp4/.webm/.mov/.m4v) use the built-in player.",
     "unknown_click": "Click to load unknown sites",
     "unknown_click_hint": "When off, show a “host ↗” link instead of loading a third-party iframe",
     "extra_hosts": "Extra site allowlist",

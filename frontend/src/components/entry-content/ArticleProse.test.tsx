@@ -33,6 +33,18 @@ describe("ArticleProse · 空正文兜底", () => {
     );
   });
 
+  it("空正文 YouTube 文章兜底出内嵌播放器", () => {
+    const { container } = render(
+      <ArticleProse
+        content=""
+        articleUrl="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+      />,
+    );
+    expect(container.querySelector("iframe")?.getAttribute("src")).toContain(
+      "youtube.com/embed/dQw4w9WgXcQ",
+    );
+  });
+
   it("普通文章地址仍显示暂无内容", () => {
     render(<ArticleProse content="" articleUrl="https://example.com/post/1" />);
     expect(screen.getByText("entry.no_content")).toBeTruthy();

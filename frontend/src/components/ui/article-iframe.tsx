@@ -140,6 +140,7 @@ function getFallback(raw: string | undefined): { href: string; host: string } | 
   return { href: url.toString(), host: url.hostname };
 }
 
+const DIRECT_VIDEO_PATH_RE = /\.(?:mp4|webm|m3u8|mov|m4v|ogv|ogg)$/i;
 const DEFAULT_ALLOW =
   "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen";
 const IFRAME_SANDBOX =
@@ -166,6 +167,23 @@ function isTinyOrHidden(
   return false;
 }
 
+/**
+ * 未知 iframe 不一定是视频：RSS 正文里还有地图、评论、卡片等。
+ * 只有路径像播放器/视频，或 allow 明确要 autoplay/fullscreen 这类媒体能力时，
+ * 才给 16:9「点击加载视频」大位；其余未知 iframe 保持低调的外链药丸，避免版面和语义跑偏。
+ */
+function looksLikeVideoIframe(
+  url: URL,
+  allowAttr: string | undefined,
+): boolean {
+  const path = url.pathname.toLowerCase();
+  if (DIRECT_VIDEO_PATH_RE.test(path)) return true;
+  if (/\/(?:embed|player|video|videos|v|watch|e)\//i.test(path)) return true;
+  return /autoplay|fullscreen|picture-in-picture|encrypted-media/i.test(
+    allowAttr ?? "",
+  );
+}
+
 export function ArticleIframe({
   src,
   title,
@@ -183,12 +201,16 @@ export function ArticleIframe({
   // 「点击加载」后放行原 iframe。state 放在所有 return 之前，钩子顺序才稳定。
   const [activated, setActivated] = useState(false);
 
+  const srcUrl = toHttpUrl(src);
   const resolved = resolveIframeSrc(src, extraHosts);
-  const rawSrcUrl = toHttpUrl(src)?.toString() ?? null;
-  const srcHost = toHttpUrl(src)?.hostname ?? "";
+  const rawSrcUrl = srcUrl?.toString() ?? null;
+  const srcHost = srcUrl?.hostname ?? "";
   // 已知站点但解析失败（YouTube playlist / 畸形 id）不能再给「点击加载」——
   // 那种原始页塞进 iframe 只会被 X-Frame-Options 拒成黑块，仍旧降级外链。
   const knownHost = srcHost ? isAllowedHost(srcHost, extraHosts) : false;
+  const allowAttr = typeof rest.allow === "string" ? rest.allow : undefined;
+  const sameOrigin = srcUrl ? srcUrl.origin === window.location.origin : false;
+  const videoLike = srcUrl ? looksLikeVideoIframe(srcUrl, allowAttr) : false;
 
   if (!resolved) {
     // 追踪像素 / 广告位常是 1×1 或 display:none 的 iframe，不降级成可见药丸。
@@ -198,7 +220,14 @@ export function ArticleIframe({
 
     // 未知站点 iframe：用户开了「点击加载」时，不直接丢弃，给一个 16:9 播放位，
     // 点一下才真正挂 iframe（避免一打开文章就被第三方追踪 / 跑到未知站点）。
-    if (unknownClickToLoad && !knownHost && rawSrcUrl && !activated) {
+    if (
+      unknownClickToLoad &&
+      !knownHost &&
+      rawSrcUrl &&
+      !activated &&
+      !sameOrigin &&
+      videoLike
+    ) {
       return (
         <div
           data-slot="article-iframe-placeholder"
@@ -227,7 +256,8 @@ export function ArticleIframe({
       );
     }
 
-    const embedSrc = activated && rawSrcUrl ? rawSrcUrl : null;
+    const embedSrc =
+      activated && rawSrcUrl && unknownClickToLoad ? rawSrcUrl : null;
     if (embedSrc) {
       return (
         <div
@@ -280,7 +310,7 @@ export function ArticleIframe({
         <iframe
           {...rest}
           src={resolved}
-          title={title || "Embedded video"}
+          title={title || t("article_iframe.embedded_video")}
           loading="lazy"
           referrerPolicy="strict-origin-when-cross-origin"
           sandbox={IFRAME_SANDBOX}

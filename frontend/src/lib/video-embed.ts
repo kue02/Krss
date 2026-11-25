@@ -2,18 +2,23 @@
  * 正文视频识别与白名单工具。
  *
  * 两件事：
- * 1. 判断一个地址是不是「直接视频文件」（.mp4 / .webm / .m3u8 …），
+ * 1. 判断一个地址是不是「直接视频文件」（.mp4 / .webm / .mov …），
  *    用于正文为空但 entry.url 本身就是视频文件的小站订阅。
  * 2. 归一用户填写的 iframe 视频站点（可填域名或完整 URL），并做 host 匹配。
  *
  * 这里只做纯字符串/URL 判断，不依赖 React，便于单测。
  */
 
-/** 直接视频文件扩展名（不含点）。m3u8 是 HLS 播放列表。 */
+/**
+ * 直接视频文件扩展名（不含点）。
+ *
+ * 暂不包含 `.m3u8`：HLS 需要 hls.js（Chrome/Firefox 无原生 HLS），而当前
+ * `@videojs/react` 播放器只接了原生 `<video>`；把 m3u8 当直链会得到黑屏。
+ * Safari/iOS 原生可播，但统一体验前先不收，见 todo 待观察。
+ */
 const DIRECT_VIDEO_EXTENSIONS = [
   ".mp4",
   ".webm",
-  ".m3u8",
   ".mov",
   ".m4v",
   ".ogv",

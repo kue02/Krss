@@ -539,6 +539,9 @@ const SILENT_SAVE_UI_KEYS = new Set<string>([
   "unreadOnly",
   // 文章工具栏：拖拽排序/显隐在设置面板里当场可见，不必每动一下弹「已保存」
   "entryToolbar",
+  // 正文视频：加/删域名 Chip 与开关状态当场可见，不必再弹「已保存」
+  "iframeVideoHosts",
+  "iframeUnknownClickToLoad",
 ]);
 
 /** 存储/同步的整包形状（与 `types/settings.ts` 的 UISettingsPackage 同形） */

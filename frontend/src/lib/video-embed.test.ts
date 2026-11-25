@@ -11,7 +11,7 @@ describe("video-embed · 直链视频与 iframe 白名单", () => {
   it("识别常见直接视频文件扩展名", () => {
     expect(isDirectVideoUrl("https://cdn.example.com/a/b.mp4")).toBe(true);
     expect(isDirectVideoUrl("https://cdn.example.com/a/b.WEBM?token=1")).toBe(true);
-    expect(isDirectVideoUrl("//cdn.example.com/live/index.m3u8")).toBe(true);
+    expect(isDirectVideoUrl("//cdn.example.com/live/index.m3u8")).toBe(false); // HLS 需 hls.js，暂不直链
     expect(isDirectVideoUrl("https://example.com/video.mp4.jpg")).toBe(false);
     expect(isDirectVideoUrl("https://example.com/article/123")).toBe(false);
     expect(isDirectVideoUrl("javascript:alert(1)")).toBe(false);

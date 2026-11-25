@@ -1010,11 +1010,12 @@
   },
   "article_iframe": {
     "click_to_load": "点击加载 {{host}} 的视频",
-    "click_to_load_short": "点击加载视频"
+    "click_to_load_short": "点击加载视频",
+    "embedded_video": "内嵌视频"
   },
   "appearance_video": {
     "title": "正文视频",
-    "description": "白名单内的站点直接内嵌；其它站点可点一下再加载。直接视频文件（.mp4/.webm/.m3u8）用内置播放器。",
+    "description": "白名单内的站点直接内嵌；其它站点可点一下再加载。直接视频文件（.mp4/.webm/.mov/.m4v）用内置播放器。",
     "unknown_click": "未知站点点击加载",
     "unknown_click_hint": "关闭后只显示「域名 ↗」外链，不加载第三方 iframe",
     "extra_hosts": "额外站点白名单",
