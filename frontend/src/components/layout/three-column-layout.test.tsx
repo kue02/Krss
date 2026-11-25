@@ -137,6 +137,22 @@ describe("ThreeColumnLayout 第一栏分界限按布局自动联动（2026-11-25
     expect(first?.className).toContain("bg-transparent");
   });
 
+  it("双栏（正文覆盖 coverList 档，如文章 rows 布局）= 平时透明", () => {
+    const { container } = renderLayout({ coverList: true, hideContent: true });
+    const [first] = separators(container);
+    expect(first).toBeDefined();
+    expect(first?.className).toContain("bg-transparent");
+    expect(first?.className).not.toContain("bg-border");
+  });
+
+  it("双栏（文章悬停档未选中→hideContent、只剩条目栏）= 平时透明", () => {
+    const { container } = renderLayout({ hideContent: true });
+    const [first] = separators(container);
+    expect(first).toBeDefined();
+    expect(first?.className).toContain("bg-transparent");
+    expect(first?.className).not.toContain("bg-border");
+  });
+
   it("第二栏那条始终是 hover 档，不跟布局走", () => {
     const { container } = renderLayout();
     const list = separators(container);

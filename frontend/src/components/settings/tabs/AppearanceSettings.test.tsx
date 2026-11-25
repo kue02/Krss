@@ -9,7 +9,6 @@ const setTimelineCollapseForView = vi.fn();
 const setTimelineTimeBasisForView = vi.fn();
 const setEntryFontSize = vi.fn();
 const setEntryLineHeight = vi.fn();
-const setSplitterAutoHide = vi.fn();
 const setArticlePaneFrame = vi.fn();
 
 vi.mock("react-i18next", () => ({
@@ -148,13 +147,6 @@ vi.mock("@/hooks/useUISettings", async () => {
     experimentalPictureHover: false,
     experimentalPictureWall: false,
     experimentalArticleHover: false,
-    splitterVisibleByView: {
-      article: true,
-      picture: true,
-      notification: true,
-      social: true,
-    },
-    splitterAutoHide: false,
   };
   return {
     ...actual,
@@ -171,7 +163,6 @@ vi.mock("@/hooks/useUISettings", async () => {
       setReduceMotion,
       setArticleLayout: vi.fn(),
       setArticlePaneFrame,
-      setSplitterAutoHide,
       setPictureLayout: vi.fn(),
       setArticlePushDirection: vi.fn(),
       setArticleCoverList: vi.fn(),
@@ -225,7 +216,6 @@ describe("AppearanceSettings 按视图设置", () => {
     setTimelineGranularityForView.mockClear();
     setTimelineCollapseForView.mockClear();
     setTimelineTimeBasisForView.mockClear();
-    setSplitterAutoHide.mockClear();
     setArticlePaneFrame.mockClear();
     scrollReadState.mode = "perView";
   });
