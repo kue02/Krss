@@ -644,7 +644,7 @@ describe("EntryList · 标准文章列表虚拟化", () => {
     },
   );
 
-  it("正文栏外框选「全宽」时使用原来的原样档（无边框、铺满整栏）", async () => {
+  it("正文栏外框选「全宽」时无边框、无顶部分隔线并铺满整栏", async () => {
     setUISetting("articleLayout", "inoreader");
     setUISetting("articlePushDirection", "down");
     setUISetting("articlePaneFrame", "full");
@@ -665,7 +665,8 @@ describe("EntryList · 标准文章列表虚拟化", () => {
     const pane = screen.getByTestId("inline-article-pane");
     expect(pane.className).toContain("w-full");
     expect(pane.className).toContain("rounded-[12px]");
-    expect(pane.className).toContain("border-t border-border");
+    expect(pane.className).not.toContain("border-t");
+    expect(pane.className).not.toContain("border-border");
     expect(pane.className).toContain("[clip-path:inset(0_round_12px)]");
     expect(pane.className).not.toContain("mx-2");
     expect(pane.className).not.toContain("border-border/40");
