@@ -23,7 +23,10 @@ export function useAutoReadable(
 ): string | null {
   const [content, setContent] = useState<string | null>(null);
 
-  const plainLength = entry.content ? stripHtml(entry.content).length : 0;
+  // 只有真正要判断（enabled）时才跑一次全文 stripHtml；离屏/未启用时不需要这份长度，
+  // 否则社交列表每个离屏卡片仍会对整篇正文做一次 DOMParser。
+  const plainLength =
+    enabled && entry.content ? stripHtml(entry.content).length : 0;
 
   useEffect(() => {
     if (!enabled) return;

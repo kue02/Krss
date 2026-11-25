@@ -125,6 +125,14 @@ const SOCIAL_COLLAPSED_HEIGHT = `${SOCIAL_COLLAPSED_PX}px`;
 /** Folo 的 mask-b-2xl：只在最后 90px 做淡出 */
 const SOCIAL_COLLAPSE_MASK =
   "linear-gradient(to bottom, #000 calc(100% - 90px), transparent)";
+/**
+ * 社交卡片离屏占位的最小高度（约一张卡的高度）。
+ *
+ * 社交视图没有虚拟化，整列表都在 DOM 里；离屏卡片先渲染这个空占位，等进入
+ * 视口再挂真实内容。给足最小高度是为了让滚动条与行位置稳定，进入视口时
+ * 不会因为「0 高 → 满高」把可见内容顶得跳动。
+ */
+const SOCIAL_PLACEHOLDER_MIN_HEIGHT = 600;
 
 /**
  * 「已静音」细标签 —— 被过滤规则静音时的标记。
@@ -395,6 +403,31 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
         : undefined,
     );
 
+    const isSocialView = social;
+    /**
+     * 进入视口前多久挂载正文 / 解析正文。
+     *
+     * 社交视图的正文、图片与缩略图都要 `DOMParser` 全文解析，而社交 tab **没有虚拟化**，
+     * 整列表几十条都在 DOM 里 —— 无条件解析会把切换 tab 卡住。这里用 `inView` 门控：
+     * 离屏只渲染轻量占位，进入视口附近才算正文。
+     *
+     * 为什么上方留 2400px、下方只留 1200px（非对称）：
+     *   - 向下滚时，新卡片在**下方**挂载，撑开不影响可见内容；
+     *   - 向上滚时，卡片是在**上方**挂载的 —— 上方撑开会把可见内容整体往下推，表现为
+     *     「条目跳动」（用户报的 BUG-2）。所以上方要留得足够远，让用户往回滚之前它早就挂载好了。
+     * 非社交视图（文章 / 普通列表）本来就有虚拟化或行高很小，保持 600px 即可。
+     */
+    const socialRootMargin = isSocialView
+      ? "2400px 0px 1200px 0px"
+      : "600px";
+    const { ref: inViewRef, inView } = useInView<HTMLDivElement>(socialRootMargin);
+    /**
+     * 社交卡片离屏：跳过 `plainContent` / `thumbnail`（无 thumbnailUrl 时）/
+     * `socialBody` / `socialMedia` 的重解析，也不挂 `SocialMediaGallery`。
+     * 进入视口（inView=true）后恢复全量计算。非社交视图恒为 false，行为不变。
+     */
+    const deferSocialContent = isSocialView && !inView;
+
     /**
      * 第四十三批（移动端性能）：每行只解析一次正文。
      *
@@ -404,8 +437,13 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
      * 省掉重复的切片/正则）。
      */
     const plainContent = useMemo(
-      () => (entry.content ? stripHtml(entry.content) : null),
-      [entry.content],
+      () =>
+        deferSocialContent
+          ? null
+          : entry.content
+            ? stripHtml(entry.content)
+            : null,
+      [deferSocialContent, entry.content],
     );
 
     const strippedContent = useMemo(
@@ -420,12 +458,16 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
      * 会 `DOMParser` 全文找图，纯属浪费）；只有没有 thumbnailUrl 才退回正文首图。
      */
     const thumbnail = useMemo(() => {
+      if (deferSocialContent && !entry.thumbnailUrl) {
+        // 社交卡片离屏且没有现成缩略图：不解析正文找首图（离屏也用不到）
+        return null;
+      }
       if (entry.thumbnailUrl) {
         return getProxiedImageUrl(entry.thumbnailUrl, entry.url);
       }
       const images = getEntryImages(undefined, entry.content, entry.url);
       return images[0] ?? null;
-    }, [entry.thumbnailUrl, entry.content, entry.url]);
+    }, [deferSocialContent, entry.thumbnailUrl, entry.content, entry.url]);
     const thumbnailSrc = thumbRecovered && thumbnail ? withProxyCacheBust(thumbnail) : thumbnail;
     const authedThumbnail = useAuthedImageUrl(thumbnailSrc ?? undefined);
 
@@ -444,21 +486,6 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     const { sourceProps } = useEntrySourceJump(feed, onSelectFeedFromEntry);
     const titleContainsUrl = URL_PATTERN.test(displayTitle ?? "");
     const summaryContainsUrl = URL_PATTERN.test(displaySummary ?? "");
-    const isSocialView = social;
-    /**
-     * 进入视口前多久挂载正文（社交媒体视图的正文是 `inView ? 正文 : 占位` 门控的，
-     * 一挂载就可能撑开 300px 折叠高度）。
-     *
-     * 为什么上方留 2400px、下方只留 1200px（非对称）：
-     *   - 向下滚时，新卡片在**下方**挂载，撑开不影响可见内容；
-     *   - 向上滚时，卡片是在**上方**挂载的 —— 上方撑开会把可见内容整体往下推，表现为「条目跳动」
-     *     （用户报的 BUG-2）。所以上方要留得足够远，让用户往回滚之前它早就挂载好了。
-     * 取 2000/1000 而不是更大：够覆盖两屏的回滚距离，又不会为看不到的内容多抓正文。
-     * 代价是多挂载几张卡（约 3000px 内容），换滚动不跳。
-     */
-    const { ref: inViewRef, inView } = useInView<HTMLDivElement>(
-      "600px",
-    );
     // 只在进入视口时按需抓正文，避免一次并发抓取整屏
     const autoReadable = useAutoReadable(entry, fetchReadable && inView);
     const expandedBodyRef = useRef<HTMLDivElement | null>(null);
@@ -555,14 +582,15 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
      * 引用推文那种条目就只剩底下的引文了（用户报的「只显示引文内容」）。
      */
     const socialBody = useMemo(() => {
-      // 非社交视图不渲染这段正文管线，直接空串省掉 stripContentImages 等解析
-      if (!isSocialView) return "";
+      // 非社交视图不渲染这段正文管线，直接空串省掉 stripContentImages 等解析。
+      // 社交视图离屏时同样跳过：这些解析都是 DOMParser 全文，离屏用不到。
+      if (!isSocialView || !inView) return "";
       const base = stripContentImages(displayContent);
       const withoutDuplicate = titleIsBodyPrefix
         ? base
         : stripDuplicatedTitle(base, displayTitle);
       return removeContentSeparators(withoutDuplicate);
-    }, [isSocialView, displayContent, displayTitle, titleIsBodyPrefix]);
+    }, [isSocialView, inView, displayContent, displayTitle, titleIsBodyPrefix]);
 
     /**
      * 47-5（用户 2026-10-12）：正文与引文是**两段**，顺序照来源 —— 卡片渲染顺序是
@@ -589,10 +617,10 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     // 长任务的主因（每行一次全量解析）。非社交视图给空数组，社交视图行为不变。
     const socialMedia = useMemo(
       () =>
-        isSocialView
+        isSocialView && inView
           ? extractContentMedia(expandedContent, entry.url, entry.thumbnailUrl)
           : [],
-      [isSocialView, expandedContent, entry.url, entry.thumbnailUrl],
+      [isSocialView, inView, expandedContent, entry.url, entry.thumbnailUrl],
     );
     // 大图查看器要的是**代理后**的 URL 列表（点缩略图传的下标要对得上）
     const openImagePreview = useImagePreviewStore((state) => state.open);
@@ -614,6 +642,41 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     // 头像在左、作者行在右；正文纯文字（图片抽到下面的缩略图行）；
     // 正文超过 300px 折叠 + 遮罩淡出 + 「显示更多」；未读点在最左侧。
     if (isSocialView) {
+      /**
+       * 离屏轻量占位：不渲染标题 / 正文 / 图片，也不触发任何正文解析。
+       *
+       * 保留根节点的 class、`data-*` 与 `inViewRef`，让 IntersectionObserver 能继续
+       * 观察这张卡；进入视口（inView=true 后保持 true）再换成下面的真实内容。
+       * 没有 IntersectionObserver 时 `useInView` 首帧即 true，直接走真实内容 ——
+       * 不会出现空白列表。
+       */
+      if (deferSocialContent) {
+        return (
+          <div
+            ref={(node) => {
+              if (typeof ref === "function") ref(node);
+              else if (ref) ref.current = node;
+              inViewRef.current = node;
+            }}
+            className={cn(
+              "group relative mx-auto mb-1 flex w-full max-w-[clamp(45ch,60vw,65ch)] cursor-pointer rounded-xl border border-transparent px-3 py-4 transition-colors duration-200",
+              isSelected ? "border-border/60 bg-card shadow-nf" : "hover:bg-item-hover",
+              unreadRowClass(isUnread, !!entry.starred, isSelected, unreadStyle),
+            )}
+            style={{ ...style, minHeight: SOCIAL_PLACEHOLDER_MIN_HEIGHT }}
+            data-index={dataIndex}
+            data-entry-id={dataEntryId}
+            data-entry-card=""
+            data-entry-placeholder=""
+            {...longPress.touchHandlers}
+            onClick={() => {
+              if (longPress.consumeClick()) return;
+              onClick(entry.id);
+            }}
+          />
+        );
+      }
+
       return (
         <ContextMenu>
           <ContextMenuTrigger asChild disabled={isMobile}>
