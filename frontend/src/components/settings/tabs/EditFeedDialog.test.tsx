@@ -294,7 +294,7 @@ describe("EditFeedDialog", () => {
         "https://new.example.com/rss",
       );
     });
-    expect(mockRefreshFeeds).toHaveBeenCalledWith(["feed-1"]);
+    expect(mockRefreshFeeds).toHaveBeenCalledWith(["feed-1"], true);
     expect(mockOnOpenChange).toHaveBeenCalledWith(false);
   });
 

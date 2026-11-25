@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -64,6 +64,8 @@ export function EditFeedDialog({
   const [mergePreview, setMergePreview] = useState<FeedMergePreview | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [isMerging, setIsMerging] = useState(false);
+  // 防合并按钮极快双击重复 POST（第二次源已删会报错），state 在同一 tick 内不可靠，用 ref 卡
+  const mergingRef = useRef(false);
   const [autoTranslate, setAutoTranslate] = useState<boolean | null>(null);
   const [autoSummary, setAutoSummary] = useState<boolean | null>(null);
   const [readerMode, setReaderMode] = useState<boolean | null>(null);
@@ -123,17 +125,39 @@ export function EditFeedDialog({
 
     setSubmitting(true);
     try {
-      // 改地址前先探一次：撞到别的订阅就先挂起，走内联「确认合并」
+      // 改地址：先把地址这类“特殊”改动落地。撞车先挂起走内联「确认合并」；
+      // 地址失败则其它字段一个都不写，避免“部分保存成功却提示更新失败”的误导。
       if (urlChanged) {
-        let target: FeedMergePreview | null = null;
+        let preview: FeedMergePreview | null = null;
         try {
-          target = await getFeedMergePreview(feed.id, trimmedUrl);
+          preview = await getFeedMergePreview(feed.id, trimmedUrl);
         } catch {
-          // 探测失败不拦，后端 PATCH 还有 409 兜底
-          target = null;
+          // 探测失败不拦，下面 PATCH 还有 409 兜底
+          preview = null;
         }
-        if (target?.target) {
-          setMergePreview(target);
+        if (preview?.target) {
+          setMergePreview(preview);
+          return;
+        }
+
+        try {
+          await updateFeedUrl(feed.id, trimmedUrl);
+        } catch (err) {
+          if (err instanceof ApiError && err.status === 409) {
+            // 预检与写入之间被别人抢先占用：再探一次拿 target，转内联合并
+            try {
+              const again = await getFeedMergePreview(feed.id, trimmedUrl);
+              if (again?.target) {
+                setMergePreview(again);
+                return;
+              }
+            } catch {
+              // 二次探测也失败，退回通用冲突提示
+            }
+            setError(t("feeds.url_conflict_hint"));
+          } else {
+            setError(t("feeds.update_failed"));
+          }
           return;
         }
       }
@@ -157,21 +181,20 @@ export function EditFeedDialog({
       });
       setEffective(proxyResult.effective);
 
-      // 地址有变：PATCH 新地址 → 立刻用新地址刷新一次（旧文章按 feed_id 关联，不动）
+      // 地址已在上方落库：立刻用新地址刷新一次（force 跳过同主机间隔，旧文章按 feed_id 关联不动）
       if (urlChanged) {
-        await updateFeedUrl(feed.id, trimmedUrl);
-        void refreshFeeds([feed.id]);
+        try {
+          await refreshFeeds([feed.id], true);
+        } catch {
+          // 刷新失败不影响保存结果（地址与其它字段已保存）
+        }
         void queryClient.invalidateQueries({ queryKey: ["feeds"] });
         void queryClient.invalidateQueries({ queryKey: ["entries"] });
         void queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
       }
       onOpenChange(false);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
-        setError(t("feeds.url_conflict_hint"));
-      } else {
-        setError(t("feeds.update_failed"));
-      }
+    } catch {
+      setError(t("feeds.update_failed"));
     } finally {
       setSubmitting(false);
     }
@@ -179,12 +202,17 @@ export function EditFeedDialog({
 
   // 确认合并：把当前订阅并进撞车的那个订阅（保留目标，条目/星标一起挪过去）
   const handleConfirmMerge = async () => {
-    if (!feed || !mergePreview?.target) return;
+    if (!feed || !mergePreview?.target || mergingRef.current) return;
+    mergingRef.current = true;
     setIsMerging(true);
     setError(null);
     try {
       await mergeFeed(feed.id, mergePreview.target.id);
-      void refreshFeeds([mergePreview.target.id]);
+      try {
+        await refreshFeeds([mergePreview.target.id], true);
+      } catch {
+        // 刷新失败不影响合并结果（条目/星标已并入目标订阅）
+      }
       void queryClient.invalidateQueries({ queryKey: ["feeds"] });
       void queryClient.invalidateQueries({ queryKey: ["entries"] });
       void queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
@@ -193,8 +221,16 @@ export function EditFeedDialog({
     } catch {
       setError(t("feeds.update_failed"));
     } finally {
+      mergingRef.current = false;
       setIsMerging(false);
     }
+  };
+
+  // 取消合并：回到表单，并把输入框复位回原地址（否则留着被占用的地址易误解）
+  const handleCancelMerge = () => {
+    setMergePreview(null);
+    setError(null);
+    setUrl(feed?.url ?? "");
   };
 
   const handleClose = () => {
@@ -231,10 +267,7 @@ export function EditFeedDialog({
             <div className="flex justify-end gap-2 border-t border-border pt-4">
               <button
                 type="button"
-                onClick={() => {
-                  setMergePreview(null);
-                  setError(null);
-                }}
+                onClick={handleCancelMerge}
                 className={cn(
                   "rounded-[var(--radius)] px-4 py-2 text-sm font-medium transition-colors",
                   "border border-border bg-background hover:bg-secondary",
