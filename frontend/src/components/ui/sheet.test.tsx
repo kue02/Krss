@@ -94,7 +94,7 @@ describe("Sheet", () => {
     );
   });
 
-  it("opens from the trigger with a CSS transition instead of frame-by-frame JS", () => {
+  it("opens from the trigger with a CSS transition instead of frame-by-frame JS", async () => {
     const { container } = render(<ControlledSheet />);
     const { root, content, overlay } = getSlots(container);
 
@@ -106,7 +106,12 @@ describe("Sheet", () => {
       "transform 250ms cubic-bezier(0.32, 0.72, 0, 1), visibility 0s linear 0s",
     );
     expect(content.style.visibility).toBe("visible");
-    // 组件自身不跑 rAF/spring：打开只换 style，动画交给合成层
+    // 打开首帧先就位（-100%），下一帧 rAF 再切到 0 触发滑入过渡：推进一帧确认已滑入。
+    await act(async () => {
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      );
+    });
     expect(content.style.transform).toBe("translateX(0px)");
     expect(overlay.style.transition).toContain("opacity 250ms");
     expect(content.hasAttribute("aria-hidden")).toBe(false);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   setMobileSidebarOpen,
@@ -81,6 +81,25 @@ export function Sheet({
   const { t } = useTranslation();
   const panelRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<PointerDrag | null>(null);
+
+  // 关闭稳态下把面板 display:none，彻底移出渲染/合成树：iOS(WebKit) 对常驻的
+  // translateX(-100%) + will-change 合成层，在交互式返回/页面快照过渡里仍可能被
+  // 绘出一帧（抽屉闪现），仅靠 visibility:hidden 挡不住。display:none 的元素任何
+  // 内核都不会绘制，从根上消除闪现。mounted 控制 display、entered 单独控制
+  // transform，让打开时仍能「先就位 → 下一帧滑入」，保留滑出手感。
+  const [mounted, setMounted] = useState(open);
+  const [entered, setEntered] = useState(open);
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      const raf = requestAnimationFrame(() => setEntered(true));
+      return () => cancelAnimationFrame(raf);
+    }
+    // 关闭：先把 transform 归位（滑出动画在浏览器里照常播放），动画结束后再移出渲染树
+    setEntered(false);
+    const timer = window.setTimeout(() => setMounted(false), EXIT_DURATION_MS);
+    return () => window.clearTimeout(timer);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -388,17 +407,17 @@ export function Sheet({
           "shadow-[0_24px_64px_-16px_rgba(0,0,0,0.38)]",
           "safe-area-top",
           "touch-pan-y overscroll-y-contain",
-          // will-change 只给这块会动的面板，且常驻：合成层在打开前就建好，
-          // 打开时不再付建层的钱（投影也随之只栅格化一次）。
-          "will-change-transform",
         )}
         style={{
+          // display:none 才是根治：关闭稳态直接移出渲染/合成树。mounted 在退出动画结束后才转 false。
+          display: mounted ? undefined : "none",
           // 用 inline transform 而不是 Tailwind 的 translate-*：拖拽要逐帧改 transform，
           // 和 translate 工具类混用会被各自的 transform 组装规则互相覆盖。
-          transform: open ? "translateX(0px)" : "translateX(-100%)",
-          // 关闭态同时置 visibility:hidden：面板常驻且带 will-change-transform（合成层常驻），
-          // 只靠 translateX(-100%) 在 iOS 交互式返回/快照过渡时可能被绘出一帧，表现为抽屉闪现。
-          // 照遮罩的做法：退出动画期间仍可见，动画结束（EXIT_DURATION_MS 后）再隐藏；打开时立即可见。
+          // transform 用 entered（而非 open）驱动：打开首帧仍停在 -100%，下一帧再滑入。
+          transform: open && entered ? "translateX(0px)" : "translateX(-100%)",
+          // will-change 只在打开时挂：关闭态不保留合成层（配合 display:none，双保险）。
+          willChange: open ? "transform" : "auto",
+          // 退出动画期间仍可见，动画结束（EXIT_DURATION_MS 后）再 hidden；打开时立即可见。
           visibility: open ? "visible" : "hidden",
           transition: open
             ? `transform ${ENTER_DURATION_MS}ms ${SLIDE_EASE}, visibility 0s linear 0s`
