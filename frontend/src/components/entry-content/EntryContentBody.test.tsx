@@ -1,7 +1,8 @@
 import { render as rtlRender, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EntryContentBody } from "./EntryContentBody";
+import { useEntryMeta } from "@/hooks/useEntryMeta";
 import type { Entry } from "@/types/api";
 
 vi.mock("react-i18next", () => ({
@@ -15,11 +16,22 @@ vi.mock("@/hooks/useCodeHighlight", () => ({
 }));
 
 vi.mock("@/hooks/useEntryMeta", () => ({
-  useEntryMeta: () => ({
+  useEntryMeta: vi.fn(() => ({
+    feedTitle: null,
     publishedLong: null,
+    publishedShort: null,
     readingTime: null,
-  }),
+  })),
 }));
+
+beforeEach(() => {
+  vi.mocked(useEntryMeta).mockReturnValue({
+    feedTitle: null,
+    publishedLong: null,
+    publishedShort: null,
+    readingTime: null,
+  });
+});
 
 vi.mock("@/hooks/useFeeds", () => ({
   useFeeds: () => ({
@@ -71,6 +83,60 @@ describe("EntryContentBody", () => {
 
     expect(title?.className).toContain("wrap-anywhere");
     expect(titleLink.className).not.toContain("wrap-anywhere");
+  });
+
+  // 正文页头署名行：源名存在时渲染订阅源标题
+  it("renders the source feed title in the byline when the feed is present", () => {
+    render(
+      <EntryContentBody
+        entry={entry}
+        scrollRef={vi.fn()}
+        displayContent={entry.content}
+      />,
+    );
+
+    // 默认 feed mock 的标题是「黄赟」，条目无作者，故只来自源名
+    expect(screen.getByText("黄赟")).toBeTruthy();
+  });
+
+  // 正文页头署名行：阅读时长存在时渲染
+  it("renders the reading time in the byline", () => {
+    vi.mocked(useEntryMeta).mockReturnValue({
+      feedTitle: null,
+      publishedLong: null,
+      publishedShort: null,
+      readingTime: "3 分钟",
+    });
+
+    render(
+      <EntryContentBody
+        entry={entry}
+        scrollRef={vi.fn()}
+        displayContent={entry.content}
+      />,
+    );
+
+    expect(screen.getByText("3 分钟")).toBeTruthy();
+  });
+
+  // 正文页头：不安全的 URL 时标题不应是链接
+  it("does not render the title as a link when entry.url is unsafe", () => {
+    const unsafeEntry: Entry = {
+      ...entry,
+      title: "不安全标题",
+      url: "javascript:alert(1)",
+    };
+
+    render(
+      <EntryContentBody
+        entry={unsafeEntry}
+        scrollRef={vi.fn()}
+        displayContent={entry.content}
+      />,
+    );
+
+    expect(screen.queryByRole("link", { name: "不安全标题" })).toBeNull();
+    expect(screen.getByText("不安全标题")).toBeTruthy();
   });
 
   // 37-2：社交视图正文页不显示标题（社交条目的标题多半就是正文开头）
