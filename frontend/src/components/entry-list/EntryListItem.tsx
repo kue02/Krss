@@ -1105,7 +1105,7 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
               // 只过渡真正会变的属性：transition-all 会让几百张卡片为「任何」属性变化做检查
               // 移动端改成「纸面列表」：整宽、无卡片边框、行间细线，给文字更多呼吸；
               // 桌面端（sm 起）保持原来的圆角卡片。
-              "group relative cursor-pointer overflow-hidden border-0 border-b border-border/45 px-4 py-3.5 [contain:layout_paint]",
+              "group relative cursor-pointer overflow-hidden border-0 border-b border-border/45 px-4 py-3.5 [contain:layout]",
               "sm:mx-2 sm:mb-1.5 sm:rounded-[10px] sm:border sm:p-2",
               "transition-[background-color,border-color,box-shadow,opacity] duration-200",
               // 24-7：上下结构（来源行顶满 + 标题摘要/右图行），大图档保持纵向
