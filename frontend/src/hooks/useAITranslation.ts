@@ -9,7 +9,7 @@ import {
   fetchCachedTranslations,
   type TranslateBlockData,
 } from "@/api";
-import { needsTranslation } from "@/lib/language-detect";
+import { needsTranslation } from "@/lib/language-detect-async";
 import { stripHtml } from "@/lib/html-utils";
 import {
   useTranslationStore,
@@ -23,6 +23,37 @@ import {
 } from "@/services/content-translation-inflight";
 import { showToast } from "@/stores/toast-store";
 import type { Entry } from "@/types/api";
+
+/**
+ * 第四十三批（移动端性能）：把非关键的语言判定挪到空闲时段跑。
+ *
+ * `needsTranslation` 背后是 ELD（~1.5 MB n-gram 模型）。以前在本 hook 顶部静态
+ * 引入同步版，打开正文首帧就把 ELD 解析进主线程关键路径（CPU 4x 下 profile 里
+ * `eld_small.js` 160 samples）。现在改用 `@/lib/language-detect-async`（动态
+ * `import()`，ELD 单独成 chunk），并且只在 `requestIdleCallback`（无则
+ * `setTimeout 0`）里触发，避免和正文首帧抢主线程。
+ *
+ * 返回取消函数：effect 清理/入参变化时取消尚未执行的回调。
+ */
+function scheduleIdle(callback: () => void): () => void {
+  const g = globalThis as {
+    requestIdleCallback?: (
+      cb: () => void,
+      options?: { timeout: number },
+    ) => number;
+    cancelIdleCallback?: (handle: number) => void;
+  };
+  if (typeof g.requestIdleCallback === "function") {
+    const handle = g.requestIdleCallback(callback, { timeout: 1000 });
+    return () => {
+      if (typeof g.cancelIdleCallback === "function") {
+        g.cancelIdleCallback(handle);
+      }
+    };
+  }
+  const handle = setTimeout(callback, 0);
+  return () => clearTimeout(handle);
+}
 
 interface UseAITranslationOptions {
   entry: Entry | undefined;
@@ -143,11 +174,39 @@ export function useAITranslation({
     ? translatedContent
     : null;
 
-  const isAlreadyTargetLanguage = useMemo(() => {
-    if (!entry) return false;
+  /**
+   * 是否已是目标语言（决定翻译按钮是否禁用）。**默认 false**（先当作「不是
+   * 目标语言」，按钮可用），真正判定在空闲时段异步补上 —— 绝不用同步 ELD 阻塞
+   * 正文首帧。`needsTranslation` 现在来自 `@/lib/language-detect-async`。
+   */
+  const [isAlreadyTargetLanguage, setIsAlreadyTargetLanguage] = useState(false);
+
+  useEffect(() => {
+    if (!entry) {
+      setIsAlreadyTargetLanguage(false);
+      return;
+    }
+    let cancelled = false;
     const content = isReadableActive ? readableContent : entry.content;
     const summary = content ? stripHtml(content).slice(0, 200) : null;
-    return !needsTranslation(entry.title || "", summary, targetLanguage);
+    const cancelIdle = scheduleIdle(() => {
+      void (async () => {
+        try {
+          const needs = await needsTranslation(
+            entry.title || "",
+            summary,
+            targetLanguage,
+          );
+          if (!cancelled) setIsAlreadyTargetLanguage(!needs);
+        } catch {
+          // 动态 import 失败（离线 / chunk 加载失败）就保持默认值，按钮照常可用
+        }
+      })();
+    });
+    return () => {
+      cancelled = true;
+      cancelIdle();
+    };
   }, [entry, isReadableActive, readableContent, targetLanguage]);
 
   const displayTitle = useMemo(() => {
@@ -414,7 +473,7 @@ export function useAITranslation({
     const summary = entry.content
       ? stripHtml(entry.content).slice(0, 200)
       : null;
-    if (needsTranslation(entry.title || "", summary, targetLanguage)) {
+    if (await needsTranslation(entry.title || "", summary, targetLanguage)) {
       translateArticlesBatch(
         [{ id: entry.id, title: entry.title || "", summary }],
         targetLanguage,
@@ -453,13 +512,20 @@ export function useAITranslation({
         const content = isReadableActive ? readableContent : entry?.content;
         const summary = content ? stripHtml(content).slice(0, 200) : null;
 
-        if (needsTranslation(entry?.title || "", summary, targetLanguage)) {
-          generateTranslation(isReadableActive);
-        } else {
-          cancelInFlightTranslation();
-          clearTranslationState();
-          translateRequestedRef.current = false;
-        }
+        void (async () => {
+          const needs = await needsTranslation(
+            entry?.title || "",
+            summary,
+            targetLanguage,
+          );
+          if (needs) {
+            generateTranslation(isReadableActive);
+          } else {
+            cancelInFlightTranslation();
+            clearTranslationState();
+            translateRequestedRef.current = false;
+          }
+        })();
       }
     }
   }, [
@@ -489,18 +555,22 @@ export function useAITranslation({
 
     const content = isReadableActive ? readableContent : entry.content;
     const summary = content ? stripHtml(content).slice(0, 200) : null;
-    if (!needsTranslation(entry.title || "", summary, targetLanguage)) {
-      return;
-    }
+    void (async () => {
+      if (
+        !(await needsTranslation(entry.title || "", summary, targetLanguage))
+      ) {
+        return;
+      }
 
-    // 自动翻译也是「自己动起来」的，给个提示说明正在做什么。
-    // 49-3：**每条条目只弹一次** —— 这条链路会为同一条目跑两遍（预载没落库时再自发一次），
-    // 列表里快速切换就会叠出一屏一模一样的胶囊（用户报的就是这个）。
-    if (!autoTranslateToastShownRef.current) {
-      autoTranslateToastShownRef.current = true;
-      showToast(t("entry.auto_translate_on"));
-    }
-    generateTranslation(isReadableActive);
+      // 自动翻译也是「自己动起来」的，给个提示说明正在做什么。
+      // 49-3：**每条条目只弹一次** —— 这条链路会为同一条目跑两遍（预载没落库时再自发一次），
+      // 列表里快速切换就会叠出一屏一模一样的胶囊（用户报的就是这个）。
+      if (!autoTranslateToastShownRef.current) {
+        autoTranslateToastShownRef.current = true;
+        showToast(t("entry.auto_translate_on"));
+      }
+      generateTranslation(isReadableActive);
+    })();
   }, [
     autoTranslate,
     entry,

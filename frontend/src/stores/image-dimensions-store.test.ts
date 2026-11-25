@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { useImageDimensionsStore } from "./image-dimensions-store";
+import { saveDimension } from "@/lib/image-dimensions-db";
 
 // Mock the image-dimensions-db module
 vi.mock("@/lib/image-dimensions-db", () => ({
@@ -115,6 +116,25 @@ describe("image-dimensions-store", () => {
         .getDimension("https://example.com/img2.jpg");
       expect(dim1?.width).toBe(100);
       expect(dim2?.width).toBe(200);
+    });
+
+    it("相同尺寸直接 return：不换 dimensions 引用、也不重复写 DB", () => {
+      const store = useImageDimensionsStore.getState();
+      store.setDimension("https://example.com/same.jpg", 800, 600);
+
+      const dimsBefore = useImageDimensionsStore.getState().dimensions;
+      const dimBefore = dimsBefore["https://example.com/same.jpg"];
+      const savedCallsBefore = vi.mocked(saveDimension).mock.calls.length;
+
+      // 同一张图再次量到相同尺寸（`complete` 图每次挂载都会补记一次）
+      store.setDimension("https://example.com/same.jpg", 800, 600);
+
+      const dimsAfter = useImageDimensionsStore.getState().dimensions;
+      // 引用没变 —— 订阅整表的组件不会被通知
+      expect(dimsAfter).toBe(dimsBefore);
+      expect(dimsAfter["https://example.com/same.jpg"]).toBe(dimBefore);
+      // 也不重复落 IndexedDB
+      expect(vi.mocked(saveDimension).mock.calls.length).toBe(savedCallsBefore);
     });
   });
 

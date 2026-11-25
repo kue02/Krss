@@ -2,8 +2,24 @@ import { readFileSync } from "node:fs";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EntryListItem } from "./EntryListItem";
+import { extractContentMedia } from "@/lib/extract-content-media";
 import { useFilterEditorStore } from "@/stores/filter-editor-store";
 import type { Entry, Feed } from "@/types/api";
+
+// 部分 mock：保留真实实现，只把 extractContentMedia 换成可断言的 spy。
+// 用来验证「article 视图不再无条件解析正文 HTML」（社交视图仍会调用）。
+vi.mock("@/lib/extract-content-media", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/lib/extract-content-media")>();
+  return { ...actual, extractContentMedia: vi.fn(actual.extractContentMedia) };
+});
+
+// 社交视图会渲染 SocialMediaGallery，其 loadFromDB 走 IndexedDB；jsdom 没有
+// indexedDB，打桩掉这层（本用例只关心「是否调用 extractContentMedia」）。
+vi.mock("@/lib/image-dimensions-db", () => ({
+  getDimensionsBatch: vi.fn(() => Promise.resolve(new Map())),
+  saveDimension: vi.fn(() => Promise.resolve()),
+}));
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -195,6 +211,37 @@ describe("EntryListItem", () => {
       ...entry,
       url: "https://x.com/op7418/status/2100033975758856654",
     };
+
+    it("只有社交视图才解析正文图片：文章视图不调用 extractContentMedia", () => {
+      vi.mocked(extractContentMedia).mockClear();
+
+      // article 视图（默认 social=false）：不应触碰 DOMParser
+      const article = render(
+        <EntryListItem
+          entry={entry}
+          feed={feed}
+          isSelected={false}
+          onClick={() => {}}
+        />,
+      );
+      expect(vi.mocked(extractContentMedia)).not.toHaveBeenCalled();
+      article.unmount();
+
+      // 社交视图：仍然正常解析
+      render(
+        <EntryListItem
+          entry={{
+            ...socialEntry,
+            content: '<p><img src="https://example.com/x.jpg"></p>',
+          }}
+          feed={feed}
+          isSelected={false}
+          onClick={() => {}}
+          social
+        />,
+      );
+      expect(vi.mocked(extractContentMedia)).toHaveBeenCalled();
+    });
 
     it("条目用居中可读宽度（对齐 Folo），不是通栏", () => {
       const { container } = render(

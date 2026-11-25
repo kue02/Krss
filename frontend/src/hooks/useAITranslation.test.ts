@@ -40,7 +40,7 @@ vi.mock("@/api", () => ({
     typeof event === "object" && event !== null && "error" in event,
 }));
 
-vi.mock("@/lib/language-detect", () => ({
+vi.mock("@/lib/language-detect-async", () => ({
   needsTranslation: mockNeedsTranslation,
 }));
 
