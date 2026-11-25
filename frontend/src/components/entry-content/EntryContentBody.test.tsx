@@ -223,6 +223,23 @@ describe("EntryContentBody", () => {
     expect(screen.queryByText("entry.no_content")).toBeNull();
   });
 
+  // 空正文兜底只接受「被改写过」的播放器地址：bilibili 空间页这类原样 URL 仍显示空态
+  it("keeps the empty state for a non-player bilibili article url", () => {
+    const nonPlayer: Entry = {
+      ...entry,
+      title: "bilibili 空间页",
+      url: "https://space.bilibili.com/123456",
+      content: "",
+    };
+
+    const { container } = render(
+      <EntryContentBody entry={nonPlayer} scrollRef={vi.fn()} displayContent="" />,
+    );
+
+    expect(container.querySelector("iframe")).toBeNull();
+    expect(screen.getByText("entry.no_content")).toBeTruthy();
+  });
+
   // 37-2：社交视图正文页不显示标题（社交条目的标题多半就是正文开头）
   it("hides the title and shows the feed avatar in the social header", () => {
     const socialEntry: Entry = {

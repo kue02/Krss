@@ -9,7 +9,8 @@ import { cn } from "@/lib/utils";
  *   （`www.bilibili.com/blackboard/html5mobileplayer.html?...`），否则 RSSHub
  *   给的 `player.bilibili.com/player.html` 在部分环境会白屏或被拒嵌；
  * - YouTube：`watch?v=` / `youtu.be/<id>` / 已有 `/embed/<id>` 统一归一成
- *   `www.youtube-nocookie.com/embed/<id>`（顺带修 RSSHub 里 `&quot;` 混进 id 的脏数据）；
+ *   `www.youtube.com/embed/<id>?...&playsinline=1`（顺带修 RSSHub 里 `&quot;` 混进 id 的脏数据；
+ *   `playsinline` 是 iOS 内联播放所需，`www.youtube.com` 便于复用已登录会话）；
  * - Wistia 原样；
  * - 其它域名一律不嵌，降级成「域名 + ↗」外链，避免把任意第三方 iframe 引进正文。
  *
