@@ -50,9 +50,9 @@ interface EntryContentProps {
   /** 内嵌在列表里时也要显示目录与阅读进度（「向下」合列） */
   showAuxiliary?: boolean;
   /**
-   * 内嵌时工具栏背景层是否保留 backdrop-blur。卡片档此前为规避 `overflow:clip` 圆角缺块
-   * 关掉过模糊；现在卡片档会给背景层自带顶部圆角（`headerBackgroundRoundedTop`），
-   * 因此两档都保留磨砂。缺省按 true 处理。
+   * 内嵌时工具栏背景层是否保留 backdrop-blur。卡片档会给背景层自带顶部圆角
+   * （`headerBackgroundRoundedTop`），因此可以保留磨砂。缺省跟随 `embedded`：
+   * 内嵌阅读器（通知时间线等）不保留，独立第三栏保留；由 App 对卡片档显式传 true。
    */
   headerBackgroundBlur?: boolean;
   /**
@@ -303,7 +303,7 @@ export function EntryContent({
         stickyTopClassName={headerStickyTopClassName}
         mobileInlineSticky={embedded && Boolean(isMobile)}
         /** 卡片档内联合列现在也保留磨砂；靠背景层自带顶部圆角避免缺块 */
-        backgroundBlur={headerBackgroundBlur ?? true}
+        backgroundBlur={headerBackgroundBlur ?? !embedded}
         backgroundTopRadius={headerBackgroundRoundedTop ?? false}
       />
       {/* 23-4：阅读进度条锁在工具栏（h-12 = 48px）正下方。

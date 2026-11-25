@@ -92,10 +92,10 @@ interface EntryContentHeaderProps {
   /** 手机内联合列：正文标题栏吸顶（列表 TOP 栏滚走时贴在视口顶），未滚走时自然排在它下面 */
   mobileInlineSticky?: boolean;
   /**
-   * 顶栏背景层是否叠加 `backdrop-blur`。默认跟随 `sticky`：第三栏那套（非内嵌）保留模糊；
-   * 卡片档内联合列里必须关掉：Chromium 下祖先 `overflow: clip` 的圆角裁剪遇到带
-   * backdrop-filter 的层时，圆角边框/阴影的合成会出错，表现为「滑动后点开正文，卡片左上角
-   * 缺一块」（不滚动时背景层 opacity-0 所以看不到；实测不是整块白底盖住圆角）。
+   * 顶栏背景层是否叠加 `backdrop-blur`。默认跟随 `sticky`：第三栏那套（非内嵌）保留模糊。
+   * 卡片档内联合列也保留磨砂，但要求背景层同时自带顶部圆角（`backgroundTopRadius`），
+   * 否则 Chromium 下 `backdrop-filter` 会逃逸祖先 `overflow: clip` 的圆角，出现「滑动后
+   * 点开正文，卡片左上角缺一块」。通知时间线等其它内嵌阅读器按调用方显式传值。
    */
   backgroundBlur?: boolean;
   /**

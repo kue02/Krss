@@ -8,8 +8,8 @@ import type { Entry } from "@/types/api";
  *
  * 背景层带 `backdrop-filter` 时，Chromium 不会把该元素裁剪到祖先 `overflow: clip`
  * 的圆角里；现在的解法是**保留模糊、让模糊层自带 12px 顶部圆角**（见下方用例），
- * 不再靠关掉模糊。这里同时保留组件默认值用例：未显式传 `backgroundBlur` 时 sticky
- * 仍按保守默认关模糊，真正走 App 的卡片档会显式传 true + `backgroundTopRadius`。
+ * 不再靠关掉模糊。组件兜底默认仍是 `backgroundBlur = !sticky`（未显式传时 sticky 不叠加），
+ * 真正走 App 的卡片档会显式传 true + `backgroundTopRadius`。
  */
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),

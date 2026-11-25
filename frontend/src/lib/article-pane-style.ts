@@ -1,9 +1,10 @@
 /**
  * 「正文栏样式」到「内联工具栏背景层是否保留 backdrop-blur」的映射。
  *
- * 卡片档 pane 用 `overflow: clip` 裁圆角；Chromium 下带 backdrop-filter 的层会让祖先圆角的
- * 边框/阴影合成出错，表现为滚动后点开正文、卡片左上角缺一块，所以卡片档必须关掉模糊。
- * 「原样」档用 `clip-path` 裁圆角，没有这个问题，保留模糊（按用户 2026-11-24 的要求，原样档不动）。
+ * 卡片档 pane 用 `overflow: clip` 裁圆角；Chromium 下带 backdrop-filter 的层会逃逸祖先圆角的
+ * 裁剪，表现为滚动后点开正文、卡片左上角缺一块。修复方式是让模糊层自带顶部圆角
+ * （见 `headerBackgroundRoundedTopFor`），由 `backdrop-filter` 按自身 border-box 裁剪，而不是
+ * 关掉模糊；因此卡片档与「原样」档都保留磨砂（按用户 2026-11-25 的要求）。
  */
 export function headerBackgroundBlurFor(
   _style: "card" | "plain" | undefined,

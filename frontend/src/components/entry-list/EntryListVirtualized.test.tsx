@@ -428,7 +428,10 @@ describe("EntryList · 标准文章列表虚拟化", () => {
     ).toBeNull();
     expect(rowIds()).toHaveLength(manyEntries.length);
 
-    expect(renderInlineContent).toHaveBeenCalled();
+    expect(renderInlineContent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ paneAtTop: false }),
+    );
     const pane = screen.getByTestId("inline-article-pane");
     expect(pane.contains(screen.getByTestId("inline-body"))).toBe(true);
     // 正文接在被点的那一行后面：e-1 行在前、pane 在后，随后的 e-2 行还在 pane 之后
@@ -519,7 +522,10 @@ describe("EntryList · 标准文章列表虚拟化", () => {
       viewport.querySelector('[data-virtual-list="true"]'),
     ).toBeNull();
     expect(rowIds()).toHaveLength(50);
-    expect(renderInlineContent).toHaveBeenCalled();
+    expect(renderInlineContent).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ paneAtTop: false }),
+    );
     const pane = screen.getByTestId("inline-article-pane");
     expect(pane.contains(screen.getByTestId("inline-body"))).toBe(true);
     const row1 = viewport.querySelector('[data-entry-id="e-1"]') as HTMLElement;
@@ -580,6 +586,11 @@ describe("EntryList · 标准文章列表虚拟化", () => {
       expect(pane.className).toContain("rounded-none");
       expect(pane.className).toContain("[overflow:clip]");
       expect(pane.className).not.toContain("clip-path");
+      // 接线断言：贴顶时 renderInlineContent 的第二个参数必须带 paneAtTop=true，
+      // App 据此把 headerBackgroundRoundedTopFor 算成 false（不加顶部圆角）。
+      expect((renderInlineContent.mock.lastCall as unknown[] | undefined)?.[1]).toMatchObject({
+        paneAtTop: true,
+      });
 
       /* 滚回列表最顶：正文已不在视口顶，必须复位成卡片档，不能保持铺满直角 */
       await act(async () => {
@@ -588,6 +599,9 @@ describe("EntryList · 标准文章列表虚拟化", () => {
       });
       expect(pane.className).toContain("rounded-[12px]");
       expect(pane.className).toContain("[overflow:clip]");
+      expect((renderInlineContent.mock.lastCall as unknown[] | undefined)?.[1]).toMatchObject({
+        paneAtTop: false,
+      });
     } finally {
       if (scrollYDescriptor) {
         Object.defineProperty(window, "scrollY", scrollYDescriptor);

@@ -4,8 +4,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 /**
  * 46-x 接线测试：`headerBackgroundBlur` 必须原样透传给顶栏。
  *
- * 卡片档 pane 用 `overflow:clip` 裁圆角，带 backdrop-filter 的工具栏背景层会逃逸裁剪、
- * 盖住卡片圆角，所以卡片档必须关掉模糊；「原样」档靠 clip-path 裁剪，保留模糊。
+ * 卡片档 pane 用 `overflow:clip` 裁圆角，带 backdrop-filter 的工具栏背景层会逃逸裁剪；
+ * 修复方式是背景层自带顶部圆角，而不是关掉模糊。内嵌默认不保留模糊（其它内嵌阅读器
+ * 如通知时间线维持旧行为），卡片档由 App 显式传 true。
  * 只测顶栏组件本身挡不住「接线写反/漏传」，这里把顶栏换成探针验转发。
  */
 const captured: Array<{
@@ -130,8 +131,8 @@ describe("EntryContent → 顶栏背景模糊接线", () => {
     expect((await renderContent({})).backgroundBlur).toBe(true);
   });
 
-  it("embedded 未传值 → 默认保留模糊", async () => {
-    expect((await renderContent({ embedded: true })).backgroundBlur).toBe(true);
+  it("embedded 未传值 → 默认不保留模糊（通知时间线等内嵌阅读器维持旧行为）", async () => {
+    expect((await renderContent({ embedded: true })).backgroundBlur).toBe(false);
   });
 });
 
