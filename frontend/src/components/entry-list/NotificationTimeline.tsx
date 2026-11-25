@@ -699,6 +699,11 @@ function TimelineClusterCard({
   );
 }
 
+export interface NotificationTimelineHandle {
+  /** 让目标条目所在段先挂载，再把该条目滚进视口（跨段 j/k 用）。 */
+  revealEntry: (entryId: string) => boolean;
+}
+
 export interface NotificationTimelineProps {
   entries: Entry[];
   feeds: Map<string, Feed>;
@@ -729,6 +734,8 @@ export interface NotificationTimelineProps {
    * 键盘 j/k、↑/↓ 就在这些节点之间吸附，不会选到看不见的条目。
    */
   onSelectableEntriesChange?: (entries: Entry[]) => void;
+  /** 暴露命令式句柄：通知视图本身不虚拟整列，j/k 跨段时要先挂载目标段 */
+  handleRef?: React.MutableRefObject<NotificationTimelineHandle | null>;
 }
 
 
@@ -742,25 +749,32 @@ function TimelineLazyRows({
   sectionKey,
   rowCount,
   heights,
+  forceMount = false,
   children,
 }: {
   sectionKey: string;
   rowCount: number;
   heights: React.MutableRefObject<Map<string, number>>;
+  /** 跨段 reveal 时强制挂载（挂上后由滚动位置接管） */
+  forceMount?: boolean;
   children: () => ReactNode;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  // 默认挂载：首帧渲染前用布局效应按视口距离先裁一次（避免首屏空白，也避免离线时
-  // 依赖 IntersectionObserver 的首个回调时机）；之后交给 observer 跟随滚动挂载/卸载。
-  const [mounted, setMounted] = useState(true);
+  // 初值 false：首帧只渲染占位高度，布局效应在**绘制前**按真实滚容器位置裁一次，
+  // 命中视口的段立刻挂载，远离的保持占位 —— 进入通知视图的首个提交不再全量挂载。
+  const [mounted, setMounted] = useState(false);
 
   useLayoutEffect(() => {
+    if (forceMount) {
+      setMounted(true);
+      return;
+    }
     const node = ref.current;
     if (!node) return;
     const rect = node.getBoundingClientRect();
     const viewportH = window.innerHeight || 0;
     setMounted(rect.bottom > -1200 && rect.top < viewportH + 1200);
-  }, []);
+  }, [forceMount]);
 
   useEffect(() => {
     const node = ref.current;
@@ -770,15 +784,21 @@ function TimelineLazyRows({
       setMounted(true);
       return;
     }
+    // 桌面真正的滚容器是内层 entry-list-viewport（overflow-y-auto），
+    // 不传 root 时 rootMargin 会被这层 clip 抵消，预挂载缓冲等于失效。
+    const root = node.closest('[data-testid="entry-list-viewport"]');
     const observer = new Observer(
       (entries) => {
-        for (const item of entries) setMounted(item.isIntersecting);
+        for (const item of entries) {
+          if (item.isIntersecting) setMounted(true);
+          else if (!forceMount) setMounted(false);
+        }
       },
-      { rootMargin: "1200px 0px" },
+      { root: root instanceof Element ? root : null, rootMargin: "1200px 0px" },
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, []);
+  }, [forceMount]);
 
   useEffect(() => {
     const node = ref.current;
@@ -826,6 +846,7 @@ export function NotificationTimeline({
   bodyOnHover = false,
   onSelectableEntriesChange,
   onSelectFeedFromEntry,
+  handleRef,
 }: NotificationTimelineProps) {
   const { t, i18n } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -1204,6 +1225,93 @@ export function NotificationTimeline({
 
   /** 段内行块实测高度（卸载后用占位，避免滚动条跳动） */
   const rowsHeightsRef = useRef<Map<string, number>>(new Map());
+  /** 被命令式 reveal 强制挂载的段（滚到目标后清掉，交还 observer） */
+  const [forcedSections, setForcedSections] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
+  const pendingRevealIdRef = useRef<string | null>(null);
+
+  /**
+   * 命令式 reveal：通知视图不虚拟整列，但段内行块会卸载。j/k 跨到未挂载段时
+   * `document.querySelector` 必然落空，所以要先把目标段强挂上，再滚动。
+   * 目标若被吸进聚合卡，还要先展开那个聚合卡（卡片本身也是段内行）。
+   */
+  useEffect(() => {
+    if (!handleRef) return;
+    handleRef.current = {
+      revealEntry: (entryId: string) => {
+        const section = sections.find((item) =>
+          item.rows.some((row) =>
+            row.kind === "cluster"
+              ? row.entries.some((e) => e.id === entryId)
+              : row.entry.id === entryId,
+          ),
+        );
+        if (!section) return false;
+        const targetRow = section.rows.find((row) =>
+          row.kind === "cluster"
+            ? row.entries.some((e) => e.id === entryId)
+            : row.entry.id === entryId,
+        );
+        if (targetRow?.kind === "cluster") {
+          setExpandedClusters((prev) => {
+            if (prev.has(targetRow.key)) return prev;
+            const next = new Set(prev);
+            next.add(targetRow.key);
+            return next;
+          });
+        }
+        pendingRevealIdRef.current = entryId;
+        setForcedSections((prev) => {
+          if (prev.has(section.key)) return prev;
+          const next = new Set(prev);
+          next.add(section.key);
+          return next;
+        });
+        return true;
+      },
+    };
+    return () => {
+      handleRef.current = null;
+    };
+  }, [handleRef, sections, setExpandedClusters]);
+
+  /** 段强制挂载后，等该条目真正进 DOM 再滚；最多等 20 帧。滚完交还 observer。 */
+  useEffect(() => {
+    const entryId = pendingRevealIdRef.current;
+    if (!entryId) return;
+    let frame = 0;
+    let raf = 0;
+    const sectionKey = sections.find((item) =>
+      item.rows.some((row) =>
+        row.kind === "cluster"
+          ? row.entries.some((e) => e.id === entryId)
+          : row.entry.id === entryId,
+      ),
+    )?.key;
+    const tick = () => {
+      const target = document.querySelector<HTMLElement>(
+        `[data-entry-id="${CSS.escape(entryId)}"]`,
+      );
+      if (target) {
+        target.scrollIntoView({ block: "center" });
+        pendingRevealIdRef.current = null;
+        if (sectionKey) {
+          setForcedSections((prev) => {
+            if (!prev.has(sectionKey)) return prev;
+            const next = new Set(prev);
+            next.delete(sectionKey);
+            return next;
+          });
+        }
+        return;
+      }
+      if (frame++ < 20) raf = requestAnimationFrame(tick);
+      else pendingRevealIdRef.current = null;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [forcedSections, expandedClusters, sections]);
 
   /** 轴上的卡片（顺序即键盘吸附顺序） */
   const selectableEntries = useMemo(
@@ -1377,6 +1485,7 @@ export function NotificationTimeline({
             sectionKey={section.key}
             rowCount={section.rows.length}
             heights={rowsHeightsRef}
+            forceMount={forcedSections.has(section.key)}
           >
             {() => section.rows.map((row) => {
         const dotLeft = singleSide ? `${SINGLE_SIDE_TIME_COLUMN}px` : "50%";

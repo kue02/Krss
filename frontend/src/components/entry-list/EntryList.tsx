@@ -82,6 +82,7 @@ import {
 import {
   COLLAPSE_ALL_EVENT,
   NotificationTimeline,
+  type NotificationTimelineHandle,
 } from "./NotificationTimeline";
 import { NotificationBodyPreview } from "./NotificationBodyPreview";
 import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
@@ -1057,6 +1058,8 @@ export function EntryList({
   // 键盘快捷键：j/k 上下篇（选中即已读）、m 已读、s 星标、v 打开原文、Esc 关闭
   // 虚拟列表里选中行可能被卸载，reveal 时先用 virtualizer.scrollToIndex 把它挂回来。
   const virtualListRef = useRef<VirtualizedArticleListState | null>(null);
+  /** 通知时间线不是整列虚拟，但段内行块会卸载，跨段 j/k 得先让目标段挂载 */
+  const notificationTimelineRef = useRef<NotificationTimelineHandle | null>(null);
   useEntryHotkeys({
     // 通知视图走时间线：吸附顺序 = 轴上的卡片（被吸进小节点的条目不算节点）
     entries: (isNotificationTimeline ? timelineSelectableEntries : null) ?? entries,
@@ -1069,7 +1072,7 @@ export function EntryList({
     onRevealEntry: (entryId) => {
       const state = virtualListRef.current;
       const virtualizer = state?.windowVirtualizer ?? state?.virtualizer ?? null;
-      if (!virtualizer) return false;
+      if (!virtualizer) return notificationTimelineRef.current?.revealEntry(entryId) ?? false;
       const list =
         (isNotificationTimeline ? timelineSelectableEntries : null) ?? entries;
       const index = list.findIndex((entry) => entry.id === entryId);
@@ -2074,6 +2077,7 @@ export function EntryList({
                   targetLanguage={targetLanguage}
                   onSelectableEntriesChange={setTimelineSelectableEntries}
                   onSelectFeedFromEntry={onSelectFeedFromEntry}
+                  handleRef={notificationTimelineRef}
                 />
               ) : isArticlePlain ? (
                 /* 常规「Inoreader列表」—— 来源图标 + 加粗标题 + 右侧来源·时间，
