@@ -21,6 +21,7 @@ import {
   type EntryToolbarItem,
 } from "@/lib/entry-toolbar";
 import type { ArticlePaneFrame } from "@/lib/article-pane-style";
+import { normalizeIframeVideoHost } from "@/lib/video-embed";
 
 export type CardImageSize = "none" | "small" | "large";
 export type ScrollReadOverride = "inherit" | "on" | "off";
@@ -296,6 +297,16 @@ interface UISettings {
   entryPrefetch: boolean;
   /** 预载并发上限（1–5，默认 3）；一屏几十条不能同时打出去 */
   entryPrefetchConcurrency: number;
+  /**
+   * 正文 iframe 视频的额外白名单站点（域名或完整 URL）。
+   * 内置 bilibili / YouTube / Wistia 已在代码里，这里只放用户自己加的小站。
+   */
+  iframeVideoHosts: string[];
+  /**
+   * 未知站点的 iframe 视频是否显示「点击加载」占位（默认开）。
+   * 关掉 = 回到「域名 + ↗」外链药丸，完全不加载第三方 iframe。
+   */
+  iframeUnknownClickToLoad: boolean;
   /** 社交媒体视图里，长贴是否默认展开（不折叠） */
   expandLongByView: ViewFlags;
   /**
@@ -589,6 +600,17 @@ function sanitizeBag(input: unknown): Record<string, unknown> {
 
   for (const [key, value] of Object.entries(input)) {
     const fallback = defaults[key];
+    // iframe 站点白名单：数组逐项归一成主机名，丢掉空值/非法值，去重。
+    if (key === "iframeVideoHosts" && Array.isArray(value)) {
+      const hosts: string[] = [];
+      for (const item of value) {
+        if (typeof item !== "string") continue;
+        const normalized = normalizeIframeVideoHost(item);
+        if (normalized && !hosts.includes(normalized)) hosts.push(normalized);
+      }
+      out[key] = hosts;
+      continue;
+    }
     // 默认是字符串、但允许显式 null 的键（accentColor=「跟随主题」）：先于类型闸门放行。
     if (NULLABLE_STRING_KEYS.has(key)) {
       if (value === null || typeof value === "string") out[key] = value;
@@ -752,6 +774,9 @@ export const defaultUISettings: UISettings = {
   // 进视口预载：默认开（用户 2026-10-10 原话「订阅条目出现在视口内时后台批量执行」）
   entryPrefetch: true,
   entryPrefetchConcurrency: 3,
+  // 正文视频：内置站点以外的 iframe 默认点一下再加载；用户可追加站点白名单。
+  iframeVideoHosts: [],
+  iframeUnknownClickToLoad: true,
   expandLongByView: {
     article: false,
     picture: false,

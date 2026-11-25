@@ -1,5 +1,10 @@
-import { ExternalLink } from "lucide-react";
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import { Button } from "@heroui/react";
+import { ExternalLink, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useUISettingKey } from "@/hooks/useUISettings";
+import { hostMatchesRules, mergeIframeVideoHosts } from "@/lib/video-embed";
 
 /**
  * 正文里的 `<iframe>` 视频（bilibili / YouTube / Wistia 等）。
@@ -12,7 +17,8 @@ import { cn } from "@/lib/utils";
  *   `www.youtube.com/embed/<id>?...&playsinline=1`（顺带修 RSSHub 里 `&quot;` 混进 id 的脏数据；
  *   `playsinline` 是 iOS 内联播放所需，`www.youtube.com` 便于复用已登录会话）；
  * - Wistia 原样；
- * - 其它域名一律不嵌，降级成「域名 + ↗」外链，避免把任意第三方 iframe 引进正文。
+ * - 其它域名：默认给「点击加载」占位，点一下才挂 iframe；用户可在设置里把站点加进白名单直接内嵌，
+ *   或关掉「未知站点点击加载」回到「域名 + ↗」外链。
  *
  * 渲染层固定 16:9、懒加载、`referrerPolicy=strict-origin-when-cross-origin`，
  * 并用 `sandbox` 收住脚本能力（视频站需要的 allow-scripts / allow-same-origin /
@@ -34,19 +40,11 @@ function toHttpUrl(raw: string | undefined): URL | null {
   }
 }
 
-function isAllowedHost(hostname: string): boolean {
-  const host = hostname.toLowerCase();
-  return (
-    host === "bilibili.com" ||
-    host.endsWith(".bilibili.com") ||
-    host === "youtube.com" ||
-    host.endsWith(".youtube.com") ||
-    host === "youtube-nocookie.com" ||
-    host.endsWith(".youtube-nocookie.com") ||
-    host === "youtu.be" ||
-    host === "fast.wistia.net" ||
-    host.endsWith(".wistia.net")
-  );
+function isAllowedHost(
+  hostname: string,
+  extraHosts: readonly string[] = [],
+): boolean {
+  return hostMatchesRules(hostname, mergeIframeVideoHosts(extraHosts));
 }
 
 function safeDecode(value: string): string {
@@ -89,12 +87,15 @@ function extractYouTubeId(url: URL): string | undefined {
 }
 
 /** 把正文里的 iframe 地址归一成可安全内嵌的地址；不在白名单 / 非 http(s) 返回 null。 */
-export function resolveIframeSrc(raw: string | undefined): string | null {
+export function resolveIframeSrc(
+  raw: string | undefined,
+  extraHosts: readonly string[] = [],
+): string | null {
   const url = toHttpUrl(raw);
   if (!url) return null;
 
   const host = url.hostname.toLowerCase();
-  if (!isAllowedHost(host)) return null;
+  if (!isAllowedHost(host, extraHosts)) return null;
 
   if (host === "bilibili.com" || host.endsWith(".bilibili.com")) {
     const bvid =
@@ -175,13 +176,82 @@ export function ArticleIframe({
   hidden,
   ...rest
 }: ArticleIframeProps) {
-  const resolved = resolveIframeSrc(src);
+  const { t } = useTranslation();
+  const extraHosts = useUISettingKey("iframeVideoHosts") ?? [];
+  const unknownClickToLoad =
+    useUISettingKey("iframeUnknownClickToLoad") !== false;
+  // 「点击加载」后放行原 iframe。state 放在所有 return 之前，钩子顺序才稳定。
+  const [activated, setActivated] = useState(false);
+
+  const resolved = resolveIframeSrc(src, extraHosts);
+  const rawSrcUrl = toHttpUrl(src)?.toString() ?? null;
+  const srcHost = toHttpUrl(src)?.hostname ?? "";
+  // 已知站点但解析失败（YouTube playlist / 畸形 id）不能再给「点击加载」——
+  // 那种原始页塞进 iframe 只会被 X-Frame-Options 拒成黑块，仍旧降级外链。
+  const knownHost = srcHost ? isAllowedHost(srcHost, extraHosts) : false;
 
   if (!resolved) {
     // 追踪像素 / 广告位常是 1×1 或 display:none 的 iframe，不降级成可见药丸。
     if (isTinyOrHidden(width, height, style, hidden)) return null;
     const fallback = getFallback(src);
     if (!fallback) return null;
+
+    // 未知站点 iframe：用户开了「点击加载」时，不直接丢弃，给一个 16:9 播放位，
+    // 点一下才真正挂 iframe（避免一打开文章就被第三方追踪 / 跑到未知站点）。
+    if (unknownClickToLoad && !knownHost && rawSrcUrl && !activated) {
+      return (
+        <div
+          data-slot="article-iframe-placeholder"
+          className={cn("article-iframe not-prose my-4 w-full", className)}
+          style={style}
+        >
+          <Button
+            variant="ghost"
+            onPress={() => setActivated(true)}
+            className="h-auto w-full min-w-0 rounded-[var(--radius-lg)] border border-border/60 bg-secondary/40 p-0 text-muted-foreground hover:bg-secondary/60"
+            aria-label={t("article_iframe.click_to_load", {
+              host: fallback.host,
+            })}
+          >
+            <span className="flex aspect-video w-full flex-col items-center justify-center gap-2">
+              <span className="flex size-12 items-center justify-center rounded-full bg-background/70 text-foreground shadow-nf-sm">
+                <Play className="size-5 translate-x-0.5" aria-hidden="true" />
+              </span>
+              <span className="text-xs font-medium text-foreground">
+                {t("article_iframe.click_to_load_short")}
+              </span>
+              <span className="text-[11px] opacity-70">{fallback.host}</span>
+            </span>
+          </Button>
+        </div>
+      );
+    }
+
+    const embedSrc = activated && rawSrcUrl ? rawSrcUrl : null;
+    if (embedSrc) {
+      return (
+        <div
+          data-slot="article-iframe"
+          className={cn("article-iframe not-prose my-4 w-full", className)}
+          style={style}
+        >
+          <div className="relative aspect-video w-full overflow-hidden rounded-[var(--radius-lg)] bg-black">
+            <iframe
+              {...rest}
+              src={embedSrc}
+              title={title || fallback.host}
+              loading="lazy"
+              referrerPolicy="strict-origin-when-cross-origin"
+              sandbox={IFRAME_SANDBOX}
+              allow={DEFAULT_ALLOW}
+              allowFullScreen
+              className="absolute inset-0 h-full w-full border-0"
+            />
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div
         data-slot="article-iframe-fallback"

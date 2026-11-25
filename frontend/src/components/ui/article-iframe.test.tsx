@@ -1,6 +1,6 @@
 import { createElement } from "react";
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { parseHtml } from "@/lib/parse-html";
 import { ArticleIframe, resolveIframeSrc } from "./article-iframe";
 
@@ -53,16 +53,27 @@ describe("ArticleIframe · 正文内嵌视频", () => {
     expect(getIframe(container).getAttribute("src")).toBe(src);
   });
 
-  it("非白名单域名不内嵌，降级成外链药丸", () => {
+  it("非白名单域名默认显示点击加载占位，点击后才挂 iframe", () => {
     const { container } = render(
-      <ArticleIframe src="https://evil.example/embed/x" />,
+      <ArticleIframe src="https://video.example/embed/x" />,
     );
     expect(container.querySelector("iframe")).toBeNull();
-    const link = screen.getByRole("link");
-    expect(link.getAttribute("href")).toBe("https://evil.example/embed/x");
-    expect(link.getAttribute("target")).toBe("_blank");
-    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
-    expect(link.textContent).toContain("evil.example");
+    const placeholder = container.querySelector(
+      '[data-slot="article-iframe-placeholder"]',
+    );
+    expect(placeholder).not.toBeNull();
+    expect(placeholder?.textContent).toContain("video.example");
+
+    fireEvent.click(screen.getByRole("button"));
+    expect(container.querySelector("iframe")?.getAttribute("src")).toBe(
+      "https://video.example/embed/x",
+    );
+  });
+
+  it("用户白名单里的站点直接内嵌", () => {
+    expect(
+      resolveIframeSrc("https://video.example/embed/x", ["video.example"]),
+    ).toBe("https://video.example/embed/x");
   });
 
   it("javascript: 地址既不内嵌也不给外链", () => {

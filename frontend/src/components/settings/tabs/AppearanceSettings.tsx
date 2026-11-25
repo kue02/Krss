@@ -41,6 +41,7 @@ import { useScrollReadSetting, type ScrollReadPerViewChoice } from "@/hooks/useS
 import { AccentColorPicker } from "@/components/settings/tabs/AccentColorPicker";
 import { UnreadBadgeCustomizer } from "@/components/settings/tabs/UnreadBadgeCustomizer";
 import { EntryToolbarSettings } from "@/components/settings/tabs/EntryToolbarSettings";
+import { VideoEmbedSettings } from "@/components/settings/tabs/VideoEmbedSettings";
 import { readingFonts } from "@/lib/reading-fonts";
 import type {
   TimelineCollapse,
@@ -854,6 +855,9 @@ export function AppearanceSettings() {
           </SettingRow>
         </div>
       </SectionCard>
+
+      {/* 正文视频：白名单 / 未知站点点击加载；直接视频文件无需配置 */}
+      <VideoEmbedSettings />
 
       {/* 移动端样式：手机有独立入口（底栏），这里只决定侧栏是否重复显示、
           以及长按操作面板从底部弹出还是贴着手指弹出。 */}
