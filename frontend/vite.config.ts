@@ -183,6 +183,10 @@ export default defineConfig({
       output: {
         entryFileNames: "assets/app-[hash].js",
         manualChunks(id: string) {
+          // @videojs（播放器重依赖）只被 article-video 的 React.lazy 动态引入，
+          // 交给默认分块即落到那个异步 chunk；这里必须提前放行，否则下面
+          // 的 "/react/" 规则会把 `@videojs/react` 误并进首屏 react-vendor。
+          if (id.includes("@videojs/")) return;
           if (id.includes("node_modules")) {
             if (id.includes("/react/") || id.includes("/react-dom/"))
               return "react-vendor";

@@ -61,7 +61,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { refreshAllFeeds } from "@/api";
 import { ShortcutsHelpDialog } from "@/components/shortcuts/ShortcutsHelpDialog";
 import { SearchModal } from "@/components/search/SearchModal";
-import { VideoPreview } from "@/components/ui/video-preview";
 import { useGlobalHotkeys } from "@/hooks/useGlobalHotkeys";
 import {
   shortcutsHelp,
@@ -828,7 +827,6 @@ function AuthenticatedApp() {
           {contentType !== "picture" && (
             <>
               <ImagePreview />
-              <VideoPreview />
             </>
           )}
           {/* 侧栏开关走模块级 store（useMobileLayout），这里不传 open：
@@ -999,7 +997,6 @@ function AuthenticatedApp() {
         {contentType !== "picture" && (
           <>
             <ImagePreview />
-            <VideoPreview />
           </>
         )}
         {/* Sheet rendered once to prevent animation flickering on route/mode changes；
@@ -1092,7 +1089,6 @@ function AuthenticatedApp() {
           showSidebar={showSidebar}
         />
         <ImagePreview />
-        <VideoPreview />
         <ShortcutsHelpDialog
           open={isShortcutsOpen}
           onOpenChange={(open) => shortcutsHelp.set(open)}
@@ -1163,7 +1159,6 @@ function AuthenticatedApp() {
           showSidebar={showSidebar}
         />
         <ImagePreview />
-        <VideoPreview />
         <ShortcutsHelpDialog
           open={isShortcutsOpen}
           onOpenChange={(open) => shortcutsHelp.set(open)}
@@ -1188,7 +1183,6 @@ function AuthenticatedApp() {
         inlineContent={isArticleInlineLayout}
       />
       <ImagePreview />
-        <VideoPreview />
       <ShortcutsHelpDialog
         open={isShortcutsOpen}
         onOpenChange={(open) => shortcutsHelp.set(open)}
