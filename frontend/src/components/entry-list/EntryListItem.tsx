@@ -482,7 +482,10 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     const thumbnailSrc = thumbRecovered && thumbnail ? withProxyCacheBust(thumbnail) : thumbnail;
     const authedThumbnail = useAuthedImageUrl(thumbnailSrc ?? undefined);
 
-    /** 阅读时长（与 EntryContentBody 同口径）：复用 plainContent，走公共估算函数 */
+    /**
+     * 阅读时长：按订阅原文(entry.content)估算；详情页按实际显示正文（含阅读模式/译文）估算，
+     * 二者口径可能不同（列表为性能不对全文/译文重算，每行只解析一次正文）。
+     */
     const readingTime = useMemo(() => {
       const mins = estimateReadingMinutes(plainContent);
       return mins ? t("entry.min_read", { mins }) : null;
