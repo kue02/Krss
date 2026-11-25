@@ -438,6 +438,8 @@ describe("EntryList · 标准文章列表虚拟化", () => {
       viewport.querySelector('[data-virtual-list="true"]'),
     ).toBeNull();
     expect(rowIds().length).toBeGreaterThan(15);
+    // 合列非虚拟路径也要「渲染层虚拟化」：行外层带 content-visibility，离屏行不渲染
+    expect(viewport.querySelector('[class*="content-visibility:auto"]')).not.toBeNull();
 
     rerender(
       <EntryList
