@@ -140,6 +140,32 @@ vi.mock("./NotificationTimeline", () => ({
   }) => (
     <div
       data-testid="notification-timeline"
+      data-variant="cards"
+      data-granularity={granularity}
+      data-collapse={collapse}
+      data-time-basis={timeBasis}
+      data-auto-single-side={autoSingleSide === false ? "off" : "on"}
+      data-entry-ids={entries.map((entry) => entry.id).join(",")}
+    />
+  ),
+}));
+vi.mock("./NotificationTimelineClassic", () => ({
+  NotificationTimelineClassic: ({
+    entries,
+    granularity,
+    collapse,
+    timeBasis,
+    autoSingleSide,
+  }: {
+    entries: Entry[];
+    granularity: string;
+    collapse: string;
+    timeBasis?: string;
+    autoSingleSide?: boolean;
+  }) => (
+    <div
+      data-testid="notification-timeline"
+      data-variant="timeline"
       data-granularity={granularity}
       data-collapse={collapse}
       data-time-basis={timeBasis}
@@ -1368,6 +1394,7 @@ describe("EntryList · 通知视图的时间线分支", () => {
       notification: true,
       social: true,
     });
+    setUISetting("notificationLayout", "timeline");
   });
 
   it("通知视图渲染时间线（不再渲染卡片列表）", () => {
@@ -1377,6 +1404,20 @@ describe("EntryList · 通知视图的时间线分支", () => {
       "1,2,3,4,5",
     );
     expect(mockRenderedEntryListItem).not.toHaveBeenCalled();
+  });
+
+  it("默认时间轴档；切到卡片流档渲染卡片流组件", () => {
+    const view = render(
+      <EntryList {...defaultProps} contentType="notification" />,
+    );
+    const timeline = () => screen.getByTestId("notification-timeline");
+    expect(timeline().dataset.variant).toBe("timeline");
+
+    act(() => {
+      setUISetting("notificationLayout", "cards");
+    });
+    expect(timeline().dataset.variant).toBe("cards");
+    view.unmount();
   });
 
   it("其余视图渲染卡片列表（时间线不出现）", () => {

@@ -71,6 +71,7 @@ import {
   useUISettingKey,
   useUISettingActions,
   resolveExperimentalLayoutVisibility,
+  setUISetting,
 } from "@/hooks/useUISettings";
 import {
   resolveTimelineCollapse,
@@ -79,8 +80,9 @@ import {
 } from "@/lib/timeline-model";
 import {
   COLLAPSE_ALL_EVENT,
-  NotificationTimeline,
+  NotificationTimeline as NotificationCards,
 } from "./NotificationTimeline";
+import { NotificationTimelineClassic } from "./NotificationTimelineClassic";
 import { NotificationBodyPreview } from "./NotificationBodyPreview";
 import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
 import { useFilterViewStore } from "@/stores/filter-view-store";
@@ -389,6 +391,12 @@ export function EntryList({
    * 它仍走 PictureHoverList + hover-img 原件）。
    */
   const articleLayout = useUISettingKey("articleLayout");
+  /** 通知视图排布档：timeline（时间轴，默认）/ cards（卡片流） */
+  const notificationLayout = useUISettingKey("notificationLayout") ?? "timeline";
+  const notificationLayoutOrder: Array<"timeline" | "cards"> = [
+    "timeline",
+    "cards",
+  ];
   const isArticleHover = contentType === "article" && articleLayout === "hover";
   /**
    * 实验布局批：文章「缩略图列表」档（带 64×64 缩略图的紧凑行，无悬停浮层）。
@@ -516,6 +524,17 @@ export function EntryList({
       articleLayoutOrder[(idx + 1) % articleLayoutOrder.length] ?? "list";
     setArticleLayout(next);
   }, [articleLayout, articleLayoutOrder, setArticleLayout]);
+  /** 通知视图顶栏：时间轴 ⇄ 卡片流 */
+  const handleToggleNotificationLayout = useCallback(() => {
+    const idx = Math.max(
+      0,
+      notificationLayoutOrder.findIndex((l) => l === notificationLayout),
+    );
+    const next =
+      notificationLayoutOrder[(idx + 1) % notificationLayoutOrder.length] ??
+      "cards";
+    setUISetting("notificationLayout", next);
+  }, [notificationLayout, notificationLayoutOrder]);
   // 「Inoreader列表」首次打开：若图片 / 社交媒体 / 通知视图的分界限是关闭的，问一次文章视图是否也关闭
   const splitterVisibleByView = useUISettingKey("splitterVisibleByView");
   const inoreaderSplitterPromptShown = useUISettingKey(
@@ -1790,6 +1809,17 @@ export function EntryList({
           onToggleArticleLayout={
             contentType === "article" ? handleToggleArticleLayout : undefined
           }
+          notificationLayout={
+            contentType === "notification" ? notificationLayout : undefined
+          }
+          notificationLayoutOrder={
+            contentType === "notification" ? notificationLayoutOrder : undefined
+          }
+          onToggleNotificationLayout={
+            contentType === "notification"
+              ? handleToggleNotificationLayout
+              : undefined
+          }
           onToggleSidebar={onToggleSidebar}
           sidebarVisible={sidebarVisible}
           onSearchClick={onSearchClick}
@@ -1992,7 +2022,8 @@ export function EntryList({
             >
               {/* 底部留白由外层布局承担（移动端 Tab 栏 padding / 桌面无悬浮胶囊），此处不再叠加 */}
               {isNotificationTimeline ? (
-                <NotificationTimeline
+                notificationLayout === "cards" ? (
+                <NotificationCards
                   entries={entries}
                   feeds={feedsMap}
                   unreadCounts={unreadCounts?.counts}
@@ -2011,6 +2042,27 @@ export function EntryList({
                   onSelectableEntriesChange={setTimelineSelectableEntries}
                   onSelectFeedFromEntry={onSelectFeedFromEntry}
                 />
+                ) : (
+                  <NotificationTimelineClassic
+                    entries={entries}
+                    feeds={feedsMap}
+                    unreadCounts={unreadCounts?.counts}
+                    selectedEntryId={selectedEntryId}
+                    onSelectEntry={handleSelectEntry}
+                    onMarkAboveEntry={handleMarkAboveEntry}
+                    onCloseEntry={onCloseEntry}
+                    granularity={timelineGranularity}
+                    collapse={timelineCollapse}
+                    autoExpandLong={expandLongByView?.[contentType] ?? false}
+                    timeBasis={timelineTimeBasis}
+                    autoSingleSide={timelineAutoSingleSide}
+                    bodyOnHover={notificationBodyOnHover}
+                    autoTranslate={autoTranslate}
+                    targetLanguage={targetLanguage}
+                    onSelectableEntriesChange={setTimelineSelectableEntries}
+                    onSelectFeedFromEntry={onSelectFeedFromEntry}
+                  />
+                )
               ) : isArticlePlain ? (
                 /* 常规「Inoreader列表」—— 来源图标 + 加粗标题 + 右侧来源·时间，
                    没有缩略图、没有摘要、没有悬停浮层（就是图片视图「悬停大图」去掉悬停）。 */

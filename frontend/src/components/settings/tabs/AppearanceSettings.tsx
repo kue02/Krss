@@ -321,6 +321,7 @@ export function AppearanceSettings() {
   // 26-2：通知视图时间线的时间基准（发布时间 / 抓取时间）
   const timelineTimeBasisByView = useUISettingKey("timelineTimeBasisByView");
   const timelineSingleSideByView = useUISettingKey("timelineSingleSideByView");
+  const notificationLayout = useUISettingKey("notificationLayout");
   const {
     setFetchReadableForView,
     setEntryPrefetch,
@@ -1085,6 +1086,31 @@ export function AppearanceSettings() {
                     不重新请求数据（分页仍是 limit+1） */}
                 {view === "notification" && (
                   <>
+                    <SettingRow
+                      label={t("appearance_view.notification_layout")}
+                      hint={t("appearance_view.notification_layout_hint")}
+                    >
+                      <SegmentedControl
+                        className="shrink-0"
+                        value={notificationLayout ?? "timeline"}
+                        onValueChange={(value) =>
+                          setUISetting(
+                            "notificationLayout",
+                            value as "timeline" | "cards",
+                          )
+                        }
+                        options={[
+                          {
+                            value: "timeline",
+                            label: t("appearance_view.notification_layout_timeline"),
+                          },
+                          {
+                            value: "cards",
+                            label: t("appearance_view.notification_layout_cards"),
+                          },
+                        ]}
+                      />
+                    </SettingRow>
                     {/* 29-1（用户 2026-09-25）：正文放哪儿 —— 卡片内（现状）或悬停浮块。
                         骨架（中轴/时间戳/日期分段/单栏交替）两档完全一样，只挪正文。 */}
                     <SettingRow

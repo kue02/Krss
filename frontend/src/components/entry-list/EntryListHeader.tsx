@@ -104,6 +104,11 @@ interface EntryListHeaderProps {
    * 缺省为常规两档（传统三栏 → 列表），兼容旧调用。
    */
   articleLayoutOrder?: Array<"list" | "inoreader" | "rows" | "hover">;
+  /** 通知视图可切换排布档：timeline（时间轴，默认）/ cards（卡片流）。 */
+  notificationLayout?: "timeline" | "cards";
+  onToggleNotificationLayout?: () => void;
+  /** 顶栏按钮据此算「下一档」；长度 ≤1 时不渲染。 */
+  notificationLayoutOrder?: Array<"timeline" | "cards">;
   /**
    * 28-7：图片视图的「展示方式」切换（网格 ⇄ 悬停大图，两档循环）。
    * 同上，不传则不渲染。
@@ -160,6 +165,9 @@ export function EntryListHeader({
   articleLayout,
   onToggleArticleLayout,
   articleLayoutOrder,
+  notificationLayout,
+  onToggleNotificationLayout,
+  notificationLayoutOrder,
   pictureLayout,
   onTogglePictureLayout,
   pictureLayoutOrder,
@@ -191,6 +199,20 @@ export function EntryListHeader({
   const currentArticleIdx = Math.max(0, articleOrder.indexOf(articleLayout ?? "list"));
   const nextArticleLayoutKey: "list" | "inoreader" | "rows" | "hover" =
     articleOrder[(currentArticleIdx + 1) % articleOrder.length] ?? "inoreader";
+  /* 通知视图：时间轴 / 卡片流 两档切换 */
+  const notificationOrder: Array<"timeline" | "cards"> =
+    notificationLayoutOrder && notificationLayoutOrder.length > 0
+      ? notificationLayoutOrder
+      : ["timeline", "cards"];
+  const showNotificationToggle =
+    Boolean(onToggleNotificationLayout) && notificationOrder.length > 1;
+  const currentNotificationIdx = Math.max(
+    0,
+    notificationOrder.indexOf(notificationLayout ?? "timeline"),
+  );
+  const nextNotificationLayoutKey: "timeline" | "cards" =
+    notificationOrder[(currentNotificationIdx + 1) % notificationOrder.length] ??
+    "cards";
 
   if (isMobile) {
     return (
@@ -356,6 +378,24 @@ export function EntryListHeader({
               }}
             />
           ) : null}
+          {showNotificationToggle ? (
+            <MobileActionSheetItem
+              icon={
+                notificationLayout === "cards" ? (
+                  <LayoutGrid className="size-5" />
+                ) : (
+                  <LayoutList className="size-5" />
+                )
+              }
+              label={t(
+                `appearance_view.notification_layout_${nextNotificationLayoutKey}`,
+              )}
+              onClick={() => {
+                setMoreOpen(false);
+                onToggleNotificationLayout?.();
+              }}
+            />
+          ) : null}
           {showPictureToggle ? (
             <MobileActionSheetItem
               icon={
@@ -480,6 +520,27 @@ export function EntryListHeader({
               <Images className="size-4" />
             ) : (
               /* 传统三栏 */
+              <LayoutList className="size-4" />
+            )}
+          </button>
+        )}
+        {showNotificationToggle && (
+          <button
+            type="button"
+            onClick={onToggleNotificationLayout}
+            aria-label={t(
+              `appearance_view.notification_layout_${nextNotificationLayoutKey}`,
+            )}
+            {...{
+              title: t(
+                `appearance_view.notification_layout_${nextNotificationLayoutKey}`,
+              ),
+            }}
+            className="flex size-8 shrink-0 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95"
+          >
+            {notificationLayout === "cards" ? (
+              <LayoutGrid className="size-4" />
+            ) : (
               <LayoutList className="size-4" />
             )}
           </button>

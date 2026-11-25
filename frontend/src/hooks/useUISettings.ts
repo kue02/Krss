@@ -44,6 +44,13 @@ export type QuoteStyle = "block" | "divider" | "card";
 export type ArticleLayout = "list" | "inoreader" | "rows" | "hover";
 
 /**
+ * 通知视图的排布档：
+ *   timeline = 时间轴（中轴 + 左右交替 + 时间戳贴节点，原形态，默认）
+ *   cards    = 卡片流（日期分组 + 单列/宽屏两列轻卡片）
+ */
+export type NotificationLayout = "timeline" | "cards";
+
+/**
  * 文章视图正文面板的推入方向（对所有文章布局生效，含 hover）：
  *   right  = 从右往左推入（默认，= 原 Nextflux 式 x:'100vw'→0）
  *   bottom = 从下往上推入（translateY 100%→0，列表行模式默认）
@@ -214,6 +221,8 @@ interface UISettings {
    * 两种档的时间线骨架（中轴、时间戳、节点、日期分段、单栏/交替）完全一致。
    */
   notificationBodyOnHover: boolean;
+  /** 通知视图排布：timeline = 时间轴（默认）；cards = 卡片流。 */
+  notificationLayout: NotificationLayout;
   /**
    * 文章视图第二栏的排布：
    *  list = 传统三栏（默认）；inoreader = 列表（图片悬停大图去掉悬停，静态行）；
@@ -486,6 +495,7 @@ const SILENT_SAVE_UI_KEYS = new Set<string>([
   // 切档位 / 切样式类
   "pictureLayout",
   "articleLayout",
+  "notificationLayout",
   "articlePushDirection",
   "articleCoverList",
   // 实验布局批：实验开关与三个入口开关，勾选后子项禁用态/入口立即变化，不必再弹「已保存」
@@ -679,6 +689,7 @@ export const defaultUISettings: UISettings = {
   hoverImageSize: "small",
   hoverMultiImage: { rowWheel: true, floatWheel: false, hSwipe: false },
   notificationBodyOnHover: false,
+  notificationLayout: "timeline",
   articleLayout: "list",
   articlePushDirection: "right",
   articleCoverList: false,

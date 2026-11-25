@@ -129,6 +129,9 @@ vi.mock("./EntryListHeader", () => ({
 vi.mock("./NotificationTimeline", () => ({
   NotificationTimeline: () => <div data-testid="notification-timeline" />,
 }));
+vi.mock("./NotificationTimelineClassic", () => ({
+  NotificationTimelineClassic: () => <div data-testid="notification-timeline" />,
+}));
 
 // hover 档的浮块本体在这里只关心「有没有走到虚拟分支」，本体 mock 掉
 vi.mock("./NotificationBodyPreview", () => ({
