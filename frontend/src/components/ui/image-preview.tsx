@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { useImagePreviewStore } from "@/stores/image-preview-store";
 import { AuthedImage } from "@/components/ui/authed-image";
 import { useImageZoom } from "@/hooks/useImageZoom";
+import { isDoubleTap } from "@/lib/image-zoom";
 
 export function ImagePreview() {
   const { t } = useTranslation();
@@ -16,6 +17,23 @@ export function ImagePreview() {
   const pointerDownPos = useRef<{ x: number; y: number } | null>(null);
   // pointer capture 会把 click 的 target 改到容器上，记录按下时的真实 target 以保留图片点击语义
   const pointerDownTargetRef = useRef<Element | null>(null);
+  // 触屏点按 / 双击判定与关闭计时。双击在 pointerup 即时判定（不必等第二次 click
+  // 排队），因此相关 ref 需在 pointerup 处理器之前声明。
+  const tapTimerRef = useRef<number | null>(null);
+  const lastTapRef = useRef<{ t: number; x: number; y: number } | null>(null);
+  const suppressDblClickRef = useRef(0);
+  // pointerup 已处理的触屏双击，其随后补发的 click 需整段吞掉，避免重复切换 / 误关
+  const suppressClickRef = useRef(0);
+  const TAP_CLOSE_DELAY = 320;
+  const DOUBLE_TAP_MS = 320;
+  const DOUBLE_TAP_SLOP = 30;
+  const clearTapTimer = useCallback(() => {
+    if (tapTimerRef.current !== null) {
+      window.clearTimeout(tapTimerRef.current);
+      tapTimerRef.current = null;
+    }
+  }, []);
+  useEffect(() => clearTapTimer, [clearTapTimer]);
   const scrollLockYRef = useRef(0);
   const touchMoveHandlerRef = useRef<((e: TouchEvent) => void) | null>(null);
 
@@ -226,9 +244,44 @@ export function ImagePreview() {
   const handleStagePointerUp = useCallback(
     (e: React.PointerEvent) => {
       zoom.handlers.onPointerUp?.(e);
+
+      // 触屏：抬起即判双击，避免等浏览器补发第二次 click 排队造成「慢半拍」。
+      // 只对「落在图片上、且几乎没有移动」的触屏指针生效；鼠标仍走原生 click/dblclick。
+      if ((e.pointerType || "mouse") !== "mouse") {
+        const start = pointerDownPos.current;
+        const moved = start
+          ? Math.hypot(e.clientX - start.x, e.clientY - start.y)
+          : Number.POSITIVE_INFINITY;
+        const startedOnImage =
+          pointerDownTargetRef.current?.closest("img") != null;
+        if (
+          startedOnImage &&
+          moved < 5 &&
+          isDoubleTap(
+            lastTapRef.current,
+            performance.now(),
+            e.clientX,
+            e.clientY,
+            DOUBLE_TAP_MS,
+            DOUBLE_TAP_SLOP,
+          )
+        ) {
+          clearTapTimer();
+          lastTapRef.current = null;
+          // 压掉随后补发的 click：pointerup 已处理，click 再走一遍会二次切换 / 误关
+          suppressClickRef.current = performance.now();
+          zoom.toggleZoomAt(e.clientX, e.clientY);
+        }
+      }
+
       schedulePointerDownReset();
     },
-    [schedulePointerDownReset, zoom.handlers.onPointerUp],
+    [
+      clearTapTimer,
+      schedulePointerDownReset,
+      zoom.handlers.onPointerUp,
+      zoom.toggleZoomAt,
+    ],
   );
 
   const handleStagePointerCancel = useCallback(
@@ -244,20 +297,6 @@ export function ImagePreview() {
   // 双击判定自己按 tap 间隔做，不依赖原生 dblclick —— iOS Safari 对非表单元素
   // 常不派发 dblclick，原来「双击缩放」在真机上会失效，慢一点的第二次点按还会
   // 被 280ms 的关闭定时器抢先触发，表现为「想缩放却把大图关了」。
-  const tapTimerRef = useRef<number | null>(null);
-  const lastTapRef = useRef<{ t: number; x: number; y: number } | null>(null);
-  const suppressDblClickRef = useRef(0);
-  const TAP_CLOSE_DELAY = 320;
-  const DOUBLE_TAP_MS = 320;
-  const DOUBLE_TAP_SLOP = 30;
-  const clearTapTimer = useCallback(() => {
-    if (tapTimerRef.current !== null) {
-      window.clearTimeout(tapTimerRef.current);
-      tapTimerRef.current = null;
-    }
-  }, []);
-  useEffect(() => clearTapTimer, [clearTapTimer]);
-
   const handleTapClose = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
@@ -271,13 +310,16 @@ export function ImagePreview() {
       }
 
       const now = performance.now();
-      const last = lastTapRef.current;
-      const isDoubleTap =
-        !!last &&
-        now - last.t <= DOUBLE_TAP_MS &&
-        Math.hypot(e.clientX - last.x, e.clientY - last.y) <= DOUBLE_TAP_SLOP;
+      const double = isDoubleTap(
+        lastTapRef.current,
+        now,
+        e.clientX,
+        e.clientY,
+        DOUBLE_TAP_MS,
+        DOUBLE_TAP_SLOP,
+      );
 
-      if (isDoubleTap) {
+      if (double) {
         clearTapTimer();
         lastTapRef.current = null;
         // 手动双击已处理，压掉随后浏览器补发的原生 dblclick，避免二次切换
@@ -308,6 +350,15 @@ export function ImagePreview() {
   // 放大态也关闭，但仍要求按下到抬起没有拖动，避免拖完图后误关。
   const handleStageClick = useCallback(
     (e: React.MouseEvent) => {
+      // pointerup 已即时处理过的触屏双击：吞掉浏览器随后补发的 click，
+      // 否则会再走一遍点按语义导致二次切换或误关。
+      if (performance.now() - suppressClickRef.current < 500) {
+        e.stopPropagation();
+        pointerDownTargetRef.current = null;
+        pointerDownPos.current = null;
+        return;
+      }
+
       const target = e.target;
       const startedOnImage = pointerDownTargetRef.current?.closest("img") != null;
       const targetIsImage =

@@ -56,3 +56,28 @@ export function offsetForZoomAt(
 export function nextScale(current: number, delta: number): number {
   return clampScale(current * Math.exp(-delta / 400));
 }
+
+/** 一次点按记录：时间戳 + 屏幕坐标 */
+export interface TapPoint {
+  t: number;
+  x: number;
+  y: number;
+}
+
+/**
+ * 判定当前点按能否与上一次点按组成「双击」。
+ * 纯函数，触屏在 pointerup 里提前判定（避免多等一次 click 造成慢半拍），
+ * 鼠标走原生路径，两处共用同一套阈值语义。
+ */
+export function isDoubleTap(
+  last: TapPoint | null,
+  now: number,
+  x: number,
+  y: number,
+  maxGapMs: number,
+  slop: number,
+): boolean {
+  if (!last) return false;
+  if (now - last.t > maxGapMs) return false;
+  return Math.hypot(x - last.x, y - last.y) <= slop;
+}

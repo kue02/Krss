@@ -41,8 +41,12 @@ type Gesture =
       anchor: Offset;
     };
 
-/** 手势结束 / 双击缩放 / 回弹共用同一段短缓动 */
-const ZOOM_TRANSITION = "transform 160ms ease-out";
+/**
+ * 手势结束 / 双击缩放 / 回弹共用同一段短缓动。
+ * 1x→2x 这种大幅缩放用更长的减速尾段（近似 easeOutQuint），
+ * 避免 160ms ease-out 在末段被人眼读成「顿一下 / 有阻力」。
+ */
+const ZOOM_TRANSITION = "transform 240ms cubic-bezier(0.22, 1, 0.36, 1)";
 
 function transformCss(scale: number, offset: Offset): string {
   return `translate3d(${offset.x}px, ${offset.y}px, 0) scale(${scale})`;
@@ -500,13 +504,25 @@ export function useImageZoom(resetKey?: unknown) {
     offsetRef.current = next;
     setOffset(next);
     const image = imageRef.current;
-    if (image) {
+    if (!image) return;
+    // 图片若在手势进行中才解码完，不能把 transition 带回来打断逐帧跟手；
+    // 只同步当前几何值，缓动仍留到手势结束再恢复。
+    if (gestureRef.current) {
+      image.style.transition = "none";
+    } else {
       image.style.transition = ZOOM_TRANSITION;
-      image.style.transform = transformCss(targetScale, next);
     }
+    image.style.transform = transformCss(targetScale, next);
   }, [clampToBounds]);
 
   const isZoomed = scale > 1;
+
+  // 手势期间逐帧只更新 ref + DOM，不触发 state；若此刻父组件因任何原因
+  // （图片 onLoad、已读状态、翻译…）重渲染，React 会用 style 重写 transform。
+  // 因此手势中必须读 ref 的实时值，否则会把刚 paint 的值覆盖回手势开始前的旧 state，
+  // 表现为「放大/拖动时画面瞬间回跳、顿一下」。
+  const renderedScale = isInteracting ? scaleRef.current : scale;
+  const renderedOffset = isInteracting ? offsetRef.current : offset;
 
   return {
     containerRef,
@@ -530,7 +546,7 @@ export function useImageZoom(resetKey?: unknown) {
     },
     /** 给图片元素用的 transform */
     style: {
-      transform: transformCss(scale, offset),
+      transform: transformCss(renderedScale, renderedOffset),
       // 手势中即使因 isInteracting 重渲染，也不能把 transition 带回来
       transition: isInteracting ? "none" : ZOOM_TRANSITION,
       cursor: isZoomed ? (isInteracting ? "grabbing" : "grab") : "zoom-in",
