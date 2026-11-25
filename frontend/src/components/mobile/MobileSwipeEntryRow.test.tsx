@@ -15,6 +15,12 @@ const { markAsRead, markAsStarred } = vi.hoisted(() => ({
   markAsStarred: vi.fn(),
 }));
 
+const styleState = vi.hoisted(() => ({ value: "flat" as "flat" | "circle" }));
+
+vi.mock("@/hooks/useUISettings", () => ({
+  useUISettingKey: () => styleState.value,
+}));
+
 vi.mock("@/hooks/useEntries", () => ({
   useMarkAsRead: () => ({ mutate: markAsRead }),
   useMarkAsStarred: () => ({ mutate: markAsStarred }),
@@ -68,9 +74,55 @@ describe("MobileSwipeEntryRow", () => {
   beforeEach(() => {
     markAsRead.mockReset();
     markAsStarred.mockReset();
+    styleState.value = "flat";
   });
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("默认扁平样式：动作条是旧版圆角块，展开后内容背景不变色", async () => {
+    const { container } = render(
+      <MobileSwipeEntryRow entry={makeEntry()}>
+        <div>卡片内容</div>
+      </MobileSwipeEntryRow>,
+    );
+    const actions = container.querySelector(
+      "[data-swipe-actions]",
+    ) as HTMLElement;
+    expect(actions.getAttribute("data-swipe-action-style")).toBe("flat");
+    expect(actions.className).toContain("rounded-[10px]");
+    expect(actions.className).toContain("bg-item-hover");
+
+    swipeLeft(container.querySelector("[data-swipe-row]") as HTMLElement);
+    await screen.findByRole("button", { name: "entry.mark_read" });
+
+    const content = container.querySelector(
+      "[data-swipe-content]",
+    ) as HTMLElement;
+    expect(content.className).toContain("bg-background");
+    expect(content.className).not.toContain("bg-item-hover");
+  });
+
+  it("圆形样式：设置切换后动作按钮是独立圆形按钮", async () => {
+    styleState.value = "circle";
+    const { container } = render(
+      <MobileSwipeEntryRow entry={makeEntry()}>
+        <div>卡片内容</div>
+      </MobileSwipeEntryRow>,
+    );
+    const actions = container.querySelector(
+      "[data-swipe-actions]",
+    ) as HTMLElement;
+    expect(actions.getAttribute("data-swipe-action-style")).toBe("circle");
+    expect(actions.className).not.toContain("rounded-[10px]");
+
+    swipeLeft(container.querySelector("[data-swipe-row]") as HTMLElement);
+    const button = await screen.findByRole("button", {
+      name: "entry.mark_read",
+    });
+    expect(button.className).toContain("size-9");
+    expect(button.className).toContain("rounded-full");
+    expect(button.className).toContain("bg-card");
   });
 
   it("左滑后露出已读/星标两个动作，且默认不显示", async () => {

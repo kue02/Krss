@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ArticlePlainListRow } from "./ArticlePlainList";
 import type { Entry, Feed } from "@/types/api";
@@ -57,6 +57,34 @@ function makeFeed(overrides: Partial<Feed>): Feed {
 }
 
 describe("ArticlePlainListRow（文章「Inoreader列表」= inoreader）", () => {
+  it("移动端长按行根按钮打开操作面板（不再因根是 button 而失效）", () => {
+    vi.useFakeTimers();
+    const onLongPress = vi.fn();
+    const entry = makeEntry({ id: "e-press", title: "长按标题" });
+    const { container } = render(
+      <ArticlePlainListRow
+        entry={entry}
+        feed={makeFeed({})}
+        isMobile
+        onLongPress={onLongPress}
+      />,
+    );
+
+    const button = container.querySelector(
+      "button[data-long-press-root]",
+    ) as HTMLElement;
+    expect(button).not.toBeNull();
+    fireEvent.touchStart(button, {
+      touches: [{ clientX: 12, clientY: 34 }],
+    });
+    act(() => {
+      vi.advanceTimersByTime(520);
+    });
+
+    expect(onLongPress).toHaveBeenCalledWith(entry, { x: 12, y: 34 });
+    vi.useRealTimers();
+  });
+
   it("渲染来源图标 + 加粗标题 + 右侧来源·时间，且没有缩略图与摘要", () => {
     const { container } = render(
       <ArticlePlainListRow

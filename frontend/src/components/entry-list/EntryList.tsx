@@ -2034,6 +2034,9 @@ export function EntryList({
                           selectedEntryId={selectedEntryId}
                           onMarkAboveEntry={handleMarkAboveEntry}
                           isMobile={isMobile}
+                          onLongPress={(entry, point) =>
+                            setMobileActions({ entry, point })
+                          }
                           feedUnreadCount={unreadCounts?.counts?.[entry.feedId]}
                         />
                       );
@@ -2061,6 +2064,9 @@ export function EntryList({
                             selectedEntryId={selectedEntryId}
                             onMarkAboveEntry={handleMarkAboveEntry}
                             isMobile={isMobile}
+                            onLongPress={(entry, point) =>
+                              setMobileActions({ entry, point })
+                            }
                             feedUnreadCount={unreadCounts?.counts?.[entry.feedId]}
                           />
                         );

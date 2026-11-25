@@ -6,6 +6,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { useFeedMenuActions } from "@/hooks/useFeedMenuActions";
+import { useMobileLongPress } from "@/hooks/useMobileLongPress";
 import { useUISettingKey } from "@/hooks/useUISettings";
 import { formatRelativeTime } from "@/lib/date-utils";
 import { cn } from "@/lib/utils";
@@ -23,8 +24,13 @@ interface ArticlePlainListRowProps {
   selectedEntryId?: string | null;
   /** 右键「标记上方为已读」（父级按当前列表顺序算上面有哪些） */
   onMarkAboveEntry?: (entryId: string) => void;
-  /** 手机档：右键菜单在移动端不启用（与条目卡片一致，走左滑动作） */
+  /** 手机档：右键菜单在移动端不启用（与条目卡片一致，走长按操作面板） */
   isMobile?: boolean;
+  /** 手机档长按行 → 打开条目操作面板（触点用于「长按位置浮层」） */
+  onLongPress?: (
+    entry: Entry,
+    point: { x: number; y: number },
+  ) => void;
   /** 该订阅未读数（给「未读数」档角标用；圆点档不需要） */
   feedUnreadCount?: number;
 }
@@ -44,9 +50,15 @@ export function ArticlePlainListRow({
   selectedEntryId,
   onMarkAboveEntry,
   isMobile = false,
+  onLongPress,
   feedUnreadCount,
 }: ArticlePlainListRowProps) {
   const { t } = useTranslation();
+  const longPress = useMobileLongPress(
+    isMobile,
+    onLongPress ? (point) => onLongPress(entry, point) : undefined,
+    { allowButtonRoot: true },
+  );
   const unreadStyle = useUISettingKey("unreadStyle");
   const articleListRowHeight = useUISettingKey("articleListRowHeight");
   const articleMobileFullTitle = useUISettingKey("articleMobileFullTitle");
@@ -73,9 +85,14 @@ export function ArticlePlainListRow({
         <button
           type="button"
           data-entry-id={entry.id}
+          data-long-press-root
+          {...longPress.touchHandlers}
           data-selected={selected ? "true" : undefined}
           aria-current={selected ? "true" : undefined}
-          onClick={() => onSelectEntry?.(entry.id)}
+          onClick={() => {
+            if (longPress.consumeClick()) return;
+            onSelectEntry?.(entry.id);
+          }}
           /* 尺度照图片「悬停大图」的行实测值：padding 10px 16px、标题 14.5px/500、
              行高 1.45、图标 16px、右侧元信息 12px 且距标题 12px（gap 8 + ml 4） */
           className={cn(

@@ -1121,7 +1121,11 @@
     "entry_menu": "Long-press menu position",
     "entry_menu_hint": "Both positions include the feed actions group",
     "entry_menu_sheet": "Bottom sheet",
-    "entry_menu_anchor": "At press position"
+    "entry_menu_anchor": "At press position",
+    "swipe_action_style": "Swipe action button style",
+    "swipe_action_style_hint": "Choose the look of the two quick actions revealed when swiping an entry",
+    "swipe_action_flat": "Flat",
+    "swipe_action_circle": "Circle"
   },
   "appearance_view": {
     "title": "Per-view settings",

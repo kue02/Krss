@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import { Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSwipeGesture } from "@/hooks/useSwipeGesture";
+import { useUISettingKey } from "@/hooks/useUISettings";
 import { useMarkAsRead, useMarkAsStarred } from "@/hooks/useEntries";
 import { readToggleAction } from "@/components/entry-list/read-toggle-action";
 import type { Entry } from "@/types/api";
@@ -57,6 +58,8 @@ export function MobileSwipeEntryRow({
   contentVisibility = false,
 }: MobileSwipeEntryRowProps) {
   const { t } = useTranslation();
+  const swipeActionStyle = useUISettingKey("mobileSwipeActionStyle") ?? "flat";
+  const isCircleAction = swipeActionStyle === "circle";
   const rowRef = useRef<HTMLDivElement>(null);
   /** 内容层节点：拖动期间直接写它的 transform，不触发 React 重渲染 */
   const contentRef = useRef<HTMLDivElement>(null);
@@ -228,15 +231,19 @@ export function MobileSwipeEntryRow({
       )}
       data-swipe-row
     >
-      {/* 动作条：旧版样式，在内容层背后、右侧对齐，内容层左移即逐渐露出 */}
+      {/* 动作条：两种样式共用同一层位置，内容层左移即逐渐露出 */}
       <div
         aria-hidden={!open}
         className={cn(
-          "absolute bottom-0.5 right-2 top-0.5 z-0 flex overflow-hidden rounded-[10px] border border-border/60 bg-item-hover",
+          "absolute bottom-0.5 right-2 top-0.5 z-0 flex overflow-hidden",
+          isCircleAction
+            ? "items-center justify-end gap-2 pr-1"
+            : "rounded-[10px] border border-border/60 bg-item-hover",
           !open && "pointer-events-none",
         )}
         style={{ width: ACTION_WIDTH }}
         data-swipe-actions
+        data-swipe-action-style={swipeActionStyle}
       >
         <button
           type="button"
@@ -246,10 +253,22 @@ export function MobileSwipeEntryRow({
             close();
             markAsRead({ id: entry.id, read: readAction.nextRead });
           }}
-          className="group/act flex w-1/2 items-center justify-center"
+          className={cn(
+            "group/act flex items-center justify-center",
+            isCircleAction
+              ? "size-9 rounded-full border border-border bg-card shadow-nf"
+              : "w-1/2",
+          )}
         >
-          <span className="flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 group-hover/act:bg-item-hover group-hover/act:text-foreground">
-            <ReadIcon className="size-[15px]" />
+          <span
+            className={cn(
+              "flex items-center justify-center transition-colors duration-150",
+              isCircleAction
+                ? "text-muted-foreground group-hover/act:text-foreground"
+                : "size-7 rounded-full text-muted-foreground group-hover/act:bg-item-hover group-hover/act:text-foreground",
+            )}
+          >
+            <ReadIcon className={isCircleAction ? "size-4" : "size-[15px]"} />
           </span>
         </button>
         <button
@@ -262,19 +281,31 @@ export function MobileSwipeEntryRow({
             close();
             markAsStarred({ id: entry.id, starred: !isStarred });
           }}
-          className="group/act flex w-1/2 items-center justify-center"
+          className={cn(
+            "group/act flex items-center justify-center",
+            isCircleAction
+              ? "size-9 rounded-full border border-border bg-card shadow-nf"
+              : "w-1/2",
+          )}
         >
           <span
             className={cn(
-              "flex size-7 items-center justify-center rounded-full transition-colors duration-150 group-hover/act:bg-item-hover",
-              isStarred
-                ? "text-amber-500"
-                : "text-muted-foreground group-hover/act:text-foreground",
+              "flex items-center justify-center transition-colors duration-150",
+              isCircleAction
+                ? isStarred
+                  ? "text-amber-500"
+                  : "text-muted-foreground group-hover/act:text-foreground"
+                : cn(
+                    "size-7 rounded-full",
+                    isStarred
+                      ? "text-amber-500"
+                      : "text-muted-foreground group-hover/act:bg-item-hover group-hover/act:text-foreground",
+                  ),
             )}
           >
             <Star
               className={cn(
-                "size-[15px]",
+                isCircleAction ? "size-4" : "size-[15px]",
                 isStarred && "fill-amber-500 text-amber-500",
               )}
             />
@@ -289,10 +320,8 @@ export function MobileSwipeEntryRow({
         onClickCapture={handleContentClickCapture}
         data-swipe-content
         className={cn(
-          "relative z-10 transition-transform duration-200 ease-out",
-          open
-            ? "bg-item-hover shadow-[-10px_0_18px_-8px_rgba(0,0,0,0.28)]"
-            : "bg-background",
+          "relative z-10 bg-background transition-transform duration-200 ease-out",
+          open && "shadow-[-10px_0_18px_-8px_rgba(0,0,0,0.28)]",
         )}
       >
         {children}

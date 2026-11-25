@@ -271,6 +271,12 @@ interface UISettings {
    *  - anchor = 在长按位置附近弹出浮层（V1 的形态）
    */
   mobileEntryMenuPlacement: "sheet" | "anchor";
+  /**
+   * 移动端条目左滑露出的动作按钮样式：
+   *  - flat = 旧版扁平方块（默认）
+   *  - circle = 独立圆形按钮（描边 + 卡片底 + 阴影）
+   */
+  mobileSwipeActionStyle: "flat" | "circle";
   /** 社交媒体视图里，条目正文过短（只给摘要）时是否自动抓正文 */
   fetchReadableByView: ViewFlags;
   /**
@@ -499,6 +505,7 @@ const SILENT_SAVE_UI_KEYS = new Set<string>([
   "articleListRowHeight",
   "articleQuickActionMode",
   "articleMobileFullTitle",
+  "mobileSwipeActionStyle",
   "inoreaderSplitterPromptShown",
   "articlePaneStyle",
   "hoverImageSize",
@@ -696,6 +703,7 @@ export const defaultUISettings: UISettings = {
   entryLineHeight: 1.8,
   mobileSidebarShowViews: false,
   mobileEntryMenuPlacement: "sheet",
+  mobileSwipeActionStyle: "flat",
   fetchReadableByView: {
     article: false,
     picture: false,

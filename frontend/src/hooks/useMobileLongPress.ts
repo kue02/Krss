@@ -9,10 +9,20 @@ const MOVE_TOLERANCE_PX = 10;
  */
 export type LongPressPoint = { x: number; y: number };
 
+export interface MobileLongPressOptions {
+  /**
+   * 行根本身就是 `<button>` 时（如 Inoreader 列表行）传 true：
+   * 只放行带 `data-long-press-root` 的那一个根按钮，行内嵌套按钮/链接仍不触发长按。
+   */
+  allowButtonRoot?: boolean;
+}
+
 export function useMobileLongPress(
   enabled: boolean,
   onLongPress?: (point: LongPressPoint) => void,
+  options: MobileLongPressOptions = {},
 ) {
+  const allowButtonRoot = options.allowButtonRoot ?? false;
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startRef = useRef<{ x: number; y: number } | null>(null);
   const suppressClickRef = useRef(false);
@@ -47,7 +57,17 @@ export function useMobileLongPress(
   const onTouchStart = (event: TouchEvent<HTMLElement>) => {
     if (!enabled || !onLongPress) return;
     const target = event.target as HTMLElement | null;
-    if (target?.closest("a, button, input, textarea, select")) return;
+    const interactive = target?.closest("a, button, input, textarea, select");
+    if (
+      interactive &&
+      !(
+        allowButtonRoot &&
+        interactive instanceof HTMLElement &&
+        interactive.hasAttribute("data-long-press-root")
+      )
+    ) {
+      return;
+    }
     const touch = event.touches[0];
     if (!touch) return;
     startRef.current = { x: touch.clientX, y: touch.clientY };
