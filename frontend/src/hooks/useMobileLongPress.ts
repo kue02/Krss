@@ -101,7 +101,24 @@ export function useMobileLongPress(
   const onContextMenu = (event: MouseEvent<HTMLElement>) => {
     if (!enabled || !onLongPress) return;
     event.preventDefault();
-    if (firedRef.current) return;
+    const target = event.target as HTMLElement | null;
+    const interactive = target?.closest("a, button, input, textarea, select");
+    if (
+      interactive &&
+      !(
+        allowButtonRoot &&
+        interactive instanceof HTMLElement &&
+        interactive.hasAttribute("data-long-press-root")
+      )
+    ) {
+      return;
+    }
+    if (firedRef.current) {
+      // 同一手势里 timer 已触发过（suppress click 窗口内）就不再重复打开；
+      // 窗口外的 contextmenu（鼠标右键 / 外接设备）仍应正常工作。
+      if (suppressClickRef.current) return;
+      firedRef.current = false;
+    }
     firedRef.current = true;
     const fallback = startRef.current;
     const point = {

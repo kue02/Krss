@@ -86,6 +86,7 @@ export function MobileActionSheet({
         <>
           <motion.div
             key="mobile-action-sheet-backdrop"
+            data-testid="mobile-action-sheet-backdrop"
             className="fixed inset-0 z-50 bg-black/35 will-change-[opacity]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
