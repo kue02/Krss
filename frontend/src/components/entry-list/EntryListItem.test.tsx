@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EntryListItem } from "./EntryListItem";
 import { extractContentMedia } from "@/lib/extract-content-media";
+import { getEntryImages } from "@/lib/extract-images";
 import { useFilterEditorStore } from "@/stores/filter-editor-store";
 import type { Entry, Feed } from "@/types/api";
 
@@ -13,6 +14,23 @@ vi.mock("@/lib/extract-content-media", async (importOriginal) => {
     await importOriginal<typeof import("@/lib/extract-content-media")>();
   return { ...actual, extractContentMedia: vi.fn(actual.extractContentMedia) };
 });
+
+// 第四十三批：缩略图不再解析正文找首图。部分 mock extract-images，只把
+// getEntryImages（EntryListItem 直接调用、内部才会解析正文找图）换成可断言的 spy。
+vi.mock("@/lib/extract-images", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/extract-images")>();
+  return { ...actual, getEntryImages: vi.fn(actual.getEntryImages) };
+});
+
+/** 还原图片代理 URL 里的原始地址（`/api/proxy/image/<base64url>`）。 */
+function decodeProxiedImageSrc(src: string): string {
+  const match = src.match(/\/api\/proxy\/image\/([^?]+)/);
+  const encoded = match?.[1];
+  if (!encoded) return src;
+  let b64 = encoded.replace(/-/g, "+").replace(/_/g, "/");
+  while (b64.length % 4) b64 += "=";
+  return Buffer.from(b64, "base64").toString("utf8");
+}
 
 // 社交视图会渲染 SocialMediaGallery，其 loadFromDB 走 IndexedDB；jsdom 没有
 // indexedDB，打桩掉这层（本用例只关心「是否调用 extractContentMedia」）。
@@ -241,6 +259,60 @@ describe("EntryListItem", () => {
         />,
       );
       expect(vi.mocked(extractContentMedia)).toHaveBeenCalled();
+    });
+
+    it("已有 thumbnailUrl 时直接用代理缩略图，不解析正文找首图", () => {
+      vi.mocked(getEntryImages).mockClear();
+
+      const { container } = render(
+        <EntryListItem
+          entry={{
+            ...entry,
+            thumbnailUrl: "https://example.com/cover.png",
+            content:
+              '<p>body</p><img src="https://example.com/body-only.jpg">',
+          }}
+          feed={feed}
+          isSelected={false}
+          onClick={vi.fn()}
+        />,
+      );
+
+      // 有 thumbnailUrl → 不解析正文
+      expect(getEntryImages).not.toHaveBeenCalled();
+      const image = container.querySelector<HTMLImageElement>(
+        "img[loading='lazy']",
+      );
+      expect(image).not.toBeNull();
+      // 渲染的是 thumbnailUrl 那张，不是正文首图
+      const decoded = decodeProxiedImageSrc(image?.src ?? "");
+      expect(decoded).toContain("example.com/cover.png");
+      expect(decoded).not.toContain("body-only.jpg");
+    });
+
+    it("没有 thumbnailUrl 时退回正文首图（仍解析正文）", () => {
+      vi.mocked(getEntryImages).mockClear();
+
+      const { container } = render(
+        <EntryListItem
+          entry={{
+            ...entry,
+            thumbnailUrl: undefined,
+            content: '<p>body</p><img src="https://example.com/body-only.jpg">',
+          }}
+          feed={feed}
+          isSelected={false}
+          onClick={vi.fn()}
+        />,
+      );
+
+      expect(getEntryImages).toHaveBeenCalled();
+      const image = container.querySelector<HTMLImageElement>(
+        "img[loading='lazy']",
+      );
+      expect(decodeProxiedImageSrc(image?.src ?? "")).toContain(
+        "example.com/body-only.jpg",
+      );
     });
 
     it("条目用居中可读宽度（对齐 Folo），不是通栏", () => {

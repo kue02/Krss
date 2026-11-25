@@ -18,6 +18,7 @@ import {
   SOCIAL_COLLAPSED_PX,
 } from "./EntryListItem";
 import { useFeedMenuActions } from "@/hooks/useFeedMenuActions";
+import { useInView } from "@/hooks/useInView";
 import { useFolders } from "@/hooks/useFolders";
 import { UnreadIndicator, unreadRowClass } from "./unread-indicator";
 import { useMarkAsRead } from "@/hooks/useEntries";
@@ -293,6 +294,16 @@ const TimelineCard = memo(function TimelineCard({
     [feed, allFolders],
   );
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * 第四十三批（移动端性能）：只有接近视口的卡片才计算正文纯文字预览。
+   *
+   * 通知 tab 一屏几十张卡，每张都对 `entry.content` 全量 `stripHtml` 纯属浪费；
+   * 用 `useInView("800px")`（与卡片 content-visibility 的 140px 估算配合）门控，
+   * 未进入视口的卡片 `previewText` 直接空串。观察节点绑在**正文预览容器**上。
+   * jsdom 无 IntersectionObserver 时 `useInView` 立即返回 true，测试行为不变。
+   */
+  const { ref: previewInViewRef, inView: previewInView } =
+    useInView<HTMLDivElement>("800px");
   const [isClipped, setIsClipped] = useState(false);
   const unreadStyle = useUISettingKey("unreadStyle");
   const showIcon = feed?.iconPath && !iconError;
@@ -319,11 +330,13 @@ const TimelineCard = memo(function TimelineCard({
    * 这里只是把「同一段文字的来源」从原文换成译文。
    */
   const previewText = useMemo(() => {
+    // 第四十三批：未接近视口的卡片不做全量解析（离屏卡由 content-visibility 按 140px 估算）
+    if (!previewInView) return "";
     const source = translation?.content ?? entry.content;
     const raw = source ? stripHtml(source) : "";
     const text = raw.replace(/\s+/g, " ").trim();
     return text || (displayTitle ?? "");
-  }, [entry.content, displayTitle, translation?.content]);
+  }, [previewInView, entry.content, displayTitle, translation?.content]);
 
   // 折叠态下正文是否真的被截断（用 scrollHeight 判定，图片异步加载会改高度 → 复测一次）
   // 另把自然高度（= 不钳制时的渲染高度）上报给父级：父级拿它判「长贴」（> 300px），
@@ -582,31 +595,35 @@ const TimelineCard = memo(function TimelineCard({
             </div>
           ) : (
             <>
-              {/* 正文预览：折叠态 clamp 到设置的行数 */}
-              {previewText && (
-                <div
-                  ref={bodyRef}
-                  data-timeline-body={
-                    effectiveClampLines === null ? "full" : String(effectiveClampLines)
-                  }
-                  className={cn(
-                    "mt-1 text-[12.5px] leading-5 text-muted-foreground wrap-anywhere",
-                    !isUnread && "text-muted-foreground/70",
-                  )}
-                  style={
-                    effectiveClampLines !== null && !expanded
-                      ? {
-                          display: "-webkit-box",
-                          WebkitBoxOrient: "vertical",
-                          WebkitLineClamp: effectiveClampLines,
-                          overflow: "hidden",
-                        }
-                      : undefined
-                  }
-                >
-                  {previewText}
-                </div>
-              )}
+              {/* 正文预览：折叠态 clamp 到设置的行数。
+                  容器**常驻**（即使 previewText 为空串）—— 否则离屏卡
+                  `previewText=""` 时容器不挂，`useInView` 的 ref 永远观察不到，
+                  视口内也永远不会补算正文。离屏卡靠 content-visibility 按 140px 估算。 */}
+              <div
+                ref={(node) => {
+                  bodyRef.current = node;
+                  previewInViewRef.current = node;
+                }}
+                data-timeline-body={
+                  effectiveClampLines === null ? "full" : String(effectiveClampLines)
+                }
+                className={cn(
+                  "mt-1 text-[12.5px] leading-5 text-muted-foreground wrap-anywhere",
+                  !isUnread && "text-muted-foreground/70",
+                )}
+                style={
+                  effectiveClampLines !== null && !expanded
+                    ? {
+                        display: "-webkit-box",
+                        WebkitBoxOrient: "vertical",
+                        WebkitLineClamp: effectiveClampLines,
+                        overflow: "hidden",
+                      }
+                    : undefined
+                }
+              >
+                {previewText}
+              </div>
 
               {/* 展开/收起：就地展开，不跳轴（节点钉在卡片顶部，长的部分往下长） */}
               {showToggle && (

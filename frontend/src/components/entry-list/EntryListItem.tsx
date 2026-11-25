@@ -395,27 +395,47 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
         : undefined,
     );
 
-    const strippedContent = useMemo(
-      () => (entry.content ? stripHtml(entry.content).slice(0, 150) : null),
+    /**
+     * 第四十三批（移动端性能）：每行只解析一次正文。
+     *
+     * 原来 `strippedContent` / `titleIsBodyPrefix` 各 `stripHtml` 一次、`readingTime`
+     * 又对全文跑一遍正则 —— 切 tab / 回滚重挂载时同一段长文被 `DOMParser` 解析多次。
+     * 这里算一份 `plainContent` 供三处复用（`stripHtml` 内部已带 LRU 缓存，这里再
+     * 省掉重复的切片/正则）。
+     */
+    const plainContent = useMemo(
+      () => (entry.content ? stripHtml(entry.content) : null),
       [entry.content],
     );
 
-    /** 缩略图：优先 thumbnailUrl，其次正文首图（都走图片代理） */
+    const strippedContent = useMemo(
+      () => (plainContent === null ? null : plainContent.slice(0, 150)),
+      [plainContent],
+    );
+
+    /**
+     * 缩略图：优先 thumbnailUrl，其次正文首图（都走图片代理）。
+     *
+     * 有 `thumbnailUrl` 时直接拼代理 URL，**不再解析正文**（`getEntryImages` 内部
+     * 会 `DOMParser` 全文找图，纯属浪费）；只有没有 thumbnailUrl 才退回正文首图。
+     */
     const thumbnail = useMemo(() => {
-      const images = getEntryImages(entry.thumbnailUrl, entry.content, entry.url);
+      if (entry.thumbnailUrl) {
+        return getProxiedImageUrl(entry.thumbnailUrl, entry.url);
+      }
+      const images = getEntryImages(undefined, entry.content, entry.url);
       return images[0] ?? null;
     }, [entry.thumbnailUrl, entry.content, entry.url]);
     const thumbnailSrc = thumbRecovered && thumbnail ? withProxyCacheBust(thumbnail) : thumbnail;
     const authedThumbnail = useAuthedImageUrl(thumbnailSrc ?? undefined);
 
-    /** 阅读时长（与 EntryContentBody 同口径） */
+    /** 阅读时长（与 EntryContentBody 同口径）：复用 plainContent，不再全文正则 */
     const readingTime = useMemo(() => {
-      if (!entry.content) return null;
-      const text = entry.content.replace(/<[^>]*>/g, "");
-      const words = text.match(/[\u4e00-\u9fa5]|\w+/g)?.length || 0;
+      if (plainContent === null) return null;
+      const words = plainContent.match(/[\u4e00-\u9fa5]|\w+/g)?.length || 0;
       const mins = Math.ceil(words / 230);
       return mins > 0 ? t("entry.min_read", { mins }) : null;
-    }, [entry.content, t]);
+    }, [plainContent, t]);
 
     const displayTitle = translation?.title ?? entry.title;
     const displaySummary = translation?.summary ?? strippedContent;
@@ -505,6 +525,8 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     // 图片也从正文摘掉，交给下面的缩略图行（对齐 Folo 的 noMedia + MediaGallery）
     // 社交帖常把正文开头当成标题：这时不单独渲染标题，避免同一句话出现两次
     const titleIsBodyPrefix = useMemo(() => {
+      // 只有社交视图渲染标题重复判定；文章 / 普通列表视图直接 false，省掉一次比较
+      if (!isSocialView) return false;
       // 源的标题往往是「正文掐掉换行后的版本」：两边都去掉全部空白再比前缀，
       // 免得 stripHtml 不给 <br> 补空格导致比对失败
       const squash = (value: string) => value.replace(/\s+/g, "");
@@ -523,22 +545,24 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
       const title = squash(
         (entry.title ?? "").replace(/(?:\.{2,}|…)\s*$/, ""),
       );
-      const raw = squash(stripHtml(entry.content ?? ""));
+      const raw = squash(plainContent ?? "");
       if (title.length < 6 || !raw) return false;
       return raw.startsWith(title);
-    }, [entry.title, entry.content]);
+    }, [isSocialView, entry.title, plainContent]);
     /**
      * 正文正文：标题重复的开头只在「标题另渲染一份」时才剥掉。
      * 反之（标题就是正文开头、标题不渲染）必须留全文 —— 否则正文被剥掉一半，
      * 引用推文那种条目就只剩底下的引文了（用户报的「只显示引文内容」）。
      */
     const socialBody = useMemo(() => {
+      // 非社交视图不渲染这段正文管线，直接空串省掉 stripContentImages 等解析
+      if (!isSocialView) return "";
       const base = stripContentImages(displayContent);
       const withoutDuplicate = titleIsBodyPrefix
         ? base
         : stripDuplicatedTitle(base, displayTitle);
       return removeContentSeparators(withoutDuplicate);
-    }, [displayContent, displayTitle, titleIsBodyPrefix]);
+    }, [isSocialView, displayContent, displayTitle, titleIsBodyPrefix]);
 
     /**
      * 47-5（用户 2026-10-12）：正文与引文是**两段**，顺序照来源 —— 卡片渲染顺序是

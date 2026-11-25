@@ -246,3 +246,29 @@ describe("extractContentMedia · 模块级缓存（移动端性能）", () => {
     expect(b[0]?.src).toBe("https://b.example.com/relative.jpg");
   });
 });
+
+describe("extractContentMedia · 缓存键不保留 html（移动端性能）", () => {
+  it("不同 html 同长度也不串缓存（长度 + hash 指纹区分内容）", () => {
+    // 故意构造两段「字符数完全相同、内容不同」的正文
+    const htmlA = '<img src="https://cdn.example.com/a.jpg">';
+    const htmlB = '<img src="https://cdn.example.com/b.jpg">';
+    expect(htmlA.length).toBe(htmlB.length);
+
+    const a = extractContentMedia(htmlA, "https://site.tld/post/1");
+    const b = extractContentMedia(htmlB, "https://site.tld/post/1");
+
+    expect(a).not.toBe(b);
+    expect(a[0]?.src).toBe("https://cdn.example.com/a.jpg");
+    expect(b[0]?.src).toBe("https://cdn.example.com/b.jpg");
+  });
+
+  it("命中缓存返回同一份冻结数组，且内部对象也被冻结", () => {
+    const html = '<img src="https://cdn.example.com/frozen.jpg" width="10" height="20">';
+    const first = extractContentMedia(html, "https://site.tld/post/1");
+    const second = extractContentMedia(html, "https://site.tld/post/1");
+
+    expect(second).toBe(first);
+    expect(Object.isFrozen(first)).toBe(true);
+    expect(first.every((item) => Object.isFrozen(item))).toBe(true);
+  });
+});

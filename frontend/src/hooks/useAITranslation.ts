@@ -122,6 +122,18 @@ export function useAITranslation({
   const requestSeqRef = useRef(0);
   const hasExistingTranslationRef = useRef(false);
   const isTranslatingRef = useRef(false);
+  /**
+   * 当前条目 id。异步回调（空闲里的 `needsTranslation` 返回后）用它确认条目没被切走 ——
+   * 列表里快速切条目时，旧条目的异步结果绝不能落到新条目上（误触发翻译 / 误弹 toast）。
+   */
+  const activeEntryIdRef = useRef<string | undefined>(entry?.id);
+  /**
+   * 已经自动发起过翻译的 `条目id|是否可读模式`。自动翻译 effect 依赖 `isTranslating`，
+   * 翻译失败 / 结束时 `isTranslating` 由 true→false 会再触发一次 effect；不挡住就会
+   * 对同一条目无限重试（失败时每轮还弹一次 toast）。同一 key 只自动发起一次；
+   * 切条目 / 切可读模式时 key 变化，自然允许重新发起。
+   */
+  const autoTranslateAttemptedKeyRef = useRef<string | null>(null);
 
   const clearTranslationState = useCallback(() => {
     setTranslatedContent(null);
@@ -144,6 +156,8 @@ export function useAITranslation({
 
   // Reset state when entry changes
   useEffect(() => {
+    activeEntryIdRef.current = entry?.id;
+    autoTranslateAttemptedKeyRef.current = null;
     cancelInFlightTranslation();
     clearTranslationState();
     translateRequestedRef.current = false;
@@ -187,11 +201,13 @@ export function useAITranslation({
       return;
     }
     let cancelled = false;
-    const content = isReadableActive ? readableContent : entry.content;
-    const summary = content ? stripHtml(content).slice(0, 200) : null;
     const cancelIdle = scheduleIdle(() => {
       void (async () => {
         try {
+          // 全量 stripHtml 只在空闲时段跑：不要阻塞正文首帧（原来在 scheduleIdle
+          // 之前同步解析整篇长文，正是「点条目正文加载瞬间」卡顿的主因）。
+          const content = isReadableActive ? readableContent : entry.content;
+          const summary = content ? stripHtml(content).slice(0, 200) : null;
           const needs = await needsTranslation(
             entry.title || "",
             summary,
@@ -545,6 +561,10 @@ export function useAITranslation({
       return;
     if (manuallyDisabledRef.current) return;
     if (hasTranslation) return;
+    // 同一条目同一模式只自动发起一次：避免 isTranslating true→false（翻译结束/失败）
+    // 再次触发本 effect，对同一条目无限重试（失败时每轮还会弹一次 toast）。
+    const attemptKey = `${entry.id}|${isReadableActive}`;
+    if (autoTranslateAttemptedKeyRef.current === attemptKey) return;
 
     if (cachedTranslation?.content) {
       setTranslatedContent(cachedTranslation.content);
@@ -553,24 +573,54 @@ export function useAITranslation({
       return;
     }
 
-    const content = isReadableActive ? readableContent : entry.content;
-    const summary = content ? stripHtml(content).slice(0, 200) : null;
-    void (async () => {
-      if (
-        !(await needsTranslation(entry.title || "", summary, targetLanguage))
-      ) {
-        return;
-      }
+    autoTranslateAttemptedKeyRef.current = attemptKey;
+    const currentEntryId = entry.id;
+    let cancelled = false;
+    /**
+     * 这次 attempt 是否已真正跑完 `needsTranslation`（无论结论 true/false）。
+     *
+     * `attemptKey` 在调度 idle **之前**就置位；若 effect 因 `entry` 对象引用变化
+     * （markRead、翻译状态更新等会换新的 entry 对象）触发 cleanup，`cancelIdle`
+     * 把这次 idle 取消了，但 key 还留着 —— 下一轮 effect 会直接 return，自动翻译
+     * 就永远发不起来。所以 cleanup 里若「没跑完」要把 key 清掉，允许重新尝试；
+     * 跑完（true→已翻译 / false→不需要）则保留，避免 isTranslating 翻转导致无限重试。
+     */
+    let completed = false;
+    // 全量 stripHtml 也挪进空闲回调：不在正文首帧同步解析长文。
+    const cancelIdle = scheduleIdle(() => {
+      void (async () => {
+        if (cancelled) return;
+        const content = isReadableActive ? readableContent : entry.content;
+        const summary = content ? stripHtml(content).slice(0, 200) : null;
+        const needs = await needsTranslation(
+          entry.title || "",
+          summary,
+          targetLanguage,
+        );
+        // 一旦拿到结论就算「跑完」——即使结论是 false（不需要翻）也不再重试。
+        completed = true;
+        if (!needs) return;
 
-      // 自动翻译也是「自己动起来」的，给个提示说明正在做什么。
-      // 49-3：**每条条目只弹一次** —— 这条链路会为同一条目跑两遍（预载没落库时再自发一次），
-      // 列表里快速切换就会叠出一屏一模一样的胶囊（用户报的就是这个）。
-      if (!autoTranslateToastShownRef.current) {
-        autoTranslateToastShownRef.current = true;
-        showToast(t("entry.auto_translate_on"));
-      }
-      generateTranslation(isReadableActive);
-    })();
+        // 条目已切走 / effect 已清理 → 旧条目的异步结果不得落到新条目上
+        // （否则会在新条目上误触发翻译、误弹「已自动翻译」toast）。
+        if (cancelled || activeEntryIdRef.current !== currentEntryId) return;
+
+        // 自动翻译也是「自己动起来」的，给个提示说明正在做什么。
+        // 49-3：**每条条目只弹一次** —— 这条链路会为同一条目跑两遍（预载没落库时再自发一次），
+        // 列表里快速切换就会叠出一屏一模一样的胶囊（用户报的就是这个）。
+        if (!autoTranslateToastShownRef.current) {
+          autoTranslateToastShownRef.current = true;
+          showToast(t("entry.auto_translate_on"));
+        }
+        generateTranslation(isReadableActive);
+      })();
+    });
+    return () => {
+      cancelled = true;
+      cancelIdle();
+      // 没跑完就被取消：清掉 attemptKey，让下一轮 effect 能重新发起（否则永久卡死）。
+      if (!completed) autoTranslateAttemptedKeyRef.current = null;
+    };
   }, [
     autoTranslate,
     entry,

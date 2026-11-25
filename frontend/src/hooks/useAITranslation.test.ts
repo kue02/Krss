@@ -13,6 +13,7 @@ const {
   mockTranslationActionsDisable,
   mockTranslationActionsEnable,
   mockTranslationActionsIsDisabled,
+  mockStripHtml,
 } = vi.hoisted(() => ({
   mockStreamTranslateBlocks: vi.fn(),
   mockNeedsTranslation: vi.fn(),
@@ -22,6 +23,7 @@ const {
   mockTranslationActionsDisable: vi.fn(),
   mockTranslationActionsEnable: vi.fn(),
   mockTranslationActionsIsDisabled: vi.fn(() => false),
+  mockStripHtml: vi.fn((html: string) => html.replace(/<[^>]*>/g, "")),
 }));
 
 vi.mock("@/api", () => ({
@@ -45,7 +47,7 @@ vi.mock("@/lib/language-detect-async", () => ({
 }));
 
 vi.mock("@/lib/html-utils", () => ({
-  stripHtml: (html: string) => html.replace(/<[^>]*>/g, ""),
+  stripHtml: mockStripHtml,
 }));
 
 vi.mock("@/services/translation-service", () => ({
@@ -353,6 +355,10 @@ describe("useAITranslation · 翻译提示与失败可见（49-2/49-3）", () =>
       }),
     );
 
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
     await waitFor(() => {
       const failed = readToasts().filter((toast) => isFailureToast(toast.message));
       expect(failed).toHaveLength(1);
@@ -361,5 +367,144 @@ describe("useAITranslation · 翻译提示与失败可见（49-2/49-3）", () =>
         /connection refused|translate_blocks_failed/,
       );
     });
+  });
+});
+
+/**
+ * 第四十三批（移动端性能）：正文加载瞬间的同步解析 / 异步竞态回归。
+ * - 全量 `stripHtml` 不再在正文首帧同步执行，而是挪进空闲回调（`scheduleIdle`）。
+ * - 列表里快速切条目时，旧条目晚到的 `needsTranslation` 结果不得落到新条目上
+ *   （不得误触发翻译 / 误弹「已自动翻译」toast）。
+ */
+describe("useAITranslation · 第四十三批空闲解析与切条目竞态", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockStoreGetTranslation.mockReturnValue(undefined);
+    mockNeedsTranslation.mockReturnValue(true);
+    mockTranslationActionsIsDisabled.mockReturnValue(false);
+    mockStreamTranslateBlocks.mockImplementation(() =>
+      (async function* () {
+        yield { done: true };
+      })(),
+    );
+    clearToasts();
+  });
+
+  it("未开启 autoTranslate 时，渲染期不解析正文（不阻塞首帧）", async () => {
+    const entry = createEntry("foreign normal content");
+
+    renderHook(() =>
+      useAITranslation({
+        entry,
+        isReadableActive: false,
+        readableContent: null,
+        autoTranslate: false,
+        targetLanguage: "zh-CN",
+      }),
+    );
+
+    // 渲染刚结束、空闲回调还没跑：正文解析（stripHtml）不应发生
+    expect(mockStripHtml).not.toHaveBeenCalled();
+    expect(mockStreamTranslateBlocks).not.toHaveBeenCalled();
+
+    // 推进空闲回调：只有「是否已是目标语言」的判定会异步解析一次，且不发起翻译
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(mockStripHtml).toHaveBeenCalledTimes(1);
+    expect(mockStreamTranslateBlocks).not.toHaveBeenCalled();
+  });
+
+  it("快速切条目：旧条目晚到的 needsTranslation 不会在新条目上触发翻译或弹 toast", async () => {
+    // 用标题区分条目：A 的 needsTranslation 挂起（由测试手动决议），B 直接 false（不需要翻译）
+    const pendingA: Array<(value: boolean) => void> = [];
+    mockNeedsTranslation.mockImplementation((title: string) =>
+      title.startsWith("A")
+        ? new Promise<boolean>((resolve) => pendingA.push(resolve))
+        : Promise.resolve(false),
+    );
+
+    const entryA = { ...createEntry("A foreign body content"), id: "entry-a", title: "A title" };
+    const entryB = { ...createEntry("B foreign body content"), id: "entry-b", title: "B title" };
+
+    const { rerender } = renderHook(
+      ({ entry }: { entry: Entry }) =>
+        useAITranslation({
+          entry,
+          isReadableActive: false,
+          readableContent: null,
+          autoTranslate: true,
+          targetLanguage: "zh-CN",
+        }),
+      { initialProps: { entry: entryA } },
+    );
+
+    // 让 A 的两个 effect（isAlreadyTargetLanguage + 自动翻译）的空闲回调跑起来，needsTranslation 挂起
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(pendingA.length).toBeGreaterThanOrEqual(1);
+
+    // 切换到 B：A 的 effect 会被清理（cancelled=true）
+    rerender({ entry: entryB });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    // A 的 needsTranslation 此刻才晚到 true —— 必须被丢弃
+    await act(async () => {
+      for (const resolve of pendingA) resolve(true);
+      await Promise.resolve();
+    });
+
+    // 旧条目的结果不得在新条目上发起翻译，也不得弹「已自动翻译」toast
+    expect(mockStreamTranslateBlocks).not.toHaveBeenCalled();
+    expect(
+      readToasts().filter((toast) => isAutoTranslateToast(toast.message)),
+    ).toHaveLength(0);
+  });
+
+  it("effect 重跑取消掉未完成的 idle 后，仍能重新发起自动翻译（attemptKey 不卡死）", async () => {
+    const pending: Array<(value: boolean) => void> = [];
+    mockNeedsTranslation.mockImplementation(
+      () => new Promise<boolean>((resolve) => pending.push(resolve)),
+    );
+
+    const entryA = { ...createEntry("A foreign body content"), id: "entry-a", title: "A title" };
+
+    const { rerender } = renderHook(
+      ({ entry }: { entry: Entry }) =>
+        useAITranslation({
+          entry,
+          isReadableActive: false,
+          readableContent: null,
+          autoTranslate: true,
+          targetLanguage: "zh-CN",
+        }),
+      { initialProps: { entry: entryA } },
+    );
+
+    // 第一轮 idle 跑起来：needsTranslation 被调用并挂起（尚未完成）
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const firstRoundCalls = pending.length;
+    expect(firstRoundCalls).toBeGreaterThanOrEqual(1);
+
+    // 同一条目换一个「新对象引用」→ effect cleanup 取消第一轮 idle（未完成）
+    rerender({ entry: { ...entryA } });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    // 第二轮应当重新调度，needsTranslation 又被调用
+    expect(pending.length).toBeGreaterThan(firstRoundCalls);
+
+    // 全部决议为 true：第二轮应真正发起翻译（若 attemptKey 卡死则 streamTranslateBlocks 永不调用）
+    await act(async () => {
+      for (const resolve of pending) resolve(true);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(mockStreamTranslateBlocks).toHaveBeenCalled());
   });
 });
