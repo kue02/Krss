@@ -1001,6 +1001,8 @@
     "up_to_date_short": "Up to date",
     "check_failed": "Check failed",
     "check_failed_hint": "Couldn't reach GitHub. Please try again later.",
+    "check_rate_limited": "GitHub is rate limiting requests right now. Please try again later.",
+    "check_not_found": "Couldn't find the release repository or Release for Krss.",
     "banner_desc": "Version {{version}} is available. See what's new.",
     "view_details": "View update details",
     "release_page": "Release page",

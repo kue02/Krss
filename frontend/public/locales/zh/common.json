@@ -998,6 +998,8 @@
     "up_to_date_short": "已是最新",
     "check_failed": "检查失败",
     "check_failed_hint": "无法连接 GitHub，请稍后重试。",
+    "check_rate_limited": "GitHub 接口暂时限流，请稍后再试。",
+    "check_not_found": "找不到 Krss 的发布仓库或 Release。",
     "banner_desc": "新版本 {{version}} 已发布，查看更新内容。",
     "view_details": "查看更新内容",
     "release_page": "发布页面",

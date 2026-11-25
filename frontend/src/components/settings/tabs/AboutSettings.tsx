@@ -1,6 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  createElement,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import type { ComponentProps } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Modal } from "@heroui/react";
+import { Alert, Button, Chip, Modal } from "@heroui/react";
+import type { Components } from "hast-util-to-jsx-runtime";
 import {
   AlertCircle,
   ArrowUpCircle,
@@ -18,7 +26,7 @@ import {
   SectionCard,
   SettingRow,
 } from "@/components/settings/settings-primitives";
-import { checkForUpdate } from "@/api";
+import { ApiError, checkForUpdate } from "@/api";
 import type { UpdateCheckResult } from "@/types/settings";
 import { parseHtml } from "@/lib/parse-html";
 import { cn } from "@/lib/utils";
@@ -29,6 +37,28 @@ const version =
 const TECH_STACK = "React · TypeScript · Go · SQLite";
 
 type UpdateStatus = "checking" | "success" | "error";
+
+/**
+ * 检查失败的三种原因分开说：限流要「等会儿再试」、仓库配错要「去看配置」，
+ * 都塌缩成「连不上 GitHub」只会让用户一直点重试（而每次重试都真打一次 GitHub）。
+ */
+type UpdateErrorKind = "rateLimited" | "notFound" | "generic";
+
+const ERROR_HINT_KEYS: Record<UpdateErrorKind, string> = {
+  rateLimited: "update.check_rate_limited",
+  notFound: "update.check_not_found",
+  generic: "update.check_failed_hint",
+};
+
+function classifyError(error: unknown): UpdateErrorKind {
+  if (error instanceof ApiError) {
+    if (error.status === 429) return "rateLimited";
+    if (error.status === 502 && error.message.includes("release not found")) {
+      return "notFound";
+    }
+  }
+  return "generic";
+}
 
 function formatTime(date: Date): string {
   return date.toLocaleTimeString(undefined, {
@@ -91,11 +121,26 @@ const LINKS = [
   },
 ] as const;
 
+/**
+ * 发布说明里的链接一律开新标签：这里是设置弹窗，直接导航走用户就回不到应用了。
+ * `components` 只喂给 toJsxRuntime，不进 unified 管线（见 lib/parse-html.ts 注释）。
+ */
+const RELEASE_NOTE_COMPONENTS: Components = {
+  // node 是 hast 的元信息，DOM 属性里不能出现，丢掉
+  a: ({ node: _node, ...props }) =>
+    createElement("a", {
+      ...(props as ComponentProps<"a">),
+      target: "_blank",
+      rel: "noopener noreferrer",
+    }),
+};
+
 export function AboutSettings() {
   const { t } = useTranslation();
 
   const [status, setStatus] = useState<UpdateStatus>("checking");
   const [result, setResult] = useState<UpdateCheckResult | null>(null);
+  const [errorKind, setErrorKind] = useState<UpdateErrorKind>("generic");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [checkedAt, setCheckedAt] = useState<Date | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -108,6 +153,7 @@ export function AboutSettings() {
       setErrorMessage(null);
       setStatus("success");
     } catch (error) {
+      setErrorKind(classifyError(error));
       setErrorMessage(error instanceof Error ? error.message : String(error));
       setStatus("error");
     }
@@ -125,55 +171,68 @@ export function AboutSettings() {
     void fetchUpdate();
   }, [fetchUpdate]);
 
-  const hasUpdate = status === "success" && !!result?.hasUpdate;
+  // 只看结果、不看 status：手动重新检查时如果也依赖 status，
+  // 横幅会先消失再出现（闪烁），而这段时间里「有更新」这个事实并没有变。
+  const hasUpdate = !!result?.hasUpdate;
+  const checking = status === "checking";
+
+  // 版本号统一取后端上报的当前版本：前端构建期注入的 __APP_VERSION__ 和后端
+  // 编译进二进制的 config.AppVersion 可能不同（自建镜像尤其常见），
+  // 同页显示两个不同版本会让人以为哪儿出错了。
+  const currentVersion = result?.currentVersion ?? version;
 
   const releaseNotes = useMemo(() => {
     if (!result?.releaseNotesHtml) return null;
     try {
-      return parseHtml(result.releaseNotesHtml).toContent();
+      return parseHtml(result.releaseNotesHtml, {
+        components: RELEASE_NOTE_COMPONENTS,
+      }).toContent();
     } catch {
       return null;
     }
   }, [result]);
 
+  // 发布名与 tag 不同时才有信息量（多数 Release 两者相同）
+  const releaseSubtitle =
+    result?.releaseName && result.releaseName !== result.latestVersion
+      ? result.releaseName
+      : null;
+
   return (
     <div className="space-y-5">
-      {/* 更新提示：有更新时放在最上方，最显眼 */}
+      {/* 有更新时的提示：用 HeroUI Alert，warning 状态在明暗两套主题下都清晰
+          （主题的 --accent 默认是 #000000，primary 在暗色下会变成黑底黑字） */}
       {hasUpdate && result && (
-        <section className="relative overflow-hidden rounded-2xl border border-warning/40 bg-warning-soft p-4 shadow-nf-sm sm:p-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-3">
-              <span className="mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-full bg-warning/15 text-warning-soft-foreground">
-                <ArrowUpCircle className="size-5" strokeWidth={2} />
-              </span>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-sm font-semibold text-foreground">
-                    {t("update.available")}
-                  </h3>
-                  <span className="rounded-full border border-warning/40 bg-warning/15 px-2 py-0.5 font-mono text-xs font-semibold text-warning-soft-foreground">
-                    {result.latestVersion}
-                  </span>
-                </div>
-                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  {t("update.banner_desc", { version: result.latestVersion })}
-                </p>
-              </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-2 sm:pl-2">
-              {/* 强调按钮刻意不用 variant="primary"：这套主题的 --accent 默认是 #000000，
-                  暗色下会变成黑底黑字、和「有更新」的语义也对不上；
-                  用 foreground 反色，两套主题都翻得过来（同 MCPServersSection 的主按钮） */}
-              <Button
-                size="sm"
-                className="border border-foreground bg-foreground text-background shadow-none hover:bg-foreground/90"
-                onPress={() => setDetailOpen(true)}
-              >
-                {t("update.view_details")}
-              </Button>
-            </div>
-          </div>
-        </section>
+        <Alert
+          status="warning"
+          className="items-center border border-warning/40 bg-warning-soft"
+        >
+          <Alert.Indicator>
+            <ArrowUpCircle className="size-5" strokeWidth={2} />
+          </Alert.Indicator>
+          {/* role/aria-live 只挂在文字区：挂在整块 Alert 上会把按钮文案一起念出来 */}
+          <Alert.Content role="status" aria-live="polite">
+            <Alert.Title className="flex flex-wrap items-center gap-2">
+              {t("update.available")}
+              <Chip size="sm" color="warning" variant="soft" className="font-mono font-semibold">
+                {result.latestVersion}
+              </Chip>
+            </Alert.Title>
+            <Alert.Description className="text-xs leading-relaxed">
+              {t("update.banner_desc", { version: result.latestVersion })}
+            </Alert.Description>
+          </Alert.Content>
+          {/* 强调按钮刻意不用 variant="primary"：这套主题的 --accent 默认是 #000000，
+              暗色下会变成黑底黑字、和「有更新」的语义也对不上；
+              用 foreground 反色，两套主题都翻得过来（同 MCPServersSection 的主按钮） */}
+          <Button
+            size="sm"
+            className="shrink-0 border border-foreground bg-foreground text-background shadow-none hover:bg-foreground/90"
+            onPress={() => setDetailOpen(true)}
+          >
+            {t("update.view_details")}
+          </Button>
+        </Alert>
       )}
 
       {/* 品牌区：保留应用身份，换成与设置页一致的卡片质感 */}
@@ -189,11 +248,9 @@ export function AboutSettings() {
               <h2 className="text-2xl font-bold tracking-tight text-foreground">
                 Krss
               </h2>
-              {/* 版本徽章用 foreground 派生色：主题的 --accent 默认是 #000000，
-                  暗色下 primary 会变成黑底黑字（本页其它处同理，见下方链接行） */}
-              <span className="rounded-full border border-foreground/20 bg-foreground/5 px-2.5 py-0.5 font-mono text-xs font-medium text-foreground">
-                v{version}
-              </span>
+              <Chip size="sm" className="font-mono">
+                v{currentVersion}
+              </Chip>
             </div>
             <p className="mt-1.5 max-w-lg text-sm leading-relaxed text-muted-foreground">
               {t("about.tagline")}
@@ -206,10 +263,7 @@ export function AboutSettings() {
       <SectionCard
         icon={
           <RefreshCw
-            className={cn(
-              "size-4",
-              status === "checking" && "animate-spin",
-            )}
+            className={cn("size-4", checking && "animate-spin")}
             strokeWidth={1.75}
           />
         }
@@ -219,15 +273,15 @@ export function AboutSettings() {
           <Button
             size="sm"
             variant="outline"
-            isDisabled={status === "checking"}
+            isDisabled={checking}
             onPress={() => void runCheck()}
           >
-            {status === "checking" ? (
+            {checking ? (
               <span className="flex items-center gap-1.5">
                 <Loader2 className="size-3.5 animate-spin" />
                 {t("update.checking")}
               </span>
-            ) : result && !result.hasUpdate ? (
+            ) : result ? (
               t("update.recheck")
             ) : (
               t("update.check_now")
@@ -238,11 +292,11 @@ export function AboutSettings() {
         <div className="divide-y divide-border/50">
           <SettingRow label={t("update.current_version")}>
             <span className="font-mono text-[13px] text-muted-foreground">
-              v{result?.currentVersion ?? version}
+              v{currentVersion}
             </span>
           </SettingRow>
           <SettingRow label={t("update.latest_version")}>
-            {status === "checking" && (
+            {checking && (
               <span className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="size-3.5 animate-spin" />
                 {t("update.checking")}
@@ -263,7 +317,7 @@ export function AboutSettings() {
                   "flex items-center gap-1.5 text-sm",
                   result.hasUpdate
                     ? "font-medium text-warning-soft-foreground"
-                    : "text-emerald-600 dark:text-emerald-400",
+                    : "font-medium text-success-soft-foreground",
                 )}
               >
                 {result.hasUpdate ? (
@@ -287,7 +341,7 @@ export function AboutSettings() {
               <a
                 href={result.releaseUrl}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-sm text-foreground underline decoration-foreground/30 underline-offset-2 transition-colors hover:decoration-foreground"
               >
                 {t("update.open_on_github")}
@@ -298,7 +352,7 @@ export function AboutSettings() {
         </div>
         {status === "error" && (
           <p className="px-1 pb-2 pt-1 text-xs text-muted-foreground">
-            {t("update.check_failed_hint")}
+            {t(ERROR_HINT_KEYS[errorKind])}
           </p>
         )}
         {status === "success" && checkedAt && (
@@ -316,7 +370,7 @@ export function AboutSettings() {
         <div className="divide-y divide-border/50">
           <SettingRow label={t("about.version")}>
             <span className="font-mono text-[13px] text-muted-foreground">
-              {version}
+              {currentVersion}
             </span>
           </SettingRow>
           <SettingRow label={t("about.license")}>
@@ -340,7 +394,7 @@ export function AboutSettings() {
               key={key}
               href={href}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className="group flex items-center gap-3 px-1 py-2.5 text-sm text-foreground transition-colors hover:bg-item-hover"
             >
               <span className="flex size-8 shrink-0 items-center justify-center rounded-[var(--radius)] bg-secondary/40 text-muted-foreground transition-colors group-hover:text-foreground">
@@ -380,6 +434,7 @@ export function AboutSettings() {
                     {result?.latestVersion && (
                       <span className="font-mono">{result.latestVersion}</span>
                     )}
+                    {releaseSubtitle && <span>{releaseSubtitle}</span>}
                     {result?.publishedAt && (
                       <span>
                         {t("update.published_at", {
@@ -409,10 +464,10 @@ export function AboutSettings() {
                       <div className="space-y-1.5">
                         {result.assets.map((asset) => (
                           <a
-                            key={asset.url}
+                            key={`${asset.name}::${asset.url}`}
                             href={asset.url}
                             target="_blank"
-                            rel="noreferrer"
+                            rel="noopener noreferrer"
                             className="flex items-center gap-2 rounded-lg border border-border/60 px-3 py-2 text-sm text-foreground transition-colors hover:bg-item-hover"
                           >
                             <Download className="size-4 shrink-0 text-muted-foreground" />
@@ -441,9 +496,11 @@ export function AboutSettings() {
                   {t("update.close")}
                 </Button>
                 {result?.releaseUrl && (
+                  // 同横幅：primary 在暗色下是黑底黑字（与弹窗背景对比度仅 1.19:1），
+                  // 用 foreground 反色保证两套主题都够亮。
                   <Button
                     size="sm"
-                    variant="primary"
+                    className="border border-foreground bg-foreground text-background shadow-none hover:bg-foreground/90"
                     onPress={() =>
                       window.open(
                         result.releaseUrl,
@@ -457,6 +514,7 @@ export function AboutSettings() {
                   </Button>
                 )}
               </Modal.Footer>
+              <Modal.CloseTrigger />
             </Modal.Dialog>
           </Modal.Container>
         </Modal.Backdrop>
