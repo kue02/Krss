@@ -1095,8 +1095,8 @@ export function NotificationTimeline({
       data-testid="notification-timeline"
       data-timeline-layout="cards"
       // 40-2：「点空白收起全部」由 `EntryList` 的滚动视口发事件，这里只监听（见下方 useEffect）。
-      // 卡片流：日期分段 + 每条一张轻卡片；≥lg 双列，展开态横跨整行。
-      className="relative mx-auto w-full max-w-[44rem] lg:max-w-[56rem] 2xl:max-w-[66rem]"
+      // 卡片流：日期分段 + 每条一张轻卡片；单列居中（通知=扫读流，读数舒适）。
+      className="relative mx-auto w-full max-w-[50rem]"
     >
 
       {sections.map((section) => {
@@ -1106,7 +1106,7 @@ export function NotificationTimeline({
         <div
           key={section.key}
           data-timeline-section={section.key}
-          className="relative grid grid-cols-1 items-start gap-2.5 pt-1 lg:grid-cols-2 lg:gap-3"
+          className="relative grid grid-cols-1 items-start gap-2.5 pt-1"
         >
           {/* 日期分隔行（用户 9-24 要吸顶 / 9-25 居中胶囊 → 2423cda 全宽条 → 2026-09-25
               复验后按用户「要最早那版：纯一行文字、无底色、无分隔线」回到 2423cda 之前那版）：
@@ -1120,19 +1120,20 @@ export function NotificationTimeline({
           <div
             data-timeline-date={section.label}
             data-timeline-date-stuck={dateStuck ? "true" : "false"}
-            className={cn(
-              "sticky top-0 z-10 col-span-full flex items-baseline gap-2 bg-background px-1 pb-2.5 pt-4 transition-[box-shadow,border-color] duration-200 ease-[var(--ease-ios)]",
-              dateStuck
-                ? "border-b border-border/60 shadow-[0_1px_8px_rgba(0,0,0,0.045)]"
-                : "border-b border-transparent",
-            )}
+            className="sticky top-0 z-10 col-span-full flex items-baseline gap-2 px-1 pb-2.5 pt-4"
           >
             {/* 34-2（用户 2026-09-26 二次校正）：「不是这个吸顶样式，是之前的胶囊悬浮吸顶样式」
                 ⇒ 负吸顶那条的文字胶囊本身变成 a96896d 那版浮起胶囊
                 （圆角 + 描边 + 95% 底 + 模糊 + 投影）；非吸顶仍是同一颗无描边无投影的素胶囊。
                 位置按用户先前锁定「回到条目标题上方」不变（单栏贴卡片列左缘 / 交替居中），
                 胶囊那版的 `mx-auto` 居中他当时否过；`top-2` 也没跟过来（吸顶瞬间不跳 8px）。 */}
-            <span className="text-[13px] font-semibold tracking-tight text-foreground/80">
+            <span
+              className={cn(
+                "text-[13px] font-semibold tracking-tight text-foreground/80 transition-[background-color,box-shadow,border-color] duration-200 ease-[var(--ease-ios)]",
+                dateStuck &&
+                  "rounded-full border border-border/60 bg-background/95 px-2.5 py-1 shadow-nf backdrop-blur-sm",
+              )}
+            >
               {section.label}
             </span>
           </div>
@@ -1210,16 +1211,11 @@ export function NotificationTimeline({
           />
         );
 
-        const isOpen =
-          !hoverMode &&
-          (expandedEntries.has(entry.id) ||
-            entry.id === selectedEntryId ||
-            isAutoExpanded(entry.id));
         return (
           <div
             key={row.key}
             data-timeline-row={row.node}
-            className={cn("min-w-0", isOpen && "lg:col-span-2")}
+            className="min-w-0"
           >
             {card}
           </div>

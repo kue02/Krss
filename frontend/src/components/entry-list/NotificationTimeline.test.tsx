@@ -584,20 +584,20 @@ describe("NotificationTimeline · 日期吸顶（26-1 重做）", () => {
       expect(date.className).toContain("sticky");
       expect(date.className).toContain("top-0");
       expect(date.className).not.toContain("top-2");
-      // 非吸顶：底边分隔线透明、无投影
-      expect(date.className).toContain("border-transparent");
+      // 日期行本身无全宽底色 / 分隔线 / 浮层（不做全宽条）
+      expect(date.className).not.toContain("bg-background");
       expect(date.className).not.toContain("backdrop-blur");
-      expect(date.style.boxShadow).toBe("");
-      expect(date.style.backgroundColor).toBe("");
-      // 日期文字是朴素小字，不带胶囊描边
+      expect(date.className).not.toContain("shadow-[");
+      // 非吸顶：日期文字是朴素小字，不带胶囊描边
       const label = date.querySelector("span");
       expect(label?.className).toContain("font-semibold");
       expect(label?.className ?? "").not.toContain("rounded-full");
       expect(label?.className ?? "").not.toMatch(/(^|\s)border(-|\s|$)/);
+      expect(label?.className ?? "").not.toContain("shadow-nf");
     }
   });
 
-  it("只有正吸顶的那段浮起（底边分隔线 + 投影），其余保持透明", async () => {
+  it("只有正吸顶的那段浮起（日期胶囊 + 投影），其余保持朴素", async () => {
     const { container } = renderTimeline([
       entry("a", localIso(18, 9, 0)),
       entry("b", localIso(17, 9, 0)),
@@ -641,14 +641,17 @@ describe("NotificationTimeline · 日期吸顶（26-1 重做）", () => {
     const rows = Array.from(
       container.querySelectorAll<HTMLElement>("[data-timeline-date]"),
     );
-    // 吸顶段：底边描边 + 投影浮起
+    // 吸顶段：日期文字变成浮起胶囊（圆角 + 描边 + 投影）
     expect(rows[0]!.getAttribute("data-timeline-date-stuck")).toBe("true");
-    expect(rows[0]!.className).toContain("border-border/60");
-    expect(rows[0]!.className).toContain("shadow-[0_1px_8px_rgba(0,0,0,0.045)]");
-    // 未吸顶段：透明底边、无投影
+    const stuckPill = rows[0]!.querySelector("span");
+    expect(stuckPill?.className).toContain("rounded-full");
+    expect(stuckPill?.className).toContain("border-border/60");
+    expect(stuckPill?.className).toContain("shadow-nf");
+    // 未吸顶段：朴素文字，无胶囊
     expect(rows[1]!.getAttribute("data-timeline-date-stuck")).toBe("false");
-    expect(rows[1]!.className).toContain("border-transparent");
-    expect(rows[1]!.className).not.toContain("shadow-[");
+    const plainLabel = rows[1]!.querySelector("span");
+    expect(plainLabel?.className ?? "").not.toContain("rounded-full");
+    expect(plainLabel?.className ?? "").not.toContain("shadow-nf");
   });
 
   it("日期行不挡卡片点击：自身不是按钮、无 pointer 事件拦截", () => {
