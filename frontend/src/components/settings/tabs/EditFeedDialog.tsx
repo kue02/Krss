@@ -20,8 +20,29 @@ import { MCPSubscriptionWizard } from "@/components/settings/tabs/MCPSubscriptio
 import { cn } from "@/lib/utils";
 import { Copy } from "lucide-react";
 import type { Feed, ProxyEffective, ProxyMode } from "@/types/api";
+import {
+  ApiError,
+  getFeedMergePreview,
+  mergeFeed,
+  refreshFeeds,
+  updateFeedUrl,
+  type FeedMergePreview,
+} from "@/api";
 
 const SUMMARY_PROMPT_REMINDER_MAX_LENGTH = 2000;
+
+/** 订阅地址只接受 http/https 且要有主机名（与后端 UpdateURL 的校验口径一致）。 */
+function isValidFeedUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return (
+      (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+      parsed.hostname.length > 0
+    );
+  } catch {
+    return false;
+  }
+}
 
 interface EditFeedDialogProps {
   feed: Feed | null;
@@ -37,7 +58,12 @@ export function EditFeedDialog({
   const { t } = useTranslation();
   const [title, setTitle] = useState("");
   const [summaryPromptReminder, setSummaryPromptReminder] = useState("");
+  const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // 改地址撞车时先挂住另一侧订阅，弹内联确认合并（不再嵌一层弹窗，免得 z-index 打架）
+  const [mergePreview, setMergePreview] = useState<FeedMergePreview | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [isMerging, setIsMerging] = useState(false);
   const [autoTranslate, setAutoTranslate] = useState<boolean | null>(null);
   const [autoSummary, setAutoSummary] = useState<boolean | null>(null);
   const [readerMode, setReaderMode] = useState<boolean | null>(null);
@@ -61,12 +87,14 @@ export function EditFeedDialog({
       /* eslint-disable react-hooks/set-state-in-effect */
       setTitle(feed.title);
       setSummaryPromptReminder(feed.summaryPromptReminder ?? "");
+      setUrl(feed.url);
       setAutoTranslate(feed.autoTranslate ?? null);
       setAutoSummary(feed.autoSummary ?? null);
       setReaderMode(feed.readerMode ?? null);
       setProxyMode(feed.proxyMode ?? "inherit");
       setEffective(null);
       setError(null);
+      setMergePreview(null);
       /* eslint-enable react-hooks/set-state-in-effect */
     }
   }, [feed]);
@@ -83,10 +111,33 @@ export function EditFeedDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!feed || reminderTooLong) return;
+    if (!feed || reminderTooLong || submitting) return;
 
     setError(null);
+    const trimmedUrl = url.trim();
+    const urlChanged = trimmedUrl !== feed.url;
+    if (urlChanged && !isValidFeedUrl(trimmedUrl)) {
+      setError(t("feeds.url_invalid"));
+      return;
+    }
+
+    setSubmitting(true);
     try {
+      // 改地址前先探一次：撞到别的订阅就先挂起，走内联「确认合并」
+      if (urlChanged) {
+        let target: FeedMergePreview | null = null;
+        try {
+          target = await getFeedMergePreview(feed.id, trimmedUrl);
+        } catch {
+          // 探测失败不拦，后端 PATCH 还有 409 兜底
+          target = null;
+        }
+        if (target?.target) {
+          setMergePreview(target);
+          return;
+        }
+      }
+
       await updateFeed.mutateAsync({
         id: feed.id,
         title: title.trim(),
@@ -105,9 +156,44 @@ export function EditFeedDialog({
         override: { mode: proxyMode },
       });
       setEffective(proxyResult.effective);
+
+      // 地址有变：PATCH 新地址 → 立刻用新地址刷新一次（旧文章按 feed_id 关联，不动）
+      if (urlChanged) {
+        await updateFeedUrl(feed.id, trimmedUrl);
+        void refreshFeeds([feed.id]);
+        void queryClient.invalidateQueries({ queryKey: ["feeds"] });
+        void queryClient.invalidateQueries({ queryKey: ["entries"] });
+        void queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
+      }
+      onOpenChange(false);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        setError(t("feeds.url_conflict_hint"));
+      } else {
+        setError(t("feeds.update_failed"));
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // 确认合并：把当前订阅并进撞车的那个订阅（保留目标，条目/星标一起挪过去）
+  const handleConfirmMerge = async () => {
+    if (!feed || !mergePreview?.target) return;
+    setIsMerging(true);
+    setError(null);
+    try {
+      await mergeFeed(feed.id, mergePreview.target.id);
+      void refreshFeeds([mergePreview.target.id]);
+      void queryClient.invalidateQueries({ queryKey: ["feeds"] });
+      void queryClient.invalidateQueries({ queryKey: ["entries"] });
+      void queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
+      setMergePreview(null);
       onOpenChange(false);
     } catch {
       setError(t("feeds.update_failed"));
+    } finally {
+      setIsMerging(false);
     }
   };
 
@@ -122,6 +208,55 @@ export function EditFeedDialog({
         <DialogHeader className="p-4">
           <DialogTitle>{t("feeds.edit_feed")}</DialogTitle>
         </DialogHeader>
+        {mergePreview?.target ? (
+          <div className="space-y-4 px-4 pb-4">
+            <div className="space-y-1">
+              <h3 className="text-sm font-medium text-foreground">
+                {t("feeds.url_conflict_title")}
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {t("feeds.url_conflict_body", {
+                  target: mergePreview.target.title,
+                  targetCount: mergePreview.target.entries,
+                  source: mergePreview.source.title,
+                  sourceCount: mergePreview.source.entries,
+                })}
+              </p>
+            </div>
+            {error && (
+              <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {error}
+              </div>
+            )}
+            <div className="flex justify-end gap-2 border-t border-border pt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setMergePreview(null);
+                  setError(null);
+                }}
+                className={cn(
+                  "rounded-[var(--radius)] px-4 py-2 text-sm font-medium transition-colors",
+                  "border border-border bg-background hover:bg-secondary",
+                )}
+              >
+                {t("actions.cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmMerge}
+                disabled={isMerging}
+                className={cn(
+                  "rounded-[var(--radius)] px-4 py-2 text-sm font-medium transition-colors",
+                  "bg-primary text-primary-foreground hover:bg-primary/90",
+                  "disabled:cursor-not-allowed disabled:opacity-50",
+                )}
+              >
+                {isMerging ? t("settings.saving") : t("feeds.url_merge_confirm")}
+              </button>
+            </div>
+          </div>
+        ) : (
         <form onSubmit={handleSubmit} className="space-y-4 px-4 pb-4">
           <div className="space-y-2">
             <label
@@ -151,27 +286,37 @@ export function EditFeedDialog({
             )}
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-muted-foreground">
+            <label
+              htmlFor="feed-url-input"
+              className="text-sm font-medium text-foreground"
+            >
               {t("feeds.feed_url")}
-              <span className="ml-2 text-xs">({t("feeds.url_readonly")})</span>
             </label>
-            {/* 52-3（用户第 3 条）：URL 要能复制。只读展示 + 行尾复制钮（与右键「复制 Feed 地址」同一份文案） */}
+            {/* 52-3：URL 可复制；订阅地址可编辑（长地址用单行输入框，聚焦后左右滚动查看） */}
             <div className="flex items-center gap-2">
-              <div
+              <input
+                id="feed-url-input"
+                type="text"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                title={url}
+                placeholder={feed?.url}
+                spellCheck={false}
+                autoComplete="off"
+                autoCapitalize="off"
+                autoCorrect="off"
                 className={cn(
-                  "min-w-0 flex-1 truncate rounded-field border border-border bg-secondary/50 px-3 py-2 text-sm",
-                  "text-muted-foreground",
+                  "min-w-0 flex-1 rounded-field border border-border bg-background px-3 py-2 text-sm",
+                  "whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-primary/50",
+                  "placeholder:text-muted-foreground",
                 )}
-                title={feed?.url}
-              >
-                {feed?.url}
-              </div>
-              {feed?.url && (
+              />
+              {url.trim() && (
                 <button
                   type="button"
                   onClick={() =>
                     void copyToClipboard(
-                      feed.url,
+                      url.trim(),
                       t("actions.copied_feed_url"),
                       t("actions.copy_failed"),
                     )
@@ -187,6 +332,9 @@ export function EditFeedDialog({
                 </button>
               )}
             </div>
+            <p className="text-xs text-muted-foreground">
+              {t("feeds.url_change_hint")}
+            </p>
           </div>
           {/* 16-14：MCP 订阅的取数配置入口（连接/工具 + 编辑按钮，进向导编辑模式） */}
           {isMCPFeed && (
@@ -323,17 +471,18 @@ export function EditFeedDialog({
             </button>
             <button
               type="submit"
-              disabled={reminderTooLong || updateFeed.isPending}
+              disabled={reminderTooLong || submitting}
               className={cn(
                 "rounded-[var(--radius)] px-4 py-2 text-sm font-medium transition-colors",
                 "bg-primary text-primary-foreground hover:bg-primary/90",
                 "disabled:cursor-not-allowed disabled:opacity-50",
               )}
             >
-              {updateFeed.isPending ? t("settings.saving") : t("actions.save")}
+              {submitting ? t("settings.saving") : t("actions.save")}
             </button>
           </div>
         </form>
+        )}
       </DialogContent>
     </Dialog>
     {isMCPFeed && (

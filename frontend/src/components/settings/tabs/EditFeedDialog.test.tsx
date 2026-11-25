@@ -61,6 +61,26 @@ vi.mock("@/hooks/useProxySources", () => ({
   }),
 }));
 
+// 改地址用到的几个接口：只覆盖这四个，其余 @/api 导出透传（向导等模块还要真实导出）
+const { mockUpdateFeedUrl, mockGetFeedMergePreview, mockMergeFeed, mockRefreshFeeds } =
+  vi.hoisted(() => ({
+    mockUpdateFeedUrl: vi.fn(),
+    mockGetFeedMergePreview: vi.fn(),
+    mockMergeFeed: vi.fn(),
+    mockRefreshFeeds: vi.fn(),
+  }));
+
+vi.mock("@/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/api")>();
+  return {
+    ...actual,
+    updateFeedUrl: mockUpdateFeedUrl,
+    getFeedMergePreview: mockGetFeedMergePreview,
+    mergeFeed: mockMergeFeed,
+    refreshFeeds: mockRefreshFeeds,
+  };
+});
+
 vi.mock("@/components/ui/dialog", () => ({
   Dialog: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   DialogContent: ({
@@ -105,6 +125,18 @@ describe("EditFeedDialog", () => {
     mockUpdateFeedProxy.mockResolvedValue({
       feed: { id: "feed-1" },
       effective: { mode: "direct", source: "global" },
+    });
+    // 改地址相关接口默认桩：无撞车
+    mockUpdateFeedUrl.mockResolvedValue(undefined);
+    mockMergeFeed.mockResolvedValue({
+      targetId: "feed-2",
+      movedEntries: 1,
+      dedupedEntries: 0,
+    });
+    mockRefreshFeeds.mockResolvedValue(undefined);
+    mockGetFeedMergePreview.mockResolvedValue({
+      source: { id: "feed-1", title: "Feed Title", entries: 1, starred: 0 },
+      target: null,
     });
   });
 
@@ -238,5 +270,94 @@ describe("EditFeedDialog", () => {
       />,
     );
     expect(screen.queryByText("feeds.mcp_config_title")).toBeNull();
+  });
+
+  it("改订阅地址：保存时 PATCH 新地址并立即用新地址刷新一次", async () => {
+    render(
+      <EditFeedDialog feed={buildFeed()} open onOpenChange={mockOnOpenChange} />,
+    );
+
+    fireEvent.change(screen.getByLabelText("feeds.feed_url"), {
+      target: { value: "https://new.example.com/rss" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "actions.save" }));
+
+    await waitFor(() => {
+      expect(mockGetFeedMergePreview).toHaveBeenCalledWith(
+        "feed-1",
+        "https://new.example.com/rss",
+      );
+    });
+    await waitFor(() => {
+      expect(mockUpdateFeedUrl).toHaveBeenCalledWith(
+        "feed-1",
+        "https://new.example.com/rss",
+      );
+    });
+    expect(mockRefreshFeeds).toHaveBeenCalledWith(["feed-1"]);
+    expect(mockOnOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("地址未改动时不调用改地址接口", async () => {
+    render(
+      <EditFeedDialog feed={buildFeed()} open onOpenChange={mockOnOpenChange} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "actions.save" }));
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalled();
+    });
+    expect(mockGetFeedMergePreview).not.toHaveBeenCalled();
+    expect(mockUpdateFeedUrl).not.toHaveBeenCalled();
+    expect(mockRefreshFeeds).not.toHaveBeenCalled();
+  });
+
+  it("地址不合法时不提交，并提示地址无效", async () => {
+    render(
+      <EditFeedDialog feed={buildFeed()} open onOpenChange={mockOnOpenChange} />,
+    );
+
+    fireEvent.change(screen.getByLabelText("feeds.feed_url"), {
+      target: { value: "not-a-url" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "actions.save" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("feeds.url_invalid")).toBeTruthy();
+    });
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+    expect(mockUpdateFeedUrl).not.toHaveBeenCalled();
+  });
+
+  it("地址撞到别的订阅：显示内联确认合并，确认后合并过去", async () => {
+    mockGetFeedMergePreview.mockResolvedValueOnce({
+      source: { id: "feed-1", title: "Feed Title", entries: 3, starred: 1 },
+      target: { id: "feed-2", title: "Other Feed", entries: 5, starred: 2 },
+    });
+
+    render(
+      <EditFeedDialog feed={buildFeed()} open onOpenChange={mockOnOpenChange} />,
+    );
+
+    fireEvent.change(screen.getByLabelText("feeds.feed_url"), {
+      target: { value: "https://taken.example.com/rss" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "actions.save" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("feeds.url_conflict_title")).toBeTruthy();
+    });
+    // 撞车时还没写库
+    expect(mockUpdateFeedUrl).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "feeds.url_merge_confirm" }),
+    );
+
+    await waitFor(() => {
+      expect(mockMergeFeed).toHaveBeenCalledWith("feed-1", "feed-2");
+    });
+    expect(mockOnOpenChange).toHaveBeenCalledWith(false);
   });
 });
