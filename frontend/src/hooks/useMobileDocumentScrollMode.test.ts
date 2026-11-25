@@ -8,7 +8,9 @@ describe("useMobileDocumentScrollMode", () => {
   beforeEach(() => {
     document.documentElement.className = "";
     document.body.className = "";
-    history.scrollRestoration = "auto";
+    // 预置成 "manual"，用来验证 hook 会把它改回 "auto"（iOS 返回手势预览
+    // 空白问题，见 useMobileDocumentScrollMode.ts 注释）。
+    history.scrollRestoration = "manual";
     Object.defineProperty(window, "scrollY", {
       configurable: true,
       value: 240,
@@ -23,7 +25,7 @@ describe("useMobileDocumentScrollMode", () => {
     vi.restoreAllMocks();
   });
 
-  it("enables document scrolling and manual restoration", () => {
+  it("enables document scrolling and browser-native (auto) scroll restoration", () => {
     const { unmount } = renderHook(() =>
       useMobileDocumentScrollMode({ enabled: true, locked: false }),
     );
@@ -32,14 +34,16 @@ describe("useMobileDocumentScrollMode", () => {
       "mobile-document-scroll",
     );
     expect(document.body.classList).toContain("mobile-document-scroll");
-    expect(history.scrollRestoration).toBe("manual");
+    // 关键：从 "manual" 切到 "auto"，让 iOS 返回手势有快照可用（不空白）。
+    expect(history.scrollRestoration).toBe("auto");
 
     unmount();
 
     expect(document.documentElement.classList).not.toContain(
       "mobile-document-scroll",
     );
-    expect(history.scrollRestoration).toBe("auto");
+    // 卸载后恢复调用前的值（beforeEach 预置的 "manual"）。
+    expect(history.scrollRestoration).toBe("manual");
   });
 
   it("locks overlays without losing the list position", () => {
@@ -72,6 +76,7 @@ describe("useMobileDocumentScrollMode", () => {
 
     expect(document.documentElement.className).toBe("");
     expect(document.body.className).toBe("");
-    expect(history.scrollRestoration).toBe("auto");
+    // 禁用时不动 scrollRestoration，保持调用前的值。
+    expect(history.scrollRestoration).toBe("manual");
   });
 });
