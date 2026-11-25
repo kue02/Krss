@@ -528,7 +528,9 @@ export function useAITranslation({
     // 翻译语义与原先一致（generateTranslation 不依赖这里的 summary）。
     if (entry.content) {
       const contentSnapshot = entry.content;
+      const entryIdSnapshot = entry.id;
       scheduleIdle(() => {
+        if (activeEntryIdRef.current !== entryIdSnapshot) return;
         const summary = stripHtml(contentSnapshot).slice(0, 200);
         void (async () => {
           if (
@@ -557,6 +559,7 @@ export function useAITranslation({
 
   // Auto-regenerate when readability mode changes
   useEffect(() => {
+    let cancelled = false;
     if (prevTranslateReadableRef.current !== isReadableActive) {
       prevTranslateReadableRef.current = isReadableActive;
       if (
@@ -588,6 +591,9 @@ export function useAITranslation({
             summary,
             targetLanguage,
           );
+          // 用户快速「原文/正文」来回切或切走条目后，旧空闲回调不能再用旧闭包
+          // 发起翻译/覆盖新视图状态。
+          if (cancelled || activeEntryIdRef.current !== entry?.id) return;
           if (needs) {
             generateTranslation(isReadableActive);
           } else {
@@ -598,6 +604,9 @@ export function useAITranslation({
         })();
       }
     }
+    return () => {
+      cancelled = true;
+    };
   }, [
     isReadableActive,
     cancelInFlightTranslation,
