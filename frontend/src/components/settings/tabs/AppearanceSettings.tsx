@@ -1035,16 +1035,6 @@ export function AppearanceSettings() {
         description={t("appearance_view.description")}
       >
         <div className="space-y-2.5">
-          {/* 2026-11-25：分界限显示方式改为随布局自动联动（三栏常显 / 双栏平时隐藏、悬浮才现），
-              不再需要手动开关，这里只留一句说明。 */}
-          <div className="rounded-xl border border-border/60 bg-background/40 p-2.5">
-            <p className="text-sm text-foreground">
-              {t("appearance_view.splitter_auto_title")}
-            </p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {t("appearance_view.splitter_auto_note")}
-            </p>
-          </div>
           {(
             ["article", "picture", "notification", "social"] as ContentType[]
           ).map(

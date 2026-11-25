@@ -1169,8 +1169,6 @@
     "article_cover_on": "开启",
     "experimental_disabled_hint": "当前正在使用已停用的实验布局；可在「设置 → 高级 → 实验性设置」重新开启，或直接切回常规。",
     "switch_to_regular": "切回常规",
-    "splitter_auto_title": "分界限显示方式",
-    "splitter_auto_note": "自动跟随布局：三栏（订阅栏 + 条目栏 + 正文）时这条线常显；双栏（订阅栏 + 内容）时平时隐藏，鼠标移到分界处或拖动时才出现。第二栏（条目 ↔ 正文）那条不受影响，仍是悬浮才显示。",
     "timeline_granularity": "时间粒度",
     "timeline_granularity_hint": "同一档的时间共用一个节点（只影响分组与节点标注，不重新请求数据）",
     "timeline_granularity_minute": "精确到分",

@@ -510,23 +510,17 @@ describe("AppearanceSettings 按视图设置", () => {
     expect(screen.getAllByText("appearance_view.scroll_read")).toHaveLength(4);
   });
 
-  it("分界限改为随布局自动联动：只有一句说明，不再有手动开关（2026-11-25）", () => {
+  it("分界限改为随布局自动联动：外观设置不再暴露任何分界限开关或说明（2026-11-25）", () => {
     render(<AppearanceSettings />);
 
-    // 新说明只出现一处（全局一项，不在四个视图里各来一遍）
-    expect(
-      screen.getAllByText("appearance_view.splitter_auto_title"),
-    ).toHaveLength(1);
-    expect(
-      screen.getAllByText("appearance_view.splitter_auto_note"),
-    ).toHaveLength(1);
-
-    // 旧的手动开关与每视图「显示分界限」已移除
-    expect(
-      screen.queryAllByText("appearance_view.splitter_auto_hide"),
-    ).toHaveLength(0);
-    expect(
-      screen.queryAllByText("appearance_view.show_splitter"),
-    ).toHaveLength(0);
+    // 分界限已随布局自动联动，设置页不再有手动开关，也不再有说明文案。
+    for (const key of [
+      "appearance_view.splitter_auto_title",
+      "appearance_view.splitter_auto_note",
+      "appearance_view.splitter_auto_hide",
+      "appearance_view.show_splitter",
+    ]) {
+      expect(screen.queryAllByText(key)).toHaveLength(0);
+    }
   });
 });
