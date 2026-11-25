@@ -4,7 +4,8 @@
  * 覆盖语义：
  * 1. 50 条时首屏挂载的卡数 <= 15（可视区 600px / 估计行高 148px ≈ 4 行 + overscan 8*2 上限）。
  * 2. 滚动到底能加载出后面的卡（range 跟着 scrollTop 走）。
- * 3. 虚拟化只作用于标准文章列表：社交 / 通知时间线 / hover 档走原路径。
+ * 3. 虚拟化作用于标准文章列表 + 社交列表（桌面 / 移动端同一份 EntryListItem）；
+ *    通知时间线（吸附分组 + sticky 日期头）与 hover 浮层档走原路径。
  *
  * 手法：jsdom 里 offsetWidth/offsetHeight 全 0，虚拟库拿不到容器尺寸。
  * 这里给 viewport 打桩（offsetHeight/clientHeight/scrollTop 可写），让 range 真实算出来。
@@ -316,16 +317,24 @@ describe("EntryList · 标准文章列表虚拟化", () => {
     expect(lastScreen).not.toContain("e-1");
   });
 
-  it("社交视图不虚拟化（50 条全渲染，走原路径）", () => {
+  it("桌面社交视图接入虚拟容器：首屏只挂可视 + overscan，远少于 50 条", async () => {
     render(<EntryList {...defaultProps} contentType="social" />);
+    const viewport = screen.getByTestId("entry-list-viewport");
+    await act(async () => {
+      stubViewportScroll(viewport);
+      await Promise.resolve();
+    });
 
     expect(screen.queryByTestId("notification-timeline")).toBeNull();
+    // 桌面社交与移动端共用同一虚拟容器，不再 50 条全挂 DOM
     expect(
-      screen
-        .getByTestId("entry-list-viewport")
-        .querySelector('[data-virtual-list="true"]'),
-    ).toBeNull();
-    expect(rowIds()).toHaveLength(50);
+      viewport.querySelector('[data-virtual-list="true"]'),
+    ).not.toBeNull();
+    const ids = rowIds();
+    expect(ids.length).toBeGreaterThan(0);
+    expect(ids.length).toBeLessThan(manyEntries.length);
+    // 首屏从第一条开始
+    expect(ids[0]).toBe("e-1");
   });
 
   it("移动端社交列表接入虚拟容器：首屏只挂可视 + overscan，远少于 50 条", async () => {
