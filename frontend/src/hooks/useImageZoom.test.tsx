@@ -46,6 +46,67 @@ function firePointer(
   fireEvent(element, event);
 }
 
+/** 可手动触发的 ResizeObserver 替身：记录 observe 的目标，测试里按节点回调 */
+type ROCallback = ResizeObserverCallback;
+
+class MockResizeObserver {
+  static instances: MockResizeObserver[] = [];
+
+  callback: ROCallback;
+  targets: Element[] = [];
+
+  constructor(callback: ROCallback) {
+    this.callback = callback;
+    MockResizeObserver.instances.push(this);
+  }
+
+  observe(target: Element): void {
+    this.targets.push(target);
+  }
+
+  unobserve(): void {}
+
+  disconnect(): void {
+    this.targets = [];
+  }
+
+  trigger(target: Element): void {
+    const entries = [
+      { target } as unknown as ResizeObserverEntry,
+    ];
+    this.callback(entries, this as unknown as ResizeObserver);
+  }
+}
+
+/** 用可控替身替换 ResizeObserver，返回按节点触发回调的方法 */
+function installResizeObserver() {
+  MockResizeObserver.instances = [];
+  vi.stubGlobal("ResizeObserver", MockResizeObserver);
+  return {
+    triggerFor: (target: Element) => {
+      const instance = MockResizeObserver.instances.find((obs) =>
+        obs.targets.includes(target),
+      );
+      if (!instance) throw new Error("没有 ResizeObserver observe 这个节点");
+      instance.trigger(target);
+    },
+  };
+}
+
+function rectOf(width: number, height: number): DOMRect {
+  return {
+    x: 0,
+    y: 0,
+    top: 0,
+    left: 0,
+    right: width,
+    bottom: height,
+    width,
+    height,
+    toJSON: () => ({}),
+  } as DOMRect;
+}
+
 function ZoomHarness({ resetKey }: { resetKey?: string }) {
   const zoom = useImageZoom(resetKey);
   useEffect(() => {
@@ -106,7 +167,11 @@ function setup(resetKey?: string) {
 }
 
 describe("useImageZoom", () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+    MockResizeObserver.instances = [];
+  });
 
   it("toggleZoomAt 在 1x 时放大到 2x，再调用一次复位到 1x", () => {
     const { read } = setup();
@@ -437,5 +502,81 @@ describe("useImageZoom", () => {
     expect(image.style.transition).toBe(
       "transform 240ms cubic-bezier(0.22, 1, 0.36, 1)",
     );
+  });
+
+  it("容器尺寸变化后拖动边界改用刷新后的新尺寸", () => {
+    const resize = installResizeObserver();
+    const { container, image } = setup();
+
+    // 放大到 2x（锚点在容器中心 → offset 0）
+    act(() => getZoom().toggleZoomAt(CONTAINER_WIDTH / 2, CONTAINER_HEIGHT / 2));
+    // 初始容器 400x300、图片 400x300、2x → maxX = 200
+    act(() => {
+      firePointer(container, "pointerdown", { id: 1, x: 200, y: 150 });
+      firePointer(container, "pointermove", { id: 1, x: 400, y: 150 });
+    });
+    expect(image.style.transform).toBe("translate3d(200px, 0px, 0) scale(2)");
+
+    // 容器放大到 800x600：图片 2x 恰好铺满 → maxX = 0，S 用新尺寸夹紧
+    container.getBoundingClientRect = () => rectOf(800, 600);
+    act(() => resize.triggerFor(container));
+    act(() => {
+      firePointer(container, "pointermove", { id: 1, x: 600, y: 150 });
+    });
+    expect(image.style.transform).toBe("translate3d(0px, 0px, 0) scale(2)");
+  });
+
+  it("图片尺寸变化后（非手势态）按新尺寸重新夹紧", () => {
+    const resize = installResizeObserver();
+    const { container, image, read } = setup();
+
+    // 放大 2x 后拖到边界并提交：偏移停在 maxX=200
+    act(() => getZoom().toggleZoomAt(200, 150));
+    act(() => {
+      firePointer(container, "pointerdown", { id: 1, x: 200, y: 150 });
+      firePointer(container, "pointermove", { id: 1, x: 400, y: 150 });
+      firePointer(container, "pointerup", { id: 1, x: 400, y: 150 });
+    });
+    expect(read()).toBe("2|200|0|false");
+
+    // 图片缩到 200x300：2x = 400x600，横向恰好等于容器 → maxX = 0
+    Object.defineProperty(image, "clientWidth", {
+      configurable: true,
+      value: 200,
+    });
+    Object.defineProperty(image, "clientHeight", {
+      configurable: true,
+      value: 300,
+    });
+    act(() => resize.triggerFor(image));
+
+    expect(read()).toBe("2|0|0|false");
+    expect(image.style.transform).toBe("translate3d(0px, 0px, 0) scale(2)");
+  });
+
+  it("重复 beginPinch（三指重取基准）后 pointercancel 恢复到手势最初快照，而非中途值", () => {
+    const { container, image, read } = setup();
+
+    // 1x 两指捏合放大到 2x（手势中，state 未提交）
+    act(() => {
+      firePointer(container, "pointerdown", { id: 1, x: 250, y: 150 });
+      firePointer(container, "pointerdown", { id: 2, x: 350, y: 150 });
+    });
+    act(() => {
+      firePointer(container, "pointermove", { id: 1, x: 200, y: 150 });
+      firePointer(container, "pointermove", { id: 2, x: 400, y: 150 });
+    });
+    expect(image.style.transform).toBe("translate3d(-100px, 0px, 0) scale(2)");
+
+    // 第三指按下 → 再次 beginPinch 重取基准；不能把中途 2x 覆盖成手势起点
+    act(() => {
+      firePointer(container, "pointerdown", { id: 3, x: 300, y: 200 });
+    });
+    // 系统取消：必须回滚到本次手势最初（scale=1, offset=0）
+    act(() => {
+      firePointer(container, "pointercancel", { id: 1, x: 200, y: 150 });
+    });
+    expect(read()).toBe("1|0|0|false");
+    expect(image.style.transform).toBe("translate3d(0px, 0px, 0) scale(1)");
   });
 });

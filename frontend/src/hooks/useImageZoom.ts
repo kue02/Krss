@@ -150,9 +150,48 @@ export function useImageZoom(resetKey?: unknown) {
     [getMetrics],
   );
 
+  /**
+   * 容器 / 图片尺寸发生变化（ResizeObserver / window.resize）时统一入口：
+   * - 总是刷新尺寸缓存（手势中 move 会读到最新值，符合「容器变化后 clamp 用新值」）；
+   * - 手势进行中只刷新缓存，绝不动 DOM / transition，避免打断当前手势；
+   * - 非手势状态下如果已有缩放/平移，按新边界重新夹紧，防止尺寸变化后图片停在越界位置。
+   */
+  const handleMetricsChanged = useCallback(() => {
+    refreshMetrics();
+    if (gestureRef.current) return;
+    const targetScale = scaleRef.current;
+    const next =
+      targetScale > 1
+        ? clampToBounds(offsetRef.current, targetScale)
+        : { x: 0, y: 0 };
+    if (
+      next.x === offsetRef.current.x &&
+      next.y === offsetRef.current.y
+    ) {
+      return;
+    }
+    offsetRef.current = next;
+    setOffset(next);
+    const image = imageRef.current;
+    if (image) image.style.transform = transformCss(targetScale, next);
+  }, [clampToBounds, refreshMetrics]);
+
   /** 惰性同步多指标记：仅在指针集合变化时调用，不在逐帧路径里 */
   const syncMultiTouch = useCallback(() => {
     isMultiTouchRef.current = pointersRef.current.size >= 2;
+  }, []);
+
+  /**
+   * 记录「本次手势最初」的 scale/offset。
+   * 只在一次连续手势开始时写一次：beginPinch 会在三指 / 重取基准时被反复调用，
+   * 若每次都覆盖，pointercancel 就会回滚到中途快照而不是手势最初的快照。
+   */
+  const ensureGestureStart = useCallback(() => {
+    if (gestureStartRef.current) return;
+    gestureStartRef.current = {
+      scale: scaleRef.current,
+      offset: { ...offsetRef.current },
+    };
   }, []);
 
   /** 屏幕坐标 → 相对容器中心的坐标；容器还没挂载时返回 undefined */
@@ -216,10 +255,7 @@ export function useImageZoom(resetKey?: unknown) {
     (pointerId: number, sample: PointerSample) => {
       // 手势开始即缓存容器/图片尺寸，之后 move 只读缓存
       refreshMetrics();
-      gestureStartRef.current = {
-        scale: scaleRef.current,
-        offset: { ...offsetRef.current },
-      };
+      ensureGestureStart();
       gestureRef.current = {
         mode: "drag",
         pointerId,
@@ -230,7 +266,7 @@ export function useImageZoom(resetKey?: unknown) {
       capturePointer(pointerId, sample.target);
       beginInteraction();
     },
-    [beginInteraction, capturePointer, refreshMetrics],
+    [beginInteraction, capturePointer, ensureGestureStart, refreshMetrics],
   );
 
   const beginPinch = useCallback(() => {
@@ -241,10 +277,8 @@ export function useImageZoom(resetKey?: unknown) {
     refreshMetrics();
     const [firstId, firstSample] = first;
     const [secondId, secondSample] = second;
-    gestureStartRef.current = {
-      scale: scaleRef.current,
-      offset: { ...offsetRef.current },
-    };
+    // 三指 / 重取基准会重复调用 beginPinch，这里只记「本次手势最初」的快照
+    ensureGestureStart();
     capturePointer(firstId, firstSample.target);
     capturePointer(secondId, secondSample.target);
     const midX = (firstSample.x + secondSample.x) / 2;
@@ -264,7 +298,7 @@ export function useImageZoom(resetKey?: unknown) {
         : { x: 0, y: 0 },
     };
     beginInteraction();
-  }, [beginInteraction, capturePointer, refreshMetrics]);
+  }, [beginInteraction, capturePointer, ensureGestureStart, refreshMetrics]);
 
   /** 双击 / 滚轮：提交到 state，并让 React 用 style 里的短缓动做动画 */
   const applyScale = useCallback(
@@ -314,13 +348,26 @@ export function useImageZoom(resetKey?: unknown) {
     reset();
   }, [resetKey, reset]);
 
-  // 窗口尺寸变化时刷新尺寸缓存（无手势时缓存失效即可，下次手势开始用最新值）
+  // 尺寸缓存失效：window.resize 只覆盖「窗口」尺寸；侧栏展开、软键盘、父容器动画、
+  // 横竖屏切换等不触发 window.resize 的变化，交给 ResizeObserver 观察容器与图片节点。
+  // 换图（resetKey 变化）后重新 observe 当前节点；无 ResizeObserver（SSR / jsdom）时安全降级为 window.resize。
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const handleResize = () => refreshMetrics();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, [refreshMetrics]);
+    const container = containerRef.current;
+    const image = imageRef.current;
+    if (typeof ResizeObserver === "undefined") {
+      const handleResize = () => handleMetricsChanged();
+      window.addEventListener("resize", handleResize);
+      return () => window.removeEventListener("resize", handleResize);
+    }
+    const observer = new ResizeObserver(() => {
+      // 手势中只刷新缓存（move 会读到新值），不在这里改 DOM / transition
+      handleMetricsChanged();
+    });
+    if (container) observer.observe(container);
+    if (image) observer.observe(image);
+    return () => observer.disconnect();
+  }, [handleMetricsChanged, resetKey]);
 
   const toggleZoomAt = useCallback(
     (clientX: number, clientY: number) => {
