@@ -98,6 +98,10 @@ func (f *feedRepoStub) ResetRefreshFailure(context.Context, int64) error {
 	panic("not implemented")
 }
 
+func (f *feedRepoStub) RecordFeedFetched(context.Context, int64, time.Time, bool, bool) error {
+	panic("not implemented")
+}
+
 func (f *feedRepoStub) UpdateType(context.Context, int64, string) error {
 	panic("not implemented")
 }

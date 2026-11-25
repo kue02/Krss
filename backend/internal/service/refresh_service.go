@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"strings"
 	"sync"
@@ -52,6 +53,28 @@ const (
 	backoffMax  = 6 * time.Hour
 )
 
+// 定时刷新的自适应降频（迁移 41）：RSS 源连续 no_change_streak 轮「抓到但内容无变化」，
+// 有效间隔按 2^streak 指数放大（streak 封顶 maxAdaptiveStreakShift=4），整体封顶 24h。
+// MCP 源不参与降频，只按连接配置的刷新间隔。
+const (
+	maxAdaptiveStreakShift = 4
+	maxAdaptiveInterval    = 24 * time.Hour
+)
+
+// 单源抓取前的随机起始抖动（打散同一瞬间的并发峰值）。
+// 仅当整批源较多（>= perFeedJitterMinBatch）时启用，避免小批与测试被拖慢；
+// perFeedJitterFn 可注入/可关（测试里设成返回 0 即可）。
+var (
+	perFeedStartJitterMax = 2 * time.Second
+	perFeedJitterMinBatch = 20
+	perFeedJitterFn       = func(max time.Duration) time.Duration {
+		if max <= 0 {
+			return 0
+		}
+		return time.Duration(rand.Int64N(int64(max) + 1))
+	}
+)
+
 // backoffForFailCount 连败 n 次后要等多久才允许再抓（n<=0 返回 0）。
 func backoffForFailCount(n int) time.Duration {
 	if n <= 0 {
@@ -95,6 +118,8 @@ type fetchRuntimeConfig struct {
 	Concurrency        int
 	PerHostConcurrency int
 	Timeout            time.Duration
+	// IntervalMinutes 全局刷新间隔（分钟），供到期门（applyIntervalGate）推算各源的有效间隔。
+	IntervalMinutes int
 }
 
 // defaultFetchRuntime 设置读不到时的兜底（与编译期默认值一致）。
@@ -103,6 +128,7 @@ func defaultFetchRuntime() fetchRuntimeConfig {
 		Concurrency:        maxConcurrentRefresh,
 		PerHostConcurrency: maxConcurrentPerHost,
 		Timeout:            refreshTimeout,
+		IntervalMinutes:    DefaultRefreshIntervalMinutes,
 	}
 }
 
@@ -127,6 +153,9 @@ func (s *refreshService) loadFetchRuntime(ctx context.Context) fetchRuntimeConfi
 	}
 	if fs.TimeoutSeconds > 0 {
 		cfg.Timeout = time.Duration(fs.TimeoutSeconds) * time.Second
+	}
+	if fs.IntervalMinutes > 0 {
+		cfg.IntervalMinutes = fs.IntervalMinutes
 	}
 	s.mu.Lock()
 	s.fetchCfg = cfg
@@ -571,6 +600,8 @@ func (s *refreshService) refreshAll(ctx context.Context, force bool, auto bool) 
 	// 22-4：只有定时刷新走退避跳过 —— 手动是用户明确要看最新的，一个都不许跳。
 	if auto {
 		feeds = s.applyRefreshBackoff(feeds)
+		// 迁移 41：再按各源「上次抓取时间 + 有效间隔」做到期门（未到期直接跳过）。
+		feeds = s.applyIntervalGate(ctx, feeds, cfg)
 	}
 	s.refreshFeedsWithRateLimit(ctx, feeds, force)
 	logger.Info("refresh completed", "module", "service", "action", "refresh", "resource", "feed", "result", "ok", "count", len(feeds))
@@ -716,6 +747,89 @@ func (s *refreshService) applyRefreshBackoff(feeds []model.Feed) []model.Feed {
 	return eligible
 }
 
+// applyIntervalGate 定时刷新入口的到期门（迁移 41）。
+// 按每个源的上次抓取时间与自身有效间隔判断是否到期：未到期就记一条 Skipped 并跳过，
+// 到期（或从未抓过）才留在本轮 to-fetch 里。手动/强制刷新不经过这里。
+func (s *refreshService) applyIntervalGate(ctx context.Context, feeds []model.Feed, cfg fetchRuntimeConfig) []model.Feed {
+	globalInterval := time.Duration(cfg.IntervalMinutes) * time.Minute
+	if globalInterval <= 0 {
+		globalInterval = DefaultRefreshIntervalMinutes * time.Minute
+	}
+	now := time.Now()
+	due := make([]model.Feed, 0, len(feeds))
+	for _, feed := range feeds {
+		if feed.LastFetchedAt == nil {
+			due = append(due, feed)
+			continue
+		}
+		interval := s.effectiveRefreshInterval(ctx, feed, globalInterval)
+		elapsed := now.Sub(*feed.LastFetchedAt)
+		if elapsed >= interval {
+			due = append(due, feed)
+			continue
+		}
+		logger.Info("feed refresh not due", "module", "service", "action", "refresh", "resource", "feed", "result", "skipped",
+			"feed_id", feed.ID, "feed_title", feed.Title, "elapsed_ms", elapsed.Milliseconds(), "interval_ms", interval.Milliseconds())
+		s.recordFeedResult(RefreshFeedResult{
+			FeedID:   feed.ID,
+			Title:    feed.Title,
+			IconPath: iconPathOf(feed),
+			Skipped:  true,
+		})
+		s.recordRefreshedFeed()
+	}
+	return due
+}
+
+// effectiveRefreshInterval 该源当前的有效刷新间隔。
+//   - MCP：取连接配置的刷新间隔（未配置回落全局），且不低于全局间隔；不参与降频。
+//   - RSS：全局间隔 × 2^min(no_change_streak,4)，封顶 maxAdaptiveInterval。
+func (s *refreshService) effectiveRefreshInterval(ctx context.Context, feed model.Feed, globalInterval time.Duration) time.Duration {
+	if feed.IsMCP() {
+		interval := globalInterval
+		if s.mcp != nil {
+			if connInterval, ok := s.mcp.FeedRefreshInterval(ctx, feed); ok && connInterval > 0 {
+				interval = connInterval
+			}
+		}
+		if interval < globalInterval {
+			interval = globalInterval
+		}
+		return interval
+	}
+	streak := feed.NoChangeStreak
+	if streak <= 0 {
+		return globalInterval
+	}
+	if streak > maxAdaptiveStreakShift {
+		streak = maxAdaptiveStreakShift
+	}
+	interval := globalInterval * time.Duration(1<<uint(streak))
+	if interval > maxAdaptiveInterval {
+		interval = maxAdaptiveInterval
+	}
+	return interval
+}
+
+// recordFeedFetched 记录一次真正发起过的抓取（迁移 41）。
+func (s *refreshService) recordFeedFetched(ctx context.Context, feedID int64, success bool, changed bool) {
+	if err := s.feeds.RecordFeedFetched(ctx, feedID, time.Now().UTC(), success, changed); err != nil {
+		logger.Warn("record feed fetched failed", "module", "service", "action", "update", "resource", "feed", "result", "failed", "feed_id", feedID, "error", err)
+	}
+}
+
+// feedResultFor 读取本轮已为某源记录的结果（用于判定 success/changed）。第二个返回值表示是否记录过。
+func (s *refreshService) feedResultFor(feedID int64) (RefreshFeedResult, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, r := range s.lastResults {
+		if r.FeedID == feedID {
+			return r, true
+		}
+	}
+	return RefreshFeedResult{}, false
+}
+
 // recordFeedSuccess 抓取成功（拿到 200 解析入库，或 304 未变更）：清掉连续失败计数。
 func (s *refreshService) recordFeedSuccess(ctx context.Context, feedID int64) {
 	if err := s.feeds.ResetRefreshFailure(ctx, feedID); err != nil {
@@ -788,6 +902,15 @@ func (s *refreshService) refreshFeedsWithRateLimit(ctx context.Context, feeds []
 			defer wg.Done()
 			defer s.recordRefreshedFeed()
 
+			// 迁移 41：整批源较多时给每个源加一点随机起始抖动，错开同一瞬间的并发冲击。
+			if len(feeds) >= perFeedJitterMinBatch {
+				if d := perFeedJitterFn(perFeedStartJitterMax); d > 0 {
+					if !sleepContext(ctx, d) {
+						return
+					}
+				}
+			}
+
 			host := network.ExtractHost(feed.URL)
 
 			if host != "" {
@@ -814,7 +937,8 @@ func (s *refreshService) refreshFeedsWithRateLimit(ctx context.Context, feeds []
 				hl.recordRequest(host)
 			}
 
-			if err := s.refreshFeedInternal(ctx, feed, force); err != nil {
+			err := s.refreshFeedInternal(ctx, feed, force)
+			if err != nil {
 				s.recordFeedResult(RefreshFeedResult{
 					FeedID:   feed.ID,
 					Title:    feed.Title,
@@ -823,6 +947,12 @@ func (s *refreshService) refreshFeedsWithRateLimit(ctx context.Context, feeds []
 				})
 				logger.Error("refresh feed failed", "module", "service", "action", "refresh", "resource", "feed", "result", "failed", "feed_id", feed.ID, "feed_title", feed.Title, "error", err)
 			}
+			// 迁移 41：记录本次真正发起过的抓取。success 以抓取无 error 且本轮确有结果记录为准
+			// （覆盖 304 无变化 / 200 入库 / MCP 三类成功；4xx 回退后 return nil 的失败因未记录结果判为失败）。
+			result, recorded := s.feedResultFor(feed.ID)
+			success := err == nil && recorded
+			changed := recorded && (result.New > 0 || result.Updated > 0)
+			s.recordFeedFetched(ctx, feed.ID, success, changed)
 		}()
 	}
 
