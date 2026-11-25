@@ -50,11 +50,16 @@ interface EntryContentProps {
   /** 内嵌在列表里时也要显示目录与阅读进度（「向下」合列） */
   showAuxiliary?: boolean;
   /**
-   * 内嵌时工具栏背景层是否保留 backdrop-blur。卡片档 pane 用 `overflow:clip` 裁圆角，
-   * 而 Chromium 下带 backdrop-filter 的层会让祖先圆角边框/阴影的合成出错（角部缺一块）；
-   * 「原样」档用 `clip-path` 裁剪，模糊可以保留。缺省按 `!embedded` 处理。
+   * 内嵌时工具栏背景层是否保留 backdrop-blur。卡片档此前为规避 `overflow:clip` 圆角缺块
+   * 关掉过模糊；现在卡片档会给背景层自带顶部圆角（`headerBackgroundRoundedTop`），
+   * 因此两档都保留磨砂。缺省按 true 处理。
    */
   headerBackgroundBlur?: boolean;
+  /**
+   * 内嵌时工具栏背景层自带 12px 顶部圆角（卡片档 + 正文栏非贴顶）。配合保留磨砂，
+   * 让 `backdrop-filter` 输出被自身圆角裁住，避免盖住卡片圆角。
+   */
+  headerBackgroundRoundedTop?: boolean;
 }
 
 export function EntryContent({
@@ -68,6 +73,7 @@ export function EntryContent({
   headerStickyTopClassName,
   showAuxiliary = false,
   headerBackgroundBlur,
+  headerBackgroundRoundedTop,
 }: EntryContentProps) {
   const { t } = useTranslation();
   const { data: entry, isLoading } = useEntry(entryId);
@@ -296,8 +302,9 @@ export function EntryContent({
         sticky={embedded}
         stickyTopClassName={headerStickyTopClassName}
         mobileInlineSticky={embedded && Boolean(isMobile)}
-        /** 卡片档内联合列走 overflow:clip 圆角裁剪，backdrop-filter 会让圆角边框合成出错，故关闭模糊 */
-        backgroundBlur={headerBackgroundBlur ?? !embedded}
+        /** 卡片档内联合列现在也保留磨砂；靠背景层自带顶部圆角避免缺块 */
+        backgroundBlur={headerBackgroundBlur ?? true}
+        backgroundTopRadius={headerBackgroundRoundedTop ?? false}
       />
       {/* 23-4：阅读进度条锁在工具栏（h-12 = 48px）正下方。
           跟着真实滚动容器（正文那个元素滚动）走；看原站时滚的是 iframe，进度条没有意义。

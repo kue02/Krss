@@ -8,11 +8,20 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  * 盖住卡片圆角，所以卡片档必须关掉模糊；「原样」档靠 clip-path 裁剪，保留模糊。
  * 只测顶栏组件本身挡不住「接线写反/漏传」，这里把顶栏换成探针验转发。
  */
-const captured: Array<{ backgroundBlur?: boolean }> = [];
+const captured: Array<{
+  backgroundBlur?: boolean;
+  backgroundTopRadius?: boolean;
+}> = [];
 
 vi.mock("./EntryContentHeader", () => ({
-  EntryContentHeader: (props: { backgroundBlur?: boolean }) => {
-    captured.push({ backgroundBlur: props.backgroundBlur });
+  EntryContentHeader: (props: {
+    backgroundBlur?: boolean;
+    backgroundTopRadius?: boolean;
+  }) => {
+    captured.push({
+      backgroundBlur: props.backgroundBlur,
+      backgroundTopRadius: props.backgroundTopRadius,
+    });
     return <div data-testid="header-probe" />;
   },
 }));
@@ -99,6 +108,7 @@ afterEach(() => {
 async function renderContent(props: {
   embedded?: boolean;
   headerBackgroundBlur?: boolean;
+  headerBackgroundRoundedTop?: boolean;
 }) {
   const { EntryContent } = await import("./EntryContent");
   render(<EntryContent entryId="entry-1" {...props} />);
@@ -120,7 +130,20 @@ describe("EntryContent → 顶栏背景模糊接线", () => {
     expect((await renderContent({})).backgroundBlur).toBe(true);
   });
 
-  it("embedded 未传值 → 默认关模糊", async () => {
-    expect((await renderContent({ embedded: true })).backgroundBlur).toBe(false);
+  it("embedded 未传值 → 默认保留模糊", async () => {
+    expect((await renderContent({ embedded: true })).backgroundBlur).toBe(true);
+  });
+});
+
+describe("EntryContent → 顶栏背景层顶部圆角接线", () => {
+  it("embedded + headerBackgroundRoundedTop=true → 透传 backgroundTopRadius", async () => {
+    expect(
+      (await renderContent({ embedded: true, headerBackgroundRoundedTop: true }))
+        .backgroundTopRadius,
+    ).toBe(true);
+  });
+
+  it("embedded 未传值 → backgroundTopRadius 默认 false", async () => {
+    expect((await renderContent({ embedded: true })).backgroundTopRadius).toBe(false);
   });
 });

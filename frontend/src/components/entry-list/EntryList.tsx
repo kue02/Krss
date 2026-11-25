@@ -142,7 +142,7 @@ interface EntryListProps {
    */
   renderInlineContent?: (
     scrollRef: RefObject<HTMLDivElement | null>,
-    options: { headerStickyTop: string },
+    options: { headerStickyTop: string; paneAtTop: boolean },
   ) => ReactNode;
 }
 
@@ -940,6 +940,7 @@ export function EntryList({
           headerStickyTop: mobileHeaderHidden
             ? "top-0"
             : "top-[calc(2.75rem+env(safe-area-inset-top))]",
+          paneAtTop,
         })}
       </div>
     ) : null;
