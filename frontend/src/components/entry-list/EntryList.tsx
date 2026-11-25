@@ -339,7 +339,7 @@ export function EntryList({
     threshold: 100,
     preventScroll: true,
     startFrom: { left: 32 },
-    enabled: Boolean(isMobile && onMenuClick),
+    enabled: Boolean(isMobile && onMenuClick && isActive),
   });
 
   // Track translated entries to avoid re-translating

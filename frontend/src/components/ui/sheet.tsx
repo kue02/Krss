@@ -396,9 +396,13 @@ export function Sheet({
           // 用 inline transform 而不是 Tailwind 的 translate-*：拖拽要逐帧改 transform，
           // 和 translate 工具类混用会被各自的 transform 组装规则互相覆盖。
           transform: open ? "translateX(0px)" : "translateX(-100%)",
-          transition: `transform ${
-            open ? ENTER_DURATION_MS : EXIT_DURATION_MS
-          }ms ${SLIDE_EASE}`,
+          // 关闭态同时置 visibility:hidden：面板常驻且带 will-change-transform（合成层常驻），
+          // 只靠 translateX(-100%) 在 iOS 交互式返回/快照过渡时可能被绘出一帧，表现为抽屉闪现。
+          // 照遮罩的做法：退出动画期间仍可见，动画结束（EXIT_DURATION_MS 后）再隐藏；打开时立即可见。
+          visibility: open ? "visible" : "hidden",
+          transition: open
+            ? `transform ${ENTER_DURATION_MS}ms ${SLIDE_EASE}, visibility 0s linear 0s`
+            : `transform ${EXIT_DURATION_MS}ms ${SLIDE_EASE}, visibility 0s linear ${EXIT_DURATION_MS}ms`,
         }}
       >
         {children}
