@@ -45,7 +45,7 @@ import type { Entry, Feed } from "@/types/api";
  * 形态（用户 2026-11-25 拍板 A 卡片流）：
  *   - 只作用于 `contentType === "notification"`，其余视图一行不动；
  *   - 跨天分段，日期行吸顶；每条一张轻卡片（来源行 + 时刻 / 标题 / 正文预览），去掉聊天式竖轴与左右交替；
- *   - 宽屏 ≥lg 双列卡片，展开态横跨整行；窄屏单列；最新在最上（数据本来就是 DESC）；
+ *   - 默认单列居中；`autoSingleSide=false` 时宽屏 ≥lg 双列、展开态横跨整行；最新在最上（数据本就 DESC）；
  *   - 同一时间桶太密集时，多余条目吸成一个「N 条」簇卡片，点一下就地展开；
  *   - 卡片默认折叠（档位 1/2/3/全文由设置给），点「展开全文」就地展开（内嵌完整正文页）；
  *   - 键盘只在卡片之间吸附（簇内条目不算节点），见 EntryList 的 useEntryHotkeys；滚轮不拦截。
@@ -365,10 +365,8 @@ const TimelineCard = memo(function TimelineCard({
               <span
                 data-timeline-time=""
                 className={cn(
-                  "whitespace-nowrap tabular-nums",
-                  isUnread
-                    ? "font-semibold text-foreground/75"
-                    : "text-muted-foreground/80",
+                  "whitespace-nowrap tabular-nums text-foreground/80",
+                  isUnread && "font-semibold",
                 )}
               >
                 {timeLabel}
@@ -383,7 +381,7 @@ const TimelineCard = memo(function TimelineCard({
             <div
               className={cn(
                 "mt-2 line-clamp-2 text-[14.5px] font-semibold leading-[1.45] tracking-[-0.01em] wrap-anywhere",
-                isUnread ? "text-foreground" : "text-foreground/75",
+                isUnread ? "text-foreground" : "text-foreground/80",
               )}
             >
               {displayTitle || t("entry.untitled")}
@@ -438,7 +436,7 @@ const TimelineCard = memo(function TimelineCard({
                     title={t("timeline.resize_hint")}
                     onPointerDown={handleResizeStart}
                     onClick={(event) => event.stopPropagation()}
-                    className="absolute bottom-1.5 right-1.5 cursor-ns-resize select-none text-[12px] tracking-[-2px] text-muted-foreground transition-colors duration-200 hover:text-foreground"
+                    className="absolute bottom-1.5 right-1.5 cursor-ns-resize select-none text-[12px] tracking-[-2px] text-foreground/80 transition-colors duration-200 hover:text-foreground"
                   >
                     ⋰
                   </span>
@@ -449,7 +447,7 @@ const TimelineCard = memo(function TimelineCard({
                     event.stopPropagation();
                     onCollapse(entry.id);
                   }}
-                  className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground transition-colors duration-200 hover:text-foreground"
+                  className="mt-1 flex items-center gap-1 text-[11px] text-foreground/80 transition-colors duration-200 hover:text-foreground"
                 >
                   <ChevronUp className="size-3.5" />
                   {t("timeline.collapse")}
@@ -466,8 +464,7 @@ const TimelineCard = memo(function TimelineCard({
                     effectiveClampLines === null ? "full" : String(effectiveClampLines)
                   }
                   className={cn(
-                    "mt-1.5 text-[13px] leading-[1.6] text-muted-foreground wrap-anywhere",
-                    !isUnread && "text-muted-foreground/70",
+                    "mt-1.5 text-[13px] leading-[1.6] text-foreground/80 wrap-anywhere",
                   )}
                   style={
                     effectiveClampLines !== null && !expanded
@@ -493,7 +490,7 @@ const TimelineCard = memo(function TimelineCard({
                     event.stopPropagation();
                     onToggleExpand(entry.id);
                   }}
-                  className="mt-2 inline-flex items-center gap-1 text-[12px] font-medium text-primary transition-opacity duration-200 hover:opacity-80"
+                  className="mt-2 inline-flex items-center gap-1 text-[12px] font-medium text-foreground/80 transition-colors duration-200 hover:text-foreground"
                 >
                   {expanded ? (
                     <ChevronUp className="size-3.5" />
@@ -574,7 +571,7 @@ export interface NotificationTimelineProps {
   autoExpandLong?: boolean;
   /** 26-2：时间基准（发布时间 / 抓取时间），默认发布时间 = 现状 */
   timeBasis?: TimelineTimeBasis;
-  /** 窄栏自动合一栏（默认开；关掉则始终左右交替） */
+  /** 宽屏双列开关（默认单列居中；`false` = 宽屏 ≥lg 两列、展开态横跨整行） */
   autoSingleSide?: boolean;
   autoTranslate: boolean;
   targetLanguage: string;
@@ -598,6 +595,7 @@ export function NotificationTimeline({
   onSelectEntry,
   onMarkAboveEntry,
   onCloseEntry,
+  autoSingleSide = true,
   granularity,
   collapse,
   autoExpandLong = false,
@@ -1095,8 +1093,12 @@ export function NotificationTimeline({
       data-testid="notification-timeline"
       data-timeline-layout="cards"
       // 40-2：「点空白收起全部」由 `EntryList` 的滚动视口发事件，这里只监听（见下方 useEffect）。
-      // 卡片流：日期分段 + 每条一张轻卡片；单列居中（通知=扫读流，读数舒适）。
-      className="relative mx-auto w-full max-w-[50rem]"
+      // 卡片流：日期分段 + 每条一张轻卡片；默认单列居中（扫读舒适），
+      // `autoSingleSide === false` 时宽屏 ≥lg 两列、展开态横跨整行。
+      className={cn(
+        "relative mx-auto w-full",
+        autoSingleSide === false ? "max-w-[56rem]" : "max-w-[50rem]",
+      )}
     >
 
       {sections.map((section) => {
@@ -1106,7 +1108,10 @@ export function NotificationTimeline({
         <div
           key={section.key}
           data-timeline-section={section.key}
-          className="relative grid grid-cols-1 items-start gap-2.5 pt-1"
+          className={cn(
+            "relative grid grid-cols-1 items-start gap-2.5 pt-1",
+            autoSingleSide === false && "lg:grid-cols-2 lg:gap-3",
+          )}
         >
           {/* 日期分隔行（用户 9-24 要吸顶 / 9-25 居中胶囊 → 2423cda 全宽条 → 2026-09-25
               复验后按用户「要最早那版：纯一行文字、无底色、无分隔线」回到 2423cda 之前那版）：
@@ -1120,7 +1125,10 @@ export function NotificationTimeline({
           <div
             data-timeline-date={section.label}
             data-timeline-date-stuck={dateStuck ? "true" : "false"}
-            className="sticky top-0 z-10 col-span-full flex items-baseline gap-2 px-1 pb-2.5 pt-4"
+            className={cn(
+              "sticky top-0 z-10 col-span-full flex items-baseline gap-2 px-1 pb-2.5 pt-4 pointer-events-none transition-colors duration-200",
+              dateStuck && "bg-card/95 backdrop-blur-sm",
+            )}
           >
             {/* 34-2（用户 2026-09-26 二次校正）：「不是这个吸顶样式，是之前的胶囊悬浮吸顶样式」
                 ⇒ 负吸顶那条的文字胶囊本身变成 a96896d 那版浮起胶囊
@@ -1211,11 +1219,16 @@ export function NotificationTimeline({
           />
         );
 
+        const isOpen =
+          !hoverMode &&
+          (expandedEntries.has(entry.id) ||
+            entry.id === selectedEntryId ||
+            isAutoExpanded(entry.id));
         return (
           <div
             key={row.key}
             data-timeline-row={row.node}
-            className="min-w-0"
+            className={cn("min-w-0", autoSingleSide === false && isOpen && "lg:col-span-2")}
           >
             {card}
           </div>
