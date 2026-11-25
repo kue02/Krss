@@ -70,6 +70,25 @@ describe("ThreeColumnLayout", () => {
     const main = container.querySelector("main");
     expect(main?.className ?? "").not.toContain("absolute");
   });
+
+  it("经典三栏文章档：正文栏左缘留 8px 浮动缺口（sm:pl-2），与社交/内联/覆盖档一致", () => {
+    const queryClient = new QueryClient();
+    const { container } = render(
+      <QueryClientProvider client={queryClient}>
+        <ThreeColumnLayout
+          sidebar={<div>sidebar</div>}
+          list={<div>list</div>}
+          content={<div>content</div>}
+        />
+      </QueryClientProvider>,
+    );
+
+    // 默认档 = 经典三栏（hideList=false / hideContent=false）：<main> 必须留左内边距，
+    // 否则正文卡左缘贴死条目栏，且 overflow-hidden 裁掉卡片左缘圆角与外阴影 → 无「浮动」效果。
+    const main = container.querySelector("main");
+    expect(main?.className).toContain("sm:pl-2");
+    expect(main?.className).not.toContain("sm:pl-0");
+  });
 });
 
 /**

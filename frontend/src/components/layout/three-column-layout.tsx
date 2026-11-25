@@ -389,7 +389,10 @@ export function ThreeColumnLayout({
               hideContent
                 ? "w-0 shrink-0 grow-0 overflow-hidden p-0 opacity-0 pointer-events-none"
                 : "min-w-0 flex-1 sm:pt-2 sm:pr-2 sm:pb-2",
-              hideContent ? "" : hideList ? "sm:pl-2" : "sm:pl-0",
+              // 经典三栏文章档（hideList=false）此前用 sm:pl-0：正文卡左缘贴死条目栏/分隔条，
+              // 且 <main> 的 overflow-hidden 会把卡片左缘圆角与外阴影裁掉 → 无「浮动」效果。
+              // 与社交/内联/覆盖档统一为 sm:pl-2（8px 左留白），让圆角与 shadow-nf 可见。
+              hideContent ? "" : "sm:pl-2",
             )}
           >
             <div
