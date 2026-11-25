@@ -148,10 +148,23 @@ func (s *iconService) EnqueueIconFetch(feedID int64, imageURL, siteURL string) {
 func (s *iconService) iconWorker() {
 	defer s.workers.Done()
 	for {
+		// 关停后优先退出：不再处理队列里残留的任务，保证 Close 能及时收尾。
+		select {
+		case <-s.done:
+			return
+		default:
+		}
 		select {
 		case <-s.done:
 			return
 		case job := <-s.queue:
+			// 出队后再确认一次关停状态，避免在 Close 之后仍发起抓取。
+			select {
+			case <-s.done:
+				s.pending.Delete(job.feedID)
+				return
+			default:
+			}
 			s.processIconJob(job)
 			s.pending.Delete(job.feedID)
 		}
@@ -174,17 +187,18 @@ func (s *iconService) processIconJob(job iconJob) {
 	}
 }
 
-// Close 停止接收新任务并等待在途任务退出；可重复调用。
+// Close 停止接收新任务、丢弃未处理的排队任务并等待在途任务退出；可重复调用。
 func (s *iconService) Close() {
 	s.closeOnce.Do(func() {
+		// 先关闭 done：Enqueue 变为空操作，worker 也在下次循环优先退出。
 		close(s.done)
-		s.workers.Wait()
-		// 清空未被处理的排队任务，避免 pending 里残留条目。
+		// 丢弃尚未出队的任务（关停后不再抓取），避免残留 pending 并使 Close 迅速收尾。
 		for {
 			select {
 			case job := <-s.queue:
 				s.pending.Delete(job.feedID)
 			default:
+				s.workers.Wait()
 				return
 			}
 		}

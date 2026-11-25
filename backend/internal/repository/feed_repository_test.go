@@ -317,10 +317,18 @@ func TestFeedRepository_RecordFeedFetched(t *testing.T) {
 	got, _ = repo.GetByID(ctx, id)
 	require.Equal(t, 2, got.NoChangeStreak)
 
-	// 分支 3：失败 → 只更新 last_fetched_at，streak 保持不变
+	// 分支 2b：连续无变化 → streak 落库封顶 6，避免无限增长
+	for i := 0; i < 10; i++ {
+		require.NoError(t, repo.RecordFeedFetched(ctx, id, base.Add(2*time.Minute+time.Duration(i)*time.Second), true, false))
+	}
+	got, _ = repo.GetByID(ctx, id)
+	require.Equal(t, 6, got.NoChangeStreak)
+
+	// 分支 3：失败 → 只更新 last_fetched_at，且把 streak 归零
+	// （失败不算「抓到但无变化」，不应据此维持高频降频；由 22-4 失败退避单独治理）
 	require.NoError(t, repo.RecordFeedFetched(ctx, id, base.Add(3*time.Minute), false, false))
 	got, _ = repo.GetByID(ctx, id)
-	require.Equal(t, 2, got.NoChangeStreak)
+	require.Equal(t, 0, got.NoChangeStreak)
 	require.True(t, got.LastFetchedAt.Equal(base.Add(3*time.Minute)))
 
 	// 再次 success + changed → streak 归零

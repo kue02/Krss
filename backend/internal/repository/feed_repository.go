@@ -30,7 +30,7 @@ type FeedRepository interface {
 	// ResetRefreshFailure 抓取成功一次就清零（22-4）。
 	ResetRefreshFailure(ctx context.Context, id int64) error
 	// RecordFeedFetched 记录一次真正发起过的抓取（迁移 41）：总是写 last_fetched_at；
-	// success && changed → no_change_streak 清零；success && !changed → streak+1；失败 → 只写时间、不动 streak。
+	// success && changed → no_change_streak 清零；success && !changed → streak+1（封顶 6）；失败 → 写时间并把 streak 清零。
 	RecordFeedFetched(ctx context.Context, id int64, fetchedAt time.Time, success bool, changed bool) error
 	UpdateType(ctx context.Context, id int64, feedType string) error
 	// UpdateProxyOverride 只写代理覆盖两列（迁移 26）：mode nil = 跟随文件夹链 → 全局。
@@ -315,7 +315,13 @@ func (r *feedRepository) RecordFeedFetched(ctx context.Context, id int64, fetche
 	case success && changed:
 		set += `, no_change_streak = 0`
 	case success && !changed:
-		set += `, no_change_streak = no_change_streak + 1`
+		// 封顶到 6（effectiveRefreshInterval 里再 clamp 到 4 位移），避免长期稳定源该计数无限增长。
+		set += `, no_change_streak = MIN(no_change_streak + 1, 6)`
+	default:
+		// 失败：本次并非「抓到但无变化」，不计入降频，反而清零 streak，
+		// 让该源回到全局间隔重试（由 22-4 失败退避单独治理），
+		// 否则此前稳定(streak>0)的源一次失败后会被到期门按 2^streak×全局 长时跳过（最高 24h）。
+		set += `, no_change_streak = 0`
 	}
 	_, err := r.db.ExecContext(ctx, `UPDATE feeds SET `+set+` WHERE id = ?`, formatTime(fetchedAt.UTC()), id)
 	return err
