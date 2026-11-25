@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { apiUrl } from "@/lib/server-url";
 import { formatRelativeTime } from "@/lib/date-utils";
 import { stripHtml } from "@/lib/html-utils";
+import { estimateReadingMinutes } from "@/lib/reading-time";
 import { getEntryImages } from "@/lib/extract-images";
 import { useImagePreviewStore } from "@/stores/image-preview-store";
 import { useTranslationStore } from "@/stores/translation-store";
@@ -481,12 +482,10 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
     const thumbnailSrc = thumbRecovered && thumbnail ? withProxyCacheBust(thumbnail) : thumbnail;
     const authedThumbnail = useAuthedImageUrl(thumbnailSrc ?? undefined);
 
-    /** 阅读时长（与 EntryContentBody 同口径）：复用 plainContent，不再全文正则 */
+    /** 阅读时长（与 EntryContentBody 同口径）：复用 plainContent，走公共估算函数 */
     const readingTime = useMemo(() => {
-      if (plainContent === null) return null;
-      const words = plainContent.match(/[\u4e00-\u9fa5]|\w+/g)?.length || 0;
-      const mins = Math.ceil(words / 230);
-      return mins > 0 ? t("entry.min_read", { mins }) : null;
+      const mins = estimateReadingMinutes(plainContent);
+      return mins ? t("entry.min_read", { mins }) : null;
     }, [plainContent, t]);
 
     const displayTitle = translation?.title ?? entry.title;
