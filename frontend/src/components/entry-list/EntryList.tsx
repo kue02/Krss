@@ -941,7 +941,7 @@ export function EntryList({
                   "mx-2 my-2 w-[calc(100%-1rem)] rounded-[12px] [overflow:clip]",
                   articlePaneFrameClasses(articlePaneFrame),
                 )
-            : "w-full rounded-[12px] border-t border-border [clip-path:inset(0_round_12px)]",
+            : "w-full rounded-[12px] [clip-path:inset(0_round_12px)]",
         )}
       >
         {renderInlineContent?.(containerRef, {
