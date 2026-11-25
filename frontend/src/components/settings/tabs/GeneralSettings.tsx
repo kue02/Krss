@@ -13,6 +13,7 @@ import {
 } from "@/components/settings/settings-primitives";
 import { useGeneralSettings } from "@/hooks/useGeneralSettings";
 import { useScrollReadSetting } from "@/hooks/useScrollReadSetting";
+import { VideoEmbedSettings } from "@/components/settings/tabs/VideoEmbedSettings";
 import { setUISetting, useUISettingKey, type ScrollReadMode } from "@/hooks/useUISettings";
 import { setUILang } from "@/lib/ui-lang";
 
@@ -246,6 +247,9 @@ export function GeneralSettings() {
           </SettingRow>
         </div>
       </SectionCard>
+
+      {/* 正文视频：白名单 / 未知站点点击加载；直接视频文件无需配置 */}
+      <VideoEmbedSettings />
 
       {/* 高级 */}
       <SectionCard

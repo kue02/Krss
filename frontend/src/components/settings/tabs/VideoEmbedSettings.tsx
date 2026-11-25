@@ -11,11 +11,11 @@ import { SectionCard, SettingRow } from "@/components/settings/settings-primitiv
 import { Switch } from "@/components/ui/switch";
 
 /**
- * 正文视频设置（外观 / 阅读与列表之后）：
+ * 正文视频设置（通用 / 阅读行为之后、高级之前）：
  * - 未知站点的 iframe 是否「点击加载」；
  * - 用户自定义的 iframe 白名单（内置 B 站 / YouTube / Wistia 不用写）。
  *
- * 直接视频文件（.mp4/.webm/.m3u8…）不需要配置：正文为空时自动用内置播放器播放。
+ * 直接视频文件（.mp4/.webm/.mov/.m4v/.ogv/.ogg）不需要配置：正文为空时自动用内置播放器播放。
  */
 export function VideoEmbedSettings() {
   const { t } = useTranslation();
