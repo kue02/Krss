@@ -291,3 +291,38 @@ describe("EntryListHeader 移动端顶栏与 Web 图标统一", () => {
     expect(onForceRefresh).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("EntryListHeader 通知视图布局切换", () => {
+  it("时间轴档：按钮提示下一档是卡片流，点击触发切换", () => {
+    const onToggleNotificationLayout = vi.fn();
+    render(
+      <EntryListHeader
+        {...baseProps}
+        notificationLayout="timeline"
+        notificationLayoutOrder={["timeline", "cards"]}
+        onToggleNotificationLayout={onToggleNotificationLayout}
+      />,
+    );
+
+    const button = screen.getByLabelText(
+      "appearance_view.notification_layout_cards",
+    );
+    fireEvent.click(button);
+    expect(onToggleNotificationLayout).toHaveBeenCalledTimes(1);
+  });
+
+  it("卡片流档：按钮提示下一档是时间轴", () => {
+    render(
+      <EntryListHeader
+        {...baseProps}
+        notificationLayout="cards"
+        notificationLayoutOrder={["timeline", "cards"]}
+        onToggleNotificationLayout={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByLabelText("appearance_view.notification_layout_timeline"),
+    ).toBeTruthy();
+  });
+});
