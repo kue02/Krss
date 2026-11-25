@@ -30,12 +30,12 @@ describe("ArticleIframe · 正文内嵌视频", () => {
     expect(iframe.hasAttribute("allowfullscreen")).toBe(true);
   });
 
-  it("YouTube 脏数据 &quot; 被清掉并归一成 youtube-nocookie embed", () => {
+  it("YouTube 脏数据 &quot; 被清掉并归一成 YouTube embed", () => {
     const { container } = render(
       <ArticleIframe src="https://www.youtube-nocookie.com/embed/&quot;zBIQAo1By8M?fs=1&modestbranding=1&rel=0" />,
     );
     expect(getIframe(container).getAttribute("src")).toBe(
-      "https://www.youtube-nocookie.com/embed/zBIQAo1By8M?rel=0&modestbranding=1",
+      "https://www.youtube.com/embed/zBIQAo1By8M?rel=0&modestbranding=1&playsinline=1",
     );
   });
 
@@ -43,7 +43,7 @@ describe("ArticleIframe · 正文内嵌视频", () => {
     expect(
       resolveIframeSrc("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=30"),
     ).toBe(
-      "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?rel=0&modestbranding=1&start=30",
+      "https://www.youtube.com/embed/dQw4w9WgXcQ?rel=0&modestbranding=1&playsinline=1&start=30",
     );
   });
 

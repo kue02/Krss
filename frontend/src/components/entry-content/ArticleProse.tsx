@@ -6,6 +6,8 @@ import { useUISettingKey } from "@/hooks/useUISettings";
 import { resolveReadingFontStack } from "@/lib/reading-fonts";
 import { ArticleContent } from "@/components/ui/article-content";
 import type { ArticleContentBlock } from "@/components/ui/article-content";
+import { ArticleIframe } from "@/components/ui/article-iframe";
+import { resolveIframeSrc } from "@/components/ui/article-iframe";
 import { cn } from "@/lib/utils";
 
 /**
@@ -77,6 +79,9 @@ export function ArticleProse({
   const hasBlocks = !!blocks && blocks.length > 0;
   const hasContent =
     hasBlocks || (!!content && content.trim().length > 0);
+  // 空正文兜底：RSSHub 的 YouTube 条目经常 content 为空（库里 80/80），只带 entry.url。
+  // 与 Miniflux 的 add_youtube_video 规则等价：能从原文地址解析出可内嵌播放器时，直接渲染播放器。
+  const embedSrc = !hasContent ? resolveIframeSrc(articleUrl) : null;
 
   return (
     <div
@@ -109,6 +114,8 @@ export function ArticleProse({
             fitImages={fitImages}
           />
         )
+      ) : embedSrc ? (
+        <ArticleIframe src={embedSrc} />
       ) : (
         <div className="rounded-lg border border-dashed border-border p-8 text-center text-muted-foreground">
           {t("entry.no_content")}

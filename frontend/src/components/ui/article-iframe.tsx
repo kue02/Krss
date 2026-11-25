@@ -117,9 +117,16 @@ export function resolveIframeSrc(raw: string | undefined): string | null {
     const id = extractYouTubeId(url);
     if (!id) return null; // playlist / 频道页等无法内嵌，交给外链降级，别塞原始页白屏
     const start = url.searchParams.get("t") ?? url.searchParams.get("start");
-    const params = new URLSearchParams({ rel: "0", modestbranding: "1" });
+    // 用 www.youtube.com 而不是 youtube-nocookie：与 NextFlux/Miniflux 一致，
+    // 已登录 Google 的浏览器能复用会话，移动端也更少触发「确认你不是机器人」；
+    // playsinline 是 iOS Safari 内联播放的必要参数（否则会强制全屏/无法点播）。
+    const params = new URLSearchParams({
+      rel: "0",
+      modestbranding: "1",
+      playsinline: "1",
+    });
     if (start && /^\d+$/.test(start)) params.set("start", start);
-    return `https://www.youtube-nocookie.com/embed/${id}?${params.toString()}`;
+    return `https://www.youtube.com/embed/${id}?${params.toString()}`;
   }
 
   return url.toString();

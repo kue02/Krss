@@ -199,6 +199,30 @@ describe("EntryContentBody", () => {
     expect(screen.getByText("不安全标题")).toBeTruthy();
   });
 
+  // RSSHub 的 YouTube 条目 content 常为空：正文空态要用 entry.url 兜底出播放器
+  it("renders an embedded player for empty YouTube entries", () => {
+    const youtubeEntry: Entry = {
+      ...entry,
+      title: "空正文 YouTube 条目",
+      url: "https://www.youtube.com/watch?v=pCWXA6yZL0I",
+      content: "",
+    };
+
+    const { container } = render(
+      <EntryContentBody
+        entry={youtubeEntry}
+        scrollRef={vi.fn()}
+        displayContent=""
+      />,
+    );
+
+    const iframe = container.querySelector("iframe");
+    expect(iframe?.getAttribute("src")).toBe(
+      "https://www.youtube.com/embed/pCWXA6yZL0I?rel=0&modestbranding=1&playsinline=1",
+    );
+    expect(screen.queryByText("entry.no_content")).toBeNull();
+  });
+
   // 37-2：社交视图正文页不显示标题（社交条目的标题多半就是正文开头）
   it("hides the title and shows the feed avatar in the social header", () => {
     const socialEntry: Entry = {
