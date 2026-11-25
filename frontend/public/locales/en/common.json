@@ -1018,7 +1018,7 @@
   },
   "appearance_video": {
     "title": "Article video",
-    "description": "Sites on the allowlist embed directly; others load after a click. Direct video files (.mp4/.webm/.mov/.m4v) use the built-in player.",
+    "description": "Sites on the allowlist embed directly; others load after a click. Direct video files (.mp4/.webm/.mov/.m4v/.ogv/.ogg) use the built-in player.",
     "unknown_click": "Click to load unknown sites",
     "unknown_click_hint": "When off, show a “host ↗” link instead of loading a third-party iframe",
     "extra_hosts": "Extra site allowlist",

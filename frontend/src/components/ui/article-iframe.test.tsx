@@ -178,15 +178,18 @@ describe("ArticleIframe · 正文内嵌视频", () => {
   });
 
   it("未知非视频 iframe 保持外链药丸，不生成视频占位", () => {
-    const { container } = render(
-      <ArticleIframe src="https://widgets.example/map/widget" />,
-    );
-    expect(
-      container.querySelector('[data-slot="article-iframe-placeholder"]'),
-    ).toBeNull();
-    expect(screen.getByRole("link").getAttribute("href")).toBe(
+    for (const src of [
       "https://widgets.example/map/widget",
-    );
+      "https://platform.twitter.com/embed/Tweet.html?id=1",
+      "https://www.google.com/maps/embed?pb=abc",
+    ]) {
+      const { container, unmount } = render(<ArticleIframe src={src} />);
+      expect(
+        container.querySelector('[data-slot="article-iframe-placeholder"]'),
+      ).toBeNull();
+      expect(screen.getByRole("link").getAttribute("href")).toBe(src);
+      unmount();
+    }
   });
 
   it("用户白名单中的未知视频站点直接内嵌（不经点击占位）", () => {

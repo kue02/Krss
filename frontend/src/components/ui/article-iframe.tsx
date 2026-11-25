@@ -140,7 +140,7 @@ function getFallback(raw: string | undefined): { href: string; host: string } | 
   return { href: url.toString(), host: url.hostname };
 }
 
-const DIRECT_VIDEO_PATH_RE = /\.(?:mp4|webm|m3u8|mov|m4v|ogv|ogg)$/i;
+const DIRECT_VIDEO_PATH_RE = /\.(?:mp4|webm|mov|m4v|ogv|ogg)$/i;
 const DEFAULT_ALLOW =
   "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen";
 const IFRAME_SANDBOX =
@@ -167,6 +167,23 @@ function isTinyOrHidden(
   return false;
 }
 
+/** 明确不是视频的常见嵌入：社交卡片、地图、评论。 */
+function isKnownNonVideoEmbed(url: URL): boolean {
+  const host = url.hostname.toLowerCase();
+  const path = url.pathname.toLowerCase();
+  if (
+    /(^|\.)(twitter\.com|x\.com|instagram\.com|facebook\.com|disqus\.com|openstreetmap\.org)$/i.test(
+      host,
+    )
+  ) {
+    return true;
+  }
+  if (/(^|\.)google\.[a-z.]+$/i.test(host) && path.startsWith("/maps")) {
+    return true;
+  }
+  return false;
+}
+
 /**
  * 未知 iframe 不一定是视频：RSS 正文里还有地图、评论、卡片等。
  * 只有路径像播放器/视频，或 allow 明确要 autoplay/fullscreen 这类媒体能力时，
@@ -176,6 +193,7 @@ function looksLikeVideoIframe(
   url: URL,
   allowAttr: string | undefined,
 ): boolean {
+  if (isKnownNonVideoEmbed(url)) return false;
   const path = url.pathname.toLowerCase();
   if (DIRECT_VIDEO_PATH_RE.test(path)) return true;
   if (/\/(?:embed|player|video|videos|v|watch|e)\//i.test(path)) return true;
