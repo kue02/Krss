@@ -60,16 +60,16 @@ export function SocialAuthorHeader({ entry }: { entry: Entry }) {
 
   return (
     <header className="mb-6" data-slot="social-entry-header">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2.5">
         <FeedAvatar
           iconPath={feed?.iconPath}
-          size={40}
+          size={36}
           rounded="circle"
           alt={authorName}
         />
         <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-1">
           {authorName && (
-            <span className="truncate text-[20px] font-semibold leading-[1.28] tracking-[-0.01em] text-foreground sm:text-[22px]">
+            <span className="truncate text-[17px] font-semibold leading-[1.35] tracking-[-0.01em] text-foreground">
               {authorName}
             </span>
           )}
@@ -78,7 +78,7 @@ export function SocialAuthorHeader({ entry }: { entry: Entry }) {
               href={socialSource.profileUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="truncate text-[15px] text-muted-foreground transition-colors duration-200 hover:text-foreground"
+              className="truncate text-[14px] text-muted-foreground transition-colors duration-200 hover:text-foreground"
               onClick={(event) => event.stopPropagation()}
             >
               @{socialSource.handle}
@@ -88,7 +88,7 @@ export function SocialAuthorHeader({ entry }: { entry: Entry }) {
       </div>
 
       {bylineFields.length > 0 && (
-        <div className="mt-4 flex flex-wrap items-center gap-x-2.5 gap-y-2 text-[13px] leading-5 text-foreground/80">
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[13px] leading-5 text-foreground/80">
           {bylineFields.map((field, index) => (
             <Fragment key={field.key}>
               {index > 0 && (
@@ -102,7 +102,7 @@ export function SocialAuthorHeader({ entry }: { entry: Entry }) {
 
       <div
         aria-hidden="true"
-        className="relative mt-5 h-px w-full bg-border/50"
+        className="relative mt-4 h-px w-full bg-border/50"
       >
         <span className="absolute left-0 top-1/2 h-[2px] w-10 -translate-y-1/2 rounded-full bg-primary" />
       </div>
