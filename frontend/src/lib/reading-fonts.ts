@@ -26,8 +26,11 @@ export const readingFonts: ReadingFontOption[] = [
   {
     value: "serif",
     labelKey: "serif",
+    // 长文阅读衬线栈：西文优先 Charter / Iowan / Palatino（可读性与书卷气好），
+    // 中文落到宋体系（macOS Songti SC / STSong，跨平台 Noto Serif CJK / 思源宋体）。
+    // 全部系统字体，零外部请求。
     stack:
-      'Georgia, "Times New Roman", "Songti SC", "Noto Serif CJK SC", "SimSun", serif',
+      'Charter, "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, "Songti SC", "STSong", "Noto Serif CJK SC", "Source Han Serif SC", "SimSun", serif',
   },
   {
     value: "mono",
