@@ -3,18 +3,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // 轻量内存版 idb-keyval：测试只关心「存了什么、能不能读回来 / 什么时候被清掉」，
 // 不需要真实 IndexedDB。工厂里的 memory 在所有 get/set/del 间共享。
+const idbMemory = vi.hoisted(() => new Map<unknown, unknown>());
+
 vi.mock("idb-keyval", () => {
-  const memory = new Map<unknown, unknown>();
   return {
     createStore: () => ({ name: "mock-store" }),
-    get: vi.fn(async (key: unknown) => memory.get(key)),
+    get: vi.fn(async (key: unknown) => idbMemory.get(key)),
     set: vi.fn(async (key: unknown, value: unknown) => {
-      memory.set(key, value);
+      idbMemory.set(key, value);
     }),
     del: vi.fn(async (key: unknown) => {
-      memory.delete(key);
+      idbMemory.delete(key);
     }),
-    keys: vi.fn(async () => Array.from(memory.keys())),
+    keys: vi.fn(async () => Array.from(idbMemory.keys())),
   };
 });
 
@@ -195,6 +196,7 @@ describe("IndexedDB storage round-trip", () => {
     vi.stubGlobal("indexedDB", { open: () => undefined });
     // 未登录（无令牌）时 persistNow 会跳过落盘，测试里放一个令牌代表已登录用户。
     localStorage.setItem("krss_auth_token", "test-token");
+    idbMemory.clear();
     await clearSnapshot();
   });
 
@@ -320,6 +322,22 @@ describe("IndexedDB storage round-trip", () => {
     // 上一位账号的键被清掉
     localStorage.setItem("krss_auth_token", "account-a");
     expect(await readSnapshot()).toBeUndefined();
+  });
+
+  it("未登录启动不删其它账号遗留的快照", async () => {
+    const source = new QueryClient();
+    source.setQueryData(["entries", { limit: 50 }], entriesData);
+
+    localStorage.setItem("krss_auth_token", "account-a");
+    await persistNow(source);
+    expect(await readSnapshot()).toBeDefined();
+
+    localStorage.removeItem("krss_auth_token");
+    await bootstrapQueryCache(new QueryClient(), { timeoutMs: 100 });
+
+    // 登录页（anon）不能把真实账号的缓存清掉
+    localStorage.setItem("krss_auth_token", "account-a");
+    expect(await readSnapshot()).toBeDefined();
   });
 
   it("is a no-op without a browser (no window)", async () => {

@@ -30,7 +30,8 @@ export const PERSIST_MAX_AGE = 24 * 60 * 60 * 1000;
 /** 落盘节流窗口（ms）：queryCache 变动再频繁，最多每秒写一次。 */
 export const PERSIST_THROTTLE_MS = 1000;
 
-/** 恢复阶段最多等这么久，避免 IndexedDB 异常卡住首屏（超时后照常渲染，后台仍会补 hydrate）。 */
+/** 恢复阶段最多等这么久，避免 IndexedDB 异常卡住首屏。超时即放弃本次恢复（不 hydrate），
+ *  不会阻塞渲染；下次启动再试。 */
 const RESTORE_TIMEOUT_MS = 500;
 
 /**
@@ -358,9 +359,10 @@ export async function bootstrapQueryCache(
 
   attachPersister(queryClient);
 
-  // 清理 29 版遗留的全局快照键：旧格式不含账号归属，可能含上一位账号的条目，直接丢弃。
-  await del("snapshot", idbStore).catch(() => undefined);
-  await purgeOtherSnapshots().catch(() => undefined);
+  // 清理旧版全局快照键与其它账号残留：只做 best-effort，绝不挡住首帧（慢 IndexedDB
+  // 若在这里 await，会拖慢 render，极端时触发 index.html 的软重载循环）。
+  void del("snapshot", idbStore).catch(() => undefined);
+  void purgeOtherSnapshots().catch(() => undefined);
 }
 
 /**
