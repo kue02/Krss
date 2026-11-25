@@ -25,6 +25,13 @@ import { showToast } from "@/stores/toast-store";
 import type { Entry } from "@/types/api";
 
 /**
+ * 自动翻译失败后最多自动尝试的次数（同一 `条目id|是否可读模式`）。
+ * 失败会清 attemptKey 让下一轮 effect 再试一次，但到上限就保留 key 停止自动重试，
+ * 避免网络/服务端持续失败时无限重试、无限弹 toast。用户仍可手动点按钮重试。
+ */
+const MAX_AUTO_TRANSLATE_ATTEMPTS = 2;
+
+/**
  * 第四十三批（移动端性能）：把非关键的语言判定挪到空闲时段跑。
  *
  * `needsTranslation` 背后是 ELD（~1.5 MB n-gram 模型）。以前在本 hook 顶部静态
@@ -134,6 +141,22 @@ export function useAITranslation({
    * 切条目 / 切可读模式时 key 变化，自然允许重新发起。
    */
   const autoTranslateAttemptedKeyRef = useRef<string | null>(null);
+
+  /**
+   * 自动翻译失败的有限重试计数（按 attemptKey 记）。失败后清 attemptKey 让下一轮
+   * effect 再试一次，但最多 `MAX_AUTO_TRANSLATE_ATTEMPTS` 次，到上限就保留 key
+   * 停止自动重试，避免无限循环。
+   */
+  const autoTranslateRetryRef = useRef<{ key: string; count: number }>({
+    key: "",
+    count: 0,
+  });
+  /**
+   * 失败重试信号：自动翻译失败且未到重试上限时 +1，作为自动翻译 effect 的依赖，
+   * 强制它再跑一轮（只清 attemptKey 未必能让 effect 重新执行 —— isTranslating
+   * true→false 可能被批到同一次渲染里，依赖值看起来没变）。
+   */
+  const [autoRetryTick, setAutoRetryTick] = useState(0);
 
   const clearTranslationState = useCallback(() => {
     setTranslatedContent(null);
@@ -320,11 +343,14 @@ export function useAITranslation({
   );
 
   const generateTranslation = useCallback(
-    async (forReadability: boolean, options?: { allowAttach?: boolean }) => {
-      if (!entry) return;
+    async (
+      forReadability: boolean,
+      options?: { allowAttach?: boolean },
+    ): Promise<boolean> => {
+      if (!entry) return false;
 
       const content = forReadability ? readableContent : entry.content;
-      if (!content) return;
+      if (!content) return false;
 
       requestSeqRef.current += 1;
       if (translateAbortRef.current) {
@@ -360,7 +386,7 @@ export function useAITranslation({
         );
         if (attached) {
           await attached;
-          if (requestSeqRef.current !== requestSeq) return;
+          if (requestSeqRef.current !== requestSeq) return false;
           const prefetched = translationActions.get(
             entry.id,
             targetLanguage,
@@ -371,7 +397,7 @@ export function useAITranslation({
             setTranslationError(null);
             setIsTranslating(false);
             isTranslatingRef.current = false;
-            return;
+            return true;
           }
           // 预载那条没成 —— 继续往下走「自己发」这条路（不再递归订阅自己）
         }
@@ -400,18 +426,21 @@ export function useAITranslation({
 
         for await (const event of stream) {
           if (requestSeqRef.current !== requestSeq) {
-            return;
+            return false;
           }
 
           claim?.emit(event);
           if (applyTranslateEvent(event)) break;
         }
+        // 流正常跑完（即使只收到一个 done、没有内容块）也算这次尝试成功：
+        // 失败重试只针对「抛异常 / 请求已过期 / 被 abort」这些真正的失败路径。
+        return true;
       } catch (err) {
         if (requestSeqRef.current !== requestSeq) {
-          return;
+          return false;
         }
         if (err instanceof Error && err.name === "AbortError") {
-          return;
+          return false;
         }
         // REQ3：整条流失败（网络 / 服务端）也要能把正文工具栏按钮标成失败态。
         setTranslationError(
@@ -419,7 +448,7 @@ export function useAITranslation({
             ? err.message
             : t("entry.translate_failed"),
         );
-        return;
+        return false;
       } finally {
         claim?.finish();
         if (requestSeqRef.current === requestSeq) {
@@ -483,7 +512,14 @@ export function useAITranslation({
       return;
     }
 
+    const wasManuallyDisabled = manuallyDisabledRef.current;
     manuallyDisabledRef.current = false;
+    // 用户手动「关 → 开」：清掉自动尝试的 key 与失败计数，让这条条目能重新自动发起
+    // （否则关闭前那次 attemptKey 还留着，重开后被 `attemptKey === ...` 挡住）。
+    if (wasManuallyDisabled) {
+      autoTranslateAttemptedKeyRef.current = null;
+      autoTranslateRetryRef.current = { key: "", count: 0 };
+    }
     translationActions.enable(entry.id);
 
     const summary = entry.content
@@ -555,6 +591,17 @@ export function useAITranslation({
     cachedTranslation,
   ]);
 
+  // 用户关闭「自动翻译」再打开时（autoTranslate false→true），重置自动尝试的 key 与
+  // 失败计数，让已有条目能重新自动翻译一次（否则关闭前那次 attemptKey 会挡住重开后的自动翻译）。
+  const prevAutoTranslateRef = useRef(autoTranslate);
+  useEffect(() => {
+    if (!prevAutoTranslateRef.current && autoTranslate) {
+      autoTranslateAttemptedKeyRef.current = null;
+      autoTranslateRetryRef.current = { key: "", count: 0 };
+    }
+    prevAutoTranslateRef.current = autoTranslate;
+  }, [autoTranslate]);
+
   // Auto-translate when entry is selected
   useEffect(() => {
     if (!autoTranslate || !entry || isTranslating || isTranslatingRef.current)
@@ -574,6 +621,10 @@ export function useAITranslation({
     }
 
     autoTranslateAttemptedKeyRef.current = attemptKey;
+    // 新的 attemptKey：把失败计数归零（同一条目切模式/切条目时重新计数）。
+    if (autoTranslateRetryRef.current.key !== attemptKey) {
+      autoTranslateRetryRef.current = { key: attemptKey, count: 0 };
+    }
     const currentEntryId = entry.id;
     let cancelled = false;
     /**
@@ -612,7 +663,21 @@ export function useAITranslation({
           autoTranslateToastShownRef.current = true;
           showToast(t("entry.auto_translate_on"));
         }
-        generateTranslation(isReadableActive);
+        const ok = await generateTranslation(isReadableActive);
+        // 条目已切走就不再为旧条目记账（isTranslating 翻转导致的 cleanup 会把
+        // cancelled 置 true，但那不代表条目切走，所以这里只看条目 id）。
+        if (activeEntryIdRef.current !== currentEntryId) return;
+        if (!ok) {
+          const prev = autoTranslateRetryRef.current;
+          const count = (prev.key === attemptKey ? prev.count : 0) + 1;
+          autoTranslateRetryRef.current = { key: attemptKey, count };
+          if (count < MAX_AUTO_TRANSLATE_ATTEMPTS) {
+            // 未到上限：清 key 并触发下一轮 effect，再自动试一次。
+            autoTranslateAttemptedKeyRef.current = null;
+            setAutoRetryTick((n) => n + 1);
+          }
+          // 到上限：保留 attemptKey，停止自动重试（用户仍可手动点按钮重试）。
+        }
       })();
     });
     return () => {
@@ -631,6 +696,7 @@ export function useAITranslation({
     isTranslating,
     hasTranslation,
     generateTranslation,
+    autoRetryTick,
   ]);
 
   // Save translation to store when completed
