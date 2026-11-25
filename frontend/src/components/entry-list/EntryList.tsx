@@ -2077,11 +2077,15 @@ export function EntryList({
                       );
                       return (
                         <Fragment key={entry.id}>
-                          {isMobile ? (
-                            <MobileSwipeEntryRow entry={entry}>{row}</MobileSwipeEntryRow>
-                          ) : (
-                            row
-                          )}
+                          {/* 合列非虚拟（行全量挂载）：离屏行用 content-visibility 跳过
+                              渲染/绘制，等价于「渲染层虚拟化」，避免几百行同屏布局。 */}
+                          <div className="[content-visibility:auto] [contain-intrinsic-size:auto_64px]">
+                            {isMobile ? (
+                              <MobileSwipeEntryRow entry={entry}>{row}</MobileSwipeEntryRow>
+                            ) : (
+                              row
+                            )}
+                          </div>
                           {inlinePaneFor(entry.id)}
                         </Fragment>
                       );
@@ -2125,15 +2129,17 @@ export function EntryList({
                   {inlineNoVirtual ? (
                     entries.map((entry) => (
                       <Fragment key={entry.id}>
-                        <ArticleRowsListRow
-                          entry={entry}
-                          feed={feedsMap.get(entry.feedId)}
-                          onSelectEntry={handleSelectEntry}
-                          selectedEntryId={selectedEntryId}
-                          onMarkAboveEntry={handleMarkAboveEntry}
-                          isMobile={isMobile}
-                          feedUnreadCount={unreadCounts?.counts?.[entry.feedId]}
-                        />
+                        <div className="[content-visibility:auto] [contain-intrinsic-size:auto_88px]">
+                          <ArticleRowsListRow
+                            entry={entry}
+                            feed={feedsMap.get(entry.feedId)}
+                            onSelectEntry={handleSelectEntry}
+                            selectedEntryId={selectedEntryId}
+                            onMarkAboveEntry={handleMarkAboveEntry}
+                            isMobile={isMobile}
+                            feedUnreadCount={unreadCounts?.counts?.[entry.feedId]}
+                          />
+                        </div>
                         {inlinePaneFor(entry.id)}
                       </Fragment>
                     ))
