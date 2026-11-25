@@ -98,6 +98,12 @@ interface EntryContentHeaderProps {
    * 缺一块」（不滚动时背景层 opacity-0 所以看不到；实测不是整块白底盖住圆角）。
    */
   backgroundBlur?: boolean;
+  /**
+   * 顶栏背景层自带 12px 顶部圆角。卡片档保留磨砂时，模糊层（`backdrop-filter`）不会被
+   * 祖先 `overflow: clip` 的圆角裁到，方角会盖住卡片圆角；让这一层自己带圆角即可裁住。
+   * 只在「卡片档 + 正文栏非贴顶」时为 true（见 `headerBackgroundRoundedTopFor`）。
+   */
+  backgroundTopRadius?: boolean;
 }
 
 interface TranslationButtonState {
@@ -162,6 +168,7 @@ export function EntryContentHeader({
   stickyTopClassName,
   mobileInlineSticky = false,
   backgroundBlur = !sticky,
+  backgroundTopRadius = false,
 }: EntryContentHeaderProps) {
   const { t } = useTranslation();
   const safeUrl = entry.url && isSafeUrl(entry.url) ? entry.url : null;
@@ -194,6 +201,8 @@ export function EntryContentHeader({
               "pointer-events-none absolute inset-0 border-b border-foreground/10 bg-overlay/80 transition-opacity duration-300 ease-in-out",
               /* 卡片档内联合列走 overflow:clip，带 backdrop-filter 会让圆角边框合成出错，同桌面分支 */
               backgroundBlur && "backdrop-blur-xl",
+              /* 磨砂层自带顶部圆角：避免 backdrop-filter 输出漏出方角盖住卡片圆角 */
+              backgroundTopRadius && "rounded-t-[12px]",
               mobileInlineSticky ? "opacity-100" : isAtTop ? "opacity-0" : "opacity-100",
             )}
           />
@@ -830,6 +839,8 @@ export function EntryContentHeader({
         className={cn(
           "absolute inset-0 transition-opacity duration-300 ease-in-out pointer-events-none border-b border-foreground/10 bg-overlay/70",
           backgroundBlur && "backdrop-blur-sm",
+          /* 磨砂层自带顶部圆角：避免 backdrop-filter 输出漏出方角盖住卡片圆角 */
+          backgroundTopRadius && "rounded-t-[12px]",
           isAtTop ? "opacity-0" : "opacity-100",
         )}
       />
