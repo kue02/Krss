@@ -6,6 +6,8 @@ import { useUISettingKey } from "@/hooks/useUISettings";
 import { resolveReadingFontStack } from "@/lib/reading-fonts";
 import { ArticleContent } from "@/components/ui/article-content";
 import type { ArticleContentBlock } from "@/components/ui/article-content";
+import { ArticleIframe } from "@/components/ui/article-iframe";
+import { resolveIframeSrc } from "@/components/ui/article-iframe";
 import { cn } from "@/lib/utils";
 
 /**
@@ -77,6 +79,15 @@ export function ArticleProse({
   const hasBlocks = !!blocks && blocks.length > 0;
   const hasContent =
     hasBlocks || (!!content && content.trim().length > 0);
+  // 空正文兜底：RSSHub 的 YouTube 条目经常 content 为空（库里 80/80），只带 entry.url。
+  // 与 Miniflux 的 add_youtube_video 规则等价：能从原文地址解析出「被改写过的播放器地址」时直接渲染。
+  // 要求 resolved !== articleUrl，排除 bilibili 空间页、Wistia 原始页这类只能原样返回的地址，
+  // 避免把整页塞进 16:9 iframe（多半被 X-Frame-Options 拒成黑块）。
+  const resolvedEntryEmbed = !hasContent ? resolveIframeSrc(articleUrl) : null;
+  const embedSrc =
+    resolvedEntryEmbed && resolvedEntryEmbed !== articleUrl
+      ? resolvedEntryEmbed
+      : null;
 
   return (
     <div
@@ -109,6 +120,8 @@ export function ArticleProse({
             fitImages={fitImages}
           />
         )
+      ) : embedSrc ? (
+        <ArticleIframe src={embedSrc} />
       ) : (
         <div className="rounded-lg border border-dashed border-border p-8 text-center text-muted-foreground">
           {t("entry.no_content")}

@@ -11,6 +11,20 @@ import { visit } from "unist-util-visit";
 import { NON_CONTENT_TAG_NAMES } from "./html-content-tags";
 import { rehypeLinkifyBareUrls } from "./rehype-linkify";
 
+/**
+ * 解析正文时要整段丢弃的标签。
+ *
+ * 与 `NON_CONTENT_TAG_NAMES` 唯一的差别：**放行 `iframe`**。
+ * 视频站（bilibili / YouTube / Wistia）的 RSS 正文普遍用 iframe 嵌播放器，
+ * 早期这里把 iframe 一并删了，导致视频只剩封面图（NextFlux 则是专门渲染 iframe）。
+ * 安全由 sanitize 白名单兜底（只留 src/title/宽高/sandbox 等，src 仅 http(s)），
+ * 真正渲染由 `ArticleIframe` 再做一层域名白名单 + bilibili/YouTube 归一化。
+ * `object` / `embed` 等其余非正文标签仍然丢弃。
+ */
+const DROPPED_TAG_NAMES: ReadonlySet<string> = new Set(
+  NON_CONTENT_TAG_NAMES.filter((name) => name !== "iframe"),
+);
+
 export type ParseHtmlOptions = {
   components?: Components;
 };
@@ -97,12 +111,29 @@ function rehypeTrimEndBrElement() {
  * after sanitize strips the tag wrapper.
  */
 function rehypeDropNonContentElements() {
-  const blockedTagNames: ReadonlySet<string> = new Set(NON_CONTENT_TAG_NAMES);
-
   return (tree: Root) => {
     visit(tree, "element", (node: Element, index, parent) => {
       if (!parent || index === undefined) return;
-      if (!blockedTagNames.has(node.tagName)) return;
+      if (!DROPPED_TAG_NAMES.has(node.tagName)) return;
+
+      parent.children.splice(index, 1);
+      return index;
+    });
+  };
+}
+
+/**
+ * sanitize 会把非 http(s) 的 iframe `src` 剥掉，但空壳 `<iframe>` 还留在树里。
+ * 空 iframe 渲染层虽然也会被 `ArticleIframe` 忽略，这里直接清掉，避免留下无意义节点。
+ */
+function rehypeDropIframesWithoutHttpSrc() {
+  return (tree: Root) => {
+    visit(tree, "element", (node: Element, index, parent) => {
+      if (!parent || index === undefined) return;
+      if (node.tagName !== "iframe") return;
+      const src = node.properties?.src;
+      // 协议相对地址（//player.bilibili.com/...）也是合法 http(s)，渲染层会补 https:。
+      if (typeof src === "string" && /^(https?:|\/\/)/i.test(src)) return;
 
       parent.children.splice(index, 1);
       return index;
@@ -124,6 +155,7 @@ REHYPE_SCHEMA.tagNames = [
   "video",
   "source",
   "audio",
+  "iframe",
   "figure",
   "figcaption",
   "details",
@@ -145,6 +177,18 @@ REHYPE_SCHEMA.attributes = {
   ],
   audio: ["src", "controls", "autoplay", "loop", "muted"],
   source: ["src", "type"],
+  iframe: [
+    "src",
+    "title",
+    "width",
+    "height",
+    "frameBorder",
+    "allow",
+    "allowFullScreen",
+    "referrerPolicy",
+    "sandbox",
+    "loading",
+  ],
   img: [
     "src",
     "alt",
@@ -171,6 +215,7 @@ const BASE_PIPELINE = unified()
   .use(rehypeParse, { fragment: true })
   .use(rehypeDropNonContentElements)
   .use(rehypeSanitize, REHYPE_SCHEMA)
+  .use(rehypeDropIframesWithoutHttpSrc)
   .use(rehypeEmojiImages)
   .use(rehypeTrimEndBrElement)
   // 45 批：裸 URL 链接化。必须排在 sanitize 之后 —— sanitize 按白名单剥属性，
