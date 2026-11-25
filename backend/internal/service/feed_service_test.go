@@ -250,7 +250,7 @@ func TestFeedService_Add_EntryCreateErrorIgnored(t *testing.T) {
 	require.Equal(t, int64(123), feed.ID)
 }
 
-func TestFeedService_Add_IconFetchUpdatesPath(t *testing.T) {
+func TestFeedService_Add_EnqueuesIconFetch(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -280,11 +280,7 @@ func TestFeedService_Add_IconFetchUpdatesPath(t *testing.T) {
 	)
 
 	mockIcons.EXPECT().
-		FetchAndSaveIconForFeed(gomock.Any(), int64(123), "https://example.com/icon.png", "https://example.com").
-		Return("example.com.png", nil)
-	mockFeeds.EXPECT().
-		UpdateIconPath(gomock.Any(), int64(123), "example.com.png").
-		Return(nil)
+		EnqueueIconFetch(int64(123), "https://example.com/icon.png", "https://example.com")
 
 	mockEntries.EXPECT().CreateOrUpdateSkippingTombstones(gomock.Any(), gomock.Any()).Return(true, nil).Times(1)
 
@@ -292,8 +288,8 @@ func TestFeedService_Add_IconFetchUpdatesPath(t *testing.T) {
 	svc := service.NewFeedService(mockFeeds, mockFolders, mockEntries, mockIcons, nil, clientFactory, nil, nil)
 	feed, err := svc.Add(context.Background(), feedURL, nil, "", "article")
 	require.NoError(t, err)
-	require.NotNil(t, feed.IconPath)
-	require.Equal(t, "example.com.png", *feed.IconPath)
+	// 图标走异步队列：Add 不再同步回填 icon_path，新建订阅短暂显示默认图标。
+	require.Nil(t, feed.IconPath)
 }
 
 func TestFeedService_AddWithoutFetch(t *testing.T) {
@@ -1202,7 +1198,7 @@ func TestFeedService_Preview_ParseError(t *testing.T) {
 	require.ErrorIs(t, err, service.ErrFeedFetch)
 }
 
-func TestFeedService_Add_IconFetchError(t *testing.T) {
+func TestFeedService_Add_EnqueuesIconFetchOnFailure(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -1231,8 +1227,7 @@ func TestFeedService_Add_IconFetchError(t *testing.T) {
 	)
 
 	mockIcons.EXPECT().
-		FetchAndSaveIconForFeed(gomock.Any(), int64(123), "https://example.com/icon.png", "https://example.com").
-		Return("", errors.New("icon fetch error"))
+		EnqueueIconFetch(int64(123), "https://example.com/icon.png", "https://example.com")
 
 	mockEntries.EXPECT().CreateOrUpdateSkippingTombstones(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
 

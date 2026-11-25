@@ -4,6 +4,7 @@ import (
 	"context"
 	"krss/backend/internal/repository"
 	"testing"
+	"time"
 
 	"krss/backend/internal/model"
 	"krss/backend/internal/repository/testutil"
@@ -289,4 +290,41 @@ func TestFeedRepository_ClearAllConditionalGet(t *testing.T) {
 		require.Nil(t, feed.ETag)
 		require.Nil(t, feed.LastModified)
 	}
+}
+
+func TestFeedRepository_RecordFeedFetched(t *testing.T) {
+	db := testutil.NewTestDB(t)
+	repo := repository.NewFeedRepository(db)
+	ctx := context.Background()
+
+	id := testutil.SeedFeed(t, db, model.Feed{Title: "Feed", URL: "u"})
+	base := time.Date(2026, 11, 25, 10, 0, 0, 0, time.UTC)
+
+	// 分支 1：success + changed → 写 last_fetched_at、no_change_streak 清零
+	require.NoError(t, repo.RecordFeedFetched(ctx, id, base, true, true))
+	got, err := repo.GetByID(ctx, id)
+	require.NoError(t, err)
+	require.NotNil(t, got.LastFetchedAt)
+	require.True(t, got.LastFetchedAt.Equal(base))
+	require.Equal(t, 0, got.NoChangeStreak)
+
+	// 分支 2：success + 无变化 → streak 逐轮 +1
+	require.NoError(t, repo.RecordFeedFetched(ctx, id, base.Add(time.Minute), true, false))
+	got, _ = repo.GetByID(ctx, id)
+	require.Equal(t, 1, got.NoChangeStreak)
+	require.True(t, got.LastFetchedAt.Equal(base.Add(time.Minute)))
+	require.NoError(t, repo.RecordFeedFetched(ctx, id, base.Add(2*time.Minute), true, false))
+	got, _ = repo.GetByID(ctx, id)
+	require.Equal(t, 2, got.NoChangeStreak)
+
+	// 分支 3：失败 → 只更新 last_fetched_at，streak 保持不变
+	require.NoError(t, repo.RecordFeedFetched(ctx, id, base.Add(3*time.Minute), false, false))
+	got, _ = repo.GetByID(ctx, id)
+	require.Equal(t, 2, got.NoChangeStreak)
+	require.True(t, got.LastFetchedAt.Equal(base.Add(3*time.Minute)))
+
+	// 再次 success + changed → streak 归零
+	require.NoError(t, repo.RecordFeedFetched(ctx, id, base.Add(4*time.Minute), true, true))
+	got, _ = repo.GetByID(ctx, id)
+	require.Equal(t, 0, got.NoChangeStreak)
 }

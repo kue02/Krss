@@ -191,6 +191,20 @@ func (mr *MockFeedRepositoryMockRecorder) ListWithoutIcon(ctx any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListWithoutIcon", reflect.TypeOf((*MockFeedRepository)(nil).ListWithoutIcon), ctx)
 }
 
+// RecordFeedFetched mocks base method.
+func (m *MockFeedRepository) RecordFeedFetched(ctx context.Context, id int64, fetchedAt time.Time, success, changed bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RecordFeedFetched", ctx, id, fetchedAt, success, changed)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RecordFeedFetched indicates an expected call of RecordFeedFetched.
+func (mr *MockFeedRepositoryMockRecorder) RecordFeedFetched(ctx, id, fetchedAt, success, changed any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordFeedFetched", reflect.TypeOf((*MockFeedRepository)(nil).RecordFeedFetched), ctx, id, fetchedAt, success, changed)
+}
+
 // RecordRefreshFailure mocks base method.
 func (m *MockFeedRepository) RecordRefreshFailure(ctx context.Context, id int64, failedAt time.Time) error {
 	m.ctrl.T.Helper()

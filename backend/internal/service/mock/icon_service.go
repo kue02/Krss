@@ -69,6 +69,30 @@ func (mr *MockIconServiceMockRecorder) ClearAllIcons(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearAllIcons", reflect.TypeOf((*MockIconService)(nil).ClearAllIcons), ctx)
 }
 
+// Close mocks base method.
+func (m *MockIconService) Close() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Close")
+}
+
+// Close indicates an expected call of Close.
+func (mr *MockIconServiceMockRecorder) Close() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockIconService)(nil).Close))
+}
+
+// EnqueueIconFetch mocks base method.
+func (m *MockIconService) EnqueueIconFetch(feedID int64, imageURL, siteURL string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "EnqueueIconFetch", feedID, imageURL, siteURL)
+}
+
+// EnqueueIconFetch indicates an expected call of EnqueueIconFetch.
+func (mr *MockIconServiceMockRecorder) EnqueueIconFetch(feedID, imageURL, siteURL any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnqueueIconFetch", reflect.TypeOf((*MockIconService)(nil).EnqueueIconFetch), feedID, imageURL, siteURL)
+}
+
 // EnsureIcon mocks base method.
 func (m *MockIconService) EnsureIcon(ctx context.Context, iconPath, siteURL string) error {
 	m.ctrl.T.Helper()

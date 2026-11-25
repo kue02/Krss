@@ -123,8 +123,7 @@ func TestRefreshService_RefreshFeed_Success(t *testing.T) {
 		},
 	)
 	mockFeeds.EXPECT().UpdateSiteURL(gomock.Any(), int64(10), "https://example.com").Return(nil)
-	mockIcons.EXPECT().FetchAndSaveIconForFeed(gomock.Any(), int64(10), "https://example.com/icon.png", "https://example.com").Return("example.com.png", nil)
-	mockFeeds.EXPECT().UpdateIconPath(gomock.Any(), int64(10), "example.com.png").Return(nil)
+	mockIcons.EXPECT().EnqueueIconFetch(int64(10), "https://example.com/icon.png", "https://example.com")
 
 	mockEntries.EXPECT().GetExistingEntry(gomock.Any(), int64(10), hashString("https://example.com/1"), "https://example.com/1").Return(nil, nil)
 	mockEntries.EXPECT().CreateOrUpdateSkippingTombstones(gomock.Any(), gomock.Any()).Return(true, nil)
@@ -179,8 +178,7 @@ func TestRefreshService_RefreshFeed_RechecksExistingIcon(t *testing.T) {
 		},
 	)
 	mockFeeds.EXPECT().UpdateSiteURL(gomock.Any(), int64(11), "https://example.com").Return(nil)
-	mockIcons.EXPECT().FetchAndSaveIconForFeed(gomock.Any(), int64(11), "https://example.com/icon.png", "https://example.com").Return("abc123.jpg", nil)
-	mockFeeds.EXPECT().UpdateIconPath(gomock.Any(), int64(11), "abc123.jpg").Return(nil)
+	mockIcons.EXPECT().EnqueueIconFetch(int64(11), "https://example.com/icon.png", "https://example.com")
 
 	mockEntries.EXPECT().GetExistingEntry(gomock.Any(), int64(11), hashString("https://example.com/1"), "https://example.com/1").Return(nil, nil)
 	mockEntries.EXPECT().CreateOrUpdateSkippingTombstones(gomock.Any(), gomock.Any()).Return(true, nil)
@@ -443,6 +441,9 @@ func TestRefreshService_RefreshFeeds_WithRateLimit(t *testing.T) {
 	mockFeeds.EXPECT().UpdateErrorMessage(gomock.Any(), int64(2), nil).Return(nil)
 	mockFeeds.EXPECT().ResetRefreshFailure(gomock.Any(), int64(1)).Return(nil)
 	mockFeeds.EXPECT().ResetRefreshFailure(gomock.Any(), int64(2)).Return(nil)
+	// 迁移 41：批量抓取后每个真正发起过抓取的源都会记录一次（304 = success 但无变化）
+	mockFeeds.EXPECT().RecordFeedFetched(gomock.Any(), int64(1), gomock.Any(), true, false).Return(nil)
+	mockFeeds.EXPECT().RecordFeedFetched(gomock.Any(), int64(2), gomock.Any(), true, false).Return(nil)
 
 	client := &http.Client{
 		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
@@ -545,6 +546,8 @@ func TestRefreshService_ForceRefresh_SkipsConditionalHeaders(t *testing.T) {
 	mockFeeds.EXPECT().List(gomock.Any(), (*int64)(nil)).Return([]model.Feed{feed}, nil)
 	mockFeeds.EXPECT().UpdateErrorMessage(gomock.Any(), int64(7), nil).Return(nil).AnyTimes()
 	mockFeeds.EXPECT().ResetRefreshFailure(gomock.Any(), int64(7)).Return(nil).AnyTimes()
+	// 迁移 41：强制全量刷新（auto=false）也会给真正抓过的源记录一次 last_fetched_at
+	mockFeeds.EXPECT().RecordFeedFetched(gomock.Any(), int64(7), gomock.Any(), true, false).Return(nil)
 
 	svc := service.NewRefreshService(
 		mockFeeds,
@@ -613,4 +616,148 @@ func TestRefreshService_TombstonedEntryNotCountedAsNew(t *testing.T) {
 	require.Len(t, results, 1)
 	require.Equal(t, 0, results[0].New)
 	require.Equal(t, 0, results[0].Updated)
+}
+
+// 迁移 41：定时刷新按「上次抓取时间 + 有效间隔」做到期门 —— 未到期跳过、到期才抓。
+func TestRefreshService_RefreshAllAuto_IntervalGate(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockFeeds := mock.NewMockFeedRepository(ctrl)
+	mockEntries := mock.NewMockEntryRepository(ctrl)
+
+	now := time.Now().UTC()
+	fiveMinAgo := now.Add(-5 * time.Minute)
+	twentyMinAgo := now.Add(-20 * time.Minute)
+	fortyMinAgo := now.Add(-40 * time.Minute)
+
+	feeds := []model.Feed{
+		{ID: 101, URL: "https://never.example/rss", Title: "NeverFetched"},                                                    // nil → 到期
+		{ID: 102, URL: "https://fresh.example/rss", Title: "Fresh", LastFetchedAt: &fiveMinAgo},                               // 15min 内 → 跳过
+		{ID: 103, URL: "https://streak1.example/rss", Title: "Streak1", LastFetchedAt: &twentyMinAgo, NoChangeStreak: 1},      // 有效 30min，20min → 跳过
+		{ID: 104, URL: "https://streak1old.example/rss", Title: "Streak1Old", LastFetchedAt: &fortyMinAgo, NoChangeStreak: 1}, // 有效 30min，40min → 到期
+	}
+
+	mockFeeds.EXPECT().List(gomock.Any(), (*int64)(nil)).Return(feeds, nil)
+	// 只有到期的 101 / 104 会被真正抓取（304 = success 但无变化），并各自记录一次抓取。
+	for _, id := range []int64{101, 104} {
+		mockFeeds.EXPECT().UpdateErrorMessage(gomock.Any(), id, nil).Return(nil)
+		mockFeeds.EXPECT().ResetRefreshFailure(gomock.Any(), id).Return(nil)
+		mockFeeds.EXPECT().RecordFeedFetched(gomock.Any(), id, gomock.Any(), true, false).Return(nil)
+	}
+
+	client := &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusNotModified, Body: http.NoBody, Header: make(http.Header), Request: req}, nil
+		}),
+	}
+
+	svc := service.NewRefreshService(mockFeeds, mockEntries, nil, nil, network.NewClientFactoryForTest(client), nil, nil, nil)
+	require.NoError(t, svc.RefreshAllAuto(context.Background()))
+
+	byID := map[int64]service.RefreshFeedResult{}
+	for _, r := range svc.LastRefreshResults() {
+		byID[r.FeedID] = r
+	}
+	require.Len(t, byID, 4)
+	require.False(t, byID[101].Skipped)
+	require.False(t, byID[104].Skipped)
+	require.True(t, byID[102].Skipped)
+	require.True(t, byID[103].Skipped)
+}
+
+// 迁移 41：RSS 自适应降频的绝对上限 24h —— streak=4 且全局 12h 时未封顶会是 192h，
+// 真实有效间隔应为 24h，于是 30h 前抓过的源到期、20h 前抓过的源未到期。
+func TestRefreshService_RefreshAllAuto_AdaptiveIntervalCap(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockFeeds := mock.NewMockFeedRepository(ctrl)
+	mockEntries := mock.NewMockEntryRepository(ctrl)
+	mockSettings := servicemock.NewMockSettingsService(ctrl)
+	mockSettings.EXPECT().GetFetchSettings(gomock.Any()).Return(&service.FetchSettings{IntervalMinutes: 720}, nil).AnyTimes()
+
+	now := time.Now().UTC()
+	thirtyHAgo := now.Add(-30 * time.Hour)
+	twentyHAgo := now.Add(-20 * time.Hour)
+	feeds := []model.Feed{
+		{ID: 201, URL: "https://cap-due.example/rss", Title: "CappedDue", LastFetchedAt: &thirtyHAgo, NoChangeStreak: 4},
+		{ID: 202, URL: "https://cap-skip.example/rss", Title: "CappedSkip", LastFetchedAt: &twentyHAgo, NoChangeStreak: 4},
+	}
+	mockFeeds.EXPECT().List(gomock.Any(), (*int64)(nil)).Return(feeds, nil)
+	mockFeeds.EXPECT().UpdateErrorMessage(gomock.Any(), int64(201), nil).Return(nil)
+	mockFeeds.EXPECT().ResetRefreshFailure(gomock.Any(), int64(201)).Return(nil)
+	mockFeeds.EXPECT().RecordFeedFetched(gomock.Any(), int64(201), gomock.Any(), true, false).Return(nil)
+
+	client := &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusNotModified, Body: http.NoBody, Header: make(http.Header), Request: req}, nil
+		}),
+	}
+
+	svc := service.NewRefreshService(mockFeeds, mockEntries, mockSettings, nil, network.NewClientFactoryForTest(client), nil, nil, nil)
+	require.NoError(t, svc.RefreshAllAuto(context.Background()))
+
+	byID := map[int64]service.RefreshFeedResult{}
+	for _, r := range svc.LastRefreshResults() {
+		byID[r.FeedID] = r
+	}
+	require.False(t, byID[201].Skipped)
+	require.True(t, byID[202].Skipped)
+}
+
+// 迁移 41 + #1：MCP 订阅的到期判断用连接配置的刷新间隔，未配置时回落全局间隔。
+func TestRefreshService_RefreshAllAuto_MCPUsesConnectionInterval(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockFeeds := mock.NewMockFeedRepository(ctrl)
+	mockEntries := mock.NewMockEntryRepository(ctrl)
+	mockMCP := servicemock.NewMockMCPService(ctrl)
+
+	now := time.Now().UTC()
+	twentyMinAgo := now.Add(-20 * time.Minute)
+	fiftyMinAgo := now.Add(-50 * time.Minute)
+
+	feeds := []model.Feed{
+		{ID: 301, URL: "mcp://a", Title: "ConnIntervalNotDue", SourceType: model.FeedSourceMCP, LastFetchedAt: &twentyMinAgo},
+		{ID: 302, URL: "mcp://b", Title: "ConnIntervalDue", SourceType: model.FeedSourceMCP, LastFetchedAt: &fiftyMinAgo},
+		{ID: 303, URL: "mcp://c", Title: "NoConnIntervalDue", SourceType: model.FeedSourceMCP, LastFetchedAt: &twentyMinAgo},
+	}
+	mockFeeds.EXPECT().List(gomock.Any(), (*int64)(nil)).Return(feeds, nil)
+
+	// 301/302 连接间隔 45min；303 未配置（回落全局 15min）。
+	mockMCP.EXPECT().FeedRefreshInterval(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, f model.Feed) (time.Duration, bool) {
+			switch f.ID {
+			case 301, 302:
+				return 45 * time.Minute, true
+			default:
+				return 0, false
+			}
+		}).Times(3)
+
+	// 只有 302（50min>=45min）与 303（20min>=15min）会真正抓；301（20min<45min）跳过。
+	mockMCP.EXPECT().FetchFeedItems(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, f model.Feed) (service.MCPFetchResult, error) {
+			require.NotEqual(t, int64(301), f.ID, "301 未到期，不该被抓取")
+			return service.MCPFetchResult{}, nil
+		}).Times(2)
+
+	for _, id := range []int64{302, 303} {
+		mockFeeds.EXPECT().UpdateErrorMessage(gomock.Any(), id, nil).Return(nil)
+		mockFeeds.EXPECT().ResetRefreshFailure(gomock.Any(), id).Return(nil)
+		mockFeeds.EXPECT().RecordFeedFetched(gomock.Any(), id, gomock.Any(), true, false).Return(nil)
+	}
+
+	svc := service.NewRefreshService(mockFeeds, mockEntries, nil, nil, network.NewClientFactoryForTest(&http.Client{}), nil, nil, nil, mockMCP)
+	require.NoError(t, svc.RefreshAllAuto(context.Background()))
+
+	byID := map[int64]service.RefreshFeedResult{}
+	for _, r := range svc.LastRefreshResults() {
+		byID[r.FeedID] = r
+	}
+	require.True(t, byID[301].Skipped)
+	require.False(t, byID[302].Skipped)
+	require.False(t, byID[303].Skipped)
 }

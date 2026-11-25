@@ -33,8 +33,12 @@ type Feed struct {
 	// 定时刷新用它们算「下次允许抓取」的时间点，连续失败的源自动降频。
 	RefreshFailCount  int
 	RefreshLastFailAt *time.Time
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	// 抓取节流（迁移 41）：最近一次真正发起抓取的时间（UTC），nil = 从未抓过（立即视为到期）；
+	// NoChangeStreak = RSS 源连续「抓到但内容无变化」的轮数，用于指数级降频。
+	LastFetchedAt  *time.Time
+	NoChangeStreak int
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 // 订阅的取数来源（feeds.source_type）。

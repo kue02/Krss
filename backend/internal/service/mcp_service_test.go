@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"krss/backend/internal/model"
 	"krss/backend/internal/repository"
@@ -354,6 +355,49 @@ func TestMCPService_FetchFeedItems(t *testing.T) {
 	require.Equal(t, "https://notes.example/1", result.Items[0].Link)
 	require.NotNil(t, result.Items[0].PublishedParsed)
 	require.Equal(t, model.MCPKeyLevelField, result.KeyLevel)
+}
+
+func TestMCPService_FeedRefreshInterval(t *testing.T) {
+	fake := newFakeMCPServer(t)
+	svc, _, _ := newMCPService(t)
+	ctx := context.Background()
+
+	// 1) 连接显式配置了刷新间隔 → 返回该间隔且 hasExplicit=true
+	intervalMinutes := 45
+	created, err := svc.CreateServer(ctx, service.MCPServerInput{
+		Name: "fake", URL: fake.server.URL, Enabled: true, UseGlobalFetch: true,
+		RefreshIntervalMinutes: &intervalMinutes,
+	})
+	require.NoError(t, err)
+	raw, err := service.BuildMCPFeedConfig(model.MCPFeedConfig{ServerID: model.SnowflakeID(created.ID), Kind: "tool", ToolName: "list_notes"})
+	require.NoError(t, err)
+	feed := model.Feed{ID: 1, SourceType: model.FeedSourceMCP, MCPConfig: &raw}
+
+	interval, explicit := svc.FeedRefreshInterval(ctx, feed)
+	require.True(t, explicit)
+	require.Equal(t, 45*time.Minute, interval)
+
+	// 2) 连接没配刷新间隔 → (0,false)，交给调用方回落全局
+	plain, err := svc.CreateServer(ctx, service.MCPServerInput{Name: "plain", URL: fake.server.URL, Enabled: true, UseGlobalFetch: true})
+	require.NoError(t, err)
+	raw2, err := service.BuildMCPFeedConfig(model.MCPFeedConfig{ServerID: model.SnowflakeID(plain.ID), Kind: "tool", ToolName: "list_notes"})
+	require.NoError(t, err)
+	feed2 := model.Feed{ID: 2, SourceType: model.FeedSourceMCP, MCPConfig: &raw2}
+	interval2, explicit2 := svc.FeedRefreshInterval(ctx, feed2)
+	require.False(t, explicit2)
+	require.Equal(t, time.Duration(0), interval2)
+
+	// 3) 配置缺失 / 坏 JSON / 连接不存在 → 一律宽容 (0,false)，不报错
+	bad := "not-json"
+	for _, f := range []model.Feed{
+		{ID: 3, SourceType: model.FeedSourceMCP, MCPConfig: nil},
+		{ID: 4, SourceType: model.FeedSourceMCP, MCPConfig: &bad},
+		{ID: 5, SourceType: model.FeedSourceMCP, MCPConfig: strPtr(`{"serverId":"999999"}`)},
+	} {
+		interval, explicit := svc.FeedRefreshInterval(ctx, f)
+		require.False(t, explicit)
+		require.Equal(t, time.Duration(0), interval)
+	}
 }
 
 func TestMCPService_FetchWithoutURLGetsInternalLink(t *testing.T) {

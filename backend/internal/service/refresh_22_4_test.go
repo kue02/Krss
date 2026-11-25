@@ -278,6 +278,8 @@ func TestRefreshService_RefreshAllAuto_SkipsBackedOffFeed(t *testing.T) {
 	mockFeeds.EXPECT().List(gomock.Any(), (*int64)(nil)).Return([]model.Feed{good, bad}, nil)
 	mockFeeds.EXPECT().UpdateErrorMessage(gomock.Any(), int64(40), nil).Return(nil)
 	mockFeeds.EXPECT().ResetRefreshFailure(gomock.Any(), int64(40)).Return(nil)
+	// 迁移 41：真正抓过的 good 会记录一次抓取；退避中的 bad 不抓、也不记录
+	mockFeeds.EXPECT().RecordFeedFetched(gomock.Any(), int64(40), gomock.Any(), true, false).Return(nil)
 
 	var calls int
 	client := &http.Client{

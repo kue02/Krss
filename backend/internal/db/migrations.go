@@ -732,6 +732,18 @@ func runMigrations(db *sql.DB) error {
 		return err
 	}
 
+	// Migration 41: 刷新降频与错峰（feed 级上次抓取时间 + RSS 连续无变化计数）。
+	// last_fetched_at 记录该源最近一次真正发起抓取的时间（UTC RFC3339，可空）；
+	// no_change_streak 记录 RSS 源连续「抓到了但内容没变化」的轮数，用于指数级降频。
+	if err := addColumnIfMissing(db, "feeds", "last_fetched_at",
+		`ALTER TABLE feeds ADD COLUMN last_fetched_at TEXT`); err != nil {
+		return err
+	}
+	if err := addColumnIfMissing(db, "feeds", "no_change_streak",
+		`ALTER TABLE feeds ADD COLUMN no_change_streak INTEGER NOT NULL DEFAULT 0`); err != nil {
+		return err
+	}
+
 	return nil
 }
 
