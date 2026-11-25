@@ -1,4 +1,4 @@
-import { memo, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronUp, Star } from "lucide-react";
 import { Ripple } from "m3-ripple";
@@ -731,6 +731,83 @@ export interface NotificationTimelineProps {
   onSelectableEntriesChange?: (entries: Entry[]) => void;
 }
 
+
+/**
+ * 通知时间线的「段内行窗口化」（DOM 级虚拟化）：
+ * 一天一段，段内可能有几十条卡片。日期吸顶头保持在段容器里（只有几段，代价很小），
+ * 但段内的行卡片只在接近视口（rootMargin 1200px）时才挂载，滚远后卸载，
+ * 用上一次实测高度做占位，既省 React 挂载/布局，又不破坏 sticky 头与整段高度。
+ */
+function TimelineLazyRows({
+  sectionKey,
+  rowCount,
+  heights,
+  children,
+}: {
+  sectionKey: string;
+  rowCount: number;
+  heights: React.MutableRefObject<Map<string, number>>;
+  children: () => ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  // 默认挂载：首帧渲染前用布局效应按视口距离先裁一次（避免首屏空白，也避免离线时
+  // 依赖 IntersectionObserver 的首个回调时机）；之后交给 observer 跟随滚动挂载/卸载。
+  const [mounted, setMounted] = useState(true);
+
+  useLayoutEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const rect = node.getBoundingClientRect();
+    const viewportH = window.innerHeight || 0;
+    setMounted(rect.bottom > -1200 && rect.top < viewportH + 1200);
+  }, []);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const Observer = globalThis.IntersectionObserver;
+    if (typeof Observer !== "function") {
+      setMounted(true);
+      return;
+    }
+    const observer = new Observer(
+      (entries) => {
+        for (const item of entries) setMounted(item.isIntersecting);
+      },
+      { rootMargin: "1200px 0px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || !mounted) return;
+    const measure = () => {
+      const h = node.offsetHeight;
+      if (h > 0) heights.current.set(sectionKey, h);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [mounted, sectionKey, heights]);
+
+  const estimate =
+    heights.current.get(sectionKey) ?? Math.max(96, rowCount * 140);
+  return (
+    <div
+      ref={ref}
+      data-timeline-rows={sectionKey}
+      aria-hidden={mounted ? undefined : true}
+      style={mounted ? undefined : { height: `${estimate}px` }}
+    >
+      {mounted ? children() : null}
+    </div>
+  );
+}
+
 export function NotificationTimeline({
   entries,
   feeds,
@@ -1125,6 +1202,9 @@ export function NotificationTimeline({
     [displayRows],
   );
 
+  /** 段内行块实测高度（卸载后用占位，避免滚动条跳动） */
+  const rowsHeightsRef = useRef<Map<string, number>>(new Map());
+
   /** 轴上的卡片（顺序即键盘吸附顺序） */
   const selectableEntries = useMemo(
     () =>
@@ -1293,7 +1373,12 @@ export function NotificationTimeline({
             </span>
           </div>
 
-          {section.rows.map((row) => {
+          <TimelineLazyRows
+            sectionKey={section.key}
+            rowCount={section.rows.length}
+            heights={rowsHeightsRef}
+          >
+            {() => section.rows.map((row) => {
         const dotLeft = singleSide ? `${SINGLE_SIDE_TIME_COLUMN}px` : "50%";
         const isLeft = row.side === "left";
 
@@ -1444,7 +1529,8 @@ export function NotificationTimeline({
             )}
           </div>
         );
-          })}
+            })}
+          </TimelineLazyRows>
         </div>
         );
       })}
