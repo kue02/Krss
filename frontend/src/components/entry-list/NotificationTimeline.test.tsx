@@ -529,18 +529,28 @@ describe("NotificationTimeline · 与列表的契约", () => {
     }
   });
 
-  it("统一卡片布局（不再随宽度退化成单侧/交替）", () => {
-    const { container } = renderTimeline(
-      [
-        entry("a", localIso(18, 14, 10)),
-        entry("b", localIso(18, 13, 10)),
-      ],
-      { autoSingleSide: false },
-    );
-    expect(
-      container.querySelector<HTMLElement>("div[data-testid='notification-timeline']")?.dataset
-        .timelineLayout,
-    ).toBe("cards");
+  it("统一卡片布局：默认单列居中，autoSingleSide=false 时宽屏两列", () => {
+    const entries = [entry("a", localIso(18, 14, 10)), entry("b", localIso(18, 13, 10))];
+
+    // 默认（autoSingleSide 未传 = true）：单列、容器 max-w-[50rem]、段无 lg:grid-cols-2
+    const def = renderTimeline(entries);
+    const defRoot = def.container.querySelector<HTMLElement>(
+      "div[data-testid='notification-timeline']",
+    )!;
+    expect(defRoot.dataset.timelineLayout).toBe("cards");
+    expect(defRoot.className).toContain("max-w-[50rem]");
+    const defSection = def.container.querySelector<HTMLElement>("[data-timeline-section]")!;
+    expect(defSection.className).not.toContain("lg:grid-cols-2");
+
+    // autoSingleSide=false：容器 max-w-[56rem]、段挂 lg:grid-cols-2（宽屏两列）
+    const wide = renderTimeline(entries, { autoSingleSide: false });
+    const wideRoot = wide.container.querySelector<HTMLElement>(
+      "div[data-testid='notification-timeline']",
+    )!;
+    expect(wideRoot.dataset.timelineLayout).toBe("cards");
+    expect(wideRoot.className).toContain("max-w-[56rem]");
+    const wideSection = wide.container.querySelector<HTMLElement>("[data-timeline-section]")!;
+    expect(wideSection.className).toContain("lg:grid-cols-2");
   });
 
   it("回报给父级的可选条目 = 轴上的卡片（不含被吸进小节点的）", () => {
