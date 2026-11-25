@@ -220,4 +220,25 @@ describe("MobileSwipeEntryRow", () => {
     const span = actions.querySelector("span") as HTMLElement;
     expect(span.className).toContain("size-7");
   });
+
+  it("默认不加 content-visibility（普通行高不适合离屏估算）", () => {
+    const { container } = render(
+      <MobileSwipeEntryRow entry={makeEntry()}>
+        <div>卡片内容</div>
+      </MobileSwipeEntryRow>,
+    );
+    const row = container.querySelector("[data-swipe-row]") as HTMLElement;
+    expect(row.className).not.toContain("content-visibility");
+  });
+
+  it("传 contentVisibility 时根节点加 content-visibility 与 600px 估算", () => {
+    const { container } = render(
+      <MobileSwipeEntryRow entry={makeEntry()} contentVisibility>
+        <div>卡片内容</div>
+      </MobileSwipeEntryRow>,
+    );
+    const row = container.querySelector("[data-swipe-row]") as HTMLElement;
+    expect(row.className).toContain("[content-visibility:auto]");
+    expect(row.className).toContain("[contain-intrinsic-size:auto_600px]");
+  });
 });

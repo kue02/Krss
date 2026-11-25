@@ -19,6 +19,12 @@ const SWIPE_OPEN_EVENT = "krss:mobile-swipe-open";
 interface MobileSwipeEntryRowProps {
   entry: Entry;
   children: ReactNode;
+  /**
+   * 第四十三批（移动端性能）：社交视图的大卡片（图集，行高数百 px）在离屏时
+   * 跳过布局/绘制。只在社交非虚拟列表分支传 true；文章/普通列表行高仅 42–80px，
+   * 600px 的估算高度会把滚动高度撑坏，所以那里不传。
+   */
+  contentVisibility?: boolean;
 }
 
 /**
@@ -38,7 +44,11 @@ interface MobileSwipeEntryRowProps {
  * - 与「右滑开侧栏」不冲突：右滑仅在已展开时用于收起，未展开时右拖位移被夹在 0；
  * - 与虚拟列表测量不冲突：外层 `overflow-hidden`，仅横向 transform，行高不变。
  */
-export function MobileSwipeEntryRow({ entry, children }: MobileSwipeEntryRowProps) {
+export function MobileSwipeEntryRow({
+  entry,
+  children,
+  contentVisibility = false,
+}: MobileSwipeEntryRowProps) {
   const { t } = useTranslation();
   const rowRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -140,7 +150,15 @@ export function MobileSwipeEntryRow({ entry, children }: MobileSwipeEntryRowProp
   const displayOffset = dragging ? dragOffset : open ? -ACTION_WIDTH : 0;
 
   return (
-    <div ref={rowRef} className="relative overflow-hidden" data-swipe-row>
+    <div
+      ref={rowRef}
+      className={cn(
+        "relative overflow-hidden",
+        contentVisibility &&
+          "[content-visibility:auto] [contain-intrinsic-size:auto_600px]",
+      )}
+      data-swipe-row
+    >
       {/* 动作条：旧版样式，在内容层背后、右侧对齐，内容层左移即逐渐露出 */}
       <div
         aria-hidden={!open}

@@ -201,6 +201,59 @@ export function timelineFullMaxHeight(): number {
   return Math.floor(window.innerHeight * 0.7);
 }
 
+/**
+ * 第四十三批（移动端性能）：正文自然高度上报 / 截断判定只在卡片接近视口时测量。
+ *
+ * 通知 tab 一屏几十张卡，两个 effect 无条件读 `scrollHeight` 会强制布局每一张
+ * 离屏卡，正好抵消卡片根节点上的 `content-visibility:auto`。这里用
+ * IntersectionObserver（rootMargin 200px）观察测量节点：进入视口附近才跑一次 +
+ * 400ms 复测，离开时清掉复测定时器（避免给离屏卡留定时器）。
+ *
+ * 没有 IntersectionObserver（jsdom / 老浏览器）时退回原来的立即测量 + 400ms
+ * 复测，现有单测语义不变。
+ */
+function observeMeasureWhenVisible(
+  node: HTMLElement | null,
+  run: () => void,
+): () => void {
+  if (!node) {
+    run();
+    return () => {};
+  }
+  const Observer = globalThis.IntersectionObserver;
+  if (typeof Observer !== "function") {
+    run();
+    const retryNoIO = setTimeout(run, 400);
+    return () => clearTimeout(retryNoIO);
+  }
+  let retry: ReturnType<typeof setTimeout> | null = null;
+  const clearRetry = () => {
+    if (retry !== null) {
+      clearTimeout(retry);
+      retry = null;
+    }
+  };
+  const measureNow = () => {
+    run();
+    clearRetry();
+    retry = setTimeout(run, 400);
+  };
+  const observer = new Observer(
+    (entries) => {
+      for (const item of entries) {
+        if (item.isIntersecting) measureNow();
+        else clearRetry();
+      }
+    },
+    { rootMargin: "200px" },
+  );
+  observer.observe(node);
+  return () => {
+    observer.disconnect();
+    clearRetry();
+  };
+}
+
 const TimelineCard = memo(function TimelineCard({
   entry,
   feed,
@@ -282,9 +335,8 @@ const TimelineCard = memo(function TimelineCard({
     const node2 = bodyRef.current;
     if (onNaturalHeightChange) {
       const report = () => onNaturalHeightChange(entry.id, node2?.scrollHeight ?? 0);
-      report();
-      const retry = setTimeout(report, 400);
-      return () => clearTimeout(retry);
+      // 第四十三批：只在卡片接近视口时测量，离屏卡不再强制布局
+      return observeMeasureWhenVisible(node2, report);
     }
     return undefined;
   }, [entry.id, previewText, clampLines, onNaturalHeightChange, bodyOnHover]);
@@ -298,9 +350,8 @@ const TimelineCard = memo(function TimelineCard({
       return;
     }
     const measure = () => setIsClipped(node2.scrollHeight > node2.clientHeight + 1);
-    measure();
-    const retry = setTimeout(measure, 400);
-    return () => clearTimeout(retry);
+    // 第四十三批：只在卡片接近视口时测量，离屏卡不再强制布局
+    return observeMeasureWhenVisible(node2, measure);
   }, [previewText, clampLines, autoExpandLongEntry, bodyOnHover]);
 
   const effectiveClampLines = autoExpandLongEntry ? null : clampLines;
@@ -373,6 +424,9 @@ const TimelineCard = memo(function TimelineCard({
           }
           onMouseLeave={bodyOnHover ? () => onHoverLeave?.() : undefined}
           className={cn(
+            // 第四十三批（移动端性能）：通知卡片实测高 88–149px，离屏时用 140px
+            // 估算跳过布局/绘制；进入视口再由浏览器收敛到真实高度。
+            "[content-visibility:auto] [contain-intrinsic-size:auto_140px]",
             "group relative cursor-pointer overflow-hidden rounded-[10px] border p-2.5 transition-[background-color,border-color,box-shadow,opacity] duration-200",
             isSelected
               ? "border-border/60 bg-card shadow-nf"
