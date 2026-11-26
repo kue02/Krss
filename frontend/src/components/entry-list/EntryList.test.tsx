@@ -1095,6 +1095,59 @@ describe("EntryList translation scheduling", () => {
     requestAnimationFrameMock.mockRestore();
   });
 
+  it("移动端（window 滚动）也能测出可视区首条，标上方未读", async () => {
+    // 移动端走 document 滚动：容器自身不滚、容器 top 随内容同幅上移，
+    // 旧实现只监听容器 scroll 并用容器 top 当基准 → firstVisibleIndex 恒 0。
+    const requestAnimationFrameMock = vi
+      .spyOn(globalThis, "requestAnimationFrame")
+      .mockImplementation((callback: FrameRequestCallback) => {
+        callback(0);
+        return 1;
+      });
+
+    render(<EntryList {...defaultProps} isMobile />);
+
+    const viewport = screen.getByTestId("entry-list-viewport");
+    const rows = Array.from(
+      viewport.querySelectorAll<HTMLElement>("[data-entry-id]"),
+    );
+    expect(rows.length).toBe(5);
+
+    // 前两行已滚出视口上沿，第三行起仍可见（视口顶由 scrollSurface 给出）
+    rows.forEach((row, index) => {
+      const bottom = (index - 2) * 40;
+      const top = bottom - 40;
+      Object.defineProperty(row, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({
+          top,
+          bottom,
+          height: 40,
+          left: 0,
+          right: 300,
+          width: 300,
+          x: 0,
+          y: top,
+          toJSON: () => ({}),
+        }),
+      });
+    });
+
+    act(() => {
+      fireEvent.scroll(window);
+    });
+
+    fireEvent.click(screen.getByTestId("mark-all-read-footer"));
+
+    expect(mockMarkManyAsRead).toHaveBeenCalledWith({
+      ids: ["1", "2"],
+      read: true,
+    });
+    expect(mockShowToast).not.toHaveBeenCalled();
+
+    requestAnimationFrameMock.mockRestore();
+  });
+
   it("条目从底部离开可视区时不会标为已读", async () => {
     vi.mocked(useGeneralSettings).mockReturnValue({
       data: { markReadOnScroll: true },
