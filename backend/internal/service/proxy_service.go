@@ -54,6 +54,10 @@ type ProxyService interface {
 	// FetchMedia 与 FetchImage 同一条管线，但额外支持音视频类型与 Range 请求
 	// （正文里的 <video> 走代理，见 frontend/src/components/ui/article-video.tsx）
 	FetchMedia(ctx context.Context, mediaURL, refererURL, rangeHeader string) (*ProxyResult, error)
+	// FetchMediaStream 给 Range 请求用的流式版本：上游回 206 时不等整段读完，
+	// 边收边发边写缓存（首包不再等整个 4MiB 窗口）。不带 Range 的请求不要走
+	// 这条 —— 图片要靠完整字节嗅探 Content-Type，见 FetchMedia。
+	FetchMediaStream(ctx context.Context, mediaURL, refererURL, rangeHeader string) (*MediaStream, error)
 	Close()
 }
 
@@ -164,17 +168,30 @@ func safeHostLog(rawURL string) string {
 // fetchWithStandardClient 用 net/http 抓图：代理、跳转、cookie 都由标准栈处理。
 // 拿到的不是图片（例如 Anubis 挑战页）就返回错误，交给上层退到 azuretls。
 func (s *proxyService) fetchWithStandardClient(ctx context.Context, imageURL, refererURL, rangeHeader string) (*ProxyResult, error) {
+	resp, parsedURL, err := s.openStandardMediaResponse(ctx, imageURL, refererURL, rangeHeader)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	return bufferStandardMediaResponse(resp, parsedURL, rangeHeader)
+}
+
+// openStandardMediaResponse 发请求并校验状态码，把 body 留给调用方关。
+// 抽出来是给流式转发（FetchMediaStream）复用同一套请求构造：代理、跳转、
+// Anubis cookie、Range 转发这几件事只能有一份实现，否则两条路行为会漂。
+func (s *proxyService) openStandardMediaResponse(ctx context.Context, imageURL, refererURL, rangeHeader string) (*http.Response, *url.URL, error) {
 	parsedURL, err := url.Parse(imageURL)
 	if err != nil {
-		return nil, ErrInvalidURL
+		return nil, nil, ErrInvalidURL
 	}
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
-		return nil, ErrInvalidProtocol
+		return nil, nil, ErrInvalidProtocol
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, imageURL, nil)
 	if err != nil {
-		return nil, ErrInvalidURL
+		return nil, nil, ErrInvalidURL
 	}
 	setProxyImageHeaders(req.Header, refererURL, parsedURL)
 	// 把 Range 真的发给上游：原来只拿它做本地切片，上游永远回 200 + 整个文件，
@@ -194,15 +211,20 @@ func (s *proxyService) fetchWithStandardClient(ctx context.Context, imageURL, re
 	client := s.clientFactory.NewHTTPClient(ctx, proxyTimeout)
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrFetchFailed, err)
+		return nil, nil, fmt.Errorf("%w: %v", ErrFetchFailed, err)
 	}
-	defer resp.Body.Close()
 
 	// 200 整段、206 片段都算成功（<video> 会带 Range 请求）
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
-		return nil, fmt.Errorf("%w: %d", ErrFetchFailed, resp.StatusCode)
+		_ = resp.Body.Close()
+		return nil, nil, fmt.Errorf("%w: %d", ErrFetchFailed, resp.StatusCode)
 	}
+	return resp, parsedURL, nil
+}
 
+// bufferStandardMediaResponse 把整段读进内存、嗅探类型、必要时本地切片。
+// 图片代理必须走这里：Content-Type 不可信时要靠 magic bytes 兜底。
+func bufferStandardMediaResponse(resp *http.Response, parsedURL *url.URL, rangeHeader string) (*ProxyResult, error) {
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxProxyMediaBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrFetchFailed, err)

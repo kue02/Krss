@@ -83,6 +83,21 @@ func (mr *MockProxyServiceMockRecorder) FetchMedia(ctx, mediaURL, refererURL, ra
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchMedia", reflect.TypeOf((*MockProxyService)(nil).FetchMedia), ctx, mediaURL, refererURL, rangeHeader)
 }
 
+// FetchMediaStream mocks base method.
+func (m *MockProxyService) FetchMediaStream(ctx context.Context, mediaURL, refererURL, rangeHeader string) (*service.MediaStream, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchMediaStream", ctx, mediaURL, refererURL, rangeHeader)
+	ret0, _ := ret[0].(*service.MediaStream)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FetchMediaStream indicates an expected call of FetchMediaStream.
+func (mr *MockProxyServiceMockRecorder) FetchMediaStream(ctx, mediaURL, refererURL, rangeHeader any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchMediaStream", reflect.TypeOf((*MockProxyService)(nil).FetchMediaStream), ctx, mediaURL, refererURL, rangeHeader)
+}
+
 // MediaCacheStats mocks base method.
 func (m *MockProxyService) MediaCacheStats() (int, int64) {
 	m.ctrl.T.Helper()

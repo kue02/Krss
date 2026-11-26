@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -97,6 +98,10 @@ func (c *mediaCache) Get(key string) (*ProxyResult, bool) {
 	}, true
 }
 
+// errMediaCacheEntryTooLarge 单件超过 maxCacheableMediaBytes：放弃落盘，但
+// 不影响把字节继续回给客户端（缓存永远只是加速，不能变成失败原因）。
+var errMediaCacheEntryTooLarge = errors.New("media cache entry too large")
+
 func (c *mediaCache) Put(key string, result *ProxyResult) {
 	if c == nil || c.dir == "" || result == nil || len(result.Data) == 0 {
 		return
@@ -104,7 +109,7 @@ func (c *mediaCache) Put(key string, result *ProxyResult) {
 	if int64(len(result.Data)) > maxCacheableMediaBytes {
 		return
 	}
-	meta, err := json.Marshal(mediaCacheMeta{
+	w, err := c.newWriter(key, mediaCacheMeta{
 		ContentType:  result.ContentType,
 		StatusCode:   result.StatusCode,
 		AcceptRanges: result.AcceptRanges,
@@ -113,23 +118,97 @@ func (c *mediaCache) Put(key string, result *ProxyResult) {
 	if err != nil {
 		return
 	}
+	if _, err := w.Write(result.Data); err != nil {
+		return // Write 失败时已经 Abort 掉了临时文件
+	}
+	w.Commit()
+}
+
+// mediaCacheWriter 缓存落盘的唯一入口：先写「meta + '\n' + 原始字节」到
+// 一个 .tmp，Commit 时 rename 到正式路径，Abort 时删掉 .tmp。
+//
+// 为什么单独抽出来：流式转发（FetchMediaStream）是边收边写，没法等整个
+// 结果到手再 Put；但落盘格式必须和 Put 完全一样，否则读回来解析不了。
+// 所以格式只写在这一处，两条路共用。
+type mediaCacheWriter struct {
+	cache *mediaCache
+	path  string
+	tmp   string
+	file  *os.File
+	size  int64
+	done  bool
+}
+
+// newWriter 建好临时文件并写入元信息头（此时还没有任何媒体字节）。
+func (c *mediaCache) newWriter(key string, meta mediaCacheMeta) (*mediaCacheWriter, error) {
+	if c == nil || c.dir == "" {
+		return nil, errors.New("media cache disabled")
+	}
+	header, err := json.Marshal(meta)
+	if err != nil {
+		return nil, err
+	}
 	path := c.keyPath(key)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, err
+	}
+	// 用 CreateTemp 而不是固定 `<hash>.bin.tmp`：同一个片段可能被两个播放器
+	// 同时请求，固定名会互相踩掉（一个 Commit、另一个 Abort 时删错文件）。
+	file, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+"-*.tmp")
+	if err != nil {
+		return nil, err
+	}
+	w := &mediaCacheWriter{cache: c, path: path, tmp: file.Name(), file: file}
+	if _, err := file.Write(append(header, '\n')); err != nil {
+		w.Abort()
+		return nil, err
+	}
+	return w, nil
+}
+
+func (w *mediaCacheWriter) Write(p []byte) (int, error) {
+	if w == nil || w.done || w.file == nil {
+		return 0, errors.New("media cache writer closed")
+	}
+	if w.size+int64(len(p)) > maxCacheableMediaBytes {
+		w.Abort()
+		return 0, errMediaCacheEntryTooLarge
+	}
+	n, err := w.file.Write(p)
+	w.size += int64(n)
+	if err != nil {
+		w.Abort()
+	}
+	return n, err
+}
+
+// Commit 关文件并 rename 成正式条目；任何一步失败都当没缓存过。
+func (w *mediaCacheWriter) Commit() {
+	if w == nil || w.done {
 		return
 	}
-	tmp := path + ".tmp"
-	buf := make([]byte, 0, len(meta)+1+len(result.Data))
-	buf = append(buf, meta...)
-	buf = append(buf, '\n')
-	buf = append(buf, result.Data...)
-	if err := os.WriteFile(tmp, buf, 0o644); err != nil {
+	w.done = true
+	if err := w.file.Close(); err != nil {
+		_ = os.Remove(w.tmp)
 		return
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
+	if err := os.Rename(w.tmp, w.path); err != nil {
+		_ = os.Remove(w.tmp)
 		return
 	}
-	c.pruneIfNeeded()
+	w.cache.pruneIfNeeded()
+}
+
+// Abort 丢弃半截文件：客户端中途断开、上游出错、超限都用它。
+func (w *mediaCacheWriter) Abort() {
+	if w == nil || w.done {
+		return
+	}
+	w.done = true
+	if w.file != nil {
+		_ = w.file.Close()
+	}
+	_ = os.Remove(w.tmp)
 }
 
 // pruneIfNeeded 超出上限就按 mtime 从旧到新删，直到降到 80%。
