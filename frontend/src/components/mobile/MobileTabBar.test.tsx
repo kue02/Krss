@@ -38,11 +38,33 @@ function getNav() {
   return screen.getByRole("navigation");
 }
 
+/**
+ * 底栏是否收起，只看对外可观测的契约：`data-state` 语义值 + `inert`。
+ * 不锁 className —— 换等价实现（inline transform、纯 CSS）不该让测试变红。
+ */
+function expectHidden() {
+  const nav = getNav();
+  expect(nav.getAttribute("data-state")).toBe("hidden");
+  expect(nav.getAttribute("inert")).not.toBeNull();
+}
+
+function expectVisible() {
+  const nav = getNav();
+  expect(nav.getAttribute("data-state")).toBe("open");
+  expect(nav.getAttribute("inert")).toBeNull();
+}
+
 /** 派发一次滚动到指定位置（window.scrollY 已先设好）。 */
 function scrollTo(y: number) {
   setScrollY(y);
   act(() => {
     window.dispatchEvent(new Event("scroll"));
+  });
+}
+
+function advance(ms: number) {
+  act(() => {
+    vi.advanceTimersByTime(ms);
   });
 }
 
@@ -60,76 +82,106 @@ describe("MobileTabBar 收起逻辑", () => {
 
   it("向下滚动收起、向上滚动展开", () => {
     renderTabBar();
-    expect(getNav().className).toContain("translate-y-0");
+    expectVisible();
 
     scrollTo(400);
-    expect(getNav().className).toContain("translate-y-full");
-    expect(getNav().getAttribute("data-hidden")).toBe("true");
+    expectHidden();
 
-    act(() => {
-      vi.advanceTimersByTime(400);
-    });
+    advance(400);
     scrollTo(300);
-    expect(getNav().className).toContain("translate-y-0");
+    expectVisible();
   });
 
   it("方向静默期内滑回顶部也会立即展开（到顶判定排在静默期之前）", () => {
     renderTabBar();
-    // 先向下滚，进入 300ms 方向静默期并收起
     scrollTo(400);
-    expect(getNav().className).toContain("translate-y-full");
+    expectHidden();
 
     // 静默期尚未结束就滑回顶部：旧实现会在 update() 首行直接 return，底栏卡住
     scrollTo(0);
-    expect(getNav().className).toContain("translate-y-0");
-    expect(getNav().getAttribute("data-hidden")).toBeNull();
+    expectVisible();
   });
 
   it("静默期结束后的首帧不会用陈旧基准误判方向", () => {
     renderTabBar();
     scrollTo(400);
-    act(() => {
-      vi.advanceTimersByTime(400);
-    });
+    advance(400);
     // 静默期内继续向下滚到 1200（旧实现不更新 last）
     scrollTo(1200);
-    act(() => {
-      vi.advanceTimersByTime(400);
-    });
+    advance(400);
     // 真正向上滚一点点，应该展开而不是因为 dy 巨大再次收起
     scrollTo(1190);
-    expect(getNav().className).toContain("translate-y-0");
+    expectVisible();
   });
 
-  it("收起后滚动停住不再有 scroll 事件，落地校正也会展开到顶的底栏", () => {
+  it("滚动落地校正（140ms）就能把到顶的底栏叫回来", () => {
     renderTabBar();
     scrollTo(400);
-    expect(getNav().className).toContain("translate-y-full");
+    expectHidden();
 
-    // 模拟「惯性滚动/程序化回顶」：位置已到 0，但只有一次 scroll 被静默期吞掉
+    // 位置已经回到 0，但这次 scroll 被静默期吞掉；只让 settle 定时器有机会跑
     setScrollY(0);
-    act(() => {
-      vi.advanceTimersByTime(600);
-    });
-    expect(getNav().className).toContain("translate-y-0");
+    advance(200);
+    expectVisible();
   });
 
-  it("收起状态下完全不派发 scroll 时，兜底轮询也能展开", () => {
+  it("完全不派发 scroll 时，一次性兜底校正也能展开", () => {
     renderTabBar();
     scrollTo(400);
-    expect(getNav().className).toContain("translate-y-full");
+    // 先把 settle 定时器耗掉（此时位置仍是 400，不会展开）
+    advance(200);
+    expectHidden();
+
+    // 位置变了但没有任何 scroll 事件：只剩 600ms 的一次性兜底
+    setScrollY(0);
+    advance(600);
+    expectVisible();
+  });
+
+  it("页面从缓存恢复（pageshow）时按真实位置复位", () => {
+    renderTabBar();
+    scrollTo(1200);
+    expectHidden();
+
+    // bfcache 恢复：位置被浏览器换成 0，不派发 scroll
+    setScrollY(0);
+    act(() => {
+      window.dispatchEvent(new Event("pageshow"));
+    });
+    expectVisible();
+  });
+
+  it("resize 只校正基准、不清方向静默期（避免地址栏收放时闪动）", () => {
+    renderTabBar();
+    scrollTo(400);
+    expectHidden();
+
+    // iOS 地址栏收缩触发 resize：旧实现会清掉静默期
+    setScrollY(390);
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    // 静默期仍在，向上 10px 不该把底栏闪出来
+    scrollTo(380);
+    expectHidden();
+  });
+
+  it("resize 发生在顶部时仍然直接展开", () => {
+    renderTabBar();
+    scrollTo(400);
+    expectHidden();
 
     setScrollY(0);
     act(() => {
-      vi.advanceTimersByTime(300);
+      window.dispatchEvent(new Event("resize"));
     });
-    expect(getNav().className).toContain("translate-y-0");
+    expectVisible();
   });
 
   it("切换内容类型时按当前滚动位置复位", () => {
     const { rerender } = renderTabBar();
     scrollTo(400);
-    expect(getNav().className).toContain("translate-y-full");
+    expectHidden();
 
     setScrollY(0);
     rerender(
@@ -139,19 +191,17 @@ describe("MobileTabBar 收起逻辑", () => {
         onSelect={() => {}}
       />,
     );
-    expect(getNav().className).toContain("translate-y-0");
+    expectVisible();
   });
 
   it("收起时不参与命中测试与朗读", () => {
     renderTabBar();
     scrollTo(400);
-    const nav = getNav();
-    expect(nav.getAttribute("inert")).not.toBeNull();
-    act(() => {
-      vi.advanceTimersByTime(400);
-    });
+    expectHidden();
+
+    advance(400);
     scrollTo(0);
-    expect(getNav().getAttribute("inert")).toBeNull();
+    expectVisible();
   });
 
   it("点击 tab 回调内容类型", () => {

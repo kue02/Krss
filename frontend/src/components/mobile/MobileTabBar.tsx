@@ -23,6 +23,8 @@ const DIRECTION_LOCK_MS = 300;
 const SCROLL_SETTLE_MS = 140;
 /** 触发隐藏/显示的最小位移，滤掉像素级抖动。 */
 const DIRECTION_DELTA_PX = 2;
+/** 收起后多久做一次落地校正（一次性，非常驻）。 */
+const FALLBACK_CHECK_MS = 600;
 
 /**
  * 移动端底部内容类型导航。
@@ -90,44 +92,58 @@ export function MobileTabBar({
       handleSettle();
     };
 
-    // 切内容类型、页面从缓存恢复、旋转屏幕时，滚动位置可能整体换掉且不派发 scroll。
-    const syncToScrollPosition = () => {
+    // 滚动位置整体换掉但不派发 scroll 的场合：页面从缓存恢复、旋转屏幕、切内容类型。
+    // 这些是真正的「换了上下文」，静默期也该一起清掉。
+    const resyncAll = () => {
       last = window.scrollY;
       lockUntil = 0;
       revealIfAtTop();
     };
 
+    // `resize` 在移动端是滚动过程中的高频副作用（iOS 地址栏/工具栏收放、软键盘弹出），
+    // 不是上下文切换。这里只校正基准值，不能清静默期——否则正在防抖的那一刻把防抖关掉，
+    // 滚动中任何一次向上抖动都会把底栏闪出来。
+    const syncBaseline = () => {
+      last = window.scrollY;
+      revealIfAtTop();
+    };
+
     window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("pageshow", syncToScrollPosition);
-    window.addEventListener("resize", syncToScrollPosition);
-    window.addEventListener("orientationchange", syncToScrollPosition);
-    syncToScrollPosition();
+    window.addEventListener("pageshow", resyncAll);
+    window.addEventListener("resize", syncBaseline);
+    window.addEventListener("orientationchange", resyncAll);
+    resyncAll();
 
     return () => {
       window.clearTimeout(settleTimer);
       window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("pageshow", syncToScrollPosition);
-      window.removeEventListener("resize", syncToScrollPosition);
-      window.removeEventListener("orientationchange", syncToScrollPosition);
+      window.removeEventListener("pageshow", resyncAll);
+      window.removeEventListener("resize", syncBaseline);
+      window.removeEventListener("orientationchange", resyncAll);
     };
     // 内容类型换了就是另一份列表，沿用上一份的收起状态只会让底栏凭空消失。
   }, [contentType]);
 
-  // 兜底：收起状态下定时校正一次。有些回到顶部的路径根本不派发 scroll
-  // （详情页返回时恢复滚动位置、列表重挂载、iOS 惯性滚动被系统接管），
-  // 只靠事件会把底栏永远留在屏幕外。只在收起时跑，展开后立即停。
+  // 兜底：有些回到顶部的路径根本不派发 scroll（详情页返回时恢复滚动位置、
+  // 列表重挂载、iOS 惯性滚动被系统接管），只靠事件会把底栏永远留在屏幕外。
+  // 这里只补「一次性」校正，不做常驻轮询——收起态恰好是「用户在读长文」的常态，
+  // 4Hz 的定时器会一直跑下去。
   useEffect(() => {
     if (!hidden) return;
-    let timer = 0;
-    const check = () => {
-      if (window.scrollY <= TOP_RESET_THRESHOLD_PX) {
-        setHidden(false);
-        return;
-      }
-      timer = window.setTimeout(check, 250);
+    const reveal = () => {
+      if (window.scrollY <= TOP_RESET_THRESHOLD_PX) setHidden(false);
     };
-    timer = window.setTimeout(check, 250);
-    return () => window.clearTimeout(timer);
+    // 落地一次校正，覆盖「位置已经变了但没有任何事件」的情况
+    const timer = window.setTimeout(reveal, FALLBACK_CHECK_MS);
+    // 滚动真正结束时浏览器会派发 scrollend（Safari 17+/Chrome 114+），比定时器准
+    window.addEventListener("scrollend", reveal);
+    // 后台标签页回到前台时校正一次
+    document.addEventListener("visibilitychange", reveal);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("scrollend", reveal);
+      document.removeEventListener("visibilitychange", reveal);
+    };
   }, [hidden]);
 
   const { data: feeds } = useFeeds();
@@ -156,7 +172,7 @@ export function MobileTabBar({
   return (
     <nav
       aria-label={t("content_type.nav_label")}
-      data-hidden={hidden ? "true" : undefined}
+      data-state={hidden ? "hidden" : "open"}
       inert={hidden}
       className={cn(
         "mobile-tab-bar fixed inset-x-0 bottom-0 z-20 border-t border-border/50 bg-background/75 pb-[env(safe-area-inset-bottom)] shadow-[0_-1px_0_rgba(0,0,0,0.03)] backdrop-blur-xl transition-transform duration-300 ease-out",
