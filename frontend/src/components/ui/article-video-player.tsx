@@ -2,7 +2,11 @@ import "@videojs/react/video/skin.css";
 import { Video, VideoPlayer, VideoSkin } from "@videojs/react/video";
 import { I18nProvider } from "@videojs/react/i18n";
 import { useCallback, useRef, useState } from "react";
-import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
+import type {
+  CSSProperties,
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+} from "react";
 import { useInViewNow } from "@/hooks/useInViewNow";
 
 /**
@@ -101,74 +105,34 @@ interface PreviewSession {
  * 同时挂 `pause` / `seeking` / `seeked` 监听：这些事件只会在**用户主动暂停或
  * 拖动进度**时出现，命中即标记 `userTookOver`。
  *
- * `play` 要区别对待：我们自己那次静音起播也会触发它。用一个 `autoPlayPending`
- * 标记把「这次是我们自己起的」吃掉；剩下的 `play` 就是用户点了播放 —— 这才是真正的
- * 「用户接管」：标记 `userTookOver`，并把声音打开（用户点了播放却还是静音会很怪）。
- * 之后鼠标移开不应再把用户主动播的视频暂停掉。
+ * 「用户点播放」不靠 `play` 事件判定（我们自己那次静音起播也会触发它，用标志位区分会
+ * 和事件时序赛跑）；改由外层容器监听点击落在播放键（`.media-play-button`）上，这是
+ * 100% 的用户手势，不会误判。命中即接管并打开声音。
  */
 function startMutedPreview(
   video: HTMLVideoElement,
   session: PreviewSession,
 ): () => void {
   let cancelled = false;
-  // 我们自己那次静音起播会触发 `play`；用它把「自动起播」和「用户点播放」分开。
-  let autoPlayPending = false;
-  let autoPlayTimer: ReturnType<typeof setTimeout> | null = null;
-
-  // 我们自己起播时把「接下来这次 play 事件是自动的」标记上；
-  // 真浏览器里 play 事件是紧跟着排的任务，setTimeout(0) 会排在它后面，正好兜底清掉标记。
-  const markAutoPlay = () => {
-    autoPlayPending = true;
-    if (autoPlayTimer !== null) clearTimeout(autoPlayTimer);
-    autoPlayTimer = setTimeout(() => {
-      autoPlayPending = false;
-      autoPlayTimer = null;
-    }, 0);
-  };
 
   const markUserAction = () => {
     session.userTookOver = true;
   };
-  // 用户点播放（非我们自动起的）→ 接管：后面鼠标移开不再暂停；顺手开声音。
-  const handlePlay = () => {
-    if (autoPlayPending) {
-      autoPlayPending = false;
-      if (autoPlayTimer !== null) {
-        clearTimeout(autoPlayTimer);
-        autoPlayTimer = null;
-      }
-      return;
-    }
-    session.userTookOver = true;
-    if (video.muted) {
-      video.muted = false;
-      // 用户接管后就别再按「预览前是否静音」还原了，否则移开又会被静音。
-      session.wasMuted = false;
-    }
-  };
   video.addEventListener("pause", markUserAction);
   video.addEventListener("seeking", markUserAction);
   video.addEventListener("seeked", markUserAction);
-  video.addEventListener("play", handlePlay);
 
   const retry = () => {
     if (cancelled) return;
-    markAutoPlay();
     const result = video.play();
-    if (result && typeof result.catch === "function") {
-      result.catch(() => {
-        autoPlayPending = false;
-      });
-    }
+    if (result && typeof result.catch === "function") result.catch(() => {});
   };
 
   const play = () => {
     if (cancelled) return;
-    markAutoPlay();
     const result = video.play();
     if (result && typeof result.catch === "function") {
       result.catch(() => {
-        autoPlayPending = false;
         // 已经有足够数据还失败，说明是被策略拒了，补播也没用
         if (cancelled || video.readyState >= 3) return;
         video.addEventListener("canplay", retry, { once: true });
@@ -184,11 +148,6 @@ function startMutedPreview(
     video.removeEventListener("pause", markUserAction);
     video.removeEventListener("seeking", markUserAction);
     video.removeEventListener("seeked", markUserAction);
-    video.removeEventListener("play", handlePlay);
-    if (autoPlayTimer !== null) {
-      clearTimeout(autoPlayTimer);
-      autoPlayTimer = null;
-    }
   };
 }
 
@@ -256,6 +215,25 @@ export function ArticleVideoPlayer({
     [],
   );
 
+  // 用户点了播放键（大播放键/控制条播放键）：这次是真·用户接管，别再被移开暂停。
+  // 用点击播放键判定而不是 `play` 事件，避免和自己那次静音自动起播的事件赛跑。
+  const handleSurfaceClick = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      const target = event.target as Element | null;
+      if (!target || !target.closest(".media-play-button")) return;
+      const session = sessionRef.current;
+      if (!session) return;
+      session.userTookOver = true;
+      const video = videoRef.current;
+      if (video && video.muted) {
+        video.muted = false;
+        // 用户接管后别再按「预览前是否静音」还原，否则移开又被静音。
+        session.wasMuted = false;
+      }
+    },
+    [],
+  );
+
   const handlePointerLeave = useCallback(() => {
     const session = sessionRef.current;
     if (!session) return;
@@ -294,6 +272,7 @@ export function ArticleVideoPlayer({
       className="w-full"
       onPointerEnter={handlePointerEnter}
       onPointerLeave={handlePointerLeave}
+      onClick={handleSurfaceClick}
     >
       <I18nProvider locale={locale}>
         {/* poster 同时给 Player（皮肤的 Poster 用）和 Video（原生海报兜底）：

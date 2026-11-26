@@ -412,13 +412,15 @@ describe("ArticleVideo · Video.js 播放器（NextFlux 同款）", () => {
       expect(play).toHaveBeenCalled();
       expect(video.muted).toBe(true);
 
-      // 用户点播放：jsdom 的 paused 恒为 true，覆写成 false 再派发原生 play 事件。
-      // 此刻 video 还是静音（预览时设的），这正是用户报的「点播放后移开又被暂停」场景。
+      // 用户点播放：此刻 video 还是静音（预览时设的），这正是「点播放后移开又被暂停」场景。
+      // jsdom 的 paused 恒为 true，覆写成 false 模拟真的在播，再点真实的播放键。
       Object.defineProperty(video, "paused", {
         configurable: true,
         get: () => false,
       });
-      video.dispatchEvent(new Event("play"));
+      const playBtn = container.querySelector(".media-play-button");
+      expect(playBtn).not.toBeNull();
+      fireEvent.click(playBtn as Element);
       expect(video.muted).toBe(false);
 
       pause.mockClear();

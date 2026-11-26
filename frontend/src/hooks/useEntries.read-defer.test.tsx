@@ -375,4 +375,30 @@ describe("useMarkManyAsRead / useMarkAllAsRead —— 批量标已读也不当�
     expect(deferredRemovalIds()).toContain("a");
     expect(deferredRemovalIds()).toContain("b");
   });
+
+  it("markAll 在普通视图（unreadOnly=false）也把行内改成已读，圆点当场消失且不记账", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    // 普通「全部文章」视图：a、b 都未读
+    client.setQueryData(["entries", { unreadOnly: false, tag: "all" }], {
+      pages: [{ entries: [makeEntry("a"), makeEntry("b")], hasMore: false }],
+    });
+
+    const { result } = renderHook(() => useMarkAllAsRead(), {
+      wrapper: wrapper(client),
+    });
+    await act(async () => {
+      result.current.mutate({} as never);
+    });
+
+    const list = client.getQueryData<{ pages: { entries: Entry[] }[] }>([
+      "entries",
+      { unreadOnly: false, tag: "all" },
+    ]);
+    const rows = list?.pages[0]?.entries ?? [];
+    expect(rows.every((e) => e.read)).toBe(true);
+    // 普通视图不摘行、也不需要延迟记账
+    expect(deferredRemovalIds()).toEqual([]);
+  });
 });
