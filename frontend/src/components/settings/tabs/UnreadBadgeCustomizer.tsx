@@ -265,8 +265,8 @@ export function UnreadBadgeCustomizer() {
                 )}
                 style={{
                   backgroundColor: config.followAccent
-                    ? "var(--accent)"
-                    : (config.customColor ?? "var(--accent)"),
+                    ? "var(--accent-ink)"
+                    : (config.customColor ?? "var(--accent-ink)"),
                 }}
               />
               {config.followAccent && (

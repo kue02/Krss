@@ -211,7 +211,7 @@ export function MobileTabBar({
                   className={cn(
                     "absolute right-1.5 top-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-semibold leading-none tabular-nums",
                     active
-                      ? "bg-accent text-white"
+                      ? "bg-accent text-accent-foreground"
                       : "bg-default text-muted-foreground",
                   )}
                 >

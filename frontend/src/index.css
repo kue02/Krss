@@ -12,16 +12,16 @@
   --color-card-foreground: var(--surface-foreground);
   --color-popover: var(--overlay);
   --color-popover-foreground: var(--overlay-foreground);
-  --color-primary: var(--accent);
-  --color-primary-foreground: var(--accent-foreground);
+  --color-primary: var(--accent-ink);
+  --color-primary-foreground: var(--accent-ink-foreground);
   --color-secondary: var(--surface-secondary);
   --color-secondary-foreground: var(--surface-secondary-foreground);
   /* muted = HeroUI 的「次要文字色」（它组件内部用它当 color），不能当底色 */
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted);
   /* accent = HeroUI 的强调色（选中/悬浮态用它上色），底色场景请用 bg-secondary */
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent-ink);
+  --color-accent-foreground: var(--accent-ink-foreground);
   --color-destructive: var(--danger);
   --color-destructive-foreground: var(--danger-foreground);
   --color-border: var(--border);
@@ -348,10 +348,10 @@ body.mobile-document-scroll-locked {
 .ai-shimmer {
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--accent) 6%, transparent) 0%,
-    color-mix(in srgb, var(--accent) 15%, transparent) 20%,
-    color-mix(in srgb, var(--accent) 6%, transparent) 40%,
-    color-mix(in srgb, var(--accent) 6%, transparent) 100%
+    color-mix(in srgb, var(--accent-ink) 6%, transparent) 0%,
+    color-mix(in srgb, var(--accent-ink) 15%, transparent) 20%,
+    color-mix(in srgb, var(--accent-ink) 6%, transparent) 40%,
+    color-mix(in srgb, var(--accent-ink) 6%, transparent) 100%
   );
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
@@ -684,11 +684,11 @@ body.mobile-document-scroll-locked {
 
 /* Line highlight */
 .entry-content .prose pre code > .line.highlighted {
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  background: color-mix(in srgb, var(--accent-ink) 10%, transparent);
 }
 
 .entry-content .prose pre code > .line.highlighted::before {
-  background: --accent;
+  background: var(--accent-ink);
 }
 
 /* Table wrapper - isolate layout calculation to prevent iOS Safari crash */
@@ -786,7 +786,7 @@ body.mobile-document-scroll-locked {
   .rsshub-quote {
     margin-top: 10px;
     padding: 8px 12px;
-    border-left: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    border-left: 2px solid color-mix(in srgb, var(--accent-ink) 45%, transparent);
     border-radius: 6px;
     background: color-mix(in srgb, var(--foreground) 4%, transparent);
     color: color-mix(in srgb, var(--foreground) 78%, transparent);

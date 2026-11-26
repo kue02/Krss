@@ -58,7 +58,7 @@ export function UnreadIndicator({
           // 去掉外推，让圆点对半压在图标边上（Folo 式）+ 白边托出来，保证完整可见。
           className="size-2 min-h-0 min-w-0 rounded-full"
           style={{
-            backgroundColor: "var(--accent)",
+            backgroundColor: "var(--accent-ink)",
             boxShadow: "0 0 0 1.5px var(--background)",
           }}
         />
