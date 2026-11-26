@@ -19,6 +19,7 @@ const {
   mockMarkManyAsRead,
   mockRemoveFromUnreadList,
   mockRemoveReadEntriesFromUnreadList,
+  mockShowToast,
 } = vi.hoisted(() => ({
   mockRenderedEntryListItem: vi.fn(),
   mockNeedsTranslation: vi.fn(() => Promise.resolve(true)),
@@ -29,6 +30,7 @@ const {
   mockMarkManyAsRead: vi.fn(),
   mockRemoveFromUnreadList: vi.fn(),
   mockRemoveReadEntriesFromUnreadList: vi.fn(),
+  mockShowToast: vi.fn(),
 }));
 
 vi.mock("react-i18next", () => ({
@@ -95,6 +97,12 @@ vi.mock("@/stores/translation-store", () => ({
     clearStatus: vi.fn(),
   },
 }));
+
+// 「可视区域以上没有未读」时要点 toast，这里只替换 showToast，其余导出（useToasts 等）保留真实实现
+vi.mock("@/stores/toast-store", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/stores/toast-store")>();
+  return { ...actual, showToast: mockShowToast };
+});
 
 vi.mock("./EntryListItem", async () => {
   const { forwardRef } = await import("react");
@@ -1023,6 +1031,68 @@ describe("EntryList translation scheduling", () => {
     await flushMarkReadBatch();
 
     expect(mockMarkManyAsRead).not.toHaveBeenCalled();
+  });
+
+  it("可视区域以上没有未读时，点列表尾按钮弹提示且不批量标记", async () => {
+    render(<EntryList {...defaultProps} />);
+
+    // jsdom 里行高为 0，首次测量 firstVisibleIndex 停在 0（上方无可标记条目）
+    const footer = screen.getByTestId("mark-all-read-footer");
+    fireEvent.click(footer);
+
+    expect(mockMarkManyAsRead).not.toHaveBeenCalled();
+    expect(mockShowToast).toHaveBeenCalledWith(
+      "entry.mark_above_visible_no_unread",
+    );
+  });
+
+  it("有未读时，点列表尾按钮只标记可视区域以上的未读条目", async () => {
+    const requestAnimationFrameMock = vi
+      .spyOn(globalThis, "requestAnimationFrame")
+      .mockImplementation((callback: FrameRequestCallback) => {
+        callback(0);
+        return 1;
+      });
+
+    render(<EntryList {...defaultProps} />);
+
+    const viewport = screen.getByTestId("entry-list-viewport");
+    const rows = Array.from(
+      viewport.querySelectorAll<HTMLElement>("[data-entry-id]"),
+    );
+    expect(rows.length).toBe(5);
+
+    // 模拟前两行已滚出屏幕上方（bottom<=0，减 containerTop=0 再加 8 的判定留给实现），
+    // 第三行起仍可见 → firstVisibleIndex=2 → 只标记前两条（都是未读）。
+    rows.forEach((row, index) => {
+      const bottom = (index - 2) * 40;
+      const top = bottom - 40;
+      Object.defineProperty(row, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({
+          top,
+          bottom,
+          height: 40,
+          left: 0,
+          right: 300,
+          width: 300,
+          x: 0,
+          y: top,
+          toJSON: () => ({}),
+        }),
+      });
+    });
+
+    act(() => {
+      fireEvent.scroll(viewport);
+    });
+
+    fireEvent.click(screen.getByTestId("mark-all-read-footer"));
+
+    expect(mockMarkManyAsRead).toHaveBeenCalledWith({ ids: ["1", "2"], read: true });
+    expect(mockShowToast).not.toHaveBeenCalled();
+
+    requestAnimationFrameMock.mockRestore();
   });
 
   it("条目从底部离开可视区时不会标为已读", async () => {

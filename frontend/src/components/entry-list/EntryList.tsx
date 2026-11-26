@@ -71,6 +71,7 @@ import {
   mergeDeferredRemovals,
   subscribeDeferredRemovals,
 } from "./deferred-removal";
+import { collectUnreadIdsAboveVisible } from "./mark-above-visible";
 import { useEntryListScrollSurface } from "./scroll-surface";
 import { useEntryHotkeys } from "@/hooks/useEntryHotkeys";
 import {
@@ -1080,13 +1081,14 @@ export function EntryList({
   // 可视区域以上标为已读：把滚动时已经滚出屏幕上方的未读条目标掉
   // （firstVisibleIndex = 底部 > 0 的第一行，即上方已滚出屏幕的行数）。
   const handleMarkAboveVisibleRead = useCallback(() => {
-    const ids = entries
-      .slice(0, firstVisibleIndex)
-      .filter((entry) => !entry.read)
-      .map((entry) => entry.id);
-    if (ids.length === 0) return;
+    const ids = collectUnreadIdsAboveVisible(entries, firstVisibleIndex);
+    if (ids.length === 0) {
+      // 没有可标记的条目时给个明确反馈，避免点了按钮毫无反应
+      showToast(t("entry.mark_above_visible_no_unread"));
+      return;
+    }
     markManyAsRead({ ids, read: true });
-  }, [entries, firstVisibleIndex, markManyAsRead]);
+  }, [entries, firstVisibleIndex, markManyAsRead, t]);
   /**
    * 虚拟化覆盖「标准文章扁平流」与「社交列表（桌面 + 移动端）」：
    *   - article 内容类型 + 非 hover 档（含 list 与 rows）走原路径；
@@ -1161,7 +1163,12 @@ export function EntryList({
       node.removeEventListener("scroll", handleScroll);
       if (frame) cancelAnimationFrame(frame);
     };
-  }, [entries.length]);
+    // 依赖 entries 本身而不只是 entries.length：筛选 / 视图切换后条目数量可能不变（等长），
+    // 只盯 length 会漏掉重测，firstVisibleIndex 停在旧值 →「可视区域以上标为已读」会标错范围。
+    // entries 是 useMemo 出来的稳定数组（依赖 data / deferredRemovalVersion），只有数据或筛选
+    // 真的换了引用才会重建监听，不会每帧重建；切换筛选 / 视图都会换新的 data → 新 entries 引用
+    // → 重新测量。
+  }, [entries]);
 
   // 刷新：按当前选中范围（单个源 / 文件夹内所有源 / 某个视图的所有源）
   const [mobileActions, setMobileActions] = useState<{
@@ -2244,19 +2251,20 @@ export function EntryList({
                   );
                 })
               )}
-              {/* 24-5：列表尾整宽弱边框「全部标记为已读」（语义=清当前范围未读，
-                  与列表头那颗同接口 onMarkAllRead）。
+              {/* 列表尾整宽弱边框按钮：与列表头统一为「可视区域以上标为已读」，
+                  调用同一个 handleMarkAboveVisibleRead（不再重复列头的旧「全部已读」语义）。
+                  data-testid 保留旧值，避免破坏既有测试。
                   宽度跟时间线/社交卡片同款居中可读宽度，免得在宽栏下失控拉满。 */}
               {entries.length > 0 && (
                 <div className="mx-auto mt-1 w-full max-w-[clamp(45ch,60vw,65ch)] px-2">
                   <button
                     type="button"
                     data-testid="mark-all-read-footer"
-                    onClick={onMarkAllRead}
+                    onClick={handleMarkAboveVisibleRead}
                     className="flex h-[35px] w-full items-center justify-center gap-1.5 rounded-[10px] border border-border bg-transparent px-3 text-[13px] text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
                   >
                     <Check className="size-4 shrink-0" />
-                    {t("entry.mark_all_read")}
+                    {t("entry.mark_visible_above_read")}
                   </button>
                 </div>
               )}
