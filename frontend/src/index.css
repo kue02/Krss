@@ -463,6 +463,18 @@ body.mobile-document-scroll-locked {
   }
 }
 
+/* HeroUI 的 toast 进场靠把整条提示从「自身高度 100% 的下方」推上来
+   （`.toast[data-entering] { --toast-enter: -100% }` + `--dir: -1`）。
+   移动端底部有 tab bar，toast 的落点就在 tab bar 上方，这段位移会先压在
+   tab bar 上、被屏幕裁掉一截，等 data-entering 摘掉后才升到位（实测首帧能
+   停留 1s 以上，用户看到的是「提示贴着屏幕底被切了一半」）。
+   移动端把位移缩到 8px：入场时就已在最终位置附近，也保留一点上浮手感。 */
+@media (max-width: 767px) {
+  .toast[data-entering="true"] {
+    --toast-enter: -0.5rem;
+  }
+}
+
 .entry-content {
   --entry-border: --border;
   --entry-muted: --muted;
