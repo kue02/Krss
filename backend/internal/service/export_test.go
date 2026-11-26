@@ -108,6 +108,12 @@ func BuildAISummarizeSystemPromptForTest(s AIService, ctx context.Context, entry
 // Export for testing
 var SliceByRange = sliceByRange
 
+// Range 窗口改写（fix/video-proxy-stream）：黑盒测试用。
+var ClampOpenEndedRange = clampOpenEndedRange
+
+// MediaChunkBytesForTest 当前开放式 Range 的窗口大小。
+const MediaChunkBytesForTest = mediaChunkBytes
+
 // 插件运行时安全（fix/plugin-runtime）：黑盒测试用的窄口。
 var PluginChildEnv = pluginChildEnv
 var OpenPluginLog = openPluginLog

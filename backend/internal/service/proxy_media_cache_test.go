@@ -84,21 +84,23 @@ func TestFetchMedia_NoCacheWhenDisabled(t *testing.T) {
 	require.Equal(t, int32(2), atomic.LoadInt32(hits), "没挂缓存时就该老老实实每次都出网")
 }
 
-func TestFetchMedia_RangeBypassesCache(t *testing.T) {
+// fix/video-proxy-stream：语义反转 —— 带 Range 的片段现在也要进缓存。
+// <video> 的每个分片请求都带 Range，原来一律跳过 ⇒ 视频永远零命中；
+// 现在按「改写后的有界 range」做键，同片段重复请求直接命中。
+func TestFetchMedia_RangeCachedPerChunk(t *testing.T) {
 	upstream, hits := imageUpstream(t)
 	svc := newCachingProxy(t, t.TempDir())
 
-	// <video> 拖进度条会带 Range：这种片段不该走缓存，也不该被当成整段缓存下来
 	_, err := svc.FetchMedia(context.Background(), upstream.URL+"/v.mp4", "", "bytes=0-3")
 	require.NoError(t, err)
 	_, err = svc.FetchMedia(context.Background(), upstream.URL+"/v.mp4", "", "bytes=0-3")
 	require.NoError(t, err)
-	require.Equal(t, int32(2), atomic.LoadInt32(hits), "带 Range 的请求必须每次都出网")
+	require.Equal(t, int32(1), atomic.LoadInt32(hits), "同片段第二次必须命中缓存（改前这里是 2）")
 
-	// 而且别把片段当整段塞进缓存：随后一次不带 Range 的请求应当仍然出网
+	// 片段不能顶替整段：随后一次不带 Range 的请求仍要出网（键不同）
 	_, err = svc.FetchMedia(context.Background(), upstream.URL+"/v.mp4", "", "")
 	require.NoError(t, err)
-	require.Equal(t, int32(3), atomic.LoadInt32(hits), "Range 请求不该污染缓存")
+	require.Equal(t, int32(2), atomic.LoadInt32(hits), "片段缓存不该顶替整段缓存键")
 }
 
 func TestMediaCache_PrunesWhenOverCap(t *testing.T) {

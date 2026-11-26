@@ -24,8 +24,9 @@ import (
 // 落盘格式：一个文件搞定 —— 第一行是 JSON 元信息，紧跟原始字节。
 // 写临时文件再 rename，避免读到半截文件。
 //
-// 只缓存「不带 Range 的 200 整段」：<video> 拖进度条会带 Range，那种片段缓存价值低、
-// 命中判断也复杂，直接透传。
+// 缓存 200 整段，也缓存 206 片段（<video> 的每个分片请求都带 Range，
+// 原来一律跳过 ⇒ 视频永远零命中）。片段按「改写后的有界 range」做键，
+// 见 mediaCacheKey 与 clampOpenEndedRange。
 
 const (
 	// 默认缓存上限 512 MB；超过就按 mtime 从旧到新删到 80%
@@ -38,6 +39,10 @@ type mediaCacheMeta struct {
 	ContentType  string `json:"contentType"`
 	StatusCode   int    `json:"statusCode"`
 	AcceptRanges string `json:"acceptRanges,omitempty"`
+	// ContentRange 206 片段必须带上（`bytes 0-4194303/63176469`）：
+	// 少了它浏览器不知道总长、也没法接着要下一段，拖进度条就坏。
+	// 老缓存文件没有这个字段，反序列化得空串，正好等价于旧的 200 整段，向后兼容。
+	ContentRange string `json:"contentRange,omitempty"`
 }
 
 type mediaCache struct {
@@ -87,6 +92,7 @@ func (c *mediaCache) Get(key string) (*ProxyResult, bool) {
 		Data:         data,
 		ContentType:  meta.ContentType,
 		StatusCode:   meta.StatusCode,
+		ContentRange: meta.ContentRange,
 		AcceptRanges: meta.AcceptRanges,
 	}, true
 }
@@ -102,6 +108,7 @@ func (c *mediaCache) Put(key string, result *ProxyResult) {
 		ContentType:  result.ContentType,
 		StatusCode:   result.StatusCode,
 		AcceptRanges: result.AcceptRanges,
+		ContentRange: result.ContentRange,
 	})
 	if err != nil {
 		return
