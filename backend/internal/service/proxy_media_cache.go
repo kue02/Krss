@@ -1,10 +1,13 @@
 package service
 
 import (
+	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -32,8 +35,13 @@ import (
 const (
 	// 默认缓存上限 512 MB；超过就按 mtime 从旧到新删到 80%
 	defaultMediaCacheBytes = int64(512) << 20
-	// 单件上限：超过这个大小的媒体（大视频）不落盘，省得把缓存挤爆
-	maxCacheableMediaBytes = int64(32) << 20
+	// 单件上限：超过这个大小的媒体不落盘，省得把缓存挤爆。
+	// 256MiB 是为了装得下几分钟的 4K 视频（63MB 的推文视频远小于它）：
+	// 视频必须整段落盘后，后续 Range 才能从磁盘切片、不再出网。
+	maxCacheableMediaBytes = int64(256) << 20
+	// mediaCacheTTL 缓存条目存活 7 天：视频/图片内容可能变，太久就重新取。
+	// 过期当未命中并顺手删文件（见 Get）。
+	mediaCacheTTL = 7 * 24 * time.Hour
 )
 
 type mediaCacheMeta struct {
@@ -44,6 +52,12 @@ type mediaCacheMeta struct {
 	// 少了它浏览器不知道总长、也没法接着要下一段，拖进度条就坏。
 	// 老缓存文件没有这个字段，反序列化得空串，正好等价于旧的 200 整段，向后兼容。
 	ContentRange string `json:"contentRange,omitempty"`
+	// ContentLength 整段字节数（整文件缓存时 = 全部媒体字节；0=未知）。
+	// 后续 Range 请求靠它 + 文件实际大小算 Content-Range。
+	ContentLength int64 `json:"contentLength,omitempty"`
+	// CreatedAt 写入时间，用于 7 天 TTL。老缓存没有这个字段 → 零值，
+	// Get 退化用文件 mtime 当创建时间，避免升级后把所有老条目当过期删掉。
+	CreatedAt time.Time `json:"createdAt,omitempty"`
 }
 
 type mediaCache struct {
@@ -51,6 +65,11 @@ type mediaCache struct {
 	maxBytes int64
 
 	mu sync.Mutex // 只用来序列化 prune，别在读写文件时长期持有
+
+	// fills 标记「某个 key 正在整段填充中」：浏览器一次播放会并发来好几个 Range，
+	// 不能都去写同一个 URL 的整文件缓存（浪费带宽 + 抢同一个目标路径）。
+	// 只有抢到标记的那个请求负责 tee 落盘，其余请求纯流式转发、不写缓存。
+	fills sync.Map
 }
 
 func newMediaCache(dir string, maxBytes int64) *mediaCache {
@@ -66,34 +85,99 @@ func (c *mediaCache) keyPath(key string) string {
 	return filepath.Join(c.dir, name[:2], name+".bin")
 }
 
-// Get 命中就返回结果；任何读取异常都当作未命中（缓存不该影响可用性）。
-func (c *mediaCache) Get(key string) (*ProxyResult, bool) {
+// openEntry 打开一个缓存条目并读出元信息：返回文件句柄、meta、媒体字节起始偏移、媒体字节数。
+// 调用方负责 Close。TTL 过期当未命中并顺手删文件。
+func (c *mediaCache) openEntry(key string) (*os.File, mediaCacheMeta, int64, int64, bool) {
 	if c == nil || c.dir == "" {
-		return nil, false
+		return nil, mediaCacheMeta{}, 0, 0, false
 	}
-	raw, err := os.ReadFile(c.keyPath(key))
+	path := c.keyPath(key)
+	file, err := os.Open(path)
 	if err != nil {
-		return nil, false
+		return nil, mediaCacheMeta{}, 0, 0, false
 	}
-	nl := indexByte(raw, '\n')
-	if nl <= 0 {
-		return nil, false
+	info, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return nil, mediaCacheMeta{}, 0, 0, false
+	}
+	br := bufio.NewReaderSize(file, 64*1024)
+	line, err := br.ReadString('\n')
+	if err != nil || len(line) < 2 {
+		_ = file.Close()
+		return nil, mediaCacheMeta{}, 0, 0, false
 	}
 	var meta mediaCacheMeta
-	if err := json.Unmarshal(raw[:nl], &meta); err != nil {
+	if err := json.Unmarshal([]byte(strings.TrimSuffix(line, "\n")), &meta); err != nil {
+		_ = file.Close()
+		return nil, mediaCacheMeta{}, 0, 0, false
+	}
+	created := meta.CreatedAt
+	if created.IsZero() {
+		created = info.ModTime() // 老缓存没有 CreatedAt：退化用文件 mtime
+	}
+	if time.Since(created) > mediaCacheTTL {
+		_ = file.Close()
+		_ = os.Remove(path)
+		return nil, mediaCacheMeta{}, 0, 0, false
+	}
+	offset := int64(len(line))
+	size := info.Size() - offset
+	if size <= 0 {
+		_ = file.Close()
+		return nil, mediaCacheMeta{}, 0, 0, false
+	}
+	_ = touchFile(path)
+	return file, meta, offset, size, true
+}
+
+// Get 命中就返回整段结果；任何读取异常都当作未命中（缓存不该影响可用性）。
+func (c *mediaCache) Get(key string) (*ProxyResult, bool) {
+	file, meta, offset, size, ok := c.openEntry(key)
+	if !ok {
 		return nil, false
 	}
-	data := raw[nl+1:]
-	if len(data) == 0 {
+	defer file.Close()
+	data := make([]byte, size)
+	if n, err := file.ReadAt(data, offset); err != nil || int64(n) != size {
 		return nil, false
 	}
-	// 命中时把 mtime 推新，LRU 才按「最近用过」淘汰
-	_ = touchFile(c.keyPath(key))
 	return &ProxyResult{
 		Data:         data,
 		ContentType:  meta.ContentType,
 		StatusCode:   meta.StatusCode,
 		ContentRange: meta.ContentRange,
+		AcceptRanges: meta.AcceptRanges,
+	}, true
+}
+
+// GetRange 从整文件缓存里按 Range 切一段（不出网）。
+// 只有「整文件缓存」才有意义：碎片缓存已被废弃（见文件头注释）。
+// 起点越界时返回 416 + `bytes */total`（ok=true 表示这是确定性答案，不是未命中）。
+func (c *mediaCache) GetRange(key string, spec mediaRange) (*ProxyResult, bool) {
+	file, meta, offset, size, ok := c.openEntry(key)
+	if !ok {
+		return nil, false
+	}
+	defer file.Close()
+	start, end, ok := resolveMediaRange(spec, size)
+	if !ok {
+		return &ProxyResult{
+			ContentType:  meta.ContentType,
+			StatusCode:   http.StatusRequestedRangeNotSatisfiable,
+			ContentRange: fmt.Sprintf("bytes */%d", size),
+			AcceptRanges: meta.AcceptRanges,
+		}, true
+	}
+	chunk := make([]byte, end-start+1)
+	if n, err := file.ReadAt(chunk, offset+start); err != nil || int64(n) != int64(len(chunk)) {
+		return nil, false
+	}
+	return &ProxyResult{
+		Data:         chunk,
+		ContentType:  meta.ContentType,
+		StatusCode:   http.StatusPartialContent,
+		ContentRange: fmt.Sprintf("bytes %d-%d/%d", start, end, size),
 		AcceptRanges: meta.AcceptRanges,
 	}, true
 }
@@ -118,7 +202,7 @@ func (c *mediaCache) Put(key string, result *ProxyResult) {
 		StatusCode:   result.StatusCode,
 		AcceptRanges: result.AcceptRanges,
 		ContentRange: result.ContentRange,
-	})
+	}, 0)
 	if err != nil {
 		return
 	}
@@ -140,13 +224,21 @@ type mediaCacheWriter struct {
 	tmp   string
 	file  *os.File
 	size  int64
-	done  bool
+	// expected > 0：整段填充时已知总长，Commit 必须校验 size == expected 才落盘
+	// （上游少给/多给字节时绝不能留下一条与 Content-Range 对不上的缓存）。
+	expected int64
+	// onDone 在 Commit/Abort 结束时调用一次（用于释放「正在填充」标记）。
+	onDone func()
+	done   bool
 }
 
 // newWriter 建好临时文件并写入元信息头（此时还没有任何媒体字节）。
-func (c *mediaCache) newWriter(key string, meta mediaCacheMeta) (*mediaCacheWriter, error) {
+func (c *mediaCache) newWriter(key string, meta mediaCacheMeta, expected int64) (*mediaCacheWriter, error) {
 	if c == nil || c.dir == "" {
 		return nil, errors.New("media cache disabled")
+	}
+	if meta.CreatedAt.IsZero() {
+		meta.CreatedAt = time.Now()
 	}
 	header, err := json.Marshal(meta)
 	if err != nil {
@@ -162,7 +254,7 @@ func (c *mediaCache) newWriter(key string, meta mediaCacheMeta) (*mediaCacheWrit
 	if err != nil {
 		return nil, err
 	}
-	w := &mediaCacheWriter{cache: c, path: path, tmp: file.Name(), file: file}
+	w := &mediaCacheWriter{cache: c, path: path, tmp: file.Name(), file: file, expected: expected}
 	if _, err := file.Write(append(header, '\n')); err != nil {
 		w.Abort()
 		return nil, err
@@ -194,6 +286,17 @@ func (w *mediaCacheWriter) Commit() {
 		return
 	}
 	w.done = true
+	if w.onDone != nil {
+		w.onDone()
+	}
+	// 已知总长时必须字节数完全吻合：少写（上游断流/客户端断开）或多写都丢弃，
+	// 否则缓存条目会和 Content-Range 对不上，下次 Range 直接错位。
+	if w.expected > 0 && w.size != w.expected {
+		logger.Warn("proxy media cache size mismatch", "module", "service", "action", "commit", "resource", "proxy", "result", "failed", "path", w.path, "expected", w.expected, "got", w.size)
+		_ = w.file.Close()
+		_ = os.Remove(w.tmp)
+		return
+	}
 	if err := w.file.Close(); err != nil {
 		logger.Warn("proxy media cache close temp failed", "module", "service", "action", "commit", "resource", "proxy", "result", "failed", "path", w.tmp, "error", err)
 		_ = os.Remove(w.tmp)
@@ -213,6 +316,9 @@ func (w *mediaCacheWriter) Abort() {
 		return
 	}
 	w.done = true
+	if w.onDone != nil {
+		w.onDone()
+	}
 	if w.file != nil {
 		_ = w.file.Close()
 	}
@@ -268,13 +374,22 @@ func (c *mediaCache) pruneIfNeeded() {
 		"removed_bytes", removed, "cap", c.maxBytes)
 }
 
-func indexByte(b []byte, c byte) int {
-	for i, v := range b {
-		if v == c {
-			return i
-		}
+// beginFill 尝试抢占「整段填充」标记；返回 true 表示由本请求负责写缓存。
+// 已有别的请求在填充同一 key 时返回 false —— 本请求纯流式转发、不重复落盘。
+func (c *mediaCache) beginFill(key string) bool {
+	if c == nil || c.dir == "" {
+		return false
 	}
-	return -1
+	_, loaded := c.fills.LoadOrStore(key, struct{}{})
+	return !loaded
+}
+
+// endFill 释放「整段填充」标记。
+func (c *mediaCache) endFill(key string) {
+	if c == nil {
+		return
+	}
+	c.fills.Delete(key)
 }
 
 // MediaCacheStats 给排查用（日志/测试）：文件数与总字节。

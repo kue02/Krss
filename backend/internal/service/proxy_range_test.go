@@ -1,6 +1,7 @@
 package service_test
 
 import (
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -53,6 +54,42 @@ func TestNormalizeProxyRange(t *testing.T) {
 	for _, tc := range invalid {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := service.NormalizeProxyRange(tc.input)
+			require.ErrorIs(t, err, service.ErrRangeNotSatisfiable)
+		})
+	}
+}
+
+// 第四轮：结构化 Range 解析 + 本地切片（兜底路径与磁盘缓存切片共用）。
+func TestSliceMediaBytes(t *testing.T) {
+	data := []byte("0123456789") // 共 10 字节
+	cases := []struct {
+		header     string
+		wantChunk  []byte
+		wantRange  string
+		wantStatus int
+	}{
+		{header: "bytes=0-", wantChunk: data, wantRange: "bytes 0-9/10", wantStatus: http.StatusPartialContent},
+		{header: "bytes=2-5", wantChunk: data[2:6], wantRange: "bytes 2-5/10", wantStatus: http.StatusPartialContent},
+		{header: "bytes=-3", wantChunk: data[7:], wantRange: "bytes 7-9/10", wantStatus: http.StatusPartialContent},
+		{header: "bytes=8-100", wantChunk: data[8:], wantRange: "bytes 8-9/10", wantStatus: http.StatusPartialContent},
+		{header: "bytes=10-", wantChunk: nil, wantRange: "bytes */10", wantStatus: http.StatusRequestedRangeNotSatisfiable},
+	}
+	for _, tc := range cases {
+		t.Run(tc.header, func(t *testing.T) {
+			spec, err := service.ParseMediaRange(tc.header)
+			require.NoError(t, err)
+			chunk, contentRange, status := service.SliceMediaBytes(data, spec)
+			require.Equal(t, tc.wantStatus, status)
+			require.Equal(t, tc.wantRange, contentRange)
+			require.Equal(t, tc.wantChunk, chunk)
+		})
+	}
+}
+
+func TestParseMediaRange_Invalid(t *testing.T) {
+	for _, header := range []string{"Foo=0-", "bytes=1-0", "bytes=", "bytes=-"} {
+		t.Run(header, func(t *testing.T) {
+			_, err := service.ParseMediaRange(header)
 			require.ErrorIs(t, err, service.ErrRangeNotSatisfiable)
 		})
 	}

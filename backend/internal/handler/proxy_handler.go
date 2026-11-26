@@ -94,7 +94,7 @@ func (h *ProxyHandler) ProxyImage(c echo.Context) error {
 	}
 
 	logger.Debug("proxy image fetched", "module", "handler", "action", "fetch", "resource", "proxy", "result", "ok", "host", safeHost(imageURL), "content_type", strings.ToLower(result.ContentType))
-	applyMediaResponseHeaders(c, result.ContentType, result.ContentRange, "bytes")
+	applyMediaResponseHeaders(c, result.ContentType, result.ContentRange, result.AcceptRanges)
 
 	status := result.StatusCode
 	if status != http.StatusPartialContent && status != http.StatusRequestedRangeNotSatisfiable {

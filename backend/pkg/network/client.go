@@ -140,26 +140,76 @@ func (f *ClientFactory) NewMediaHTTPClient(ctx context.Context, headerTimeout ti
 	return client
 }
 
-// mediaTransport 取（或建）媒体专用的长连接 transport。
-// 智能代理档（SmartTransport）不是 *http.Transport，保持其原样但同样按 key 复用 ——
-// 它的域记忆与腿要跨请求持续学习，复用反而更对。
+// mediaTransport 取（或建）媒体专用的长连接 transport，按 key 复用。
 func (f *ClientFactory) mediaTransport(proxyURL, ipStack string, headerTimeout time.Duration) http.RoundTripper {
-	key := proxyURL + "\x00" + ipStack
+	// N6：key 里带上 headerTimeout —— 不同调用方的首字节超时可能不同，不能共用一条 transport
+	// （否则后建的那个静默拿到别人设的 ResponseHeaderTimeout）。
+	key := proxyURL + "\x00" + ipStack + "\x00" + headerTimeout.String()
 	if cached, ok := f.mediaTransports.Load(key); ok {
 		return cached.(http.RoundTripper)
 	}
-
-	rt := f.newTransport(proxyURL, ipStack)
-	if plain, ok := rt.(*http.Transport); ok {
-		plain.DisableKeepAlives = false
-		plain.ResponseHeaderTimeout = headerTimeout
-		plain.MaxIdleConns = 32
-		plain.MaxIdleConnsPerHost = 8
-		plain.IdleConnTimeout = 90 * time.Second
-		plain.ForceAttemptHTTP2 = true
-	}
-	actual, _ := f.mediaTransports.LoadOrStore(key, rt)
+	actual, _ := f.mediaTransports.LoadOrStore(key, f.buildMediaTransport(proxyURL, ipStack, headerTimeout))
 	return actual.(http.RoundTripper)
+}
+
+// buildMediaTransport 造媒体档 transport。
+//
+// 必修2：智能代理档（smart:）下 f.newTransport 返回的是 *SmartTransport，两条腿都是
+// newOneShotTransport（DisableKeepAlives: true、无首字节超时）—— 之前 mediaTransport
+// 只对 *http.Transport 打补丁，整块被跳过，于是 smart 档（用户实际用的档位）长连接和
+// 首字节超时全都不生效，首字节挂死 40s。这里对 smart 档也重建两条「media 档」腿再包进
+// SmartTransport，保证底层腿一定是长连接 + ResponseHeaderTimeout。
+func (f *ClientFactory) buildMediaTransport(proxyURL, ipStack string, headerTimeout time.Duration) http.RoundTripper {
+	dialFunc := f.makeDialFunc(ipStack)
+	if rest, ok := strings.CutPrefix(proxyURL, smartMarker); ok {
+		var viaProxy http.RoundTripper
+		if rest != "" {
+			viaProxy = f.newMediaTransport(dialFunc, rest, headerTimeout)
+		}
+		return NewSmartTransport(f.newMediaTransport(dialFunc, "", headerTimeout), viaProxy, f.domainMemory)
+	}
+	return f.newMediaTransport(dialFunc, proxyURL, headerTimeout)
+}
+
+// newMediaTransport 造一条「长连接 + 只限响应头超时」的 *http.Transport。
+// proxyURL 为空 = 直连；支持 http(s) 与 socks 代理，语义对齐 newPlainTransport，
+// 只是换成长连接、并把 Client.Timeout 换成 ResponseHeaderTimeout。
+func (f *ClientFactory) newMediaTransport(dialFunc func(ctx context.Context, network, addr string) (net.Conn, error), proxyURL string, headerTimeout time.Duration) *http.Transport {
+	t := &http.Transport{
+		DialContext:           dialFunc,
+		DisableKeepAlives:     false,
+		ForceAttemptHTTP2:     true,
+		ResponseHeaderTimeout: headerTimeout,
+		MaxIdleConns:          32,
+		MaxIdleConnsPerHost:   8,
+		IdleConnTimeout:       90 * time.Second,
+	}
+	if proxyURL == "" {
+		return t
+	}
+	parsed, err := url.Parse(proxyURL)
+	if err != nil {
+		return t
+	}
+	if strings.HasPrefix(parsed.Scheme, "socks") {
+		var auth *proxy.Auth
+		if parsed.User != nil {
+			auth = &proxy.Auth{User: parsed.User.Username()}
+			if pwd, ok := parsed.User.Password(); ok {
+				auth.Password = pwd
+			}
+		}
+		dialer, derr := proxy.SOCKS5("tcp", parsed.Host, auth, &ipStackDialer{ipStack: ""})
+		if derr != nil {
+			return t
+		}
+		t.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return dialer.Dial(network, addr)
+		}
+		return t
+	}
+	t.Proxy = http.ProxyURL(parsed)
+	return t
 }
 
 // NewAzureSession creates an azuretls.Session with proxy configuration.
