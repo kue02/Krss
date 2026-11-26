@@ -2415,9 +2415,11 @@ function EntryListSkeleton() {
 
 function EntryListEmpty() {
   const { t } = useTranslation();
-  // 对齐 Nextflux 的 EmptyPlaceholder：图标 + 文案，整体压暗到 60%
+  // 对齐 Nextflux 的 EmptyPlaceholder：图标 + 文案，整体压暗到 60%。
+  // 移动端列表是 document 滚动，外层只有 min-height（没有确定高度），
+  // 单靠 h-full 的百分比解析不出来会塌到内容高度、贴在顶部 —— 补一条 min-h 兜住。
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-muted-foreground opacity-60">
+    <div className="flex h-full min-h-[calc(var(--app-dvh)-3.5rem)] w-full flex-col items-center justify-center gap-2 text-muted-foreground opacity-60">
       <Inbox className="size-16" strokeWidth={1.5} />
       <p className="text-sm">{t("entry_list.no_articles")}</p>
     </div>
