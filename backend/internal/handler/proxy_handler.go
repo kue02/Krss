@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/labstack/echo/v4"
@@ -76,11 +77,16 @@ func (h *ProxyHandler) ProxyImage(c echo.Context) error {
 	}
 
 	// <video> 会带 Range 来取片段（拖动进度条），透传给上游并原样回 206
+	rangeHeader := c.Request().Header.Get("Range")
+	if rangeHeader != "" {
+		return h.streamMedia(c, imageURL, refererURL, rangeHeader)
+	}
+
 	result, err := h.proxyService.FetchMedia(
 		c.Request().Context(),
 		imageURL,
 		refererURL,
-		c.Request().Header.Get("Range"),
+		"",
 	)
 	if err != nil {
 		logger.Warn("proxy image fetch failed", "module", "handler", "action", "fetch", "resource", "proxy", "result", "failed", "host", safeHost(imageURL), "error", err)
@@ -104,6 +110,45 @@ func (h *ProxyHandler) ProxyImage(c echo.Context) error {
 		status = http.StatusOK
 	}
 	return c.Blob(status, result.ContentType, result.Data)
+}
+
+// streamMedia 下发 Range 片段：上游吐一块就往下游写一块，不等整个窗口下载完。
+//
+// 为什么单独一条路：FetchMedia 是「读满 4MiB → 嗅探 → 回包」，首次播放要等
+// 整窗（实测 TTFB 14.96s，用户看到十几秒黑屏）；流式把首包压到上游首字节
+// 的时间。无 Range 的请求（图片）仍走上面的缓冲路径，不能合并 —— 图片要靠
+// 完整字节嗅探 Content-Type。
+func (h *ProxyHandler) streamMedia(c echo.Context, imageURL, refererURL, rangeHeader string) error {
+	stream, err := h.proxyService.FetchMediaStream(c.Request().Context(), imageURL, refererURL, rangeHeader)
+	if err != nil {
+		// 必须先把错误回掉再碰任何 header：一旦 WriteHeader 过，状态码就改不了了
+		// （echo 的 DefaultHTTPErrorHandler 在 Committed 之后直接 return）。
+		logger.Warn("proxy media stream failed", "module", "handler", "action", "fetch", "resource", "proxy", "result", "failed", "host", safeHost(imageURL), "error", err)
+		return h.handleServiceError(c, err)
+	}
+	defer stream.Body.Close()
+
+	header := c.Response().Header()
+	header.Set("Content-Type", stream.ContentType)
+	header.Set("Cache-Control", fmt.Sprintf("public, max-age=%d", cacheMaxAge))
+	header.Set("X-Content-Type-Options", "nosniff")
+	if stream.AcceptRanges != "" {
+		header.Set("Accept-Ranges", stream.AcceptRanges)
+	}
+	if stream.ContentRange != "" {
+		header.Set("Content-Range", stream.ContentRange)
+	}
+	// echo 的 c.Stream 只写状态码 + io.Copy，不设 Content-Length；206 少了它
+	// 浏览器就只能靠分块边界猜进度。上游没给长度（-1，分块传输）时才不设。
+	if stream.ContentLength >= 0 {
+		header.Set("Content-Length", strconv.FormatInt(stream.ContentLength, 10))
+	}
+
+	status := stream.StatusCode
+	if status != http.StatusPartialContent {
+		status = http.StatusOK
+	}
+	return c.Stream(status, stream.ContentType, stream.Body)
 }
 
 func (h *ProxyHandler) handleServiceError(c echo.Context, err error) error {
