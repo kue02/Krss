@@ -94,30 +94,38 @@ func (h *ProxyHandler) ProxyImage(c echo.Context) error {
 	}
 
 	logger.Debug("proxy image fetched", "module", "handler", "action", "fetch", "resource", "proxy", "result", "ok", "host", safeHost(imageURL), "content_type", strings.ToLower(result.ContentType))
-	c.Response().Header().Set("Content-Type", result.ContentType)
-	c.Response().Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", cacheMaxAge))
-	c.Response().Header().Set("X-Content-Type-Options", "nosniff")
-	c.Response().Header().Set("Accept-Ranges", "bytes")
-	if result.ContentRange != "" {
-		c.Response().Header().Set("Content-Range", result.ContentRange)
-	}
-	if strings.EqualFold(result.ContentType, "image/svg+xml") {
-		c.Response().Header().Set("Content-Security-Policy", svgContentSecurityPolicy)
-	}
+	applyMediaResponseHeaders(c, result.ContentType, result.ContentRange, "bytes")
 
 	status := result.StatusCode
-	if status != http.StatusPartialContent {
+	if status != http.StatusPartialContent && status != http.StatusRequestedRangeNotSatisfiable {
 		status = http.StatusOK
 	}
 	return c.Blob(status, result.ContentType, result.Data)
 }
 
-// streamMedia 下发 Range 片段：上游吐一块就往下游写一块，不等整个窗口下载完。
+// applyMediaResponseHeaders 两条下发路径（缓冲的图片 / 流式的视频）共用的响应头。
+// 抽出来是因为流式那条以前漏了 SVG 的 CSP —— 两条路必须设同一套头，否则同一类资源
+// 走不同分支时有安全/缓存行为差异。
+func applyMediaResponseHeaders(c echo.Context, contentType, contentRange, acceptRanges string) {
+	header := c.Response().Header()
+	header.Set("Content-Type", contentType)
+	header.Set("Cache-Control", fmt.Sprintf("public, max-age=%d", cacheMaxAge))
+	header.Set("X-Content-Type-Options", "nosniff")
+	if acceptRanges != "" {
+		header.Set("Accept-Ranges", acceptRanges)
+	}
+	if contentRange != "" {
+		header.Set("Content-Range", contentRange)
+	}
+	if strings.EqualFold(contentType, "image/svg+xml") {
+		header.Set("Content-Security-Policy", svgContentSecurityPolicy)
+	}
+}
+
+// streamMedia 下发 Range 片段：上游吐一块就往下游写一块，不等整个响应下载完。
 //
-// 为什么单独一条路：FetchMedia 是「读满 4MiB → 嗅探 → 回包」，首次播放要等
-// 整窗（实测 TTFB 14.96s，用户看到十几秒黑屏）；流式把首包压到上游首字节
-// 的时间。无 Range 的请求（图片）仍走上面的缓冲路径，不能合并 —— 图片要靠
-// 完整字节嗅探 Content-Type。
+// 为什么单独一条路：FetchMedia 是「读满 → 嗅探 → 回包」，图片要靠完整字节嗅探
+// Content-Type，不能合并。视频上游回 206 时直接流式转发，首包只等上游首字节。
 func (h *ProxyHandler) streamMedia(c echo.Context, imageURL, refererURL, rangeHeader string) error {
 	stream, err := h.proxyService.FetchMediaStream(c.Request().Context(), imageURL, refererURL, rangeHeader)
 	if err != nil {
@@ -128,27 +136,16 @@ func (h *ProxyHandler) streamMedia(c echo.Context, imageURL, refererURL, rangeHe
 	}
 	defer stream.Body.Close()
 
-	header := c.Response().Header()
-	header.Set("Content-Type", stream.ContentType)
-	header.Set("Cache-Control", fmt.Sprintf("public, max-age=%d", cacheMaxAge))
-	header.Set("X-Content-Type-Options", "nosniff")
-	if stream.AcceptRanges != "" {
-		header.Set("Accept-Ranges", stream.AcceptRanges)
-	}
-	if stream.ContentRange != "" {
-		header.Set("Content-Range", stream.ContentRange)
-	}
-	// echo 的 c.Stream 只写状态码 + io.Copy，不设 Content-Length；206 少了它
+	applyMediaResponseHeaders(c, stream.ContentType, stream.ContentRange, stream.AcceptRanges)
+	// echo 的 c.Stream 只写状态码 + io.Copy，不设 Content-Length；206/416 少了它
 	// 浏览器就只能靠分块边界猜进度。上游没给长度（-1，分块传输）时才不设。
 	if stream.ContentLength >= 0 {
-		header.Set("Content-Length", strconv.FormatInt(stream.ContentLength, 10))
+		c.Response().Header().Set("Content-Length", strconv.FormatInt(stream.ContentLength, 10))
 	}
 
-	status := stream.StatusCode
-	if status != http.StatusPartialContent {
-		status = http.StatusOK
-	}
-	return c.Stream(status, stream.ContentType, stream.Body)
+	// 200 / 206 / 416 都原样透传：上游判定越界回 416 时必须保持 416，
+	// 不能塌成 200（塌了浏览器会当成完整文件拼接）。
+	return c.Stream(stream.StatusCode, stream.ContentType, stream.Body)
 }
 
 func (h *ProxyHandler) handleServiceError(c echo.Context, err error) error {
@@ -165,7 +162,10 @@ func (h *ProxyHandler) handleServiceError(c echo.Context, err error) error {
 		// Upstream rejected the request, return 502 and prevent caching
 		c.Response().Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 		return Error(c, http.StatusBadGateway, "Upstream rejected")
+	case errors.Is(err, service.ErrRangeNotSatisfiable):
+		// 畸形/多段/未知单位的 Range：我们这层直接 416，不转发上游
+		return Error(c, http.StatusRequestedRangeNotSatisfiable, "Range Not Satisfiable")
 	default:
-		return Error(c, http.StatusInternalServerError, "Failed to fetch image")
+		return Error(c, http.StatusInternalServerError, "Failed to fetch media")
 	}
 }

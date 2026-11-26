@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"time"
 
@@ -22,6 +23,14 @@ import (
 )
 
 const proxyTimeout = 30 * time.Second
+
+// mediaResponseHeaderTimeout 只约束「上游多久内得把响应头发回来」。
+//
+// 为什么不用 proxyTimeout 当整请求超时：视频是 206 + Content-Length 的大响应，
+// http.Client.Timeout 会在 body 传到一半时把连接掐断，客户端收到残缺文件（实测
+// curl --limit-rate 50k 打 63MB 时 exit=18）。body 阶段的终止交给请求 ctx：
+// 浏览器断开 → ctx 取消 → io.Copy 中止，正好。
+const mediaResponseHeaderTimeout = 20 * time.Second
 
 // maxProxyMediaBytes 单次代理回传的上限（视频可能几十 MB，别把内存吃爆）
 const maxProxyMediaBytes = 64 << 20
@@ -85,18 +94,13 @@ func (s *proxyService) FetchImage(ctx context.Context, imageURL, refererURL stri
 }
 
 func (s *proxyService) FetchMedia(ctx context.Context, mediaURL, refererURL, rangeHeader string) (*ProxyResult, error) {
-	// 开放式 Range（`bytes=0-`）先收成有界窗口：上游按字面理解会回整个文件
-	// （63MB 的视频就真回 63MB），收成 4MiB 窗口后上游才回 206 片段。
-	// 改写后的值同时用作缓存键 —— 必须用「实际发给上游的 range」，
-	// 否则同一个 bytes=0- 每次窗口可能不同，缓存永远命中不了。
-	upstreamRange := clampOpenEndedRange(rangeHeader, mediaChunkBytes)
-	cacheKey := mediaCacheKey(mediaURL, upstreamRange)
-
-	// Range 片段现在也进缓存：<video> 的每个分片请求都带 Range，
-	// 原来一律不缓存 ⇒ 视频永远零命中（每个片段都要重新出网）。
-	cacheable := s.mediaCache != nil
+	// 磁盘缓存只存「整段 200」，Range 片段一律不落盘。
+	// 为什么：按任意起点切出来的片段会各存一份，实测一个 63MB 视频被存成 61 个文件 / 230MB
+	// （放大 3.82×），512MB 只装得下 3.7 个视频；而响应本来就带 Cache-Control: max-age=86400，
+	// 浏览器自己会缓存字节，磁盘分片缓存的收益远小于它带来的放大与一致性问题。
+	cacheable := s.mediaCache != nil && rangeHeader == ""
 	if cacheable {
-		if hit, ok := s.mediaCache.Get(cacheKey); ok {
+		if hit, ok := s.mediaCache.Get(mediaURL); ok {
 			logger.Debug("proxy media cache hit", "module", "service", "action", "fetch", "resource", "proxy", "result", "ok", "host", safeHostLog(mediaURL))
 			return hit, nil
 		}
@@ -104,11 +108,11 @@ func (s *proxyService) FetchMedia(ctx context.Context, mediaURL, refererURL, ran
 
 	// 先用标准 HTTP 客户端：它能正确走「设置 → 网络」里配置的代理，也会自动跟随图床跳转
 	// （azuretls 会话在 HTTP 代理下会超时）
-	result, stdErr := s.fetchWithStandardClient(ctx, mediaURL, refererURL, upstreamRange)
+	result, stdErr := s.fetchWithStandardClient(ctx, mediaURL, refererURL, rangeHeader)
 	if stdErr == nil {
-		// 只缓存完整成功的结果（200 整段 / 206 片段），错误结果绝不入缓存
-		if cacheable && isCacheableProxyStatus(result.StatusCode) {
-			s.mediaCache.Put(cacheKey, result)
+		// 只缓存完整成功的 200 整段；206 片段与错误结果都不入缓存
+		if cacheable && result.StatusCode == http.StatusOK {
+			s.mediaCache.Put(mediaURL, result)
 		}
 		return result, nil
 	}
@@ -116,28 +120,12 @@ func (s *proxyService) FetchMedia(ctx context.Context, mediaURL, refererURL, ran
 	logger.Debug("proxy standard client failed, falling back", "module", "service", "action", "fetch", "resource", "proxy", "result", "failed", "error", stdErr)
 
 	// 再退到 azuretls 会话（浏览器 TLS 指纹）：反爬 / Anubis 挑战的站点靠它
-	// （兜底这条路只做整段取，不带 Range —— 所以只有本来就没 Range 的请求
-	// 才能按这个键缓存，否则会把整段当成片段存进片段键里）
+	// （兜底这条路只做整段取，不带 Range）
 	result, fallbackErr := s.fetchImageWithRetry(ctx, mediaURL, refererURL, "", 0)
-	if fallbackErr == nil && cacheable && upstreamRange == "" {
-		s.mediaCache.Put(cacheKey, result)
+	if fallbackErr == nil && cacheable {
+		s.mediaCache.Put(mediaURL, result)
 	}
 	return result, fallbackErr
-}
-
-// isCacheableProxyStatus 只有完整成功的响应才值得落盘（200 整段 / 206 片段）。
-func isCacheableProxyStatus(status int) bool {
-	return status == http.StatusOK || status == http.StatusPartialContent
-}
-
-// mediaCacheKey 缓存键：无 Range 沿用 mediaURL（老键继续兼容，图片缓存不会失效）；
-// 有 Range 用 mediaURL + NUL + 实际发给上游的 range —— 不同片段各存一份，
-// 同一个片段（浏览器重试/重放）直接命中。
-func mediaCacheKey(mediaURL, upstreamRange string) string {
-	if upstreamRange == "" {
-		return mediaURL
-	}
-	return mediaURL + "\x00" + upstreamRange
 }
 
 // WithMediaCache 挂上磁盘缓存（dir 空则不启用）。
@@ -193,9 +181,9 @@ func (s *proxyService) openStandardMediaResponse(ctx context.Context, imageURL, 
 	if err != nil {
 		return nil, nil, ErrInvalidURL
 	}
-	setProxyImageHeaders(req.Header, refererURL, parsedURL)
-	// 把 Range 真的发给上游：原来只拿它做本地切片，上游永远回 200 + 整个文件，
-	// 浏览器要 1KB 片段、后端却下载 63MB（实测 TTFB 5.5-7.8s，直连上游 0.46s）。
+	setProxyMediaHeaders(req.Header, refererURL, parsedURL)
+	// Range 原样转发给上游（不再做 4MiB 人工窗口）：上游回 206 就照 206 流式下发，
+	// 回 200 就整段流式下发。切窗会按任意起点把缓存打碎（放大 3.82×），得不偿失。
 	if rangeHeader != "" {
 		req.Header.Set("Range", rangeHeader)
 	}
@@ -204,26 +192,31 @@ func (s *proxyService) openStandardMediaResponse(ctx context.Context, imageURL, 
 		req.Header.Set("Cookie", cachedCookie)
 	}
 
-	// 超时保持客户端级 30s（proxyTimeout）不动：上游现在最多只回 4MiB 窗口
-	// （见 clampOpenEndedRange），30s 足够 1Mbps 的弱网传完；改成按请求
-	// context.WithTimeout 会与调用方 ctx 的截止时间打架，且会影响 network 包
-	// 其它调用方的既有语义 —— 保守起见只在这一层用窗口限制风险。
-	client := s.clientFactory.NewHTTPClient(ctx, proxyTimeout)
+	// 媒体请求用长连接 + 只限「首字节」的客户端，不能用 NewHTTPClient：
+	// 它的 Timeout 是整请求超时（含读 body），206 + Content-Length 早已发出后把 body
+	// 从中间掐断，客户端只会收到残缺文件（curl exit=18）；它的 transport 还
+	// DisableKeepAlives，每个分片都要重新 TCP+TLS 握手。详见 network.NewMediaHTTPClient。
+	client := s.clientFactory.NewMediaHTTPClient(ctx, mediaResponseHeaderTimeout)
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: %v", ErrFetchFailed, err)
 	}
 
-	// 200 整段、206 片段都算成功（<video> 会带 Range 请求）
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
+	// 200 整段、206 片段都算成功；416 也放行以便上层原样透传给客户端
+	// （例如 bytes=999999999- 超出总长，必须回 416 而不是 500）。
+	if resp.StatusCode != http.StatusOK &&
+		resp.StatusCode != http.StatusPartialContent &&
+		resp.StatusCode != http.StatusRequestedRangeNotSatisfiable {
 		_ = resp.Body.Close()
 		return nil, nil, fmt.Errorf("%w: %d", ErrFetchFailed, resp.StatusCode)
 	}
 	return resp, parsedURL, nil
 }
 
-// bufferStandardMediaResponse 把整段读进内存、嗅探类型、必要时本地切片。
+// bufferStandardMediaResponse 把整段读进内存并嗅探类型。
 // 图片代理必须走这里：Content-Type 不可信时要靠 magic bytes 兜底。
+// 这里不再做本地切片 —— 上游不认 Range 时回 200 整段，就照 200 整段回给浏览器
+// （能正常播放，只是不能精确 seek），比 io.ReadAll + 切片快得多。
 func bufferStandardMediaResponse(resp *http.Response, parsedURL *url.URL, rangeHeader string) (*ProxyResult, error) {
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxProxyMediaBytes+1))
 	if err != nil {
@@ -239,42 +232,58 @@ func bufferStandardMediaResponse(resp *http.Response, parsedURL *url.URL, rangeH
 		return nil, err
 	}
 
-	statusCode := resp.StatusCode
-	contentRange := resp.Header.Get("Content-Range")
-	// 上游认了 Range 就别再动它：206 与 Content-Range 原样透传，
-	// 总长由上游给，浏览器据此继续要下一段。
-	if statusCode != http.StatusPartialContent && rangeHeader != "" {
-		// 上游没理 Range（很常见）：我们在代理层把片段切出来并回 206，
-		// 否则浏览器认为不可跳转，<video> 进度条一拖就弹回
-		sliced, derivedRange, derivedStatus := sliceByRange(data, rangeHeader)
-		if derivedStatus == http.StatusPartialContent {
-			data = sliced
-			contentRange = derivedRange
-			statusCode = derivedStatus
-		}
-	}
-
 	return &ProxyResult{
 		Data:         data,
 		ContentType:  contentType,
-		StatusCode:   statusCode,
-		ContentRange: contentRange,
+		StatusCode:   resp.StatusCode,
+		ContentRange: resp.Header.Get("Content-Range"),
 		AcceptRanges: "bytes",
 	}, nil
 }
 
-// setProxyImageHeaders 给标准客户端设置与 azuretls 那条路一致的取图请求头
-func setProxyImageHeaders(header http.Header, refererURL string, parsedURL *url.URL) {
-	header.Set("accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
+// setProxyMediaHeaders 给标准客户端设置与 azuretls 那条路一致的请求头。
+// 按 URL 猜资源类型只影响 accept / sec-fetch-dest 两个头：有些 CDN 会按这两个头
+// 返回不同内容，视频请求带 sec-fetch-dest: image 有被当成图片处理的风险。
+// 为什么按扩展名判断：发请求时还没有上游响应，只能看 URL；视频 URL 基本都以
+// .mp4/.m4s/.webm 之类结尾（如 twimg 的 /vid/avc1/.../x.mp4）。判断不出就当图片，
+// 保持图片路径行为完全不变。
+func setProxyMediaHeaders(header http.Header, refererURL string, parsedURL *url.URL) {
+	if mediaKindFromURL(parsedURL) == mediaKindVideo {
+		header.Set("accept", "video/avif,video/webm,video/mp4,video/*;q=0.9,*/*;q=0.8")
+		header.Set("sec-fetch-dest", "video")
+	} else {
+		header.Set("accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
+		header.Set("sec-fetch-dest", "image")
+	}
 	header.Set("accept-language", "zh-CN,zh;q=0.9")
 	header.Set("referer", buildReferer(refererURL, parsedURL))
 	header.Set("sec-ch-ua", config.ChromeSecChUa)
 	header.Set("sec-ch-ua-mobile", "?0")
 	header.Set("sec-ch-ua-platform", `"Windows"`)
-	header.Set("sec-fetch-dest", "image")
 	header.Set("sec-fetch-mode", "no-cors")
 	header.Set("sec-fetch-site", "cross-site")
 	header.Set("user-agent", config.ChromeUserAgent)
+}
+
+const (
+	mediaKindImage = "image"
+	mediaKindVideo = "video"
+)
+
+// mediaKindFromURL 按 URL 路径扩展名（以及 /vid/、/video/ 路径段）判断媒体类型。
+func mediaKindFromURL(parsedURL *url.URL) string {
+	if parsedURL == nil {
+		return mediaKindImage
+	}
+	lowerPath := strings.ToLower(parsedURL.Path)
+	switch path.Ext(lowerPath) {
+	case ".mp4", ".m4v", ".m4s", ".webm", ".mov", ".mkv", ".ogv", ".avi", ".ts", ".m3u8", ".mpd":
+		return mediaKindVideo
+	}
+	if strings.Contains(lowerPath, "/vid/") || strings.Contains(lowerPath, "/video/") {
+		return mediaKindVideo
+	}
+	return mediaKindImage
 }
 
 func (s *proxyService) fetchImageWithRetry(ctx context.Context, imageURL, refererURL, cookie string, retryCount int) (*ProxyResult, error) {
@@ -304,15 +313,22 @@ func (s *proxyService) doFetch(ctx context.Context, session *azuretls.Session, i
 	// Build Referer
 	referer := buildReferer(refererURL, parsedURL)
 
-	// Build headers
+	// Build headers：与标准客户端那条路一致，视频按 video 资源类型发头
+	// （有些 CDN 看 sec-fetch-dest/accept 决定回什么内容）。
+	accept := "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
+	secFetchDest := "image"
+	if mediaKindFromURL(parsedURL) == mediaKindVideo {
+		accept = "video/avif,video/webm,video/mp4,video/*;q=0.9,*/*;q=0.8"
+		secFetchDest = "video"
+	}
 	headers := azuretls.OrderedHeaders{
-		{"accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"},
+		{"accept", accept},
 		{"accept-language", "zh-CN,zh;q=0.9"},
 		{"referer", referer},
 		{"sec-ch-ua", config.ChromeSecChUa},
 		{"sec-ch-ua-mobile", "?0"},
 		{"sec-ch-ua-platform", `"Windows"`},
-		{"sec-fetch-dest", "image"},
+		{"sec-fetch-dest", secFetchDest},
 		{"sec-fetch-mode", "no-cors"},
 		{"sec-fetch-site", "cross-site"},
 		{"user-agent", config.ChromeUserAgent},

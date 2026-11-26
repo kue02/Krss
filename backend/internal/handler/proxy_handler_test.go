@@ -212,6 +212,7 @@ func TestProxyHandler_ProxyImage_StreamingErrorMapping(t *testing.T) {
 		{name: "invalid_url", err: service.ErrInvalidURL, status: http.StatusBadRequest},
 		{name: "timeout", err: service.ErrRequestTimeout, status: http.StatusGatewayTimeout},
 		{name: "fetch_failed", err: service.ErrFetchFailed, status: http.StatusInternalServerError},
+		{name: "range_not_satisfiable", err: service.ErrRangeNotSatisfiable, status: http.StatusRequestedRangeNotSatisfiable},
 	}
 
 	for _, tc := range tests {
@@ -261,4 +262,71 @@ func TestProxyHandler_ProxyImage_NoRangeStaysBuffered(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "image/png", rec.Header().Get("Content-Type"))
 	require.Equal(t, "png", rec.Body.String())
+}
+
+// 上游判定越界回 416：流式路径必须原样给 416（不能塌成 200），带 Content-Range。
+func TestProxyHandler_ProxyImage_RangePassesThrough416(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockProxyService(ctrl)
+	h := handler.NewProxyHandlerHelper(mockService)
+
+	mediaURL := "https://example.com/v.mp4"
+	encoded := base64.URLEncoding.EncodeToString([]byte(mediaURL))
+
+	mockService.EXPECT().
+		FetchMediaStream(gomock.Any(), mediaURL, "", "bytes=999999999-").
+		Return(&service.MediaStream{
+			Body:          io.NopCloser(bytes.NewReader(nil)),
+			ContentType:   "text/plain; charset=utf-8",
+			StatusCode:    http.StatusRequestedRangeNotSatisfiable,
+			ContentRange:  "bytes */63176469",
+			ContentLength: 0,
+			AcceptRanges:  "bytes",
+		}, nil)
+
+	e := newTestEcho()
+	req := newJSONRequest(http.MethodGet, "/proxy/image/"+encoded, nil)
+	req.Header.Set("Range", "bytes=999999999-")
+	c, rec := newTestContext(e, req)
+	setPathParams(c, map[string]string{"encoded": encoded})
+
+	require.NoError(t, h.ProxyImage(c))
+	require.Equal(t, http.StatusRequestedRangeNotSatisfiable, rec.Code)
+	require.Equal(t, "bytes */63176469", rec.Header().Get("Content-Range"))
+}
+
+// P2-1：SVG 的 CSP 在流式路径也必须设（以前只在缓冲路径设，流式漏了）。
+func TestProxyHandler_ProxyImage_StreamingSVGSetsCSP(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockService := mock.NewMockProxyService(ctrl)
+	h := handler.NewProxyHandlerHelper(mockService)
+
+	mediaURL := "https://example.com/icon.svg"
+	encoded := base64.URLEncoding.EncodeToString([]byte(mediaURL))
+	payload := []byte("<svg/>")
+
+	mockService.EXPECT().
+		FetchMediaStream(gomock.Any(), mediaURL, "", "bytes=0-").
+		Return(&service.MediaStream{
+			Body:          io.NopCloser(bytes.NewReader(payload)),
+			ContentType:   "image/svg+xml",
+			StatusCode:    http.StatusPartialContent,
+			ContentRange:  "bytes 0-5/6",
+			ContentLength: int64(len(payload)),
+			AcceptRanges:  "bytes",
+		}, nil)
+
+	e := newTestEcho()
+	req := newJSONRequest(http.MethodGet, "/proxy/image/"+encoded, nil)
+	req.Header.Set("Range", "bytes=0-")
+	c, rec := newTestContext(e, req)
+	setPathParams(c, map[string]string{"encoded": encoded})
+
+	require.NoError(t, h.ProxyImage(c))
+	require.Equal(t, http.StatusPartialContent, rec.Code)
+	require.Equal(t, "default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; sandbox", rec.Header().Get("Content-Security-Policy"))
 }
