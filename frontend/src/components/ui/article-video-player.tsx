@@ -99,33 +99,76 @@ interface PreviewSession {
  * 拒了就在 `canplay` 时补一次，仍失败就静默放弃（不留 unhandled rejection、不卡 UI）。
  *
  * 同时挂 `pause` / `seeking` / `seeked` 监听：这些事件只会在**用户主动暂停或
- * 拖动进度**时出现（我们自己起播只会有 `play`/`playing`，`play` 故意不监听，
- * 免得把自己起播误判成「用户接管」）。命中即标记 `userTookOver`。
+ * 拖动进度**时出现，命中即标记 `userTookOver`。
+ *
+ * `play` 要区别对待：我们自己那次静音起播也会触发它。用一个 `autoPlayPending`
+ * 标记把「这次是我们自己起的」吃掉；剩下的 `play` 就是用户点了播放 —— 这才是真正的
+ * 「用户接管」：标记 `userTookOver`，并把声音打开（用户点了播放却还是静音会很怪）。
+ * 之后鼠标移开不应再把用户主动播的视频暂停掉。
  */
 function startMutedPreview(
   video: HTMLVideoElement,
   session: PreviewSession,
 ): () => void {
   let cancelled = false;
+  // 我们自己那次静音起播会触发 `play`；用它把「自动起播」和「用户点播放」分开。
+  let autoPlayPending = false;
+  let autoPlayTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // 我们自己起播时把「接下来这次 play 事件是自动的」标记上；
+  // 真浏览器里 play 事件是紧跟着排的任务，setTimeout(0) 会排在它后面，正好兜底清掉标记。
+  const markAutoPlay = () => {
+    autoPlayPending = true;
+    if (autoPlayTimer !== null) clearTimeout(autoPlayTimer);
+    autoPlayTimer = setTimeout(() => {
+      autoPlayPending = false;
+      autoPlayTimer = null;
+    }, 0);
+  };
 
   const markUserAction = () => {
     session.userTookOver = true;
   };
+  // 用户点播放（非我们自动起的）→ 接管：后面鼠标移开不再暂停；顺手开声音。
+  const handlePlay = () => {
+    if (autoPlayPending) {
+      autoPlayPending = false;
+      if (autoPlayTimer !== null) {
+        clearTimeout(autoPlayTimer);
+        autoPlayTimer = null;
+      }
+      return;
+    }
+    session.userTookOver = true;
+    if (video.muted) {
+      video.muted = false;
+      // 用户接管后就别再按「预览前是否静音」还原了，否则移开又会被静音。
+      session.wasMuted = false;
+    }
+  };
   video.addEventListener("pause", markUserAction);
   video.addEventListener("seeking", markUserAction);
   video.addEventListener("seeked", markUserAction);
+  video.addEventListener("play", handlePlay);
 
   const retry = () => {
     if (cancelled) return;
+    markAutoPlay();
     const result = video.play();
-    if (result && typeof result.catch === "function") result.catch(() => {});
+    if (result && typeof result.catch === "function") {
+      result.catch(() => {
+        autoPlayPending = false;
+      });
+    }
   };
 
   const play = () => {
     if (cancelled) return;
+    markAutoPlay();
     const result = video.play();
     if (result && typeof result.catch === "function") {
       result.catch(() => {
+        autoPlayPending = false;
         // 已经有足够数据还失败，说明是被策略拒了，补播也没用
         if (cancelled || video.readyState >= 3) return;
         video.addEventListener("canplay", retry, { once: true });
@@ -141,6 +184,11 @@ function startMutedPreview(
     video.removeEventListener("pause", markUserAction);
     video.removeEventListener("seeking", markUserAction);
     video.removeEventListener("seeked", markUserAction);
+    video.removeEventListener("play", handlePlay);
+    if (autoPlayTimer !== null) {
+      clearTimeout(autoPlayTimer);
+      autoPlayTimer = null;
+    }
   };
 }
 
@@ -219,9 +267,10 @@ export function ArticleVideoPlayer({
     const video = videoRef.current;
     if (!video) return;
 
-    // 唯一保留播放的情况：用户接管后正在有声播放（真的在看）。
-    // 只点了一下静音键导致 muted=false 仍在播不算接管——那种也回封面。
-    if (session.userTookOver && !video.paused && !video.muted) return;
+    // 用户主动点了播放（接管）后正在播放 → 鼠标移开也不暂停、不回封面。
+    // 只看 `userTookOver && 在播`，不再要求 `!muted`：点播放时我们已把声音打开，
+    // 但仍以「用户是否接管」为准，避免因静音态判断把用户的播放又暂停掉（用户报的 bug）。
+    if (session.userTookOver && !video.paused) return;
 
     // 其余一律回到「预览前的位置」：起始在封面 → 归零让皮肤 Poster 重新出现；
     // 起始在中途（用户之前看到一半）→ 还原到那一刻，不丢进度。
