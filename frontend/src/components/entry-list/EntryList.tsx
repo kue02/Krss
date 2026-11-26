@@ -1180,9 +1180,19 @@ export function EntryList({
 
     // 桌面订阅容器 scroll，移动端订阅 window scroll（由 scrollSurface 按 kind 分派）。
     const unsubscribe = scrollSurface.subscribe(handleScroll);
+    // 窗口尺寸变化（桌面拉伸、移动端旋转、iOS 地址栏收放）不产生 scroll 事件，
+    // 但会改变视口高度 → 「当前屏幕最后一条」会变，需要补测一次。
+    const handleResize = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(measure);
+    };
+    window.addEventListener("resize", handleResize);
+    window.addEventListener("orientationchange", handleResize);
     measure();
     return () => {
       unsubscribe();
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("orientationchange", handleResize);
       if (frame) cancelAnimationFrame(frame);
     };
     // 依赖 entries 本身而不只是 entries.length：筛选 / 视图切换后条目数量可能不变（等长），
