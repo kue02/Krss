@@ -26,6 +26,16 @@ function result(overrides: Partial<UpdateCheckResult> = {}): UpdateCheckResult {
     publishedAt: "2026-12-01T10:00:00Z",
     releaseNotesHtml: "<h2>1.5.0</h2>",
     assets: [],
+    releases: [
+      {
+        version: "v1.5.0",
+        name: "v1.5.0",
+        url: "https://github.com/example/krss/releases/tag/v1.5.0",
+        publishedAt: "2026-12-01T10:00:00Z",
+        notesHtml: "<h2>1.5.0</h2>",
+        assets: [],
+      },
+    ],
     ...overrides,
   };
 }

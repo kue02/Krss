@@ -9,6 +9,7 @@ import {
 import { AboutSettings } from "./AboutSettings";
 import { ApiError } from "@/api";
 import { useUpdateCheckStore } from "@/stores/update-check-store";
+import { useSettingsModalStore } from "@/stores/settings-modal-store";
 import type { UpdateCheckResult } from "@/types/settings";
 
 const mocks = vi.hoisted(() => ({
@@ -45,15 +46,24 @@ function result(overrides: Partial<UpdateCheckResult> = {}): UpdateCheckResult {
     publishedAt: "2026-12-01T10:00:00Z",
     releaseNotesHtml: "<h2>1.5.0</h2><ul><li>新功能</li></ul>",
     assets: [],
+    releases: [
+      {
+        version: "v1.5.0",
+        name: "v1.5.0",
+        url: "https://github.com/example/krss/releases/tag/v1.5.0",
+        publishedAt: "2026-12-01T10:00:00Z",
+        notesHtml: "<h2>1.5.0</h2><ul><li>新功能</li></ul>",
+        assets: [],
+      },
+    ],
     ...overrides,
   };
 }
 
-/** 打开「更新详情」弹窗：内容区都在弹窗里，不开就等于没测。 */
-async function openDetails() {
+/** 点「查看更新内容」：弹窗已搬到 App 层，这里只验证开关被打开。 */
+async function clickViewDetails() {
   const trigger = await screen.findByText("update.view_details");
   fireEvent.click(trigger);
-  await waitFor(() => expect(screen.getByText("update.close")).toBeTruthy());
 }
 
 describe("AboutSettings", () => {
@@ -62,11 +72,13 @@ describe("AboutSettings", () => {
     // store 是模块级单例：不重置的话上一个用例的结果/节流时间戳会漏到下一个用例，
     // 表现为「第一个用例过了，后面全部失败」。
     useUpdateCheckStore.getState().reset();
+    useSettingsModalStore.setState({ open: false, initialTab: null });
   });
 
   afterEach(() => {
     cleanup();
     useUpdateCheckStore.getState().reset();
+    useSettingsModalStore.setState({ open: false, initialTab: null });
   });
 
   it("挂载即自动检查一次", async () => {
@@ -151,82 +163,14 @@ describe("AboutSettings", () => {
     expect(screen.queryByText("v1.4.0")).toBeNull();
   });
 
-  it("发布说明为空时弹窗显示 no_notes", async () => {
-    mocks.checkForUpdate.mockResolvedValue(
-      result({ releaseNotesHtml: "", hasUpdate: true }),
-    );
+  it("点「查看更新内容」只打开详情弹窗，不打开设置页", async () => {
+    mocks.checkForUpdate.mockResolvedValue(result());
 
     render(<AboutSettings />);
-    await openDetails();
+    await clickViewDetails();
 
-    expect(await screen.findByText("update.no_notes")).toBeTruthy();
-  });
-
-  it("publishedAt 非法不崩（原样渲染）", async () => {
-    mocks.checkForUpdate.mockResolvedValue(
-      result({ publishedAt: "not-a-date", hasUpdate: true }),
-    );
-
-    render(<AboutSettings />);
-    await openDetails();
-
-    // formatDate 解析失败时原样输出，不抛错
-    expect(await screen.findByText(/not-a-date/)).toBeTruthy();
-  });
-
-  it("assets 为空时弹窗不渲染下载区块", async () => {
-    mocks.checkForUpdate.mockResolvedValue(result({ assets: [] }));
-
-    render(<AboutSettings />);
-    await openDetails();
-
-    expect(await screen.findByText("update.close")).toBeTruthy();
-    expect(screen.queryByText("update.downloads")).toBeNull();
-  });
-
-  it("有附件时弹窗列出文件名与大小，size 0 不显示大小", async () => {
-    mocks.checkForUpdate.mockResolvedValue(
-      result({
-        assets: [
-          {
-            name: "krss-linux-amd64",
-            url: "https://example.com/dl/linux",
-            size: 12345678,
-          },
-          {
-            name: "krss-windows-amd64.exe",
-            url: "https://example.com/dl/windows",
-            size: 0,
-          },
-        ],
-      }),
-    );
-
-    render(<AboutSettings />);
-    await openDetails();
-
-    expect(await screen.findByText("update.downloads")).toBeTruthy();
-    expect(screen.getByText("krss-linux-amd64")).toBeTruthy();
-    expect(screen.getByText("12 MB")).toBeTruthy();
-    // size 0 的条目不显示大小，但文件名要在
-    expect(screen.getByText("krss-windows-amd64.exe")).toBeTruthy();
-    expect(screen.queryByText("0 B")).toBeNull();
-  });
-
-  it("发布说明里的链接一律开新标签（否则会把 SPA 导航走）", async () => {
-    mocks.checkForUpdate.mockResolvedValue(
-      result({
-        releaseNotesHtml:
-          '<p>看看<a href="https://github.com/example/krss/compare/v1.4.0...v1.5.0">完整改动</a>。</p>',
-      }),
-    );
-
-    render(<AboutSettings />);
-    await openDetails();
-
-    const link = await screen.findByText("完整改动");
-    expect(link.getAttribute("target")).toBe("_blank");
-    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(useUpdateCheckStore.getState().detailOpen).toBe(true);
+    expect(useSettingsModalStore.getState().open).toBe(false);
   });
 
   it("重新检查进行中横幅不消失（有更新是事实，不随 loading 变）", async () => {

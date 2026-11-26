@@ -1016,7 +1016,9 @@
     "close": "Close",
     "pwa_update_available": "App updated",
     "pwa_update_desc": "Click to refresh and apply the update",
-    "dismiss_toast": "Dismiss notification"
+    "dismiss_toast": "Dismiss notification",
+    "details_title_count": "{{count}} new releases",
+    "details_since": "Updates since v{{version}}"
   },
   "entry_filter": {
     "muted": "Muted"

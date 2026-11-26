@@ -206,7 +206,22 @@ export interface UpdateAsset {
   size: number;
 }
 
-/** GET /api/update/check 的结果：当前版本对比 GitHub 最新 Release */
+/** 一个比当前版本新的 Release（GET /api/update/check 的 releases 元素） */
+export interface UpdateRelease {
+  /** tag 名，例如 v1.5.0 */
+  version: string;
+  /** Release 标题，可能与 tag 相同 */
+  name: string;
+  /** GitHub 上这个 Release 的页面 */
+  url: string;
+  /** ISO 时间串（GitHub published_at），可能为空 */
+  publishedAt: string;
+  /** GitHub 渲染好的发布说明 HTML（前端仍会再经 unified+rehype 消毒） */
+  notesHtml: string;
+  assets: UpdateAsset[];
+}
+
+/** GET /api/update/check 的结果：当前版本对比 GitHub 上的 Release 列表 */
 export interface UpdateCheckResult {
   currentVersion: string;
   latestVersion: string;
@@ -218,4 +233,6 @@ export interface UpdateCheckResult {
   /** GitHub 渲染好的发布说明 HTML（前端仍会再经 unified+rehype 消毒） */
   releaseNotesHtml: string;
   assets: UpdateAsset[];
+  /** 当前版本之后的全部 Release，按版本从新到旧 */
+  releases: UpdateRelease[];
 }

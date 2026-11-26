@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 
 import { UpdateChecker } from "./update-checker";
 import { useUpdateCheckStore } from "@/stores/update-check-store";
@@ -50,6 +50,16 @@ function result(overrides: Partial<UpdateCheckResult> = {}): UpdateCheckResult {
     publishedAt: "2026-12-01T10:00:00Z",
     releaseNotesHtml: "<h2>1.5.0</h2>",
     assets: [],
+    releases: [
+      {
+        version: "v1.5.0",
+        name: "v1.5.0",
+        url: "https://github.com/example/krss/releases/tag/v1.5.0",
+        publishedAt: "2026-12-01T10:00:00Z",
+        notesHtml: "<h2>1.5.0</h2>",
+        assets: [],
+      },
+    ],
     ...overrides,
   };
 }
@@ -121,7 +131,7 @@ describe("UpdateChecker", () => {
     expect(mocks.toast).toHaveBeenCalledTimes(1);
   });
 
-  it("点「查看更新内容」打开关于页并弹出详情", async () => {
+  it("点「查看更新内容」只弹出详情，不打开设置页", async () => {
     mocks.checkForUpdate.mockResolvedValue(result());
 
     render(<UpdateChecker />);
@@ -132,10 +142,28 @@ describe("UpdateChecker", () => {
     };
     options.actionProps.onPress();
 
-    const settings = useSettingsModalStore.getState();
-    expect(settings.open).toBe(true);
-    expect(settings.initialTab).toBe("about");
+    // 弹窗挂在 App 层，开关就是 store 里的 detailOpen；
+    // 设置页不该被顺带打开 —— 「看更新内容」是读文档，不是改设置。
     expect(useUpdateCheckStore.getState().detailOpen).toBe(true);
+    const settings = useSettingsModalStore.getState();
+    expect(settings.open).toBe(false);
+    expect(settings.initialTab).toBeNull();
+  });
+
+  it("详情弹窗打开时收起提示，关掉后再放回来", async () => {
+    mocks.checkForUpdate.mockResolvedValue(result());
+
+    render(<UpdateChecker />);
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledTimes(1));
+
+    // 弹窗层级低于 toast，手机上常驻提示会盖住弹窗底部按钮。
+    act(() => useUpdateCheckStore.getState().setDetailOpen(true));
+    await waitFor(() => expect(mocks.toastClose).toHaveBeenCalledWith("toast-key"));
+    expect(useUpdateCheckStore.getState().toastVisible).toBe(false);
+
+    act(() => useUpdateCheckStore.getState().setDetailOpen(false));
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledTimes(2));
+    expect(useUpdateCheckStore.getState().toastVisible).toBe(true);
   });
 
   it("卸载时收掉提示并清空状态（登出后下一位登录者不该看到上一位的提示）", async () => {

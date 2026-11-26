@@ -1,14 +1,11 @@
-import { createElement, useEffect, useMemo } from "react";
-import type { ComponentProps } from "react";
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Chip, Modal } from "@heroui/react";
-import type { Components } from "hast-util-to-jsx-runtime";
+import { Alert, Button, Chip } from "@heroui/react";
 import {
   AlertCircle,
   ArrowUpCircle,
   Bug,
   CheckCircle2,
-  Download,
   ExternalLink,
   Info,
   Link2,
@@ -24,7 +21,6 @@ import {
   useUpdateCheckStore,
   type UpdateErrorKind,
 } from "@/stores/update-check-store";
-import { parseHtml } from "@/lib/parse-html";
 import { cn } from "@/lib/utils";
 
 const version =
@@ -37,29 +33,6 @@ function formatTime(date: Date): string {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-function formatDate(iso: string): string {
-  if (!iso) return "";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function formatBytes(bytes: number): string {
-  if (!bytes || bytes <= 0) return "";
-  const units = ["B", "KB", "MB", "GB"];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${value.toFixed(unit === 0 || value >= 10 ? 0 : 1)} ${units[unit]}`;
 }
 
 function GithubMark({ className }: { className?: string }) {
@@ -94,20 +67,6 @@ const LINKS = [
 ] as const;
 
 /**
- * 发布说明里的链接一律开新标签：这里是设置弹窗，直接导航走用户就回不到应用了。
- * `components` 只喂给 toJsxRuntime，不进 unified 管线（见 lib/parse-html.ts 注释）。
- */
-const RELEASE_NOTE_COMPONENTS: Components = {
-  // node 是 hast 的元信息，DOM 属性里不能出现，丢掉
-  a: ({ node: _node, ...props }) =>
-    createElement("a", {
-      ...(props as ComponentProps<"a">),
-      target: "_blank",
-      rel: "noopener noreferrer",
-    }),
-};
-
-/**
  * 失败原因对应的提示文案。分类在 store 里做（只按 HTTP 状态码），
  * 这里只负责把分类翻成人话 —— i18n 不该进 store。
  */
@@ -127,7 +86,6 @@ export function AboutSettings() {
   const errorKind = useUpdateCheckStore((state) => state.errorKind);
   const errorMessage = useUpdateCheckStore((state) => state.errorMessage);
   const checkedAtMs = useUpdateCheckStore((state) => state.checkedAt);
-  const detailOpen = useUpdateCheckStore((state) => state.detailOpen);
   const check = useUpdateCheckStore((state) => state.check);
   const setDetailOpen = useUpdateCheckStore((state) => state.setDetailOpen);
 
@@ -147,23 +105,6 @@ export function AboutSettings() {
   // 编译进二进制的 config.AppVersion 可能不同（自建镜像尤其常见），
   // 同页显示两个不同版本会让人以为哪儿出错了。
   const currentVersion = result?.currentVersion ?? version;
-
-  const releaseNotes = useMemo(() => {
-    if (!result?.releaseNotesHtml) return null;
-    try {
-      return parseHtml(result.releaseNotesHtml, {
-        components: RELEASE_NOTE_COMPONENTS,
-      }).toContent();
-    } catch {
-      return null;
-    }
-  }, [result]);
-
-  // 发布名与 tag 不同时才有信息量（多数 Release 两者相同）
-  const releaseSubtitle =
-    result?.releaseName && result.releaseName !== result.latestVersion
-      ? result.releaseName
-      : null;
 
   return (
     <div className="space-y-5">
@@ -388,111 +329,6 @@ export function AboutSettings() {
       <p className="pb-1 text-center text-xs text-muted-foreground">
         {t("about.made_with")}
       </p>
-
-      {/* 更新详情弹窗：发布说明 + 下载链接 */}
-      <Modal>
-        <Button className="hidden" aria-hidden />
-        <Modal.Backdrop isOpen={detailOpen} onOpenChange={setDetailOpen}>
-          <Modal.Container>
-            <Modal.Dialog className="max-w-2xl">
-              <Modal.Header>
-                <Modal.Heading>
-                  {t("update.details_title", {
-                    version: result?.latestVersion ?? "",
-                  })}
-                </Modal.Heading>
-              </Modal.Header>
-              <Modal.Body>
-                <div className="space-y-4">
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                    {result?.latestVersion && (
-                      <span className="font-mono">{result.latestVersion}</span>
-                    )}
-                    {releaseSubtitle && <span>{releaseSubtitle}</span>}
-                    {result?.publishedAt && (
-                      <span>
-                        {t("update.published_at", {
-                          date: formatDate(result.publishedAt),
-                        })}
-                      </span>
-                    )}
-                  </div>
-
-                  {releaseNotes ? (
-                    <div className="max-h-[46vh] overflow-y-auto rounded-xl border border-border/50 bg-card/40 p-4">
-                      <div className="prose prose-sm max-w-none text-foreground dark:prose-invert">
-                        {releaseNotes}
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      {t("update.no_notes")}
-                    </p>
-                  )}
-
-                  {result && result.assets.length > 0 && (
-                    <div className="space-y-2">
-                      <div className="text-xs font-semibold tracking-wider text-muted-foreground/80 uppercase">
-                        {t("update.downloads")}
-                      </div>
-                      <div className="space-y-1.5">
-                        {result.assets.map((asset) => (
-                          <a
-                            key={`${asset.name}::${asset.url}`}
-                            href={asset.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-2 rounded-lg border border-border/60 px-3 py-2 text-sm text-foreground transition-colors hover:bg-item-hover"
-                          >
-                            <Download className="size-4 shrink-0 text-muted-foreground" />
-                            <span className="min-w-0 flex-1 truncate">
-                              {asset.name}
-                            </span>
-                            {asset.size > 0 && (
-                              <span className="shrink-0 text-xs text-muted-foreground">
-                                {formatBytes(asset.size)}
-                              </span>
-                            )}
-                            <ExternalLink className="size-3.5 shrink-0 text-muted-foreground" />
-                          </a>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </Modal.Body>
-              <Modal.Footer>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onPress={() => setDetailOpen(false)}
-                >
-                  {t("update.close")}
-                </Button>
-                {result?.releaseUrl && (
-                  // 同横幅：primary 在暗色下是黑底黑字（与弹窗背景对比度仅 1.19:1），
-                  // 用 foreground 反色保证两套主题都够亮。
-                  <Button
-                    size="sm"
-                    className="border border-foreground bg-foreground text-background shadow-none hover:bg-foreground/90"
-                    onPress={() =>
-                      window.open(
-                        result.releaseUrl,
-                        "_blank",
-                        "noopener,noreferrer",
-                      )
-                    }
-                  >
-                    <ExternalLink className="size-4" />
-                    {t("update.open_release")}
-                  </Button>
-                )}
-              </Modal.Footer>
-              <Modal.CloseTrigger />
-            </Modal.Dialog>
-          </Modal.Container>
-        </Modal.Backdrop>
-      </Modal>
     </div>
   );
 }

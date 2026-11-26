@@ -1013,7 +1013,9 @@
     "close": "关闭",
     "pwa_update_available": "应用已更新",
     "pwa_update_desc": "点击刷新以应用更新",
-    "dismiss_toast": "关闭提示"
+    "dismiss_toast": "关闭提示",
+    "details_title_count": "{{count}} 个新版本",
+    "details_since": "自 v{{version}} 之后的更新"
   },
   "entry_filter": {
     "muted": "已静音"

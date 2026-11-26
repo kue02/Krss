@@ -42,6 +42,7 @@ import { ImagePreview } from "@/components/ui/image-preview";
 import { LoginPage, RegisterPage, NetworkErrorPage } from "@/components/auth";
 import { UpdateNotice } from "@/components/update-notice";
 import { UpdateChecker } from "@/components/update-checker";
+import { UpdateDetailsDialog } from "@/components/update-details-dialog";
 import { Toaster } from "@/components/ui/toaster";
 import { RefreshReportDialog } from "@/components/refresh/RefreshReportDialog";
 import { useRefreshReportWatcher } from "@/hooks/useRefreshReportWatcher";
@@ -1333,6 +1334,7 @@ function AppContent() {
       <>
         <AuthenticatedApp />
         <UpdateChecker />
+        <UpdateDetailsDialog />
       </>
     );
   }

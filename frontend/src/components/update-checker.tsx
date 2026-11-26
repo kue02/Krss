@@ -1,9 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Toast, toast } from "@heroui/react";
 import { ArrowUpCircle } from "lucide-react";
 import { useUpdateCheckStore } from "@/stores/update-check-store";
-import { useSettingsModalStore } from "@/stores/settings-modal-store";
 import { useIsMobile } from "@/hooks/useIsMobile";
 
 /**
@@ -22,7 +21,7 @@ export function UpdateChecker() {
   const check = useUpdateCheckStore((state) => state.check);
   const result = useUpdateCheckStore((state) => state.result);
   const setDetailOpen = useUpdateCheckStore((state) => state.setDetailOpen);
-  const openWithTab = useSettingsModalStore((state) => state.openWithTab);
+  const detailOpen = useUpdateCheckStore((state) => state.detailOpen);
   const toastKeyRef = useRef<string | null>(null);
 
   // 登录后进任何页面都检查一次；store 内部节流，切页面/重挂载不会重复出网。
@@ -30,13 +29,17 @@ export function UpdateChecker() {
     void check();
   }, [check]);
 
-  useEffect(() => {
+  const hideToast = useCallback(() => {
+    if (!toastKeyRef.current) return;
+    toast.close(toastKeyRef.current);
+    toastKeyRef.current = null;
+    useUpdateCheckStore.getState().setToastVisible(false);
+  }, []);
+
+  const showToast = useCallback(() => {
     if (!result?.hasUpdate) return;
-    // 从 store 现取而不是用闭包里的值：StrictMode 下这个 effect 会跑两次，
-    // 读渲染时捕获的 announcedVersion 会让同一条提示弹两遍。
-    const state = useUpdateCheckStore.getState();
-    if (state.announcedVersion === result.latestVersion) return;
-    state.markAnnounced(result.latestVersion);
+    // 已经在屏幕上就不再弹一条（effect 重跑、StrictMode 双调用都会走到这里）。
+    if (toastKeyRef.current) return;
 
     toastKeyRef.current = toast(t("update.available"), {
       description: t("update.banner_desc", { version: result.latestVersion }),
@@ -58,10 +61,9 @@ export function UpdateChecker() {
           "border border-foreground bg-foreground text-background shadow-none hover:bg-foreground/90",
         children: t("update.view_details"),
         onPress: () => {
-          // 先标记详情弹窗打开，再切到「关于」页 —— AboutSettings 的弹窗读的就是
-          // 这个状态，于是点一次提示就能直接看到发布说明，不用再点第二次。
+          // 只开详情弹窗，不进设置：「看更新内容」是读文档，不该顺带把用户
+          // 拽进设置页；弹窗挂在 App 已登录层，这里直接可见。
           setDetailOpen(true);
-          openWithTab("about");
         },
       },
       onClose: () => {
@@ -70,7 +72,29 @@ export function UpdateChecker() {
       },
     });
     useUpdateCheckStore.getState().setToastVisible(true);
-  }, [result, setDetailOpen, openWithTab, t]);
+  }, [result, setDetailOpen, t]);
+
+  useEffect(() => {
+    if (!result?.hasUpdate) return;
+    // 从 store 现取而不是用闭包里的值：StrictMode 下这个 effect 会跑两次，
+    // 读渲染时捕获的 announcedVersion 会让同一条提示弹两遍。
+    const state = useUpdateCheckStore.getState();
+    if (state.announcedVersion !== result.latestVersion) {
+      state.markAnnounced(result.latestVersion);
+    }
+    showToast();
+  }, [result, showToast]);
+
+  // 详情弹窗开着时把提示收起来：toast 的层级（100001）压在弹窗（100000）之上，
+  // 手机屏又窄，常驻提示会盖住弹窗底部那排按钮。弹窗里本来就是同一份更新说明，
+  // 关掉弹窗再把提示放回来。
+  useEffect(() => {
+    if (detailOpen) {
+      hideToast();
+      return;
+    }
+    showToast();
+  }, [detailOpen, hideToast, showToast]);
 
   // 谁弹谁收：登出、切账号或整个布局卸载时，把队列里这条常驻提示清掉。
   // ToastProvider 卸载不会清队列（只摘监听），留着的话下一位登录者会看到
