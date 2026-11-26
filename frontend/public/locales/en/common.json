@@ -353,6 +353,7 @@
     "starred_view_only_off": "Show all starred",
     "mark_all_read": "Mark all as read",
     "mark_visible_above_read": "Mark above view as read",
+    "mark_above_visible_no_unread": "No unread articles above the view",
     "copy_feed_url": "Copy feed URL",
     "copied_feed_url": "Feed URL copied",
     "add_to_starred": "Add to starred",
