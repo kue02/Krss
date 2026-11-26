@@ -158,6 +158,72 @@ describe("Sheet", () => {
     );
   });
 
+  it("lets portalled menus scroll while the sheet is open", () => {
+    // 2026-11-26（用户：「移动端订阅栏长按弹框无法滑动」）：
+    // Radix 的右键菜单/子菜单经 Portal 挂到 document.body，不在侧栏面板内。
+    // 旧实现只放行面板内的 target，这些菜单的 touchmove 全被 capture 阶段吞掉。
+    const { container } = render(<ControlledSheet initialOpen />);
+    const { overlay } = getSlots(container);
+
+    const portal = document.createElement("div");
+    portal.setAttribute("data-radix-popper-content-wrapper", "");
+    const menu = document.createElement("div");
+    menu.setAttribute("data-radix-menu-content", "");
+    menu.setAttribute("role", "menu");
+    const menuItem = document.createElement("button");
+    menuItem.type = "button";
+    menuItem.textContent = "移动到文件夹";
+    menu.append(menuItem);
+    portal.append(menu);
+    document.body.append(portal);
+
+    try {
+      expect(dispatchScrollGesture(menuItem, "touchmove").defaultPrevented).toBe(
+        false,
+      );
+      expect(dispatchScrollGesture(menuItem, "wheel").defaultPrevented).toBe(
+        false,
+      );
+      // 背景仍然锁着
+      expect(dispatchScrollGesture(overlay, "touchmove").defaultPrevented).toBe(
+        true,
+      );
+      expect(
+        dispatchScrollGesture(document.body, "touchmove").defaultPrevented,
+      ).toBe(true);
+    } finally {
+      portal.remove();
+    }
+  });
+
+  it("lets a scrolling container inside a portalled overlay scroll", () => {
+    const { container } = render(<ControlledSheet initialOpen />);
+    const { overlay } = getSlots(container);
+
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    const scroller = document.createElement("div");
+    scroller.style.overflowY = "auto";
+    Object.defineProperty(scroller, "scrollHeight", { value: 600 });
+    Object.defineProperty(scroller, "clientHeight", { value: 300 });
+    const item = document.createElement("button");
+    item.type = "button";
+    scroller.append(item);
+    dialog.append(scroller);
+    document.body.append(dialog);
+
+    try {
+      expect(dispatchScrollGesture(item, "touchmove").defaultPrevented).toBe(
+        false,
+      );
+      expect(dispatchScrollGesture(overlay, "touchmove").defaultPrevented).toBe(
+        true,
+      );
+    } finally {
+      dialog.remove();
+    }
+  });
+
   it("releases the background scroll lock on close and on unmount", () => {
     const { container, unmount } = render(<ControlledSheet initialOpen />);
     const { root, overlay } = getSlots(container);
