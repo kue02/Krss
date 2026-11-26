@@ -291,12 +291,16 @@ export function MobileSwipeEntryRow({
     if (!open) return;
     measureActionsInset();
     const row = rowRef.current;
-    const card = contentRef.current?.firstElementChild as HTMLElement | null;
+    const content = contentRef.current;
+    const card = content?.firstElementChild as HTMLElement | null;
     const observer =
       typeof ResizeObserver === "undefined"
         ? null
         : new ResizeObserver(() => measureActionsInset());
     if (observer && row) observer.observe(row);
+    // content 本身也要盯：社交视图先渲染占位卡，真实卡（含视频/图集）就绪后
+    // 会把首个子节点整个换掉，旧卡的 observer 随卸载失效，只有 content 一直在。
+    if (observer && content) observer.observe(content);
     if (observer && card) observer.observe(card);
     window.addEventListener("resize", measureActionsInset);
     window.addEventListener("orientationchange", measureActionsInset);

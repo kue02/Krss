@@ -625,6 +625,91 @@ describe("MobileSwipeEntryRow", () => {
     expect(actions.style.bottom).toBe("10px");
   });
 
+  it("占位卡换成真实卡（首个子节点被替换）后也会重测内缩", async () => {
+    // 社交视图先渲染占位卡，真实卡就绪后整块换掉；旧卡上的 observer 随卸载失效，
+    // 只有 content 自身一直在，所以 content 的尺寸变化必须能触发重测。
+    const callbacks: Array<() => void> = [];
+    const observed = new Set<Element>();
+    class FakeResizeObserver {
+      constructor(cb: () => void) {
+        callbacks.push(cb);
+      }
+      observe(target: Element): void {
+        observed.add(target);
+      }
+      unobserve(): void {}
+      disconnect(): void {}
+    }
+    const original = globalThis.ResizeObserver;
+    Object.defineProperty(globalThis, "ResizeObserver", {
+      value: FakeResizeObserver,
+      configurable: true,
+      writable: true,
+    });
+
+    try {
+      const { container } = render(
+        <MobileSwipeEntryRow entry={makeEntry()}>
+          <div data-entry-card="">占位卡</div>
+        </MobileSwipeEntryRow>,
+      );
+      const row = container.querySelector("[data-swipe-row]") as HTMLElement;
+      const content = row.querySelector(
+        "[data-swipe-content]",
+      ) as HTMLElement;
+      const actions = container.querySelector(
+        "[data-swipe-actions]",
+      ) as HTMLElement;
+
+      const rect = (top: number, bottom: number) =>
+        ({
+          top,
+          bottom,
+          left: 0,
+          right: 390,
+          width: 390,
+          height: bottom - top,
+          x: 0,
+          y: top,
+          toJSON: () => ({}),
+        }) as DOMRect;
+      const placeholder = container.querySelector(
+        "[data-entry-card]",
+      ) as HTMLElement;
+      vi.spyOn(row, "getBoundingClientRect").mockImplementation(() =>
+        rect(0, 200),
+      );
+      vi.spyOn(placeholder, "getBoundingClientRect").mockImplementation(() =>
+        rect(2, 198),
+      );
+
+      swipeLeft(row);
+      await screen.findByRole("button", { name: "entry.mark_read" });
+      expect(actions.style.top).toBe("2px");
+
+      // 内容层自己必须被观察：真实卡换上来时只有它一直在
+      expect(observed.has(content)).toBe(true);
+
+      // 真实卡替换占位卡：新的首个子节点边界不同
+      const realCard = document.createElement("div");
+      realCard.setAttribute("data-entry-card", "");
+      realCard.getBoundingClientRect = () => rect(6, 190);
+      content.replaceChildren(realCard);
+
+      act(() => {
+        callbacks.forEach((cb) => cb());
+      });
+      expect(actions.style.top).toBe("6px");
+      expect(actions.style.bottom).toBe("10px");
+    } finally {
+      Object.defineProperty(globalThis, "ResizeObserver", {
+        value: original,
+        configurable: true,
+        writable: true,
+      });
+    }
+  });
+
   it("圆形样式同样按卡片实测内缩", async () => {
     styleState.value = "circle";
     const { container } = render(

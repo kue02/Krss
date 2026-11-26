@@ -369,4 +369,28 @@ describe("EntryListHeader 可视区域以上标为已读（新动作）", () => 
     fireEvent.click(item.closest("button") as HTMLElement);
     expect(onMarkAllRead).toHaveBeenCalledTimes(1);
   });
+
+  it("桌面：右键「标上方为已读」弹出只有「全部已读」一项，和刷新按钮同一套菜单", async () => {
+    const onMarkAboveVisibleRead = vi.fn();
+    const onMarkAllRead = vi.fn();
+    render(
+      <EntryListHeader
+        {...baseProps}
+        onMarkAboveVisibleRead={onMarkAboveVisibleRead}
+        onMarkAllRead={onMarkAllRead}
+      />,
+    );
+
+    const button = screen.getByTitle("entry.mark_visible_above_read");
+    // 右键走 Radix ContextMenu：菜单项在 portal 里异步挂载
+    fireEvent.contextMenu(button);
+
+    const item = await screen.findByText("entry.mark_all_read");
+    expect(item).toBeTruthy();
+    // 右键不该顺手把「标上方」也执行了
+    expect(onMarkAboveVisibleRead).not.toHaveBeenCalled();
+
+    fireEvent.click(item.closest("[role='menuitem']") as HTMLElement);
+    expect(onMarkAllRead).toHaveBeenCalledTimes(1);
+  });
 });

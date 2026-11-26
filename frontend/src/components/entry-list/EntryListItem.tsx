@@ -77,7 +77,8 @@ const URL_PATTERN = /\bhttps?:\/\/\S+/i;
  *
  * 视频由 videojs 包成 `<div data-slot="article-video">`，里面有大播放按钮和各种控件，
  * 点击子元素时 `event.target` 未必是 `<video>` 本身，所以用 `closest` 判定容器；
- * 同时兜底裸 `<video>`。命中后调用方只 `stopPropagation`、不 `preventDefault`。
+ * 同时兜底裸 `<video>`。命中后调用方直接 `return`（不开正文），且不 `preventDefault`，
+ * 让 videojs 自己起播 —— 试过在 capture 阶段 `stopPropagation`，会连播放键一起吞掉。
  */
 const VIDEO_SLOT_SELECTOR = '[data-slot="article-video"]';
 export function isVideoClickTarget(target: EventTarget | null): boolean {
