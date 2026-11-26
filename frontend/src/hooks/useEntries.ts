@@ -33,6 +33,23 @@ function entriesQueryKey(params: EntryListParams) {
   return ["entries", params] as const;
 }
 
+/**
+ * 「全部已读」的作用范围匹配：只对与这次 mutation 同一作用域（订阅 / 文件夹 / 内容类型）的
+ * 列表缓存动手，别把别的订阅/文件夹的缓存也标成已读。
+ */
+function matchesMarkAllScope(
+  mark: MarkAllReadParams,
+  params: EntryListParams | undefined,
+): boolean {
+  if (!params) return false;
+  if (mark.feedId && params.feedId !== mark.feedId) return false;
+  if (mark.folderId && params.folderId !== mark.folderId) return false;
+  if (mark.contentType && params.contentType && params.contentType !== mark.contentType) {
+    return false;
+  }
+  return true;
+}
+
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values));
 }
@@ -335,40 +352,39 @@ export function useMarkAllAsRead() {
 
   return useMutation({
     mutationFn: (params: MarkAllReadParams) => markAllAsRead(params),
-    onSuccess: () => {
-      // 标全部已读同样**不**当场摘条目：先把「只看未读」缓存里的未读条目
-      // 就地改成已读并记账，离开列表时再统一摘掉（与服务端语义一致，列表不跳动）。
-      const unreadIds = new Set<string>();
+    onSuccess: (_data, markParams) => {
+      // 标全部已读同样**不**当场摘条目：
+      //   - 普通视图（unreadOnly=false）就地 patch read=true，未读圆点随之消失（不重拉、不摘行）；
+      //   - 「只看未读」视图额外记账（defer），离开列表时再统一摘掉，列表当场不跳动。
+      // 只处理与本次作用域（订阅/文件夹/内容类型）匹配的缓存，别误标别的源。
+      const deferredIds = new Set<string>();
       const queries = queryClient.getQueriesData<{
         pages: { entries: Entry[] }[];
       }>({ queryKey: ["entries"] });
       for (const [queryKey, data] of queries) {
         const params = queryKey[1] as EntryListParams | undefined;
-        if (!params?.unreadOnly || !data) continue;
+        if (!data || !matchesMarkAllScope(markParams, params)) continue;
+        const unreadIds = new Set<string>();
         for (const page of data.pages) {
           for (const entry of page.entries) {
             if (!entry.read) unreadIds.add(entry.id);
           }
         }
+        if (unreadIds.size === 0) continue;
+        const pages = data.pages.map((page) => ({
+          ...page,
+          entries: page.entries.map((entry) =>
+            unreadIds.has(entry.id) ? { ...entry, read: true } : entry,
+          ),
+        }));
+        queryClient.setQueryData(queryKey, { ...data, pages });
+        if (params?.unreadOnly) {
+          for (const id of unreadIds) deferredIds.add(id);
+        }
       }
-      if (unreadIds.size > 0) {
-        queryClient.setQueriesData<{ pages: { entries: Entry[] }[] }>(
-          { queryKey: ["entries"] },
-          (old) => {
-            if (!old) return old;
-            return {
-              ...old,
-              pages: old.pages.map((page) => ({
-                ...page,
-                entries: page.entries.map((entry) =>
-                  unreadIds.has(entry.id) ? { ...entry, read: true } : entry,
-                ),
-              })),
-            };
-          },
-        );
-        deferUnreadRemovals(queryClient, unreadIds);
-        for (const id of unreadIds) patchDeferredEntry(id, { read: true });
+      if (deferredIds.size > 0) {
+        deferUnreadRemovals(queryClient, deferredIds);
+        for (const id of deferredIds) patchDeferredEntry(id, { read: true });
       }
       queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
       // 已读/星标都是视图条件里会用到的字段，命中数要跟着刷新
