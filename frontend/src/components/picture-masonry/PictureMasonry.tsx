@@ -487,7 +487,12 @@ export function PictureMasonry({
           </div>
         ) : entries.length === 0 ? (
           <div
-            className={cn("p-4", !usesDocumentScroll && "h-full overflow-auto")}
+            className={cn(
+              "flex flex-col p-4",
+              usesDocumentScroll
+                ? "min-h-[calc(var(--app-dvh)-3.5rem)]"
+                : "h-full overflow-auto",
+            )}
           >
             <EmptyState />
           </div>
@@ -546,7 +551,7 @@ function MasonrySkeleton() {
 function EmptyState() {
   const { t } = useTranslation();
   return (
-    <div className="flex h-64 w-full flex-col items-center justify-center gap-2 text-muted-foreground opacity-60">
+    <div className="flex h-full w-full flex-1 flex-col items-center justify-center gap-2 text-muted-foreground opacity-60">
       <ImageOff className="size-16" strokeWidth={1.5} />
       <p className="text-sm">{t("entry_list.no_articles")}</p>
     </div>
