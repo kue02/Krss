@@ -217,18 +217,34 @@ export function ArticleVideoPlayer({
 
   // 用户点了播放键（大播放键/控制条播放键）：这次是真·用户接管，别再被移开暂停。
   // 用点击播放键判定而不是 `play` 事件，避免和自己那次静音自动起播的事件赛跑。
-  const handleSurfaceClick = useCallback(
+  //
+  // 用 capture 而不是冒泡：Video.js 的 PlayButton 是 **toggle** —— 悬停预览时视频正在
+  // 静音播放，点一下它会先 `pause()`。capture 阶段能先读到「点击前是否在播」，据此判断
+  // 这是「把预览转成有声播放」还是「用户主动暂停」：
+  //   · 点击前在播且静音（预览中）→ 接管 + 开声音，并等 toggle 的 pause 之后再补一次 play，
+  //     保证点完继续有声播放、移开也不回封面；
+  //   · 点击前在播且有声音 → 用户在按暂停，什么都不做，别把它又拉起来。
+  const handleSurfaceClickCapture = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
       const target = event.target as Element | null;
       if (!target || !target.closest(".media-play-button")) return;
       const session = sessionRef.current;
-      if (!session) return;
-      session.userTookOver = true;
       const video = videoRef.current;
-      if (video && video.muted) {
+      if (!session || !video) return;
+      const wasPreviewPlaying = !video.paused && video.muted;
+      session.userTookOver = true;
+      if (video.muted) {
         video.muted = false;
         // 用户接管后别再按「预览前是否静音」还原，否则移开又被静音。
         session.wasMuted = false;
+      }
+      if (wasPreviewPlaying) {
+        // toggle 在自己的 click 处理里 pause，等它跑完再补 play。
+        queueMicrotask(() => {
+          if (!video.paused) return;
+          const result = video.play();
+          if (result && typeof result.catch === "function") result.catch(() => {});
+        });
       }
     },
     [],
@@ -272,7 +288,7 @@ export function ArticleVideoPlayer({
       className="w-full"
       onPointerEnter={handlePointerEnter}
       onPointerLeave={handlePointerLeave}
-      onClick={handleSurfaceClick}
+      onClickCapture={handleSurfaceClickCapture}
     >
       <I18nProvider locale={locale}>
         {/* poster 同时给 Player（皮肤的 Poster 用）和 Video（原生海报兜底）：
