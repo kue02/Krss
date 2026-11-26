@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -105,8 +106,32 @@ func BuildAISummarizeSystemPromptForTest(s AIService, ctx context.Context, entry
 	return ""
 }
 
-// Export for testing
-var SliceByRange = sliceByRange
+// Range 校验/规范化（fix/video-proxy-stream 第三轮）：黑盒测试用。
+var NormalizeProxyRange = normalizeProxyRange
+
+// 第四轮：结构化 Range 与本地切片（兜底路径 / 磁盘缓存切片）的黑盒测试口。
+type MediaRange = mediaRange
+
+var (
+	ParseMediaRange = parseMediaRange
+	SliceMediaBytes = sliceMediaBytes
+)
+
+// MediaKindFromURLForTest 暴露媒体类型判定（N5：先按扩展名认图片）。
+func MediaKindFromURLForTest(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	return mediaKindFromURL(parsed)
+}
+
+// SetProxyServiceFallbackForTest 注入兜底取整段函数（模拟 azuretls 兜底）。
+func SetProxyServiceFallbackForTest(svc ProxyService, fn func(ctx context.Context, mediaURL, refererURL string) (*ProxyResult, error)) {
+	if ps, ok := svc.(*proxyService); ok {
+		ps.fallbackMedia = fn
+	}
+}
 
 // 插件运行时安全（fix/plugin-runtime）：黑盒测试用的窄口。
 var PluginChildEnv = pluginChildEnv
