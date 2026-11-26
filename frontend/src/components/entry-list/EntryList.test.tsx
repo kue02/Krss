@@ -1109,9 +1109,16 @@ describe("EntryList translation scheduling", () => {
     render(<EntryList {...defaultProps} isMobile />);
 
     const text = screen.getByText("entry_list.no_articles");
-    expect(text.parentElement?.className).toContain(
-      "min-h-[calc(var(--app-dvh)-3.5rem)]",
+    const root = text.parentElement!;
+    // 移动端（document 滚动）才补 min-h；数值扣掉顶部头部占位 + 底部 Tab，让空态中心落在可视区正中。
+    expect(root.className).toContain(
+      "min-h-[calc(var(--app-dvh)-2.75rem-3.5rem)]",
     );
+    // 桌面（element 滚动）不应带 min-h —— 靠父级 flex-1 的确定高度 + h-full 居中。
+    cleanup();
+    render(<EntryList {...defaultProps} isMobile={false} />);
+    const desktopText = screen.getByText("entry_list.no_articles");
+    expect(desktopText.parentElement!.className).not.toContain("min-h-[calc(var(--app-dvh)");
   });
 
   it("移动端（window 滚动）也能测出可视区首条，标上方未读", async () => {

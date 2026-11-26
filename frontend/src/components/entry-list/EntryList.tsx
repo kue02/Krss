@@ -1127,7 +1127,11 @@ export function EntryList({
     const measure = () => {
       frame = 0;
       const items = node.querySelectorAll<HTMLElement>("[data-entry-id]");
-      if (items.length === 0) return;
+      if (items.length === 0) {
+        // 空列表 / 切到空筛选时把序号归零，否则「回到顶部」浮标会残留上一个列表的序号。
+        setFirstVisibleIndex((prev) => (prev === 0 ? prev : 0));
+        return;
+      }
       // 移动端（document 滚动）滚动发生在 window 上：容器自身的 scroll 事件永远不触发，
       // 容器 getBoundingClientRect().top 又会随内容同幅上移导致差值恒定 → 必须走 scrollSurface
       // 拿「视口顶」（桌面=容器顶，移动=头部栏底），订阅也由它按 element/document 分别挂。
@@ -2014,7 +2018,7 @@ export function EntryList({
           {isLoading ? (
             <EntryListSkeleton />
           ) : entries.length === 0 ? (
-            <EntryListEmpty />
+            <EntryListEmpty documentScroll={usesDocumentScroll} />
           ) : (
             <div
               className="w-full"
@@ -2413,13 +2417,19 @@ function EntryListSkeleton() {
   );
 }
 
-function EntryListEmpty() {
+function EntryListEmpty({ documentScroll = false }: { documentScroll?: boolean }) {
   const { t } = useTranslation();
   // 对齐 Nextflux 的 EmptyPlaceholder：图标 + 文案，整体压暗到 60%。
-  // 移动端列表是 document 滚动，外层只有 min-height（没有确定高度），
-  // 单靠 h-full 的百分比解析不出来会塌到内容高度、贴在顶部 —— 补一条 min-h 兜住。
+  // 只有移动端（document 滚动）需要兜一条 min-h：那时外层只有 min-height、没有确定高度，
+  // 单靠 h-full 的百分比解析不出来会塌到内容高度、贴在顶部。桌面是 flex-1 定高容器，h-full 就够。
+  // 扣减 = 视口 - 顶部头部占位(2.75rem) - 底部 Tab(3.5rem)，让空态中心落在可视区正中。
   return (
-    <div className="flex h-full min-h-[calc(var(--app-dvh)-3.5rem)] w-full flex-col items-center justify-center gap-2 text-muted-foreground opacity-60">
+    <div
+      className={cn(
+        "flex h-full w-full flex-col items-center justify-center gap-2 text-muted-foreground opacity-60",
+        documentScroll && "min-h-[calc(var(--app-dvh)-2.75rem-3.5rem)]",
+      )}
+    >
       <Inbox className="size-16" strokeWidth={1.5} />
       <p className="text-sm">{t("entry_list.no_articles")}</p>
     </div>

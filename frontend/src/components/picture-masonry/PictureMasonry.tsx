@@ -490,7 +490,7 @@ export function PictureMasonry({
             className={cn(
               "flex flex-col p-4",
               usesDocumentScroll
-                ? "min-h-[calc(var(--app-dvh)-3.5rem)]"
+                ? "min-h-[calc(var(--app-dvh)-2.75rem-3.5rem)]"
                 : "h-full overflow-auto",
             )}
           >
