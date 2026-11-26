@@ -134,14 +134,19 @@ export function MobileSwipeEntryRow({
    * 这里在拖动起点主动摘掉 `--press` 并取消残留的 ::after 动画，压感随过渡淡出，
    * 卡片本身恢复原色；同时保留移动端的按压反馈（不再靠 pressedOpacity=0 硬关）。
    */
-  const clearPressedRipple = useCallback(() => {
+  // force=true 时无条件清理（用于 dragStart / pointerup / dragEnd 这些「可能已排队但未提交」的时机）；
+  // force=false 时只在表面上确实带 --press 时才清（用于拖动每帧，避免 60fps 反复派发 contextmenu）。
+  const clearPressedRipple = useCallback((force = false) => {
     const content = contentRef.current;
     if (!content) return;
     const surfaces = content.querySelectorAll<HTMLElement>(
       ".salty-ripple-surface",
     );
     for (const surface of surfaces) {
-      if (!surface.classList.contains("--press")) continue;
+      // force 时即使此刻 `--press` 还没提交到 DOM 也要清：m3-ripple 内部 state 可能已排队
+      // 「下一帧加 press」（pointerup 的 TOUCH_DELAY 分支 / 150ms 定时器），按 class 跳过
+      // 会在 React 未 flush 时漏清、之后又把灰底加回来。
+      if (!force && !surface.classList.contains("--press")) continue;
       surface.classList.remove("--press");
       surface.getAnimations?.({ subtree: true }).forEach((a) => a.cancel());
       // 光摘 class 不够：m3-ripple 的按压态是它自己的 React state，只有
@@ -157,7 +162,7 @@ export function MobileSwipeEntryRow({
     if (!row || dragPointerGuardRef.current) return;
     // 冒泡阶段挂：m3-ripple 在卡片的 capture 阶段处理 pointerup（会把 --press 加回来），
     // 这里排在它之后，正好把刚加回来的按压态再清掉。
-    const handler = () => clearPressedRipple();
+    const handler = () => clearPressedRipple(true);
     dragPointerGuardRef.current = handler;
     row.addEventListener("pointerup", handler, false);
     row.addEventListener("pointercancel", handler, false);
@@ -174,7 +179,7 @@ export function MobileSwipeEntryRow({
   }, []);
 
   const handleDragStart = useCallback(() => {
-    clearPressedRipple();
+    clearPressedRipple(true);
     attachDragPointerGuard();
     baseOffsetRef.current = open ? -ACTION_WIDTH : 0;
     dragOffsetRef.current = baseOffsetRef.current;
@@ -228,7 +233,7 @@ export function MobileSwipeEntryRow({
         content.style.transform = `translateX(${shouldOpen ? -ACTION_WIDTH : 0}px)`;
       }
       // 松手后 m3-ripple 可能刚在 pointerup 里把按压态加回来，这里再清一次并摘掉兜底监听
-      clearPressedRipple();
+      clearPressedRipple(true);
       detachDragPointerGuard();
       if (shouldOpen) openRow();
       else close();
