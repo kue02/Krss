@@ -44,7 +44,9 @@ function matchesMarkAllScope(
   if (!params) return false;
   if (mark.feedId && params.feedId !== mark.feedId) return false;
   if (mark.folderId && params.folderId !== mark.folderId) return false;
-  if (mark.contentType && params.contentType && params.contentType !== mark.contentType) {
+  // 缓存查询没带 contentType 时不能当作「匹配」：否则会把视频/图片等其它内容类型的
+  // 未读条目也在本地标成已读，而后端只按 mark.contentType 标，本地与后端不一致。
+  if (mark.contentType && params.contentType !== mark.contentType) {
     return false;
   }
   return true;
