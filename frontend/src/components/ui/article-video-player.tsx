@@ -48,6 +48,17 @@ const PRELOAD_ROOT_MARGIN = "200px";
  */
 const COVER_EPSILON = 0.25;
 
+/**
+ * 悬停多久才算「真的想在这条视频上停留」。
+ *
+ * 指针扫过（鼠标划过、快速移动）时 `pointerenter` 会瞬间触发；若立刻
+ * `preload=auto` + `play()`，浏览器马上按 Range 拉流，而 `pointerleave` 后
+ * 已发出的下载**不会取消**——扫过 10 条视频就是 10 段无效流量叠加。
+ * 所以先等一小段：期间保持 `metadata`，超时才升级 `auto` 并起播。
+ * 正常悬停（通常远大于 120ms）几乎感觉不到延迟，扫过则完全不拉流。
+ */
+const HOVER_DELAY_MS = 120;
+
 /** `matchMedia` 在 jsdom / 极老浏览器里不存在，统一走 fallback，避免测试与老环境直接崩。 */
 function mediaMatches(query: string, fallback: boolean): boolean {
   if (typeof window === "undefined") return fallback;
@@ -166,11 +177,33 @@ export function ArticleVideoPlayer({
         userTookOver: false,
         stop: () => {},
       };
-      // 先静音再 play：不静音的自动播放会被浏览器策略直接拒掉
-      video.muted = true;
-      setHovering(true);
-      session.stop = startMutedPreview(video, session);
+
+      // 延迟到「确认停留」才升级 auto + 起播：期间保持 metadata，扫过不拉流。
+      let delayTimer: ReturnType<typeof setTimeout> | null = null;
+      let cancelPreview: (() => void) | null = null;
+      session.stop = () => {
+        if (delayTimer !== null) {
+          clearTimeout(delayTimer);
+          delayTimer = null;
+        }
+        if (cancelPreview) {
+          cancelPreview();
+          cancelPreview = null;
+        }
+      };
       sessionRef.current = session;
+
+      delayTimer = setTimeout(() => {
+        delayTimer = null;
+        // 这 120ms 内已经移开（或换了别的会话）就什么都不做
+        if (sessionRef.current !== session) return;
+        const target = videoRef.current;
+        if (!target) return;
+        // 先静音再 play：不静音的自动播放会被浏览器策略直接拒掉
+        target.muted = true;
+        setHovering(true);
+        cancelPreview = startMutedPreview(target, session);
+      }, HOVER_DELAY_MS);
     },
     [],
   );
