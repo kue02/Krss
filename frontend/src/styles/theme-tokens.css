@@ -73,8 +73,20 @@
       --accent-soft: color-mix(in oklab, var(--accent-ink) 12%, transparent);
       --accent-soft-foreground: color-mix(in oklab, var(--accent-ink) 80%, var(--foreground) 30%);
       --accent-soft-hover: color-mix(in oklab, var(--accent-ink) 16%, transparent);
+
       /* HeroUI 暗色的焦点环也是 `var(--accent)`，纯黑 accent 下同样看不见 */
       --focus: var(--accent-ink);
+    }
+
+    /* HeroUI 有一批组件（button/badge/chip 的实心档、meter/progress 的填充、
+       switch 的选中轨道）直接读 `var(--accent)` / `var(--accent-foreground)`，
+       不经过上面那些派生色。内联在 <html> 上的纯黑压过一切 CSS，组件层于是
+       仍是「黑底黑按钮」。这里在 body 上再落一层：body 及其子树读到的
+       --accent 就是提亮后的 ink，而 <html> 上的内联值保持原样（设置页要显示
+       用户真正选的颜色）。html 与 body 各自解析，不会循环。 */
+    .dark body {
+      --accent: var(--accent-ink);
+      --accent-foreground: var(--accent-ink-foreground);
     }
   }
 
