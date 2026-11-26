@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { EntryListItem } from "./EntryListItem";
+import { EntryListItem, isVideoClickTarget } from "./EntryListItem";
 import { extractContentMedia } from "@/lib/extract-content-media";
 import { getEntryImages } from "@/lib/extract-images";
 import { stripHtml } from "@/lib/html-utils";
@@ -864,6 +864,66 @@ describe("EntryListItem", () => {
       // 条目自己的项还在，订阅组不在
       expect(screen.getByText("automation.rule_from_entry")).toBeTruthy();
       expect(screen.queryByText("entry.feed_menu_group")).toBeNull();
+    });
+  });
+
+  describe("正文视频的点击判定（任务 3）", () => {
+    function slot(): HTMLElement {
+      const host = document.createElement("div");
+      host.innerHTML = `
+        <div data-slot="article-video" class="video-skin">
+          <button type="button"><svg><path d="M0 0h1v1z" /></svg></button>
+          <video></video>
+        </div>`;
+      return host;
+    }
+
+    it("点视频容器、裸 video、大播放键里的 svg 都算视频", () => {
+      const host = slot();
+      const container = host.querySelector(
+        '[data-slot="article-video"]',
+      ) as HTMLElement;
+      const video = host.querySelector("video") as HTMLVideoElement;
+      const path = host.querySelector("path") as SVGPathElement;
+
+      expect(isVideoClickTarget(container)).toBe(true);
+      expect(isVideoClickTarget(video)).toBe(true);
+      expect(isVideoClickTarget(path)).toBe(true);
+    });
+
+    it("点卡片其它位置（标题文字、图片）不算视频", () => {
+      const host = document.createElement("div");
+      host.innerHTML = `<h2>标题</h2><img src="https://example.com/a.jpg">`;
+      const title = host.querySelector("h2") as HTMLElement;
+      const img = host.querySelector("img") as HTMLImageElement;
+
+      expect(isVideoClickTarget(title)).toBe(false);
+      expect(isVideoClickTarget(img)).toBe(false);
+      expect(isVideoClickTarget(null)).toBe(false);
+    });
+
+    it("点视频不打开正文，点标题仍打开正文", () => {
+      const onClick = vi.fn();
+      const { container } = render(
+        <EntryListItem
+          entry={{
+            ...entry,
+            content: '<p>正文</p><video src="https://example.com/a.mp4"></video>',
+          }}
+          feed={feed}
+          isSelected={false}
+          onClick={onClick}
+        />,
+      );
+
+      const slotEl = container.querySelector('[data-slot="article-video"]');
+      if (slotEl) {
+        fireEvent.click(slotEl);
+        expect(onClick).not.toHaveBeenCalled();
+      }
+
+      fireEvent.click(screen.getByText("Entry title"));
+      expect(onClick).toHaveBeenCalledWith("entry-1");
     });
   });
 });

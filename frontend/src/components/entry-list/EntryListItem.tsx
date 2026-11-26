@@ -80,7 +80,7 @@ const URL_PATTERN = /\bhttps?:\/\/\S+/i;
  * 同时兜底裸 `<video>`。命中后调用方只 `stopPropagation`、不 `preventDefault`。
  */
 const VIDEO_SLOT_SELECTOR = '[data-slot="article-video"]';
-function isVideoClickTarget(target: EventTarget | null): boolean {
+export function isVideoClickTarget(target: EventTarget | null): boolean {
   // 用 Element 而不是 HTMLElement：大播放键的图标是 <svg>/<path>（SVGElement），
   // 点在图标的实心处时 event.target 不是 HTMLElement，用 HTMLElement 判定会漏。
   if (!(target instanceof Element)) return false;
