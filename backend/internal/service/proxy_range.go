@@ -6,6 +6,65 @@ import (
 	"strings"
 )
 
+// mediaChunkBytes 开放式 Range（`bytes=start-`，没有结束位置）向上游要的窗口大小。
+//
+// 为什么必须有它：浏览器 <video> 的首发请求几乎都是 `Range: bytes=0-`（开放式），
+// 上游照字面理解就是「从 0 到文件尾」—— 63MB 的视频就真给你回 63MB。代理层原来把
+// 整段读进内存（io.ReadAll）再切 1KB 给浏览器，实测 TTFB 5.5-7.8s，而直连上游同请求 0.46s。
+// 改成 4MiB 有界窗口后：上游回 206 + `Content-Range: bytes 0-4194303/63176469`，
+// 浏览器据此知道总长、接着要下一段，这是标准做法（服务端不需要自己编 Content-Range）。
+//
+// 取 4MiB 的理由：① 远小于 maxCacheableMediaBytes(16MiB)，片段能落盘被后续请求复用；
+// ② 4K 视频按 10Mbps 码率约合 3.2s 播放量，比浏览器预读需求（通常几百 KB～2MB）宽裕；
+// ③ 再大就会让弱网下单个请求更容易撞超时、也更快挤爆 512MB 缓存。
+const mediaChunkBytes = int64(4) << 20
+
+// clampOpenEndedRange 把开放式 Range 改写成有界窗口，其它形式原样放行。
+//
+// 只处理单段 `bytes=start-`（start 是合法非负整数、没有 end）：
+//
+//	bytes=0-        → bytes=0-4194303
+//	bytes=1000000-  → bytes=1000000-5194303
+//
+// `start-end`（已有结束位置，浏览器自己要的就是这么多）、`-suffix`（末尾 N 字节）、
+// 多段、空串、解析失败一律原样返回 —— 这些情况上游不会回整个文件，改了反而错。
+func clampOpenEndedRange(rangeHeader string, chunkBytes int64) string {
+	if chunkBytes <= 0 {
+		return rangeHeader
+	}
+
+	value := strings.TrimSpace(rangeHeader)
+	if !strings.HasPrefix(value, "bytes=") {
+		return rangeHeader
+	}
+	spec := strings.TrimPrefix(value, "bytes=")
+	// 多段 range 不碰（浏览器会自己降级成单段）
+	if spec == "" || strings.Contains(spec, ",") {
+		return rangeHeader
+	}
+
+	startRaw, endRaw, found := strings.Cut(spec, "-")
+	if !found {
+		return rangeHeader
+	}
+	startRaw = strings.TrimSpace(startRaw)
+	endRaw = strings.TrimSpace(endRaw)
+	// `-suffix`（start 为空）与 `start-end`（end 非空）都不改写
+	if startRaw == "" || endRaw != "" {
+		return rangeHeader
+	}
+
+	start, err := strconv.ParseInt(startRaw, 10, 64)
+	if err != nil || start < 0 {
+		return rangeHeader
+	}
+	end := start + chunkBytes - 1
+	if end < start { // 溢出保护：起点大到加不下一个窗口就原样放行
+		return rangeHeader
+	}
+	return fmt.Sprintf("bytes=%d-%d", start, end)
+}
+
 // sliceByRange 按客户端要的 Range 把整段数据切出来。
 //
 // 为什么要自己做：上游（例如 video.twimg.com）常常无视 Range，照样回 200 + 整个文件。
