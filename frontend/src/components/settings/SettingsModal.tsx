@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { SettingsSidebar } from "./SettingsSidebar";
@@ -192,15 +192,26 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
   // Reset to general when modal opens —— 除非调用方指定了落点页
   // （右下角的版本更新提示点「查看更新内容」要直接进「关于」）。
   // initialTab 是一次性指令，读到就消费掉，免得下次手动打开又跳走。
+  // 设置**已经开着**时收到的落点指令也要生效：桌面设置窗是非模态的，
+  // 右下角提示盖在它上面且可点，这时只 set({open:true}) 不会触发变化。
+  const initialTab = useSettingsModalStore((state) => state.initialTab);
+  const wasOpenRef = useRef(false);
   useEffect(() => {
-    if (open) {
-      setActiveTab(consumeInitialTab() ?? "general");
-    } else {
+    if (!open) {
+      wasOpenRef.current = false;
       // 关掉设置就收起版本详情弹窗：它的开关在 store 里（右下角提示也要能打开它），
       // 不在这里收，下次进「关于」页弹窗会自己弹出来，用户以为是自己点的。
       useUpdateCheckStore.getState().setDetailOpen(false);
+      return;
     }
-  }, [open, consumeInitialTab]);
+    const requested = consumeInitialTab();
+    if (requested !== null) {
+      setActiveTab(requested);
+    } else if (!wasOpenRef.current) {
+      setActiveTab("general");
+    }
+    wasOpenRef.current = true;
+  }, [open, initialTab, consumeInitialTab]);
 
   const renderContent = () => {
     switch (activeTab) {
