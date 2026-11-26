@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Noooste/azuretls-client"
@@ -43,6 +44,10 @@ type ClientFactory struct {
 	domainMemory    DomainMemory        // 智能代理的域记忆（50 批 2.2）；nil = 不学习不查询
 	testTransport   http.RoundTripper   // For testing only
 	testHTTPClient  *http.Client        // For testing only
+
+	// mediaTransports 媒体下发专用的长连接 transport 缓存（key = 代理URL + IP 栈）。
+	// 只给 NewMediaHTTPClient 用；普通 NewHTTPClient 仍是一次性 transport，行为不变。
+	mediaTransports sync.Map
 }
 
 // NewClientFactory creates a new client factory.
@@ -105,6 +110,56 @@ func (f *ClientFactory) NewHTTPClient(ctx context.Context, timeout time.Duration
 	client.Transport = f.newTransport(proxyURL, ipStack)
 
 	return client
+}
+
+// NewMediaHTTPClient 给媒体（视频/图片）下发用：长连接复用 + 只限「等首字节」。
+//
+// 为什么不能直接用 NewHTTPClient：
+//  1. 它给的是 &http.Client{Timeout: timeout}，Timeout 是**整请求**超时（含读 body）。
+//     视频是 206 + Content-Length 的大响应，body 传到一半被这个超时掐断，客户端只会
+//     收到残缺文件（curl 直接 exit=18）。这里改成不设 Client.Timeout，body 阶段靠
+//     请求自带的 ctx 取消（客户端断开就停）。
+//  2. 它的 transport 是 newOneShotTransport（DisableKeepAlives: true），每个分片都要
+//     重新 TCP+TLS 握手（63MB 视频十几个分片 = 十几次握手）。这里换成 keep-alive 的
+//     长连接 transport，并按「代理URL + IP 栈」缓存复用 —— 改完设置换代理会自然换 key。
+//
+// headerTimeout 只约束「响应头何时到」，超出说明上游连首字节都迟迟不给，才值得报错。
+func (f *ClientFactory) NewMediaHTTPClient(ctx context.Context, headerTimeout time.Duration) *http.Client {
+	// For testing: return the injected client
+	if f.testHTTPClient != nil {
+		return f.testHTTPClient
+	}
+
+	client := &http.Client{} // 刻意不设 Timeout：body 生命周期交给请求 ctx
+	if f.testTransport != nil {
+		client.Transport = f.testTransport
+		return client
+	}
+
+	client.Transport = f.mediaTransport(f.proxyProvider.GetProxyURL(ctx), f.getIPStack(ctx), headerTimeout)
+	return client
+}
+
+// mediaTransport 取（或建）媒体专用的长连接 transport。
+// 智能代理档（SmartTransport）不是 *http.Transport，保持其原样但同样按 key 复用 ——
+// 它的域记忆与腿要跨请求持续学习，复用反而更对。
+func (f *ClientFactory) mediaTransport(proxyURL, ipStack string, headerTimeout time.Duration) http.RoundTripper {
+	key := proxyURL + "\x00" + ipStack
+	if cached, ok := f.mediaTransports.Load(key); ok {
+		return cached.(http.RoundTripper)
+	}
+
+	rt := f.newTransport(proxyURL, ipStack)
+	if plain, ok := rt.(*http.Transport); ok {
+		plain.DisableKeepAlives = false
+		plain.ResponseHeaderTimeout = headerTimeout
+		plain.MaxIdleConns = 32
+		plain.MaxIdleConnsPerHost = 8
+		plain.IdleConnTimeout = 90 * time.Second
+		plain.ForceAttemptHTTP2 = true
+	}
+	actual, _ := f.mediaTransports.LoadOrStore(key, rt)
+	return actual.(http.RoundTripper)
 }
 
 // NewAzureSession creates an azuretls.Session with proxy configuration.

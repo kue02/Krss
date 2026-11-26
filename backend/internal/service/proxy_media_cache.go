@@ -25,15 +25,15 @@ import (
 // 落盘格式：一个文件搞定 —— 第一行是 JSON 元信息，紧跟原始字节。
 // 写临时文件再 rename，避免读到半截文件。
 //
-// 缓存 200 整段，也缓存 206 片段（<video> 的每个分片请求都带 Range，
-// 原来一律跳过 ⇒ 视频永远零命中）。片段按「改写后的有界 range」做键，
-// 见 mediaCacheKey 与 clampOpenEndedRange。
+// 只缓存「整段 200」。Range 片段一律不落盘：按片段缓存会按任意起点碎片化
+// （实测一个 63MB 视频放大到 230MB / 3.82×），而响应本身带 Cache-Control，
+// 浏览器会自己缓存字节，服务端再存分片得不偿失。见 FetchMedia / FetchMediaStream。
 
 const (
 	// 默认缓存上限 512 MB；超过就按 mtime 从旧到新删到 80%
 	defaultMediaCacheBytes = int64(512) << 20
 	// 单件上限：超过这个大小的媒体（大视频）不落盘，省得把缓存挤爆
-	maxCacheableMediaBytes = int64(16) << 20
+	maxCacheableMediaBytes = int64(32) << 20
 )
 
 type mediaCacheMeta struct {
@@ -102,6 +102,10 @@ func (c *mediaCache) Get(key string) (*ProxyResult, bool) {
 // 不影响把字节继续回给客户端（缓存永远只是加速，不能变成失败原因）。
 var errMediaCacheEntryTooLarge = errors.New("media cache entry too large")
 
+// staleMediaCacheTempAge 临时文件多久没被碰过才算「写入者已经死了」的残留。
+// pruneIfNeeded 只在超过这个时长后才删 .tmp，避免误删另一个 writer 正在写的文件。
+const staleMediaCacheTempAge = 10 * time.Minute
+
 func (c *mediaCache) Put(key string, result *ProxyResult) {
 	if c == nil || c.dir == "" || result == nil || len(result.Data) == 0 {
 		return
@@ -152,7 +156,7 @@ func (c *mediaCache) newWriter(key string, meta mediaCacheMeta) (*mediaCacheWrit
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
-	// 用 CreateTemp 而不是固定 `<hash>.bin.tmp`：同一个片段可能被两个播放器
+	// 用 CreateTemp 而不是固定 `<hash>.bin.tmp`：同一个媒体可能被两个客户端
 	// 同时请求，固定名会互相踩掉（一个 Commit、另一个 Abort 时删错文件）。
 	file, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+"-*.tmp")
 	if err != nil {
@@ -183,16 +187,20 @@ func (w *mediaCacheWriter) Write(p []byte) (int, error) {
 }
 
 // Commit 关文件并 rename 成正式条目；任何一步失败都当没缓存过。
+// rename 失败必须留日志：以前静默 os.Remove 掉，缓存条目悄悄丢失根本查不出来
+// （审查复现过并发写时 .tmp 被 prune 删掉、Commit 无声失败）。
 func (w *mediaCacheWriter) Commit() {
 	if w == nil || w.done {
 		return
 	}
 	w.done = true
 	if err := w.file.Close(); err != nil {
+		logger.Warn("proxy media cache close temp failed", "module", "service", "action", "commit", "resource", "proxy", "result", "failed", "path", w.tmp, "error", err)
 		_ = os.Remove(w.tmp)
 		return
 	}
 	if err := os.Rename(w.tmp, w.path); err != nil {
+		logger.Warn("proxy media cache rename failed", "module", "service", "action", "commit", "resource", "proxy", "result", "failed", "tmp", w.tmp, "path", w.path, "error", err)
 		_ = os.Remove(w.tmp)
 		return
 	}
@@ -228,8 +236,13 @@ func (c *mediaCache) pruneIfNeeded() {
 		if err != nil || info == nil || info.IsDir() {
 			return nil
 		}
+		// 只清「陈旧」的临时文件：另一个 writer 可能正在写同名 key 的 .tmp，
+		// 无条件删会把它的半成品抹掉（审查已复现并发写时条目静默丢失）。
+		// 10 分钟足够一个正常写入完成（单件上限 32MiB，弱网也远用不到）。
 		if strings.HasSuffix(path, ".tmp") {
-			_ = os.Remove(path)
+			if time.Since(info.ModTime()) > staleMediaCacheTempAge {
+				_ = os.Remove(path)
+			}
 			return nil
 		}
 		entries = append(entries, entry{path: path, size: info.Size(), mod: info.ModTime().UnixNano()})

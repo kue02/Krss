@@ -11,45 +11,47 @@ import (
 	"krss/backend/pkg/logger"
 )
 
-// 流式转发（fix/video-proxy-stream 第二轮）。
+// 流式转发（fix/video-proxy-stream 第三轮）。
 //
-// 为什么还要流式：第一轮把 Range 真的发给上游、并把开放式窗口收成 4MiB 之后，
-// 缓存命中的第二次请求只要 0.0037s，但**首次** `bytes=0-` 仍要等整个 4MiB
-// 窗口下载完才发出第一个字节（实测 TTFB 14.96s）—— 用户看到的就是十几秒黑屏。
-// 视频播放器只在乎「第一帧什么时候到」，所以这里改成边收边发：上游吐多少就
-// 往下游写多少，读完再把整窗落到缓存。
+// 为什么改纯流式：第一轮把 Range 真发给上游、第二轮改成边收边发，但都留着「4MiB 人工窗口」。
+// 审查实测两个后果：① 每个窗口都新建 http.Client 且其 transport DisableKeepAlives，
+// 63MB 视频 16 个分片 = 16 次 TCP+TLS 握手；② 按任意起点切窗让磁盘缓存按片段碎片化，
+// 一个视频被存成 230MB（放大 3.82×）。改成「Range 原样转发 + 不切片 + 长连接」后，
+// 首包只等上游首字节，播放不再卡在磁盘/握手开销上。
 //
-// 不带 Range 的请求（图片全走这条）**完全不碰这条路径**：图片要靠
-// detectProxyMediaContentType 嗅探 magic bytes 兜底源站错误的 Content-Type，
-// 必须拿到完整字节，所以仍旧走 FetchMedia 的缓冲实现。
+// 不带 Range 的请求（图片全走这条）**完全不碰这里**：图片要靠
+// detectProxyMediaContentType 嗅探 magic bytes 兜底源站错误的 Content-Type，必须拿到完整字节，
+// 仍旧走 FetchMedia 的缓冲实现。
 
 // MediaStream 流式转发的结果：Body 直接是上游的响应体，调用方边读边下发。
 type MediaStream struct {
 	Body        io.ReadCloser
 	ContentType string
-	// StatusCode 上游状态码：206 片段 / 200 整段（也用于缓存命中回放）
+	// StatusCode 上游状态码：206 片段 / 200 整段 / 416 越界（也用于缓存命中回放）
 	StatusCode int
-	// ContentRange 206 必须原样带给浏览器（`bytes 0-4194303/63176469`），
-	// 少了它 <video> 不知道总长、也没法接着要下一段。
+	// ContentRange 206 / 416 原样带给浏览器（`bytes 0-4194303/63176469` 或 `bytes */63176469`）
 	ContentRange string
 	// ContentLength 本段字节数；-1 表示上游没给（分块传输），此时不要设 Content-Length
 	ContentLength int64
 	AcceptRanges  string
 }
 
-// FetchMediaStream 与 FetchMedia 同一条管线（同样的窗口改写、同样的缓存键），
-// 区别只有一个：上游认 Range 回 206 时把 body 直接交出去，不 ReadAll。
+// FetchMediaStream 与 FetchMedia 同一条请求管线，区别是上游回 206/200 时直接把 body
+// 交出去，不 ReadAll、不切片、不改 Content-Range —— 边收边发，首包只等上游首字节。
 //
-// 上游不认 Range（回 200）时仍退回缓冲 + sliceByRange：要自己算
-// `Content-Range` 就必须知道总长，流式给不出这个数。这条分支只在少数
-// 不实现 Range 的源站上走到，正常视频 CDN 都认。
+// 缓存策略：只有「无 Range 的 200 整段」查/写缓存；任何 Range 请求都不缓存
+// （按片段缓存会碎片化放大，见 FetchMedia 注释）。Range 不落盘也就不会回放脏数据。
 func (s *proxyService) FetchMediaStream(ctx context.Context, mediaURL, refererURL, rangeHeader string) (*MediaStream, error) {
-	upstreamRange := clampOpenEndedRange(rangeHeader, mediaChunkBytes)
-	cacheKey := mediaCacheKey(mediaURL, upstreamRange)
-	cacheable := s.mediaCache != nil
+	// 先校验 Range：畸形/多段/未知单位一律返回 ErrRangeNotSatisfiable，
+	// 由 handler 回 416，绝不把它们转发给上游换来一次整段下载。
+	forwardRange, err := normalizeProxyRange(rangeHeader)
+	if err != nil {
+		return nil, err
+	}
 
-	if cacheable {
-		if hit, ok := s.mediaCache.Get(cacheKey); ok {
+	var cacheable bool
+	if forwardRange == "" && s.mediaCache != nil {
+		if hit, ok := s.mediaCache.Get(mediaURL); ok {
 			logger.Debug("proxy media cache hit", "module", "service", "action", "fetch", "resource", "proxy", "result", "ok", "host", safeHostLog(mediaURL))
 			return &MediaStream{
 				Body:          io.NopCloser(bytes.NewReader(hit.Data)),
@@ -60,35 +62,31 @@ func (s *proxyService) FetchMediaStream(ctx context.Context, mediaURL, refererUR
 				AcceptRanges:  hit.AcceptRanges,
 			}, nil
 		}
+		cacheable = true
 	}
 
-	resp, parsedURL, err := s.openStandardMediaResponse(ctx, mediaURL, refererURL, upstreamRange)
+	resp, _, err := s.openStandardMediaResponse(ctx, mediaURL, refererURL, forwardRange)
 	if err != nil {
-		// 标准客户端失败（反爬 / Anubis 挑战页）：退回 azuretls 缓冲取整段，
-		// 再按 Range 本地切片。这条路没有流式可言，但至少「能播」——
-		// 与 FetchMedia 的兜底保持同一套行为，别让流式入口变成新的失败点。
+		// 标准客户端失败（反爬 / Anubis 挑战页）：退回 azuretls 缓冲取整段。
+		// 这条路没有流式可言，但至少「能播」——与 FetchMedia 的兜底同一套行为。
 		logger.Debug("proxy stream standard client failed, falling back", "module", "service", "action", "fetch", "resource", "proxy", "result", "failed", "error", err)
-		return s.fetchMediaStreamFallback(ctx, mediaURL, refererURL, upstreamRange, cacheKey, cacheable)
+		return s.fetchMediaStreamFallback(ctx, mediaURL, refererURL, cacheable)
 	}
 
-	// 上游没理 Range：必须缓冲后本地切片（要自己算 Content-Range 得先知道总长），
-	// 这条分支没有流式可言，但它本来也只在「源站不支持 Range」时才出现。
-	if upstreamRange != "" && resp.StatusCode == http.StatusOK {
-		result, bufErr := bufferStandardMediaResponse(resp, parsedURL, upstreamRange)
-		_ = resp.Body.Close()
-		if bufErr != nil {
-			return nil, bufErr
-		}
-		if cacheable && isCacheableProxyStatus(result.StatusCode) {
-			s.mediaCache.Put(cacheKey, result)
+	// 416 越界：原样透传上游的 416 与 `Content-Range: bytes */total`，
+	// 不再当成 ErrFetchFailed（否则 handler default 分支会回 500）。
+	if resp.StatusCode == http.StatusRequestedRangeNotSatisfiable {
+		contentType := resp.Header.Get("Content-Type")
+		if contentType == "" {
+			contentType = "text/plain; charset=utf-8"
 		}
 		return &MediaStream{
-			Body:          io.NopCloser(bytes.NewReader(result.Data)),
-			ContentType:   result.ContentType,
-			StatusCode:    result.StatusCode,
-			ContentRange:  result.ContentRange,
-			ContentLength: int64(len(result.Data)),
-			AcceptRanges:  result.AcceptRanges,
+			Body:          resp.Body,
+			ContentType:   contentType,
+			StatusCode:    resp.StatusCode,
+			ContentRange:  resp.Header.Get("Content-Range"),
+			ContentLength: resp.ContentLength,
+			AcceptRanges:  "bytes",
 		}, nil
 	}
 
@@ -98,26 +96,22 @@ func (s *proxyService) FetchMediaStream(ctx context.Context, mediaURL, refererUR
 		return nil, err
 	}
 
-	statusCode := resp.StatusCode
-	contentRange := resp.Header.Get("Content-Range")
-
-	// 边发边写缓存：读满（EOF）才 rename 成正式条目，客户端中途断开就丢临时文件。
+	// 边发边写缓存：只有 200 整段才落盘；读到 EOF 才 rename，客户端中途断开就丢临时文件。
 	var writer *mediaCacheWriter
-	if cacheable && isCacheableProxyStatus(statusCode) {
-		// 建 writer 失败（磁盘满/无权限）不该影响播放：拿不到 writer 就纯转发
-		writer, _ = s.mediaCache.newWriter(cacheKey, mediaCacheMeta{
+	if cacheable && resp.StatusCode == http.StatusOK {
+		// 建 writer 失败（磁盘满/无权限）不影响播放：拿不到就纯转发
+		writer, _ = s.mediaCache.newWriter(mediaURL, mediaCacheMeta{
 			ContentType:  contentType,
-			StatusCode:   statusCode,
+			StatusCode:   resp.StatusCode,
 			AcceptRanges: "bytes",
-			ContentRange: contentRange,
 		})
 	}
 
 	return &MediaStream{
 		Body:          newCacheWritingBody(body, resp.Body, writer),
 		ContentType:   contentType,
-		StatusCode:    statusCode,
-		ContentRange:  contentRange,
+		StatusCode:    resp.StatusCode,
+		ContentRange:  resp.Header.Get("Content-Range"),
 		ContentLength: resp.ContentLength,
 		AcceptRanges:  "bytes",
 	}, nil
@@ -206,29 +200,16 @@ func (b *cacheWritingBody) abort() {
 	}
 }
 
-// fetchMediaStreamFallback 标准客户端失败时的兜底：azuretls 会话取整段，
-// 需要 Range 就在本地切片。这条路是缓冲的（拿不到流式 body），但它只在
-// 反爬站点上走到 —— 宁可首包慢一点，也不能因为改成流式就让这类源站播不了。
-func (s *proxyService) fetchMediaStreamFallback(ctx context.Context, mediaURL, refererURL, upstreamRange, cacheKey string, cacheable bool) (*MediaStream, error) {
+// fetchMediaStreamFallback 标准客户端失败时的兜底：azuretls 会话取整段、整段回放。
+// 这条路不带 Range（azuretls 不转发客户端 Range），所以只能给 200 整段——
+// 浏览器能播，只是不能精确 seek。只在反爬站点上走到，宁可让步 seek 也不能让这类源站播不了。
+func (s *proxyService) fetchMediaStreamFallback(ctx context.Context, mediaURL, refererURL string, cacheable bool) (*MediaStream, error) {
 	result, err := s.fetchImageWithRetry(ctx, mediaURL, refererURL, "", 0)
 	if err != nil {
 		return nil, err
 	}
-	// azuretls 这条路不带 Range（见 FetchMedia 里的同款注释）：只有本来就没
-	// Range 的请求才能按这个键缓存，否则会把整段当成片段存进片段键里。
-	if cacheable && upstreamRange == "" && isCacheableProxyStatus(result.StatusCode) {
-		s.mediaCache.Put(cacheKey, result)
-	}
-	if upstreamRange != "" && result.StatusCode == http.StatusOK {
-		if sliced, derivedRange, derivedStatus := sliceByRange(result.Data, upstreamRange); derivedStatus == http.StatusPartialContent {
-			result = &ProxyResult{
-				Data:         sliced,
-				ContentType:  result.ContentType,
-				StatusCode:   derivedStatus,
-				ContentRange: derivedRange,
-				AcceptRanges: "bytes",
-			}
-		}
+	if cacheable && result.StatusCode == http.StatusOK {
+		s.mediaCache.Put(mediaURL, result)
 	}
 	return &MediaStream{
 		Body:          io.NopCloser(bytes.NewReader(result.Data)),
@@ -236,6 +217,6 @@ func (s *proxyService) fetchMediaStreamFallback(ctx context.Context, mediaURL, r
 		StatusCode:    result.StatusCode,
 		ContentRange:  result.ContentRange,
 		ContentLength: int64(len(result.Data)),
-		AcceptRanges:  result.AcceptRanges,
+		AcceptRanges:  "bytes",
 	}, nil
 }

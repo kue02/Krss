@@ -21,13 +21,14 @@ import (
 )
 
 /**
- * fix/video-proxy-stream：视频分片请求要「按需取一小段 + 命中缓存」。
+ * fix/video-proxy-stream 第三轮：Range 原样转发 + 纯流式 + 只缓存整段 200。
  *
- * 改前实测（真实视频，63,176,469 字节）：
- *   经本代理 Range: bytes=0-1023 → 206，TTFB 7.80 / 6.13 / 5.49 s（三次几乎不变）
- *   直连上游同请求             → 206，TTFB 0.46 s
- * 根因：Range 头从没发给上游（上游永远回 200 + 整个文件），每个分片都把整段
- * 读进内存（maxProxyMediaBytes = 64MiB），而且带 Range 的请求既不查也不写缓存。
+ * 前两轮的教训（真实视频 63,176,469 字节）：
+ *   - 第一轮把 Range 真发给上游后，206 有了，但每片都 ReadAll 整窗 → 首包慢。
+ *   - 第二轮改边收边发，但保留 4MiB 人工窗口：每个窗口新建 http.Client 且
+ *     transport DisableKeepAlives，16 片 = 16 次 TCP/TLS 握手；按任意起点切窗
+ *     又让磁盘缓存按片段碎片化（一个视频放大到 230MB / 3.82×）。
+ * 本轮：Range 原样转发、206/200 都纯流式（不切片）、长连接复用、只缓存整段 200。
  */
 
 // mediaUpstream 一个支持 Range 的假视频源，记录命中次数与最后一次收到的 Range 头。
@@ -78,7 +79,9 @@ func newProxy(t *testing.T, cacheDir string) service.ProxyService {
 	return svc
 }
 
-// 客户端要的 Range 必须真的发给上游，206 与 Content-Range 原样透传。
+// ---------- FetchMedia（缓冲路径，图片 / 无 Range） ----------
+
+// 客户端要的 Range 必须真的、原样发给上游，206 与 Content-Range 原样透传。
 func TestFetchMedia_ForwardsRangeHeaderAndPassesThrough206(t *testing.T) {
 	const total = 8 << 20
 	up := newMediaUpstream(t, total)
@@ -87,7 +90,7 @@ func TestFetchMedia_ForwardsRangeHeaderAndPassesThrough206(t *testing.T) {
 	result, err := svc.FetchMedia(context.Background(), up.server.URL+"/v.mp4", "", "bytes=100-199")
 	require.NoError(t, err)
 
-	require.Equal(t, "bytes=100-199", up.rangeHeader(), "Range 必须原样发给上游（改前这里永远是空串）")
+	require.Equal(t, "bytes=100-199", up.rangeHeader(), "Range 必须原样发给上游")
 	require.Equal(t, http.StatusPartialContent, result.StatusCode)
 	require.Equal(t, fmt.Sprintf("bytes 100-199/%d", total), result.ContentRange)
 	require.Equal(t, up.body[100:200], result.Data)
@@ -95,8 +98,8 @@ func TestFetchMedia_ForwardsRangeHeaderAndPassesThrough206(t *testing.T) {
 	require.Equal(t, "bytes", result.AcceptRanges)
 }
 
-// 开放式 bytes=0- 要收成有界窗口再发给上游：否则上游回整个文件。
-func TestFetchMedia_OpenEndedRangeClampedToWindow(t *testing.T) {
+// 开放式 bytes=0- 不再收窗口，原样发给上游；上游认 Range 就回 206 整段剩余部分。
+func TestFetchMedia_OpenEndedRangeForwardedVerbatim(t *testing.T) {
 	const total = 8 << 20
 	up := newMediaUpstream(t, total)
 	svc := newProxy(t, "")
@@ -104,139 +107,79 @@ func TestFetchMedia_OpenEndedRangeClampedToWindow(t *testing.T) {
 	result, err := svc.FetchMedia(context.Background(), up.server.URL+"/v.mp4", "", "bytes=0-")
 	require.NoError(t, err)
 
-	chunk := service.MediaChunkBytesForTest
-	wantRange := fmt.Sprintf("bytes=0-%d", chunk-1)
-	require.Equal(t, wantRange, up.rangeHeader(), "开放式 Range 必须收成有界窗口")
+	require.Equal(t, "bytes=0-", up.rangeHeader(), "不再做 4MiB 人工窗口，原样转发")
 	require.Equal(t, http.StatusPartialContent, result.StatusCode)
-	require.Equal(t, fmt.Sprintf("bytes 0-%d/%d", chunk-1, total), result.ContentRange)
-	require.EqualValues(t, chunk, len(result.Data), "只该取一个窗口，不是整个文件")
-	require.Less(t, len(result.Data), total, "不能把整段视频拉下来")
+	require.Equal(t, fmt.Sprintf("bytes 0-%d/%d", total-1, total), result.ContentRange)
 }
 
-// 非零起点的开放式 Range 也要收成 [start, start+chunk-1]。
-func TestFetchMedia_OpenEndedRangeWithOffset(t *testing.T) {
-	const total = 8 << 20
+// 无 Range 的整段请求：200 + 完整内容（图片路径行为不变）。
+func TestFetchMedia_NoRangeReturnsWhole200(t *testing.T) {
+	const total = 4 << 20
 	up := newMediaUpstream(t, total)
 	svc := newProxy(t, "")
 
-	start := int64(1000000)
-	result, err := svc.FetchMedia(context.Background(), up.server.URL+"/v.mp4", "", fmt.Sprintf("bytes=%d-", start))
+	result, err := svc.FetchMedia(context.Background(), up.server.URL+"/p.png", "", "")
 	require.NoError(t, err)
-
-	chunk := service.MediaChunkBytesForTest
-	require.Equal(t, fmt.Sprintf("bytes=%d-%d", start, start+chunk-1), up.rangeHeader())
-	require.Equal(t, http.StatusPartialContent, result.StatusCode)
-	require.Equal(t, fmt.Sprintf("bytes %d-%d/%d", start, start+chunk-1, total), result.ContentRange)
-	require.EqualValues(t, chunk, len(result.Data))
+	require.Equal(t, "", up.rangeHeader(), "无 Range 请求不该带 Range 头")
+	require.Equal(t, http.StatusOK, result.StatusCode)
+	require.EqualValues(t, total, len(result.Data))
 }
 
-// 同一个 Range 第二次必须命中缓存：不出网，且 206 / Content-Range 仍在。
-func TestFetchMedia_RangeRequestHitsCache(t *testing.T) {
-	const total = 8 << 20
-	up := newMediaUpstream(t, total)
-	svc := newProxy(t, t.TempDir())
-
-	first, err := svc.FetchMedia(context.Background(), up.server.URL+"/v.mp4", "", "bytes=0-1023")
-	require.NoError(t, err)
-	require.Equal(t, int32(1), up.hitCount(), "第一次必须真的出网")
-	require.Equal(t, http.StatusPartialContent, first.StatusCode)
-
-	second, err := svc.FetchMedia(context.Background(), up.server.URL+"/v.mp4", "", "bytes=0-1023")
-	require.NoError(t, err)
-	require.Equal(t, int32(1), up.hitCount(), "第二次必须命中缓存、不再出网（改前这里还是 2）")
-	require.Equal(t, first.Data, second.Data)
-	require.Equal(t, http.StatusPartialContent, second.StatusCode, "缓存命中的 206 不能退化成 200")
-	require.Equal(t, fmt.Sprintf("bytes 0-1023/%d", total), second.ContentRange, "缓存必须存住 Content-Range，否则拖进度条会坏")
-	require.Equal(t, "bytes", second.AcceptRanges)
-	require.Equal(t, "video/mp4", second.ContentType)
-}
-
-// 不同片段各存一份：换一个 Range 要重新出网，换回来仍命中。
-func TestFetchMedia_RangeCacheKeyedByChunk(t *testing.T) {
-	up := newMediaUpstream(t, 8<<20)
-	svc := newProxy(t, t.TempDir())
-
-	_, err := svc.FetchMedia(context.Background(), up.server.URL+"/v.mp4", "", "bytes=0-1023")
-	require.NoError(t, err)
-	_, err = svc.FetchMedia(context.Background(), up.server.URL+"/v.mp4", "", "bytes=1024-2047")
-	require.NoError(t, err)
-	require.Equal(t, int32(2), up.hitCount(), "不同片段是不同的缓存条目")
-
-	_, err = svc.FetchMedia(context.Background(), up.server.URL+"/v.mp4", "", "bytes=0-1023")
-	require.NoError(t, err)
-	require.Equal(t, int32(2), up.hitCount(), "回到第一个片段应命中缓存")
-}
-
-// 片段缓存不能污染整段缓存键：随后一次无 Range 的请求仍然出网取完整内容。
-func TestFetchMedia_RangeCacheDoesNotPolluteWholeFileKey(t *testing.T) {
-	up := newMediaUpstream(t, 4<<20)
-	svc := newProxy(t, t.TempDir())
-
-	_, err := svc.FetchMedia(context.Background(), up.server.URL+"/v.mp4", "", "bytes=0-1023")
-	require.NoError(t, err)
-
-	whole, err := svc.FetchMedia(context.Background(), up.server.URL+"/v.mp4", "", "")
-	require.NoError(t, err)
-	require.Equal(t, int32(2), up.hitCount(), "无 Range 的请求不能吃到片段缓存")
-	require.Equal(t, http.StatusOK, whole.StatusCode)
-	require.EqualValues(t, 4<<20, len(whole.Data))
-}
-
-// 上游无视 Range 回 200 时，保留本地切片兜底（浏览器照样拿到 206）。
-func TestFetchMedia_UpstreamIgnoresRangeFallsBackToLocalSlice(t *testing.T) {
+// 上游无视 Range 回 200：不再本地切片，直接 200 整段回给浏览器（能播，只是不能精确 seek）。
+func TestFetchMedia_UpstreamIgnoresRangeReturnsWhole200(t *testing.T) {
 	body := make([]byte, 4096)
 	for i := range body {
 		body[i] = byte(i % 251)
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 故意忽略 Range：永远回 200 整段
 		w.Header().Set("Content-Type", "video/mp4")
-		_, _ = w.Write(body)
+		_, _ = w.Write(body) // 故意忽略 Range
 	}))
 	t.Cleanup(server.Close)
 
 	svc := newProxy(t, "")
 	result, err := svc.FetchMedia(context.Background(), server.URL+"/v.mp4", "", "bytes=10-19")
 	require.NoError(t, err)
-	require.Equal(t, http.StatusPartialContent, result.StatusCode)
-	require.Equal(t, "bytes 10-19/4096", result.ContentRange)
-	require.Equal(t, body[10:20], result.Data)
+	require.Equal(t, http.StatusOK, result.StatusCode, "上游不认 Range 就照 200 整段回")
+	require.Empty(t, result.ContentRange)
+	require.Equal(t, body, result.Data)
 }
 
-/**
- * 第二轮：Range 请求改流式转发。
- *
- * 改前实测（集成树，真实视频 63MB）：首次 `Range: bytes=0-` 要等整个 4MiB
- * 窗口下载完才发首字节，TTFB 14.96s —— 缓存命中再好也救不了「第一次播放」，
- * 用户看到的就是十几秒黑屏。流式之后首包只受上游首字节影响。
- */
+// ---------- FetchMediaStream（流式路径，Range 请求） ----------
 
-// slowChunkUpstream 分块慢写：每块写完后 Flush，然后等测试放行下一块。
+// slowChunkUpstream 分块慢写：每块写完 Flush，然后等测试放行下一块。
 // 这样「读到第一块时上游还没写完」是可断言的确定状态，不靠固定 sleep 猜。
 type slowChunkUpstream struct {
 	server *httptest.Server
 	chunks [][]byte
+	status int
 	// gate[i] 收到信号后才写第 i+1 块（gate[0] 无意义，第一块立即写）
-	gate []chan struct{}
-	// wrote 已写完的块数（写完 + Flush 之后才 +1）
+	gate  []chan struct{}
 	wrote int32
+	mu    sync.Mutex
+	last  string
 }
 
-func newSlowChunkUpstream(t *testing.T, chunks ...[]byte) *slowChunkUpstream {
+func newSlowChunkUpstream(t *testing.T, status int, chunks ...[]byte) *slowChunkUpstream {
 	t.Helper()
-	up := &slowChunkUpstream{chunks: chunks, gate: make([]chan struct{}, len(chunks))}
+	up := &slowChunkUpstream{chunks: chunks, status: status, gate: make([]chan struct{}, len(chunks))}
 	for i := range up.gate {
 		up.gate[i] = make(chan struct{})
 	}
 	up.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 声明成 206 + Content-Range，模拟认 Range 的视频 CDN；总长给个固定值。
+		up.mu.Lock()
+		up.last = r.Header.Get("Range")
+		up.mu.Unlock()
+
 		total := 0
-		for _, c := range up.chunks {
+		for _, c := range chunks {
 			total += len(c)
 		}
 		w.Header().Set("Content-Type", "video/mp4")
-		w.Header().Set("Content-Range", fmt.Sprintf("bytes 0-%d/%d", total-1, total))
-		w.WriteHeader(http.StatusPartialContent)
+		if status == http.StatusPartialContent {
+			w.Header().Set("Content-Range", fmt.Sprintf("bytes 0-%d/%d", total-1, total))
+		}
+		w.WriteHeader(status)
 		for i, chunk := range up.chunks {
 			if i > 0 {
 				select {
@@ -256,17 +199,53 @@ func newSlowChunkUpstream(t *testing.T, chunks ...[]byte) *slowChunkUpstream {
 	return up
 }
 
-func (u *slowChunkUpstream) written() int { return int(atomic.LoadInt32(&u.wrote)) }
-
+func (u *slowChunkUpstream) written() int  { return int(atomic.LoadInt32(&u.wrote)) }
 func (u *slowChunkUpstream) release(i int) { close(u.gate[i]) }
+func (u *slowChunkUpstream) rangeHeader() string {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.last
+}
+
+// P2-6：流式路径必须把客户端 Range 原样发给上游（不再改写，应完全相等）。
+func TestFetchMediaStream_ForwardsRangeHeaderVerbatim(t *testing.T) {
+	for _, rangeHeader := range []string{"bytes=0-", "bytes=100-199", "bytes=1000000-", "bytes=-500"} {
+		t.Run(rangeHeader, func(t *testing.T) {
+			up := newSlowChunkUpstream(t, http.StatusPartialContent, bytes.Repeat([]byte("a"), 256))
+			svc := newProxy(t, "")
+
+			stream, err := svc.FetchMediaStream(context.Background(), up.server.URL+"/v.mp4", "", rangeHeader)
+			require.NoError(t, err)
+			_, err = io.ReadAll(stream.Body)
+			require.NoError(t, err)
+			require.NoError(t, stream.Body.Close())
+
+			require.Equal(t, rangeHeader, up.rangeHeader(), "Range 必须原样发给上游")
+		})
+	}
+}
+
+// 畸形 Range 必须在我们这层就被挡掉（ErrRangeNotSatisfiable），绝不能打到上游。
+func TestFetchMediaStream_MalformedRangeRejectedWithoutUpstream(t *testing.T) {
+	for _, rangeHeader := range []string{"Foo=0-", "bytes=abc-", "bytes=0-1,4-5", "bytes=-"} {
+		t.Run(rangeHeader, func(t *testing.T) {
+			up := newMediaUpstream(t, 1024)
+			svc := newProxy(t, "")
+
+			_, err := svc.FetchMediaStream(context.Background(), up.server.URL+"/v.mp4", "", rangeHeader)
+			require.ErrorIs(t, err, service.ErrRangeNotSatisfiable)
+			require.Zero(t, up.hitCount(), "畸形 Range 不能转发给上游")
+		})
+	}
+}
 
 // 关键断言：FetchMediaStream 返回时只读到第一块，上游还在等放行写第二块 ——
-// 也就是「没有等整窗下载完」。
+// 也就是「没有等整个响应下载完」。
 func TestFetchMediaStream_ReturnsBeforeUpstreamFinishes(t *testing.T) {
 	first := bytes.Repeat([]byte("a"), 1024)
 	second := bytes.Repeat([]byte("b"), 1024)
 	third := bytes.Repeat([]byte("c"), 1024)
-	up := newSlowChunkUpstream(t, first, second, third)
+	up := newSlowChunkUpstream(t, http.StatusPartialContent, first, second, third)
 
 	svc := newProxy(t, "")
 	stream, err := svc.FetchMediaStream(context.Background(), up.server.URL+"/v.mp4", "", "bytes=0-")
@@ -277,14 +256,15 @@ func TestFetchMediaStream_ReturnsBeforeUpstreamFinishes(t *testing.T) {
 	require.Equal(t, "video/mp4", stream.ContentType)
 	require.Equal(t, "bytes", stream.AcceptRanges)
 
-	// 上游此刻只写完第一块（gate[1] 还没放行）
-	require.Equal(t, 1, up.written(), "FetchMediaStream 返回时上游不该已经写完")
+	// FetchMediaStream 返回时上游可能还没写出第一块（只发出了响应头），
+	// 关键是它没写完：第 2、3 块还卡在 gate 上。
+	require.Less(t, up.written(), 3, "FetchMediaStream 返回时上游不该已经写完")
 
 	got := make([]byte, len(first))
 	_, err = io.ReadFull(stream.Body, got)
-	require.NoError(t, err, "第一块必须立刻可读（改前这里要等整个窗口）")
+	require.NoError(t, err, "第一块必须立刻可读")
 	require.Equal(t, first, got)
-	require.Equal(t, 1, up.written(), "读到第一块时上游仍在等第二块")
+	require.Less(t, up.written(), 3, "读到第一块时上游仍在等第二、三块")
 
 	up.release(1)
 	up.release(2)
@@ -293,33 +273,60 @@ func TestFetchMediaStream_ReturnsBeforeUpstreamFinishes(t *testing.T) {
 	require.Equal(t, append(append([]byte{}, second...), third...), rest)
 }
 
-// 流式读完要把整段落进缓存；第二次同样的 Range 请求直接命中、不再出网。
-func TestFetchMediaStream_CachesAfterFullRead(t *testing.T) {
+// P2-5：上游回 200 且体积很大（80MiB）时也必须流式转发成功，不能因为超过
+// maxProxyMediaBytes（64MiB）就 502 —— 流式路径根本不 ReadAll。
+func TestFetchMediaStream_StreamsLarge200BodyWithoutSizeLimit(t *testing.T) {
+	const block = 1 << 20
+	const blocks = 80 // 80 MiB
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "video/mp4")
+		w.WriteHeader(http.StatusOK)
+		buf := bytes.Repeat([]byte("q"), block)
+		for i := 0; i < blocks; i++ {
+			if _, err := w.Write(buf); err != nil {
+				return
+			}
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	svc := newProxy(t, "") // 不挂缓存，避免 80MiB 超 maxCacheableMediaBytes 的干扰
+	stream, err := svc.FetchMediaStream(context.Background(), server.URL+"/v.mp4", "", "bytes=0-")
+	require.NoError(t, err, "上游忽略 Range 回 200 时也不该 502")
+	defer stream.Body.Close()
+
+	require.Equal(t, http.StatusOK, stream.StatusCode)
+	require.Equal(t, "video/mp4", stream.ContentType)
+
+	n, err := io.Copy(io.Discard, stream.Body)
+	require.NoError(t, err)
+	require.EqualValues(t, block*blocks, n, "整段 80MiB 都要流式转发出去")
+}
+
+// 无 Range 的整段 200 读完后落缓存；第二次命中、不再出网。
+func TestFetchMediaStream_CachesWhole200AfterFullRead(t *testing.T) {
 	chunk := bytes.Repeat([]byte("x"), 2048)
-	up := newSlowChunkUpstream(t, chunk)
+	up := newSlowChunkUpstream(t, http.StatusOK, chunk)
 	svc := newProxy(t, t.TempDir())
 
-	stream, err := svc.FetchMediaStream(context.Background(), up.server.URL+"/v.mp4", "", "bytes=0-1023")
+	stream, err := svc.FetchMediaStream(context.Background(), up.server.URL+"/v.mp4", "", "")
 	require.NoError(t, err)
-	_, err = io.ReadAll(stream.Body)
+	replay, err := io.ReadAll(stream.Body)
 	require.NoError(t, err)
+	require.Equal(t, chunk, replay)
 	require.NoError(t, stream.Body.Close())
 
 	files, bytesCached := svc.MediaCacheStats()
-	require.Equal(t, 1, files, "读完整段后必须留下一个缓存条目")
-	// 落盘文件 = 元信息头 + 原始字节，所以只会比片段本身大
-	require.GreaterOrEqual(t, bytesCached, int64(len(chunk)))
+	require.Equal(t, 1, files, "读完整段 200 后必须留下一个缓存条目")
+	require.GreaterOrEqual(t, bytesCached, int64(len(chunk)), "落盘含元信息头，必然不小于原始字节")
 
-	second, err := svc.FetchMediaStream(context.Background(), up.server.URL+"/v.mp4", "", "bytes=0-1023")
+	second, err := svc.FetchMediaStream(context.Background(), up.server.URL+"/v.mp4", "", "")
 	require.NoError(t, err)
 	defer second.Body.Close()
-
-	replay, err := io.ReadAll(second.Body)
+	replay2, err := io.ReadAll(second.Body)
 	require.NoError(t, err)
-	require.Equal(t, chunk, replay)
-	require.Equal(t, http.StatusPartialContent, second.StatusCode, "缓存回放不能把 206 退化成 200")
-	require.Equal(t, fmt.Sprintf("bytes 0-%d/%d", len(chunk)-1, len(chunk)), second.ContentRange)
-	require.EqualValues(t, len(chunk), second.ContentLength)
+	require.Equal(t, chunk, replay2)
+	require.Equal(t, http.StatusOK, second.StatusCode)
 	require.Equal(t, 1, up.written(), "第二次必须命中缓存、不再出网")
 }
 
@@ -327,12 +334,12 @@ func TestFetchMediaStream_CachesAfterFullRead(t *testing.T) {
 func TestFetchMediaStream_ClientAbortLeavesNoPartialCache(t *testing.T) {
 	first := bytes.Repeat([]byte("a"), 1024)
 	second := bytes.Repeat([]byte("b"), 1024)
-	up := newSlowChunkUpstream(t, first, second)
+	up := newSlowChunkUpstream(t, http.StatusOK, first, second)
 
 	cacheDir := t.TempDir()
 	svc := newProxy(t, cacheDir)
 
-	stream, err := svc.FetchMediaStream(context.Background(), up.server.URL+"/v.mp4", "", "bytes=0-")
+	stream, err := svc.FetchMediaStream(context.Background(), up.server.URL+"/v.mp4", "", "")
 	require.NoError(t, err)
 
 	got := make([]byte, 512)
@@ -368,31 +375,6 @@ func collectCacheFiles(t *testing.T, dir string) []string {
 	return out
 }
 
-// 上游无视 Range 回 200：流式这条路必须退回缓冲 + 本地切片，仍给 206。
-func TestFetchMediaStream_UpstreamIgnoresRangeFallsBackToSlice(t *testing.T) {
-	body := make([]byte, 4096)
-	for i := range body {
-		body[i] = byte(i % 251)
-	}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "video/mp4")
-		_, _ = w.Write(body) // 故意忽略 Range
-	}))
-	t.Cleanup(server.Close)
-
-	svc := newProxy(t, t.TempDir())
-	stream, err := svc.FetchMediaStream(context.Background(), server.URL+"/v.mp4", "", "bytes=10-19")
-	require.NoError(t, err)
-	defer stream.Body.Close()
-
-	data, err := io.ReadAll(stream.Body)
-	require.NoError(t, err)
-	require.Equal(t, http.StatusPartialContent, stream.StatusCode)
-	require.Equal(t, "bytes 10-19/4096", stream.ContentRange)
-	require.Equal(t, body[10:20], data)
-	require.EqualValues(t, 10, stream.ContentLength)
-}
-
 // 上游 header 不可信（octet-stream）时仍要嗅探出 video/mp4，且不能吃掉首字节。
 func TestFetchMediaStream_SniffsContentTypeWithoutLosingBytes(t *testing.T) {
 	payload := append([]byte{0x00, 0x00, 0x00, 0x18, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm'}, bytes.Repeat([]byte("z"), 1000)...)
@@ -413,4 +395,22 @@ func TestFetchMediaStream_SniffsContentTypeWithoutLosingBytes(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "video/mp4", stream.ContentType, "header 不可信时要靠内容嗅探")
 	require.Equal(t, payload, data, "嗅探不能吞掉开头的字节")
+}
+
+// 上游对越界 Range 回 416：必须原样透传 416 + Content-Range: bytes */total。
+func TestFetchMediaStream_PassesThrough416(t *testing.T) {
+	const total = 1024
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", total))
+		w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+	}))
+	t.Cleanup(server.Close)
+
+	svc := newProxy(t, "")
+	stream, err := svc.FetchMediaStream(context.Background(), server.URL+"/v.mp4", "", "bytes=999999999-")
+	require.NoError(t, err)
+	defer stream.Body.Close()
+
+	require.Equal(t, http.StatusRequestedRangeNotSatisfiable, stream.StatusCode)
+	require.Equal(t, fmt.Sprintf("bytes */%d", total), stream.ContentRange)
 }
