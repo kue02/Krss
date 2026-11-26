@@ -1128,7 +1128,10 @@ export function EntryList({
       frame = 0;
       const items = node.querySelectorAll<HTMLElement>("[data-entry-id]");
       if (items.length === 0) return;
-      const containerTop = node.getBoundingClientRect().top;
+      // 移动端（document 滚动）滚动发生在 window 上：容器自身的 scroll 事件永远不触发，
+      // 容器 getBoundingClientRect().top 又会随内容同幅上移导致差值恒定 → 必须走 scrollSurface
+      // 拿「视口顶」（桌面=容器顶，移动=头部栏底），订阅也由它按 element/document 分别挂。
+      const containerTop = scrollSurface.getViewportRect().top;
       // 虚拟列表下 DOM 顺序 ≠ 绝对序号（只挂可视 + overscan 一小段）：优先用行上的
       // data-index（EntryListItem 透传的绝对下标）；非虚拟列表无 data-index 时回退 DOM 顺序。
       const absIndex = (el: HTMLElement, fallback: number) => {
@@ -1157,10 +1160,11 @@ export function EntryList({
       frame = requestAnimationFrame(measure);
     };
 
-    node.addEventListener("scroll", handleScroll, { passive: true });
+    // 桌面订阅容器 scroll，移动端订阅 window scroll（由 scrollSurface 按 kind 分派）。
+    const unsubscribe = scrollSurface.subscribe(handleScroll);
     measure();
     return () => {
-      node.removeEventListener("scroll", handleScroll);
+      unsubscribe();
       if (frame) cancelAnimationFrame(frame);
     };
     // 依赖 entries 本身而不只是 entries.length：筛选 / 视图切换后条目数量可能不变（等长），
@@ -1168,7 +1172,7 @@ export function EntryList({
     // entries 是 useMemo 出来的稳定数组（依赖 data / deferredRemovalVersion），只有数据或筛选
     // 真的换了引用才会重建监听，不会每帧重建；切换筛选 / 视图都会换新的 data → 新 entries 引用
     // → 重新测量。
-  }, [entries]);
+  }, [entries, scrollSurface]);
 
   // 刷新：按当前选中范围（单个源 / 文件夹内所有源 / 某个视图的所有源）
   const [mobileActions, setMobileActions] = useState<{

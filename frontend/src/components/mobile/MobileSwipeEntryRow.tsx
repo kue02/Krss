@@ -85,6 +85,8 @@ export function MobileSwipeEntryRow({
   const dragOffsetRef = useRef<number | null>(null);
   /** 合并到下一帧的 rAF 句柄，保证每帧最多写一次 DOM */
   const rafRef = useRef<number | null>(null);
+  /** 拖动期间挂在行上的 pointerup 兜底（冒泡阶段，晚于 m3-ripple 的 capture） */
+  const dragPointerGuardRef = useRef<(() => void) | null>(null);
   const { mutate: markAsRead } = useMarkAsRead();
   const { mutate: markAsStarred } = useMarkAsStarred();
 
@@ -136,16 +138,44 @@ export function MobileSwipeEntryRow({
     const content = contentRef.current;
     if (!content) return;
     const surfaces = content.querySelectorAll<HTMLElement>(
-      ".salty-ripple-surface.--press",
+      ".salty-ripple-surface",
     );
     for (const surface of surfaces) {
+      if (!surface.classList.contains("--press")) continue;
       surface.classList.remove("--press");
       surface.getAnimations?.({ subtree: true }).forEach((a) => a.cancel());
+      // 光摘 class 不够：m3-ripple 的按压态是它自己的 React state，只有
+      // click / contextmenu / pointercancel 会把它归位。不归位的话，之后任何一次
+      // 重渲染都会按旧 state 把 `--press` 加回来（用户看到「灰底又回来了」）。
+      // 这里派发一个不冒泡的 contextmenu（它的处理函数无条件清态，且不会触发卡片 onClick）。
+      surface.dispatchEvent(new Event("contextmenu", { bubbles: false }));
     }
+  }, []);
+
+  const attachDragPointerGuard = useCallback(() => {
+    const row = rowRef.current;
+    if (!row || dragPointerGuardRef.current) return;
+    // 冒泡阶段挂：m3-ripple 在卡片的 capture 阶段处理 pointerup（会把 --press 加回来），
+    // 这里排在它之后，正好把刚加回来的按压态再清掉。
+    const handler = () => clearPressedRipple();
+    dragPointerGuardRef.current = handler;
+    row.addEventListener("pointerup", handler, false);
+    row.addEventListener("pointercancel", handler, false);
+  }, [clearPressedRipple]);
+
+  const detachDragPointerGuard = useCallback(() => {
+    const row = rowRef.current;
+    const handler = dragPointerGuardRef.current;
+    if (row && handler) {
+      row.removeEventListener("pointerup", handler, false);
+      row.removeEventListener("pointercancel", handler, false);
+    }
+    dragPointerGuardRef.current = null;
   }, []);
 
   const handleDragStart = useCallback(() => {
     clearPressedRipple();
+    attachDragPointerGuard();
     baseOffsetRef.current = open ? -ACTION_WIDTH : 0;
     dragOffsetRef.current = baseOffsetRef.current;
     const content = contentRef.current;
@@ -154,10 +184,13 @@ export function MobileSwipeEntryRow({
       content.style.transition = "none";
       content.style.transform = `translateX(${baseOffsetRef.current}px)`;
     }
-  }, [clearPressedRipple, open]);
+  }, [attachDragPointerGuard, clearPressedRipple, open]);
 
   const handleDragMove = useCallback(
     (offsetX: number) => {
+      // 慢速滑动时 m3-ripple 的 150ms 触摸延迟会在 dragStart 之后才按下压感，
+      // 所以拖动期间每帧再清一次（没有按压态时是空操作）。
+      clearPressedRipple();
       const next = Math.min(
         0,
         Math.max(-ACTION_WIDTH, baseOffsetRef.current + offsetX),
@@ -165,7 +198,7 @@ export function MobileSwipeEntryRow({
       dragOffsetRef.current = next;
       scheduleDragTransform();
     },
-    [scheduleDragTransform],
+    [clearPressedRipple, scheduleDragTransform],
   );
 
   const handleDragEnd = useCallback(
@@ -194,14 +227,23 @@ export function MobileSwipeEntryRow({
         void content.offsetWidth;
         content.style.transform = `translateX(${shouldOpen ? -ACTION_WIDTH : 0}px)`;
       }
+      // 松手后 m3-ripple 可能刚在 pointerup 里把按压态加回来，这里再清一次并摘掉兜底监听
+      clearPressedRipple();
+      detachDragPointerGuard();
       if (shouldOpen) openRow();
       else close();
     },
-    [cancelPendingFrame, close, openRow],
+    [cancelPendingFrame, clearPressedRipple, close, detachDragPointerGuard, openRow],
   );
 
-  // 卸载时清掉挂起的合帧，避免回调落到已卸载节点
-  useEffect(() => cancelPendingFrame, [cancelPendingFrame]);
+  // 卸载时清掉挂起的合帧与拖动兜底监听，避免回调落到已卸载节点
+  useEffect(
+    () => () => {
+      cancelPendingFrame();
+      detachDragPointerGuard();
+    },
+    [cancelPendingFrame, detachDragPointerGuard],
+  );
 
   // 非拖动时由 open 驱动内容层位移（点外部 / 滚动 / 他行 SWIPE_OPEN_EVENT 收起都走这里）。
   // 拖动中（dragOffsetRef 非空）不接管：外部 open 变化不得覆盖当前手指位移。

@@ -515,6 +515,71 @@ describe("MobileSwipeEntryRow", () => {
     expect(surface.className).not.toContain("--press");
   });
 
+  it("松手（pointerup）后 m3-ripple 重新加回的按压态会被清掉", () => {
+    // 复现真实时序：m3-ripple 在卡片 capture 阶段处理 pointerup，会把 --press 加回来；
+    // 横向滑动被 useSwipeGesture preventDefault 掉 click，按压态就永远没人清。
+    const { container } = render(
+      <MobileSwipeEntryRow entry={makeEntry()}>
+        <div data-entry-card="">
+          <div className="salty-ripple">
+            <div className="salty-ripple-surface" />
+          </div>
+          <span>卡片内容</span>
+        </div>
+      </MobileSwipeEntryRow>,
+    );
+    const row = container.querySelector("[data-swipe-row]") as HTMLElement;
+    const card = container.querySelector("[data-entry-card]") as HTMLElement;
+    const surface = container.querySelector(
+      ".salty-ripple-surface",
+    ) as HTMLElement;
+
+    // 模拟 m3-ripple 的 pointerup 行为：capture 阶段重新挂上 --press
+    const rePress = () => surface.classList.add("--press");
+    card.addEventListener("pointerup", rePress, true);
+
+    act(() => {
+      row.dispatchEvent(touch("touchstart", 220, 100));
+      row.dispatchEvent(touch("touchmove", 150, 100));
+      // 必须从卡片内部派发：capture 阶段才会经过卡片（m3-ripple 挂在那里），
+      // 再由冒泡回到行级兜底监听
+      surface.dispatchEvent(new Event("pointerup", { bubbles: true }));
+    });
+
+    card.removeEventListener("pointerup", rePress, true);
+    expect(surface.className).not.toContain("--press");
+  });
+
+  it("拖动过程中才出现的按压态（触摸延迟 150ms）也会被清掉", () => {
+    const { container } = render(
+      <MobileSwipeEntryRow entry={makeEntry()}>
+        <div data-entry-card="">
+          <div className="salty-ripple">
+            <div className="salty-ripple-surface" />
+          </div>
+          <span>卡片内容</span>
+        </div>
+      </MobileSwipeEntryRow>,
+    );
+    const row = container.querySelector("[data-swipe-row]") as HTMLElement;
+    const surface = container.querySelector(
+      ".salty-ripple-surface",
+    ) as HTMLElement;
+
+    act(() => {
+      row.dispatchEvent(touch("touchstart", 220, 100));
+      row.dispatchEvent(touch("touchmove", 210, 100));
+    });
+    // 拖动中途 m3-ripple 的 150ms 定时器到点，挂上 --press
+    surface.classList.add("--press");
+
+    act(() => {
+      row.dispatchEvent(touch("touchmove", 180, 100));
+    });
+
+    expect(surface.className).not.toContain("--press");
+  });
+
   it("展开后卡片几何变化会重测动作面板内缩", async () => {
     const { container } = render(
       <MobileSwipeEntryRow entry={makeEntry()}>
