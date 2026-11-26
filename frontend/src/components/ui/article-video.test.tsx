@@ -60,6 +60,14 @@ function getSurface(container: HTMLElement): Element {
   return surface as Element;
 }
 
+/** 悬停延迟是 120ms：测试里等过这个窗口，稳定拿到「已确认停留」之后的状态。 */
+const HOVER_DELAY_WAIT = 220;
+async function waitHoverStart() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, HOVER_DELAY_WAIT));
+  });
+}
+
 /** Video.js 播放器是懒加载的（React.lazy）：等真正的 `<video>` 挂上来再断言。 */
 async function waitForVideo(container: HTMLElement): Promise<HTMLVideoElement> {
   await waitFor(
@@ -147,8 +155,9 @@ describe("ArticleVideo · Video.js 播放器（NextFlux 同款）", () => {
         expect(video.getAttribute("preload")).toBe("metadata");
       });
 
-      // 悬停才升 auto
+      // 悬停且停留满 120ms 才升 auto（扫过不升级）
       fireEvent.pointerEnter(getSurface(container), { pointerType: "mouse" });
+      await waitHoverStart();
       expect(play).toHaveBeenCalled();
       await waitFor(() => {
         expect(video.getAttribute("preload")).toBe("auto");
@@ -237,6 +246,7 @@ describe("ArticleVideo · Video.js 播放器（NextFlux 同款）", () => {
       expect(video.muted).toBe(false);
 
       fireEvent.pointerEnter(getSurface(container), { pointerType: "mouse" });
+      await waitHoverStart();
 
       expect(play).toHaveBeenCalled();
       // 先静音再 play：不静音的自动播放会被浏览器策略拒掉
@@ -279,6 +289,7 @@ describe("ArticleVideo · Video.js 播放器（NextFlux 同款）", () => {
         const video = await waitForVideo(container);
 
         fireEvent.pointerEnter(getSurface(container), { pointerType: "mouse" });
+        await waitHoverStart();
         expect(play).toHaveBeenCalled();
         // 拒绝后仍保持静音（补播时还是静音的），也不抛错
         await waitFor(() => {
@@ -318,6 +329,7 @@ describe("ArticleVideo · Video.js 播放器（NextFlux 同款）", () => {
       const surface = getSurface(container);
 
       fireEvent.pointerEnter(surface, { pointerType: "mouse" });
+      await waitHoverStart();
       expect(play).toHaveBeenCalled();
       video.currentTime = 4;
 
@@ -355,6 +367,7 @@ describe("ArticleVideo · Video.js 播放器（NextFlux 同款）", () => {
       const surface = getSurface(container);
 
       fireEvent.pointerEnter(surface, { pointerType: "mouse" });
+      await waitHoverStart();
       expect(play).toHaveBeenCalled();
 
       // 模拟「用户接管后正在有声播放」：jsdom 的 paused 恒为 true，这里把它覆写成
@@ -403,6 +416,7 @@ describe("ArticleVideo · Video.js 播放器（NextFlux 同款）", () => {
       const video = await waitForVideo(container);
 
       fireEvent.pointerEnter(getSurface(container), { pointerType: "mouse" });
+      await waitHoverStart();
 
       expect(play).not.toHaveBeenCalled();
       expect(video.muted).toBe(false);
@@ -430,6 +444,7 @@ describe("ArticleVideo · Video.js 播放器（NextFlux 同款）", () => {
       video.currentTime = 5;
 
       fireEvent.pointerEnter(getSurface(container), { pointerType: "mouse" });
+      await waitHoverStart();
 
       expect(play).toHaveBeenCalled();
       expect(video.muted).toBe(true);
@@ -458,9 +473,64 @@ describe("ArticleVideo · Video.js 播放器（NextFlux 同款）", () => {
       const video = await waitForVideo(container);
 
       fireEvent.pointerEnter(getSurface(container), { pointerType: "touch" });
+      await waitHoverStart();
 
       expect(play).not.toHaveBeenCalled();
       expect(video.muted).toBe(false);
+    },
+    VIDEO_TEST_TIMEOUT,
+  );
+
+  it(
+    "悬停不足 120ms 就移开：不拉流、不播放（防扫过偷跑流量）",
+    async () => {
+      const play = vi
+        .spyOn(HTMLMediaElement.prototype, "play")
+        .mockResolvedValue(undefined);
+      vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+
+      const { container } = render(
+        <ArticleVideo src="https://example.com/v.mp4" />,
+      );
+      const video = await waitForVideo(container);
+      const surface = getSurface(container);
+
+      fireEvent.pointerEnter(surface, { pointerType: "mouse" });
+      // 立刻移开（远小于 HOVER_DELAY_MS = 120ms）
+      fireEvent.pointerLeave(surface, { pointerType: "mouse" });
+
+      // 等过延迟窗口，确认 timer 被清掉：没有 play，也没升 auto
+      await waitHoverStart();
+      expect(play).not.toHaveBeenCalled();
+      expect(video.getAttribute("preload")).toBe("metadata");
+      expect(video.muted).toBe(false);
+    },
+    VIDEO_TEST_TIMEOUT,
+  );
+
+  it(
+    "悬停停留满 120ms 才升级 auto 并起播",
+    async () => {
+      const play = vi
+        .spyOn(HTMLMediaElement.prototype, "play")
+        .mockResolvedValue(undefined);
+      vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+
+      const { container } = render(
+        <ArticleVideo src="https://example.com/v.mp4" />,
+      );
+      const video = await waitForVideo(container);
+      const surface = getSurface(container);
+
+      fireEvent.pointerEnter(surface, { pointerType: "mouse" });
+      // 还没到延迟：没开始
+      expect(play).not.toHaveBeenCalled();
+      expect(video.getAttribute("preload")).toBe("metadata");
+
+      await waitHoverStart();
+      expect(play).toHaveBeenCalled();
+      expect(video.muted).toBe(true);
+      expect(video.getAttribute("preload")).toBe("auto");
     },
     VIDEO_TEST_TIMEOUT,
   );
