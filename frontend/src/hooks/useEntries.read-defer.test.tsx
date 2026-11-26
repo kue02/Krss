@@ -362,7 +362,7 @@ describe("useMarkManyAsRead / useMarkAllAsRead —— 批量标已读也不当�
       wrapper: wrapper(client),
     });
     await act(async () => {
-      result.current.mutate();
+      result.current.mutate({} as never);
     });
 
     const list = client.getQueryData<{ pages: { entries: Entry[] }[] }>([
