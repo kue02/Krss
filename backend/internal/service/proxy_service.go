@@ -76,6 +76,9 @@ type proxyService struct {
 	// mediaCache 代理媒体（图片/音视频）的磁盘缓存：没有它每次都要重新出网取
 	// （实测同一张图连取三遍 0.708 / 0.967 / 0.669 s，一点没快）
 	mediaCache *mediaCache
+	// fallbackMedia 兜底取整段的函数（生产为 nil → 走 fetchImageWithRetry）。
+	// 抽成字段只为黑盒测试能模拟「标准客户端失败、azuretls 成功」这条分支。
+	fallbackMedia func(ctx context.Context, mediaURL, refererURL string) (*ProxyResult, error)
 }
 
 func NewProxyService(clientFactory *network.ClientFactory, anubisSolver AnubisSolver) ProxyService {
@@ -94,24 +97,32 @@ func (s *proxyService) FetchImage(ctx context.Context, imageURL, refererURL stri
 }
 
 func (s *proxyService) FetchMedia(ctx context.Context, mediaURL, refererURL, rangeHeader string) (*ProxyResult, error) {
-	// 磁盘缓存只存「整段 200」，Range 片段一律不落盘。
-	// 为什么：按任意起点切出来的片段会各存一份，实测一个 63MB 视频被存成 61 个文件 / 230MB
-	// （放大 3.82×），512MB 只装得下 3.7 个视频；而响应本来就带 Cache-Control: max-age=86400，
-	// 浏览器自己会缓存字节，磁盘分片缓存的收益远小于它带来的放大与一致性问题。
-	cacheable := s.mediaCache != nil && rangeHeader == ""
-	if cacheable {
-		if hit, ok := s.mediaCache.Get(mediaURL); ok {
-			logger.Debug("proxy media cache hit", "module", "service", "action", "fetch", "resource", "proxy", "result", "ok", "host", safeHostLog(mediaURL))
-			return hit, nil
+	// 磁盘缓存只存「整段 200」；Range 片段从不写入（按任意起点碎片化会放大 3.82×）。
+	// 但「读」可以按 Range 切：整文件缓存已在盘时，Range 请求直接从磁盘切片、不出网。
+	forwardRange, err := normalizeProxyRange(rangeHeader)
+	if err != nil {
+		return nil, err
+	}
+	if s.mediaCache != nil {
+		if forwardRange == "" {
+			if hit, ok := s.mediaCache.Get(mediaURL); ok {
+				logger.Debug("proxy media cache hit", "module", "service", "action", "fetch", "resource", "proxy", "result", "ok", "host", safeHostLog(mediaURL))
+				return hit, nil
+			}
+		} else if spec, perr := parseMediaRange(forwardRange); perr == nil {
+			if hit, ok := s.mediaCache.GetRange(mediaURL, spec); ok {
+				logger.Debug("proxy media cache range hit", "module", "service", "action", "fetch", "resource", "proxy", "result", "ok", "host", safeHostLog(mediaURL))
+				return hit, nil
+			}
 		}
 	}
 
 	// 先用标准 HTTP 客户端：它能正确走「设置 → 网络」里配置的代理，也会自动跟随图床跳转
 	// （azuretls 会话在 HTTP 代理下会超时）
-	result, stdErr := s.fetchWithStandardClient(ctx, mediaURL, refererURL, rangeHeader)
+	result, stdErr := s.fetchWithStandardClient(ctx, mediaURL, refererURL, forwardRange)
 	if stdErr == nil {
-		// 只缓存完整成功的 200 整段；206 片段与错误结果都不入缓存
-		if cacheable && result.StatusCode == http.StatusOK {
+		// 只缓存完整成功的无 Range 200 整段；206 片段与错误结果都不入缓存
+		if s.mediaCache != nil && forwardRange == "" && result.StatusCode == http.StatusOK {
 			s.mediaCache.Put(mediaURL, result)
 		}
 		return result, nil
@@ -119,13 +130,28 @@ func (s *proxyService) FetchMedia(ctx context.Context, mediaURL, refererURL, ran
 
 	logger.Debug("proxy standard client failed, falling back", "module", "service", "action", "fetch", "resource", "proxy", "result", "failed", "error", stdErr)
 
-	// 再退到 azuretls 会话（浏览器 TLS 指纹）：反爬 / Anubis 挑战的站点靠它
-	// （兜底这条路只做整段取，不带 Range）
+	// 再退到 azuretls 会话（浏览器 TLS 指纹）：反爬 / Anubis 挑战的站点靠它。
+	// 兜底只做整段取（azuretls 不带 Range）；客户端要了 Range 就在本地切片回 206。
 	result, fallbackErr := s.fetchImageWithRetry(ctx, mediaURL, refererURL, "", 0)
-	if fallbackErr == nil && cacheable {
+	if fallbackErr != nil {
+		return nil, fallbackErr
+	}
+	if forwardRange != "" {
+		spec, perr := parseMediaRange(forwardRange)
+		if perr != nil {
+			return nil, perr
+		}
+		chunk, contentRange, status := sliceMediaBytes(result.Data, spec)
+		acceptRanges := result.AcceptRanges
+		if acceptRanges == "" {
+			acceptRanges = "bytes"
+		}
+		return &ProxyResult{Data: chunk, ContentType: result.ContentType, StatusCode: status, ContentRange: contentRange, AcceptRanges: acceptRanges}, nil
+	}
+	if s.mediaCache != nil {
 		s.mediaCache.Put(mediaURL, result)
 	}
-	return result, fallbackErr
+	return result, nil
 }
 
 // WithMediaCache 挂上磁盘缓存（dir 空则不启用）。
@@ -237,7 +263,9 @@ func bufferStandardMediaResponse(resp *http.Response, parsedURL *url.URL, rangeH
 		ContentType:  contentType,
 		StatusCode:   resp.StatusCode,
 		ContentRange: resp.Header.Get("Content-Range"),
-		AcceptRanges: "bytes",
+		// P2-8：照抄上游的 Accept-Ranges，别硬编码 "bytes" —— 上游不支持时
+		// 我们骗浏览器「支持 Range」会导致它发 Range 又被回 200，反复重试。
+		AcceptRanges: resp.Header.Get("Accept-Ranges"),
 	}, nil
 }
 
@@ -276,7 +304,12 @@ func mediaKindFromURL(parsedURL *url.URL) string {
 		return mediaKindImage
 	}
 	lowerPath := strings.ToLower(parsedURL.Path)
-	switch path.Ext(lowerPath) {
+	ext := path.Ext(lowerPath)
+	// 先按扩展名认图片：`.../video/cover.jpg` 这种路径里带 /video/ 但其实是图片，
+	// 先看扩展名能避免把它误判成视频、发错 accept/sec-fetch-dest。
+	switch ext {
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".svg", ".ico", ".bmp", ".heic", ".tiff":
+		return mediaKindImage
 	case ".mp4", ".m4v", ".m4s", ".webm", ".mov", ".mkv", ".ogv", ".avi", ".ts", ".m3u8", ".mpd":
 		return mediaKindVideo
 	}

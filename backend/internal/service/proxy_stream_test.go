@@ -3,12 +3,14 @@ package service_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -176,6 +178,9 @@ func newSlowChunkUpstream(t *testing.T, status int, chunks ...[]byte) *slowChunk
 			total += len(c)
 		}
 		w.Header().Set("Content-Type", "video/mp4")
+		w.Header().Set("Accept-Ranges", "bytes")
+		// 显式给出整段长度：真实 CDN 都会给，流式落盘也只信任可信长度（chunked 不写缓存）。
+		w.Header().Set("Content-Length", strconv.Itoa(total))
 		if status == http.StatusPartialContent {
 			w.Header().Set("Content-Range", fmt.Sprintf("bytes 0-%d/%d", total-1, total))
 		}
@@ -414,3 +419,140 @@ func TestFetchMediaStream_PassesThrough416(t *testing.T) {
 	require.Equal(t, http.StatusRequestedRangeNotSatisfiable, stream.StatusCode)
 	require.Equal(t, fmt.Sprintf("bytes */%d", total), stream.ContentRange)
 }
+
+// ---------- 第四轮新增 ----------
+
+// 必修1（P0 回归）：标准客户端失败退 azuretls 兜底时，必须按 Range 本地切片回 206，
+// 不能回 200 整段（那会让浏览器判定「不支持 Range」→ 回 0 重播、seek 失效）。
+func TestFetchMediaStream_FallbackSlicesRequestedRange(t *testing.T) {
+	body := make([]byte, 4096)
+	for i := range body {
+		body[i] = byte(i % 251)
+	}
+	failClient := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("standard client boom")
+	})}
+	svc := service.NewProxyService(network.NewClientFactoryForTest(failClient), nil)
+	service.SetProxyServiceFallbackForTest(svc, func(context.Context, string, string) (*service.ProxyResult, error) {
+		return &service.ProxyResult{Data: body, ContentType: "video/mp4", StatusCode: http.StatusOK, AcceptRanges: "bytes"}, nil
+	})
+
+	stream, err := svc.FetchMediaStream(context.Background(), "https://cdn.example.com/v.mp4", "", "bytes=1000-")
+	require.NoError(t, err)
+	defer stream.Body.Close()
+	require.Equal(t, http.StatusPartialContent, stream.StatusCode)
+	require.Equal(t, fmt.Sprintf("bytes 1000-4095/%d", len(body)), stream.ContentRange)
+	require.EqualValues(t, len(body)-1000, stream.ContentLength)
+	got, err := io.ReadAll(stream.Body)
+	require.NoError(t, err)
+	require.Equal(t, body[1000:], got, "兜底也必须按 Range 切出正确的字节")
+
+	// 起点越界：416 + `bytes */total`
+	stream2, err := svc.FetchMediaStream(context.Background(), "https://cdn.example.com/v.mp4", "", "bytes=999999-")
+	require.NoError(t, err)
+	defer stream2.Body.Close()
+	require.Equal(t, http.StatusRequestedRangeNotSatisfiable, stream2.StatusCode)
+	require.Equal(t, fmt.Sprintf("bytes */%d", len(body)), stream2.ContentRange)
+}
+
+// 必修3（P1）①：bytes=0- 首播流式并 tee 落盘；之后同 URL 的任意 Range 直接从磁盘切片，
+// 上游只被调用一次。
+func TestFetchMediaStream_CachesWholeFileThenServesRangeFromDisk(t *testing.T) {
+	const total = 4 << 20
+	up := newMediaUpstream(t, total)
+	cacheDir := t.TempDir()
+	svc := newProxy(t, cacheDir)
+
+	first, err := svc.FetchMediaStream(context.Background(), up.server.URL+"/v.mp4", "", "bytes=0-")
+	require.NoError(t, err)
+	n, err := io.Copy(io.Discard, first.Body)
+	require.NoError(t, err)
+	require.EqualValues(t, total, n)
+	require.NoError(t, first.Body.Close())
+	require.Equal(t, int32(1), up.hitCount(), "首播出网一次")
+
+	files, _ := svc.MediaCacheStats()
+	require.Equal(t, 1, files, "整段读完必须落一个整文件缓存")
+
+	// 任意中间片段：命中磁盘，206 + 正确 Content-Range，且不再出网。
+	second, err := svc.FetchMediaStream(context.Background(), up.server.URL+"/v.mp4", "", "bytes=1000-2000")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusPartialContent, second.StatusCode)
+	require.Equal(t, fmt.Sprintf("bytes 1000-2000/%d", total), second.ContentRange)
+	require.EqualValues(t, 1001, second.ContentLength)
+	got, err := io.ReadAll(second.Body)
+	require.NoError(t, err)
+	require.NoError(t, second.Body.Close())
+	require.Equal(t, up.body[1000:2001], got)
+	require.Equal(t, int32(1), up.hitCount(), "片段必须走磁盘，不再出网")
+
+	// 无 Range 也能直接从整文件缓存回 200。
+	third, err := svc.FetchMediaStream(context.Background(), up.server.URL+"/v.mp4", "", "")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, third.StatusCode)
+	all, err := io.ReadAll(third.Body)
+	require.NoError(t, err)
+	require.NoError(t, third.Body.Close())
+	require.Equal(t, up.body, all)
+	require.Equal(t, int32(1), up.hitCount(), "整段也命中缓存")
+}
+
+// 必修3 ③：超过 maxCacheableMediaBytes（256MiB）的整段不写缓存，但照常流式转发。
+func TestFetchMediaStream_OversizeWholeNotCached(t *testing.T) {
+	const declared = int64(300) << 20 // 300MiB > 256MiB 上限
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "video/mp4")
+		w.Header().Set("Content-Length", strconv.FormatInt(declared, 10))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("x")) // 只写一点，不真发 300MiB
+	}))
+	t.Cleanup(server.Close)
+
+	cacheDir := t.TempDir()
+	svc := newProxy(t, cacheDir)
+	stream, err := svc.FetchMediaStream(context.Background(), server.URL+"/v.mp4", "", "")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, stream.StatusCode)
+	// 返回时（还没读 body）就不该有临时文件：超上限时根本不建 writer。
+	require.Empty(t, collectCacheFiles(t, cacheDir), "超上限不该建临时文件/缓存")
+	require.NoError(t, stream.Body.Close())
+}
+
+// P2-2：上游声明的 Content-Length 与实际字节不符时，读取必须以错误结束（不让客户端
+// 「安静地」拿到比声明短得多的内容却不报错）。
+func TestFetchMediaStream_DeclaredLengthMismatchErrors(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "video/mp4")
+		w.Header().Set("Content-Length", "1000") // 声明 1000
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("short")) // 只给 5 字节
+	}))
+	t.Cleanup(server.Close)
+
+	svc := newProxy(t, "")
+	stream, err := svc.FetchMediaStream(context.Background(), server.URL+"/v.mp4", "", "")
+	require.NoError(t, err)
+	defer stream.Body.Close()
+	_, err = io.ReadAll(stream.Body)
+	require.Error(t, err, "声明长度与实际不符必须以错误结束")
+}
+
+// N5：路径里带 /video/ 但扩展名是图片的，必须判成图片（发 image 那套请求头）。
+func TestMediaKindFromURL_PrefersImageExtension(t *testing.T) {
+	cases := map[string]string{
+		"https://x.example/video/cover.jpg":   "image",
+		"https://x.example/video/thumb.png":   "image",
+		"https://x.example/photo.avif":        "image",
+		"https://x.example/vid/avc1/a.mp4":    "video",
+		"https://x.example/clip.webm":         "video",
+		"https://x.example/media/stream.m3u8": "video",
+	}
+	for rawURL, want := range cases {
+		require.Equal(t, want, service.MediaKindFromURLForTest(rawURL), rawURL)
+	}
+}
+
+// roundTripFunc 把一个函数变成 http.RoundTripper（模拟标准客户端失败）。
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
