@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,6 +31,9 @@ const (
 	updateCheckTimeout = 10 * time.Second
 	// updateMaxResponseBytes 发布说明 body_html 可能很长，限一个上限防止异常体量。
 	updateMaxResponseBytes = 4 << 20
+	// updateMaxReleases 一次最多取多少个 Release。GitHub 列表接口按发布时间倒序，
+	// 一次请求就能拿到「当前版本之后的全部更新」，不必按页翻。
+	updateMaxReleases = 50
 )
 
 // UpdateAsset 一个发布附件（可下载文件）。
@@ -37,6 +41,16 @@ type UpdateAsset struct {
 	Name string `json:"name"`
 	URL  string `json:"url"`
 	Size int64  `json:"size"`
+}
+
+// UpdateRelease 一个比当前版本新的 Release。
+type UpdateRelease struct {
+	Version     string        `json:"version"`
+	Name        string        `json:"name"`
+	URL         string        `json:"url"`
+	PublishedAt string        `json:"publishedAt"`
+	NotesHTML   string        `json:"notesHtml"`
+	Assets      []UpdateAsset `json:"assets"`
 }
 
 // UpdateInfo 一次「检查更新」的结果，直接作为 /api/update/check 的响应体。
@@ -49,6 +63,9 @@ type UpdateInfo struct {
 	PublishedAt      string        `json:"publishedAt"`
 	ReleaseNotesHTML string        `json:"releaseNotesHtml"`
 	Assets           []UpdateAsset `json:"assets"`
+	// Releases 当前版本之后的全部 Release，按版本从新到旧。
+	// 顶上的 Release* 字段是最新那一版，保留给只关心「有没有更新」的调用方。
+	Releases []UpdateRelease `json:"releases"`
 }
 
 // UpdateService 检查 Krss 自身是否有新版本。
@@ -116,6 +133,8 @@ func repoPathFromConfig() string {
 type githubRelease struct {
 	TagName     string `json:"tag_name"`
 	Name        string `json:"name"`
+	Draft       bool   `json:"draft"`
+	Prerelease  bool   `json:"prerelease"`
 	HTMLURL     string `json:"html_url"`
 	PublishedAt string `json:"published_at"`
 	BodyHTML    string `json:"body_html"`
@@ -192,6 +211,13 @@ func cloneUpdateInfo(info *UpdateInfo) *UpdateInfo {
 	// 前端拿到 null 会当成「没有这个字段」直接读 length 崩掉。
 	out.Assets = make([]UpdateAsset, len(info.Assets))
 	copy(out.Assets, info.Assets)
+	out.Releases = make([]UpdateRelease, len(info.Releases))
+	for i, rel := range info.Releases {
+		cloned := rel
+		cloned.Assets = make([]UpdateAsset, len(rel.Assets))
+		copy(cloned.Assets, rel.Assets)
+		out.Releases[i] = cloned
+	}
 	return &out
 }
 
@@ -206,12 +232,15 @@ func (s *updateService) logCheckFailure(err error) {
 }
 
 func (s *updateService) fetch(ctx context.Context) (*UpdateInfo, error) {
-	endpoint := fmt.Sprintf("%s/repos/%s/releases/latest", s.apiBase, s.repo)
+	// 用列表接口而不是 /releases/latest：详情页要展示「当前版本之后的全部更新」，
+	// 一次拿回整张列表，顺带省掉一次出网（GitHub 匿名限流每小时只有 60 次）。
+	endpoint := fmt.Sprintf("%s/repos/%s/releases?per_page=%d", s.apiBase, s.repo, updateMaxReleases)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrUpdateCheckFailed, err)
 	}
 	// html 媒体类型：GitHub 直接返回渲染好的 body_html，前端不必自己解析 Markdown。
+	// 列表接口同样支持，每个 release 各带自己的 body_html。
 	req.Header.Set("Accept", "application/vnd.github.html+json")
 	req.Header.Set("User-Agent", config.KrssUserAgent)
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
@@ -223,7 +252,7 @@ func (s *updateService) fetch(ctx context.Context) (*UpdateInfo, error) {
 	}
 	defer resp.Body.Close()
 
-	// 把「限流」与「仓库/Release 不存在」分出来：它们对用户是不同的排查方向，
+	// 把「限流」与「仓库不存在」分出来：它们对用户是不同的排查方向，
 	// 塌缩成一句「连不上 GitHub」只会让人一直重试（而每次重试都真打一次 GitHub）。
 	switch resp.StatusCode {
 	case http.StatusOK:
@@ -250,32 +279,79 @@ func (s *updateService) fetch(ctx context.Context) (*UpdateInfo, error) {
 		return nil, fmt.Errorf("%w: response too large (>%d bytes)", ErrUpdateCheckFailed, updateMaxResponseBytes)
 	}
 
-	var rel githubRelease
-	if err := json.Unmarshal(raw, &rel); err != nil {
+	var rels []githubRelease
+	if err := json.Unmarshal(raw, &rels); err != nil {
 		return nil, fmt.Errorf("%w: decode: %v", ErrUpdateCheckFailed, err)
 	}
 
-	latest := strings.TrimSpace(rel.TagName)
-	if latest == "" {
-		return nil, fmt.Errorf("%w: empty tag_name", ErrUpdateCheckFailed)
+	// 草稿与预发布不算正式版本：草稿根本不该被外人看到，
+	// 预发布版给所有人推「可更新」会把 beta 用户之外的人带到不稳定的版本上。
+	published := make([]githubRelease, 0, len(rels))
+	for _, rel := range rels {
+		if rel.Draft || rel.Prerelease {
+			continue
+		}
+		if strings.TrimSpace(rel.TagName) == "" {
+			continue
+		}
+		published = append(published, rel)
+	}
+	if len(published) == 0 {
+		return nil, fmt.Errorf("%w: %s", ErrUpdateReleaseNotFound, s.repo)
 	}
 
-	name := strings.TrimSpace(rel.Name)
-	if name == "" {
-		name = latest
+	// 列表接口按创建时间倒序，但版本号未必同序（热修版本可能后发却号更小），
+	// 显式按版本号排序，保证「最新」真的是最大的那个。
+	sort.SliceStable(published, func(i, j int) bool {
+		return compareVersions(published[i].TagName, published[j].TagName) > 0
+	})
+
+	newer := make([]UpdateRelease, 0, len(published))
+	for _, rel := range published {
+		tag := strings.TrimSpace(rel.TagName)
+		if compareVersions(tag, s.currentVersion) <= 0 {
+			continue
+		}
+		name := strings.TrimSpace(rel.Name)
+		if name == "" {
+			name = tag
+		}
+		assets := make([]UpdateAsset, 0, len(rel.Assets))
+		for _, a := range rel.Assets {
+			assets = append(assets, UpdateAsset{
+				Name: a.Name,
+				URL:  a.BrowserDownloadURL,
+				Size: a.Size,
+			})
+		}
+		newer = append(newer, UpdateRelease{
+			Version:     tag,
+			Name:        name,
+			URL:         rel.HTMLURL,
+			PublishedAt: rel.PublishedAt,
+			NotesHTML:   rel.BodyHTML,
+			Assets:      assets,
+		})
 	}
 
+	latest := published[0]
+	latestTag := strings.TrimSpace(latest.TagName)
+	latestName := strings.TrimSpace(latest.Name)
+	if latestName == "" {
+		latestName = latestTag
+	}
 	info := &UpdateInfo{
 		CurrentVersion:   s.currentVersion,
-		LatestVersion:    latest,
-		HasUpdate:        compareVersions(latest, s.currentVersion) > 0,
-		ReleaseName:      name,
-		ReleaseURL:       rel.HTMLURL,
-		PublishedAt:      rel.PublishedAt,
-		ReleaseNotesHTML: rel.BodyHTML,
-		Assets:           make([]UpdateAsset, 0, len(rel.Assets)),
+		LatestVersion:    latestTag,
+		HasUpdate:        len(newer) > 0,
+		ReleaseName:      latestName,
+		ReleaseURL:       latest.HTMLURL,
+		PublishedAt:      latest.PublishedAt,
+		ReleaseNotesHTML: latest.BodyHTML,
+		Assets:           make([]UpdateAsset, 0, len(latest.Assets)),
+		Releases:         newer,
 	}
-	for _, a := range rel.Assets {
+	for _, a := range latest.Assets {
 		info.Assets = append(info.Assets, UpdateAsset{
 			Name: a.Name,
 			URL:  a.BrowserDownloadURL,

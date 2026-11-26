@@ -8425,6 +8425,39 @@
                 },
                 "releaseUrl": {
                     "type": "string"
+                },
+                "releases": {
+                    "description": "Releases 当前版本之后的全部 Release，按版本从新到旧。\n顶上的 Release* 字段是最新那一版，保留给只关心「有没有更新」的调用方。",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_service.UpdateRelease"
+                    }
+                }
+            }
+        },
+        "krss_backend_internal_service.UpdateRelease": {
+            "type": "object",
+            "properties": {
+                "assets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_service.UpdateAsset"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "notesHtml": {
+                    "type": "string"
+                },
+                "publishedAt": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
                 }
             }
         }
