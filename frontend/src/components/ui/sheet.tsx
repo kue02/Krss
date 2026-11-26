@@ -22,6 +22,9 @@ const BLOCK_BACKGROUND_SCROLL_OPTIONS = {
  * 长按订阅行弹出的菜单落在面板外 → 每个 touchmove 都被 capture 阶段 preventDefault
  * 吞掉，菜单里 `overflow-y-auto` 的内容滚不动。站内弹窗/抽屉同理。
  */
+/** 侧栏遮罩：手势落在这里一律拦下。 */
+const OVERLAY_SHADOW_SELECTOR = "[data-slot='sheet-overlay']";
+
 const OVERLAY_SELECTOR = [
   "[data-radix-popper-content-wrapper]",
   "[data-radix-menu-content]",
@@ -33,27 +36,47 @@ const OVERLAY_SELECTOR = [
 ].join(",");
 
 /**
- * 判断这次滚动是否该被拦。
+ * 从 target 往上找一个「真的能滚」的容器（`overflow` 非 visible/hidden 且内容超出）。
  *
- * 放行条件（任一成立即可）：
- * 1. target 在侧栏面板内 —— 面板自己的滚动；
- * 2. target 在某个浮层内 —— 弹窗、抽屉、右键菜单、下拉、子菜单；
- * 3. target 在可滚动容器内 —— 兜底，任何 `overflow: auto/scroll` 且真能滚的元素。
- *
- * 其余（body、背景列表、遮罩）一律拦下，保持「侧栏打开时背景不动」的原行为。
+ * `stopAt` 用于把查找限制在某个子树内（浮层判定时不能越界到背景上）。
  */
-function isBackgroundTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) return true;
-  if (target.closest(OVERLAY_SELECTOR)) return false;
+function hasScrollableAncestor(
+  target: Element,
+  stopAt: Element | null,
+): boolean {
   for (let node: Element | null = target; node; node = node.parentElement) {
-    if (node === document.body || node === document.documentElement) break;
+    if (node === stopAt || node === document.body || node === document.documentElement) {
+      break;
+    }
     const style = window.getComputedStyle(node);
     const overflowY = style.overflowY;
     if (overflowY !== "visible" && overflowY !== "hidden") {
-      if (node.scrollHeight > node.clientHeight) return false;
+      if (node.scrollHeight > node.clientHeight) return true;
     }
   }
-  return true;
+  return false;
+}
+
+/**
+ * 判断这次滚动是否该被拦。
+ *
+ * 放行条件（任一成立即可）：
+ * 1. target 在侧栏面板内 —— 面板自己的滚动（在 `preventBackgroundScroll` 里先判，不进这里）；
+ * 2. target 在某个浮层内**且该浮层里有能滚的容器** —— 右键菜单、子菜单、站内弹窗、抽屉。
+ *    浮层本身不可滚时（菜单项少、没有溢出）不放行，否则手指在菜单上的滑动会穿到
+ *    遮罩背后的条目列表上，把「侧栏打开时背景不动」这个既有行为破坏掉。
+ *
+ * 其余（body、背景列表、遮罩）一律拦下。
+ */
+function isBackgroundTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return true;
+  const overlay = target.closest(OVERLAY_SELECTOR);
+  // 不在浮层里：body、背景列表、遮罩 —— 一律拦下。
+  // 侧栏打开时遮罩铺满视口，背景里的滚动容器本来就不可能成为 target，
+  // 所以这里不需要「可滚容器」这条兜底，留着反而会给未来的 z-index 提升开暗口子。
+  if (!overlay) return true;
+  // 浮层里也只在真有内容溢出时放行，否则手势会穿到遮罩背后。
+  return !hasScrollableAncestor(target, overlay.parentElement);
 }
 
 /**
@@ -198,6 +221,11 @@ export function Sheet({
       const target = event.target;
       // 面板自己的滚动（侧栏列表）永远放行，这条与浮层判定互相独立
       if (target instanceof Node && panelRef.current?.contains(target)) return;
+      // 遮罩本来就该拦，直接短路，省掉下面逐层量样式/量高度的开销
+      if (target instanceof Element && target.closest(OVERLAY_SHADOW_SELECTOR)) {
+        event.preventDefault();
+        return;
+      }
       if (!isBackgroundTarget(target)) return;
       event.preventDefault();
     };
