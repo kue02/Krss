@@ -2,10 +2,23 @@ import { useEffect, useState } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setMobileSidebarOpen } from "@/hooks/useMobileLayout";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "./context-menu";
 import { Sheet } from "./sheet";
 
 function dispatchScrollGesture(target: Element, type: "touchmove" | "wheel") {
   const event = new Event(type, { bubbles: true, cancelable: true });
+  if (type === "touchmove") {
+    // Radix 菜单内部挂着 react-remove-scroll，它会读 `changedTouches[0]`；
+    // 裸 Event 没有这个字段，直接读会抛 TypeError。补一个零位移的触点即可。
+    Object.defineProperty(event, "changedTouches", {
+      value: [{ clientX: 0, clientY: 0 }],
+    });
+  }
   target.dispatchEvent(event);
   return event;
 }
@@ -156,6 +169,134 @@ describe("Sheet", () => {
     expect(dispatchScrollGesture(menuItem, "touchmove").defaultPrevented).toBe(
       false,
     );
+  });
+
+  /**
+   * 造一个 Portal 到 body 的浮层，模拟 Radix 的 popper 容器 + 菜单内容。
+   *
+   * jsdom 没有布局引擎，所有元素的 `scrollHeight`/`clientHeight` 恒为 0，
+   * 所以「真能滚」这个判据在测试里必须手动伪造尺寸，否则永远判成不可滚。
+   */
+  function mountPortalledMenu({ scrollable }: { scrollable: boolean }) {
+    const portal = document.createElement("div");
+    portal.setAttribute("data-radix-popper-content-wrapper", "");
+    const menu = document.createElement("div");
+    menu.setAttribute("data-radix-menu-content", "");
+    menu.setAttribute("role", "menu");
+    menu.style.overflowY = "auto";
+    if (scrollable) {
+      Object.defineProperty(menu, "scrollHeight", { value: 480 });
+      Object.defineProperty(menu, "clientHeight", { value: 320 });
+    }
+    const menuItem = document.createElement("button");
+    menuItem.type = "button";
+    menuItem.textContent = "移动到文件夹";
+    menu.append(menuItem);
+    portal.append(menu);
+    document.body.append(portal);
+    return { portal, menu, menuItem };
+  }
+
+  it("lets a portalled menu that actually overflows scroll while the sheet is open", () => {
+    // 2026-11-26（用户：「移动端订阅栏长按弹框无法滑动」）：
+    // Radix 的右键菜单/子菜单经 Portal 挂到 document.body，不在侧栏面板内。
+    // 旧实现只放行面板内的 target，这些菜单的 touchmove 全被 capture 阶段吞掉。
+    const { container } = render(<ControlledSheet initialOpen />);
+    const { overlay } = getSlots(container);
+    const { portal, menuItem } = mountPortalledMenu({ scrollable: true });
+
+    try {
+      expect(dispatchScrollGesture(menuItem, "touchmove").defaultPrevented).toBe(
+        false,
+      );
+      expect(dispatchScrollGesture(menuItem, "wheel").defaultPrevented).toBe(
+        false,
+      );
+      // 背景仍然锁着
+      expect(dispatchScrollGesture(overlay, "touchmove").defaultPrevented).toBe(
+        true,
+      );
+      expect(
+        dispatchScrollGesture(document.body, "touchmove").defaultPrevented,
+      ).toBe(true);
+    } finally {
+      portal.remove();
+    }
+  });
+
+  it("still blocks a portalled menu that has nothing to scroll", () => {
+    // 菜单项少、总高不超过 max-h 时菜单自己不可滚。此时必须继续拦，
+    // 否则手指在菜单上的滑动会穿到遮罩背后的条目列表上。
+    const { container } = render(<ControlledSheet initialOpen />);
+    const { overlay } = getSlots(container);
+    const { portal, menuItem } = mountPortalledMenu({ scrollable: false });
+
+    try {
+      expect(dispatchScrollGesture(menuItem, "touchmove").defaultPrevented).toBe(
+        true,
+      );
+      expect(dispatchScrollGesture(overlay, "touchmove").defaultPrevented).toBe(
+        true,
+      );
+    } finally {
+      portal.remove();
+    }
+  });
+
+  it("recognises the real Radix context menu DOM as a portal overlay", () => {
+    // 真实组件用例：不手搓 DOM 冒充 Radix，属性/结构改名能在这里暴露。
+    // 这里只校验「选择器清单命中真实输出」，滚动行为本身由上面的用例覆盖
+    // （真实 touch 手势在 jsdom 里会撞上 react-remove-scroll 的触点依赖，不适合单测）。
+    render(
+      <>
+        <ControlledSheet initialOpen />
+        <ContextMenu>
+          <ContextMenuTrigger asChild>
+            <button type="button">订阅行</button>
+          </ContextMenuTrigger>
+          <ContextMenuContent>
+            <ContextMenuItem>刷新</ContextMenuItem>
+            <ContextMenuItem>重命名</ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
+      </>,
+    );
+
+    fireEvent.contextMenu(screen.getByRole("button", { name: "订阅行" }));
+    const menu = screen.getByRole("menu");
+
+    // 与 sheet.tsx 的 OVERLAY_SELECTOR 对齐的三条真实锚点
+    expect(menu.matches("[data-radix-menu-content]")).toBe(true);
+    expect(menu.closest("[data-radix-popper-content-wrapper]")).not.toBeNull();
+    expect(menu.getAttribute("role")).toBe("menu");
+  });
+
+  it("lets a scrolling container inside a portalled overlay scroll", () => {
+    const { container } = render(<ControlledSheet initialOpen />);
+    const { overlay } = getSlots(container);
+
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    const scroller = document.createElement("div");
+    scroller.style.overflowY = "auto";
+    Object.defineProperty(scroller, "scrollHeight", { value: 600 });
+    Object.defineProperty(scroller, "clientHeight", { value: 300 });
+    const item = document.createElement("button");
+    item.type = "button";
+    scroller.append(item);
+    dialog.append(scroller);
+    document.body.append(dialog);
+
+    try {
+      expect(dispatchScrollGesture(item, "touchmove").defaultPrevented).toBe(
+        false,
+      );
+      expect(dispatchScrollGesture(overlay, "touchmove").defaultPrevented).toBe(
+        true,
+      );
+    } finally {
+      dialog.remove();
+    }
   });
 
   it("releases the background scroll lock on close and on unmount", () => {

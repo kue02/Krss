@@ -13,6 +13,73 @@ const BLOCK_BACKGROUND_SCROLL_OPTIONS = {
 } as const;
 
 /**
+ * 浮层选择器：这些节点虽然挂在 `document.body` 上（不在侧栏面板里），
+ * 但视觉上浮在侧栏之上，必须放行它们自己的滚动。
+ *
+ * 2026-11-26（用户：「移动端订阅栏长按弹框无法滑动」）：
+ * 原来的判定只有「target 在面板内」，而 Radix 的右键菜单/子菜单/下拉都经 Portal
+ * 挂到 body（`[data-radix-popper-content-wrapper]`、`[data-radix-menu-content]`），
+ * 长按订阅行弹出的菜单落在面板外 → 每个 touchmove 都被 capture 阶段 preventDefault
+ * 吞掉，菜单里 `overflow-y-auto` 的内容滚不动。站内弹窗/抽屉同理。
+ */
+/** 侧栏遮罩：手势落在这里一律拦下。 */
+const OVERLAY_SHADOW_SELECTOR = "[data-slot='sheet-overlay']";
+
+const OVERLAY_SELECTOR = [
+  "[data-radix-popper-content-wrapper]",
+  "[data-radix-menu-content]",
+  "[role='dialog']",
+  "[role='alertdialog']",
+  "[role='menu']",
+  "[role='listbox']",
+  "[data-slot='sheet-content']",
+].join(",");
+
+/**
+ * 从 target 往上找一个「真的能滚」的容器（`overflow` 非 visible/hidden 且内容超出）。
+ *
+ * `stopAt` 用于把查找限制在某个子树内（浮层判定时不能越界到背景上）。
+ */
+function hasScrollableAncestor(
+  target: Element,
+  stopAt: Element | null,
+): boolean {
+  for (let node: Element | null = target; node; node = node.parentElement) {
+    if (node === stopAt || node === document.body || node === document.documentElement) {
+      break;
+    }
+    const style = window.getComputedStyle(node);
+    const overflowY = style.overflowY;
+    if (overflowY !== "visible" && overflowY !== "hidden") {
+      if (node.scrollHeight > node.clientHeight) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * 判断这次滚动是否该被拦。
+ *
+ * 放行条件（任一成立即可）：
+ * 1. target 在侧栏面板内 —— 面板自己的滚动（在 `preventBackgroundScroll` 里先判，不进这里）；
+ * 2. target 在某个浮层内**且该浮层里有能滚的容器** —— 右键菜单、子菜单、站内弹窗、抽屉。
+ *    浮层本身不可滚时（菜单项少、没有溢出）不放行，否则手指在菜单上的滑动会穿到
+ *    遮罩背后的条目列表上，把「侧栏打开时背景不动」这个既有行为破坏掉。
+ *
+ * 其余（body、背景列表、遮罩）一律拦下。
+ */
+function isBackgroundTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return true;
+  const overlay = target.closest(OVERLAY_SELECTOR);
+  // 不在浮层里：body、背景列表、遮罩 —— 一律拦下。
+  // 侧栏打开时遮罩铺满视口，背景里的滚动容器本来就不可能成为 target，
+  // 所以这里不需要「可滚容器」这条兜底，留着反而会给未来的 z-index 提升开暗口子。
+  if (!overlay) return true;
+  // 浮层里也只在真有内容溢出时放行，否则手势会穿到遮罩背后。
+  return !hasScrollableAncestor(target, overlay.parentElement);
+}
+
+/**
  * 动效参数与 HeroUI v3 Drawer 的左抽屉完全对齐（`@heroui/styles` 的 drawer.css：
  * `.drawer__dialog { transition: translate 250ms cubic-bezier(0.32,0.72,0,1) }`，
  * 退出 200ms），保证侧栏和站内其它 Drawer 的滑出手感一致。
@@ -152,9 +219,14 @@ export function Sheet({
     };
     const preventBackgroundScroll = (event: TouchEvent | WheelEvent) => {
       const target = event.target;
-      if (target instanceof Node && panelRef.current?.contains(target)) {
+      // 面板自己的滚动（侧栏列表）永远放行，这条与浮层判定互相独立
+      if (target instanceof Node && panelRef.current?.contains(target)) return;
+      // 遮罩本来就该拦，直接短路，省掉下面逐层量样式/量高度的开销
+      if (target instanceof Element && target.closest(OVERLAY_SHADOW_SELECTOR)) {
+        event.preventDefault();
         return;
       }
+      if (!isBackgroundTarget(target)) return;
       event.preventDefault();
     };
 

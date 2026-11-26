@@ -15,12 +15,29 @@ interface MobileTabBarProps {
   onSelect: (type: ContentType) => void;
 }
 
+/** 低于这个滚动位置一律算「在顶部」，此时底栏必须可见。 */
+const TOP_RESET_THRESHOLD_PX = 6;
+/** 方向切换后的静默期，避免惯性滚动中来回翻。 */
+const DIRECTION_LOCK_MS = 300;
+/** 滚动停下多久后认为手势结束，允许下一帧重新判定方向。 */
+const SCROLL_SETTLE_MS = 140;
+/** 触发隐藏/显示的最小位移，滤掉像素级抖动。 */
+const DIRECTION_DELTA_PX = 2;
+/** 收起后多久做一次落地校正（一次性，非常驻）。 */
+const FALLBACK_CHECK_MS = 600;
+
 /**
  * 移动端底部内容类型导航。
  *
  * 当前移动端没有任何常驻导航：切换内容类型必须先进侧栏，搜索要从桌面快捷键进，
  * 详情页一开就只剩返回。这个底栏把四个内容类型做成常驻一级入口，
  * 44×44 以上点击区域、56px 栏高 + 底部安全区，正文区对应留出底部 padding。
+ *
+ * 收起逻辑有两处必须守住，否则会出现「已经在顶部、底栏还是不见」：
+ * 1. 「到顶」的判定要排在方向静默期之前——静默期只用来压制方向抖动，
+ *    不能把回顶事件一起吞掉，否则 300ms 内滑回顶部就再没有事件把它叫回来。
+ * 2. `last` 每次滚动都要更新，不能只在非静默分支更新，否则静默期结束后的
+ *    第一帧会拿陈旧基准算出巨大位移，方向直接判反。
  */
 export function MobileTabBar({
   contentType,
@@ -32,26 +49,103 @@ export function MobileTabBar({
   useEffect(() => {
     let last = window.scrollY;
     let lockUntil = 0;
+    let settleTimer = 0;
+
+    /** 到顶就无条件展开，静默期与方向都不参与判断。 */
+    const revealIfAtTop = () => {
+      if (window.scrollY > TOP_RESET_THRESHOLD_PX) return;
+      lockUntil = 0;
+      setHidden(false);
+    };
+
     const update = () => {
-      if (performance.now() < lockUntil) return;
       const y = window.scrollY;
       const dy = y - last;
       last = y;
-      if (y <= 6) {
+      if (y <= TOP_RESET_THRESHOLD_PX) {
+        lockUntil = 0;
         setHidden(false);
         return;
       }
-      if (dy > 2) {
+      if (performance.now() < lockUntil) return;
+      if (dy > DIRECTION_DELTA_PX) {
         setHidden(true);
-        lockUntil = performance.now() + 300;
-      } else if (dy < -2) {
+        lockUntil = performance.now() + DIRECTION_LOCK_MS;
+      } else if (dy < -DIRECTION_DELTA_PX) {
         setHidden(false);
-        lockUntil = performance.now() + 300;
+        lockUntil = performance.now() + DIRECTION_LOCK_MS;
       }
     };
-    window.addEventListener("scroll", update, { passive: true });
-    return () => window.removeEventListener("scroll", update);
-  }, []);
+
+    // 惯性滚动停止、程序化跳转（点底栏回顶、路由回填）之后都不会再有 scroll 事件，
+    // 这里补一次落地校正，把静默期清掉并按真实位置对齐显隐。
+    const handleSettle = () => {
+      window.clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(() => {
+        lockUntil = 0;
+        revealIfAtTop();
+      }, SCROLL_SETTLE_MS);
+    };
+
+    const onScroll = () => {
+      update();
+      handleSettle();
+    };
+
+    // 滚动位置整体换掉但不派发 scroll 的场合：页面从缓存恢复、旋转屏幕、切内容类型。
+    // 这些是真正的「换了上下文」，静默期也该一起清掉。
+    const resyncAll = () => {
+      last = window.scrollY;
+      lockUntil = 0;
+      revealIfAtTop();
+    };
+
+    // `resize` 在移动端是滚动过程中的高频副作用（iOS 地址栏/工具栏收放、软键盘弹出），
+    // 不是上下文切换。这里只校正基准值，不能清静默期——否则正在防抖的那一刻把防抖关掉，
+    // 滚动中任何一次向上抖动都会把底栏闪出来。
+    const syncBaseline = () => {
+      last = window.scrollY;
+      revealIfAtTop();
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("pageshow", resyncAll);
+    window.addEventListener("resize", syncBaseline);
+    window.addEventListener("orientationchange", resyncAll);
+    resyncAll();
+
+    return () => {
+      window.clearTimeout(settleTimer);
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("pageshow", resyncAll);
+      window.removeEventListener("resize", syncBaseline);
+      window.removeEventListener("orientationchange", resyncAll);
+    };
+    // 内容类型换了就是另一份列表，沿用上一份的收起状态只会让底栏凭空消失。
+  }, [contentType]);
+
+  // 兜底：有些回到顶部的路径根本不派发 scroll（详情页返回时恢复滚动位置、
+  // 列表重挂载、iOS 惯性滚动被系统接管），只靠事件会把底栏永远留在屏幕外。
+  // 这里只补「一次性」校正，不做常驻轮询——收起态恰好是「用户在读长文」的常态，
+  // 4Hz 的定时器会一直跑下去。
+  useEffect(() => {
+    if (!hidden) return;
+    const reveal = () => {
+      if (window.scrollY <= TOP_RESET_THRESHOLD_PX) setHidden(false);
+    };
+    // 落地一次校正，覆盖「位置已经变了但没有任何事件」的情况
+    const timer = window.setTimeout(reveal, FALLBACK_CHECK_MS);
+    // 滚动真正结束时浏览器会派发 scrollend（Safari 17+/Chrome 114+），比定时器准
+    window.addEventListener("scrollend", reveal);
+    // 后台标签页回到前台时校正一次
+    document.addEventListener("visibilitychange", reveal);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("scrollend", reveal);
+      document.removeEventListener("visibilitychange", reveal);
+    };
+  }, [hidden]);
+
   const { data: feeds } = useFeeds();
   const { data: unreadCountsData } = useUnreadCounts();
 
@@ -78,6 +172,8 @@ export function MobileTabBar({
   return (
     <nav
       aria-label={t("content_type.nav_label")}
+      data-state={hidden ? "hidden" : "open"}
+      inert={hidden}
       className={cn(
         "mobile-tab-bar fixed inset-x-0 bottom-0 z-20 border-t border-border/50 bg-background/75 pb-[env(safe-area-inset-bottom)] shadow-[0_-1px_0_rgba(0,0,0,0.03)] backdrop-blur-xl transition-transform duration-300 ease-out",
         hidden ? "translate-y-full" : "translate-y-0",
