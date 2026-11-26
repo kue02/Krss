@@ -64,6 +64,20 @@ export function MobileSwipeEntryRow({
   /** 内容层节点：拖动期间直接写它的 transform，不触发 React 重渲染 */
   const contentRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  /**
+   * 动作面板贴合内容卡片实测的内缩（px）与右圆角（任务 6b）。
+   *
+   * 动作面板本身压在内容层下面，露出的一截要用「内容层里那张卡片」的边界和圆角去对齐：
+   * 社交卡是满宽 `rounded-xl`（12px），文章卡在 <640 是满宽直角、≥640 是 `mx-2 my-0.5 rounded-[10px]`。
+   * 固定写死 right-2/top-0.5/rounded-10 只在后一种情况贴合，所以展开时实测卡片 offset/圆角再写进内联样式。
+   * circle 分支是浮在底图上的圆形按钮、没有底板，不需要这套（保持原样）。
+   */
+  const [actionsInset, setActionsInset] = useState<{
+    top: number;
+    right: number;
+    bottom: number;
+    radius: string;
+  } | null>(null);
   /** 拖动起点的基准位移（展开 = -ACTION_WIDTH，收起 = 0） */
   const baseOffsetRef = useRef(0);
   /** 拖动中的目标位移（px，0 ~ -ACTION_WIDTH）；null 表示当前未拖动 */
@@ -177,6 +191,28 @@ export function MobileSwipeEntryRow({
     content.style.transform = `translateX(${open ? -ACTION_WIDTH : 0}px)`;
   }, [open]);
 
+  // 任务 6b：展开时实测内容卡片边界，让动作面板的上下右内缩与右圆角跟卡片对齐。
+  // 用 offsetLeft/offsetWidth 求右侧（不受内容层 translateX 影响），用 getBoundingClientRect
+  // 求上下（只有横向位移，纵向不受影响），圆角直接取卡片 computed style。
+  useLayoutEffect(() => {
+    if (!open || isCircleAction) return;
+    const row = rowRef.current;
+    const content = contentRef.current;
+    const card = content?.firstElementChild as HTMLElement | null;
+    if (!row || !content || !card) return;
+    const rowRect = row.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    const right = Math.max(
+      0,
+      row.clientWidth -
+        (content.offsetLeft + card.offsetLeft + card.offsetWidth),
+    );
+    const top = Math.max(0, cardRect.top - rowRect.top);
+    const bottom = Math.max(0, rowRect.bottom - cardRect.bottom);
+    const radius = getComputedStyle(card).borderTopRightRadius || "0px";
+    setActionsInset({ top, right, bottom, radius });
+  }, [open, isCircleAction]);
+
   useSwipeGesture(rowRef, {
     enabledDirections: ["left", "right"],
     threshold: 30,
@@ -231,17 +267,32 @@ export function MobileSwipeEntryRow({
       )}
       data-swipe-row
     >
-      {/* 动作条：两种样式共用同一层位置，内容层左移即逐渐露出 */}
+      {/* 动作条：两种样式共用同一层；flat 的上下右内缩与右圆角按内容卡片实测值内联，
+          circle 仍用固定的 top-0.5/right-2/bottom-0.5（圆形按钮浮在底图上，无底板） */}
       <div
         aria-hidden={!open}
         className={cn(
-          "absolute bottom-0.5 right-2 top-0.5 z-0 flex overflow-hidden",
+          "absolute z-0 flex overflow-hidden",
           isCircleAction
-            ? "items-center justify-end gap-2 pr-1"
-            : "rounded-[10px] border border-border/60 bg-item-hover",
+            ? "bottom-0.5 right-2 top-0.5 items-center justify-end gap-2 pr-1"
+            : // rounded-[10px] 只是兜底类；真实圆角由下面内联样式按卡片实测覆盖（左侧始终 0）
+              "rounded-[10px] border border-border/60 bg-item-hover",
           !open && "pointer-events-none",
         )}
-        style={{ width: ACTION_WIDTH }}
+        style={
+          isCircleAction
+            ? { width: ACTION_WIDTH }
+            : {
+                width: ACTION_WIDTH,
+                top: actionsInset?.top ?? 2,
+                right: actionsInset?.right ?? 8,
+                bottom: actionsInset?.bottom ?? 2,
+                borderTopLeftRadius: 0,
+                borderBottomLeftRadius: 0,
+                borderTopRightRadius: actionsInset?.radius ?? 10,
+                borderBottomRightRadius: actionsInset?.radius ?? 10,
+              }
+        }
         data-swipe-actions
         data-swipe-action-style={swipeActionStyle}
       >
