@@ -43,6 +43,7 @@ import type {
   UISettingsPayload,
   SettingsExportPayload,
   SettingsImportResponse,
+  UpdateCheckResult,
 } from "@/types/settings";
 import type {
   FilterApplyHistoryResult,
@@ -1016,6 +1017,11 @@ export async function listAIModels(config: {
 
 export async function getGeneralSettings(): Promise<GeneralSettings> {
   return request<GeneralSettings>("/api/settings/general");
+}
+
+/** 检查 Krss 自身是否有新版本（后端请求 GitHub Release 列表并缓存 10 分钟） */
+export async function checkForUpdate(): Promise<UpdateCheckResult> {
+  return request<UpdateCheckResult>("/api/update/check");
 }
 
 export async function updateGeneralSettings(

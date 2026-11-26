@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"fmt"
 
 	"krss/backend/internal/model"
 )
@@ -11,6 +12,13 @@ var (
 	ErrConflict  = errors.New("conflict")
 	ErrInvalid   = errors.New("invalid")
 	ErrFeedFetch = errors.New("feed fetch failed")
+	// ErrUpdateCheckFailed 检查自身更新时请求 GitHub 失败（网络/限流/响应异常）—— handler 回 502。
+	ErrUpdateCheckFailed = errors.New("update check failed")
+	// ErrUpdateRateLimited GitHub 限流（匿名接口每小时 60 次）—— handler 回 429，
+	// 前端据此提示「稍后再试」而不是「连不上 GitHub」（后者会让人一直重试）。
+	ErrUpdateRateLimited = fmt.Errorf("%w: rate limited", ErrUpdateCheckFailed)
+	// ErrUpdateReleaseNotFound 仓库或 Release 不存在（GitHub 404）—— handler 回 502 但文案不同。
+	ErrUpdateReleaseNotFound = fmt.Errorf("%w: release not found", ErrUpdateCheckFailed)
 	// ErrUnknownSettingKey 导入设置时出现白名单以外的键（21 批）——
 	// 单独一个错误是为了给前端一句能看懂的话（列出到底哪个键不认），而不是笼统的 400。
 	ErrUnknownSettingKey = errors.New("unknown setting key")

@@ -2,6 +2,7 @@ import { useRegisterSW } from "virtual:pwa-register/react";
 import { useTranslation } from "react-i18next";
 import { Download } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useUpdateCheckStore } from "@/stores/update-check-store";
 
 const UPDATE_CHECK_INTERVAL = 60 * 60 * 1000; // 1 hour
 
@@ -29,6 +30,12 @@ function registerPeriodicSync(
 
 export function UpdateNotice() {
   const { t } = useTranslation();
+  /**
+   * 右下角还有「Krss 有新版本」的常驻提示时（`components/update-checker.tsx`），
+   * 这张卡片往上让一层 —— 两块都贴在 right/bottom 上，不挪就互相盖住。
+   * 两者同时出现的场景不多（PWA 待刷新 + 有新版本），但盖住就等于点不到。
+   */
+  const hasVersionToast = useUpdateCheckStore((state) => state.toastVisible);
 
   const {
     needRefresh: [needRefresh],
@@ -57,7 +64,8 @@ export function UpdateNotice() {
   return (
     <div
       className={cn(
-        "fixed right-6 bottom-6 z-50 cursor-pointer",
+        "fixed right-6 z-50 cursor-pointer",
+        hasVersionToast ? "bottom-32" : "bottom-6",
         "mb-[env(safe-area-inset-bottom,0px)]",
       )}
       onClick={handleClick}
@@ -78,10 +86,10 @@ export function UpdateNotice() {
         </div>
         <div className="min-w-0 text-left">
           <div className="text-sm font-medium text-foreground">
-            {t("update.available")}
+            {t("update.pwa_update_available")}
           </div>
           <div className="text-xs text-muted-foreground">
-            {t("update.description")}
+            {t("update.pwa_update_desc")}
           </div>
         </div>
       </div>

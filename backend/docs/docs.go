@@ -1553,6 +1553,44 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/update/check": {
+            "get": {
+                "description": "请求 GitHub 最新 Release，返回运行版本、最新版本、是否有更新，以及渲染好的发布说明 HTML 和可下载附件。\n限流时返回 429，仓库或 Release 不存在时返回 404，其余失败返回 502。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "update"
+                ],
+                "summary": "Check for Krss updates",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/krss_backend_internal_service.UpdateInfo"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.errorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/login": {
             "post": {
                 "description": "Authenticate a user with username or email and get a JWT token",
@@ -4962,7 +5000,7 @@ const docTemplate = `{
                     }
                 },
                 "useProxy": {
-                    "description": "UseProxy：AI 调用是否走代理（含智能代理），默认 true",
+                    "description": "UseProxy：AI 调用是否走代理（含智能代理），默认 false（默认直连）",
                     "type": "boolean"
                 }
             }
@@ -5033,7 +5071,7 @@ const docTemplate = `{
                     }
                 },
                 "useProxy": {
-                    "description": "UseProxy：AI 调用是否走代理（含智能代理），默认 true",
+                    "description": "UseProxy：AI 调用是否走代理（含智能代理），默认 false（默认直连）",
                     "type": "boolean"
                 }
             }
@@ -8348,6 +8386,85 @@ const docTemplate = `{
                 },
                 "version": {
                     "type": "integer"
+                }
+            }
+        },
+        "krss_backend_internal_service.UpdateAsset": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "size": {
+                    "type": "integer"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "krss_backend_internal_service.UpdateInfo": {
+            "type": "object",
+            "properties": {
+                "assets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_service.UpdateAsset"
+                    }
+                },
+                "currentVersion": {
+                    "type": "string"
+                },
+                "hasUpdate": {
+                    "type": "boolean"
+                },
+                "latestVersion": {
+                    "type": "string"
+                },
+                "publishedAt": {
+                    "type": "string"
+                },
+                "releaseName": {
+                    "type": "string"
+                },
+                "releaseNotesHtml": {
+                    "type": "string"
+                },
+                "releaseUrl": {
+                    "type": "string"
+                },
+                "releases": {
+                    "description": "Releases 当前版本之后的全部 Release，按版本从新到旧。\n顶上的 Release* 字段是最新那一版，保留给只关心「有没有更新」的调用方。",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_service.UpdateRelease"
+                    }
+                }
+            }
+        },
+        "krss_backend_internal_service.UpdateRelease": {
+            "type": "object",
+            "properties": {
+                "assets": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/krss_backend_internal_service.UpdateAsset"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "notesHtml": {
+                    "type": "string"
+                },
+                "publishedAt": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
                 }
             }
         }

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { useUpdateCheckStore } from "@/stores/update-check-store";
 
 interface BackToTopButtonProps {
   scrollNode: HTMLDivElement;
@@ -11,6 +12,9 @@ export function BackToTopButton({
   threshold = 300,
 }: BackToTopButtonProps) {
   const [isVisible, setIsVisible] = useState(false);
+  // 右下角挂着版本更新提示时让上去一层：两者都贴 right/bottom，
+  // toast 是 pointer-events-auto 的实体卡片，压着就等于点不到。
+  const hasUpdateToast = useUpdateCheckStore((state) => state.toastVisible);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -33,7 +37,8 @@ export function BackToTopButton({
       type="button"
       onClick={handleClick}
       className={cn(
-        "fixed right-4 bottom-[max(2.75rem,calc(env(safe-area-inset-bottom)+0.75rem))] md:bottom-6 md:right-6 z-30",
+        "fixed right-4 bottom-[max(2.75rem,calc(env(safe-area-inset-bottom)+0.75rem))] md:right-6 z-30",
+        hasUpdateToast ? "md:bottom-32" : "md:bottom-6",
         "flex size-10 items-center justify-center rounded-full",
         "bg-background/80 backdrop-blur border border-border shadow-lg",
         "text-muted-foreground hover:text-foreground hover:bg-background",

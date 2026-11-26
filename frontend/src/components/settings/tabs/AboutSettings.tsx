@@ -1,14 +1,39 @@
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Bug, ExternalLink, Info, Link2, Sparkles } from "lucide-react";
+import { Alert, Button, Chip } from "@heroui/react";
+import {
+  AlertCircle,
+  ArrowUpCircle,
+  Bug,
+  CheckCircle2,
+  ExternalLink,
+  Info,
+  Link2,
+  Loader2,
+  RefreshCw,
+  Sparkles,
+} from "lucide-react";
 import {
   SectionCard,
   SettingRow,
 } from "@/components/settings/settings-primitives";
+import {
+  useUpdateCheckStore,
+  type UpdateErrorKind,
+} from "@/stores/update-check-store";
+import { cn } from "@/lib/utils";
 
 const version =
   typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
 
 const TECH_STACK = "React · TypeScript · Go · SQLite";
+
+function formatTime(date: Date): string {
+  return date.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 function GithubMark({ className }: { className?: string }) {
   return (
@@ -41,11 +66,90 @@ const LINKS = [
   },
 ] as const;
 
+/**
+ * 失败原因对应的提示文案。分类在 store 里做（只按 HTTP 状态码），
+ * 这里只负责把分类翻成人话 —— i18n 不该进 store。
+ */
+const ERROR_HINT_KEYS: Record<UpdateErrorKind, string> = {
+  rateLimited: "update.check_rate_limited",
+  notFound: "update.check_not_found",
+  generic: "update.check_failed_hint",
+};
+
 export function AboutSettings() {
   const { t } = useTranslation();
 
+  // 状态全部来自全局 store：进主页时已经检查过，这里打开不该再打一次接口，
+  // 也不该显示一份和右下角提示不一致的结果。
+  const status = useUpdateCheckStore((state) => state.status);
+  const result = useUpdateCheckStore((state) => state.result);
+  const errorKind = useUpdateCheckStore((state) => state.errorKind);
+  const errorMessage = useUpdateCheckStore((state) => state.errorMessage);
+  const checkedAtMs = useUpdateCheckStore((state) => state.checkedAt);
+  const check = useUpdateCheckStore((state) => state.check);
+  const setDetailOpen = useUpdateCheckStore((state) => state.setDetailOpen);
+
+  // 进「关于」页补一次检查：store 里有 30 分钟节流，刚在主页查过就直接返回。
+  useEffect(() => {
+    void check();
+  }, [check]);
+
+  const checkedAt = checkedAtMs === null ? null : new Date(checkedAtMs);
+
+  // 只看结果、不看 status：手动重新检查时如果也依赖 status，
+  // 横幅会先消失再出现（闪烁），而这段时间里「有更新」这个事实并没有变。
+  const hasUpdate = !!result?.hasUpdate;
+  const checking = status === "checking";
+
+  // 版本号统一取后端上报的当前版本：前端构建期注入的 __APP_VERSION__ 和后端
+  // 编译进二进制的 config.AppVersion 可能不同（自建镜像尤其常见），
+  // 同页显示两个不同版本会让人以为哪儿出错了。
+  const currentVersion = result?.currentVersion ?? version;
+
   return (
     <div className="space-y-5">
+      {/* 有更新时的提示：用 HeroUI Alert，warning 状态在明暗两套主题下都清晰
+          （主题的 --accent 默认是 #000000，primary 在暗色下会变成黑底黑字） */}
+      {hasUpdate && result && (
+        <Alert
+          status="warning"
+          className="items-center border border-warning/40 bg-warning-soft"
+        >
+          <Alert.Indicator>
+            <ArrowUpCircle className="size-5" strokeWidth={2} />
+          </Alert.Indicator>
+          {/* role/aria-live 只挂在文字区：挂在整块 Alert 上会把按钮文案一起念出来 */}
+          <Alert.Content role="status" aria-live="polite">
+            {/* text-foreground 是必须的：Alert 的 warning 变体默认给标题 text-warning-soft-foreground，
+                在 stone/leaf 这类亮色主题上算出来只有 3.45:1 / 3.67:1，14px 正文达不到 AA 4.5:1 */}
+            <Alert.Title className="flex flex-wrap items-center gap-2 text-foreground">
+              {t("update.available")}
+              <Chip
+                size="sm"
+                color="warning"
+                variant="soft"
+                className="font-mono font-semibold text-foreground"
+              >
+                {result.latestVersion}
+              </Chip>
+            </Alert.Title>
+            <Alert.Description className="text-xs leading-relaxed">
+              {t("update.banner_desc", { version: result.latestVersion })}
+            </Alert.Description>
+          </Alert.Content>
+          {/* 强调按钮刻意不用 variant="primary"：这套主题的 --accent 默认是 #000000，
+              暗色下会变成黑底黑字、和「有更新」的语义也对不上；
+              用 foreground 反色，两套主题都翻得过来（同 MCPServersSection 的主按钮） */}
+          <Button
+            size="sm"
+            className="shrink-0 border border-foreground bg-foreground text-background shadow-none hover:bg-foreground/90"
+            onPress={() => setDetailOpen(true)}
+          >
+            {t("update.view_details")}
+          </Button>
+        </Alert>
+      )}
+
       {/* 品牌区：保留应用身份，换成与设置页一致的卡片质感 */}
       <section className="overflow-hidden rounded-2xl border border-border/60 bg-card/30 p-5 shadow-nf-sm sm:p-6">
         <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
@@ -59,9 +163,9 @@ export function AboutSettings() {
               <h2 className="text-2xl font-bold tracking-tight text-foreground">
                 Krss
               </h2>
-              <span className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
-                v{version}
-              </span>
+              <Chip size="sm" className="font-mono">
+                v{currentVersion}
+              </Chip>
             </div>
             <p className="mt-1.5 max-w-lg text-sm leading-relaxed text-muted-foreground">
               {t("about.tagline")}
@@ -69,6 +173,109 @@ export function AboutSettings() {
           </div>
         </div>
       </section>
+
+      {/* 版本更新 */}
+      <SectionCard
+        icon={
+          <RefreshCw
+            className={cn("size-4", checking && "animate-spin")}
+            strokeWidth={1.75}
+          />
+        }
+        title={t("update.check_title")}
+        description={t("update.check_desc")}
+        action={
+          <Button
+            size="sm"
+            variant="outline"
+            isDisabled={checking}
+            onPress={() => void check({ force: true })}
+          >
+            {checking ? (
+              <span className="flex items-center gap-1.5">
+                <Loader2 className="size-3.5 animate-spin" />
+                {t("update.checking")}
+              </span>
+            ) : result ? (
+              t("update.recheck")
+            ) : (
+              t("update.check_now")
+            )}
+          </Button>
+        }
+      >
+        <div className="divide-y divide-border/50">
+          <SettingRow label={t("update.current_version")}>
+            <span className="font-mono text-[13px] text-muted-foreground">
+              v{currentVersion}
+            </span>
+          </SettingRow>
+          <SettingRow label={t("update.latest_version")}>
+            {checking && (
+              <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="size-3.5 animate-spin" />
+                {t("update.checking")}
+              </span>
+            )}
+            {status === "error" && (
+              <span
+                className="flex items-center gap-1.5 text-sm text-destructive"
+                title={errorMessage ?? undefined}
+              >
+                <AlertCircle className="size-4" />
+                {t("update.check_failed")}
+              </span>
+            )}
+            {status === "success" && result && (
+              <span
+                className={cn(
+                  "flex items-center gap-1.5 text-sm",
+                  result.hasUpdate
+                    ? "font-medium text-warning-soft-foreground"
+                    : "font-medium text-success-soft-foreground",
+                )}
+              >
+                {result.hasUpdate ? (
+                  <ArrowUpCircle className="size-4" />
+                ) : (
+                  <CheckCircle2 className="size-4" />
+                )}
+                <span className="font-mono text-[13px]">
+                  {result.latestVersion}
+                </span>
+                <span className="text-muted-foreground">
+                  {result.hasUpdate
+                    ? t("update.has_update_short")
+                    : t("update.up_to_date_short")}
+                </span>
+              </span>
+            )}
+          </SettingRow>
+          {status === "success" && result?.hasUpdate && result.releaseUrl && (
+            <SettingRow label={t("update.release_page")}>
+              <a
+                href={result.releaseUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-sm text-foreground underline decoration-foreground/30 underline-offset-2 transition-colors hover:decoration-foreground"
+              >
+                {t("update.open_on_github")}
+                <ExternalLink className="size-3.5" strokeWidth={1.75} />
+              </a>
+            </SettingRow>
+          )}
+        </div>
+        {status === "error" && (
+          <p className="px-1 pb-2 pt-1 text-xs text-muted-foreground">
+            {t(ERROR_HINT_KEYS[errorKind])}
+          </p>
+        )}
+        {status === "success" && checkedAt && (
+          <p className="px-1 pb-2 pt-1 text-xs text-muted-foreground/80">
+            {t("update.checked_at", { time: formatTime(checkedAt) })}
+          </p>
+        )}
+      </SectionCard>
 
       {/* 应用信息 */}
       <SectionCard
@@ -78,7 +285,7 @@ export function AboutSettings() {
         <div className="divide-y divide-border/50">
           <SettingRow label={t("about.version")}>
             <span className="font-mono text-[13px] text-muted-foreground">
-              {version}
+              {currentVersion}
             </span>
           </SettingRow>
           <SettingRow label={t("about.license")}>
@@ -102,15 +309,15 @@ export function AboutSettings() {
               key={key}
               href={href}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className="group flex items-center gap-3 px-1 py-2.5 text-sm text-foreground transition-colors hover:bg-item-hover"
             >
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-[var(--radius)] bg-secondary/40 text-muted-foreground transition-colors group-hover:text-primary">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-[var(--radius)] bg-secondary/40 text-muted-foreground transition-colors group-hover:text-foreground">
                 <Icon className="size-4" />
               </span>
               <span className="min-w-0 flex-1 truncate">{t(`about.${key}`)}</span>
               <ExternalLink
-                className="size-3.5 shrink-0 text-muted-foreground/70 transition-colors group-hover:text-primary"
+                className="size-3.5 shrink-0 text-muted-foreground/70 transition-colors group-hover:text-foreground"
                 strokeWidth={1.75}
               />
             </a>
