@@ -154,3 +154,65 @@ export function resetDeferredRemovals(): void {
   listeners.clear();
   version = 0;
 }
+
+
+/**
+ * 「取消星标」后先别让条目从「仅星标」列表里消失（需求：涉及已读/星标的动作都不当场消失）。
+ *
+ * 与已读不同，星标只影响 `starredOnly` 查询的归属。把被取消星标的条目按下标记下来，
+ * 列表重拉丢了再 `mergeDeferredRemovals` 插回；离开列表时由
+ * `removeUnstarredFromStarredList` 真正摘掉。
+ */
+export function deferStarredRemovals(
+  queryClient: QueryClient,
+  ids: Set<string>,
+): void {
+  if (ids.size === 0) return;
+  const queries = queryClient.getQueriesData<{
+    pages: { entries: Entry[] }[];
+  }>({
+    queryKey: ["entries"],
+  });
+
+  for (const [queryKey, data] of queries) {
+    const params = queryKey[1] as { starredOnly?: boolean } | undefined;
+    if (!params?.starredOnly || !data) continue;
+    let index = 0;
+    for (const page of data.pages) {
+      for (const entry of page.entries) {
+        if (ids.has(entry.id)) {
+          const single = queryClient.getQueryData<Entry>(["entry", entry.id]);
+          const starred = single ? single.starred : entry.starred;
+          // 记下「已取消星标」的那份：列表上要显示成未星标，但先留在原位。
+          if (!starred) {
+            deferEntryRemoval(entry.id, { ...(single ?? entry), starred: false }, index);
+          }
+        }
+        index += 1;
+      }
+    }
+  }
+}
+
+/** 离开列表时：把「仅星标」缓存里所有 starred=false 的条目摘掉（与已读的兜底清理对称）。 */
+export function removeUnstarredFromStarredList(queryClient: QueryClient): void {
+  const queries = queryClient.getQueriesData<{
+    pages: { entries: Entry[]; hasMore?: boolean }[];
+  }>({
+    queryKey: ["entries"],
+  });
+
+  for (const [queryKey, data] of queries) {
+    const params = queryKey[1] as { starredOnly?: boolean } | undefined;
+    if (!params?.starredOnly || !data) continue;
+
+    let changed = false;
+    const pages = data.pages.map((page) => {
+      const kept = page.entries.filter((entry) => entry.starred);
+      if (kept.length === page.entries.length) return page;
+      changed = true;
+      return { ...page, entries: kept };
+    });
+    if (changed) queryClient.setQueryData(queryKey, { ...data, pages });
+  }
+}

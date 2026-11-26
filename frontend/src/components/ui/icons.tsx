@@ -539,3 +539,45 @@ export function BoltIcon({ className }: { className?: string }) {
     </svg>
   );
 }
+
+/**
+ * 「可视区域以上标为已读」按钮用：向上箭头 + 顶部横线（表达「往上 / 上方」）。
+ *
+ * 刻意不用双勾（CheckCheck）—— 双勾代表的是「全部已读」，两者语义要分开，
+ * 这颗只是「从当前屏幕开始往上的这一批」。
+ */
+export function MarkAboveReadIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.7}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 20V7" />
+      <path d="m6.5 12.5 5.5-5.5 5.5 5.5" />
+      <path d="M5 3.5h14" />
+    </svg>
+  );
+}
+
+/** 「全部标记已读」用：双勾，与「可视区域以上」那颗（MarkAboveReadIcon）区分开。 */
+export function CheckCheckIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.7}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M2.5 13.5 6 17l8.5-8.5" />
+      <path d="M9.5 13.5 13 17l8.5-8.5" />
+    </svg>
+  );
+}

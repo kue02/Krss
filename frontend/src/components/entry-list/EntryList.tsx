@@ -71,7 +71,7 @@ import {
   mergeDeferredRemovals,
   subscribeDeferredRemovals,
 } from "./deferred-removal";
-import { collectUnreadIdsAboveVisible } from "./mark-above-visible";
+import { collectUnreadIdsUpToVisible } from "./mark-above-visible";
 import { useEntryListScrollSurface } from "./scroll-surface";
 import { useEntryHotkeys } from "@/hooks/useEntryHotkeys";
 import {
@@ -1078,17 +1078,20 @@ export function EntryList({
   });
   // 列表滚上去以后，右上角浮出「当前序号 + 回到顶部」（对齐 Nextflux 的 Indicator）
   const [firstVisibleIndex, setFirstVisibleIndex] = useState(0);
+  // 当前可视区最后一条的绝对下标（含）。「可视区域以上标为已读」的标记范围是
+  // 「从列表顶部到当前屏幕最后一条」——即整屏 + 它上面的，而不是只标屏幕之前那些。
+  const [lastVisibleIndex, setLastVisibleIndex] = useState(-1);
   // 可视区域以上标为已读：把滚动时已经滚出屏幕上方的未读条目标掉
   // （firstVisibleIndex = 底部 > 0 的第一行，即上方已滚出屏幕的行数）。
   const handleMarkAboveVisibleRead = useCallback(() => {
-    const ids = collectUnreadIdsAboveVisible(entries, firstVisibleIndex);
+    const ids = collectUnreadIdsUpToVisible(entries, lastVisibleIndex);
     if (ids.length === 0) {
       // 没有可标记的条目时给个明确反馈，避免点了按钮毫无反应
       showToast(t("entry.mark_above_visible_no_unread"));
       return;
     }
     markManyAsRead({ ids, read: true });
-  }, [entries, firstVisibleIndex, markManyAsRead, t]);
+  }, [entries, lastVisibleIndex, markManyAsRead, t]);
   /**
    * 虚拟化覆盖「标准文章扁平流」与「社交列表（桌面 + 移动端）」：
    *   - article 内容类型 + 非 hover 档（含 list 与 rows）走原路径；
@@ -1130,6 +1133,7 @@ export function EntryList({
       if (items.length === 0) {
         // 空列表 / 切到空筛选时把序号归零，否则「回到顶部」浮标会残留上一个列表的序号。
         setFirstVisibleIndex((prev) => (prev === 0 ? prev : 0));
+        setLastVisibleIndex((prev) => (prev === -1 ? prev : -1));
         return;
       }
       // 移动端（document 滚动）滚动发生在 window 上：容器自身的 scroll 事件永远不触发，
@@ -1146,17 +1150,27 @@ export function EntryList({
         const abs = raw != null && raw !== "" ? Number(raw) : NaN;
         return Number.isFinite(abs) ? abs : fallback;
       };
+      const viewport = scrollSurface.getViewportRect();
+      const viewportHeight = viewport.bottom - containerTop;
       let index = absIndex(items[items.length - 1] as HTMLElement, items.length - 1);
+      let lastIndex = absIndex(items[0] as HTMLElement, 0);
+      let firstFound = false;
       for (let i = 0; i < items.length; i += 1) {
         const el = items[i];
         if (!el) continue;
-        const bottom = el.getBoundingClientRect().bottom - containerTop + 8;
-        if (bottom > 0) {
+        const rect = el.getBoundingClientRect();
+        // 第一条「底边仍在视口内」的行 = 上方已滚出屏幕的行数
+        if (!firstFound && rect.bottom - containerTop + 8 > 0) {
           index = absIndex(el, i);
-          break;
+          firstFound = true;
+        }
+        // 最后一条「顶边还没到视口底」的行 = 当前屏幕最后一条（虚拟列表下方的 overscan 行不算）
+        if (rect.top - containerTop < viewportHeight) {
+          lastIndex = absIndex(el, i);
         }
       }
       setFirstVisibleIndex((prev) => (prev === index ? prev : index));
+      setLastVisibleIndex((prev) => (prev === lastIndex ? prev : lastIndex));
     };
 
     const handleScroll = () => {

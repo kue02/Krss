@@ -1,23 +1,24 @@
 import type { Entry } from "@/types/api";
 
 /**
- * 收集「可视区域以上」的未读条目 id。
+ * 收集「从列表顶部到当前可视区最后一条」范围内的未读条目 id。
  *
- * firstVisibleIndex = 第一个底边仍落在视口内的行（即其上方已滚出屏幕的行数），
- * 由列表滚动测量 effect 维护。取 entries 的前 firstVisibleIndex 条、滤掉已读，
- * 即本次「可视区域以上标为已读」应批量标记的条目。
+ * `lastVisibleIndex` = 当前屏幕里最后一条（顶边还没越过视口底部）的绝对下标，含。
+ * 为什么不是「屏幕之前的那些」：需求是「从当前可视区域开始往上标」——即
+ * **整屏 + 它上面的**都要标（用户原话：「整屏可视区的基础上往上标」）。
+ * 所以范围是 entries[0 .. lastVisibleIndex]，滤掉已读。
  *
- * 抽成纯函数以便单测「切片 + 过滤」这段语义：有未读 → 只返回上方的未读 id；
- * 上方没有未读 → 返回空数组（调用方据此弹 toast，而不是静默返回）。
+ * 抽成纯函数以便单测这段「切片 + 过滤」语义：有未读 → 返回这些 id；
+ * 范围内没有未读 → 返回空数组（调用方据此弹 toast，而不是静默返回）。
  */
-export function collectUnreadIdsAboveVisible(
+export function collectUnreadIdsUpToVisible(
   entries: readonly Entry[],
-  firstVisibleIndex: number,
+  lastVisibleIndex: number,
 ): string[] {
-  if (firstVisibleIndex <= 0) return [];
-  const visibleBoundary = Math.min(firstVisibleIndex, entries.length);
+  if (lastVisibleIndex < 0) return [];
+  const boundary = Math.min(lastVisibleIndex + 1, entries.length);
   const ids: string[] = [];
-  for (let i = 0; i < visibleBoundary; i += 1) {
+  for (let i = 0; i < boundary; i += 1) {
     const entry = entries[i];
     if (entry && !entry.read) ids.push(entry.id);
   }

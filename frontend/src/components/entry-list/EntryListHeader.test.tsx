@@ -162,8 +162,8 @@ describe("EntryListHeader 星标视图去掉已读/未读切换（58-1）", () =
 describe("EntryListHeader 移动端顶栏与 Web 图标统一", () => {
   /** 项目自定义 RefreshIcon 的首段 path，用来和 lucide 的 RefreshCw 区分 */
   const REFRESH_ICON_PATH = "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8";
-  /** 项目自定义 CheckCircleIcon 的首段 path，用来和 lucide 的 CheckCheck 区分 */
-  const CHECK_CIRCLE_ICON_PATH = "M22 11.08V12a10 10 0 1 1-5.93-9.14";
+  /** 「全部已读」用的双勾（CheckCheckIcon）首段 path；不再用圆圈对勾，两者语义要分开 */
+  const CHECK_CHECK_ICON_PATH = "M2.5 13.5 6 17l8.5-8.5";
 
   function mobileButton(label: string) {
     return screen.getByLabelText(label);
@@ -185,7 +185,7 @@ describe("EntryListHeader 移动端顶栏与 Web 图标统一", () => {
     const checkSvg = markAllRead.querySelector("svg");
     expect(checkSvg?.getAttribute("class")).toBe("size-4");
     expect(checkSvg?.querySelector("path")?.getAttribute("d")).toBe(
-      CHECK_CIRCLE_ICON_PATH,
+      CHECK_CHECK_ICON_PATH,
     );
   });
 

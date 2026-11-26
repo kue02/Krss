@@ -22,6 +22,8 @@ vi.mock("@/api", () => ({
 
 import {
   useMarkAsRead,
+  useMarkAllAsRead,
+  useMarkManyAsRead,
   useMarkAsStarred,
   useRemoveReadEntriesFromUnreadList,
 } from "./useEntries";
@@ -218,7 +220,7 @@ describe("useMarkAsStarred —— 59 星标乐观更新不触发 entries 重拉"
     ).toBe(false);
   });
 
-  it("取消星标(starred:false) 时只对 starredOnly 视图的 entries 查询做 invalidate", async () => {
+  it("取消星标(starred:false) 不当场摘行：starredOnly 视图不重拉，只记账等离开列表再清", async () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     });
@@ -237,7 +239,8 @@ describe("useMarkAsStarred —— 59 星标乐观更新不触发 entries 重拉"
       result.current.mutate({ id: "b", starred: false });
     });
 
-    // starredOnly 视图被标记失效（会重拉 → 取消星标的行随之消失）
+    // 不再重拉：starredOnly 视图保持原样（行还在，只是 starred 变 false），
+    // 与「已读不立刻消失」同一套语义 —— 离开列表时才由 removeUnstarredFromStarredList 收口。
     await waitFor(() => {
       const starredOnlyQuery = client
         .getQueryCache()
@@ -247,8 +250,22 @@ describe("useMarkAsStarred —— 59 星标乐观更新不触发 entries 重拉"
             (q.queryKey[1] as { starredOnly?: boolean } | undefined)
               ?.starredOnly === true,
         );
-      expect(starredOnlyQuery?.state.isInvalidated).toBe(true);
+      expect(starredOnlyQuery?.state.isInvalidated).toBe(false);
     });
+
+    // 该行仍留在 starredOnly 缓存里，只是星标态已就地改成 false
+    const starredList = client.getQueryData<{
+      pages: { entries: Entry[] }[];
+    }>(["entries", { starredOnly: true }]);
+    expect(
+      starredList?.pages[0]?.entries.find((e) => e.id === "b"),
+    ).toBeTruthy();
+    expect(
+      starredList?.pages[0]?.entries.find((e) => e.id === "b")?.starred,
+    ).toBe(false);
+
+    // 已经记账：离开列表时可据此真正摘掉
+    expect(deferredRemovalIds()).toContain("b");
 
     // 普通（未读/全部）视图不受影响，避免重新引入「读时收藏条目消失」的 bug
     const unreadQuery = client
@@ -295,5 +312,67 @@ describe("useRemoveReadEntriesFromUnreadList —— 离开列表按 read 兜底�
       { unreadOnly: false, tag: "all" },
     ]);
     expect(all?.pages[0]?.entries.map((e) => e.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("useMarkManyAsRead / useMarkAllAsRead —— 批量标已读也不当场摘条目", () => {
+  beforeEach(() => {
+    resetDeferredRemovals();
+  });
+
+  function seedUnread(client: QueryClient) {
+    client.setQueryData(["entries", { unreadOnly: true, tag: "u" }], {
+      pages: [
+        { entries: [makeEntry("a"), makeEntry("b")], hasMore: false },
+      ],
+    });
+  }
+
+  it("markMany 标已读后条目原位保留（read=true），并记进 deferred", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    seedUnread(client);
+
+    const { result } = renderHook(() => useMarkManyAsRead(), {
+      wrapper: wrapper(client),
+    });
+    await act(async () => {
+      result.current.mutate({ ids: ["a"], read: true });
+    });
+
+    const list = client.getQueryData<{ pages: { entries: Entry[] }[] }>([
+      "entries",
+      { unreadOnly: true, tag: "u" },
+    ]);
+    const rows = list?.pages[0]?.entries ?? [];
+    expect(rows.map((e) => e.id)).toEqual(["a", "b"]);
+    expect(rows.find((e) => e.id === "a")?.read).toBe(true);
+    expect(deferredRemovalIds()).toContain("a");
+    expect(deferredRemovalIds()).not.toContain("b");
+  });
+
+  it("markAll 后整屏已读条目原位保留（read=true），全部记进 deferred", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    seedUnread(client);
+
+    const { result } = renderHook(() => useMarkAllAsRead(), {
+      wrapper: wrapper(client),
+    });
+    await act(async () => {
+      result.current.mutate();
+    });
+
+    const list = client.getQueryData<{ pages: { entries: Entry[] }[] }>([
+      "entries",
+      { unreadOnly: true, tag: "u" },
+    ]);
+    const rows = list?.pages[0]?.entries ?? [];
+    expect(rows.map((e) => e.id)).toEqual(["a", "b"]);
+    expect(rows.every((e) => e.read)).toBe(true);
+    expect(deferredRemovalIds()).toContain("a");
+    expect(deferredRemovalIds()).toContain("b");
   });
 });
