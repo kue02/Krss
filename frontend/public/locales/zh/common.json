@@ -1010,7 +1010,10 @@
     "no_notes": "这个版本没有附加发布说明。",
     "downloads": "下载",
     "open_release": "前往下载",
-    "close": "关闭"
+    "close": "关闭",
+    "pwa_update_available": "应用已更新",
+    "pwa_update_desc": "点击刷新以应用更新",
+    "dismiss_toast": "关闭提示"
   },
   "entry_filter": {
     "muted": "已静音"

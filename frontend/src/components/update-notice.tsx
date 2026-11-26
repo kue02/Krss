@@ -35,7 +35,7 @@ export function UpdateNotice() {
    * 这张卡片往上让一层 —— 两块都贴在 right/bottom 上，不挪就互相盖住。
    * 两者同时出现的场景不多（PWA 待刷新 + 有新版本），但盖住就等于点不到。
    */
-  const hasVersionToast = useUpdateCheckStore((state) => !!state.result?.hasUpdate);
+  const hasVersionToast = useUpdateCheckStore((state) => state.toastVisible);
 
   const {
     needRefresh: [needRefresh],
@@ -86,10 +86,10 @@ export function UpdateNotice() {
         </div>
         <div className="min-w-0 text-left">
           <div className="text-sm font-medium text-foreground">
-            {t("update.available")}
+            {t("update.pwa_update_available")}
           </div>
           <div className="text-xs text-muted-foreground">
-            {t("update.description")}
+            {t("update.pwa_update_desc")}
           </div>
         </div>
       </div>

@@ -66,14 +66,61 @@ export function UpdateChecker() {
       },
       onClose: () => {
         toastKeyRef.current = null;
+        useUpdateCheckStore.getState().setToastVisible(false);
       },
     });
+    useUpdateCheckStore.getState().setToastVisible(true);
   }, [result, setDetailOpen, openWithTab, t]);
+
+  // 谁弹谁收：登出、切账号或整个布局卸载时，把队列里这条常驻提示清掉。
+  // ToastProvider 卸载不会清队列（只摘监听），留着的话下一位登录者会看到
+  // 上一位账号的提示原样复活。
+  useEffect(() => {
+    return () => {
+      if (toastKeyRef.current) {
+        toast.close(toastKeyRef.current);
+        toastKeyRef.current = null;
+      }
+      const state = useUpdateCheckStore.getState();
+      state.setToastVisible(false);
+      state.reset();
+    };
+  }, []);
 
   return (
     <Toast.Provider
       placement="bottom end"
       width={380}
+      // 自己渲染整条提示，只为把关闭按钮的 aria-label 换成本地化文案：
+      // HeroUI 的 CloseButton 把 `aria-label: "Close"` 写死了（close-button.js:21），
+      // 而 react-aria 明明已经带了 zh-CN 的「关闭」翻译，只是没被用上。
+      // 结构与 HeroUI 默认 children 一致（toast.js getDefaultChildren）。
+      children={(renderProps) => {
+        const content = renderProps.toast.content;
+        const actionProps = content?.actionProps;
+        const actionButton =
+          actionProps?.children != null ? (
+            <Toast.ActionButton {...actionProps} />
+          ) : null;
+        return (
+          <Toast toast={renderProps.toast} variant={content?.variant}>
+            <Toast.Indicator variant={content?.variant}>
+              {content?.indicator}
+            </Toast.Indicator>
+            <Toast.Content>
+              {content?.title ? (
+                <Toast.Title>{content.title}</Toast.Title>
+              ) : null}
+              {content?.description ? (
+                <Toast.Description>{content.description}</Toast.Description>
+              ) : null}
+              {isMobile ? actionButton : null}
+            </Toast.Content>
+            {isMobile ? null : actionButton}
+            <Toast.CloseButton aria-label={t("update.dismiss_toast")} />
+          </Toast>
+        );
+      }}
       // 移动端底部有 3.5rem 的 tab bar，默认的 bottom-4 会被压在它下面。
       // region 是 fixed 定位，内联 style 能盖掉 .toast-region--bottom-end 的 bottom-4。
       style={

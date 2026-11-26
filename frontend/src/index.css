@@ -475,6 +475,31 @@ body.mobile-document-scroll-locked {
   }
 }
 
+/* HeroUI 的 toast 关闭按钮只在 hover 时显形（`.toast__close-button` 默认
+   `opacity-0 pointer-events-none`，只有 `.toast[data-frontmost]:hover` 才放出来）。
+   版本提示是常驻的（timeout: 0），而触屏根本没有 hover —— 手机用户除了刷新页面
+   没有任何办法关掉它。键盘用户同样：Tab 到它时看不见，也没有焦点圈。
+   这里让关闭键常显，并给一个够大的点按区域（默认 20px，远小于 44px 的触控下限）。 */
+.toast[data-frontmost="true"] .toast__close-button,
+.toast[data-expanded="true"] .toast__close-button {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.toast__close-button:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+  outline: 2px solid color-mix(in oklab, var(--foreground) 35%, transparent);
+  outline-offset: 2px;
+}
+
+/* 20px 的按钮点起来太费劲，用伪元素把可点区域向外扩 8px（不影响布局）。 */
+.toast__close-button::after {
+  content: "";
+  position: absolute;
+  inset: -0.5rem;
+}
+
 .entry-content {
   --entry-border: --border;
   --entry-muted: --muted;

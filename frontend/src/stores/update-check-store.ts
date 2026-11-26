@@ -47,6 +47,11 @@ interface UpdateCheckState {
    * 右下角提示上的「查看更新内容」——后者要先打开设置并落到「关于」页。
    */
   detailOpen: boolean;
+  /**
+   * 右下角提示当前是否挂在屏幕上。PWA 刷新提示靠它避让 —— 用 `result.hasUpdate`
+   * 判断的话，用户把提示关掉之后它仍会一直停在上面一层，底下空出一块。
+   */
+  toastVisible: boolean;
 
   /**
    * 检查一次。
@@ -63,7 +68,9 @@ interface UpdateCheckState {
    */
   announcedVersion: string | null;
   markAnnounced: (version: string) => void;
-  /** 只给测试用：把 store 恢复到初始态，避免用例之间互相污染。 */
+  /** 右下角提示的显示状态，由 `components/update-checker.tsx` 维护。 */
+  setToastVisible: (visible: boolean) => void;
+  /** 只给测试与登出用：把 store 恢复到初始态，避免跨用例/跨账号互相污染。 */
   reset: () => void;
 }
 
@@ -75,11 +82,19 @@ const initialState = {
   checkedAt: null,
   lastAttemptAt: null,
   detailOpen: false,
+  toastVisible: false,
   announcedVersion: null,
 };
 
 /** 进行中的请求；模块级而不是 state，免得它变化触发重渲染 */
 let inFlight: Promise<void> | null = null;
+
+/**
+ * 代际号。`reset()`（登出）会让在飞的请求作废：它回来时既不能写结果，
+ * 也不能把新请求的 `inFlight` 清掉 —— 否则旧账号的结果会落到新账号身上，
+ * 去重标记也会被提前释放。
+ */
+let generation = 0;
 
 export const useUpdateCheckStore = create<UpdateCheckState>((set, get) => ({
   ...initialState,
@@ -99,8 +114,10 @@ export const useUpdateCheckStore = create<UpdateCheckState>((set, get) => ({
     });
 
     inFlight = (async () => {
+      const myGeneration = generation;
       try {
         const result = await checkForUpdate();
+        if (myGeneration !== generation) return;
         set({
           status: "success",
           result,
@@ -108,13 +125,14 @@ export const useUpdateCheckStore = create<UpdateCheckState>((set, get) => ({
           checkedAt: Date.now(),
         });
       } catch (error) {
+        if (myGeneration !== generation) return;
         set({
           status: "error",
           errorKind: classifyError(error),
           errorMessage: error instanceof Error ? error.message : String(error),
         });
       } finally {
-        inFlight = null;
+        if (myGeneration === generation) inFlight = null;
       }
     })();
 
@@ -125,7 +143,10 @@ export const useUpdateCheckStore = create<UpdateCheckState>((set, get) => ({
 
   markAnnounced: (version) => set({ announcedVersion: version }),
 
+  setToastVisible: (visible) => set({ toastVisible: visible }),
+
   reset: () => {
+    generation += 1;
     inFlight = null;
     set(initialState);
   },

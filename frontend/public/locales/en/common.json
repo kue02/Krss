@@ -1013,7 +1013,10 @@
     "no_notes": "This release has no notes.",
     "downloads": "Downloads",
     "open_release": "Go to download",
-    "close": "Close"
+    "close": "Close",
+    "pwa_update_available": "App updated",
+    "pwa_update_desc": "Click to refresh and apply the update",
+    "dismiss_toast": "Dismiss notification"
   },
   "entry_filter": {
     "muted": "Muted"
