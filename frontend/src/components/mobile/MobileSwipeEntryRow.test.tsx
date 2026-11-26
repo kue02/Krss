@@ -490,6 +490,263 @@ describe("MobileSwipeEntryRow", () => {
     ).toBeTruthy();
   });
 
+  it("滑动开始时清掉 m3-ripple 的按压残留（整卡灰底）", () => {
+    const { container } = render(
+      <MobileSwipeEntryRow entry={makeEntry()}>
+        <div data-entry-card="">
+          <div className="salty-ripple">
+            <div className="salty-ripple-surface --press" />
+          </div>
+          <span>卡片内容</span>
+        </div>
+      </MobileSwipeEntryRow>,
+    );
+    const row = container.querySelector("[data-swipe-row]") as HTMLElement;
+    const surface = container.querySelector(
+      ".salty-ripple-surface",
+    ) as HTMLElement;
+    expect(surface.className).toContain("--press");
+
+    act(() => {
+      row.dispatchEvent(touch("touchstart", 220, 100));
+      row.dispatchEvent(touch("touchmove", 150, 100));
+    });
+
+    expect(surface.className).not.toContain("--press");
+  });
+
+  it("松手（pointerup）后 m3-ripple 重新加回的按压态会被清掉", () => {
+    // 复现真实时序：m3-ripple 在卡片 capture 阶段处理 pointerup，会把 --press 加回来；
+    // 横向滑动被 useSwipeGesture preventDefault 掉 click，按压态就永远没人清。
+    const { container } = render(
+      <MobileSwipeEntryRow entry={makeEntry()}>
+        <div data-entry-card="">
+          <div className="salty-ripple">
+            <div className="salty-ripple-surface" />
+          </div>
+          <span>卡片内容</span>
+        </div>
+      </MobileSwipeEntryRow>,
+    );
+    const row = container.querySelector("[data-swipe-row]") as HTMLElement;
+    const card = container.querySelector("[data-entry-card]") as HTMLElement;
+    const surface = container.querySelector(
+      ".salty-ripple-surface",
+    ) as HTMLElement;
+
+    // 模拟 m3-ripple 的 pointerup 行为：capture 阶段重新挂上 --press
+    const rePress = () => surface.classList.add("--press");
+    card.addEventListener("pointerup", rePress, true);
+
+    act(() => {
+      row.dispatchEvent(touch("touchstart", 220, 100));
+      row.dispatchEvent(touch("touchmove", 150, 100));
+      // 必须从卡片内部派发：capture 阶段才会经过卡片（m3-ripple 挂在那里），
+      // 再由冒泡回到行级兜底监听
+      surface.dispatchEvent(new Event("pointerup", { bubbles: true }));
+    });
+
+    card.removeEventListener("pointerup", rePress, true);
+    expect(surface.className).not.toContain("--press");
+  });
+
+  it("拖动过程中才出现的按压态（触摸延迟 150ms）也会被清掉", () => {
+    const { container } = render(
+      <MobileSwipeEntryRow entry={makeEntry()}>
+        <div data-entry-card="">
+          <div className="salty-ripple">
+            <div className="salty-ripple-surface" />
+          </div>
+          <span>卡片内容</span>
+        </div>
+      </MobileSwipeEntryRow>,
+    );
+    const row = container.querySelector("[data-swipe-row]") as HTMLElement;
+    const surface = container.querySelector(
+      ".salty-ripple-surface",
+    ) as HTMLElement;
+
+    act(() => {
+      row.dispatchEvent(touch("touchstart", 220, 100));
+      row.dispatchEvent(touch("touchmove", 210, 100));
+    });
+    // 拖动中途 m3-ripple 的 150ms 定时器到点，挂上 --press
+    surface.classList.add("--press");
+
+    act(() => {
+      row.dispatchEvent(touch("touchmove", 180, 100));
+    });
+
+    expect(surface.className).not.toContain("--press");
+  });
+
+  it("展开后卡片几何变化会重测动作面板内缩", async () => {
+    const { container } = render(
+      <MobileSwipeEntryRow entry={makeEntry()}>
+        <div data-entry-card="">卡片内容</div>
+      </MobileSwipeEntryRow>,
+    );
+    const row = container.querySelector("[data-swipe-row]") as HTMLElement;
+    const card = container.querySelector("[data-entry-card]") as HTMLElement;
+    const actions = container.querySelector(
+      "[data-swipe-actions]",
+    ) as HTMLElement;
+
+    const rect = (top: number, bottom: number) =>
+      ({
+        top,
+        bottom,
+        left: 0,
+        right: 390,
+        width: 390,
+        height: bottom - top,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    vi.spyOn(row, "getBoundingClientRect").mockImplementation(() =>
+      rect(0, 200),
+    );
+    const cardRect = vi
+      .spyOn(card, "getBoundingClientRect")
+      .mockImplementation(() => rect(2, 198));
+
+    swipeLeft(row);
+    await screen.findByRole("button", { name: "entry.mark_read" });
+    expect(actions.style.top).toBe("2px");
+    expect(actions.style.bottom).toBe("2px");
+
+    // 图片撑高 / 旋转屏后卡片边界变了，面板要跟着重测，而不是停在首次展开的值
+    cardRect.mockImplementation(() => rect(6, 190));
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(actions.style.top).toBe("6px");
+    expect(actions.style.bottom).toBe("10px");
+  });
+
+  it("占位卡换成真实卡（首个子节点被替换）后也会重测内缩", async () => {
+    // 社交视图先渲染占位卡，真实卡就绪后整块换掉；旧卡上的 observer 随卸载失效，
+    // 只有 content 自身一直在，所以 content 的尺寸变化必须能触发重测。
+    const callbacks: Array<() => void> = [];
+    const observed = new Set<Element>();
+    class FakeResizeObserver {
+      constructor(cb: () => void) {
+        callbacks.push(cb);
+      }
+      observe(target: Element): void {
+        observed.add(target);
+      }
+      unobserve(): void {}
+      disconnect(): void {}
+    }
+    const original = globalThis.ResizeObserver;
+    Object.defineProperty(globalThis, "ResizeObserver", {
+      value: FakeResizeObserver,
+      configurable: true,
+      writable: true,
+    });
+
+    try {
+      const { container } = render(
+        <MobileSwipeEntryRow entry={makeEntry()}>
+          <div data-entry-card="">占位卡</div>
+        </MobileSwipeEntryRow>,
+      );
+      const row = container.querySelector("[data-swipe-row]") as HTMLElement;
+      const content = row.querySelector(
+        "[data-swipe-content]",
+      ) as HTMLElement;
+      const actions = container.querySelector(
+        "[data-swipe-actions]",
+      ) as HTMLElement;
+
+      const rect = (top: number, bottom: number) =>
+        ({
+          top,
+          bottom,
+          left: 0,
+          right: 390,
+          width: 390,
+          height: bottom - top,
+          x: 0,
+          y: top,
+          toJSON: () => ({}),
+        }) as DOMRect;
+      const placeholder = container.querySelector(
+        "[data-entry-card]",
+      ) as HTMLElement;
+      vi.spyOn(row, "getBoundingClientRect").mockImplementation(() =>
+        rect(0, 200),
+      );
+      vi.spyOn(placeholder, "getBoundingClientRect").mockImplementation(() =>
+        rect(2, 198),
+      );
+
+      swipeLeft(row);
+      await screen.findByRole("button", { name: "entry.mark_read" });
+      expect(actions.style.top).toBe("2px");
+
+      // 内容层自己必须被观察：真实卡换上来时只有它一直在
+      expect(observed.has(content)).toBe(true);
+
+      // 真实卡替换占位卡：新的首个子节点边界不同
+      const realCard = document.createElement("div");
+      realCard.setAttribute("data-entry-card", "");
+      realCard.getBoundingClientRect = () => rect(6, 190);
+      content.replaceChildren(realCard);
+
+      act(() => {
+        callbacks.forEach((cb) => cb());
+      });
+      expect(actions.style.top).toBe("6px");
+      expect(actions.style.bottom).toBe("10px");
+    } finally {
+      Object.defineProperty(globalThis, "ResizeObserver", {
+        value: original,
+        configurable: true,
+        writable: true,
+      });
+    }
+  });
+
+  it("圆形样式同样按卡片实测内缩", async () => {
+    styleState.value = "circle";
+    const { container } = render(
+      <MobileSwipeEntryRow entry={makeEntry()}>
+        <div data-entry-card="">卡片内容</div>
+      </MobileSwipeEntryRow>,
+    );
+    const row = container.querySelector("[data-swipe-row]") as HTMLElement;
+    const card = container.querySelector("[data-entry-card]") as HTMLElement;
+    const actions = container.querySelector(
+      "[data-swipe-actions]",
+    ) as HTMLElement;
+    const rect = (top: number, bottom: number) =>
+      ({
+        top,
+        bottom,
+        left: 0,
+        right: 390,
+        width: 390,
+        height: bottom - top,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    vi.spyOn(row, "getBoundingClientRect").mockImplementation(() =>
+      rect(0, 200),
+    );
+    vi.spyOn(card, "getBoundingClientRect").mockImplementation(() =>
+      rect(4, 196),
+    );
+
+    swipeLeft(row);
+    await screen.findByRole("button", { name: "entry.mark_read" });
+    expect(actions.style.top).toBe("4px");
+    expect(actions.style.bottom).toBe("4px");
+  });
+
   it("使用旧版动作条与按钮样式", async () => {
     const { container } = render(
       <MobileSwipeEntryRow entry={makeEntry()}>

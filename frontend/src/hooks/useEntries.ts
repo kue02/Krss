@@ -18,7 +18,9 @@ import {
 import { countLoadedEntries } from "@/lib/entry-pagination";
 import {
   deferUnreadRemovals,
+  deferStarredRemovals,
   patchDeferredEntry,
+  removeUnstarredFromStarredList,
 } from "@/components/entry-list/deferred-removal";
 import type {
   ContentType,
@@ -29,6 +31,25 @@ import type {
 
 function entriesQueryKey(params: EntryListParams) {
   return ["entries", params] as const;
+}
+
+/**
+ * 「全部已读」的作用范围匹配：只对与这次 mutation 同一作用域（订阅 / 文件夹 / 内容类型）的
+ * 列表缓存动手，别把别的订阅/文件夹的缓存也标成已读。
+ */
+function matchesMarkAllScope(
+  mark: MarkAllReadParams,
+  params: EntryListParams | undefined,
+): boolean {
+  if (!params) return false;
+  if (mark.feedId && params.feedId !== mark.feedId) return false;
+  if (mark.folderId && params.folderId !== mark.folderId) return false;
+  // 缓存查询没带 contentType 时不能当作「匹配」：否则会把视频/图片等其它内容类型的
+  // 未读条目也在本地标成已读，而后端只按 mark.contentType 标，本地与后端不一致。
+  if (mark.contentType && params.contentType !== mark.contentType) {
+    return false;
+  }
+  return true;
 }
 
 function uniqueStrings(values: string[]): string[] {
@@ -217,12 +238,19 @@ export function useMarkManyAsRead() {
       return { previousEntriesById, previousEntries };
     },
 
-    onSuccess: (_, { skipInvalidate }) => {
+    onSuccess: (_, { ids, read, skipInvalidate }) => {
       queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
       // viewCounts 靠 useViewCounts 自带 120s 自动刷，这里不手动 invalidate
-      if (!skipInvalidate) {
-        queryClient.invalidateQueries({ queryKey: ["entries"] });
+      if (skipInvalidate) return;
+      // 47-1 同理：「批量标已读」也不要当场把条目从「只看未读」摘掉 ——
+      // 与单条标已读一致，留到离开列表时由 useScrollMarkRead 统一清理。
+      if (read) {
+        const idSet = new Set(uniqueStrings(ids));
+        deferUnreadRemovals(queryClient, idSet);
+        for (const id of idSet) patchDeferredEntry(id, { read: true });
+        return;
       }
+      queryClient.invalidateQueries({ queryKey: ["entries"] });
     },
 
     onError: (_, { ids }, context) => {
@@ -282,6 +310,10 @@ export function useRemoveReadEntriesFromUnreadList() {
         queryClient.setQueryData(queryKey, { ...data, pages });
       }
     }
+
+    // 顺带把「仅星标」缓存里已取消星标的条目一并摘掉（离开列表的兜底清理，
+    // 与已读的那条对称；取消星标当场不消失，正是靠这里在离开时收口）。
+    removeUnstarredFromStarredList(queryClient);
   }, [queryClient]);
 }
 
@@ -322,8 +354,40 @@ export function useMarkAllAsRead() {
 
   return useMutation({
     mutationFn: (params: MarkAllReadParams) => markAllAsRead(params),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["entries"] });
+    onSuccess: (_data, markParams) => {
+      // 标全部已读同样**不**当场摘条目：
+      //   - 普通视图（unreadOnly=false）就地 patch read=true，未读圆点随之消失（不重拉、不摘行）；
+      //   - 「只看未读」视图额外记账（defer），离开列表时再统一摘掉，列表当场不跳动。
+      // 只处理与本次作用域（订阅/文件夹/内容类型）匹配的缓存，别误标别的源。
+      const deferredIds = new Set<string>();
+      const queries = queryClient.getQueriesData<{
+        pages: { entries: Entry[] }[];
+      }>({ queryKey: ["entries"] });
+      for (const [queryKey, data] of queries) {
+        const params = queryKey[1] as EntryListParams | undefined;
+        if (!data || !matchesMarkAllScope(markParams, params)) continue;
+        const unreadIds = new Set<string>();
+        for (const page of data.pages) {
+          for (const entry of page.entries) {
+            if (!entry.read) unreadIds.add(entry.id);
+          }
+        }
+        if (unreadIds.size === 0) continue;
+        const pages = data.pages.map((page) => ({
+          ...page,
+          entries: page.entries.map((entry) =>
+            unreadIds.has(entry.id) ? { ...entry, read: true } : entry,
+          ),
+        }));
+        queryClient.setQueryData(queryKey, { ...data, pages });
+        if (params?.unreadOnly) {
+          for (const id of unreadIds) deferredIds.add(id);
+        }
+      }
+      if (deferredIds.size > 0) {
+        deferUnreadRemovals(queryClient, deferredIds);
+        for (const id of deferredIds) patchDeferredEntry(id, { read: true });
+      }
       queryClient.invalidateQueries({ queryKey: ["unreadCounts"] });
       // 已读/星标都是视图条件里会用到的字段，命中数要跟着刷新
       queryClient.invalidateQueries({ queryKey: ["viewCounts"] });
@@ -404,15 +468,9 @@ export function useMarkAsStarred() {
       // 否则乐观 patch 只把该行 starred 改成 false，行仍留在星标列表里直到手动刷新。
       // 只对 starredOnly===true 的 entries 查询 invalidate，其它视图一律不动，避免重新引入消失 bug。
       if (!starred) {
-        queryClient.invalidateQueries({
-          queryKey: ["entries"],
-          predicate: (query) => {
-            const params = query.queryKey[1] as
-              | { starredOnly?: boolean }
-              | undefined;
-            return params?.starredOnly === true;
-          },
-        });
+        // 取消星标时**不要**当场把条目从「仅星标」列表里摘掉：与已读同一套「先别消失」语义，
+        // 记账后留到离开列表时由 useScrollMarkRead 清理（`removeUnstarredFromStarredList`）。
+        deferStarredRemovals(queryClient, new Set([id]));
       }
     },
 

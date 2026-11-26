@@ -10,6 +10,7 @@
  */
 import { Suspense, lazy, useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { ImageOff } from "lucide-react";
 import { getEntryImages } from "@/lib/extract-images";
 import { collectWallPhotos, WALL_MAX_TILES } from "@/lib/picture-wall";
 import type { Entry, Feed } from "@/types/api";
@@ -57,8 +58,9 @@ export function PictureWall({ items, className }: PictureWallProps) {
       className={className ?? "h-full w-full"}
     >
       {photos.length === 0 ? (
-        <div className="flex h-full w-full items-center justify-center bg-black text-sm text-white/40">
-          {t("appearance_view.picture_wall_empty")}
+        <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-black text-white/40">
+          <ImageOff className="size-16" strokeWidth={1.5} />
+          <p className="text-sm">{t("appearance_view.picture_wall_empty")}</p>
         </div>
       ) : (
         <Suspense fallback={<WallSpinner />}>

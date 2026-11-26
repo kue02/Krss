@@ -64,12 +64,29 @@ export function MobileSwipeEntryRow({
   /** 内容层节点：拖动期间直接写它的 transform，不触发 React 重渲染 */
   const contentRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
+  /**
+   * 动作面板贴合内容卡片实测的内缩（px）与右圆角（任务 6b）。
+   *
+   * 动作面板本身压在内容层下面，露出的一截要用「内容层里那张卡片」的边界和圆角去对齐：
+   * 社交卡是满宽 `rounded-xl`（12px），文章卡在 <640 是满宽直角、≥640 是 `mx-2 my-0.5 rounded-[10px]`。
+   * 固定写死 right-2/top-0.5/rounded-10 只在后一种情况贴合，所以展开时实测卡片 offset/圆角再写进内联样式。
+   * circle 分支是浮在底图上的圆形按钮、没有底板，不套圆角，但同样按卡片实测内缩，
+   * 免得窄卡/贴边卡片上圆钮压在卡片外。
+   */
+  const [actionsInset, setActionsInset] = useState<{
+    top: number;
+    right: number;
+    bottom: number;
+    radius: string;
+  } | null>(null);
   /** 拖动起点的基准位移（展开 = -ACTION_WIDTH，收起 = 0） */
   const baseOffsetRef = useRef(0);
   /** 拖动中的目标位移（px，0 ~ -ACTION_WIDTH）；null 表示当前未拖动 */
   const dragOffsetRef = useRef<number | null>(null);
   /** 合并到下一帧的 rAF 句柄，保证每帧最多写一次 DOM */
   const rafRef = useRef<number | null>(null);
+  /** 拖动期间挂在行上的 pointerup 兜底（冒泡阶段，晚于 m3-ripple 的 capture） */
+  const dragPointerGuardRef = useRef<(() => void) | null>(null);
   const { mutate: markAsRead } = useMarkAsRead();
   const { mutate: markAsStarred } = useMarkAsStarred();
 
@@ -108,7 +125,62 @@ export function MobileSwipeEntryRow({
     rafRef.current = requestAnimationFrame(flushDragTransform);
   }, [flushDragTransform]);
 
+  /**
+   * 任务 6a：横向滑动开始时清掉 m3-ripple 的按压态。
+   *
+   * `useSwipeGesture` 在横向 touchmove 里 `preventDefault()` 掉了后续 click，
+   * 而 m3-ripple 只在 `click` / `pointercancel` 清 `--press` —— 滑动两者都不会走到，
+   * 于是 `.salty-ripple-surface.--press::after` 的 0.05 压感一直留在整卡上（看起来像选中不回弹）。
+   * 这里在拖动起点主动摘掉 `--press` 并取消残留的 ::after 动画，压感随过渡淡出，
+   * 卡片本身恢复原色；同时保留移动端的按压反馈（不再靠 pressedOpacity=0 硬关）。
+   */
+  // force=true 时无条件清理（用于 dragStart / pointerup / dragEnd 这些「可能已排队但未提交」的时机）；
+  // force=false 时只在表面上确实带 --press 时才清（用于拖动每帧，避免 60fps 反复派发 contextmenu）。
+  const clearPressedRipple = useCallback((force = false) => {
+    const content = contentRef.current;
+    if (!content) return;
+    const surfaces = content.querySelectorAll<HTMLElement>(
+      ".salty-ripple-surface",
+    );
+    for (const surface of surfaces) {
+      // force 时即使此刻 `--press` 还没提交到 DOM 也要清：m3-ripple 内部 state 可能已排队
+      // 「下一帧加 press」（pointerup 的 TOUCH_DELAY 分支 / 150ms 定时器），按 class 跳过
+      // 会在 React 未 flush 时漏清、之后又把灰底加回来。
+      if (!force && !surface.classList.contains("--press")) continue;
+      surface.classList.remove("--press");
+      surface.getAnimations?.({ subtree: true }).forEach((a) => a.cancel());
+      // 光摘 class 不够：m3-ripple 的按压态是它自己的 React state，只有
+      // click / contextmenu / pointercancel 会把它归位。不归位的话，之后任何一次
+      // 重渲染都会按旧 state 把 `--press` 加回来（用户看到「灰底又回来了」）。
+      // 这里派发一个不冒泡的 contextmenu（它的处理函数无条件清态，且不会触发卡片 onClick）。
+      surface.dispatchEvent(new Event("contextmenu", { bubbles: false }));
+    }
+  }, []);
+
+  const attachDragPointerGuard = useCallback(() => {
+    const row = rowRef.current;
+    if (!row || dragPointerGuardRef.current) return;
+    // 冒泡阶段挂：m3-ripple 在卡片的 capture 阶段处理 pointerup（会把 --press 加回来），
+    // 这里排在它之后，正好把刚加回来的按压态再清掉。
+    const handler = () => clearPressedRipple(true);
+    dragPointerGuardRef.current = handler;
+    row.addEventListener("pointerup", handler, false);
+    row.addEventListener("pointercancel", handler, false);
+  }, [clearPressedRipple]);
+
+  const detachDragPointerGuard = useCallback(() => {
+    const row = rowRef.current;
+    const handler = dragPointerGuardRef.current;
+    if (row && handler) {
+      row.removeEventListener("pointerup", handler, false);
+      row.removeEventListener("pointercancel", handler, false);
+    }
+    dragPointerGuardRef.current = null;
+  }, []);
+
   const handleDragStart = useCallback(() => {
+    clearPressedRipple(true);
+    attachDragPointerGuard();
     baseOffsetRef.current = open ? -ACTION_WIDTH : 0;
     dragOffsetRef.current = baseOffsetRef.current;
     const content = contentRef.current;
@@ -117,10 +189,13 @@ export function MobileSwipeEntryRow({
       content.style.transition = "none";
       content.style.transform = `translateX(${baseOffsetRef.current}px)`;
     }
-  }, [open]);
+  }, [attachDragPointerGuard, clearPressedRipple, open]);
 
   const handleDragMove = useCallback(
     (offsetX: number) => {
+      // 慢速滑动时 m3-ripple 的 150ms 触摸延迟会在 dragStart 之后才按下压感，
+      // 所以拖动期间每帧再清一次（没有按压态时是空操作）。
+      clearPressedRipple();
       const next = Math.min(
         0,
         Math.max(-ACTION_WIDTH, baseOffsetRef.current + offsetX),
@@ -128,7 +203,7 @@ export function MobileSwipeEntryRow({
       dragOffsetRef.current = next;
       scheduleDragTransform();
     },
-    [scheduleDragTransform],
+    [clearPressedRipple, scheduleDragTransform],
   );
 
   const handleDragEnd = useCallback(
@@ -157,14 +232,23 @@ export function MobileSwipeEntryRow({
         void content.offsetWidth;
         content.style.transform = `translateX(${shouldOpen ? -ACTION_WIDTH : 0}px)`;
       }
+      // 松手后 m3-ripple 可能刚在 pointerup 里把按压态加回来，这里再清一次并摘掉兜底监听
+      clearPressedRipple(true);
+      detachDragPointerGuard();
       if (shouldOpen) openRow();
       else close();
     },
-    [cancelPendingFrame, close, openRow],
+    [cancelPendingFrame, clearPressedRipple, close, detachDragPointerGuard, openRow],
   );
 
-  // 卸载时清掉挂起的合帧，避免回调落到已卸载节点
-  useEffect(() => cancelPendingFrame, [cancelPendingFrame]);
+  // 卸载时清掉挂起的合帧与拖动兜底监听，避免回调落到已卸载节点
+  useEffect(
+    () => () => {
+      cancelPendingFrame();
+      detachDragPointerGuard();
+    },
+    [cancelPendingFrame, detachDragPointerGuard],
+  );
 
   // 非拖动时由 open 驱动内容层位移（点外部 / 滚动 / 他行 SWIPE_OPEN_EVENT 收起都走这里）。
   // 拖动中（dragOffsetRef 非空）不接管：外部 open 变化不得覆盖当前手指位移。
@@ -176,6 +260,61 @@ export function MobileSwipeEntryRow({
     content.style.transition = "";
     content.style.transform = `translateX(${open ? -ACTION_WIDTH : 0}px)`;
   }, [open]);
+
+  // 任务 6b：展开时实测内容卡片边界，让动作面板的上下右内缩与右圆角跟卡片对齐。
+  // 用 offsetLeft/offsetWidth 求右侧（不受内容层 translateX 影响），用 getBoundingClientRect
+  // 求上下（只有横向位移，纵向不受影响），圆角直接取卡片 computed style。
+  const measureActionsInset = useCallback(() => {
+    const row = rowRef.current;
+    const content = contentRef.current;
+    const card = content?.firstElementChild as HTMLElement | null;
+    if (!row || !content || !card) return;
+    const rowRect = row.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    const right = Math.max(
+      0,
+      row.clientWidth -
+        (content.offsetLeft + card.offsetLeft + card.offsetWidth),
+    );
+    const top = Math.max(0, cardRect.top - rowRect.top);
+    const bottom = Math.max(0, rowRect.bottom - cardRect.bottom);
+    const radius = getComputedStyle(card).borderTopRightRadius || "0px";
+    setActionsInset((prev) =>
+      prev &&
+      prev.top === top &&
+      prev.right === right &&
+      prev.bottom === bottom &&
+      prev.radius === radius
+        ? prev
+        : { top, right, bottom, radius },
+    );
+  }, []);
+
+  // 展开态里卡片几何还会变（旋转屏、字号缩放、图集图片撑高），只测一次会让面板错位，
+  // 所以展开期间挂 ResizeObserver + resize/orientationchange，变了就重测。
+  useLayoutEffect(() => {
+    if (!open) return;
+    measureActionsInset();
+    const row = rowRef.current;
+    const content = contentRef.current;
+    const card = content?.firstElementChild as HTMLElement | null;
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => measureActionsInset());
+    if (observer && row) observer.observe(row);
+    // content 本身也要盯：社交视图先渲染占位卡，真实卡（含视频/图集）就绪后
+    // 会把首个子节点整个换掉，旧卡的 observer 随卸载失效，只有 content 一直在。
+    if (observer && content) observer.observe(content);
+    if (observer && card) observer.observe(card);
+    window.addEventListener("resize", measureActionsInset);
+    window.addEventListener("orientationchange", measureActionsInset);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measureActionsInset);
+      window.removeEventListener("orientationchange", measureActionsInset);
+    };
+  }, [open, measureActionsInset]);
 
   useSwipeGesture(rowRef, {
     enabledDirections: ["left", "right"],
@@ -231,17 +370,37 @@ export function MobileSwipeEntryRow({
       )}
       data-swipe-row
     >
-      {/* 动作条：两种样式共用同一层位置，内容层左移即逐渐露出 */}
+      {/* 动作条：两种样式共用同一层；上下右内缩按内容卡片实测值内联，
+          flat 另按卡片右圆角对齐（circle 是浮在底图上的圆形按钮，不套圆角） */}
       <div
         aria-hidden={!open}
         className={cn(
-          "absolute bottom-0.5 right-2 top-0.5 z-0 flex overflow-hidden",
+          "absolute z-0 flex overflow-hidden",
           isCircleAction
             ? "items-center justify-end gap-2 pr-1"
-            : "rounded-[10px] border border-border/60 bg-item-hover",
+            : // rounded-[10px] 只是兜底类；真实圆角由下面内联样式按卡片实测覆盖（左侧始终 0）
+              "rounded-[10px] border border-border/60 bg-item-hover",
           !open && "pointer-events-none",
         )}
-        style={{ width: ACTION_WIDTH }}
+        style={
+          isCircleAction
+            ? {
+                width: ACTION_WIDTH,
+                top: actionsInset?.top ?? 2,
+                right: actionsInset?.right ?? 8,
+                bottom: actionsInset?.bottom ?? 2,
+              }
+            : {
+                width: ACTION_WIDTH,
+                top: actionsInset?.top ?? 2,
+                right: actionsInset?.right ?? 8,
+                bottom: actionsInset?.bottom ?? 2,
+                borderTopLeftRadius: 0,
+                borderBottomLeftRadius: 0,
+                borderTopRightRadius: actionsInset?.radius ?? 10,
+                borderBottomRightRadius: actionsInset?.radius ?? 10,
+              }
+        }
         data-swipe-actions
         data-swipe-action-style={swipeActionStyle}
       >

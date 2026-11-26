@@ -162,8 +162,8 @@ describe("EntryListHeader 星标视图去掉已读/未读切换（58-1）", () =
 describe("EntryListHeader 移动端顶栏与 Web 图标统一", () => {
   /** 项目自定义 RefreshIcon 的首段 path，用来和 lucide 的 RefreshCw 区分 */
   const REFRESH_ICON_PATH = "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8";
-  /** 项目自定义 CheckCircleIcon 的首段 path，用来和 lucide 的 CheckCheck 区分 */
-  const CHECK_CIRCLE_ICON_PATH = "M22 11.08V12a10 10 0 1 1-5.93-9.14";
+  /** 「全部已读」用的双勾（CheckCheckIcon）首段 path；不再用圆圈对勾，两者语义要分开 */
+  const CHECK_CHECK_ICON_PATH = "M2.5 13.5 6 17l8.5-8.5";
 
   function mobileButton(label: string) {
     return screen.getByLabelText(label);
@@ -185,7 +185,7 @@ describe("EntryListHeader 移动端顶栏与 Web 图标统一", () => {
     const checkSvg = markAllRead.querySelector("svg");
     expect(checkSvg?.getAttribute("class")).toBe("size-4");
     expect(checkSvg?.querySelector("path")?.getAttribute("d")).toBe(
-      CHECK_CIRCLE_ICON_PATH,
+      CHECK_CHECK_ICON_PATH,
     );
   });
 
@@ -324,5 +324,73 @@ describe("EntryListHeader 通知视图布局切换", () => {
     expect(
       screen.getByLabelText("appearance_view.notification_layout_timeline"),
     ).toBeTruthy();
+  });
+});
+
+describe("EntryListHeader 可视区域以上标为已读（新动作）", () => {
+  it("桌面：左键变成「标上方为已读」，原标题不再标成全部已读", () => {
+    const onMarkAboveVisibleRead = vi.fn();
+    render(
+      <EntryListHeader
+        {...baseProps}
+        onMarkAllRead={vi.fn()}
+        onMarkAboveVisibleRead={onMarkAboveVisibleRead}
+      />,
+    );
+
+    const button = screen.getByTitle("entry.mark_visible_above_read");
+    expect(button).toBeTruthy();
+    expect(screen.queryByTitle("entry.mark_all_read")).toBeNull();
+
+    fireEvent.click(button);
+    expect(onMarkAboveVisibleRead).toHaveBeenCalledTimes(1);
+  });
+
+  it("移动端：顶栏那颗改成标上方为已读，更多面板里新增「全部已读」", () => {
+    const onMarkAboveVisibleRead = vi.fn();
+    const onMarkAllRead = vi.fn();
+    render(
+      <EntryListHeader
+        {...baseProps}
+        isMobile
+        onMarkAboveVisibleRead={onMarkAboveVisibleRead}
+        onMarkAllRead={onMarkAllRead}
+      />,
+    );
+
+    const topButton = screen.getByLabelText("entry.mark_visible_above_read");
+    fireEvent.click(topButton);
+    expect(onMarkAboveVisibleRead).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByLabelText("actions.more"));
+    const panel = screen.getByRole("dialog");
+    const item = within(panel).getByText("entry.mark_all_read");
+    expect(item).toBeTruthy();
+    fireEvent.click(item.closest("button") as HTMLElement);
+    expect(onMarkAllRead).toHaveBeenCalledTimes(1);
+  });
+
+  it("桌面：右键「标上方为已读」弹出只有「全部已读」一项，和刷新按钮同一套菜单", async () => {
+    const onMarkAboveVisibleRead = vi.fn();
+    const onMarkAllRead = vi.fn();
+    render(
+      <EntryListHeader
+        {...baseProps}
+        onMarkAboveVisibleRead={onMarkAboveVisibleRead}
+        onMarkAllRead={onMarkAllRead}
+      />,
+    );
+
+    const button = screen.getByTitle("entry.mark_visible_above_read");
+    // 右键走 Radix ContextMenu：菜单项在 portal 里异步挂载
+    fireEvent.contextMenu(button);
+
+    const item = await screen.findByText("entry.mark_all_read");
+    expect(item).toBeTruthy();
+    // 右键不该顺手把「标上方」也执行了
+    expect(onMarkAboveVisibleRead).not.toHaveBeenCalled();
+
+    fireEvent.click(item.closest("[role='menuitem']") as HTMLElement);
+    expect(onMarkAllRead).toHaveBeenCalledTimes(1);
   });
 });

@@ -22,6 +22,16 @@
       0 1px 1px -0.5px rgba(0, 0, 0, 0.03), 0 0.5px 0.5px rgba(0, 0, 0, 0.03);
   }
 
+  /* —— 可读强调色（--accent-ink）——
+     用户自选的主题色是直接内联写到 <html> 的 `--accent` 上的（内联压过一切 CSS），
+     而设置里默认就是 #000000：黑底（暗色主题）上再写黑字/黑点，等于隐身。
+     CSS 改不动内联值，所以这里另开一层「实际使用」的别名：亮色主题下原样跟随，
+     暗色主题下把过暗的颜色提亮到可读亮度（见 .dark 块）。所有界面取色都读这一层。 */
+  :root {
+    --accent-ink: var(--accent);
+    --accent-ink-foreground: var(--accent-foreground);
+  }
+
   .dark {
     --shadow-custom: 0 0 5px 0 rgba(0, 0, 0, 0.05),
       0 2px 10px 0 rgba(0, 0, 0, 0.2), inset 0 0 1px 0 hsla(0, 0%, 100%, 0.15),
@@ -33,6 +43,51 @@
     --shadow-custom-md: 0 1px 3px #ffffff0f inset,
       0 0.5px 0.5px #ffffff0f inset, 0 16px 56px #0000003d,
       0 4px 16px #0000003d, 0 1px 2px #0000003d, 0 0 0 1px rgba(0, 0, 0, 0.1);
+
+    /* 次要文字色：HeroUI 暗色给的是 oklch(70.5%)，再叠 /70 之类的透明度后，
+       正文只有 4.24:1（WCAG AA 要 4.5），12–13px 的时间/摘要/分组标题实拍发灰。
+       抬到 0.8 后 /70 也有 5.9:1、/80 有 6.6:1，不必逐个改类名。 */
+    --muted: oklch(0.8 0.015 286.067);
+
+    /* 危险色：HeroUI 暗色给的是 oklch(59.4%)，当文字压在卡片上只有 3.97:1
+       （「失败」「检查失败」这类小字实测发暗），当按钮底色配白字也只有 4.35:1。
+       改用亮色主题那支（oklch(65.3%)）后两头都过：文字 4.96:1、深色字压底 5.58:1。 */
+    --danger: oklch(0.6532 0.2328 25.74);
+    --danger-foreground: var(--background);
+  }
+
+  /* 暗色下的可读强调色：设置里默认主题色是 #000000，黑底再写黑字/黑点等于隐身。
+     这里只抬亮度（max 只抬不降），色相与彩度不动 —— 蓝色仍是蓝、橙色仍是橙，
+     本来就够亮的颜色原样保留。相对颜色语法需要 Safari 16.4 / Chrome 119+，
+     不支持的浏览器走 :root 里的原样兜底，不会把颜色算坏。 */
+  @supports (color: oklch(from white max(l, 0.78) c h)) {
+    .dark {
+      --accent-ink: oklch(from var(--accent) max(l, 0.78) c h);
+      /* 提亮后的底色是浅色，压在上面的字必须是暗色（用背景色，天然成对） */
+      --accent-ink-foreground: var(--background);
+
+      /* HeroUI 组件内部吃的是这几个派生色（ToggleButton 选中态、Badge 的
+         soft/accent 两档、--focus 环），它们都由 --accent 现算，这里按提亮后的
+         ink 重算一遍，否则组件层依旧是「黑底黑字」。 */
+      --accent-hover: color-mix(in oklab, var(--accent-ink) 90%, var(--accent-ink-foreground) 10%);
+      --accent-soft: color-mix(in oklab, var(--accent-ink) 12%, transparent);
+      --accent-soft-foreground: color-mix(in oklab, var(--accent-ink) 80%, var(--foreground) 30%);
+      --accent-soft-hover: color-mix(in oklab, var(--accent-ink) 16%, transparent);
+
+      /* HeroUI 暗色的焦点环也是 `var(--accent)`，纯黑 accent 下同样看不见 */
+      --focus: var(--accent-ink);
+    }
+
+    /* HeroUI 有一批组件（button/badge/chip 的实心档、meter/progress 的填充、
+       switch 的选中轨道）直接读 `var(--accent)` / `var(--accent-foreground)`，
+       不经过上面那些派生色。内联在 <html> 上的纯黑压过一切 CSS，组件层于是
+       仍是「黑底黑按钮」。这里在 body 上再落一层：body 及其子树读到的
+       --accent 就是提亮后的 ink，而 <html> 上的内联值保持原样（设置页要显示
+       用户真正选的颜色）。html 与 body 各自解析，不会循环。 */
+    .dark body {
+      --accent: var(--accent-ink);
+      --accent-foreground: var(--accent-ink-foreground);
+    }
   }
 
   [data-theme="stone"] {
@@ -76,7 +131,7 @@
     /* Misc */
     --border: rgb(197, 195, 190);
     --separator: rgb(220, 217, 213);
-    --focus: var(--accent);
+    --focus: var(--accent-ink);
   }
 
   [data-theme="leaf"] {
@@ -120,7 +175,7 @@
     /* Misc */
     --border: rgba(0, 0, 0, 0.05);
     --separator: rgba(0, 0, 0, 0.07);
-    --focus: var(--accent);
+    --focus: var(--accent-ink);
   }
 
   [data-theme="nord-dark"] {
@@ -157,7 +212,7 @@
     /* Misc */
     --border: rgb(54.001, 60, 74);
     --separator: rgb(59.001, 65.999, 82.001);
-    --focus: var(--accent);
+    --focus: var(--accent-ink);
   }
 
 }
@@ -221,7 +276,7 @@
      对应 Nextflux 的 `.button--primary`（@apply shadow-custom-btn border border-accent） */
   button.bg-primary,
   a.bg-primary {
-    border: 1px solid var(--accent);
+    border: 1px solid var(--accent-ink);
     box-shadow: var(--shadow-custom-btn);
     background-image: linear-gradient(
       to bottom,

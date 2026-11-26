@@ -71,6 +71,7 @@ import {
   mergeDeferredRemovals,
   subscribeDeferredRemovals,
 } from "./deferred-removal";
+import { collectUnreadIdsUpToVisible } from "./mark-above-visible";
 import { useEntryListScrollSurface } from "./scroll-surface";
 import { useEntryHotkeys } from "@/hooks/useEntryHotkeys";
 import {
@@ -1077,6 +1078,20 @@ export function EntryList({
   });
   // 列表滚上去以后，右上角浮出「当前序号 + 回到顶部」（对齐 Nextflux 的 Indicator）
   const [firstVisibleIndex, setFirstVisibleIndex] = useState(0);
+  // 当前可视区最后一条的绝对下标（含）。「可视区域以上标为已读」的标记范围是
+  // 「从列表顶部到当前屏幕最后一条」——即整屏 + 它上面的，而不是只标屏幕之前那些。
+  const [lastVisibleIndex, setLastVisibleIndex] = useState(-1);
+  // 可视区域以上标为已读：把滚动时已经滚出屏幕上方的未读条目标掉
+  // （firstVisibleIndex = 底部 > 0 的第一行，即上方已滚出屏幕的行数）。
+  const handleMarkAboveVisibleRead = useCallback(() => {
+    const ids = collectUnreadIdsUpToVisible(entries, lastVisibleIndex);
+    if (ids.length === 0) {
+      // 没有可标记的条目时给个明确反馈，避免点了按钮毫无反应
+      showToast(t("entry.mark_above_visible_no_unread"));
+      return;
+    }
+    markManyAsRead({ ids, read: true });
+  }, [entries, lastVisibleIndex, markManyAsRead, t]);
   /**
    * 虚拟化覆盖「标准文章扁平流」与「社交列表（桌面 + 移动端）」：
    *   - article 内容类型 + 非 hover 档（含 list 与 rows）走原路径；
@@ -1115,8 +1130,16 @@ export function EntryList({
     const measure = () => {
       frame = 0;
       const items = node.querySelectorAll<HTMLElement>("[data-entry-id]");
-      if (items.length === 0) return;
-      const containerTop = node.getBoundingClientRect().top;
+      if (items.length === 0) {
+        // 空列表 / 切到空筛选时把序号归零，否则「回到顶部」浮标会残留上一个列表的序号。
+        setFirstVisibleIndex((prev) => (prev === 0 ? prev : 0));
+        setLastVisibleIndex((prev) => (prev === -1 ? prev : -1));
+        return;
+      }
+      // 移动端（document 滚动）滚动发生在 window 上：容器自身的 scroll 事件永远不触发，
+      // 容器 getBoundingClientRect().top 又会随内容同幅上移导致差值恒定 → 必须走 scrollSurface
+      // 拿「视口顶」（桌面=容器顶，移动=头部栏底），订阅也由它按 element/document 分别挂。
+      const containerTop = scrollSurface.getViewportRect().top;
       // 虚拟列表下 DOM 顺序 ≠ 绝对序号（只挂可视 + overscan 一小段）：优先用行上的
       // data-index（EntryListItem 透传的绝对下标）；非虚拟列表无 data-index 时回退 DOM 顺序。
       const absIndex = (el: HTMLElement, fallback: number) => {
@@ -1127,17 +1150,27 @@ export function EntryList({
         const abs = raw != null && raw !== "" ? Number(raw) : NaN;
         return Number.isFinite(abs) ? abs : fallback;
       };
+      const viewport = scrollSurface.getViewportRect();
+      const viewportHeight = viewport.bottom - containerTop;
       let index = absIndex(items[items.length - 1] as HTMLElement, items.length - 1);
+      let lastIndex = absIndex(items[0] as HTMLElement, 0);
+      let firstFound = false;
       for (let i = 0; i < items.length; i += 1) {
         const el = items[i];
         if (!el) continue;
-        const bottom = el.getBoundingClientRect().bottom - containerTop + 8;
-        if (bottom > 0) {
+        const rect = el.getBoundingClientRect();
+        // 第一条「底边仍在视口内」的行 = 上方已滚出屏幕的行数
+        if (!firstFound && rect.bottom - containerTop + 8 > 0) {
           index = absIndex(el, i);
-          break;
+          firstFound = true;
+        }
+        // 最后一条「顶边还没到视口底」的行 = 当前屏幕最后一条（虚拟列表下方的 overscan 行不算）
+        if (rect.top - containerTop < viewportHeight) {
+          lastIndex = absIndex(el, i);
         }
       }
       setFirstVisibleIndex((prev) => (prev === index ? prev : index));
+      setLastVisibleIndex((prev) => (prev === lastIndex ? prev : lastIndex));
     };
 
     const handleScroll = () => {
@@ -1145,13 +1178,29 @@ export function EntryList({
       frame = requestAnimationFrame(measure);
     };
 
-    node.addEventListener("scroll", handleScroll, { passive: true });
+    // 桌面订阅容器 scroll，移动端订阅 window scroll（由 scrollSurface 按 kind 分派）。
+    const unsubscribe = scrollSurface.subscribe(handleScroll);
+    // 窗口尺寸变化（桌面拉伸、移动端旋转、iOS 地址栏收放）不产生 scroll 事件，
+    // 但会改变视口高度 → 「当前屏幕最后一条」会变，需要补测一次。
+    const handleResize = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(measure);
+    };
+    window.addEventListener("resize", handleResize);
+    window.addEventListener("orientationchange", handleResize);
     measure();
     return () => {
-      node.removeEventListener("scroll", handleScroll);
+      unsubscribe();
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("orientationchange", handleResize);
       if (frame) cancelAnimationFrame(frame);
     };
-  }, [entries.length]);
+    // 依赖 entries 本身而不只是 entries.length：筛选 / 视图切换后条目数量可能不变（等长），
+    // 只盯 length 会漏掉重测，firstVisibleIndex 停在旧值 →「可视区域以上标为已读」会标错范围。
+    // entries 是 useMemo 出来的稳定数组（依赖 data / deferredRemovalVersion），只有数据或筛选
+    // 真的换了引用才会重建监听，不会每帧重建；切换筛选 / 视图都会换新的 data → 新 entries 引用
+    // → 重新测量。
+  }, [entries, scrollSurface]);
 
   // 刷新：按当前选中范围（单个源 / 文件夹内所有源 / 某个视图的所有源）
   const [mobileActions, setMobileActions] = useState<{
@@ -1827,6 +1876,7 @@ export function EntryList({
           showUnreadToggle={selection.type !== "starred"}
           onToggleUnreadOnly={onToggleUnreadOnly}
           onMarkAllRead={onMarkAllRead}
+          onMarkAboveVisibleRead={handleMarkAboveVisibleRead}
           onRefresh={handleRefresh}
           onForceRefresh={() => void handleRefresh(true)}
           starredViewOnly={
@@ -1992,7 +2042,7 @@ export function EntryList({
           {isLoading ? (
             <EntryListSkeleton />
           ) : entries.length === 0 ? (
-            <EntryListEmpty />
+            <EntryListEmpty documentScroll={usesDocumentScroll} />
           ) : (
             <div
               className="w-full"
@@ -2233,19 +2283,20 @@ export function EntryList({
                   );
                 })
               )}
-              {/* 24-5：列表尾整宽弱边框「全部标记为已读」（语义=清当前范围未读，
-                  与列表头那颗同接口 onMarkAllRead）。
+              {/* 列表尾整宽弱边框按钮：与列表头统一为「可视区域以上标为已读」，
+                  调用同一个 handleMarkAboveVisibleRead（不再重复列头的旧「全部已读」语义）。
+                  data-testid 保留旧值，避免破坏既有测试。
                   宽度跟时间线/社交卡片同款居中可读宽度，免得在宽栏下失控拉满。 */}
               {entries.length > 0 && (
                 <div className="mx-auto mt-1 w-full max-w-[clamp(45ch,60vw,65ch)] px-2">
                   <button
                     type="button"
                     data-testid="mark-all-read-footer"
-                    onClick={onMarkAllRead}
+                    onClick={handleMarkAboveVisibleRead}
                     className="flex h-[35px] w-full items-center justify-center gap-1.5 rounded-[10px] border border-border bg-transparent px-3 text-[13px] text-muted-foreground transition-colors duration-200 hover:bg-item-hover hover:text-foreground"
                   >
                     <Check className="size-4 shrink-0" />
-                    {t("entry.mark_all_read")}
+                    {t("entry.mark_visible_above_read")}
                   </button>
                 </div>
               )}
@@ -2390,11 +2441,19 @@ function EntryListSkeleton() {
   );
 }
 
-function EntryListEmpty() {
+function EntryListEmpty({ documentScroll = false }: { documentScroll?: boolean }) {
   const { t } = useTranslation();
-  // 对齐 Nextflux 的 EmptyPlaceholder：图标 + 文案，整体压暗到 60%
+  // 对齐 Nextflux 的 EmptyPlaceholder：图标 + 文案，整体压暗到 60%。
+  // 只有移动端（document 滚动）需要兜一条 min-h：那时外层只有 min-height、没有确定高度，
+  // 单靠 h-full 的百分比解析不出来会塌到内容高度、贴在顶部。桌面是 flex-1 定高容器，h-full 就够。
+  // 扣减 = 视口 - 顶部头部占位(2.75rem) - 底部 Tab(3.5rem)，让空态中心落在可视区正中。
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-muted-foreground opacity-60">
+    <div
+      className={cn(
+        "flex h-full w-full flex-col items-center justify-center gap-2 text-muted-foreground opacity-60",
+        documentScroll && "min-h-[calc(var(--app-dvh)-2.75rem-3.5rem)]",
+      )}
+    >
       <Inbox className="size-16" strokeWidth={1.5} />
       <p className="text-sm">{t("entry_list.no_articles")}</p>
     </div>

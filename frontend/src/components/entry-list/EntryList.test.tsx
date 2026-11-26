@@ -19,6 +19,7 @@ const {
   mockMarkManyAsRead,
   mockRemoveFromUnreadList,
   mockRemoveReadEntriesFromUnreadList,
+  mockShowToast,
 } = vi.hoisted(() => ({
   mockRenderedEntryListItem: vi.fn(),
   mockNeedsTranslation: vi.fn(() => Promise.resolve(true)),
@@ -29,6 +30,7 @@ const {
   mockMarkManyAsRead: vi.fn(),
   mockRemoveFromUnreadList: vi.fn(),
   mockRemoveReadEntriesFromUnreadList: vi.fn(),
+  mockShowToast: vi.fn(),
 }));
 
 vi.mock("react-i18next", () => ({
@@ -95,6 +97,12 @@ vi.mock("@/stores/translation-store", () => ({
     clearStatus: vi.fn(),
   },
 }));
+
+// 「可视区域以上没有未读」时要点 toast，这里只替换 showToast，其余导出（useToasts 等）保留真实实现
+vi.mock("@/stores/toast-store", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/stores/toast-store")>();
+  return { ...actual, showToast: mockShowToast };
+});
 
 vi.mock("./EntryListItem", async () => {
   const { forwardRef } = await import("react");
@@ -1023,6 +1031,170 @@ describe("EntryList translation scheduling", () => {
     await flushMarkReadBatch();
 
     expect(mockMarkManyAsRead).not.toHaveBeenCalled();
+  });
+
+  it("当前可视范围内没有未读时，点列表尾按钮弹提示且不批量标记", async () => {
+    // 范围是「列表顶部到可视区最后一条」；把这一屏都设成已读，就没有可标的。
+    vi.mocked(useEntriesInfinite).mockReturnValue({
+      data: {
+        pages: [
+          { entries: [{ ...makeEntry("1"), read: true }], hasMore: false },
+        ],
+      },
+      fetchNextPage: vi.fn(),
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      isLoading: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    render(<EntryList {...defaultProps} />);
+
+    const footer = screen.getByTestId("mark-all-read-footer");
+    fireEvent.click(footer);
+
+    expect(mockMarkManyAsRead).not.toHaveBeenCalled();
+    expect(mockShowToast).toHaveBeenCalledWith(
+      "entry.mark_above_visible_no_unread",
+    );
+  });
+
+  it("有未读时，点列表尾按钮标记「列表顶部到可视区最后一条」的未读条目", async () => {
+    const requestAnimationFrameMock = vi
+      .spyOn(globalThis, "requestAnimationFrame")
+      .mockImplementation((callback: FrameRequestCallback) => {
+        callback(0);
+        return 1;
+      });
+
+    render(<EntryList {...defaultProps} />);
+
+    const viewport = screen.getByTestId("entry-list-viewport");
+    const rows = Array.from(
+      viewport.querySelectorAll<HTMLElement>("[data-entry-id]"),
+    );
+    expect(rows.length).toBe(5);
+
+    // 模拟前两行已滚出屏幕上方、第三行起仍可见。新语义是「整屏 + 它上面的」，
+    // 可视区最后一条 = 下标 2（行 3），故 0..2 的未读都要标（三条）。
+    rows.forEach((row, index) => {
+      const bottom = (index - 2) * 40;
+      const top = bottom - 40;
+      Object.defineProperty(row, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({
+          top,
+          bottom,
+          height: 40,
+          left: 0,
+          right: 300,
+          width: 300,
+          x: 0,
+          y: top,
+          toJSON: () => ({}),
+        }),
+      });
+    });
+
+    act(() => {
+      fireEvent.scroll(viewport);
+    });
+
+    fireEvent.click(screen.getByTestId("mark-all-read-footer"));
+
+    expect(mockMarkManyAsRead).toHaveBeenCalledWith({
+      ids: ["1", "2", "3"],
+      read: true,
+    });
+    expect(mockShowToast).not.toHaveBeenCalled();
+
+    requestAnimationFrameMock.mockRestore();
+  });
+
+  it("移动端空态撑满内容区，不会缩成一行贴在顶部", async () => {
+    // 移动端是 document 滚动，外层容器只有 min-height，h-full 的百分比解析不出来；
+    // 少了 min-h 兜底时空态会塌到内容高度贴顶（实测 centerY=90 / 视口 844）。
+    vi.mocked(useEntriesInfinite).mockReturnValue({
+      data: { pages: [{ entries: [], hasMore: false }] },
+      fetchNextPage: vi.fn(),
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      isLoading: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    render(<EntryList {...defaultProps} isMobile />);
+
+    const text = screen.getByText("entry_list.no_articles");
+    const root = text.parentElement!;
+    // 移动端（document 滚动）才补 min-h；数值扣掉顶部头部占位 + 底部 Tab，让空态中心落在可视区正中。
+    expect(root.className).toContain(
+      "min-h-[calc(var(--app-dvh)-2.75rem-3.5rem)]",
+    );
+    // 桌面（element 滚动）不应带 min-h —— 靠父级 flex-1 的确定高度 + h-full 居中。
+    cleanup();
+    render(<EntryList {...defaultProps} isMobile={false} />);
+    const desktopText = screen.getByText("entry_list.no_articles");
+    expect(desktopText.parentElement!.className).not.toContain("min-h-[calc(var(--app-dvh)");
+  });
+
+  it("移动端（window 滚动）也能测出可视区，标「顶部到可视区最后一条」未读", async () => {
+    // 移动端走 document 滚动：容器自身不滚、容器 top 随内容同幅上移，
+    // 旧实现只监听容器 scroll 并用容器 top 当基准 → firstVisibleIndex 恒 0。
+    const requestAnimationFrameMock = vi
+      .spyOn(globalThis, "requestAnimationFrame")
+      .mockImplementation((callback: FrameRequestCallback) => {
+        callback(0);
+        return 1;
+      });
+
+    // document 模式的视口底用 documentElement.clientHeight || window.innerHeight；
+    // jsdom 里前者为 0、后者默认 768 会让 5 行全算可见，把它压到 1 让范围确定（行 3 是最后一条）。
+    const innerHeightSpy = vi
+      .spyOn(window, "innerHeight", "get")
+      .mockReturnValue(0);
+
+    render(<EntryList {...defaultProps} isMobile />);
+
+    const viewport = screen.getByTestId("entry-list-viewport");
+    const rows = Array.from(
+      viewport.querySelectorAll<HTMLElement>("[data-entry-id]"),
+    );
+    expect(rows.length).toBe(5);
+
+    // 前两行已滚出视口上沿，第三行起仍可见（视口顶由 scrollSurface 给出）
+    rows.forEach((row, index) => {
+      const bottom = (index - 2) * 40;
+      const top = bottom - 40;
+      Object.defineProperty(row, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({
+          top,
+          bottom,
+          height: 40,
+          left: 0,
+          right: 300,
+          width: 300,
+          x: 0,
+          y: top,
+          toJSON: () => ({}),
+        }),
+      });
+    });
+
+    act(() => {
+      fireEvent.scroll(window);
+    });
+
+    fireEvent.click(screen.getByTestId("mark-all-read-footer"));
+
+    expect(mockMarkManyAsRead).toHaveBeenCalledWith({
+      ids: ["1", "2", "3"],
+      read: true,
+    });
+    expect(mockShowToast).not.toHaveBeenCalled();
+
+    innerHeightSpy.mockRestore();
+    requestAnimationFrameMock.mockRestore();
   });
 
   it("条目从底部离开可视区时不会标为已读", async () => {

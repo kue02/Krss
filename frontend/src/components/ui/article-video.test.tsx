@@ -392,6 +392,48 @@ describe("ArticleVideo · Video.js 播放器（NextFlux 同款）", () => {
   );
 
   it(
+    "悬停预览中用户点播放（仍静音）后移开：不暂停、且自动开声音",
+    async () => {
+      const play = vi
+        .spyOn(HTMLMediaElement.prototype, "play")
+        .mockResolvedValue(undefined);
+      const pause = vi
+        .spyOn(HTMLMediaElement.prototype, "pause")
+        .mockImplementation(() => {});
+
+      const { container } = render(
+        <ArticleVideo src="https://example.com/v.mp4" />,
+      );
+      const video = await waitForVideo(container);
+      const surface = getSurface(container);
+
+      fireEvent.pointerEnter(surface, { pointerType: "mouse" });
+      await waitHoverStart();
+      expect(play).toHaveBeenCalled();
+      expect(video.muted).toBe(true);
+
+      // 用户点播放：此刻 video 还是静音（预览时设的），这正是「点播放后移开又被暂停」场景。
+      // jsdom 的 paused 恒为 true，覆写成 false 模拟真的在播，再点真实的播放键。
+      Object.defineProperty(video, "paused", {
+        configurable: true,
+        get: () => false,
+      });
+      const playBtn = container.querySelector(".media-play-button");
+      expect(playBtn).not.toBeNull();
+      fireEvent.click(playBtn as Element);
+      expect(video.muted).toBe(false);
+
+      pause.mockClear();
+      fireEvent.pointerLeave(surface, { pointerType: "mouse" });
+
+      // 用户已经接管播放 → 移开不再暂停、不回封面
+      expect(pause).not.toHaveBeenCalled();
+      expect(video.muted).toBe(false);
+    },
+    VIDEO_TEST_TIMEOUT,
+  );
+
+  it(
     "prefers-reduced-motion: reduce 时不做悬停预览",
     async () => {
       // jsdom 没有 matchMedia，这里补一个只认 reduce 的替身。

@@ -17,8 +17,9 @@ import {
   BackIcon,
   CircleOutlineIcon,
   CircleFilledIcon,
-  CheckCircleIcon,
+  CheckCheckIcon,
   FileTextIcon,
+  MarkAboveReadIcon,
   MenuIcon,
   SearchIcon,
   RefreshIcon,
@@ -67,6 +68,14 @@ interface EntryListHeaderProps {
    */
   showUnreadToggle?: boolean;
   onMarkAllRead: () => void;
+  /**
+   * 把可视区域以上（已滚出屏幕上方的）未读条目标为已读。
+   *
+   * EntryListHeader 也被图片视图（PictureMasonry）复用，而那边没有「可视区索引」，
+   * 所以这里做成可选：不传时列表头仍是旧的「全部已读」按钮（图片视图行为与样式零变化）；
+   * 传了才切到「左键标上方为已读 + 右键菜单全部已读」这套。
+   */
+  onMarkAboveVisibleRead?: () => void;
   /** 刷新当前选中范围（文件夹 / 单个源 / 某个视图） */
   onRefresh?: () => void;
   /** 强制拉取当前范围（用户 11-19：忽略缓存标记整轮重抓；右键刷新图标出这个菜单） */
@@ -148,6 +157,7 @@ export function EntryListHeader({
   showUnreadToggle = true,
   onToggleUnreadOnly,
   onMarkAllRead,
+  onMarkAboveVisibleRead,
   onRefresh,
   onForceRefresh,
   starredViewOnly,
@@ -305,11 +315,19 @@ export function EntryListHeader({
           ) : null}
           <button
             type="button"
-            onClick={onMarkAllRead}
-            aria-label={t("entry.mark_all_read")}
+            onClick={onMarkAboveVisibleRead ?? onMarkAllRead}
+            aria-label={
+              onMarkAboveVisibleRead
+                ? t("entry.mark_visible_above_read")
+                : t("entry.mark_all_read")
+            }
             className="flex size-8 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
           >
-            <CheckCircleIcon className="size-4" />
+            {onMarkAboveVisibleRead ? (
+              <MarkAboveReadIcon className="size-4" />
+            ) : (
+              <CheckCheckIcon className="size-4" />
+            )}
           </button>
           <button
             type="button"
@@ -344,6 +362,16 @@ export function EntryListHeader({
               onClick={() => {
                 setMoreOpen(false);
                 onForceRefresh();
+              }}
+            />
+          ) : null}
+          {onMarkAboveVisibleRead ? (
+            <MobileActionSheetItem
+              icon={<CheckCheckIcon className="size-5" />}
+              label={t("entry.mark_all_read")}
+              onClick={() => {
+                setMoreOpen(false);
+                onMarkAllRead();
               }}
             />
           ) : null}
@@ -643,14 +671,36 @@ export function EntryListHeader({
             />
           </ToggleButton>
         )}
-        <button
-          type="button"
-          onClick={onMarkAllRead}
-          title={t("entry.mark_all_read")}
-          className="flex size-8 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95"
-        >
-          <CheckCircleIcon className="size-4" />
-        </button>
+        {onMarkAboveVisibleRead ? (
+          <ContextMenu>
+            <ContextMenuTrigger asChild>
+              <button
+                type="button"
+                onClick={onMarkAboveVisibleRead}
+                title={t("entry.mark_visible_above_read")}
+                aria-label={t("entry.mark_visible_above_read")}
+                className="flex size-8 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95"
+              >
+                <MarkAboveReadIcon className="size-4" />
+              </button>
+            </ContextMenuTrigger>
+            <ContextMenuContent>
+              <ContextMenuItem onClick={onMarkAllRead}>
+                <CheckCheckIcon className="size-4 shrink-0 text-muted-foreground" />
+                {t("entry.mark_all_read")}
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
+        ) : (
+          <button
+            type="button"
+            onClick={onMarkAllRead}
+            title={t("entry.mark_all_read")}
+            className="flex size-8 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95"
+          >
+            <CheckCheckIcon className="size-4" />
+          </button>
+        )}
         {/* 56-15：列表工具栏的插件挂点（`entry.list.toolbar`）。插在宿主按钮之后 ——
             插件项是「附加」，不改既有按钮的顺序与位置；没有贡献时插槽什么都不渲染。
             选中态来自调用方（列表的选条目状态），没有选中就是空数组。 */}

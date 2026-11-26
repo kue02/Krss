@@ -99,6 +99,16 @@ const ENTER_DURATION_MS = 250;
 const EXIT_DURATION_MS = 200;
 const SNAP_BACK_DURATION_MS = 300;
 
+/**
+ * 「弹出」曲线：iOS 抽屉那种「先快后缓」的 ease-out（末端不越过终点，所以不会左右抖），
+ * 用于打开时的位移与缩放。关闭仍走 SLIDE_EASE。
+ */
+const POP_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
+/** 打开时从略小比例放大到 1，配左缘缩放原点形成「弹出」；关闭稳态缩到 0.94 */
+const POP_SCALE = 0.94;
+/** 打开动画稍长一点，让「滑入 + 放大」看得清（关闭用 EXIT_DURATION_MS） */
+const ENTER_POP_DURATION_MS = 300;
+
 /** 侧滑关闭的起手阈值，与 HeroUI Drawer 的 useDrawerDrag 一致（8px） */
 const DRAG_START_THRESHOLD_PX = 8;
 /** 松手判定：位移 > 面板宽度的 30%（同 HeroUI Drawer 的 DISMISS_FRACTION），
@@ -490,13 +500,20 @@ export function Sheet({
           // 和 translate 工具类混用会被各自的 transform 组装规则互相覆盖。
           // transform 用 entered（而非 open）驱动：打开首帧仍停在 -100%，下一帧再滑入。
           transform: open && entered ? "translateX(0px)" : "translateX(-100%)",
-          // will-change 只在打开时挂：关闭态不保留合成层（配合 display:none，双保险）。
-          willChange: open ? "transform" : "auto",
+          // 缩放用独立的 `scale` 属性（不改 transform 字符串，避免与拖拽逐帧写 transform 打架）。
+          // 关闭稳态缩到 POP_SCALE，打开回到 1；原点在左缘，弹出时像从左侧"长出"。
+          scale: open && entered ? 1 : POP_SCALE,
+          transformOrigin: "left center",
+          // 只用合成属性（translate + scale），不进主线程布局/绘制，保证滑入不掉帧。
+          willChange: open ? "transform, scale" : "auto",
+          backfaceVisibility: "hidden",
           // 退出动画期间仍可见，动画结束（EXIT_DURATION_MS 后）再 hidden；打开时立即可见。
           visibility: open ? "visible" : "hidden",
+          // 打开用 POP_EASE（ease-out，末端单调收敛、不过冲，滑入不会左右抖），
+          // 位移与左缘放大同步跑满 300ms；关闭回 SLIDE_EASE，时长更短更利落。
           transition: open
-            ? `transform ${ENTER_DURATION_MS}ms ${SLIDE_EASE}, visibility 0s linear 0s`
-            : `transform ${EXIT_DURATION_MS}ms ${SLIDE_EASE}, visibility 0s linear ${EXIT_DURATION_MS}ms`,
+            ? `transform ${ENTER_POP_DURATION_MS}ms ${POP_EASE}, scale ${ENTER_POP_DURATION_MS}ms ${POP_EASE}, visibility 0s linear 0s`
+            : `transform ${EXIT_DURATION_MS}ms ${SLIDE_EASE}, scale ${EXIT_DURATION_MS}ms ${SLIDE_EASE}, visibility 0s linear ${EXIT_DURATION_MS}ms`,
         }}
       >
         {children}

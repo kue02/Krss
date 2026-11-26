@@ -103,8 +103,10 @@ describe("Sheet", () => {
     expect(content.style.visibility).toBe("hidden");
     // 退出动画期间仍可见，滑出（EXIT_DURATION_MS=200ms）结束后才切 hidden。
     expect(content.style.transition).toBe(
-      "transform 200ms cubic-bezier(0.32, 0.72, 0, 1), visibility 0s linear 200ms",
+      "transform 200ms cubic-bezier(0.32, 0.72, 0, 1), scale 200ms cubic-bezier(0.32, 0.72, 0, 1), visibility 0s linear 200ms",
     );
+    // 关闭稳态缩到 POP_SCALE（0.94），为下一次「弹出」做准备。
+    expect(content.style.scale).toBe("0.94");
   });
 
   it("opens from the trigger with a CSS transition instead of frame-by-frame JS", async () => {
@@ -116,7 +118,7 @@ describe("Sheet", () => {
     expect(stateOf(root)).toBe("open");
     expect(stateOf(content)).toBe("open");
     expect(content.style.transition).toBe(
-      "transform 250ms cubic-bezier(0.32, 0.72, 0, 1), visibility 0s linear 0s",
+      "transform 300ms cubic-bezier(0.16, 1, 0.3, 1), scale 300ms cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0s",
     );
     expect(content.style.visibility).toBe("visible");
     // 打开首帧先就位（-100%），下一帧 rAF 再切到 0 触发滑入过渡：推进一帧确认已滑入。
@@ -126,6 +128,8 @@ describe("Sheet", () => {
       );
     });
     expect(content.style.transform).toBe("translateX(0px)");
+    // 打开后 scale 回到 1（配合左缘原点形成弹出）。
+    expect(content.style.scale).toBe("1");
     expect(overlay.style.transition).toContain("opacity 250ms");
     expect(content.hasAttribute("aria-hidden")).toBe(false);
     expect(content.hasAttribute("inert")).toBe(false);
