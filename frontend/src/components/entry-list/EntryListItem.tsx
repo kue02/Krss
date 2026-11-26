@@ -749,7 +749,9 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
                 onClick(entry.id);
               }}
             >
-              <Ripple hoverOpacity={0} pressedOpacity={isMobile ? 0 : 0.05} duration={100} />
+              {/* 任务 6a：滑动残留的按压高亮由 MobileSwipeEntryRow 在拖动起点清掉，
+                  所以这里恢复移动端正常按压反馈，不再用 pressedOpacity=0 硬关 */}
+              <Ripple hoverOpacity={0} pressedOpacity={0.05} duration={100} />
 
               {/* 未读点：原来是 Folo 那样画在条目最左侧的绝对定位小圆点，
                   现在只在「小圆点」样式下出现（角标 / 变灰两种样式下不出点） */}
@@ -1149,8 +1151,9 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
               onClick(entry.id);
             }}
           >
-            {/* Material 3 涟漪 —— 与 Nextflux 的 ArticleCard 同库同参数 */}
-            <Ripple hoverOpacity={0} pressedOpacity={isMobile ? 0 : 0.05} duration={100} />
+            {/* Material 3 涟漪 —— 与 Nextflux 的 ArticleCard 同库同参数；
+                任务 6a：移动端按压反馈保留，滑动残留由 MobileSwipeEntryRow 拖动起点清除 */}
+            <Ripple hoverOpacity={0} pressedOpacity={0.05} duration={100} />
 
             {/* 24-7：第一行来源栏顶满宽（头像 20px + 源名 + 时间贴右缘，无小圆点；
                 源名超长默认截断、悬浮跑马灯复用 13-2 的 MarqueeText） */}
