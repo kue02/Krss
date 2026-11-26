@@ -506,8 +506,10 @@ export function Sheet({
           willChange: open ? "transform, scale" : "auto",
           // 退出动画期间仍可见，动画结束（EXIT_DURATION_MS 后）再 hidden；打开时立即可见。
           visibility: open ? "visible" : "hidden",
+          // 位移用不带过冲的 SLIDE_EASE：过冲曲线会让面板先滑到 0 再向右多走约 2px 才回位，
+          // 看着像抖了一下；「弹出」的弹性只交给 scale（放大时轻微过冲 1.0 以上再回 1）。
           transition: open
-            ? `transform ${ENTER_DURATION_MS}ms ${POP_EASE}, scale ${ENTER_DURATION_MS}ms ${POP_EASE}, visibility 0s linear 0s`
+            ? `transform ${ENTER_DURATION_MS}ms ${SLIDE_EASE}, scale ${ENTER_DURATION_MS}ms ${POP_EASE}, visibility 0s linear 0s`
             : `transform ${EXIT_DURATION_MS}ms ${SLIDE_EASE}, scale ${EXIT_DURATION_MS}ms ${SLIDE_EASE}, visibility 0s linear ${EXIT_DURATION_MS}ms`,
         }}
       >

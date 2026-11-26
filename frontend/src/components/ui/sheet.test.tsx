@@ -118,7 +118,7 @@ describe("Sheet", () => {
     expect(stateOf(root)).toBe("open");
     expect(stateOf(content)).toBe("open");
     expect(content.style.transition).toBe(
-      "transform 250ms cubic-bezier(0.34, 1.32, 0.64, 1), scale 250ms cubic-bezier(0.34, 1.32, 0.64, 1), visibility 0s linear 0s",
+      "transform 250ms cubic-bezier(0.32, 0.72, 0, 1), scale 250ms cubic-bezier(0.34, 1.32, 0.64, 1), visibility 0s linear 0s",
     );
     expect(content.style.visibility).toBe("visible");
     // 打开首帧先就位（-100%），下一帧 rAF 再切到 0 触发滑入过渡：推进一帧确认已滑入。
