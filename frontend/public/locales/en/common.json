@@ -1018,7 +1018,8 @@
     "pwa_update_desc": "Click to refresh and apply the update",
     "dismiss_toast": "Dismiss notification",
     "details_title_count": "{{count}} new releases",
-    "details_since": "Updates since v{{version}}"
+    "details_since": "Updates since v{{version}}",
+    "no_releases": "No release notes available yet."
   },
   "entry_filter": {
     "muted": "Muted"

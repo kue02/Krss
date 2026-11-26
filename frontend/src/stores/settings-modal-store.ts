@@ -7,9 +7,10 @@ import type { SettingsTab } from "@/components/settings/SettingsModal";
  * 原来开关是 Sidebar 里的 useState，弹窗「内部」关不掉它 —— 而自动化页里
  * 「查看已静音条目」这类跳转需要「切视图 + 关设置」一起发生。放进 store 后两边都能改。
  *
- * `initialTab` 是「打开时落在哪一页」的一次性指令：右下角的版本更新提示点
- * 「查看更新内容」要直接进「关于」页，而弹窗打开时默认重置回「通用」。
- * 消费即清空（`consumeInitialTab`），否则下次手动打开设置还会跳到关于页。
+ * `initialTab` 是「打开时落在哪一页」的一次性指令（`openWithTab` 设置、打开时
+ * 由 `consumeInitialTab` 读取并清空，否则下次手动打开设置还会跳到那一页）。
+ * 注意：当前**没有生产调用方** —— 版本更新提示点「查看更新内容」只开详情弹窗、
+ * 不进设置页；这个入口留着给以后「从别处直达某个设置页」用。
  */
 interface SettingsModalStore {
   open: boolean;

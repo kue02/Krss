@@ -44,7 +44,7 @@ interface UpdateCheckState {
   lastAttemptAt: number | null;
   /**
    * 更新详情弹窗的开关。放在 store 里是因为有两个入口：关于页的横幅按钮、
-   * 右下角提示上的「查看更新内容」——后者要先打开设置并落到「关于」页。
+   * 右下角提示上的「查看更新内容」——两个入口都只打开这个弹窗，不进设置页。
    */
   detailOpen: boolean;
   /**

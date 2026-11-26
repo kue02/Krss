@@ -166,6 +166,52 @@ describe("UpdateChecker", () => {
     expect(useUpdateCheckStore.getState().toastVisible).toBe(true);
   });
 
+  it("用户点 X 关掉后，开关详情弹窗不会把提示弄回来（回归：P1-1）", async () => {
+    mocks.checkForUpdate.mockResolvedValue(result());
+
+    render(<UpdateChecker />);
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledTimes(1));
+
+    // 模拟用户点关闭按钮：HeroUI 关掉时会同步触发我们传的 onClose。
+    const options = mocks.toast.mock.calls[0]?.[1] as { onClose: () => void };
+    act(() => options.onClose());
+    expect(useUpdateCheckStore.getState().toastVisible).toBe(false);
+
+    // 之后开关详情弹窗：过去会借「放回」逻辑无条件重弹，等于关不掉。
+    act(() => useUpdateCheckStore.getState().setDetailOpen(true));
+    act(() => useUpdateCheckStore.getState().setDetailOpen(false));
+
+    await waitFor(() =>
+      expect(useUpdateCheckStore.getState().detailOpen).toBe(false),
+    );
+    expect(mocks.toast).toHaveBeenCalledTimes(1);
+    expect(useUpdateCheckStore.getState().toastVisible).toBe(false);
+  });
+
+  it("用户点 X 关掉后，重新检查拿到同一版本也不复活（回归：P1-1）", async () => {
+    mocks.checkForUpdate.mockResolvedValue(result());
+
+    render(<UpdateChecker />);
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledTimes(1));
+
+    const options = mocks.toast.mock.calls[0]?.[1] as { onClose: () => void };
+    act(() => options.onClose());
+
+    // 重新检查成功：store 里的 result 换成了新对象，但版本号没变。
+    act(() => {
+      useUpdateCheckStore.setState({
+        status: "success",
+        result: result(),
+        checkedAt: Date.now(),
+      });
+    });
+
+    await waitFor(() =>
+      expect(useUpdateCheckStore.getState().result?.latestVersion).toBe("v1.5.0"),
+    );
+    expect(mocks.toast).toHaveBeenCalledTimes(1);
+  });
+
   it("卸载时收掉提示并清空状态（登出后下一位登录者不该看到上一位的提示）", async () => {
     mocks.checkForUpdate.mockResolvedValue(result());
 

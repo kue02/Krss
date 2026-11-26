@@ -194,6 +194,15 @@ describe("UpdateDetailsDialog", () => {
     expect(await screen.findByText(/not-a-date/)).toBeTruthy();
   });
 
+  it("没有任何 Release 时给中性标题与空态文案，不拼出「版本  更新内容」", async () => {
+    openWith(result({ releases: [] }));
+
+    // 标题退回「版本更新」，不出现两个连续空格的版本号占位。
+    expect(await screen.findByText("update.check_title")).toBeTruthy();
+    expect(screen.queryByText(/版本\s{2,}更新内容/)).toBeNull();
+    expect(screen.getByText("update.no_releases")).toBeTruthy();
+  });
+
   it("点「关闭」收起弹窗", async () => {
     openWith(result());
 

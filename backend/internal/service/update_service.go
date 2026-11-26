@@ -30,9 +30,12 @@ const (
 	// updateCheckTimeout 单次请求 GitHub 的超时。
 	updateCheckTimeout = 10 * time.Second
 	// updateMaxResponseBytes 发布说明 body_html 可能很长，限一个上限防止异常体量。
-	updateMaxResponseBytes = 4 << 20
+	// 列表接口一次最多带回 updateMaxReleases 条，每条的说明都可能很长，故留 8MiB。
+	// 实测 Krss 自己 per_page=50 的响应约 96KB（19 条、body_html 合计 29KB），余量充足。
+	updateMaxResponseBytes = 8 << 20
 	// updateMaxReleases 一次最多取多少个 Release。GitHub 列表接口按发布时间倒序，
 	// 一次请求就能拿到「当前版本之后的全部更新」，不必按页翻。
+	// 上限 50：落后超过 50 个版本时只会列出最新 50 条（标题按实际条数显示，不谎报）。
 	updateMaxReleases = 50
 )
 
@@ -70,7 +73,8 @@ type UpdateInfo struct {
 
 // UpdateService 检查 Krss 自身是否有新版本。
 type UpdateService interface {
-	// Check 请求 GitHub 最新 Release，并与当前运行版本比较。
+	// Check 请求 GitHub 的 Release 列表，与当前运行版本比较，返回最新一版
+	// 以及当前版本之后的全部 Release。
 	// 结果按 updateCacheTTL 缓存；失败不缓存。
 	Check(ctx context.Context) (*UpdateInfo, error)
 }

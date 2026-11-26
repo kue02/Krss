@@ -29,9 +29,20 @@ export function UpdateChecker() {
     void check();
   }, [check]);
 
+  // 用户点 X 主动关掉的版本号。常驻提示的唯一退出方式就是点 X，关掉之后
+  // 「重新检查」或「开关详情弹窗」都不该把它弄回来（否则等于关不掉）。
+  const dismissedVersionRef = useRef<string | null>(null);
+  // hideToast 是程序性收起（弹窗挡住了），要和用户主动关掉区分开：
+  // toast.close() 会同步触发 onClose，不标记的话收起会被记成「用户关掉了」。
+  const programmaticCloseRef = useRef(false);
+  // 这条提示是不是被详情弹窗收起来的，只有这种收起才在弹窗关掉后放回。
+  const hiddenByDialogRef = useRef(false);
+
   const hideToast = useCallback(() => {
     if (!toastKeyRef.current) return;
+    programmaticCloseRef.current = true;
     toast.close(toastKeyRef.current);
+    programmaticCloseRef.current = false;
     toastKeyRef.current = null;
     useUpdateCheckStore.getState().setToastVisible(false);
   }, []);
@@ -40,6 +51,9 @@ export function UpdateChecker() {
     if (!result?.hasUpdate) return;
     // 已经在屏幕上就不再弹一条（effect 重跑、StrictMode 双调用都会走到这里）。
     if (toastKeyRef.current) return;
+    // 用户已经主动关掉的版本不再自动弹回；换成新版本才重新提示。
+    if (dismissedVersionRef.current === result.latestVersion) return;
+    const shownVersion = result.latestVersion;
 
     toastKeyRef.current = toast(t("update.available"), {
       description: t("update.banner_desc", { version: result.latestVersion }),
@@ -68,6 +82,10 @@ export function UpdateChecker() {
       },
       onClose: () => {
         toastKeyRef.current = null;
+        // 只有用户手点关闭才算「关掉了」；程序性收起（弹窗挡住了）不算。
+        if (!programmaticCloseRef.current) {
+          dismissedVersionRef.current = shownVersion;
+        }
         useUpdateCheckStore.getState().setToastVisible(false);
       },
     });
@@ -90,10 +108,17 @@ export function UpdateChecker() {
   // 关掉弹窗再把提示放回来。
   useEffect(() => {
     if (detailOpen) {
-      hideToast();
+      if (toastKeyRef.current) {
+        hiddenByDialogRef.current = true;
+        hideToast();
+      }
       return;
     }
-    showToast();
+    // 只放回「是弹窗把它收起来的」那条；用户自己关掉的不放回。
+    if (hiddenByDialogRef.current) {
+      hiddenByDialogRef.current = false;
+      showToast();
+    }
   }, [detailOpen, hideToast, showToast]);
 
   // 谁弹谁收：登出、切账号或整个布局卸载时，把队列里这条常驻提示清掉。

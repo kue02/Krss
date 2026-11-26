@@ -115,11 +115,14 @@ export function UpdateDetailsDialog() {
   const releases = result?.releases ?? [];
   const currentVersion = result?.currentVersion ?? "";
   const latest = releases[0] ?? null;
-  // 只有一版时沿用「版本 vX 更新内容」；多版改成数量口径，否则标题会谎报只更新了最新一版
+  // 只有一版时沿用「版本 vX 更新内容」；多版改成数量口径，否则标题会谎报只更新了最新一版。
+  // 一版都没有时不拼「版本  更新内容」（会出现两个空格），退回中性标题。
   const title =
-    releases.length > 1
-      ? t("update.details_title_count", { count: releases.length })
-      : t("update.details_title", { version: latest?.version ?? "" });
+    releases.length === 0
+      ? t("update.check_title")
+      : releases.length > 1
+        ? t("update.details_title_count", { count: releases.length })
+        : t("update.details_title", { version: latest?.version ?? "" });
 
   return (
     <Modal>
@@ -136,6 +139,11 @@ export function UpdateDetailsDialog() {
               )}
             </Modal.Header>
             <Modal.Body>
+              {releases.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {t("update.no_releases")}
+                </p>
+              ) : (
               <div className="max-h-[52vh] overflow-y-auto rounded-xl border border-border/50 bg-card/40">
                 <Accordion.Root
                   allowsMultipleExpanded
@@ -192,6 +200,7 @@ export function UpdateDetailsDialog() {
                   ))}
                 </Accordion.Root>
               </div>
+              )}
             </Modal.Body>
             <Modal.Footer>
               <Button

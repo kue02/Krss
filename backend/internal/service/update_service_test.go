@@ -30,6 +30,7 @@ func newGitHubStub(t *testing.T, status int, body string) (*httptest.Server, *in
 		lastHeader = r.Header.Clone()
 		require.Contains(t, r.URL.Path, "/repos/")
 		require.True(t, strings.HasSuffix(r.URL.Path, "/releases"), "unexpected path: %s", r.URL.Path)
+		require.Equal(t, "50", r.URL.Query().Get("per_page"), "要一次取满 50 条，否则会少列版本")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
 		_, _ = w.Write([]byte(body))
@@ -347,8 +348,8 @@ func TestUpdateService_Check_NonJSONBodyFails(t *testing.T) {
 }
 
 func TestUpdateService_Check_OversizedResponseFails(t *testing.T) {
-	// 超过 updateMaxResponseBytes（4MiB）要明确报「响应过大」，不能塌缩成 decode 错误。
-	big := strings.Repeat("x", (4<<20)+1024)
+	// 超过 updateMaxResponseBytes（8MiB）要明确报「响应过大」，不能塌缩成 decode 错误。
+	big := strings.Repeat("x", (8<<20)+1024)
 	body := `[{"tag_name":"v9.9.9","body_html":"` + big + `"}]`
 	srv, _, _ := newGitHubStub(t, http.StatusOK, body)
 	svc := newUpdateService(t, srv, "1.4.0")
