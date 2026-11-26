@@ -120,23 +120,36 @@ describe("ArticleVideo · Video.js 播放器（NextFlux 同款）", () => {
   );
 
   it(
-    "无 poster 时 preload 先 metadata、进入视口后升 auto、内联播放",
+    "无 poster 时 preload 分级：离屏 none → 进视口 metadata → 悬停才 auto",
     async () => {
-      // jsdom 没有 IntersectionObserver 时 useInView 首帧就是 true（降级语义），
-      // 所以这里装一个假的 IO，才能断言「没进视口 = metadata，进了 = auto」。
-      // 原断言（固定 metadata）是「还没做视口预载」时代的，语义已变。
+      // jsdom 没有 IntersectionObserver 时 useInViewNow 首帧就是 true（降级语义），
+      // 所以这里装一个假的 IO，才能断言「离屏 none / 进视口 metadata / 悬停 auto」。
       const io = stubIntersectionObserver();
+      const play = vi
+        .spyOn(HTMLMediaElement.prototype, "play")
+        .mockResolvedValue(undefined);
+      vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+
       const { container } = render(
         <ArticleVideo src="https://example.com/v.mp4" />,
       );
       const video = await waitForVideo(container);
-      expect(video.getAttribute("preload")).toBe("metadata");
+      // 还没进视口：完全不在 auto，也不该占用带宽
+      expect(video.getAttribute("preload")).toBe("none");
       expect(video.hasAttribute("poster")).toBe(false);
       expect(video.hasAttribute("playsinline")).toBe(true);
 
+      // 进步进视口：只升到 metadata（拉几 KB 头，不整包下载）
       await act(async () => {
         io.trigger();
       });
+      await waitFor(() => {
+        expect(video.getAttribute("preload")).toBe("metadata");
+      });
+
+      // 悬停才升 auto
+      fireEvent.pointerEnter(getSurface(container), { pointerType: "mouse" });
+      expect(play).toHaveBeenCalled();
       await waitFor(() => {
         expect(video.getAttribute("preload")).toBe("auto");
       });
@@ -145,15 +158,15 @@ describe("ArticleVideo · Video.js 播放器（NextFlux 同款）", () => {
   );
 
   it(
-    "没有 IntersectionObserver 的环境直接按 auto 预载（降级不倒退）",
+    "没有 IntersectionObserver 的环境按 metadata 预载（可见即预载、但不自动整包下载）",
     async () => {
-      // jsdom 默认就没有 IO：useInView 首帧 inView=true，视频按 auto 预载，
-      // 不会因为观察不到视口就永远停在 metadata。
+      // jsdom 默认没有 IO：useInViewNow 首帧 inView=true，但预载上限仍是 metadata，
+      // 不会因为观察不到视口就一点不拉，也不会退化成滚过就 auto。
       const { container } = render(
         <ArticleVideo src="https://example.com/v.mp4" />,
       );
       const video = await waitForVideo(container);
-      expect(video.getAttribute("preload")).toBe("auto");
+      expect(video.getAttribute("preload")).toBe("metadata");
     },
     VIDEO_TEST_TIMEOUT,
   );
@@ -238,6 +251,10 @@ describe("ArticleVideo · Video.js 播放器（NextFlux 同款）", () => {
       expect(video.currentTime).toBe(0);
       // 恢复用户原本的静音状态（原本有声 → 移开后仍是有声，但不自动播）
       expect(video.muted).toBe(false);
+      // 回封面：皮肤 Poster 重新可见（data-visible 是 Video.js 皮肤的公开状态属性）
+      expect(
+        container.querySelector(".media-poster")?.hasAttribute("data-visible"),
+      ).toBe(true);
     },
     VIDEO_TEST_TIMEOUT,
   );
@@ -279,7 +296,50 @@ describe("ArticleVideo · Video.js 播放器（NextFlux 同款）", () => {
   );
 
   it(
-    "预览期间用户点了播放：移开不再暂停、不回封面",
+    "预览中点画面（视频被暂停）后移开：仍然回封面",
+    async () => {
+      // 旧版把「任意 pointerdown」当接管，导致点一下画面后移开就永远停在中途帧、
+      // 封面再也回不来。现在接管只在 video 真的收到 pause/seeking/seeked 时判定，
+      // 且「暂停」这种接管仍然安全回封面。
+      const play = vi
+        .spyOn(HTMLMediaElement.prototype, "play")
+        .mockResolvedValue(undefined);
+      const pause = vi
+        .spyOn(HTMLMediaElement.prototype, "pause")
+        .mockImplementation(() => {});
+
+      const { container } = render(
+        <ArticleVideo
+          src="https://example.com/v.mp4"
+          poster="https://example.com/p.jpg"
+        />,
+      );
+      const video = await waitForVideo(container);
+      const surface = getSurface(container);
+
+      fireEvent.pointerEnter(surface, { pointerType: "mouse" });
+      expect(play).toHaveBeenCalled();
+      video.currentTime = 4;
+
+      // 用户点了画面 → 浏览器真的暂停了 video，触发原生 pause 事件
+      video.dispatchEvent(new Event("pause"));
+      pause.mockClear();
+
+      fireEvent.pointerLeave(surface, { pointerType: "mouse" });
+
+      // 归零 +暂停 + 封面回来
+      expect(pause).toHaveBeenCalled();
+      expect(video.currentTime).toBe(0);
+      expect(video.muted).toBe(false);
+      expect(
+        container.querySelector(".media-poster")?.hasAttribute("data-visible"),
+      ).toBe(true);
+    },
+    VIDEO_TEST_TIMEOUT,
+  );
+
+  it(
+    "接管后仍在有声播放时移开：保留播放、不动进度",
     async () => {
       const play = vi
         .spyOn(HTMLMediaElement.prototype, "play")
@@ -296,18 +356,23 @@ describe("ArticleVideo · Video.js 播放器（NextFlux 同款）", () => {
 
       fireEvent.pointerEnter(surface, { pointerType: "mouse" });
       expect(play).toHaveBeenCalled();
-      video.currentTime = 4;
 
-      // 用户按下播放键 / 键盘操作 = 接管控制权
-      fireEvent.pointerDown(surface);
+      // 模拟「用户接管后正在有声播放」：jsdom 的 paused 恒为 true，这里把它覆写成
+      // false；再派发 seeking 让预览会话判定为用户接管；最后取消静音。
+      Object.defineProperty(video, "paused", {
+        configurable: true,
+        get: () => false,
+      });
+      video.dispatchEvent(new Event("seeking"));
+      video.muted = false;
+      video.currentTime = 6;
       pause.mockClear();
 
       fireEvent.pointerLeave(surface, { pointerType: "mouse" });
 
-      // 不打断用户的播放，也不把进度清零
+      // 这是唯一保留播放的分支：不暂停、不归零
       expect(pause).not.toHaveBeenCalled();
-      expect(video.currentTime).toBe(4);
-      // 静音是我们改的，仍然要还回去
+      expect(video.currentTime).toBe(6);
       expect(video.muted).toBe(false);
     },
     VIDEO_TEST_TIMEOUT,
@@ -346,12 +411,17 @@ describe("ArticleVideo · Video.js 播放器（NextFlux 同款）", () => {
   );
 
   it(
-    "用户已经看过一段（currentTime > 0）时悬停不插手",
+    "看过一段（暂停在 currentTime > 0）后再悬停：仍能预览，移开还原到原位置",
     async () => {
+      // 旧版守卫 `currentTime > 0` 会让人「看过一次就永远不能预览」。
+      // 现在只有「正在播放」才不插手，暂停在中途也允许预览；
+      // 起始位置不在封面，所以移开时还原到那一刻而不是归零。
       const play = vi
         .spyOn(HTMLMediaElement.prototype, "play")
         .mockResolvedValue(undefined);
-      vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+      const pause = vi
+        .spyOn(HTMLMediaElement.prototype, "pause")
+        .mockImplementation(() => {});
 
       const { container } = render(
         <ArticleVideo src="https://example.com/v.mp4" />,
@@ -361,9 +431,15 @@ describe("ArticleVideo · Video.js 播放器（NextFlux 同款）", () => {
 
       fireEvent.pointerEnter(getSurface(container), { pointerType: "mouse" });
 
-      expect(play).not.toHaveBeenCalled();
-      expect(video.muted).toBe(false);
+      expect(play).toHaveBeenCalled();
+      expect(video.muted).toBe(true);
+
+      fireEvent.pointerLeave(getSurface(container), { pointerType: "mouse" });
+
+      expect(pause).toHaveBeenCalled();
+      // 还原到预览前的位置（不是归零）
       expect(video.currentTime).toBe(5);
+      expect(video.muted).toBe(false);
     },
     VIDEO_TEST_TIMEOUT,
   );
