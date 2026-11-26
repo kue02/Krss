@@ -100,12 +100,14 @@ const EXIT_DURATION_MS = 200;
 const SNAP_BACK_DURATION_MS = 300;
 
 /**
- * 「弹出」用的轻微回弹曲线：末段略微过冲再归位，让抽屉像被"弹"出来，
- * 而不是匀速平移（用户要求「左侧栏加弹出动画」）。只用于打开，关闭仍走 SLIDE_EASE。
+ * 「弹出」曲线：iOS 抽屉那种「先快后缓」的 ease-out（末端不越过终点，所以不会左右抖），
+ * 用于打开时的位移与缩放。关闭仍走 SLIDE_EASE。
  */
-const POP_EASE = "cubic-bezier(0.34, 1.32, 0.64, 1)";
-/** 打开时从略小比例放大到 1，配合左缘缩放原点，形成弹出感（关闭稳态仍缩到 0.92） */
-const POP_SCALE = 0.92;
+const POP_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
+/** 打开时从略小比例放大到 1，配左缘缩放原点形成「弹出」；关闭稳态缩到 0.94 */
+const POP_SCALE = 0.94;
+/** 打开动画稍长一点，让「滑入 + 放大」看得清（关闭用 EXIT_DURATION_MS） */
+const ENTER_POP_DURATION_MS = 300;
 
 /** 侧滑关闭的起手阈值，与 HeroUI Drawer 的 useDrawerDrag 一致（8px） */
 const DRAG_START_THRESHOLD_PX = 8;
@@ -502,14 +504,15 @@ export function Sheet({
           // 关闭稳态缩到 POP_SCALE，打开回到 1；原点在左缘，弹出时像从左侧"长出"。
           scale: open && entered ? 1 : POP_SCALE,
           transformOrigin: "left center",
-          // will-change 只在打开时挂：关闭态不保留合成层（配合 display:none，双保险）。
+          // 只用合成属性（translate + scale），不进主线程布局/绘制，保证滑入不掉帧。
           willChange: open ? "transform, scale" : "auto",
+          backfaceVisibility: "hidden",
           // 退出动画期间仍可见，动画结束（EXIT_DURATION_MS 后）再 hidden；打开时立即可见。
           visibility: open ? "visible" : "hidden",
           // 位移用不带过冲的 SLIDE_EASE：过冲曲线会让面板先滑到 0 再向右多走约 2px 才回位，
           // 看着像抖了一下；「弹出」的弹性只交给 scale（放大时轻微过冲 1.0 以上再回 1）。
           transition: open
-            ? `transform ${ENTER_DURATION_MS}ms ${SLIDE_EASE}, scale ${ENTER_DURATION_MS}ms ${POP_EASE}, visibility 0s linear 0s`
+            ? `transform ${ENTER_POP_DURATION_MS}ms ${POP_EASE}, scale ${ENTER_POP_DURATION_MS}ms ${POP_EASE}, visibility 0s linear 0s`
             : `transform ${EXIT_DURATION_MS}ms ${SLIDE_EASE}, scale ${EXIT_DURATION_MS}ms ${SLIDE_EASE}, visibility 0s linear ${EXIT_DURATION_MS}ms`,
         }}
       >
