@@ -1033,10 +1033,23 @@ describe("EntryList translation scheduling", () => {
     expect(mockMarkManyAsRead).not.toHaveBeenCalled();
   });
 
-  it("可视区域以上没有未读时，点列表尾按钮弹提示且不批量标记", async () => {
+  it("当前可视范围内没有未读时，点列表尾按钮弹提示且不批量标记", async () => {
+    // 范围是「列表顶部到可视区最后一条」；把这一屏都设成已读，就没有可标的。
+    vi.mocked(useEntriesInfinite).mockReturnValue({
+      data: {
+        pages: [
+          { entries: [{ ...makeEntry("1"), read: true }], hasMore: false },
+        ],
+      },
+      fetchNextPage: vi.fn(),
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      isLoading: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
     render(<EntryList {...defaultProps} />);
 
-    // jsdom 里行高为 0，首次测量 firstVisibleIndex 停在 0（上方无可标记条目）
     const footer = screen.getByTestId("mark-all-read-footer");
     fireEvent.click(footer);
 
@@ -1046,7 +1059,7 @@ describe("EntryList translation scheduling", () => {
     );
   });
 
-  it("有未读时，点列表尾按钮只标记可视区域以上的未读条目", async () => {
+  it("有未读时，点列表尾按钮标记「列表顶部到可视区最后一条」的未读条目", async () => {
     const requestAnimationFrameMock = vi
       .spyOn(globalThis, "requestAnimationFrame")
       .mockImplementation((callback: FrameRequestCallback) => {
@@ -1062,8 +1075,8 @@ describe("EntryList translation scheduling", () => {
     );
     expect(rows.length).toBe(5);
 
-    // 模拟前两行已滚出屏幕上方（bottom<=0，减 containerTop=0 再加 8 的判定留给实现），
-    // 第三行起仍可见 → firstVisibleIndex=2 → 只标记前两条（都是未读）。
+    // 模拟前两行已滚出屏幕上方、第三行起仍可见。新语义是「整屏 + 它上面的」，
+    // 可视区最后一条 = 下标 2（行 3），故 0..2 的未读都要标（三条）。
     rows.forEach((row, index) => {
       const bottom = (index - 2) * 40;
       const top = bottom - 40;
@@ -1089,7 +1102,10 @@ describe("EntryList translation scheduling", () => {
 
     fireEvent.click(screen.getByTestId("mark-all-read-footer"));
 
-    expect(mockMarkManyAsRead).toHaveBeenCalledWith({ ids: ["1", "2"], read: true });
+    expect(mockMarkManyAsRead).toHaveBeenCalledWith({
+      ids: ["1", "2", "3"],
+      read: true,
+    });
     expect(mockShowToast).not.toHaveBeenCalled();
 
     requestAnimationFrameMock.mockRestore();
@@ -1121,7 +1137,7 @@ describe("EntryList translation scheduling", () => {
     expect(desktopText.parentElement!.className).not.toContain("min-h-[calc(var(--app-dvh)");
   });
 
-  it("移动端（window 滚动）也能测出可视区首条，标上方未读", async () => {
+  it("移动端（window 滚动）也能测出可视区，标「顶部到可视区最后一条」未读", async () => {
     // 移动端走 document 滚动：容器自身不滚、容器 top 随内容同幅上移，
     // 旧实现只监听容器 scroll 并用容器 top 当基准 → firstVisibleIndex 恒 0。
     const requestAnimationFrameMock = vi
@@ -1130,6 +1146,12 @@ describe("EntryList translation scheduling", () => {
         callback(0);
         return 1;
       });
+
+    // document 模式的视口底用 documentElement.clientHeight || window.innerHeight；
+    // jsdom 里前者为 0、后者默认 768 会让 5 行全算可见，把它压到 1 让范围确定（行 3 是最后一条）。
+    const innerHeightSpy = vi
+      .spyOn(window, "innerHeight", "get")
+      .mockReturnValue(0);
 
     render(<EntryList {...defaultProps} isMobile />);
 
@@ -1166,11 +1188,12 @@ describe("EntryList translation scheduling", () => {
     fireEvent.click(screen.getByTestId("mark-all-read-footer"));
 
     expect(mockMarkManyAsRead).toHaveBeenCalledWith({
-      ids: ["1", "2"],
+      ids: ["1", "2", "3"],
       read: true,
     });
     expect(mockShowToast).not.toHaveBeenCalled();
 
+    innerHeightSpy.mockRestore();
     requestAnimationFrameMock.mockRestore();
   });
 

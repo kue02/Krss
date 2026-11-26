@@ -17,8 +17,9 @@ import {
   BackIcon,
   CircleOutlineIcon,
   CircleFilledIcon,
-  CheckCircleIcon,
+  CheckCheckIcon,
   FileTextIcon,
+  MarkAboveReadIcon,
   MenuIcon,
   SearchIcon,
   RefreshIcon,
@@ -322,7 +323,11 @@ export function EntryListHeader({
             }
             className="flex size-8 shrink-0 items-center justify-center rounded-full text-foreground transition-colors active:bg-item-hover"
           >
-            <CheckCircleIcon className="size-4" />
+            {onMarkAboveVisibleRead ? (
+              <MarkAboveReadIcon className="size-4" />
+            ) : (
+              <CheckCheckIcon className="size-4" />
+            )}
           </button>
           <button
             type="button"
@@ -362,7 +367,7 @@ export function EntryListHeader({
           ) : null}
           {onMarkAboveVisibleRead ? (
             <MobileActionSheetItem
-              icon={<CheckCircleIcon className="size-5" />}
+              icon={<CheckCheckIcon className="size-5" />}
               label={t("entry.mark_all_read")}
               onClick={() => {
                 setMoreOpen(false);
@@ -676,12 +681,12 @@ export function EntryListHeader({
                 aria-label={t("entry.mark_visible_above_read")}
                 className="flex size-8 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95"
               >
-                <CheckCircleIcon className="size-4" />
+                <MarkAboveReadIcon className="size-4" />
               </button>
             </ContextMenuTrigger>
             <ContextMenuContent>
               <ContextMenuItem onClick={onMarkAllRead}>
-                <CheckCircleIcon className="size-4 shrink-0 text-muted-foreground" />
+                <CheckCheckIcon className="size-4 shrink-0 text-muted-foreground" />
                 {t("entry.mark_all_read")}
               </ContextMenuItem>
             </ContextMenuContent>
@@ -693,7 +698,7 @@ export function EntryListHeader({
             title={t("entry.mark_all_read")}
             className="flex size-8 items-center justify-center rounded-full transition-colors duration-200 hover:bg-item-hover active:scale-95"
           >
-            <CheckCircleIcon className="size-4" />
+            <CheckCheckIcon className="size-4" />
           </button>
         )}
         {/* 56-15：列表工具栏的插件挂点（`entry.list.toolbar`）。插在宿主按钮之后 ——
