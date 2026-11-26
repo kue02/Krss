@@ -2,7 +2,9 @@ package network
 
 import (
 	"context"
+	"io"
 	"net/http"
+	"sync"
 	"time"
 
 	"krss/backend/pkg/logger"
@@ -31,10 +33,10 @@ const smartMarker = "smart:"
 
 // SmartTransport http.RoundTripper：按目标域决定直连或代理，并学习。
 type SmartTransport struct {
-	direct  http.RoundTripper // 直连腿（永远有）
+	direct   http.RoundTripper // 直连腿（永远有）
 	viaProxy http.RoundTripper // 代理腿；nil = 没配代理（智能退化成「只直连」）
-	memory  DomainMemory      // nil = 不学习不查询（纯直连）
-	probe   time.Duration     // 直连探测超时；0 = SmartProbeTimeout
+	memory   DomainMemory      // nil = 不学习不查询（纯直连）
+	probe    time.Duration     // 直连探测超时；0 = SmartProbeTimeout
 }
 
 func NewSmartTransport(direct, viaProxy http.RoundTripper, memory DomainMemory) *SmartTransport {
@@ -68,14 +70,23 @@ func (t *SmartTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return t.direct.RoundTrip(req)
 	}
 
-	// 没记忆：先直连（短超时探测）
-	probeCtx, cancel := context.WithTimeout(req.Context(), t.probeOr(SmartProbeTimeout))
-	defer cancel()
+	// 没记忆：先直连（短超时探测）。
+	//
+	// N7：探测超时只该约束「多久拿到响应头」，不该约束「读 body」。以前用
+	// context.WithTimeout + defer cancel() —— 函数一返回 cancel 就执行，直连腿成功后
+	// 返回的 body 会在读取途中断掉（长视频必现）。这里改成：用 WithCancel + 定时器
+	// 只掐「等响应头」的阶段；拿到响应头就停表，cancel 绑到 body 的 Close 上，
+	// body 读多久都不受影响。
+	probeCtx, cancel := context.WithCancel(req.Context())
+	timer := time.AfterFunc(t.probeOr(SmartProbeTimeout), cancel)
 	directResp, directErr := t.direct.RoundTrip(req.WithContext(probeCtx))
+	timer.Stop()
 	if directErr == nil {
 		t.remember(req.Context(), host, "direct")
+		directResp.Body = &cancelOnCloseBody{ReadCloser: directResp.Body, cancel: cancel}
 		return directResp, nil
 	}
+	cancel()
 
 	// 直连不通：有代理腿就试代理（用原始请求的完整超时，不再套短超时）
 	if t.viaProxy != nil {
@@ -88,6 +99,20 @@ func (t *SmartTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		logger.Warn("smart proxy both legs failed", "module", "network", "action", "fetch", "resource", "smart-proxy", "host", host, "proxy_error", proxyErr.Error())
 	}
 	return nil, directErr
+}
+
+// cancelOnCloseBody 把探测 ctx 的 cancel 绑到 body 的 Close：body 读多久都行，
+// 读完/关闭时才释放探测上下文（避免 context 泄漏）。
+type cancelOnCloseBody struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+	once   sync.Once
+}
+
+func (b *cancelOnCloseBody) Close() error {
+	err := b.ReadCloser.Close()
+	b.once.Do(b.cancel)
+	return err
 }
 
 func (t *SmartTransport) probeOr(d time.Duration) time.Duration {

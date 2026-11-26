@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Noooste/azuretls-client"
@@ -43,6 +44,10 @@ type ClientFactory struct {
 	domainMemory    DomainMemory        // 智能代理的域记忆（50 批 2.2）；nil = 不学习不查询
 	testTransport   http.RoundTripper   // For testing only
 	testHTTPClient  *http.Client        // For testing only
+
+	// mediaTransports 媒体下发专用的长连接 transport 缓存（key = 代理URL + IP 栈）。
+	// 只给 NewMediaHTTPClient 用；普通 NewHTTPClient 仍是一次性 transport，行为不变。
+	mediaTransports sync.Map
 }
 
 // NewClientFactory creates a new client factory.
@@ -105,6 +110,106 @@ func (f *ClientFactory) NewHTTPClient(ctx context.Context, timeout time.Duration
 	client.Transport = f.newTransport(proxyURL, ipStack)
 
 	return client
+}
+
+// NewMediaHTTPClient 给媒体（视频/图片）下发用：长连接复用 + 只限「等首字节」。
+//
+// 为什么不能直接用 NewHTTPClient：
+//  1. 它给的是 &http.Client{Timeout: timeout}，Timeout 是**整请求**超时（含读 body）。
+//     视频是 206 + Content-Length 的大响应，body 传到一半被这个超时掐断，客户端只会
+//     收到残缺文件（curl 直接 exit=18）。这里改成不设 Client.Timeout，body 阶段靠
+//     请求自带的 ctx 取消（客户端断开就停）。
+//  2. 它的 transport 是 newOneShotTransport（DisableKeepAlives: true），每个分片都要
+//     重新 TCP+TLS 握手（63MB 视频十几个分片 = 十几次握手）。这里换成 keep-alive 的
+//     长连接 transport，并按「代理URL + IP 栈」缓存复用 —— 改完设置换代理会自然换 key。
+//
+// headerTimeout 只约束「响应头何时到」，超出说明上游连首字节都迟迟不给，才值得报错。
+func (f *ClientFactory) NewMediaHTTPClient(ctx context.Context, headerTimeout time.Duration) *http.Client {
+	// For testing: return the injected client
+	if f.testHTTPClient != nil {
+		return f.testHTTPClient
+	}
+
+	client := &http.Client{} // 刻意不设 Timeout：body 生命周期交给请求 ctx
+	if f.testTransport != nil {
+		client.Transport = f.testTransport
+		return client
+	}
+
+	client.Transport = f.mediaTransport(f.proxyProvider.GetProxyURL(ctx), f.getIPStack(ctx), headerTimeout)
+	return client
+}
+
+// mediaTransport 取（或建）媒体专用的长连接 transport，按 key 复用。
+func (f *ClientFactory) mediaTransport(proxyURL, ipStack string, headerTimeout time.Duration) http.RoundTripper {
+	// N6：key 里带上 headerTimeout —— 不同调用方的首字节超时可能不同，不能共用一条 transport
+	// （否则后建的那个静默拿到别人设的 ResponseHeaderTimeout）。
+	key := proxyURL + "\x00" + ipStack + "\x00" + headerTimeout.String()
+	if cached, ok := f.mediaTransports.Load(key); ok {
+		return cached.(http.RoundTripper)
+	}
+	actual, _ := f.mediaTransports.LoadOrStore(key, f.buildMediaTransport(proxyURL, ipStack, headerTimeout))
+	return actual.(http.RoundTripper)
+}
+
+// buildMediaTransport 造媒体档 transport。
+//
+// 必修2：智能代理档（smart:）下 f.newTransport 返回的是 *SmartTransport，两条腿都是
+// newOneShotTransport（DisableKeepAlives: true、无首字节超时）—— 之前 mediaTransport
+// 只对 *http.Transport 打补丁，整块被跳过，于是 smart 档（用户实际用的档位）长连接和
+// 首字节超时全都不生效，首字节挂死 40s。这里对 smart 档也重建两条「media 档」腿再包进
+// SmartTransport，保证底层腿一定是长连接 + ResponseHeaderTimeout。
+func (f *ClientFactory) buildMediaTransport(proxyURL, ipStack string, headerTimeout time.Duration) http.RoundTripper {
+	dialFunc := f.makeDialFunc(ipStack)
+	if rest, ok := strings.CutPrefix(proxyURL, smartMarker); ok {
+		var viaProxy http.RoundTripper
+		if rest != "" {
+			viaProxy = f.newMediaTransport(dialFunc, rest, headerTimeout)
+		}
+		return NewSmartTransport(f.newMediaTransport(dialFunc, "", headerTimeout), viaProxy, f.domainMemory)
+	}
+	return f.newMediaTransport(dialFunc, proxyURL, headerTimeout)
+}
+
+// newMediaTransport 造一条「长连接 + 只限响应头超时」的 *http.Transport。
+// proxyURL 为空 = 直连；支持 http(s) 与 socks 代理，语义对齐 newPlainTransport，
+// 只是换成长连接、并把 Client.Timeout 换成 ResponseHeaderTimeout。
+func (f *ClientFactory) newMediaTransport(dialFunc func(ctx context.Context, network, addr string) (net.Conn, error), proxyURL string, headerTimeout time.Duration) *http.Transport {
+	t := &http.Transport{
+		DialContext:           dialFunc,
+		DisableKeepAlives:     false,
+		ForceAttemptHTTP2:     true,
+		ResponseHeaderTimeout: headerTimeout,
+		MaxIdleConns:          32,
+		MaxIdleConnsPerHost:   8,
+		IdleConnTimeout:       90 * time.Second,
+	}
+	if proxyURL == "" {
+		return t
+	}
+	parsed, err := url.Parse(proxyURL)
+	if err != nil {
+		return t
+	}
+	if strings.HasPrefix(parsed.Scheme, "socks") {
+		var auth *proxy.Auth
+		if parsed.User != nil {
+			auth = &proxy.Auth{User: parsed.User.Username()}
+			if pwd, ok := parsed.User.Password(); ok {
+				auth.Password = pwd
+			}
+		}
+		dialer, derr := proxy.SOCKS5("tcp", parsed.Host, auth, &ipStackDialer{ipStack: ""})
+		if derr != nil {
+			return t
+		}
+		t.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return dialer.Dial(network, addr)
+		}
+		return t
+	}
+	t.Proxy = http.ProxyURL(parsed)
+	return t
 }
 
 // NewAzureSession creates an azuretls.Session with proxy configuration.
