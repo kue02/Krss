@@ -326,3 +326,47 @@ describe("EntryListHeader 通知视图布局切换", () => {
     ).toBeTruthy();
   });
 });
+
+describe("EntryListHeader 可视区域以上标为已读（新动作）", () => {
+  it("桌面：左键变成「标上方为已读」，原标题不再标成全部已读", () => {
+    const onMarkAboveVisibleRead = vi.fn();
+    render(
+      <EntryListHeader
+        {...baseProps}
+        onMarkAllRead={vi.fn()}
+        onMarkAboveVisibleRead={onMarkAboveVisibleRead}
+      />,
+    );
+
+    const button = screen.getByTitle("entry.mark_visible_above_read");
+    expect(button).toBeTruthy();
+    expect(screen.queryByTitle("entry.mark_all_read")).toBeNull();
+
+    fireEvent.click(button);
+    expect(onMarkAboveVisibleRead).toHaveBeenCalledTimes(1);
+  });
+
+  it("移动端：顶栏那颗改成标上方为已读，更多面板里新增「全部已读」", () => {
+    const onMarkAboveVisibleRead = vi.fn();
+    const onMarkAllRead = vi.fn();
+    render(
+      <EntryListHeader
+        {...baseProps}
+        isMobile
+        onMarkAboveVisibleRead={onMarkAboveVisibleRead}
+        onMarkAllRead={onMarkAllRead}
+      />,
+    );
+
+    const topButton = screen.getByLabelText("entry.mark_visible_above_read");
+    fireEvent.click(topButton);
+    expect(onMarkAboveVisibleRead).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByLabelText("actions.more"));
+    const panel = screen.getByRole("dialog");
+    const item = within(panel).getByText("entry.mark_all_read");
+    expect(item).toBeTruthy();
+    fireEvent.click(item.closest("button") as HTMLElement);
+    expect(onMarkAllRead).toHaveBeenCalledTimes(1);
+  });
+});

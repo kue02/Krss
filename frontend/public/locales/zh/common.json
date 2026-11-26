@@ -351,6 +351,7 @@
     "starred_view_only_on": "只显示当前视图的星标",
     "starred_view_only_off": "显示全部星标",
     "mark_all_read": "全部标记已读",
+    "mark_visible_above_read": "可视区域以上标为已读",
     "add_to_starred": "加入星标",
     "remove_from_starred": "取消星标",
     "generate_summary": "生成 AI 摘要",

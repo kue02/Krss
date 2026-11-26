@@ -1077,6 +1077,16 @@ export function EntryList({
   });
   // 列表滚上去以后，右上角浮出「当前序号 + 回到顶部」（对齐 Nextflux 的 Indicator）
   const [firstVisibleIndex, setFirstVisibleIndex] = useState(0);
+  // 可视区域以上标为已读：把滚动时已经滚出屏幕上方的未读条目标掉
+  // （firstVisibleIndex = 底部 > 0 的第一行，即上方已滚出屏幕的行数）。
+  const handleMarkAboveVisibleRead = useCallback(() => {
+    const ids = entries
+      .slice(0, firstVisibleIndex)
+      .filter((entry) => !entry.read)
+      .map((entry) => entry.id);
+    if (ids.length === 0) return;
+    markManyAsRead({ ids, read: true });
+  }, [entries, firstVisibleIndex, markManyAsRead]);
   /**
    * 虚拟化覆盖「标准文章扁平流」与「社交列表（桌面 + 移动端）」：
    *   - article 内容类型 + 非 hover 档（含 list 与 rows）走原路径；
@@ -1827,6 +1837,7 @@ export function EntryList({
           showUnreadToggle={selection.type !== "starred"}
           onToggleUnreadOnly={onToggleUnreadOnly}
           onMarkAllRead={onMarkAllRead}
+          onMarkAboveVisibleRead={handleMarkAboveVisibleRead}
           onRefresh={handleRefresh}
           onForceRefresh={() => void handleRefresh(true)}
           starredViewOnly={
