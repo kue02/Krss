@@ -503,7 +503,7 @@ export function Sheet({
           scale: open && entered ? 1 : POP_SCALE,
           transformOrigin: "left center",
           // will-change 只在打开时挂：关闭态不保留合成层（配合 display:none，双保险）。
-          willChange: open ? "transform" : "auto",
+          willChange: open ? "transform, scale" : "auto",
           // 退出动画期间仍可见，动画结束（EXIT_DURATION_MS 后）再 hidden；打开时立即可见。
           visibility: open ? "visible" : "hidden",
           transition: open
