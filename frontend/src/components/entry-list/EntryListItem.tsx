@@ -72,6 +72,23 @@ import type { Entry, Feed, Folder } from "@/types/api";
 
 const URL_PATTERN = /\bhttps?:\/\/\S+/i;
 
+/**
+ * 点击目标是否落在正文视频里（任务 3）。
+ *
+ * 视频由 videojs 包成 `<div data-slot="article-video">`，里面有大播放按钮和各种控件，
+ * 点击子元素时 `event.target` 未必是 `<video>` 本身，所以用 `closest` 判定容器；
+ * 同时兜底裸 `<video>`。命中后调用方只 `stopPropagation`、不 `preventDefault`。
+ */
+const VIDEO_SLOT_SELECTOR = '[data-slot="article-video"]';
+function isVideoClickTarget(target: EventTarget | null): boolean {
+  // 用 Element 而不是 HTMLElement：大播放键的图标是 <svg>/<path>（SVGElement），
+  // 点在图标的实心处时 event.target 不是 HTMLElement，用 HTMLElement 判定会漏。
+  if (!(target instanceof Element)) return false;
+  return (
+    target.tagName === "VIDEO" || target.closest(VIDEO_SLOT_SELECTOR) !== null
+  );
+}
+
 interface EntryListItemProps {
   /** 13-3：该订阅的未读条数（未读角标选「未读数」时用；由 EntryList 从已有查询传下来，叶子组件不自己发请求） */
   feedUnreadCount?: number;
@@ -725,12 +742,14 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
               data-entry-id={dataEntryId}
               data-entry-card=""
               {...longPress.touchHandlers}
-              onClick={() => {
+              onClick={(event) => {
                 if (longPress.consumeClick()) return;
+                // 任务 3：视频控件（含大播放键）的点击交给 videojs 就地播放，不打开正文。
+                if (isVideoClickTarget(event.target)) return;
                 onClick(entry.id);
               }}
             >
-              <Ripple hoverOpacity={0} pressedOpacity={0.05} duration={100} />
+              <Ripple hoverOpacity={0} pressedOpacity={isMobile ? 0 : 0.05} duration={100} />
 
               {/* 未读点：原来是 Folo 那样画在条目最左侧的绝对定位小圆点，
                   现在只在「小圆点」样式下出现（角标 / 变灰两种样式下不出点） */}
@@ -1123,13 +1142,15 @@ export const EntryListItemBase = forwardRef<HTMLDivElement, EntryListItemProps>(
             data-entry-id={dataEntryId}
             data-entry-card=""
             {...longPress.touchHandlers}
-            onClick={() => {
+            onClick={(event) => {
               if (longPress.consumeClick()) return;
+              // 任务 3：视频控件的点击交给 videojs 就地播放，不打开正文。
+              if (isVideoClickTarget(event.target)) return;
               onClick(entry.id);
             }}
           >
             {/* Material 3 涟漪 —— 与 Nextflux 的 ArticleCard 同库同参数 */}
-            <Ripple hoverOpacity={0} pressedOpacity={0.05} duration={100} />
+            <Ripple hoverOpacity={0} pressedOpacity={isMobile ? 0 : 0.05} duration={100} />
 
             {/* 24-7：第一行来源栏顶满宽（头像 20px + 源名 + 时间贴右缘，无小圆点；
                 源名超长默认截断、悬浮跑马灯复用 13-2 的 MarqueeText） */}

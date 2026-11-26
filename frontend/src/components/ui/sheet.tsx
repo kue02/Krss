@@ -99,6 +99,14 @@ const ENTER_DURATION_MS = 250;
 const EXIT_DURATION_MS = 200;
 const SNAP_BACK_DURATION_MS = 300;
 
+/**
+ * 「弹出」用的轻微回弹曲线：末段略微过冲再归位，让抽屉像被"弹"出来，
+ * 而不是匀速平移（用户要求「左侧栏加弹出动画」）。只用于打开，关闭仍走 SLIDE_EASE。
+ */
+const POP_EASE = "cubic-bezier(0.34, 1.32, 0.64, 1)";
+/** 打开时从略小比例放大到 1，配合左缘缩放原点，形成弹出感（关闭稳态仍缩到 0.92） */
+const POP_SCALE = 0.92;
+
 /** 侧滑关闭的起手阈值，与 HeroUI Drawer 的 useDrawerDrag 一致（8px） */
 const DRAG_START_THRESHOLD_PX = 8;
 /** 松手判定：位移 > 面板宽度的 30%（同 HeroUI Drawer 的 DISMISS_FRACTION），
@@ -490,13 +498,17 @@ export function Sheet({
           // 和 translate 工具类混用会被各自的 transform 组装规则互相覆盖。
           // transform 用 entered（而非 open）驱动：打开首帧仍停在 -100%，下一帧再滑入。
           transform: open && entered ? "translateX(0px)" : "translateX(-100%)",
+          // 缩放用独立的 `scale` 属性（不改 transform 字符串，避免与拖拽逐帧写 transform 打架）。
+          // 关闭稳态缩到 POP_SCALE，打开回到 1；原点在左缘，弹出时像从左侧"长出"。
+          scale: open && entered ? 1 : POP_SCALE,
+          transformOrigin: "left center",
           // will-change 只在打开时挂：关闭态不保留合成层（配合 display:none，双保险）。
           willChange: open ? "transform" : "auto",
           // 退出动画期间仍可见，动画结束（EXIT_DURATION_MS 后）再 hidden；打开时立即可见。
           visibility: open ? "visible" : "hidden",
           transition: open
-            ? `transform ${ENTER_DURATION_MS}ms ${SLIDE_EASE}, visibility 0s linear 0s`
-            : `transform ${EXIT_DURATION_MS}ms ${SLIDE_EASE}, visibility 0s linear ${EXIT_DURATION_MS}ms`,
+            ? `transform ${ENTER_DURATION_MS}ms ${POP_EASE}, scale ${ENTER_DURATION_MS}ms ${POP_EASE}, visibility 0s linear 0s`
+            : `transform ${EXIT_DURATION_MS}ms ${SLIDE_EASE}, scale ${EXIT_DURATION_MS}ms ${SLIDE_EASE}, visibility 0s linear ${EXIT_DURATION_MS}ms`,
         }}
       >
         {children}

@@ -25,8 +25,8 @@ export interface ArticleVideoPlayerProps {
 const skinStyle = {
   width: "100%",
   aspectRatio: "16 / 9",
-  "--media-accent-color": "var(--accent)",
-  "--media-accent-text-color": "var(--accent-foreground)",
+  "--media-accent-color": "var(--accent-ink)",
+  "--media-accent-text-color": "var(--accent-ink-foreground)",
   "--media-border-radius": "var(--radius-lg)",
 } as CSSProperties;
 

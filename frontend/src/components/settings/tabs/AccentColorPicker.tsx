@@ -77,12 +77,15 @@ function resolveAccentHex(cssColor: string): string {
   }
 }
 
-/** 当前生效的强调色（可能是 oklch / rgb / hex，交给 resolveAccentHex 归一） */
+/** 当前生效的强调色（可能是 oklch / rgb / hex，交给 resolveAccentHex 归一）。
+ *  读 `--accent-ink` 而不是 `--accent`：暗色下真正画到界面上的就是这一层（过暗会被提亮），
+ *  否则「跟随主题」的色块会显示一个屏幕上并不存在的纯黑。 */
 function readAccentVar(): string {
   if (typeof window === "undefined") return FALLBACK_ACCENT;
-  const value = getComputedStyle(document.documentElement)
-    .getPropertyValue("--accent")
-    .trim();
+  const styles = getComputedStyle(document.documentElement);
+  const value =
+    styles.getPropertyValue("--accent-ink").trim() ||
+    styles.getPropertyValue("--accent").trim();
   return resolveAccentHex(value || FALLBACK_ACCENT);
 }
 
