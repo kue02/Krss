@@ -27,6 +27,8 @@ import { useDraggableDialog } from "@/hooks/useDraggableDialog";
 import { useTabEscapeFromDialog } from "@/hooks/useTabEscapeFromDialog";
 import { GripVertical } from "lucide-react";
 import { useFilterEditorStore } from "@/stores/filter-editor-store";
+import { useSettingsModalStore } from "@/stores/settings-modal-store";
+import { useUpdateCheckStore } from "@/stores/update-check-store";
 
 export type SettingsTab =
   | "general"
@@ -84,6 +86,7 @@ interface SettingsModalProps {
 export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+  const consumeInitialTab = useSettingsModalStore((state) => state.consumeInitialTab);
   const isMobile = useIsMobile();
   /**
    * 从设置里打开的抽屉/弹层（目前是规则·视图编辑器）被 RootPortal 挂到 body 上，
@@ -186,13 +189,18 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
     />
   );
 
-  // Reset to general when modal opens
+  // Reset to general when modal opens —— 除非调用方指定了落点页
+  // （右下角的版本更新提示点「查看更新内容」要直接进「关于」）。
+  // initialTab 是一次性指令，读到就消费掉，免得下次手动打开又跳走。
   useEffect(() => {
     if (open) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setActiveTab("general");
+      setActiveTab(consumeInitialTab() ?? "general");
+    } else {
+      // 关掉设置就收起版本详情弹窗：它的开关在 store 里（右下角提示也要能打开它），
+      // 不在这里收，下次进「关于」页弹窗会自己弹出来，用户以为是自己点的。
+      useUpdateCheckStore.getState().setDetailOpen(false);
     }
-  }, [open]);
+  }, [open, consumeInitialTab]);
 
   const renderContent = () => {
     switch (activeTab) {

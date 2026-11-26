@@ -1,21 +1,36 @@
 import { create } from "zustand";
+import type { SettingsTab } from "@/components/settings/SettingsModal";
 
 /**
  * 设置弹窗的开关。
  *
  * 原来开关是 Sidebar 里的 useState，弹窗「内部」关不掉它 —— 而自动化页里
  * 「查看已静音条目」这类跳转需要「切视图 + 关设置」一起发生。放进 store 后两边都能改。
+ *
+ * `initialTab` 是「打开时落在哪一页」的一次性指令：右下角的版本更新提示点
+ * 「查看更新内容」要直接进「关于」页，而弹窗打开时默认重置回「通用」。
+ * 消费即清空（`consumeInitialTab`），否则下次手动打开设置还会跳到关于页。
  */
 interface SettingsModalStore {
   open: boolean;
   setOpen: (open: boolean) => void;
   close: () => void;
+  initialTab: SettingsTab | null;
+  openWithTab: (tab: SettingsTab) => void;
+  consumeInitialTab: () => SettingsTab | null;
 }
 
-export const useSettingsModalStore = create<SettingsModalStore>((set) => ({
+export const useSettingsModalStore = create<SettingsModalStore>((set, get) => ({
   open: false,
   setOpen: (open) => set({ open }),
   close: () => set({ open: false }),
+  initialTab: null,
+  openWithTab: (tab) => set({ open: true, initialTab: tab }),
+  consumeInitialTab: () => {
+    const { initialTab } = get();
+    if (initialTab !== null) set({ initialTab: null });
+    return initialTab;
+  },
 }));
 
 /**

@@ -41,6 +41,7 @@ import { ScrollToTopZone } from "@/components/layout/ScrollToTopZone";
 import { ImagePreview } from "@/components/ui/image-preview";
 import { LoginPage, RegisterPage, NetworkErrorPage } from "@/components/auth";
 import { UpdateNotice } from "@/components/update-notice";
+import { UpdateChecker } from "@/components/update-checker";
 import { Toaster } from "@/components/ui/toaster";
 import { RefreshReportDialog } from "@/components/refresh/RefreshReportDialog";
 import { useRefreshReportWatcher } from "@/hooks/useRefreshReportWatcher";
@@ -1325,7 +1326,15 @@ function AppContent() {
   }
 
   if (isAuthenticated) {
-    return <AuthenticatedApp />;
+    // 检查版本更新挂在已登录这一层，而不是 AuthenticatedApp 里 ——
+    // 它内部按手机/桌面/各种视图有 8 个不同的 return，挂里面必然漏掉几个；
+    // 接口在 JWT 组内，未登录调只会 401，所以也只能在登录之后。
+    return (
+      <>
+        <AuthenticatedApp />
+        <UpdateChecker />
+      </>
+    );
   }
 
   return <LoadingScreen />;

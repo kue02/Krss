@@ -1,10 +1,4 @@
-import {
-  createElement,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { createElement, useEffect, useMemo } from "react";
 import type { ComponentProps } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Button, Chip, Modal } from "@heroui/react";
@@ -26,8 +20,10 @@ import {
   SectionCard,
   SettingRow,
 } from "@/components/settings/settings-primitives";
-import { ApiError, checkForUpdate } from "@/api";
-import type { UpdateCheckResult } from "@/types/settings";
+import {
+  useUpdateCheckStore,
+  type UpdateErrorKind,
+} from "@/stores/update-check-store";
 import { parseHtml } from "@/lib/parse-html";
 import { cn } from "@/lib/utils";
 
@@ -35,31 +31,6 @@ const version =
   typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
 
 const TECH_STACK = "React · TypeScript · Go · SQLite";
-
-type UpdateStatus = "checking" | "success" | "error";
-
-/**
- * 检查失败的三种原因分开说：限流要「等会儿再试」、仓库配错要「去看配置」，
- * 都塌缩成「连不上 GitHub」只会让用户一直点重试（而每次重试都真打一次 GitHub）。
- */
-type UpdateErrorKind = "rateLimited" | "notFound" | "generic";
-
-const ERROR_HINT_KEYS: Record<UpdateErrorKind, string> = {
-  rateLimited: "update.check_rate_limited",
-  notFound: "update.check_not_found",
-  generic: "update.check_failed_hint",
-};
-
-// 只按状态码分类，不匹配错误文案：文案一改前端会静默退回通用提示，两边都不会报错。
-// 429 = 限流（backend/internal/handler/response.go 的 ErrUpdateRateLimited），
-// 404 = 仓库或 Release 不存在（ErrUpdateReleaseNotFound）。
-function classifyError(error: unknown): UpdateErrorKind {
-  if (error instanceof ApiError) {
-    if (error.status === 429) return "rateLimited";
-    if (error.status === 404) return "notFound";
-  }
-  return "generic";
-}
 
 function formatTime(date: Date): string {
   return date.toLocaleTimeString(undefined, {
@@ -136,41 +107,36 @@ const RELEASE_NOTE_COMPONENTS: Components = {
     }),
 };
 
+/**
+ * 失败原因对应的提示文案。分类在 store 里做（只按 HTTP 状态码），
+ * 这里只负责把分类翻成人话 —— i18n 不该进 store。
+ */
+const ERROR_HINT_KEYS: Record<UpdateErrorKind, string> = {
+  rateLimited: "update.check_rate_limited",
+  notFound: "update.check_not_found",
+  generic: "update.check_failed_hint",
+};
+
 export function AboutSettings() {
   const { t } = useTranslation();
 
-  const [status, setStatus] = useState<UpdateStatus>("checking");
-  const [result, setResult] = useState<UpdateCheckResult | null>(null);
-  const [errorKind, setErrorKind] = useState<UpdateErrorKind>("generic");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [checkedAt, setCheckedAt] = useState<Date | null>(null);
-  const [detailOpen, setDetailOpen] = useState(false);
+  // 状态全部来自全局 store：进主页时已经检查过，这里打开不该再打一次接口，
+  // 也不该显示一份和右下角提示不一致的结果。
+  const status = useUpdateCheckStore((state) => state.status);
+  const result = useUpdateCheckStore((state) => state.result);
+  const errorKind = useUpdateCheckStore((state) => state.errorKind);
+  const errorMessage = useUpdateCheckStore((state) => state.errorMessage);
+  const checkedAtMs = useUpdateCheckStore((state) => state.checkedAt);
+  const detailOpen = useUpdateCheckStore((state) => state.detailOpen);
+  const check = useUpdateCheckStore((state) => state.check);
+  const setDetailOpen = useUpdateCheckStore((state) => state.setDetailOpen);
 
-  const fetchUpdate = useCallback(async () => {
-    try {
-      const res = await checkForUpdate();
-      setResult(res);
-      setCheckedAt(new Date());
-      setErrorMessage(null);
-      setStatus("success");
-    } catch (error) {
-      setErrorKind(classifyError(error));
-      setErrorMessage(error instanceof Error ? error.message : String(error));
-      setStatus("error");
-    }
-  }, []);
-
-  const runCheck = useCallback(async () => {
-    setStatus("checking");
-    setErrorMessage(null);
-    await fetchUpdate();
-  }, [fetchUpdate]);
-
-  // 打开「关于」页自动检查一次。后端有 10 分钟缓存，重复进入不会额外打 GitHub。
+  // 进「关于」页补一次检查：store 里有 30 分钟节流，刚在主页查过就直接返回。
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: 打开「关于」页即自动检查一次，结果写入本地状态
-    void fetchUpdate();
-  }, [fetchUpdate]);
+    void check();
+  }, [check]);
+
+  const checkedAt = checkedAtMs === null ? null : new Date(checkedAtMs);
 
   // 只看结果、不看 status：手动重新检查时如果也依赖 status，
   // 横幅会先消失再出现（闪烁），而这段时间里「有更新」这个事实并没有变。
@@ -282,7 +248,7 @@ export function AboutSettings() {
             size="sm"
             variant="outline"
             isDisabled={checking}
-            onPress={() => void runCheck()}
+            onPress={() => void check({ force: true })}
           >
             {checking ? (
               <span className="flex items-center gap-1.5">

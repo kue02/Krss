@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { AboutSettings } from "./AboutSettings";
 import { ApiError } from "@/api";
+import { useUpdateCheckStore } from "@/stores/update-check-store";
 import type { UpdateCheckResult } from "@/types/settings";
 
 const mocks = vi.hoisted(() => ({
@@ -58,10 +59,14 @@ async function openDetails() {
 describe("AboutSettings", () => {
   beforeEach(() => {
     mocks.checkForUpdate.mockReset();
+    // store 是模块级单例：不重置的话上一个用例的结果/节流时间戳会漏到下一个用例，
+    // 表现为「第一个用例过了，后面全部失败」。
+    useUpdateCheckStore.getState().reset();
   });
 
   afterEach(() => {
     cleanup();
+    useUpdateCheckStore.getState().reset();
   });
 
   it("挂载即自动检查一次", async () => {
