@@ -70,7 +70,8 @@ export function MobileSwipeEntryRow({
    * 动作面板本身压在内容层下面，露出的一截要用「内容层里那张卡片」的边界和圆角去对齐：
    * 社交卡是满宽 `rounded-xl`（12px），文章卡在 <640 是满宽直角、≥640 是 `mx-2 my-0.5 rounded-[10px]`。
    * 固定写死 right-2/top-0.5/rounded-10 只在后一种情况贴合，所以展开时实测卡片 offset/圆角再写进内联样式。
-   * circle 分支是浮在底图上的圆形按钮、没有底板，不需要这套（保持原样）。
+   * circle 分支是浮在底图上的圆形按钮、没有底板，不套圆角，但同样按卡片实测内缩，
+   * 免得窄卡/贴边卡片上圆钮压在卡片外。
    */
   const [actionsInset, setActionsInset] = useState<{
     top: number;
@@ -122,7 +123,29 @@ export function MobileSwipeEntryRow({
     rafRef.current = requestAnimationFrame(flushDragTransform);
   }, [flushDragTransform]);
 
+  /**
+   * 任务 6a：横向滑动开始时清掉 m3-ripple 的按压态。
+   *
+   * `useSwipeGesture` 在横向 touchmove 里 `preventDefault()` 掉了后续 click，
+   * 而 m3-ripple 只在 `click` / `pointercancel` 清 `--press` —— 滑动两者都不会走到，
+   * 于是 `.salty-ripple-surface.--press::after` 的 0.05 压感一直留在整卡上（看起来像选中不回弹）。
+   * 这里在拖动起点主动摘掉 `--press` 并取消残留的 ::after 动画，压感随过渡淡出，
+   * 卡片本身恢复原色；同时保留移动端的按压反馈（不再靠 pressedOpacity=0 硬关）。
+   */
+  const clearPressedRipple = useCallback(() => {
+    const content = contentRef.current;
+    if (!content) return;
+    const surfaces = content.querySelectorAll<HTMLElement>(
+      ".salty-ripple-surface.--press",
+    );
+    for (const surface of surfaces) {
+      surface.classList.remove("--press");
+      surface.getAnimations?.({ subtree: true }).forEach((a) => a.cancel());
+    }
+  }, []);
+
   const handleDragStart = useCallback(() => {
+    clearPressedRipple();
     baseOffsetRef.current = open ? -ACTION_WIDTH : 0;
     dragOffsetRef.current = baseOffsetRef.current;
     const content = contentRef.current;
@@ -131,7 +154,7 @@ export function MobileSwipeEntryRow({
       content.style.transition = "none";
       content.style.transform = `translateX(${baseOffsetRef.current}px)`;
     }
-  }, [open]);
+  }, [clearPressedRipple, open]);
 
   const handleDragMove = useCallback(
     (offsetX: number) => {
@@ -194,8 +217,7 @@ export function MobileSwipeEntryRow({
   // 任务 6b：展开时实测内容卡片边界，让动作面板的上下右内缩与右圆角跟卡片对齐。
   // 用 offsetLeft/offsetWidth 求右侧（不受内容层 translateX 影响），用 getBoundingClientRect
   // 求上下（只有横向位移，纵向不受影响），圆角直接取卡片 computed style。
-  useLayoutEffect(() => {
-    if (!open || isCircleAction) return;
+  const measureActionsInset = useCallback(() => {
     const row = rowRef.current;
     const content = contentRef.current;
     const card = content?.firstElementChild as HTMLElement | null;
@@ -210,8 +232,38 @@ export function MobileSwipeEntryRow({
     const top = Math.max(0, cardRect.top - rowRect.top);
     const bottom = Math.max(0, rowRect.bottom - cardRect.bottom);
     const radius = getComputedStyle(card).borderTopRightRadius || "0px";
-    setActionsInset({ top, right, bottom, radius });
-  }, [open, isCircleAction]);
+    setActionsInset((prev) =>
+      prev &&
+      prev.top === top &&
+      prev.right === right &&
+      prev.bottom === bottom &&
+      prev.radius === radius
+        ? prev
+        : { top, right, bottom, radius },
+    );
+  }, []);
+
+  // 展开态里卡片几何还会变（旋转屏、字号缩放、图集图片撑高），只测一次会让面板错位，
+  // 所以展开期间挂 ResizeObserver + resize/orientationchange，变了就重测。
+  useLayoutEffect(() => {
+    if (!open) return;
+    measureActionsInset();
+    const row = rowRef.current;
+    const card = contentRef.current?.firstElementChild as HTMLElement | null;
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => measureActionsInset());
+    if (observer && row) observer.observe(row);
+    if (observer && card) observer.observe(card);
+    window.addEventListener("resize", measureActionsInset);
+    window.addEventListener("orientationchange", measureActionsInset);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measureActionsInset);
+      window.removeEventListener("orientationchange", measureActionsInset);
+    };
+  }, [open, measureActionsInset]);
 
   useSwipeGesture(rowRef, {
     enabledDirections: ["left", "right"],
@@ -267,21 +319,26 @@ export function MobileSwipeEntryRow({
       )}
       data-swipe-row
     >
-      {/* 动作条：两种样式共用同一层；flat 的上下右内缩与右圆角按内容卡片实测值内联，
-          circle 仍用固定的 top-0.5/right-2/bottom-0.5（圆形按钮浮在底图上，无底板） */}
+      {/* 动作条：两种样式共用同一层；上下右内缩按内容卡片实测值内联，
+          flat 另按卡片右圆角对齐（circle 是浮在底图上的圆形按钮，不套圆角） */}
       <div
         aria-hidden={!open}
         className={cn(
           "absolute z-0 flex overflow-hidden",
           isCircleAction
-            ? "bottom-0.5 right-2 top-0.5 items-center justify-end gap-2 pr-1"
+            ? "items-center justify-end gap-2 pr-1"
             : // rounded-[10px] 只是兜底类；真实圆角由下面内联样式按卡片实测覆盖（左侧始终 0）
               "rounded-[10px] border border-border/60 bg-item-hover",
           !open && "pointer-events-none",
         )}
         style={
           isCircleAction
-            ? { width: ACTION_WIDTH }
+            ? {
+                width: ACTION_WIDTH,
+                top: actionsInset?.top ?? 2,
+                right: actionsInset?.right ?? 8,
+                bottom: actionsInset?.bottom ?? 2,
+              }
             : {
                 width: ACTION_WIDTH,
                 top: actionsInset?.top ?? 2,
