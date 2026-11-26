@@ -1095,6 +1095,25 @@ describe("EntryList translation scheduling", () => {
     requestAnimationFrameMock.mockRestore();
   });
 
+  it("移动端空态撑满内容区，不会缩成一行贴在顶部", async () => {
+    // 移动端是 document 滚动，外层容器只有 min-height，h-full 的百分比解析不出来；
+    // 少了 min-h 兜底时空态会塌到内容高度贴顶（实测 centerY=90 / 视口 844）。
+    vi.mocked(useEntriesInfinite).mockReturnValue({
+      data: { pages: [{ entries: [], hasMore: false }] },
+      fetchNextPage: vi.fn(),
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      isLoading: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    render(<EntryList {...defaultProps} isMobile />);
+
+    const text = screen.getByText("entry_list.no_articles");
+    expect(text.parentElement?.className).toContain(
+      "min-h-[calc(var(--app-dvh)-3.5rem)]",
+    );
+  });
+
   it("移动端（window 滚动）也能测出可视区首条，标上方未读", async () => {
     // 移动端走 document 滚动：容器自身不滚、容器 top 随内容同幅上移，
     // 旧实现只监听容器 scroll 并用容器 top 当基准 → firstVisibleIndex 恒 0。
